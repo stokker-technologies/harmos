@@ -26,6 +26,7 @@ mod generated_file_upload;
 mod generated_status;
 mod issued_cut_lifetime;
 mod issued_pages;
+mod native_pages;
 mod transfer_plugin;
 mod unary_transfers;
 

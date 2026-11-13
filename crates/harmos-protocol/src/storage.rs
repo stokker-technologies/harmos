@@ -938,18 +938,8 @@ pub struct TimeBounds {
     pub upper_ns: i64,
 }
 #[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ArrowSeek {
-    #[prost(bytes = "vec", tag = "1")]
-    pub snapshot: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub plan: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "3")]
-    pub position: u64,
-}
-#[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ArrowScan {
+pub struct ColumnSelection {
     #[prost(message, optional, tag = "1")]
     pub source: ::core::option::Option<ColumnSource>,
     #[prost(string, repeated, tag = "2")]
@@ -961,10 +951,6 @@ pub struct ArrowScan {
     #[prost(uint64, tag = "5")]
     pub start: u64,
     #[prost(message, optional, tag = "6")]
-    pub after: ::core::option::Option<ArrowSeek>,
-    #[prost(message, optional, tag = "7")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "8")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -972,17 +958,15 @@ pub struct ArrowScan {
 pub struct ArrowPage {
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "2")]
-    pub next: ::core::option::Option<ArrowSeek>,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag = "2")]
     pub complete: bool,
-    #[prost(uint64, tag = "4")]
+    #[prost(uint64, tag = "3")]
     pub scanned: u64,
-    #[prost(uint64, tag = "5")]
+    #[prost(uint64, tag = "4")]
     pub bytes_read: u64,
-    #[prost(string, repeated, tag = "6")]
+    #[prost(string, repeated, tag = "5")]
     pub columns_read: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(uint64, tag = "7")]
+    #[prost(uint64, tag = "6")]
     pub payload_rows: u64,
 }
 #[allow(clippy::all)]
@@ -1007,21 +991,7 @@ pub struct IndexEntry {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct IndexSeek {
-    #[prost(bytes = "vec", tag = "1")]
-    pub snapshot: ::prost::alloc::vec::Vec<u8>,
-    #[prost(bytes = "vec", tag = "2")]
-    pub plan: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "3")]
-    pub revision: u64,
-    #[prost(bytes = "vec", tag = "4")]
-    pub key: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "5")]
-    pub position: u64,
-}
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct IndexRead {
+pub struct IndexSelection {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(bytes = "vec", optional, tag = "2")]
@@ -1033,10 +1003,6 @@ pub struct IndexRead {
     #[prost(bool, tag = "5")]
     pub descending: bool,
     #[prost(message, optional, tag = "6")]
-    pub after: ::core::option::Option<IndexSeek>,
-    #[prost(message, optional, tag = "7")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "8")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -1044,9 +1010,7 @@ pub struct IndexRead {
 pub struct IndexPage {
     #[prost(message, repeated, tag = "1")]
     pub entries: ::prost::alloc::vec::Vec<IndexEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub next: ::core::option::Option<IndexSeek>,
-    #[prost(bool, tag = "3")]
+    #[prost(bool, tag = "2")]
     pub complete: bool,
 }
 #[allow(clippy::all)]
@@ -1100,18 +1064,12 @@ pub mod projection_definition {
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct ProjectionRead {
+pub struct ProjectionSelection {
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
-    #[prost(uint64, tag = "2")]
-    pub revision: u64,
+    #[prost(bytes = "vec", tag = "2")]
+    pub revision: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub frontier: ::core::option::Option<StorageCursor>,
-    #[prost(uint64, tag = "4")]
-    pub after: u64,
-    #[prost(message, optional, tag = "5")]
-    pub limits: ::core::option::Option<ReadLimits>,
-    #[prost(message, optional, tag = "6")]
     pub work: ::core::option::Option<ReadLimits>,
 }
 #[allow(clippy::all)]
@@ -1119,14 +1077,8 @@ pub struct ProjectionRead {
 pub struct ProjectionPage {
     #[prost(bytes = "vec", tag = "1")]
     pub ipc: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "2")]
-    pub frontier: ::core::option::Option<StorageCursor>,
-    #[prost(uint64, tag = "3")]
-    pub revision: u64,
-    #[prost(bytes = "vec", repeated, tag = "4")]
+    #[prost(bytes = "vec", repeated, tag = "2")]
     pub changed_keys: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
-    #[prost(uint64, optional, tag = "5")]
-    pub next: ::core::option::Option<u64>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

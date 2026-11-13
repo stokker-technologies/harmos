@@ -405,7 +405,8 @@ impl ProtobufOperation for GetIndexDefinition {
         super::native::grant(Self::ID, request.source.clone())
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (definition, revision, resolved_at) = super::definitions::get_index(&context, Self::ID, request.name, request.source).await?;
+        let (definition, revision, resolved_at) =
+            super::definitions::get_index(&context, Self::ID, request.name, request.source, request.at).await?;
         super::native::read_response(
             &context,
             Self::Response {
@@ -479,7 +480,7 @@ impl ProtobufOperation for GetProjectionDefinition {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) =
-            super::definitions::get_projection(&context, Self::ID, request.name, request.source).await?;
+            super::definitions::get_projection(&context, Self::ID, request.name, request.source, request.at).await?;
         super::native::read_response(
             &context,
             Self::Response {
@@ -663,15 +664,17 @@ impl ProtobufOperation for ListColumnRows {
     const RESOURCES: &'static [Resource] =
         &[Resource::of::<StorageManager>(), Resource::of::<GrantAccess>(), Resource::of::<super::snapshot::SavedSnapshots>()];
     fn grant(request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
-        super::native::grant(Self::ID, request.read.as_ref().and_then(|read| read.source.clone()))
+        super::native::grant(Self::ID, request.selection.as_ref().and_then(|read| read.source.clone()))
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (page, resolved_at) = super::views::columns(&context, Self::ID, request.snapshot, request.read).await?;
+        let (page, resolved_at, next_page_token) =
+            super::lists::columns(&context, Self::ID, request.selection, request.at, request.page).await?;
         super::native::read_response(
             &context,
             Self::Response {
                 page: Some(page),
                 resolved_at: Some(resolved_at),
+                next_page_token,
             },
         )
     }
@@ -697,12 +700,14 @@ impl ProtobufOperation for ListIndexEntries {
         super::native::grant(Self::ID, request.source.clone())
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (page, resolved_at) = super::views::indexes(&context, Self::ID, request.snapshot, request.read, request.source).await?;
+        let (page, resolved_at, next_page_token) =
+            super::lists::indexes(&context, Self::ID, request.selection, request.source, request.at, request.page).await?;
         super::native::read_response(
             &context,
             Self::Response {
                 page: Some(page),
                 resolved_at: Some(resolved_at),
+                next_page_token,
             },
         )
     }
@@ -755,7 +760,7 @@ impl ProtobufOperation for GetProjectionStatus {
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (status, resolved_at) =
-            super::views::projection_status(&context, Self::ID, request.name, request.revision, request.frontier, request.source).await?;
+            super::views::projection_status(&context, Self::ID, request.name, request.revision, request.at, request.source).await?;
         super::native::read_response(&context, Self::Response { status, resolved_at: Some(resolved_at) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -780,12 +785,14 @@ impl ProtobufOperation for ListProjectionRows {
         super::native::grant(Self::ID, request.source.clone())
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (page, resolved_at) = super::views::projection_rows(&context, Self::ID, request.read, request.source).await?;
+        let (page, resolved_at, next_page_token) =
+            super::lists::projections(&context, Self::ID, request.selection, request.source, request.at, request.page).await?;
         super::native::read_response(
             &context,
             Self::Response {
                 page: Some(page),
                 resolved_at: Some(resolved_at),
+                next_page_token,
             },
         )
     }

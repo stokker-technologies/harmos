@@ -48,7 +48,7 @@ pub(super) fn revision(value: u64) -> Vec<u8> {
 }
 
 pub(super) async fn get_index(
-    context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>,
+    context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>, at: Option<v1::ReadCut>,
 ) -> Result<(wire::IndexDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -58,15 +58,16 @@ pub(super) async fn get_index(
         async {
             let source: ColumnSource = required(source)?.try_into()?;
             super::native::admit(context, id, &source)?;
-            let read = snapshots.resolve(&storage, None).await?;
+            let read = snapshots.resolve(&storage, at).await?;
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let (definition, current) = storage.get_index_definition(&name).await?;
+            let resource = format!("storage.index.{name}");
+            if super::lists::revision_at(read.cut(), &resource)?.is_some_and(|expected| expected != current) {
+                return Err(harmos_storage::Error::NotReady { domain: "GetIndexDefinition revision" }.into());
+            }
             super::native::source_matches(&source, &definition.source)?;
-            let mut cut = read.cut().clone();
-            cut.revisions.push(v1::ResourceRevision {
-                name: format!("storage.index.{}", definition.name),
-                revision: revision(current),
-            });
+            let cut = super::lists::with_revision(read.cut().clone(), &resource, current);
+            drop(read);
             Ok((definition.into(), revision(current), snapshots.composite(&storage, cut).await?))
         },
         cancel.clone(),
@@ -114,7 +115,7 @@ pub(super) async fn set_index(
 }
 
 pub(super) async fn get_projection(
-    context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>,
+    context: &ExecutionContext, id: &'static str, name: String, source: Option<wire::ColumnSource>, at: Option<v1::ReadCut>,
 ) -> Result<(wire::ProjectionDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -124,15 +125,14 @@ pub(super) async fn get_projection(
         async {
             let source: ColumnSource = required(source)?.try_into()?;
             super::native::admit(context, id, &source)?;
-            let read = snapshots.resolve(&storage, None).await?;
+            let read = snapshots.resolve(&storage, at).await?;
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
-            let (definition, current) = storage.get_projection_definition(&name, None).await?;
+            let resource = format!("storage.projection.{name}");
+            let expected = super::lists::revision_at(read.cut(), &resource)?;
+            let (definition, current) = storage.get_projection_definition(&name, expected).await?;
             super::native::source_matches(&source, &definition.source)?;
-            let mut cut = read.cut().clone();
-            cut.revisions.push(v1::ResourceRevision {
-                name: format!("storage.projection.{}", definition.name),
-                revision: revision(current),
-            });
+            let cut = super::lists::with_revision(read.cut().clone(), &resource, current);
+            drop(read);
             Ok((definition.try_into()?, revision(current), snapshots.composite(&storage, cut).await?))
         },
         cancel.clone(),

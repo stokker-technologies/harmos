@@ -1470,14 +1470,9 @@ impl ReflectMessage for crate::storage::TimeBounds {
         pool().get_message_by_name("harmos.storage.v1.TimeBounds").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::ArrowSeek {
+impl ReflectMessage for crate::storage::ColumnSelection {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ArrowSeek").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::ArrowScan {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ArrowScan").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.ColumnSelection").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::ArrowPage {
@@ -1495,14 +1490,9 @@ impl ReflectMessage for crate::storage::IndexEntry {
         pool().get_message_by_name("harmos.storage.v1.IndexEntry").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::IndexSeek {
+impl ReflectMessage for crate::storage::IndexSelection {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.IndexSeek").expect("generated message")
-    }
-}
-impl ReflectMessage for crate::storage::IndexRead {
-    fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.IndexRead").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.IndexSelection").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::IndexPage {
@@ -1525,9 +1515,9 @@ impl ReflectMessage for crate::storage::ProjectionDefinition {
         pool().get_message_by_name("harmos.storage.v1.ProjectionDefinition").expect("generated message")
     }
 }
-impl ReflectMessage for crate::storage::ProjectionRead {
+impl ReflectMessage for crate::storage::ProjectionSelection {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.storage.v1.ProjectionRead").expect("generated message")
+        pool().get_message_by_name("harmos.storage.v1.ProjectionSelection").expect("generated message")
     }
 }
 impl ReflectMessage for crate::storage::ProjectionPage {

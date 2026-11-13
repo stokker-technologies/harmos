@@ -168,6 +168,7 @@ impl Workload {
     }
     pub fn index_read(&self) -> IndexRead {
         IndexRead {
+            revision: None,
             name: self.index().name,
             lower: None,
             upper: None,

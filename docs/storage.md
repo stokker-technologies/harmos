@@ -281,8 +281,8 @@ and grant identity. Both faces delegate to the same storage handlers.
 | AppendRecords / AppendSamples / AppendObjectRevisions | Bounded immutable ingestion and accepted/durable receipts |
 
 A missing `at` selects the current durable position immediately. Projection status
-without a frontier selects its newest readable materialization; an explicit frontier
-must match a retained composite cut for the requested revision. Reads never flush
+without `at` selects its newest readable materialization; an explicit `at`
+must match a retained issued cut and the selected revision. Reads never flush
 or wait for accepted writes. A supplied cut must equal a retained cut this owner
 has returned; arbitrary older positions, changed composites and foreign histories
 refuse. Automatic cuts use the existing saved-read capacity and evict the oldest
@@ -290,8 +290,24 @@ idle cut when needed. `CreateSnapshot` pins its lease until `DeleteSnapshot` or
 storage retirement. Active reads retain their image through completion. A failed
 or cancelled page does not release an explicit lease.
 
-Return the whole `SavedSnapshot` unchanged for column/index reads or advancement.
-Arrow/index seek bytes bind that retained image and their plan. ListRows tokens
+Return the whole `SavedSnapshot` unchanged for explicit lease release or projection
+advancement. Native list methods take a selector, optional issued `at`, and the common
+`PageRequest` (`page_size`, `max_bytes`, `page_token`). Their replies carry `resolved_at`
+and `next_page_token`. Keep the returned cut or omit `at` when continuing the signed token.
+Column/index/projection selectors contain source/ordering/work selection; response sizing
+and continuation belong to PageRequest. Index cuts bind the selected definition revision,
+which the provider checks within its scan; a rebuild refuses old revision reads explicitly.
+Projection cuts bind the exact retained revision/frontier. Definition getters also honor
+issued participating revisions; unavailable index revisions refuse rather than substituting
+current metadata. The native page mechanisms retain their own seek/materialization behavior.
+
+The complete encoded reply respects both `max_bytes` and the configured response ceiling.
+Column/projection packing counts IPC metadata as well as native buffers; an indivisible
+row or response metadata that cannot fit refuses explicitly. A short provider page is
+progress, so a filtered empty column page can still return a continuation.
+
+
+Signed native-list tokens bind the retained image, selector and native continuation. ListRows tokens
 bind the retained image, selector, transforms, ordering and query progress with an
 owner-local HMAC; page size may change within consumer bounds. The most recent continuation request/result remains replayable with the same bounds;
 consuming its next token expires older requests. Each call advances one bounded source

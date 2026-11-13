@@ -16,6 +16,8 @@ mod contracts;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod definitions;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
+mod lists;
+#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod pages;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 mod views;

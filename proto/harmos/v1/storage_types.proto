@@ -146,19 +146,17 @@ enum ColumnKind { COLUMN_KIND_OBJECTS = 0; COLUMN_KIND_RECORDS = 1; COLUMN_KIND_
 message ColumnSource { ColumnKind kind = 1; SchemaKey schema = 2; }
 message ColumnPredicate { string column = 1; optional double lower = 2; optional double upper = 3; }
 message TimeBounds { string column = 1; int64 lower_ns = 2; int64 upper_ns = 3; }
-message ArrowSeek { bytes snapshot = 1; bytes plan = 2; uint64 position = 3; }
-message ArrowScan { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ArrowSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
-message ArrowPage { bytes ipc = 1; ArrowSeek next = 2; bool complete = 3; uint64 scanned = 4; uint64 bytes_read = 5; repeated string columns_read = 6; uint64 payload_rows = 7; }
+message ColumnSelection { ColumnSource source = 1; repeated string columns = 2; ColumnPredicate predicate = 3; TimeBounds time = 4; uint64 start = 5; ReadLimits work = 6; }
+message ArrowPage { bytes ipc = 1; bool complete = 2; uint64 scanned = 3; uint64 bytes_read = 4; repeated string columns_read = 5; uint64 payload_rows = 6; }
 message IndexDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; repeated string columns = 4; }
 message IndexEntry { bytes key = 1; uint64 position = 2; }
-message IndexSeek { bytes snapshot = 1; bytes plan = 2; uint64 revision = 3; bytes key = 4; uint64 position = 5; }
-message IndexRead { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; IndexSeek after = 6; ReadLimits limits = 7; ReadLimits work = 8; }
-message IndexPage { repeated IndexEntry entries = 1; IndexSeek next = 2; bool complete = 3; }
+message IndexSelection { string name = 1; optional bytes lower = 2; optional bytes upper = 3; bytes prefix = 4; bool descending = 5; ReadLimits work = 6; }
+message IndexPage { repeated IndexEntry entries = 1; bool complete = 2; }
 message TimeBucketPlan { int64 origin_ns = 1; uint64 width_ns = 2; string time = 3; string value = 4; string identity = 5; repeated string group = 6; uint64 max_samples = 7; uint64 max_bytes = 8; }
 message SelectColumns { repeated string columns = 1; }
 message ProjectionDefinition { string name = 1; uint32 version = 2; ColumnSource source = 3; oneof transform { SelectColumns select = 4; TimeBucketPlan time_buckets = 5; } }
-message ProjectionRead { string name = 1; uint64 revision = 2; StorageCursor frontier = 3; uint64 after = 4; ReadLimits limits = 5; ReadLimits work = 6; }
-message ProjectionPage { bytes ipc = 1; StorageCursor frontier = 2; uint64 revision = 3; repeated bytes changed_keys = 4; optional uint64 next = 5; }
+message ProjectionSelection { string name = 1; bytes revision = 2; ReadLimits work = 3; }
+message ProjectionPage { bytes ipc = 1; repeated bytes changed_keys = 2; }
 message ProjectionStatus { StorageCursor frontier = 1; uint64 revision = 2; uint64 rows = 3; uint64 changed_keys = 4; }
 // A saved snapshot is explicitly released. Its handle is opaque and instance scoped.
 message SavedSnapshot { bytes token = 1; StorageCursor at = 2; }

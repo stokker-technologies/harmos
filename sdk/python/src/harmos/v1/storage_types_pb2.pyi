@@ -998,53 +998,37 @@ class TimeBounds(_message.Message):
     upper_ns: int
     def __init__(self, column: _Optional[str] = ..., lower_ns: _Optional[int] = ..., upper_ns: _Optional[int] = ...) -> None: ...
 
-class ArrowSeek(_message.Message):
-    __slots__ = ("snapshot", "plan", "position")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    PLAN_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    snapshot: bytes
-    plan: bytes
-    position: int
-    def __init__(self, snapshot: _Optional[bytes] = ..., plan: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
-
-class ArrowScan(_message.Message):
-    __slots__ = ("source", "columns", "predicate", "time", "start", "after", "limits", "work")
+class ColumnSelection(_message.Message):
+    __slots__ = ("source", "columns", "predicate", "time", "start", "work")
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     COLUMNS_FIELD_NUMBER: _ClassVar[int]
     PREDICATE_FIELD_NUMBER: _ClassVar[int]
     TIME_FIELD_NUMBER: _ClassVar[int]
     START_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
     source: ColumnSource
     columns: _containers.RepeatedScalarFieldContainer[str]
     predicate: ColumnPredicate
     time: TimeBounds
     start: int
-    after: ArrowSeek
-    limits: ReadLimits
     work: ReadLimits
-    def __init__(self, source: _Optional[_Union[ColumnSource, _Mapping]] = ..., columns: _Optional[_Iterable[str]] = ..., predicate: _Optional[_Union[ColumnPredicate, _Mapping]] = ..., time: _Optional[_Union[TimeBounds, _Mapping]] = ..., start: _Optional[int] = ..., after: _Optional[_Union[ArrowSeek, _Mapping]] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
+    def __init__(self, source: _Optional[_Union[ColumnSource, _Mapping]] = ..., columns: _Optional[_Iterable[str]] = ..., predicate: _Optional[_Union[ColumnPredicate, _Mapping]] = ..., time: _Optional[_Union[TimeBounds, _Mapping]] = ..., start: _Optional[int] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
 
 class ArrowPage(_message.Message):
-    __slots__ = ("ipc", "next", "complete", "scanned", "bytes_read", "columns_read", "payload_rows")
+    __slots__ = ("ipc", "complete", "scanned", "bytes_read", "columns_read", "payload_rows")
     IPC_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
     COMPLETE_FIELD_NUMBER: _ClassVar[int]
     SCANNED_FIELD_NUMBER: _ClassVar[int]
     BYTES_READ_FIELD_NUMBER: _ClassVar[int]
     COLUMNS_READ_FIELD_NUMBER: _ClassVar[int]
     PAYLOAD_ROWS_FIELD_NUMBER: _ClassVar[int]
     ipc: bytes
-    next: ArrowSeek
     complete: bool
     scanned: int
     bytes_read: int
     columns_read: _containers.RepeatedScalarFieldContainer[str]
     payload_rows: int
-    def __init__(self, ipc: _Optional[bytes] = ..., next: _Optional[_Union[ArrowSeek, _Mapping]] = ..., complete: _Optional[bool] = ..., scanned: _Optional[int] = ..., bytes_read: _Optional[int] = ..., columns_read: _Optional[_Iterable[str]] = ..., payload_rows: _Optional[int] = ...) -> None: ...
+    def __init__(self, ipc: _Optional[bytes] = ..., complete: _Optional[bool] = ..., scanned: _Optional[int] = ..., bytes_read: _Optional[int] = ..., columns_read: _Optional[_Iterable[str]] = ..., payload_rows: _Optional[int] = ...) -> None: ...
 
 class IndexDefinition(_message.Message):
     __slots__ = ("name", "version", "source", "columns")
@@ -1066,49 +1050,29 @@ class IndexEntry(_message.Message):
     position: int
     def __init__(self, key: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
 
-class IndexSeek(_message.Message):
-    __slots__ = ("snapshot", "plan", "revision", "key", "position")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    PLAN_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
-    KEY_FIELD_NUMBER: _ClassVar[int]
-    POSITION_FIELD_NUMBER: _ClassVar[int]
-    snapshot: bytes
-    plan: bytes
-    revision: int
-    key: bytes
-    position: int
-    def __init__(self, snapshot: _Optional[bytes] = ..., plan: _Optional[bytes] = ..., revision: _Optional[int] = ..., key: _Optional[bytes] = ..., position: _Optional[int] = ...) -> None: ...
-
-class IndexRead(_message.Message):
-    __slots__ = ("name", "lower", "upper", "prefix", "descending", "after", "limits", "work")
+class IndexSelection(_message.Message):
+    __slots__ = ("name", "lower", "upper", "prefix", "descending", "work")
     NAME_FIELD_NUMBER: _ClassVar[int]
     LOWER_FIELD_NUMBER: _ClassVar[int]
     UPPER_FIELD_NUMBER: _ClassVar[int]
     PREFIX_FIELD_NUMBER: _ClassVar[int]
     DESCENDING_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
     name: str
     lower: bytes
     upper: bytes
     prefix: bytes
     descending: bool
-    after: IndexSeek
-    limits: ReadLimits
     work: ReadLimits
-    def __init__(self, name: _Optional[str] = ..., lower: _Optional[bytes] = ..., upper: _Optional[bytes] = ..., prefix: _Optional[bytes] = ..., descending: _Optional[bool] = ..., after: _Optional[_Union[IndexSeek, _Mapping]] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., lower: _Optional[bytes] = ..., upper: _Optional[bytes] = ..., prefix: _Optional[bytes] = ..., descending: _Optional[bool] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
 
 class IndexPage(_message.Message):
-    __slots__ = ("entries", "next", "complete")
+    __slots__ = ("entries", "complete")
     ENTRIES_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
     COMPLETE_FIELD_NUMBER: _ClassVar[int]
     entries: _containers.RepeatedCompositeFieldContainer[IndexEntry]
-    next: IndexSeek
     complete: bool
-    def __init__(self, entries: _Optional[_Iterable[_Union[IndexEntry, _Mapping]]] = ..., next: _Optional[_Union[IndexSeek, _Mapping]] = ..., complete: _Optional[bool] = ...) -> None: ...
+    def __init__(self, entries: _Optional[_Iterable[_Union[IndexEntry, _Mapping]]] = ..., complete: _Optional[bool] = ...) -> None: ...
 
 class TimeBucketPlan(_message.Message):
     __slots__ = ("origin_ns", "width_ns", "time", "value", "identity", "group", "max_samples", "max_bytes")
@@ -1150,35 +1114,23 @@ class ProjectionDefinition(_message.Message):
     time_buckets: TimeBucketPlan
     def __init__(self, name: _Optional[str] = ..., version: _Optional[int] = ..., source: _Optional[_Union[ColumnSource, _Mapping]] = ..., select: _Optional[_Union[SelectColumns, _Mapping]] = ..., time_buckets: _Optional[_Union[TimeBucketPlan, _Mapping]] = ...) -> None: ...
 
-class ProjectionRead(_message.Message):
-    __slots__ = ("name", "revision", "frontier", "after", "limits", "work")
+class ProjectionSelection(_message.Message):
+    __slots__ = ("name", "revision", "work")
     NAME_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    AFTER_FIELD_NUMBER: _ClassVar[int]
-    LIMITS_FIELD_NUMBER: _ClassVar[int]
     WORK_FIELD_NUMBER: _ClassVar[int]
     name: str
-    revision: int
-    frontier: StorageCursor
-    after: int
-    limits: ReadLimits
+    revision: bytes
     work: ReadLimits
-    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., after: _Optional[int] = ..., limits: _Optional[_Union[ReadLimits, _Mapping]] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., revision: _Optional[bytes] = ..., work: _Optional[_Union[ReadLimits, _Mapping]] = ...) -> None: ...
 
 class ProjectionPage(_message.Message):
-    __slots__ = ("ipc", "frontier", "revision", "changed_keys", "next")
+    __slots__ = ("ipc", "changed_keys")
     IPC_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
-    REVISION_FIELD_NUMBER: _ClassVar[int]
     CHANGED_KEYS_FIELD_NUMBER: _ClassVar[int]
-    NEXT_FIELD_NUMBER: _ClassVar[int]
     ipc: bytes
-    frontier: StorageCursor
-    revision: int
     changed_keys: _containers.RepeatedScalarFieldContainer[bytes]
-    next: int
-    def __init__(self, ipc: _Optional[bytes] = ..., frontier: _Optional[_Union[StorageCursor, _Mapping]] = ..., revision: _Optional[int] = ..., changed_keys: _Optional[_Iterable[bytes]] = ..., next: _Optional[int] = ...) -> None: ...
+    def __init__(self, ipc: _Optional[bytes] = ..., changed_keys: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class ProjectionStatus(_message.Message):
     __slots__ = ("frontier", "revision", "rows", "changed_keys")

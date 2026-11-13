@@ -12,6 +12,8 @@
 /* === Imports === */
 
 use harmos::storage as wire;
+use harmos_protocol::v1;
+use harmos_runtime::builtins::storage as operations;
 use harmos_runtime::{
     Identified, Message,
     storage::{
@@ -100,10 +102,14 @@ async fn saved_preview_survives_atomic_replacement() {
     .unwrap();
     let storage = manager.unwrap();
 
-    // Retain a Saved Preview Through the SDK Contract.
+    // Retain a Saved Preview Through the Client-Face Contract.
     let first = storage.write_object(&Preview { id: "board".into(), symbols: 2 }).await.unwrap();
     storage.flush().await.unwrap();
-    let saved = services::call(&runtime, wire::OpenSnapshot { at: Some(first.position.clone().into()) }).await.unwrap();
+    let retained =
+        runtime.operations.call_protobuf::<operations::CreateSnapshot>(v1::StorageCreateSnapshotRequest { at: None }).await.unwrap();
+    let saved_cut = retained.resolved_at.unwrap();
+    let saved = retained.snapshot.unwrap();
+    assert_eq!(saved.at.as_ref().unwrap().sequence, first.position.sequence);
     let schema = harmos_runtime::schema::graph::Schema::from_declaration(
         <Preview as harmos_runtime::schema::Described>::DEFINITION,
         &Default::default(),
@@ -115,12 +121,22 @@ async fn saved_preview_survives_atomic_replacement() {
         schema: Some(encoded.schema.clone().into()),
     };
     let mutation = storage.mutation_window().unwrap();
-    let request = wire::CompareExchangeObject {
+    let current = runtime
+        .operations
+        .call_protobuf::<operations::GetObject>(v1::StorageGetObjectRequest {
+            schema: Some(encoded.schema.clone().into()),
+            item: "board".into(),
+            at: None,
+        })
+        .await
+        .unwrap();
+    let request = v1::StorageSetObjectRequest {
         mutation: Some(wire::MutationId {
             window: mutation.id.to_string(),
             key: "preview-update".into(),
         }),
-        expected: Some(first.version.clone().into()),
+        expected_revision: current.revision,
+        create_if_absent: false,
         schema: Some(wire::SchemaInput {
             key: Some(encoded.schema.clone().into()),
             graph: Some(schema.into()),
@@ -130,33 +146,45 @@ async fn saved_preview_survives_atomic_replacement() {
 
     // Replace the Live Preview and Refuse a Stale Writer.
     assert!(matches!(
-        services::call(&runtime, request.clone()).await.unwrap().outcome,
-        Some(wire::compare_exchange_outcome::Outcome::Applied(_))
+        runtime.operations.call_protobuf::<operations::SetObject>(request.clone()).await.unwrap().outcome,
+        Some(v1::storage_set_object_response::Outcome::Applied(_))
     ));
     let mut stale = request;
     stale.mutation.as_mut().unwrap().key = "stale-update".into();
-    assert!(matches!(services::call(&runtime, stale).await.unwrap().outcome, Some(wire::compare_exchange_outcome::Outcome::Conflict(_))));
+    assert!(matches!(
+        runtime.operations.call_protobuf::<operations::SetObject>(stale).await.unwrap().outcome,
+        Some(v1::storage_set_object_response::Outcome::Conflict(_))
+    ));
 
     // Read the Saved Value and Release Its Cut.
     let limits = wire::ReadLimits { rows: 8, bytes: 65536 };
-    let page = services::call(
-        &runtime,
-        wire::ScanArrow {
-            snapshot: Some(saved.clone()),
-            read: Some(wire::ArrowScan {
+    let page = runtime
+        .operations
+        .call_protobuf::<operations::ListColumnRows>(v1::StorageListColumnRowsRequest {
+            at: Some(saved_cut),
+            page: Some(v1::PageRequest {
+                page_size: 8,
+                max_bytes: 65536,
+                page_token: String::new(),
+            }),
+            selection: Some(wire::ColumnSelection {
                 source: Some(source),
                 columns: vec!["payload.symbols".into()],
-                limits: Some(limits),
                 work: Some(limits),
                 ..Default::default()
             }),
-        },
-    )
-    .await
-    .unwrap();
+        })
+        .await
+        .unwrap()
+        .page
+        .unwrap();
     let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
     let value = batch.as_record_batch().column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
     assert_eq!(value.values().as_ref(), &[2]);
-    services::call(&runtime, wire::ReleaseSnapshot { snapshot: Some(saved) }).await.unwrap();
+    runtime
+        .operations
+        .call_protobuf::<operations::DeleteSnapshot>(v1::StorageDeleteSnapshotRequest { snapshot: Some(saved) })
+        .await
+        .unwrap();
     runtime.shutdown().await.unwrap();
 }

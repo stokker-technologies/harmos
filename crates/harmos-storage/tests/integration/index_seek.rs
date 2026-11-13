@@ -144,6 +144,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     let saved = native.create_snapshot(&cut).await.unwrap();
     let saved_fallback = fallback.create_snapshot(&cut).await.unwrap();
     let read = IndexRead {
+        revision: None,
         name: definition.name.clone(),
         lower: None,
         upper: None,

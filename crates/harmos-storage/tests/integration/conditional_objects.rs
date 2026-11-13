@@ -170,6 +170,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         // Observe One Latest Index Entry And No Schema Row From Either Conflict.
         let now = primary.create_snapshot(&storage.get_saved_position()).await.unwrap();
         let read = IndexRead {
+            revision: None,
             name: definition.name.clone(),
             lower: None,
             upper: None,
@@ -237,6 +238,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         // Use The Public Snapshot Resources Without Escaping To A Backend.
         let held = storage.snapshot(&storage.get_saved_position()).await.unwrap();
         let scan = IndexRead {
+            revision: None,
             name: definition.name.clone(),
             lower: None,
             upper: None,

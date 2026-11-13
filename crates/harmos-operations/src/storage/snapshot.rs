@@ -206,6 +206,62 @@ impl SavedSnapshots {
         self.insert_cut(snapshot, cut.clone(), false, permit)?;
         Ok(cut)
     }
+    pub(crate) fn seal_cursor<T: serde::Serialize>(&self, read: &SnapshotRead, plan: &[u8], cursor: &T) -> crate::Result<String> {
+        let mut signing = self.signing.lock().unwrap();
+        if signing.is_none() {
+            let mut secret = [0; 32];
+            getrandom::fill(&mut secret).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "page token entropy" })?;
+            *signing = Some(hmac::Key::new(hmac::HMAC_SHA256, &secret));
+        }
+        let mut bytes = b"storage.list:v1\0".to_vec();
+        bytes.extend_from_slice(read.identity());
+        bytes.extend_from_slice(digest::digest(&digest::SHA256, plan).as_ref());
+        bytes.extend(postcard::to_allocvec(cursor).map_err(|_| expired())?);
+        bytes.extend_from_slice(hmac::sign(signing.as_ref().unwrap(), &bytes).as_ref());
+        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+    pub(crate) fn open_cursor<T: serde::de::DeserializeOwned>(
+        &self, token: &str, plan: &[u8], maximum: usize, at: Option<&v1::ReadCut>,
+    ) -> crate::Result<(SnapshotRead, T)> {
+        const PREFIX: &[u8] = b"storage.list:v1\0";
+        if token.len() > maximum || !token.len().is_multiple_of(2) {
+            return Err(expired().into());
+        }
+        let bytes = token
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| {
+                let high = (pair[0] as char).to_digit(16).ok_or_else(expired)?;
+                let low = (pair[1] as char).to_digit(16).ok_or_else(expired)?;
+                Ok::<_, harmos_storage::Error>(((high << 4) | low) as u8)
+            })
+            .collect::<harmos_storage::Result<Vec<_>>>()?;
+        if bytes.len() <= PREFIX.len() + 96 || !bytes.starts_with(PREFIX) {
+            return Err(expired().into());
+        }
+        let (message, signature) = bytes.split_at(bytes.len() - 32);
+        let signing = self.signing.lock().unwrap();
+        let key = signing.as_ref().ok_or_else(expired)?;
+        hmac::verify(key, message, signature).map_err(|_| expired())?;
+        let identity = &message[PREFIX.len()..PREFIX.len() + 32];
+        if &message[PREFIX.len() + 32..PREFIX.len() + 64] != digest::digest(&digest::SHA256, plan).as_ref() {
+            return Err(expired().into());
+        }
+        let cursor = postcard::from_bytes(&message[PREFIX.len() + 64..]).map_err(|_| expired())?;
+        let handle = {
+            let registry = self.registry.lock().unwrap();
+            let held = registry.entries.get(identity).filter(|held| held.snapshot.is_available()).ok_or_else(expired)?;
+            wire::SavedSnapshot {
+                token: identity.to_vec(),
+                at: Some(held.snapshot.at().clone().into()),
+            }
+        };
+        let read = self.read(handle)?;
+        if at.is_some_and(|at| at != read.cut()) {
+            return Err(expired().into());
+        }
+        Ok((read, cursor))
+    }
     pub(crate) fn contains(&self, read: &SnapshotRead) -> bool {
         self.registry
             .lock()

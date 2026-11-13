@@ -1422,3 +1422,31 @@ rather than becoming fresh work. New mutations obtain the current window from
 Capabilities. Restart restores retained acknowledged receipts; missing identities
 from a previous manager window refuse. This preserves explicit expiry and the
 consumer's bounded receipt capacity without an unbounded tombstone collection.
+
+### Native List Continuation and Metadata Reads
+
+ListColumnRows, ListIndexEntries and ListProjectionRows use the common PageRequest
+and optional issued ReadCut. Their selectors carry physical work/ordering, while
+page size and response bytes belong to PageRequest. The owner seals the retained
+read identity, selector digest and native cursor with an owner-local HMAC. Tokens
+are stateless within that retained image and may replay/change page geometry;
+ListRows separately retains its query execution state and latest-result replay.
+Both mechanisms expire explicitly on owner retirement, lost retention or restart.
+No native cursor or retained lease token is an alternate public paging input.
+
+Index composite cuts select a definition revision and the provider validates it
+inside its scan, including the first page. A rebuild cannot silently relabel a
+page with a newer definition. GetIndexDefinition refuses a supplied unavailable
+revision; GetProjectionDefinition selects its retained immutable revision.
+Projection lists/status select the exact issued revision/frontier or the newest
+readable materialization when at is omitted. Generic primary-only cuts can be
+augmented with the selected participating resource revision by the read owner;
+returned composite cuts bind subsequent pages. Caller-authored combinations are
+never accepted as issued cuts.
+
+A short physical column page is not evidence of end-of-source. Filtered empty
+pages retain physical progress; empty source or the selected frontier proves
+completion. Native output packing includes IPC schema bytes as well as retained
+buffers; the full wire envelope is checked against both response ceilings.
+Numeric column bounds compare integer endpoints without converting stored
+integers to floating point.

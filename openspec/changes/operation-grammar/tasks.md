@@ -137,7 +137,7 @@ and the complete built-in mapping.
   Focused proofs: `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`,
   `projection_replay::projection_frontiers_survive_interrupted_publication_rebuild_and_restart`,
   and `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
-  (one passed each). Object/schema mirrors and issued composite cuts remain open.
+  (one passed each). The schema mirror remains open; object mirrors and issued definition cuts are implemented below.
 
 - Tasks 3.2/3.8 partial: issued saved cuts, HMAC-bound ListRows pages and retained
   ranged-file reads share the existing saved-snapshot owner on both faces.
@@ -171,9 +171,8 @@ and the complete built-in mapping.
   plus both issued-cut stories, query batches/grants/schema, unary transfer and native
   journey stories (eight named focused tests passed). The controlled provider records
   source work; replay does not rescan it. Receipt-position proof uses the publication
-  receipt directly on the first ranged read. Remaining common paging across the native
-  list mechanisms, metadata/object mirrors, other file/directory methods and Watch
-  still keep 3.2/3.8 open.
+  receipt directly on the first ranged read. The remaining file/directory methods and Watch still keep 3.2/3.8 open;
+  common native-list paging and metadata/object mirrors are implemented below.
 
 - Definition Set receipts now commit atomically with the complete index/projection
   candidate or refusal. The manager owns admitted work through caller loss; retries
@@ -189,7 +188,7 @@ and the complete built-in mapping.
   The old CompareExchangeObject wire declaration/bindings are removed. Focused
   proof: `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`
   (one passed), including socket/client and plugin-child replay and old-cut reads.
-  Schema mirrors and common list paging still keep 3.3/3.2 open.
+  The schema mirror still keeps 3.3 open; common native-list paging is implemented below.
 
 - Storage Append migration: separate client/context AppendRecords, AppendSamples
   and AppendObjectRevisions declarations share bounded unary handlers. Superseded
@@ -203,3 +202,18 @@ and the complete built-in mapping.
   `storage::operations::plugins::write_grants_enforced`, and
   `receipts::tests::admission_evicts_completed_receipts_without_losing_active_owners`.
   Log-line Append belongs to its core service owner; task 3.4 stays open for that join.
+
+- Native lists now share PageRequest/optional-at/next-page-token wrappers on both
+  faces, with HMAC-bound native continuations and full-envelope byte bounds.
+  Column pages preserve short/filtered physical progress; IPC packing and numeric
+  integer predicates retain exactness. Index revision checks run inside provider
+  scans, and definition/status getters honor issued participating revisions.
+  Focused proofs (one each):
+  `storage::native_pages::native_lists_continue_filtered_pages_and_refuse_changed_revisions`,
+  `storage::generated_native_journey::saved_queries_and_conditional_updates_cross_the_protocol`,
+  `storage::definition_receipts::definition_receipts_survive_caller_loss_and_preserve_source_authority`,
+  `index_seek::seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart`,
+  `query::columnar::tests::numeric_column_bounds_preserve_integer_endpoints`, and
+  `saved_preview_survives_atomic_replacement` in the Schematic storage target.
+  The example uses face-local messages and its existing runtime operation API;
+  coupling adds a protocol dev dependency and the matching lockfile edges.

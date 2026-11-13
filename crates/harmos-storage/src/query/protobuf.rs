@@ -12,9 +12,9 @@
 /* === Imports === */
 
 use super::{
-    columnar::{ArrowPage, ArrowScan, ArrowSeek, ColumnKind, ColumnPredicate, ColumnSource, StorageCapabilities, TimeBounds},
-    index::{IndexDefinition, IndexPage, IndexRead, IndexSeek},
-    projection::{ProjectionDefinition, ProjectionPage, ProjectionRead, ProjectionStatus, ProjectionTransform},
+    columnar::{ArrowPage, ColumnKind, ColumnSource, StorageCapabilities},
+    index::{IndexDefinition, IndexPage},
+    projection::{ProjectionDefinition, ProjectionPage, ProjectionStatus, ProjectionTransform},
 };
 use crate::{Error, ReadLimits, Result};
 use harmos_protocol::storage as wire;
@@ -77,56 +77,11 @@ impl From<ColumnSource> for wire::ColumnSource {
         }
     }
 }
-impl TryFrom<wire::ArrowSeek> for ArrowSeek {
-    type Error = Error;
-    fn try_from(v: wire::ArrowSeek) -> Result<Self> {
-        Ok(Self {
-            snapshot: v.snapshot,
-            plan: v.plan.try_into().map_err(|_| invalid("plan digest must contain 32 bytes"))?,
-            position: v.position,
-        })
-    }
-}
-impl From<ArrowSeek> for wire::ArrowSeek {
-    fn from(v: ArrowSeek) -> Self {
-        Self {
-            snapshot: v.snapshot,
-            plan: v.plan.to_vec(),
-            position: v.position,
-        }
-    }
-}
-impl TryFrom<wire::ArrowScan> for ArrowScan {
-    type Error = Error;
-    fn try_from(v: wire::ArrowScan) -> Result<Self> {
-        let read = Self {
-            source: required(v.source)?.try_into()?,
-            columns: v.columns,
-            predicate: v.predicate.map(|p| ColumnPredicate {
-                column: p.column,
-                lower: p.lower,
-                upper: p.upper,
-            }),
-            time: v.time.map(|t| TimeBounds {
-                column: t.column,
-                lower_ns: t.lower_ns,
-                upper_ns: t.upper_ns,
-            }),
-            start: v.start,
-            after: v.after.map(TryInto::try_into).transpose()?,
-            limits: required(v.limits)?.try_into()?,
-            work: required(v.work)?.try_into()?,
-        };
-        read.validate()?;
-        Ok(read)
-    }
-}
 impl TryFrom<ArrowPage> for wire::ArrowPage {
     type Error = Error;
     fn try_from(v: ArrowPage) -> Result<Self> {
         Ok(Self {
             ipc: crate::arrow::ArrowBatch::try_new(v.batch)?.ipc_bytes().to_vec(),
-            next: v.next.map(Into::into),
             complete: v.complete,
             scanned: v.scanned as u64,
             bytes_read: v.bytes_read as u64,
@@ -148,49 +103,10 @@ impl TryFrom<wire::IndexDefinition> for IndexDefinition {
         Ok(definition)
     }
 }
-impl TryFrom<wire::IndexSeek> for IndexSeek {
-    type Error = Error;
-    fn try_from(v: wire::IndexSeek) -> Result<Self> {
-        Ok(Self {
-            snapshot: v.snapshot,
-            plan: v.plan.try_into().map_err(|_| invalid("plan digest must contain 32 bytes"))?,
-            revision: v.revision,
-            key: v.key,
-            position: v.position,
-        })
-    }
-}
-impl From<IndexSeek> for wire::IndexSeek {
-    fn from(v: IndexSeek) -> Self {
-        Self {
-            snapshot: v.snapshot,
-            plan: v.plan.to_vec(),
-            revision: v.revision,
-            key: v.key,
-            position: v.position,
-        }
-    }
-}
-impl TryFrom<wire::IndexRead> for IndexRead {
-    type Error = Error;
-    fn try_from(v: wire::IndexRead) -> Result<Self> {
-        Ok(Self {
-            name: crate::Identifier::new(v.name).map_err(|_| invalid("invalid storage name"))?,
-            lower: v.lower,
-            upper: v.upper,
-            prefix: v.prefix,
-            descending: v.descending,
-            after: v.after.map(TryInto::try_into).transpose()?,
-            limits: required(v.limits)?.try_into()?,
-            work: required(v.work)?.try_into()?,
-        })
-    }
-}
 impl From<IndexPage> for wire::IndexPage {
     fn from(v: IndexPage) -> Self {
         Self {
             entries: v.entries.into_iter().map(|e| wire::IndexEntry { key: e.key, position: e.position }).collect(),
-            next: v.next.map(Into::into),
             complete: v.complete,
         }
     }
@@ -212,28 +128,12 @@ impl TryFrom<wire::ProjectionDefinition> for ProjectionDefinition {
         Ok(definition)
     }
 }
-impl TryFrom<wire::ProjectionRead> for ProjectionRead {
-    type Error = Error;
-    fn try_from(v: wire::ProjectionRead) -> Result<Self> {
-        Ok(Self {
-            name: crate::Identifier::new(v.name).map_err(|_| invalid("invalid storage name"))?,
-            revision: v.revision,
-            frontier: required(v.frontier)?.try_into()?,
-            after: usize::try_from(v.after).map_err(|_| invalid("page offset exceeds platform range"))?,
-            limits: required(v.limits)?.try_into()?,
-            work: required(v.work)?.try_into()?,
-        })
-    }
-}
 impl TryFrom<ProjectionPage> for wire::ProjectionPage {
     type Error = Error;
     fn try_from(v: ProjectionPage) -> Result<Self> {
         Ok(Self {
             ipc: crate::arrow::ArrowBatch::try_new(v.batch)?.ipc_bytes().to_vec(),
-            frontier: Some(v.frontier.into()),
-            revision: v.revision,
             changed_keys: v.changed_keys,
-            next: v.next.map(|v| v as u64),
         })
     }
 }
@@ -276,28 +176,6 @@ fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage protocol", reason }
 }
 
-impl From<ArrowScan> for wire::ArrowScan {
-    fn from(v: ArrowScan) -> Self {
-        Self {
-            source: Some(v.source.into()),
-            columns: v.columns,
-            predicate: v.predicate.map(|p| wire::ColumnPredicate {
-                column: p.column,
-                lower: p.lower,
-                upper: p.upper,
-            }),
-            time: v.time.map(|t| wire::TimeBounds {
-                column: t.column,
-                lower_ns: t.lower_ns,
-                upper_ns: t.upper_ns,
-            }),
-            start: v.start,
-            after: v.after.map(Into::into),
-            limits: Some(v.limits.into()),
-            work: Some(v.work.into()),
-        }
-    }
-}
 impl From<IndexDefinition> for wire::IndexDefinition {
     fn from(v: IndexDefinition) -> Self {
         Self {
@@ -305,20 +183,6 @@ impl From<IndexDefinition> for wire::IndexDefinition {
             version: v.version,
             source: Some(v.source.into()),
             columns: v.columns,
-        }
-    }
-}
-impl From<IndexRead> for wire::IndexRead {
-    fn from(v: IndexRead) -> Self {
-        Self {
-            name: v.name.to_string(),
-            lower: v.lower,
-            upper: v.upper,
-            prefix: v.prefix,
-            descending: v.descending,
-            after: v.after.map(Into::into),
-            limits: Some(v.limits.into()),
-            work: Some(v.work.into()),
         }
     }
 }
@@ -336,18 +200,6 @@ impl TryFrom<ProjectionDefinition> for wire::ProjectionDefinition {
         })
     }
 }
-impl From<ProjectionRead> for wire::ProjectionRead {
-    fn from(v: ProjectionRead) -> Self {
-        Self {
-            name: v.name.to_string(),
-            revision: v.revision,
-            frontier: Some(v.frontier.into()),
-            after: v.after as u64,
-            limits: Some(v.limits.into()),
-            work: Some(v.work.into()),
-        }
-    }
-}
 
 /* === Tests === */
 
@@ -359,24 +211,6 @@ mod tests {
     fn malformed_plans_refuse_before_backend_access() {
         assert!(ReadLimits::try_from(wire::ReadLimits { rows: 0, bytes: 64 }).is_err());
         assert!(ReadLimits::try_from(wire::ReadLimits { rows: 1, bytes: 0 }).is_err());
-        assert!(
-            ArrowSeek::try_from(wire::ArrowSeek {
-                snapshot: vec![1],
-                plan: vec![0; 31],
-                position: 1
-            })
-            .is_err()
-        );
-        assert!(
-            IndexSeek::try_from(wire::IndexSeek {
-                snapshot: vec![1],
-                plan: vec![0; 33],
-                revision: 1,
-                key: vec![],
-                position: 1
-            })
-            .is_err()
-        );
         let limits = ReadLimits {
             rows: std::num::NonZeroUsize::MIN,
             bytes: std::num::NonZeroUsize::new(64).unwrap(),

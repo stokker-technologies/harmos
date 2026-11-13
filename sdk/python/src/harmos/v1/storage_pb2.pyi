@@ -179,38 +179,46 @@ class StorageDeleteSnapshotResponse(_message.Message):
     def __init__(self) -> None: ...
 
 class StorageListColumnRowsRequest(_message.Message):
-    __slots__ = ("snapshot", "read")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    READ_FIELD_NUMBER: _ClassVar[int]
-    snapshot: _storage_types_pb2.SavedSnapshot
-    read: _storage_types_pb2.ArrowScan
-    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[_storage_types_pb2.ArrowScan, _Mapping]] = ...) -> None: ...
+    __slots__ = ("selection", "at", "page")
+    SELECTION_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    PAGE_FIELD_NUMBER: _ClassVar[int]
+    selection: _storage_types_pb2.ColumnSelection
+    at: _types_pb2.ReadCut
+    page: _types_pb2.PageRequest
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.ColumnSelection, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ...) -> None: ...
 
 class StorageListColumnRowsResponse(_message.Message):
-    __slots__ = ("page", "resolved_at")
+    __slots__ = ("page", "resolved_at", "next_page_token")
     PAGE_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
     page: _storage_types_pb2.ArrowPage
     resolved_at: _types_pb2.ReadCut
-    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ArrowPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    next_page_token: str
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ArrowPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
 
 class StorageListIndexEntriesRequest(_message.Message):
-    __slots__ = ("snapshot", "read", "source")
-    SNAPSHOT_FIELD_NUMBER: _ClassVar[int]
-    READ_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("selection", "at", "page", "source")
+    SELECTION_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    PAGE_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
-    snapshot: _storage_types_pb2.SavedSnapshot
-    read: _storage_types_pb2.IndexRead
+    selection: _storage_types_pb2.IndexSelection
+    at: _types_pb2.ReadCut
+    page: _types_pb2.PageRequest
     source: _storage_types_pb2.ColumnSource
-    def __init__(self, snapshot: _Optional[_Union[_storage_types_pb2.SavedSnapshot, _Mapping]] = ..., read: _Optional[_Union[_storage_types_pb2.IndexRead, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.IndexSelection, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
 class StorageListIndexEntriesResponse(_message.Message):
-    __slots__ = ("page", "resolved_at")
+    __slots__ = ("page", "resolved_at", "next_page_token")
     PAGE_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
     page: _storage_types_pb2.IndexPage
     resolved_at: _types_pb2.ReadCut
-    def __init__(self, page: _Optional[_Union[_storage_types_pb2.IndexPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    next_page_token: str
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.IndexPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
 
 class StorageSetIndexDefinitionRequest(_message.Message):
     __slots__ = ("definition", "expected_revision", "create_if_absent", "rebuild", "work", "mutation")
@@ -283,32 +291,38 @@ class StorageAdvanceProjectionResponse(_message.Message):
     def __init__(self, revision: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageListProjectionRowsRequest(_message.Message):
-    __slots__ = ("read", "source")
-    READ_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("selection", "at", "page", "source")
+    SELECTION_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
+    PAGE_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
-    read: _storage_types_pb2.ProjectionRead
+    selection: _storage_types_pb2.ProjectionSelection
+    at: _types_pb2.ReadCut
+    page: _types_pb2.PageRequest
     source: _storage_types_pb2.ColumnSource
-    def __init__(self, read: _Optional[_Union[_storage_types_pb2.ProjectionRead, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+    def __init__(self, selection: _Optional[_Union[_storage_types_pb2.ProjectionSelection, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
 class StorageListProjectionRowsResponse(_message.Message):
-    __slots__ = ("page", "resolved_at")
+    __slots__ = ("page", "resolved_at", "next_page_token")
     PAGE_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
     page: _storage_types_pb2.ProjectionPage
     resolved_at: _types_pb2.ReadCut
-    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ProjectionPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
+    next_page_token: str
+    def __init__(self, page: _Optional[_Union[_storage_types_pb2.ProjectionPage, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
 
 class StorageGetProjectionStatusRequest(_message.Message):
-    __slots__ = ("name", "revision", "frontier", "source")
+    __slots__ = ("name", "revision", "at", "source")
     NAME_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
-    FRONTIER_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     name: str
-    revision: int
-    frontier: _storage_types_pb2.StorageCursor
+    revision: bytes
+    at: _types_pb2.ReadCut
     source: _storage_types_pb2.ColumnSource
-    def __init__(self, name: _Optional[str] = ..., revision: _Optional[int] = ..., frontier: _Optional[_Union[_storage_types_pb2.StorageCursor, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., revision: _Optional[bytes] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
 
 class StorageGetProjectionStatusResponse(_message.Message):
     __slots__ = ("status", "resolved_at")
@@ -553,12 +567,14 @@ class StorageWatchDirectoryEntriesResponse(_message.Message):
     def __init__(self, event: _Optional[_Union[_storage_types_pb2.DirectoryEvent, _Mapping]] = ...) -> None: ...
 
 class StorageGetIndexDefinitionRequest(_message.Message):
-    __slots__ = ("name", "source")
+    __slots__ = ("name", "source", "at")
     NAME_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
     name: str
     source: _storage_types_pb2.ColumnSource
-    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageGetIndexDefinitionResponse(_message.Message):
     __slots__ = ("definition", "revision", "resolved_at")
@@ -571,12 +587,14 @@ class StorageGetIndexDefinitionResponse(_message.Message):
     def __init__(self, definition: _Optional[_Union[_storage_types_pb2.IndexDefinition, _Mapping]] = ..., revision: _Optional[bytes] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageGetProjectionDefinitionRequest(_message.Message):
-    __slots__ = ("name", "source")
+    __slots__ = ("name", "source", "at")
     NAME_FIELD_NUMBER: _ClassVar[int]
     SOURCE_FIELD_NUMBER: _ClassVar[int]
+    AT_FIELD_NUMBER: _ClassVar[int]
     name: str
     source: _storage_types_pb2.ColumnSource
-    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ...) -> None: ...
+    at: _types_pb2.ReadCut
+    def __init__(self, name: _Optional[str] = ..., source: _Optional[_Union[_storage_types_pb2.ColumnSource, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class StorageGetProjectionDefinitionResponse(_message.Message):
     __slots__ = ("definition", "revision", "resolved_at")
