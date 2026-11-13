@@ -1,7 +1,8 @@
 # storage-transfers Specification
 
 ## Purpose
-Defines independent typed persistence, the shipped JSON backend, owned bounded payload handoffs and projection, ordered file progress, comparable performance workloads and bounded query admission.
+
+Define independent typed persistence, owned bounded payload handoffs and projection, ordered file progress and bounded query admission.
 
 ## Requirements
 
@@ -13,15 +14,6 @@ Backends SHALL receive owned homogeneous schema, object, record, stream and file
 
 - **WHEN** a schema write succeeds and its following object write fails
 - **THEN** the schema may remain durable, the cursor cannot claim the missing object, and retrying the admitted operation does not duplicate the schema
-
-### Requirement: Shipped JSON Backend
-
-Harmos SHALL expose a filesystem JSON storage backend using explicit settings, bounded disk reads and raw file payloads, reusable by consumers, persistence tests and benchmarks. It SHALL preserve historical reads and required restart, retention, session and mutation semantics without adding manager scheduling policy.
-
-#### Scenario: Reopen Persistent Data
-
-- **WHEN** the JSON backend is closed and reopened with the same storage history
-- **THEN** acknowledged durable typed entries and completed files remain readable at the correct cursor and interrupted writes do not appear as completed data
 
 ### Requirement: Owned Bounded Payload Handoffs
 
@@ -64,28 +56,6 @@ Storage SHALL support explicitly bounded independent file I/O while preserving p
 
 - **WHEN** an action fails or shutdown begins with file actions dispatched
 - **THEN** dispatched actions settle before backend teardown and required pending data is neither silently discarded nor duplicated
-
-### Requirement: Comparable Performance Workloads
-
-Benchmarks SHALL separately identify storage, real sidecar, real guest and external gRPC paths with explicit settings, deterministic inputs and identical before/after measurement boundaries.
-
-#### Scenario: Storage Scale
-
-- **WHEN** the storage suite runs
-- **THEN** it measures 30 MiB file upload and download, and symmetric writes and reads for 10,000 records and 1,000,000 samples, with bounded generation/consumption and verified results
-- **AND** writes include durable completion while read timing excludes setup writes and includes consuming the complete saved dataset
-
-#### Scenario: Carrier Boundaries
-
-- **WHEN** carrier benchmarks report command or transfer latency
-- **THEN** the selected real process, component or network boundary is exercised and startup is distinguished from steady-state work
-
-#### Scenario: Symmetric Carrier Datasets
-
-- **WHEN** the sidecar or guest transfer suite runs
-- **THEN** it transfers 10,000 records, 30 MiB of file bytes and 1,000,000 samples in both directions through the real carrier
-- **AND** it compares unary batches with streams using identical batch sizes and verifies ordering, counts and contents outside timing
-- **AND** the three datasets run concurrently on a reused host/plugin with isolated transfer IDs, using benchmark-feature endpoints in the shipped Schematic examples
 
 ### Requirement: Bounded Query Admission
 

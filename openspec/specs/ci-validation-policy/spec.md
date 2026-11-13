@@ -12,13 +12,6 @@ Ordinary GitHub pull-request jobs SHALL save dependency and compiler caches only
 - **WHEN** a pull-request merge-ref validation succeeds
 - **THEN** its cache writes remain isolated from base branches and other pull requests
 
-### Requirement: Superseded Validation Cancellation
-Superseded ordinary pull-request and dev validation SHALL cancel through native concurrency while release preparation, Tag and publication preserve their handoff.
-
-#### Scenario: Release Preparation Handoff
-- **WHEN** a release-preparation commit on dev precedes an ordinary dev push
-- **THEN** the release-preparation run retains a separate noncancelling identity
-
 ### Requirement: Ordinary Job Budget
 Ordinary jobs SHALL default to an exact 120-minute whole-job deadline while preserving task deadlines and native required gates.
 
