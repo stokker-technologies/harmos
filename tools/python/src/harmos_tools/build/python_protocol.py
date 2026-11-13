@@ -104,36 +104,42 @@ def generate_client_fixture(output: Path) -> None:
     proto = ROOT / "sdk/tests/fixtures/client/proto"
     inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
     output.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "grpc_tools.protoc",
-            f"-I{proto}",
-            f"--python_out={output}",
-            f"--pyi_out={output}",
-            f"--grpc_python_out={output}",
-            *inputs,
-        ],
-        check=True,
-        cwd=ROOT,
-        creationflags=spawn_flags(),
-    )
-    descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    descriptors.file.extend(
-        FileDescriptorSet.FromString((ROOT / "sdk/rust/tests/fixtures/client/client-descriptors.bin").read_bytes()).file
-    )
-    python(
-        output / "client.py",
-        [method for method in table(descriptors) if method["face"] == "client"],
-        descriptors,
-        module_prefixes={"application": "tests.fixtures.client.application"},
-    )
+    scratch = Path(tempfile.mkdtemp())
+    try:
+        descriptor_path = scratch / "client-descriptors.bin"
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "grpc_tools.protoc",
+                f"-I{proto}",
+                f"--python_out={output}",
+                f"--pyi_out={output}",
+                f"--grpc_python_out={output}",
+                f"--descriptor_set_out={descriptor_path}",
+                "--include_imports",
+                *inputs,
+            ],
+            check=True,
+            cwd=ROOT,
+            creationflags=spawn_flags(),
+        )
+        descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
+        descriptors.file.extend(FileDescriptorSet.FromString(descriptor_path.read_bytes()).file)
+        python(
+            output / "client.py",
+            [method for method in table(descriptors) if method["face"] == "client"],
+            descriptors,
+            module_prefixes={"application": "tests.fixtures.client.application"},
+        )
+    finally:
+        shutil.rmtree(scratch)
 
 
 def generate_conformance(output: Path) -> None:
     proto = ROOT / "sdk/tests/fixtures/conformance/proto"
-    with tempfile.TemporaryDirectory() as scratch:
+    scratch = tempfile.mkdtemp()
+    try:
         subprocess.run(
             [
                 sys.executable,
@@ -153,6 +159,8 @@ def generate_conformance(output: Path) -> None:
         output.mkdir(parents=True, exist_ok=True)
         for source in (Path(scratch) / "harmos/conformance/v1").iterdir():
             shutil.copyfile(source, output / source.name)
+    finally:
+        shutil.rmtree(scratch)
 
 
 def main() -> None:
@@ -166,7 +174,8 @@ def main() -> None:
         generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/v1")
         return
 
-    with tempfile.TemporaryDirectory() as scratch:
+    scratch = tempfile.mkdtemp()
+    try:
         output = Path(scratch)
         generate(output)
         changed = [
@@ -203,6 +212,8 @@ def main() -> None:
         ]
         if changed:
             raise SystemExit(f"Generated Python Differs: {', '.join(changed)}; Run mise run generate -- --sdk python")
+    finally:
+        shutil.rmtree(scratch)
 
 
 # === Private Functions === #

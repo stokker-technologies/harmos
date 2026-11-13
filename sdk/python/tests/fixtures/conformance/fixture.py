@@ -17,11 +17,14 @@ import asyncio
 from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
-from harmos import GET_TIME, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
+from harmos import GET_TIME, SETTINGS, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
+from harmos.plugin.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
+from harmos.plugin.host.v1.time_pb2 import TimeGetRequest
 from harmos.v1.failure_pb2 import CLASSIFICATION_PERMANENT, CLASSIFICATION_TRANSIENT
 from harmos.v1.failure_pb2 import Failure as WireFailure
 from harmos.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
 from harmos.v1.policy_pb2 import OperationPolicy, RetryPolicy
+from harmos.v1.setting_pb2 import SettingDeclaration, SettingValue
 
 from .v1.fixture_pb2 import Graph, PayloadOnly, Value
 
@@ -41,6 +44,11 @@ PEER_PROTECTED = Operation("conformance.peer.protected", Value, Value, visibilit
 PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBILITY_PROTECTED)
 OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
+
+LIST_OPERATIONS = Operation(
+    "harmos.plugin.host.v1.Operations/List", OperationsListRequest, OperationsListResponse, visibility=VISIBILITY_PUBLIC
+)
+GET_OPERATION = Operation("harmos.plugin.host.v1.Operations/Get", OperationsGetRequest, OperationsGetResponse, visibility=VISIBILITY_PUBLIC)
 
 # === Types === #
 
@@ -186,6 +194,73 @@ class Fixture:
             return await context.call(PEER_PUBLIC, Value(value=context.scope().encode()))
         return await context.call(PEER_PROTECTED if request.value == b"protected" else PEER_LOCAL, request)
 
+    @operation("conformance.settings_read", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def settings_read(self, context: Context, request: Value) -> Value:
+        settings = await context.settings()
+        return Value(value=settings.value.SerializeToString())
+
+    @operation("conformance.discover", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def discover(self, context: Context, request: Value) -> Value:
+        inventory = await context.call(LIST_OPERATIONS, OperationsListRequest())
+        if not inventory.operations:
+            raise ValueError("Discover Operations: Empty Inventory")
+        operation = inventory.operations[0]
+        selected = await context.call(GET_OPERATION, OperationsGetRequest(id=operation.contract.id))
+        if selected.operation != operation:
+            raise ValueError("Get Operation: Contract Differs from Inventory")
+        return Value(value=operation.contract.id.encode())
+
+    @observer("conformance.tick_children", row=Value, interval=Duration(seconds=1))
+    async def tick_children(self, context: Context) -> Value:
+        first, second = await asyncio.gather(context.call(HOST_ECHO, Value(value=b"\x01")), context.call(HOST_ECHO, Value(value=b"\x02")))
+        return Value(value=first.value + second.value)
+
+    @observer("conformance.tick_context", row=Value, interval=Duration(seconds=1))
+    async def tick_context(self, context: Context) -> Value:
+        echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
+        clock = await context.call(GET_TIME, TimeGetRequest())
+        settings = await context.settings()
+        return Value(value=echo.SerializeToString() + clock.SerializeToString() + settings.SerializeToString())
+
+    @observer("conformance.tick_failure", row=Value, interval=Duration(seconds=1))
+    async def tick_failure(self, context: Context) -> Value:
+        try:
+            return await context.call(HOST_FAIL, Value())
+        except Failure as failure:
+            return Value(value=failure.value.SerializeToString())
+
+    @observer("conformance.tick_watch", row=Value, interval=Duration(seconds=1))
+    async def tick_watch(self, context: Context) -> Value:
+        value = b""
+        async with context.watch(HOST_WATCH, Value(value=context.scope().encode()), max_item_bytes=4096) as items:
+            async for item in items:
+                value += item.value
+        return Value(value=value)
+
+    @observer("conformance.tick_cancel", row=Value, interval=Duration(seconds=1))
+    async def tick_cancel(self, context: Context) -> Value:
+        started = asyncio.Event()
+
+        async def pending() -> Value:
+            started.set()
+            try:
+                return await context.call(HOST_PENDING, Value())
+            except Failure:
+                return Value()
+
+        task = asyncio.create_task(pending())
+        await started.wait()
+        try:
+            await context.call(HOST_ECHO, Value(value=b"release"))
+        finally:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        started.clear()
+        automatic = asyncio.create_task(pending())
+        automatic.add_done_callback(_settled)
+        await started.wait()
+        return Value(value=b"cancelled")
+
     @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
     async def ticks(self, ctx: Context) -> Value:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
@@ -226,10 +301,28 @@ def plugin() -> Plugin:
             HOST_SCHEMA,
             SLEEP,
             GET_TIME,
+            SETTINGS,
+            LIST_OPERATIONS,
+            GET_OPERATION,
         ],
         sections=[Graph(interval=Duration(seconds=2))],
         messages=[PayloadOnly, PayloadOnly],
+        settings=[
+            SettingDeclaration(name=name, title=name, description=f"Conformance {name}", default=value)
+            for name, value in (
+                ("count", SettingValue(integer=3)),
+                ("enabled", SettingValue(flag=False)),
+                ("gain", SettingValue(number=1.5)),
+                ("interval", SettingValue(duration=Duration(seconds=2))),
+                ("label", SettingValue(text="default")),
+            )
+        ],
     )
 
 
 # === Private Functions === #
+
+
+def _settled(task: asyncio.Task[Value]) -> None:
+    if not task.cancelled():
+        task.exception()

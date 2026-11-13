@@ -72,7 +72,7 @@ class ProtocolError(Exception):
     pass
 
 
-class Output(Protocol):
+class _Output(Protocol):
     async def put(self, frame: "carrier.InstanceInvokeResponse | _FaultError", /) -> None: ...
 
 
@@ -84,7 +84,7 @@ class Context:
         request: Request,
         plugin: str,
         requires: dict[str, bytes],
-        output: "Output | None" = None,
+        output: "_Output | None" = None,
     ) -> None:
         self.invocation = request.invocation
         self.attempt = request.attempt
@@ -404,7 +404,9 @@ class Context:
             self._retired.add(call)
             if self._output is not None:
                 await self._output.put(carrier.InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
-            await queue.put(ChildResponse(call=call, failure=self._cancel_failure().value))
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(ChildResponse(call=call, failure=self._cancel_failure().value))
         pending, self._pending = self._pending, {}
         for call, complete in pending.items():
             self._retired.add(call)

@@ -23,10 +23,12 @@ from harmos_tools.process import spawn_flags
 from examples.client import run
 from harmos._wire.client.v1 import operations_pb2 as catalog
 from harmos._wire.client.v1 import status_pb2 as status
+from harmos.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
 from harmos.plugin.v1 import instance_pb2 as carrier
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos.v1.operation_pb2 import DiscoveredOperation
 from harmos.v1.position_pb2 import Position
+from harmos.v1.setting_pb2 import SettingsDeclarations, SettingValue, SettingValues
 from tests.support import calls
 
 # === Public Exports === #
@@ -126,11 +128,17 @@ class Examples(unittest.IsolatedAsyncioTestCase):
             description = await host.Get(carrier.InstanceGetRequest(revision=1))
             self.assertEqual(len(description.catalog.operations), 1)
             self.assertEqual(description.catalog.operations[0].id, "example.echo")
+            declarations = SettingsDeclarations.FromString(description.catalog.sections[0].payload)
+            self.assertEqual(declarations.values[0].default.WhichOneof("value"), "text")
 
             request = BytesValue(value=b"example")
             call = await calls.invoke(host, "example.echo", request)
+            child = (await call.read()).child
+            self.assertEqual(child.operation, "harmos.plugin.host.v1.Settings/List")
+            self.assertEqual(SettingsListRequest.FromString(child.payload), SettingsListRequest())
+            await calls.reply(call, child, SettingsListResponse(value=SettingValues(values={"prefix": SettingValue(text="typed:")})))
             response = await call.read()
-            self.assertEqual(BytesValue.FromString(response.response.payload), request)
+            self.assertEqual(BytesValue.FromString(response.response.payload).value, b"typed:" + request.value)
             self.assertIs(await call.read(), grpc.aio.EOF)
             await host.Stop(carrier.InstanceStopRequest())
         finally:

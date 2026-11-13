@@ -246,6 +246,49 @@ class _FaultError(Exception):
         self.message = message
 
 
+class _SamplesOutput:
+    def __init__(self, output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None]) -> None:
+        self.output = output
+        self.active = True
+
+    async def put(self, frame: carrier.InstanceInvokeResponse | _FaultError) -> None:
+        if not self.active:
+            raise ProtocolError("Call Samples Child: Tick Already Answered")
+        if isinstance(frame, _FaultError):
+            await self.output.put(frame)
+            return
+        kind = frame.WhichOneof("frame")
+        if kind == "child":
+            response = carrier.InstanceSamplesResponse(child=frame.child)
+        elif kind == "child_cancel":
+            response = carrier.InstanceSamplesResponse(child_cancel=frame.child_cancel)
+        elif kind == "child_demand":
+            response = carrier.InstanceSamplesResponse(child_demand=frame.child_demand)
+        else:
+            raise ProtocolError("Call Samples Child: Child Frame Required")
+        await self.output.put(response)
+
+
+class _SamplesScope:
+    def __init__(
+        self,
+        stream: str,
+        scope: str,
+        plugin: str,
+        requires: dict[str, bytes],
+        local: dict[str, tuple[Operation[Message, Message], Handler]],
+    ) -> None:
+        self.stream = stream
+        self.scope = scope
+        self.plugin = plugin
+        self.requires = requires
+        self.local = local
+        self.context: Context | None = None
+        self.next = [0]
+        self.retired: set[int] = set()
+        self.sequence = 0
+
+
 class _Service:
     def __init__(self, plugin: Plugin, catalog: Catalog) -> None:
         self.description = carrier.InstanceGetResponse(
@@ -353,6 +396,7 @@ class _Service:
         finally:
             if scope.context is not None:
                 scope.context._output = None
+                await scope.context._cancel("Samples Demand Closed")
             await _release(running, reading)
 
 
@@ -430,49 +474,6 @@ async def _read_invoke(
             await output.put(_FaultError(grpc.StatusCode.UNAVAILABLE, "Host Closed Before Child Replies"))
     except ProtocolError as error:
         await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
-
-
-class _SamplesOutput:
-    def __init__(self, output: asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None]) -> None:
-        self.output = output
-        self.active = True
-
-    async def put(self, frame: carrier.InstanceInvokeResponse | _FaultError) -> None:
-        if not self.active:
-            raise ProtocolError("Call Samples Child: Tick Already Answered")
-        if isinstance(frame, _FaultError):
-            await self.output.put(frame)
-            return
-        kind = frame.WhichOneof("frame")
-        if kind == "child":
-            response = carrier.InstanceSamplesResponse(child=frame.child)
-        elif kind == "child_cancel":
-            response = carrier.InstanceSamplesResponse(child_cancel=frame.child_cancel)
-        elif kind == "child_demand":
-            response = carrier.InstanceSamplesResponse(child_demand=frame.child_demand)
-        else:
-            raise ProtocolError("Call Samples Child: Child Frame Required")
-        await self.output.put(response)
-
-
-class _SamplesScope:
-    def __init__(
-        self,
-        stream: str,
-        scope: str,
-        plugin: str,
-        requires: dict[str, bytes],
-        local: dict[str, tuple[Operation[Message, Message], Handler]],
-    ) -> None:
-        self.stream = stream
-        self.scope = scope
-        self.plugin = plugin
-        self.requires = requires
-        self.local = local
-        self.context: Context | None = None
-        self.next = [0]
-        self.retired: set[int] = set()
-        self.sequence = 0
 
 
 async def _read_publish(
