@@ -73,7 +73,7 @@ mod plugin;
 pub mod prelude;
 #[cfg(not(target_arch = "wasm32"))]
 mod server;
-mod storage_contracts;
+
 mod stream;
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -87,7 +87,7 @@ pub use client::{Client, ClientSettings};
 pub use context::Context;
 pub use error::{Error, Result};
 pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, RetryPolicy, Section, Visibility};
-pub use harmos_protocol::{storage, v1};
+pub use harmos_protocol::v1;
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
 pub use operation::Operation;

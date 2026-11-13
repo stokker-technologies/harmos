@@ -351,17 +351,17 @@ impl Context {
     /// Declare `.requires::<harmos::clock::TimeSleepRequest>()` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        let request = harmos_protocol::context::TimeSleepRequest { duration: Some(duration) };
-        let payload = self.clock_call("harmos.context.v1.Time/Sleep", request.encode_to_vec()).await?;
-        harmos_protocol::context::TimeSleepResponse::decode(payload.as_slice())
+        let request = harmos_protocol::plugin::host::TimeSleepRequest { duration: Some(duration) };
+        let payload = self.clock_call("harmos.plugin.host.v1.Time/Sleep", request.encode_to_vec()).await?;
+        harmos_protocol::plugin::host::TimeSleepResponse::decode(payload.as_slice())
             .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
         Ok(())
     }
 
     /// Read evidence time from the host; declare `.requires::<harmos::clock::TimeGetRequest>()`.
     pub async fn now(&self) -> Result<prost_types::Timestamp> {
-        let payload = self.clock_call("harmos.context.v1.Time/Get", harmos_protocol::context::TimeGetRequest {}.encode_to_vec()).await?;
-        harmos_protocol::context::TimeGetResponse::decode(payload.as_slice())
+        let payload = self.clock_call("harmos.plugin.host.v1.Time/Get", harmos_protocol::plugin::host::TimeGetRequest {}.encode_to_vec()).await?;
+        harmos_protocol::plugin::host::TimeGetResponse::decode(payload.as_slice())
             .map_err(|error| tonic::Status::invalid_argument(error.to_string()))?
             .now
             .ok_or_else(|| tonic::Status::invalid_argument("Host Time Missing").into())

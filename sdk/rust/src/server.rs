@@ -409,7 +409,7 @@ async fn samples(
                 let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
                 sequence += 1;
                 let (row, at) = sample.take().expect("Sample Ready");
-                permit.send(Ok(harmos_protocol::plugin::InstanceSamplesResponse { samples: vec![v1::Sample { at, row, sequence }] }));
+                permit.send(Ok(harmos_protocol::plugin::InstanceSamplesResponse { samples: vec![v1::Sample { at, row, sequence }], frame: None }));
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (at, _) = observing.take().expect("Observer Active");
