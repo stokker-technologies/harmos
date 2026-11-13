@@ -756,8 +756,6 @@ pub struct PairingsCreateResponse {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PairingsListRequest {
-    #[prost(message, optional, tag = "1")]
-    pub page: ::core::option::Option<crate::v1::PageRequest>,
     #[prost(message, optional, tag = "2")]
     pub at: ::core::option::Option<crate::v1::Position>,
 }
@@ -768,8 +766,6 @@ pub struct PairingsListResponse {
     pub pairings: ::prost::alloc::vec::Vec<Pairing>,
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<crate::v1::Position>,
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]

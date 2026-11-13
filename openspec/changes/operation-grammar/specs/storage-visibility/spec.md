@@ -114,7 +114,7 @@ retain their distinct contracts.
 
 ### Requirement: One Bounded Paging Shape
 
-Lists SHALL use page_size, max_bytes and page_token; responses SHALL use
+Only lists of data rows that can grow without bound SHALL use page_size, max_bytes and page_token; responses SHALL use
 next_page_token and resolved_at. Opaque tokens SHALL bind selection, stable
 ordering, resolved cut and schema/projection revision. Continuation SHALL be
 exclusive and enforce both row and byte limits. Physical work limits SHALL remain

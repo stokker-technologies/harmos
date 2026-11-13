@@ -32,7 +32,7 @@ async fn host_restores_plugin_entries() {
     host.client.create(support::remote("remote", &remote.address)).await.unwrap();
     let mut watch = host.client.watch(wire::PluginsWatchRequest::default()).await.unwrap().into_inner();
     let managed = support::state(&mut watch, "enabled", wire::PluginState::Ready, 1).await;
-    let before = host.client.list(support::page()).await.unwrap().into_inner();
+    let before = host.client.list(support::list()).await.unwrap().into_inner();
     let old_cut = before.resolved_at;
     drop(watch);
     let first_id = managed.process.as_ref().unwrap().id;

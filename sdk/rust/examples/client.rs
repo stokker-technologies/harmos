@@ -56,29 +56,18 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     };
     let client = Client::new(channel, settings)?;
 
-    // Find The Application's Generated Contract In Bounded Discovery Pages.
-    let mut page_token = String::new();
-    let contract = loop {
-        let request = host::CatalogEntriesListRequest {
-            kind: host::CatalogKind::Operations as i32,
-            page: Some(harmos_protocol::v1::PageRequest {
-                page_size: 64,
-                max_bytes: 1024 * 1024,
-                page_token,
-            }),
-            ..Default::default()
-        };
-        let page = client.catalog_entries.list(Request::new(request)).await?.into_inner();
-        if let Some(contract) =
-            page.operations.into_iter().filter_map(|entry| entry.contract).find(|contract| contract.id == "schematic.validate")
-        {
-            break contract;
-        }
-        if page.next_page_token.is_empty() {
-            return Err("the host does not expose schematic.validate".into());
-        }
-        page_token = page.next_page_token;
+    // Find The Application's Generated Contract.
+    let request = host::CatalogEntriesListRequest {
+        kind: host::CatalogKind::Operations as i32,
+        ..Default::default()
     };
+    let catalog = client.catalog_entries.list(Request::new(request)).await?.into_inner();
+    let contract = catalog
+        .operations
+        .into_iter()
+        .filter_map(|entry| entry.contract)
+        .find(|contract| contract.id == "schematic.validate")
+        .ok_or("the host does not expose schematic.validate")?;
 
     // Bind Generated Application Messages And Observe The Operation's Status.
     let method = Method::<ValidateSchematic, Validation>::new(contract)?;

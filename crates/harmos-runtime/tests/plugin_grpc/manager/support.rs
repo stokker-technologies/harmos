@@ -35,7 +35,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 // Local Imports
 use super::super::support as placement;
 use crate::storage::fixture::{Data, Recovery, history, storage_settings};
-use harmos_protocol::{v1 as wire, v1};
+use harmos_protocol::v1 as wire;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -273,9 +273,7 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
         registry_bytes: nz(1024 * 1024),
         command_capacity: nz(16),
         retained_cuts: nz(64),
-        page_tokens: nz(64),
         watch_capacity: nz(16),
-        page_size: nz(16),
         response_bytes: nz(1024 * 1024),
     }
 }
@@ -299,15 +297,8 @@ pub fn managed(name: &str, content: wire::PluginManaged, enabled: bool) -> wire:
         value: Some(wire::PluginValue { enabled }),
     }
 }
-pub fn page() -> wire::PluginsListRequest {
-    wire::PluginsListRequest {
-        at: None,
-        page: Some(v1::PageRequest {
-            page_size: 16,
-            max_bytes: 1024 * 1024,
-            page_token: String::new(),
-        }),
-    }
+pub fn list() -> wire::PluginsListRequest {
+    wire::PluginsListRequest { at: None }
 }
 pub async fn state(
     watch: &mut tonic::Streaming<wire::PluginsWatchResponse>, name: &str, state: wire::PluginState, activation: u64,

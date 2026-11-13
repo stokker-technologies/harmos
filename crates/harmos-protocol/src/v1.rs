@@ -574,16 +574,12 @@ pub struct CatalogEntriesListRequest {
     pub kind: i32,
     #[prost(string, optional, tag = "2")]
     pub schema: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub page: ::core::option::Option<PageRequest>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CatalogEntriesListResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub entries: ::prost::alloc::vec::Vec<u8>,
-    #[prost(string, tag = "2")]
-    pub next_page_token: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "3")]
     pub operations: ::prost::alloc::vec::Vec<DiscoveredOperation>,
     #[prost(message, optional, tag = "4")]
@@ -1778,8 +1774,6 @@ pub struct PluginsGetResponse {
 pub struct PluginsListRequest {
     #[prost(message, optional, tag = "1")]
     pub at: ::core::option::Option<ReadCut>,
-    #[prost(message, optional, tag = "2")]
-    pub page: ::core::option::Option<PageRequest>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1788,8 +1782,6 @@ pub struct PluginsListResponse {
     pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
     #[prost(message, optional, tag = "2")]
     pub resolved_at: ::core::option::Option<ReadCut>,
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]

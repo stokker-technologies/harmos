@@ -443,13 +443,14 @@ so they must declare them as requirements.
 Register `harmos_operations::host_catalog()` by value on a chosen lane to serve the `List`
 declaration at `/harmos.v1.CatalogEntries/List`. Its generated request is
 `harmos_protocol::v1::CatalogEntriesListRequest`, with `kind` (`Operations`, `Schemas`, `Streams`
-or `Objects`), optional `schema` and a shared `PageRequest` in `page`, carrying
-`page_token`, `page_size` and `max_bytes`. Defaults are
-64 rows and 64 KiB; maxima are 256 rows and 4 MiB. `CatalogEntriesListResponse::operations`
+or `Objects`) and optional `schema`. One response returns the complete authorized
+set without a page request, token or application byte bound. The carrier message
+ceiling is the only List response guard; an oversize failure names the action.
+`CatalogEntriesListResponse::operations`
 contains generated operation metadata, including descriptors, provider identity,
 generation, policy, selected grants and current gRPC availability.
 `CatalogEntriesListResponse::entries` retains the UTF-8 JSON array for stored schemas and
-identities. The opaque `next_page_token` continues a bounded page.
+identities.
 
 Stored kinds need the storage manager and a `harmos.v1.CatalogEntries/List` grant scoped
 `schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
@@ -1012,7 +1013,8 @@ across client clones and calls. Repeated, map and nested values are accounted be
 decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
-`catalog` calls `CatalogEntries.List` with a `PageRequest` containing `page_size`, `max_bytes` and `page_token`; continue with `next_page_token`.
+`catalog` calls `CatalogEntries.List` once and receives the complete authorized catalog.
+There is no page request, token or application byte bound; carrier overflow names the action.
 Bind the selected `harmos_protocol::v1::OperationContract` to generated application messages:
 
 ```rust

@@ -1,4 +1,4 @@
-Status: locked by the owner on 2026-11-12
+Status: locked by the owner on 2026-11-12; paging amended by the owner on 2026-11-13
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 Separation by audience locked by the owner on 2026-11-12
@@ -37,6 +37,7 @@ the locked contract; implementation is not authorized by this documentation task
 | Transfers | Owner | One unary, ranged, resumable mechanism for clients and plugins: Create session, Append ordered bytes at offsets, Get status, Publish content, Delete to abandon; downloads use repeated bounded Get ranges returning total length and digest. Configuration bounds chunks and ranges. Measure large-file throughput in Nightly before deleting streaming transfers. |
 | Streaming gRPC methods | Owner | Never generate streaming twins automatically. Streams are reserved for Watch and plugin protocol carriers; use unary resource actions and Get/Watch; retain one managed stream only for an explicitly promised cooperative final result, replacing its ordinary gRPC method. |
 | Failed client calls | Owner | Resending is the client's responsibility; the same request identifier and normalized payload return the original receipt, and a changed payload under that identifier conflicts. |
+| Paging | Amended by the owner on 2026-11-13 | Only data rows that can grow without bound are paged. CatalogEntries on every face, Plugins and Pairings return their complete bounded set with no page request, token or byte bound; carrier size refusal names the action. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
 | SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Client roots expose package-derived resource hierarchies in all four languages; plugin semantic parity and generic managed-client invocation scope remain open. |
 | Library Boundary | LOCKED, 2026-11-12 | Generic plugin hosting/entry management, access, transfers, host status, operations/invocations, time, storage, streams, protocol and SDKs belong to the library, under their owning managers. A product serves these services directly by composition. |

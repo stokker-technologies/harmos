@@ -558,23 +558,11 @@ impl harmos_operations::execution::operations::instances::InstanceChanges for In
 
 impl harmos_operations::execution::operations::access::Discovery for HostContext {
     fn discover(
-        &self, after: Option<&str>, rows: usize, bytes: usize,
-    ) -> std::result::Result<
-        harmos_operations::execution::operations::access::DiscoveryPage,
-        harmos_operations::execution::operations::access::AccessError,
-    > {
+        &self,
+    ) -> std::result::Result<harmos_protocol::v1::CatalogEntriesListResponse, harmos_operations::execution::operations::access::AccessError>
+    {
         let context = self.borrow();
-        let request = harmos_protocol::v1::CatalogEntriesListRequest {
-            kind: harmos_protocol::v1::CatalogKind::Operations as i32,
-            schema: None,
-            page: Some(harmos_protocol::v1::PageRequest {
-                page_size: rows as u32,
-                max_bytes: bytes as u64,
-                page_token: after.unwrap_or_default().to_owned(),
-            }),
-        };
-        let page = context.operations.discover(&context.source, &request)?;
-        Ok(page)
+        Ok(context.operations.discover(&context.source)?)
     }
 }
 impl harmos_operations::execution::operations::access::GrantAuthority for HostContext {

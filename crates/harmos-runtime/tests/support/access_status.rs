@@ -147,7 +147,6 @@ impl Host {
                     transport: harmos_runtime::grpc::Settings::default(),
                     handshake_timeout: std::time::Duration::from_secs(5),
                     pairings: nz(8),
-                    read_leases: nz(16),
                     label_bytes: nz(128),
                 },
                 store.clone(),

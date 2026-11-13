@@ -234,7 +234,15 @@ impl tonic::server::UnaryService<StreamItem<Vec<u8>>> for Endpoint {
     type Future = tonic::codegen::BoxFuture<Response<Output>, Status>;
     fn call(&mut self, request: Request<StreamItem<Vec<u8>>>) -> Self::Future {
         let pending = self.start(self.binding(&request), request.into_inner());
-        Box::pin(async move { pending?.response().await })
+        let maximum = self.settings.encode.message_bytes.get();
+        let action = self.binding.contract().operation().id.to_string();
+        Box::pin(async move {
+            let response = pending?.response().await?;
+            if response.get_ref().bytes.len() > maximum {
+                return Err(Status::resource_exhausted(format!("{action}: response exceeds carrier message_bytes")));
+            }
+            Ok(response)
+        })
     }
 }
 

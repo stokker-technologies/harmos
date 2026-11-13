@@ -34,22 +34,18 @@ class PairingsCreateResponse(_message.Message):
     def __init__(self, pairing: _Optional[_Union[Pairing, _Mapping]] = ..., endpoint: _Optional[str] = ..., pinned_certificate_pem: _Optional[str] = ..., credential: _Optional[str] = ...) -> None: ...
 
 class PairingsListRequest(_message.Message):
-    __slots__ = ("page", "at")
-    PAGE_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("at",)
     AT_FIELD_NUMBER: _ClassVar[int]
-    page: _types_pb2.PageRequest
     at: _types_pb2.Position
-    def __init__(self, page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ..., at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
+    def __init__(self, at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
 
 class PairingsListResponse(_message.Message):
-    __slots__ = ("pairings", "resolved_at", "next_page_token")
+    __slots__ = ("pairings", "resolved_at")
     PAIRINGS_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
     pairings: _containers.RepeatedCompositeFieldContainer[Pairing]
     resolved_at: _types_pb2.Position
-    next_page_token: str
-    def __init__(self, pairings: _Optional[_Iterable[_Union[Pairing, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
+    def __init__(self, pairings: _Optional[_Iterable[_Union[Pairing, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.Position, _Mapping]] = ...) -> None: ...
 
 class PairingsDeleteRequest(_message.Message):
     __slots__ = ("name",)

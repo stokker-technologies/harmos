@@ -54,7 +54,7 @@ unavailable entries, and restore enabled entries when the host starts.
 - **THEN** existing visibility and product-supplied grant/authorization policy apply and opaque bound invocation scope is inherited unchanged
 
 #### Scenario: Refuse Unavailable Read Continuation
-- **WHEN** a cut or page token is expired, foreign, bound to a different selection or from a previous host instance
+- **WHEN** a cut is expired, foreign, bound to a different selection or from a previous host instance
 - **THEN** the read explicitly refuses instead of silently selecting latest
 
 #### Scenario: Observe Without Silent Gaps

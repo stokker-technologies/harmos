@@ -436,3 +436,31 @@ unary ranges identifying the same content length and digest on every continuatio
 #### Scenario: Collect Contributed Diagnostics
 - **WHEN** a client reads all ranges of a diagnostics archive
 - **THEN** its digest verifies, contributed entries are present, and secrets are redacted.
+
+### Requirement: Complete Bounded Lists
+
+Amended by the owner on 2026-11-13: CatalogEntries.List on every face, Plugins.List
+and Access.Pairings.List SHALL return the complete authorized set without a page
+request, page token or application byte bound. Only data rows that can grow without
+bound SHALL be paged. The carrier message size limit SHALL be the sole response
+size guard for an unpaged list; overflow SHALL fail naming the action.
+
+#### Scenario: Complete Installed Catalog
+
+- **WHEN** a client or plugin lists its authorized catalog
+- **THEN** one response contains all entries and their complete descriptors without continuation
+
+#### Scenario: Complete Configured Registry
+
+- **WHEN** a client lists plugin entries or pairings
+- **THEN** one response contains the complete configured set, preserving authorization and read-cut semantics
+
+#### Scenario: Carrier Cannot Carry the Complete List
+
+- **WHEN** an unpaged response exceeds the carrier message size ceiling
+- **THEN** the action fails naming CatalogEntries.List, Plugins.List or Pairings.List without returning a truncated success
+
+#### Scenario: Accumulating Data
+
+- **WHEN** a caller lists records, samples, log lines, trace events, files or rows
+- **THEN** bounded pages and position-resolved continuation remain required

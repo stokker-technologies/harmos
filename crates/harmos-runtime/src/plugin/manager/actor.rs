@@ -65,7 +65,6 @@ pub(super) struct Actor {
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
     issued: BTreeSet<u64>,
-    pages: VecDeque<Page>,
     changes: broadcast::Sender<wire::PluginsWatchResponse>,
     workers: BTreeMap<String, Worker>,
 }
@@ -80,14 +79,6 @@ struct Snapshot {
 struct Worker {
     stop: oneshot::Sender<()>,
     task: JoinHandle<Result<(), Error>>,
-}
-
-struct Page {
-    token: String,
-    cut: v1::ReadCut,
-    rows: u32,
-    bytes: u64,
-    after: String,
 }
 
 /* === Enums === */
@@ -153,7 +144,6 @@ impl Actor {
             sequence: 0,
             snapshots: VecDeque::new(),
             issued: BTreeSet::new(),
-            pages: VecDeque::new(),
             changes,
             workers: BTreeMap::new(),
         };
@@ -245,7 +235,6 @@ impl Actor {
         }
         let first = self.snapshots.front().expect("current snapshot exists").cut.positions[0].sequence;
         self.issued.retain(|sequence| *sequence >= first);
-        self.pages.retain(|page| page.cut.positions[0].sequence >= first);
         if let Some(event) = event {
             if self.changes.receiver_count() > 0 {
                 self.issued.insert(self.sequence);
@@ -291,85 +280,12 @@ impl Actor {
     }
 
     fn list(&mut self, request: wire::PluginsListRequest) -> Result<wire::PluginsListResponse, Error> {
-        let page = request.page.ok_or_else(|| Error::new("page_required", "List Plugins", "supply page_size and max_bytes"))?;
-        if page.page_size == 0
-            || page.page_size as usize > self.settings.page_size.get()
-            || page.max_bytes == 0
-            || page.max_bytes > self.settings.response_bytes.get() as u64
-        {
-            return Err(Error::new(
-                "page_capacity",
-                "List Plugins",
-                "request a positive page within the configured row and byte capacities",
-            ));
-        }
         let snapshot = self.snapshot(request.at.as_ref())?.clone();
-        let after = if page.page_token.is_empty() {
-            String::new()
-        } else {
-            let token =
-                self.pages.iter().find(|token| token.token == page.page_token).ok_or_else(|| {
-                    Error::new("page_unavailable", "List Plugins", "open a new page; the token is expired or was not issued")
-                })?;
-            if request.at.is_none() || token.cut != snapshot.cut || token.rows != page.page_size || token.bytes != page.max_bytes {
-                return Err(Error::new(
-                    "page_mismatch",
-                    "List Plugins",
-                    "return the original cut, page_size, max_bytes and token unchanged",
-                ));
-            }
-            token.after.clone()
-        };
-        let mut response = wire::PluginsListResponse {
-            entries: vec![],
+        let response = wire::PluginsListResponse {
+            entries: snapshot.entries.into_values().collect(),
             resolved_at: Some(snapshot.cut.clone()),
-            next_page_token: String::new(),
         };
-        let mut nonce = [0_u8; 16];
-        getrandom::fill(&mut nonce).map_err(|error| problem("Create Plugin Page Token", error))?;
-        let next = crate::bundle::digest(&nonce);
-        let mut used = response.encoded_len();
-        let token_bytes = 1 + prost::length_delimiter_len(next.len()) + next.len();
-        let mut selected = snapshot.entries.range((std::ops::Bound::Excluded(after), std::ops::Bound::Unbounded)).peekable();
-        while let Some((_, entry)) = selected.next() {
-            let bytes = entry.encoded_len();
-            let framed = 1 + prost::length_delimiter_len(bytes) + bytes;
-            let more = selected.peek().is_some();
-            let continuation = if more { token_bytes } else { 0 };
-            if used.saturating_add(framed).saturating_add(continuation) > page.max_bytes as usize {
-                if response.entries.is_empty() {
-                    return Err(Error::new(
-                        "entry_capacity",
-                        "List Plugins",
-                        "request enough bytes for one entry and its continuation token",
-                    ));
-                }
-                response.next_page_token = next.clone();
-                break;
-            }
-            used += framed;
-            response.entries.push(entry.clone());
-            response.next_page_token = if more { next.clone() } else { String::new() };
-            if response.entries.len() == page.page_size as usize {
-                break;
-            }
-        }
-        if response.encoded_len() > page.max_bytes as usize {
-            return Err(Error::new("page_capacity", "List Plugins", "request enough bytes for the resolved position"));
-        }
         self.issued.insert(snapshot.cut.positions[0].sequence);
-        if !response.next_page_token.is_empty() {
-            self.pages.push_back(Page {
-                token: next,
-                cut: snapshot.cut,
-                rows: page.page_size,
-                bytes: page.max_bytes,
-                after: response.entries.last().expect("nonempty page has a continuation").name.clone(),
-            });
-            while self.pages.len() > self.settings.page_tokens.get() {
-                self.pages.pop_front();
-            }
-        }
         Ok(response)
     }
 

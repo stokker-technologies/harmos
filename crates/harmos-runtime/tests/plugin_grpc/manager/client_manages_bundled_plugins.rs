@@ -71,7 +71,7 @@ async fn client_manages_bundled_plugins() {
         .unwrap();
     assert!(second.exited().await.success());
     assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
-    assert!(host.client.list(support::page()).await.unwrap().into_inner().entries.is_empty());
+    assert!(host.client.list(support::list()).await.unwrap().into_inner().entries.is_empty());
     drop(watch);
     host.close().await;
 }

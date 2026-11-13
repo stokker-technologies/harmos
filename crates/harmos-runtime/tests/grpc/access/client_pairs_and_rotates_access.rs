@@ -95,13 +95,7 @@ async fn client_pairs_and_rotates_access() -> Result {
     assert_eq!(identity, after);
     assert_eq!(listener.get(access::ListenerGetRequest {}).await?.into_inner().revision, enabled.revision);
     // List and Revoke a Durable Pairing Without Exposing Its Credential
-    let page = pairings
-        .list(access::PairingsListRequest {
-            page: Some(page(1, String::new())),
-            at: None,
-        })
-        .await?
-        .into_inner();
+    let page = pairings.list(access::PairingsListRequest { at: None }).await?.into_inner();
     assert_eq!(page.pairings.len(), 1);
     assert_eq!(page.pairings[0].id, second.pairing.as_ref().unwrap().id);
     let store = host.store.clone();

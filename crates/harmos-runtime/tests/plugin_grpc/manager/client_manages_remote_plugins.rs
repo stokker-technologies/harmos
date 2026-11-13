@@ -27,7 +27,7 @@ async fn client_manages_remote_plugins() {
     let mut peer = Peer::start().await;
     // Apply the Product's Existing Authorization Policy
     host.policy.0.store(false, std::sync::atomic::Ordering::SeqCst);
-    assert_eq!(host.client.list(support::page()).await.unwrap_err().code(), tonic::Code::PermissionDenied);
+    assert_eq!(host.client.list(support::list()).await.unwrap_err().code(), tonic::Code::PermissionDenied);
     host.policy.0.store(true, std::sync::atomic::Ordering::SeqCst);
     let mut watch = host.client.watch(wire::PluginsWatchRequest::default()).await.unwrap().into_inner();
 
@@ -49,7 +49,7 @@ async fn client_manages_remote_plugins() {
 
     // Read the Complete Entry at One Resolved Position
     let got = host.client.get(wire::PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap().into_inner();
-    let mut page = support::page();
+    let mut page = support::list();
     page.at = got.resolved_at.clone();
     let listed = host.client.list(page).await.unwrap().into_inner();
     assert_eq!(listed.entries, vec![ready.clone()]);
@@ -155,21 +155,14 @@ async fn client_manages_remote_plugins() {
     let ready = support::state(&mut watch, "remote", wire::PluginState::Ready, restarting.activation).await;
     assert!(ready.activation > enabled.activation);
 
-    // Continue One Bound Page Without Losing an Entry
+    // List The Complete Configured Set And Repeat Its Issued Cut
     let mut other = support::remote("other", &peer.url);
     other.value.as_mut().unwrap().enabled = false;
     let mut other = host.client.create(other).await.unwrap().into_inner().entry.unwrap();
-    let mut request = support::page();
-    request.page.as_mut().unwrap().page_size = 1;
-    let first = host.client.list(request.clone()).await.unwrap().into_inner();
-    assert_eq!(first.entries[0].name, "other");
-    request.at = first.resolved_at;
-    request.page.as_mut().unwrap().page_token = first.next_page_token;
-    let second = host.client.list(request.clone()).await.unwrap().into_inner();
-    assert_eq!(second.entries[0].name, "remote");
-    assert!(second.next_page_token.is_empty());
-    request.page.as_mut().unwrap().page_token.push('0');
-    assert!(host.client.list(request).await.is_err());
+    let first = host.client.list(support::list()).await.unwrap().into_inner();
+    assert_eq!(first.entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(), ["other", "remote"]);
+    let repeated = host.client.list(wire::PluginsListRequest { at: first.resolved_at }).await.unwrap().into_inner();
+    assert_eq!(repeated.entries, first.entries);
 
     // Report an Explicit Gap to an Observer That Retains Its Bounded Queue
     let mut slow = host.manager.watch(wire::PluginsWatchRequest::default()).await.unwrap();
@@ -205,7 +198,7 @@ async fn client_manages_remote_plugins() {
         })
         .await
         .unwrap();
-    assert!(host.client.list(support::page()).await.unwrap().into_inner().entries.is_empty());
+    assert!(host.client.list(support::list()).await.unwrap().into_inner().entries.is_empty());
     assert!(peer.is_running());
     assert!(host.runtime.operations.definition("conformance.step.0").is_err());
     drop(watch);

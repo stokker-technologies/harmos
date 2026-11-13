@@ -5,17 +5,12 @@ Boundary, managers and nested resources locked by the owner on 2026-11-12
 Separation by audience locked by the owner on 2026-11-12
 Three visibility levels locked by the owner on 2026-11-12
 
-The owner authorizes this checkout to integrate the committed core, plugin-manager,
-access/status and storage branches under the combined `grpc-plugins` marker.
-Integration owns merge resolutions, generated outputs, transfer joins, affected
-consumers/stories/guides and local proof. Further storage implementation remains
-in its source worktree; this task captures only its committed state at the merge.
+The owner authorizes this checkout's sole writer to implement all four amendments
+of 2026-11-13 across the combined candidate under the existing `grpc-plugins` marker.
+Ownership covers protocol, runtime, operations, storage, all SDKs, generators, tooling,
+consumers, examples, stories and guides. No other writer is active in this repository.
+Commits stay local; no push or specification lifecycle command is authorized.
 
-Implementation is authorized under the combined `grpc-plugins` marker. Storage ownership:
-`proto/harmos/**/storage*.proto`, `crates/harmos-storage/**`,
-`crates/harmos-operations/src/storage/**`, storage runtime handlers/tests/benches,
-storage benchmark tooling/Nightly wiring, `docs/storage.md`, and storage tasks/design.
-Core owns shared protocol primitives, generators, SDKs and non-storage runtime.
 The task numbers below supersede the earlier inventory: durable lag is 1.5
 (formerly 1.2), file transfer is 1.6 (formerly 1.3), storage declarations are 1.4.
 
@@ -153,7 +148,7 @@ combined source closure and hosted validation are not claimed here.
 
 - [x] 8.1 Record the owner-authorized manager contract, public shapes, ownership, decisions and requirement scenarios before implementation.
 - [x] 8.2 Add `Plugins` proto, generated bindings, seven operation files and descriptor-generated SDK root bindings; join shared primitives from the core branch without duplicating them.
-- [x] 8.3 Implement the bounded persistent manager registry with conditional objects, whole-value revision guards, replay-safe Create, issued read cuts, paging and explicit Watch resynchronization.
+- [x] 8.3 Implement the bounded persistent manager registry with conditional objects, whole-value revision guards, replay-safe Create, issued read cuts, complete bounded-set List and explicit Watch resynchronization.
 - [x] 8.4 Reuse verified bundle reading and shared published-content uploads; install only verified native executables under the manager root, with no process started on invalid content. Join unary upload sessions from the storage worker.
 - [x] 8.5 Compose existing attachments, reconnect and process supervision; expose process identity, hidden Windows startup, unavailable failures, enable/disable, activation replacement, deletion and host restoration.
 - [x] 8.6 Add one journey per file: `client_manages_remote_plugins`, `client_manages_bundled_plugins`, `host_restores_plugin_entries`, and `client_refuses_invalid_plugin_bundles`; use the controlled clock, awaited events and existing reference plugins.
@@ -174,7 +169,7 @@ combined source closure and hosted validation are not claimed here.
 - [x] I.2 Join manager bundle stories to unary storage upload sessions and diagnostics to the storage ranged reader; record unavailable committed dependencies precisely.
 - [x] I.3 Run combined format, Rust/Python/repository checks, protocol drift, four SDK conformance, named runtime/guest/storage stories and the Tests producer; repair failures without changing limits.
 - [x] I.3.1 Complete format, Rust/Python/repository checks, protocol drift, four-SDK conformance, manager/access/status journeys, existing hosting/listener/certificate stories, guest System selection, storage unit/integration proof and the Tests producer. Manager/access/status journeys passed repeated runs; the earlier catalog-entry fixture failure is resolved in I.3.2.
-- [x] I.3.2 Resolve `operations::wire::grpc_manager::grpc_network::external_authority_parity`: the story now derives its page bound from its client decode ceiling and verifies complete descriptors and bounded pages. The core repair at `af739a4e` is retained; product budgets and oversized-entry refusal are unchanged.
+- [x] I.3.2 Resolve external_authority_parity by listing the complete catalog once, with no paging loop or application response byte bound (amended by the owner on 2026-11-13).
 - [x] I.4 Commit the candidate locally, verify clean status and locked offline metadata; document consumer adoption and pending proof without pushing.
 
 ## Access and Status Implementation
@@ -247,3 +242,11 @@ Native storage, file-transfer (seven available carrier/direction cases, three ru
 and durable-lag (three loads, five final runs each) benchmarks complete. This is
 local Windows evidence, not a full test lane or hosted/Linux validation. Lag-bound
 failures remain explicit in the design and A.6 is not checked off.
+
+## Owner Amendments of 2026-11-13
+
+- [x] O.1 Replace paging for bounded catalogs, plugin entries and pairings in proto, operations, runtime, generated SDKs, consumers, examples, stories and guides; preserve paging and issued positions for unbounded data. Record the bounded/unbounded inventory and scenarios.
+- [ ] O.2 Ship one SDK package per language; delete audience build selection, generated-stub guards and their tests/tooling; add four copyable self-install client journeys and migrate package consumers/guides. Preserve runtime face/visibility enforcement.
+- [ ] O.3 Keep unary transfers with one storage-owned 4 MiB default; derive carrier ceilings including framing, refuse incompatible startup settings, delete streaming transfer declarations/handlers/SDKs/stories and benchmark cases, record and rerun the default benchmark.
+- [ ] O.4 Accept measured durable lag without a failing threshold or accepted-data snapshot; replace superseded requirements/guides and close the lag acceptance tasks.
+- [ ] O.5 Run final-head format, Rust/Python/repository checks, protocol drift, four-SDK conformance, self-install/storage/manager/access/status/wire identity/guest stories, Tests build and clean committed locked offline metadata. Keep every decision in a separate local building commit; do not push.

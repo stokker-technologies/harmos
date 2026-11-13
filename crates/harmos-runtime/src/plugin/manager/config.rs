@@ -44,9 +44,7 @@ pub struct PluginManagerSettings {
     pub registry_bytes: NonZeroUsize,
     pub command_capacity: NonZeroUsize,
     pub retained_cuts: NonZeroUsize,
-    pub page_tokens: NonZeroUsize,
     pub watch_capacity: NonZeroUsize,
-    pub page_size: NonZeroUsize,
     pub response_bytes: NonZeroUsize,
 }
 

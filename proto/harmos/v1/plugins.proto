@@ -63,11 +63,10 @@ message PluginEntry {
 }
 message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
 message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
-message PluginsListRequest { harmos.v1.ReadCut at = 1; harmos.v1.PageRequest page = 2; }
+message PluginsListRequest { harmos.v1.ReadCut at = 1; }
 message PluginsListResponse {
   repeated PluginEntry entries = 1;
   harmos.v1.ReadCut resolved_at = 2;
-  string next_page_token = 3;
 }
 message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
 message PluginSnapshot { repeated PluginEntry entries = 1; }

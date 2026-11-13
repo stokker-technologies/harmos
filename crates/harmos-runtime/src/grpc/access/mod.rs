@@ -20,7 +20,6 @@ pub use credentials::{CredentialStore, Credentials, Pairing, Pending, StoreResul
 
 // Standard Library Imports
 use std::{
-    collections::BTreeSet,
     num::NonZeroUsize,
     sync::{
         Arc,
@@ -57,7 +56,6 @@ pub struct AccessSettings {
     pub transport: super::Settings,
     pub handshake_timeout: std::time::Duration,
     pub pairings: NonZeroUsize,
-    pub read_leases: NonZeroUsize,
     pub label_bytes: NonZeroUsize,
 }
 pub struct Access {
@@ -73,7 +71,6 @@ struct State {
     attached: Option<Attached>,
     admission: Arc<AtomicBool>,
     issued: Option<u64>,
-    tokens: BTreeSet<String>,
     epoch: String,
 }
 struct Authorization {
@@ -138,7 +135,6 @@ impl Access {
                 attached: None,
                 admission: Arc::new(AtomicBool::new(false)),
                 issued: None,
-                tokens: BTreeSet::new(),
                 epoch: identifier(action)?,
             }),
         });
@@ -195,7 +191,6 @@ impl Access {
             candidate.pairings.iter().map(|p| (p.id.clone(), p.credential_sha256.clone())).collect();
         state.value = candidate;
         state.issued = None;
-        state.tokens.clear();
     }
     pub async fn shutdown(&self) -> Result<(), ServingError> {
         let mut state = self.state.lock().await;

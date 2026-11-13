@@ -1,6 +1,6 @@
 # Operation Grammar Design
 
-Status: locked by the owner on 2026-11-12
+Status: locked by the owner on 2026-11-12; paging amended by the owner on 2026-11-13
 Boundary, managers and nested resources locked by the owner on 2026-11-12
 Naming rule amended by the owner on 2026-11-12: bare verbs on the service's resource
 Separation by audience locked by the owner on 2026-11-12
@@ -206,7 +206,10 @@ Vocabulary sections. Application-specific meanings belong to their owners.
 - **SDK ownership (Owner):** language SDKs stay in the library because other
   products will also host plugins on it; product SDKs keep building on them.
   Protocol, SDKs and conformance remain self-sufficient without product vocabulary.
-- **Paging (Owner):** `page_size`, `max_bytes`, `page_token`, `next_page_token`,
+- **Paging (amended by the owner on 2026-11-13):** only unbounded data rows are paged.
+  Bounded installed/configured sets return in one response without a page request, token
+  or byte bound; the carrier message size limit is their only response guard, and
+  exceeding it fails with an error naming the action. Unbounded reads use `page_size`, `max_bytes`, `page_token`, `next_page_token`,
   `resolved_at`; tokens bind selection, ordering, cut and schema/projection revision.
   Stable ordering has an identifier tie-breaker and exclusive continuation. Bound
   rows and bytes; work bounds remain separate. Expired or mismatched tokens fail
@@ -249,6 +252,26 @@ Vocabulary sections. Application-specific meanings belong to their owners.
   observers. Server streaming is reserved for Watch semantics (including noun-only
   single-mode streamed parts); plugin protocol carriers
   retain their own streams. Get/List and transfers are bounded unary calls.
+
+### List Inventory (Amended by the Owner on 2026-11-13)
+
+| List | Disposition and Reason |
+| --- | --- |
+| CatalogEntries.List (client and context; operations, schemas, streams and objects) | Unpaged catalog metadata: declarations and installed schema/identity definitions form the admitted catalog, rather than stored record/sample/revision data. |
+| Plugins.List | Unpaged: entry count is bounded by the configured registry capacity. |
+| Access.Pairings.List | Unpaged: credential count is bounded by the configured pairing capacity. |
+| Native ListSchemas | Complete catalog enumeration uses internal bounded scans; schemas are definitions, not data rows. No external continuation is exposed by CatalogEntries. |
+| Storage.ListRows | Paged and position-resolved: records, samples and object revisions grow with ingestion. |
+| Storage.ListColumnRows | Paged and position-resolved: physical stored rows grow with ingestion. |
+| Storage.ListIndexEntries | Paged and position-resolved: index entries grow with stored rows. |
+| Storage.ListProjectionRows | Paged and position-resolved: materialized data rows grow with ingestion. |
+| Storage.ListDirectoryEntries | Paged and position-resolved: files/directories can grow without bound. |
+| Status.Logs.List and Status.TraceEvents.List | Paged and position-resolved: events accumulate indefinitely even when retention bounds the current window. |
+| Native ListObjectRevisions/ListRecords/ListSamples/ListFiles/ListIdentities/ListRecordViews/ListRecoveryEntries/ListMutationReceipts/ListFileProductionCheckpoints | Paged internally: persisted data, identities, recovery entries and session/receipt histories grow with use. |
+
+Installed catalog metadata and configured management sets have no application response
+byte bound or page token. They retain authorization and existing read-cut semantics;
+carrier overflow refuses the complete action instead of truncating success.
 
 ## Library Design
 
@@ -622,7 +645,7 @@ are invocation verification, not claims that tests were run in this authoring ta
 | carrier Invoke | HostFrame → PluginFrame | Instance.Invoke | Plugin protocol: harmos.plugin.v1 | Renamed service; invoke.rs; duplex control carrier still conveys one unary operation attempt. |
 | carrier Publish | PublishFrame → Samples | Instance.Samples | Plugin protocol: harmos.plugin.v1 | Renamed; publish.rs; host-clock ticks and device publication remain distinct. |
 | carrier Stop | StopRequest → StopResponse | Instance.Stop | Plugin protocol: harmos.plugin.v1 | Renamed service; connection.rs shutdown invokes cleanup. |
-| host.catalog | Catalog → CatalogPage | CatalogEntries.List | Context: harmos.context.v1; client: harmos.v1 | Renamed; sdk/rust/src/client.rs calls bounded discovery. |
+| host.catalog | Catalog → CatalogPage | CatalogEntries.List | Context: harmos.context.v1; client: harmos.v1 | Renamed; sdk/rust/src/client.rs lists the complete admitted catalog. |
 | host.operations.status | Status → InstanceState | Invocations.Get | Context: harmos.context.v1; client: harmos.v1 | Renamed; tests/operations/host.rs invokes owned status. |
 | host.operations.cancel | Cancel → InstanceState | Invocations.Cancel | Context: harmos.context.v1; client: harmos.v1 | Renamed; same host test; cancellation is an action. |
 | host.operations.watch | Watch → InstanceState | Invocations.Watch | Context: harmos.context.v1; client: harmos.v1 | Renamed; same host test; retain status events. |
@@ -1243,11 +1266,10 @@ message PluginEntry {
 }
 message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
 message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
-message PluginsListRequest { harmos.v1.ReadCut at = 1; harmos.v1.PageRequest page = 2; }
+message PluginsListRequest { harmos.v1.ReadCut at = 1; }
 message PluginsListResponse {
   repeated PluginEntry entries = 1;
   harmos.v1.ReadCut resolved_at = 2;
-  string next_page_token = 3;
 }
 message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
 message PluginSnapshot { repeated PluginEntry entries = 1; }
@@ -1321,8 +1343,8 @@ The runtime builder's `plugins(Manager)` registers the resource and catalog;
 | Reuse attachment connection, admission, invocation, streams and supervision | The manager owns the set and lifecycle, while `attach_grpc` remains the single hosting implementation. |
 | Retain unavailable entries and the last connected description | A failed process or endpoint must remain manageable and diagnostically visible. Restart replaces the activation; disabled entries remain stopped. |
 | Reconnect remote entries and start enabled managed entries on startup | Persisted intent survives a host restart; observed process state is reconstructed, never trusted from disk. |
-| Bounded issued cuts, pages and Watch events | Reads resolve one durable manager snapshot; identifier ordering and opaque bound tokens keep pagination consistent. Watch opens with a snapshot, then ordered changes; overflow reports explicit resynchronization instead of skipping evidence. |
-| Manager-instance cut epoch | Issued cuts and tokens expire across host restart; stale or foreign positions fail explicitly. Durable entry identities and revisions survive. |
+| Issued cuts and bounded Watch events | List returns the complete configured entry set in identifier order from one durable manager snapshot. Watch opens with a snapshot, then ordered changes; overflow reports explicit resynchronization instead of skipping evidence. |
+| Manager-instance cut epoch | Issued cuts expire across host restart; stale or foreign positions fail explicitly. Durable entry identities and revisions survive. |
 | Product policy through existing visibility, grants and external authorizer | Opaque invocation scope is inherited unchanged and never parsed as authority; no product role model enters the manager. |
 | No automatic process restart loop | Remote reconnect remains attachment policy; failed managed processes stay unavailable until Restart or host restart, avoiding a second restart scheduler. |
 | Hidden Windows process startup and explicit loopback endpoint environment | Managed executables have no console window and receive `HARMOS_ADDRESS=127.0.0.1:0`; existing readiness announcement supplies the bound endpoint without reserving a racy port. |
@@ -1489,17 +1511,9 @@ ServerCertificate resolver themselves are reused unchanged.
 
 ## Open Questions
 
-Integration proof conflict: `operations::wire::grpc_manager::grpc_network::external_authority_parity`
-requests catalog pages bounded to 2,048 bytes. The complete descriptor-bearing
-`harmos.v1.CatalogEntries/List` entry now encodes to 2,471 bytes by itself, so the
-catalog correctly refuses that page as `discovery schema bytes`. The existing
-test expects complete enumeration. Atomic entries, complete descriptors and the
-fixed consumer budget cannot satisfy that expectation together. Resolved: the
-2,048 was a literal in the test, below its own client's decode ceiling. The test
-now requests pages bounded by that ceiling and asserts each page fits it; the
-descriptor, the refusal of an entry larger than the requested page and every
-product limit are unchanged. The generated descriptor is already
-normalized without source information, file options or redundant JSON names.
+Catalog discovery now returns the complete authorized catalog in one response, including
+complete descriptors. `external_authority_parity` lists once; the carrier ceiling alone
+guards the response and an oversize refusal names CatalogEntries.List.
 
 Integration repair: automatic Time/HostValues contract admission propagates
 schema-budget failures through runtime startup instead of panicking. The schema

@@ -702,39 +702,24 @@ async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
     use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
-    let (decode, encode) = limits();
+    let settings = harmos_runtime::grpc::server::Settings::default();
+    let (decode, encode) = (settings.decode, settings.encode);
     let mut client = tonic::client::Grpc::new(channel)
         .max_decoding_message_size(decode.message_bytes.get())
         .max_encoding_message_size(encode.message_bytes.get());
-    let mut entries = Vec::new();
-    let mut after = None;
-    // Bounded Pages Fit The Client's Decode Ceiling; The Catalog Ends With An Empty Cursor.
-    loop {
-        client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-        let page = CatalogEntriesListRequest {
-            kind: CatalogKind::Operations as i32,
-            schema: None,
-            page: Some(harmos_protocol::v1::PageRequest {
-                page_size: 64,
-                max_bytes: decode.message_bytes.get() as u64,
-                page_token: after.take().unwrap_or_default(),
-            }),
-        };
-        let mut request = tonic::Request::new(page);
-        if let Some(token) = token {
-            request.metadata_mut().insert("authorization", token.parse().unwrap());
-        }
-        let response: tonic::Response<CatalogEntriesListResponse> = client
-            .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
-            .await?;
-        let page = response.into_inner();
-        assert!(prost::Message::encoded_len(&page) <= decode.message_bytes.get());
-        entries.extend(page.operations);
-        if page.next_page_token.is_empty() {
-            return Ok(entries);
-        }
-        after = Some(page.next_page_token);
+    client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
+    let catalog = CatalogEntriesListRequest {
+        kind: CatalogKind::Operations as i32,
+        schema: None,
+    };
+    let mut request = tonic::Request::new(catalog);
+    if let Some(token) = token {
+        request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
+    let response: tonic::Response<CatalogEntriesListResponse> = client
+        .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
+        .await?;
+    Ok(response.into_inner().operations)
 }
 
 async fn failures<F: Future<Output = ()>>(

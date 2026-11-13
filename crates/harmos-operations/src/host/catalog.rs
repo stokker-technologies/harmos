@@ -68,16 +68,6 @@ impl ProtobufOperation for List {
 
 /* === Public Functions === */
 
-pub fn limits(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<(usize, usize), MessageError> {
-    let page = request.page.as_ref().ok_or_else(|| MessageError::borrowed("List requires page_size and max_bytes"))?;
-    let rows = page.page_size;
-    let bytes = page.max_bytes;
-    if rows == 0 || bytes < 2 || usize::try_from(bytes).is_err() {
-        return Err(MessageError::borrowed("List requires positive page_size and representable max_bytes of at least two"));
-    }
-    Ok((rows as usize, bytes as usize))
-}
-
 /* === Private Functions === */
 
 fn kind(request: &harmos_protocol::v1::CatalogEntriesListRequest) -> std::result::Result<Kind, MessageError> {
@@ -95,17 +85,12 @@ async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEnt
         reason: "invalid identifier",
     })?;
     let page = match kind {
-        Kind::Operations => {
-            let (rows, bytes) = limits(&request)?;
-            let token = request.page.as_ref().map(|page| page.page_token.as_str()).filter(|token| !token.is_empty());
-            host.0.discover(token, rows, bytes).map_err(Error::Access)?
-        }
+        Kind::Operations => host.0.discover().map_err(Error::Access)?,
         Kind::Schemas => {
             let schema = schema.clone();
             stored::<StorageSchema>(
                 storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
                 &SchemaSelection { schema: None },
-                &request,
                 |entry| schema.as_ref().is_none_or(|schema| schema == &entry.key.id),
             )
             .await?
@@ -115,12 +100,9 @@ async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEnt
                 kind: if kind == Kind::Streams { IdentityKind::Streams } else { IdentityKind::Objects },
                 schema: schema.clone(),
             };
-            stored::<StoredIdentity>(
-                storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?,
-                &selection,
-                &request,
-                |_| true,
-            )
+            stored::<StoredIdentity>(storage.as_deref().as_ref().ok_or(Error::NotReady { domain: "catalog storage" })?, &selection, |_| {
+                true
+            })
             .await?
         }
     };
@@ -128,55 +110,44 @@ async fn run(context: ExecutionContext, request: harmos_protocol::v1::CatalogEnt
     Ok(page)
 }
 
-async fn stored<T>(
-    storage: &StorageManager, selection: &T::Selection, request: &harmos_protocol::v1::CatalogEntriesListRequest, keep: impl Fn(&T) -> bool,
-) -> Result<CatalogEntriesListResponse>
+async fn stored<T>(storage: &StorageManager, selection: &T::Selection, keep: impl Fn(&T) -> bool) -> Result<CatalogEntriesListResponse>
 where
     T: harmos_storage::follow::Entry,
 {
-    let (rows, bytes) = limits(request)?;
-    let after = request
-        .page
-        .as_ref()
-        .map(|page| page.page_token.as_str())
-        .filter(|token| !token.is_empty())
-        .map(str::parse::<u64>)
-        .transpose()
-        .map_err(|_| Error::InvalidInput {
-            field: "catalog cursor",
-            reason: "cursor must be a storage position",
-        })?
-        .unwrap_or(0);
+    let through = storage.get_saved_position().sequence;
+    let mut after = 0;
     let limits = ReadLimits {
-        rows: NonZeroUsize::new(rows).expect("validated catalog rows"),
-        bytes: NonZeroUsize::new(bytes).expect("validated catalog bytes"),
+        rows: NonZeroUsize::MAX,
+        bytes: NonZeroUsize::MAX,
     };
-    let page = storage.page::<T>(selection, after, limits).await?;
     let mut entries = vec![b'['];
-    let mut next = None;
-    let mut count = 0usize;
-    for entry in page.entries() {
-        let position = entry.position().sequence;
-        if keep(entry) {
-            let start = entries.len();
+    let mut count = 0;
+    loop {
+        let page = storage.page::<T>(selection, after, limits).await?;
+        if page.entries().is_empty() {
+            break;
+        }
+        for entry in page.entries() {
+            after = entry.position().sequence;
+            if after > through {
+                break;
+            }
+            if !keep(entry) {
+                continue;
+            }
             if count > 0 {
                 entries.push(b',');
             }
-            if write(&mut entries, entry).is_err() || entries.len() + 1 > bytes {
-                entries.truncate(start);
-                if next.is_none() {
-                    return Err(Error::ResourceExhausted { resource: "catalog entry bytes" });
-                }
-                break;
-            }
+            write(&mut entries, entry).map_err(|error| Error::Access(Box::new(error)))?;
             count += 1;
         }
-        next = Some(position.to_string());
+        if after >= through {
+            break;
+        }
     }
     entries.push(b']');
     Ok(CatalogEntriesListResponse {
         entries,
-        next_page_token: next.unwrap_or_default(),
         operations: Vec::new(),
         resolved_at: None,
     })

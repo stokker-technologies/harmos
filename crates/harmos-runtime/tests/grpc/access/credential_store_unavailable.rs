@@ -58,16 +58,7 @@ async fn credential_store_unavailable() -> Result {
         pairings.create(access::PairingsCreateRequest { label: "Unavailable".into() }).await.unwrap_err(),
         "Access.Pairings.Create",
     );
-    assert_action(
-        pairings
-            .list(access::PairingsListRequest {
-                page: Some(page(1, String::new())),
-                at: None,
-            })
-            .await
-            .unwrap_err(),
-        "Access.Pairings.List",
-    );
+    assert_action(pairings.list(access::PairingsListRequest { at: None }).await.unwrap_err(), "Access.Pairings.List");
     assert_action(pairings.delete(access::PairingsDeleteRequest { name: "missing".into() }).await.unwrap_err(), "Access.Pairings.Delete");
     assert_action(certificates.create(access::CertificatesCreateRequest {}).await.unwrap_err(), "Access.Certificates.Create");
     let mut value = original.value.clone().unwrap();

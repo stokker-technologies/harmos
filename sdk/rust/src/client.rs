@@ -256,8 +256,18 @@ impl ClientTransport {
         let frame = frame(&budget, self.settings, None, &value).await?;
         let mut client = self.transport();
         client.ready().await.map_err(|error| Status::unavailable(error.to_string()))?;
-        let response =
-            client.unary(Request::from_parts(metadata, extensions, frame), path, self.codec::<R, NoItems>(false, response, None)).await?;
+        let action = path.to_string();
+        let response = client
+            .unary(Request::from_parts(metadata, extensions, frame), path, self.codec::<R, NoItems>(false, response, None))
+            .await
+            .map_err(|error| {
+                Status::with_details_and_metadata(
+                    error.code(),
+                    format!("{action}: {}", error.message()),
+                    bytes::Bytes::copy_from_slice(error.details()),
+                    error.metadata().clone(),
+                )
+            })?;
         let (metadata, value, extensions) = response.into_parts();
         let Output::Response(value, _permit) = value else {
             return Err(Status::data_loss("unexpected unary item"));

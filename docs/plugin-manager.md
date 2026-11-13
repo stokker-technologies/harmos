@@ -34,8 +34,8 @@ hierarchy for the same request/response contracts.
 Native hosts can also use the `Management` trait on `Manager` directly.
 
 `PluginManagerSettings` supplies entry and Create-receipt capacities, encoded
-registry bytes, command queue capacity, retained cuts, retained page tokens,
-Watch capacity, maximum page rows and response bytes. It also contains the
+registry bytes, command queue capacity, retained cuts,
+Watch capacity and Get/Watch response bytes. It also contains the
 existing placement policy and bundle limits. No resource budget is inferred
 from machine capacity. Namespace ownership is exclusive: a competing conditional
 write fails rather than overwriting another manager's registry.
@@ -45,7 +45,7 @@ write fails rather than overwriting another manager's registry.
 | Method | Request and Result |
 | --- | --- |
 | `Get` | Name and optional issued `at`; complete entry and `resolved_at`. |
-| `List` | Optional issued `at` and bounded `page`; ordered entries, `resolved_at` and opaque `next_page_token`. |
+| `List` | Optional issued `at`; the complete configured entry set in identifier order and `resolved_at`. The carrier message ceiling is the sole List response guard. |
 | `Watch` | Optional name and issued `at`; opening snapshot followed by ordered changes or explicit resynchronization. Empty name selects all entries. |
 | `Create` | Request identifier, opaque name, placement and complete writable value; original entry and durable receipt. |
 | `Set` | Name, whole `PluginValue { enabled }` and expected revision from Get; entry and durable receipt. |
@@ -66,8 +66,8 @@ payload conflicts. Exhausting the configured receipt capacity refuses new
 creates; keys never silently expire and repeat work.
 
 Latest reads resolve the manager's latest durable snapshot without causing a
-flush. Return `resolved_at` unchanged for consistency. A page token binds its
-cut, ordering, page rows and byte budget. Cuts and tokens have configured bounded
+flush. List returns every configured entry in one response. Return `resolved_at`
+unchanged for consistency. Cuts have configured bounded
 retention and expire across manager restart; foreign, unissued or expired
 continuations explicitly fail. Watch subscribes atomically with its opening
 snapshot and replays retained changes from an issued cut. A slow observer whose

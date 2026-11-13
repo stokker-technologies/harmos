@@ -6,16 +6,12 @@ pub struct CatalogEntriesListRequest {
     pub kind: i32,
     #[prost(string, optional, tag = "2")]
     pub schema: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub page: ::core::option::Option<crate::v1::PageRequest>,
 }
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CatalogEntriesListResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub entries: ::prost::alloc::vec::Vec<u8>,
-    #[prost(string, tag = "2")]
-    pub next_page_token: ::prost::alloc::string::String,
     #[prost(message, repeated, tag = "3")]
     pub operations: ::prost::alloc::vec::Vec<crate::v1::DiscoveredOperation>,
     #[prost(message, optional, tag = "4")]

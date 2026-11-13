@@ -26,7 +26,6 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 pub type AccessError = Box<dyn std::error::Error + Send + Sync>;
-pub type DiscoveryPage = harmos_protocol::v1::CatalogEntriesListResponse;
 
 /* === Structs === */
 
@@ -40,7 +39,7 @@ pub struct GrantAccess(pub Arc<dyn GrantAuthority>);
 /* === Traits === */
 
 pub trait Discovery: Send + Sync {
-    fn discover(&self, after: Option<&str>, rows: usize, bytes: usize) -> Result<DiscoveryPage, AccessError>;
+    fn discover(&self) -> Result<harmos_protocol::v1::CatalogEntriesListResponse, AccessError>;
 }
 pub trait GrantAuthority: Send + Sync {
     fn admit(&self, grant: &harmos_operations::plugin::Grant) -> Result<(), AccessError>;

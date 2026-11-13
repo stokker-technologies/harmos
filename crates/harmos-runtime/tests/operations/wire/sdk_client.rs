@@ -167,11 +167,6 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .catalog_entries
         .list(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
-            page: Some(harmos_protocol::v1::PageRequest {
-                page_size: 64,
-                max_bytes: 1024 * 1024,
-                page_token: String::new(),
-            }),
             ..Default::default()
         }))
         .await
@@ -311,21 +306,18 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let mut running = bounded.watch(&watch, RpcRequest::new(compact)).await.unwrap();
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
-    // Discovery Uses The Same Admission; Smaller Pages Fit The Caller-Owned Bound.
+    // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
     let error = bounded
         .catalog_entries
         .list(RpcRequest::new(host::CatalogEntriesListRequest {
             kind: host::CatalogKind::Operations as i32,
-            page: Some(harmos_protocol::v1::PageRequest {
-                page_size: 64,
-                max_bytes: 1024 * 1024,
-                page_token: String::new(),
-            }),
             ..Default::default()
         }))
         .await
         .unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+
+    assert!(error.message().contains("harmos.v1.CatalogEntries/List"));
 
     // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
     let first = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();

@@ -362,6 +362,8 @@ Host and plugin policies share Duration budgets, `RetryPolicy.total_attempts`
 and `deterministic_jitter`. Absent retries or one total attempt means no retry.
 Call-local overrides do not alter callee defaults. Shared positions contain
 history (store and epoch) and sequence; cuts retain every position/revision.
+Only data rows that can grow without bound are paged. CatalogEntries, Plugins and
+Access.Pairings return complete sets; carrier overflow names the action.
 Paging uses `page_size`, `max_bytes`, `page_token`, `next_page_token`, and
 `resolved_at`. Receipts separate accepted and durable positions and completion.
 A failed client call is resent only by the client with its original semantic

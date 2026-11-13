@@ -124,22 +124,18 @@ class PluginsGetResponse(_message.Message):
     def __init__(self, entry: _Optional[_Union[PluginEntry, _Mapping]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class PluginsListRequest(_message.Message):
-    __slots__ = ("at", "page")
+    __slots__ = ("at",)
     AT_FIELD_NUMBER: _ClassVar[int]
-    PAGE_FIELD_NUMBER: _ClassVar[int]
     at: _types_pb2.ReadCut
-    page: _types_pb2.PageRequest
-    def __init__(self, at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., page: _Optional[_Union[_types_pb2.PageRequest, _Mapping]] = ...) -> None: ...
+    def __init__(self, at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class PluginsListResponse(_message.Message):
-    __slots__ = ("entries", "resolved_at", "next_page_token")
+    __slots__ = ("entries", "resolved_at")
     ENTRIES_FIELD_NUMBER: _ClassVar[int]
     RESOLVED_AT_FIELD_NUMBER: _ClassVar[int]
-    NEXT_PAGE_TOKEN_FIELD_NUMBER: _ClassVar[int]
     entries: _containers.RepeatedCompositeFieldContainer[PluginEntry]
     resolved_at: _types_pb2.ReadCut
-    next_page_token: str
-    def __init__(self, entries: _Optional[_Iterable[_Union[PluginEntry, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ..., next_page_token: _Optional[str] = ...) -> None: ...
+    def __init__(self, entries: _Optional[_Iterable[_Union[PluginEntry, _Mapping]]] = ..., resolved_at: _Optional[_Union[_types_pb2.ReadCut, _Mapping]] = ...) -> None: ...
 
 class PluginsWatchRequest(_message.Message):
     __slots__ = ("name", "at")

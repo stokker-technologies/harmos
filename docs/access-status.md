@@ -32,7 +32,7 @@ reloading access configuration.
 
 `Pairings.Create` returns an endpoint, pinned certificate and one bearer credential.
 Retain that credential securely: only its hash is persisted and it is never returned
-by List. Durable independent pairings can be listed in bounded pages and revoked
+by List. Durable independent pairings can be listed in one complete response and revoked
 with Delete. Pairing positions and tokens expire when access changes or the process
 restarts; an expired selection fails explicitly.
 

@@ -14,6 +14,12 @@ do not prove a future contract. All missing guards have unchecked tasks in
 `openspec/changes/operation-grammar/tasks.md`; its first task covers visibility and
 both directions of plugin/host invocation. A face is never a substitute for visibility.
 
+Paging was amended by the owner on 2026-11-13: only data rows that can grow
+without bound are paged. CatalogEntries on both faces, Plugins and Access.Pairings
+return the complete set without page requests, tokens or application byte bounds.
+The carrier message ceiling is their sole response guard; overflow names the action.
+Records, samples, log lines, trace events, files and rows retain position-resolved paging.
+
 ## Invariants
 
 Wire operation admission uses the protocol-owned validator in

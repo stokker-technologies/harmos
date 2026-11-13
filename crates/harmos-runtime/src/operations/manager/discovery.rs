@@ -25,13 +25,11 @@ use prost::Message;
 use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
-use crate::{Error, Identifier, Result};
+use crate::{Error, Result};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse};
+use harmos_protocol::v1::CatalogEntriesListResponse;
 
 /* === Constants === */
-
-const CURSOR_BYTES: usize = 4 * 1024 * 1024;
 
 /* === Macros === */
 
@@ -48,44 +46,10 @@ type ProviderEntry = (String, String, Arc<Entry>);
 /* === Implementations === */
 
 impl Manager {
-    pub(in crate::operations) fn discover(
-        &self, source: &Source, request: &CatalogEntriesListRequest,
-    ) -> Result<CatalogEntriesListResponse> {
+    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<CatalogEntriesListResponse> {
         let origin = source.check()?;
-        let (rows, bytes) = harmos_operations::host::limits(request).map_err(|_| Error::InvalidInput {
-            field: "catalog limits",
-            reason: "rows must be 1..=256 and bytes must be 2..=4194304",
-        })?;
-        let after: Option<(String, String)> = request
-            .page
-            .as_ref()
-            .map(|page| &page.page_token)
-            .filter(|token| !token.is_empty())
-            .map(|cursor| {
-                if cursor.len() > CURSOR_BYTES {
-                    return Err(Error::InvalidInput {
-                        field: "discovery cursor",
-                        reason: "cursor is too large",
-                    });
-                }
-                let key: (String, String) = serde_json::from_str(cursor).map_err(|_| Error::InvalidInput {
-                    field: "discovery cursor",
-                    reason: "cursor must contain an operation and owner",
-                })?;
-                for value in [&key.0, &key.1] {
-                    Identifier::new(value.as_str()).map_err(|_| Error::InvalidInput {
-                        field: "discovery cursor",
-                        reason: "cursor contains an invalid identifier",
-                    })?;
-                }
-                Ok(key)
-            })
-            .transpose()?;
-
         let mut output = CatalogEntriesListResponse::default();
-        let mut count = 0;
-        let mut last = None;
-        let mut position = after;
+        let mut position = None;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
             if entry.definition.visibility == crate::operations::Visibility::Private {
@@ -168,21 +132,8 @@ impl Manager {
                 conditional_access: true,
                 grpc_available,
             };
-            let cursor = serde_json::to_string(&(id, owner)).expect("identifier cursor serializes");
             output.operations.push(metadata);
-            output.next_page_token = cursor.clone();
-            if count == rows || output.encoded_len() > bytes {
-                output.operations.pop();
-                output.next_page_token = last.take().unwrap_or_default();
-                if count == 0 {
-                    return Err(Error::ResourceExhausted { resource: "discovery schema bytes" });
-                }
-                return Ok(output);
-            }
-            last = Some(cursor);
-            count += 1;
         }
-        output.next_page_token.clear();
         Ok(output)
     }
 
