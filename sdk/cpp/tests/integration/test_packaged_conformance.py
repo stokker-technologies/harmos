@@ -40,7 +40,7 @@ from harmos_tools.process import spawn_flags
 
 
 class PackagedConformance(unittest.TestCase):
-    def test_source_package_serves_the_public_fixture(self):
+    def test_source_package_serves_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
         profile = os.environ.get("TEST_PROFILE", "dev")
         configuration = "Debug" if profile == "dev" else "Release"

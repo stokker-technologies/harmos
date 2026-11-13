@@ -393,6 +393,9 @@ jobs:
     - name: Test Python SDK Client Units
       if: github.event_name != 'push'
       run: mise -C sdk/python run test:unit
+    - name: Test Typed Python SDK Examples
+      if: github.event_name != 'push'
+      run: mise -C sdk/python run test:examples
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}

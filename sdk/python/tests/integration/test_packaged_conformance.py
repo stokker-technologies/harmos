@@ -22,6 +22,7 @@ import unittest
 from pathlib import Path
 
 from harmos_tools.process import spawn_flags
+
 from tests.support import host
 
 # Third Party Imports
@@ -41,7 +42,7 @@ from tests.support import host
 
 
 class PackagedConformance(unittest.IsolatedAsyncioTestCase):
-    async def test_installed_wheel_serves_the_public_fixture(self):
+    async def test_installed_wheel_serves_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
         with tempfile.TemporaryDirectory() as name:
             scratch = Path(name)

@@ -11,14 +11,15 @@
 # === Imports === #
 
 # Standard Library Imports
+import ast
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.build import fixtures
 
@@ -34,7 +35,71 @@ from harmos_tools.build import fixtures
 
 
 class SchematicHostSchemaTests(unittest.TestCase):
-    def test_collects_host_schema_and_refuses_changed_capture(self):
+    def test_python_generation_consumes_staged_schema_and_records_sorted_imports(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        producer = root / "retired-producer"
+        export = root / "export"
+        receipt = export / "receipts/plugin.json"
+        receipt.parent.mkdir(parents=True)
+        staged = export / "builds/plugin/target/schema"
+        staged.mkdir(parents=True)
+        descriptor = staged / "descriptors.bin"
+        descriptor.write_bytes(b"descriptor")
+        receipt.write_text(
+            json.dumps(
+                {
+                    "schemas": [
+                        {
+                            "producer": "schematic-cli",
+                            "catalog": "operations",
+                            "directory": str(producer / "target/schema"),
+                            "files": {"descriptors.bin": fixtures.digest(descriptor)},
+                        }
+                    ]
+                }
+            )
+        )
+        tool = root / "driver"
+        protoc = root / "protoc"
+        tool.touch()
+        protoc.touch()
+        generated = root / "generated/python"
+        files: dict[str, str] = {}
+
+        def execute(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+            if command[0] == str(tool):
+                payload = options["input"]
+                assert isinstance(payload, str)
+                request = json.loads(payload)
+                self.assertEqual(Path(request["export"]), staged)
+                output = generated / "src/client.py"
+                output.parent.mkdir(parents=True)
+                output.write_text("import sys\nimport os\n")
+            else:
+                subprocess.check_call(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        with (
+            patch.object(fixtures, "ROOT", root),
+            patch.object(fixtures, "GENERATED", root / "generated"),
+            patch.object(fixtures.subprocess, "run", side_effect=execute),
+        ):
+            # The Real Ruff Config Is an Input, Even When Generation Uses a Disposable Export.
+            config = root / "tools/python/ruff.toml"
+            config.parent.mkdir(parents=True)
+            config.write_text('target-version = "py313"\n')
+            fixtures.generate_python(tool, receipt, protoc, files, source_root=producer)
+            source = generated / "src/client.py"
+            imports = [alias.name for node in ast.parse(source.read_text()).body if isinstance(node, ast.Import) for alias in node.names]
+            self.assertEqual(imports, ["os", "sys"])
+            self.assertEqual(files[source.relative_to(root).as_posix()], fixtures.digest(source))
+            descriptor.write_bytes(b"replaced")
+            with self.assertRaises(RuntimeError):
+                fixtures.generate_python(tool, receipt, protoc, files, source_root=producer)
+
+    def test_collects_host_schema_and_refuses_changed_capture(self) -> None:
         # Capture a Host Schema Beside a Native Plugin Without Generated Schemas
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

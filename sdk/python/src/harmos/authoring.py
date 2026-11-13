@@ -14,25 +14,27 @@
 import asyncio
 import inspect
 import re
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from hashlib import sha256
 from importlib.metadata import version
+from typing import cast
 
 # Third Party Imports
 import grpc
+from google.protobuf.descriptor_pb2 import FileDescriptorProto
 from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.message import DecodeError, Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
-# Local Imports
-from .invocation import Context, Failure, ProtocolError, Publisher, validate_timestamp
-from .contracts import Operation, message_types
-from .v1 import types_pb2 as wire
-from .plugin.v1.instance_pb2_grpc import InstanceServicer, add_InstanceServicer_to_server
-from .transfer import message_bytes
-from .v1.storage_settings_pb2 import StorageTransferSettings
-
 from harmos.plugin.v1 import instance_pb2 as carrier
+
+from .contracts import Operation, Stream, message_types
+
+# Local Imports
+from .invocation import Context, Failure, Handler, ProtocolError, Publisher, validate_timestamp
+from .transfer import message_bytes
+from .v1 import types_pb2 as wire
+from .v1.storage_settings_pb2 import StorageTransferSettings
 
 # Type Checking Imports
 
@@ -44,6 +46,10 @@ STARTED_AT = Timestamp()
 STARTED_AT.GetCurrentTime()
 
 # === Types === #
+
+type Observer = Callable[[Context], Awaitable[Message]]
+type Producer = Callable[[Context, Publisher], Awaitable[None]]
+type Cleanup = Callable[[], Awaitable[None] | None]
 
 # === Classes === #
 
@@ -59,7 +65,7 @@ class Plugin:
         sections: Sequence[Message] = (),
         messages: Sequence[type[Message]] = (),
         transfer: StorageTransferSettings | None = None,
-    ):
+    ) -> None:
         self.instance = instance
         self.id = id
         self.version = version
@@ -70,23 +76,28 @@ class Plugin:
         if transfer is not None:
             self.transfer.CopyFrom(transfer)
 
-    def _registrations(self):
+    def _registrations(
+        self,
+    ) -> tuple[list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | Producer, bool]], list[Cleanup]]:
         # Preserve Declaration Order While Honoring Subclass Overrides.
         methods = {}
         for cls in reversed(type(self.instance).__mro__):
             methods.update(vars(cls))
-        operations = []
-        streams = []
-        cleanup = []
+        operations: list[tuple[Operation[Message, Message], Handler]] = []
+        streams: list[tuple[Stream, Observer | Producer, bool]] = []
+        cleanup: list[Cleanup] = []
         for name, method in methods.items():
-            if definition := getattr(method, "__harmos_operation__", None):
-                operations.append((definition, getattr(self.instance, name)))
-            if definition := getattr(method, "__harmos_observer__", None):
-                streams.append((definition, getattr(self.instance, name), True))
-            if definition := getattr(method, "__harmos_publisher__", None):
-                streams.append((definition, getattr(self.instance, name), False))
+            definition = getattr(method, "__harmos_operation__", None)
+            if isinstance(definition, Operation):
+                operations.append((cast(Operation[Message, Message], definition), cast(Handler, getattr(self.instance, name))))
+            definition = getattr(method, "__harmos_observer__", None)
+            if isinstance(definition, Stream):
+                streams.append((definition, cast(Observer, getattr(self.instance, name)), True))
+            definition = getattr(method, "__harmos_publisher__", None)
+            if isinstance(definition, Stream):
+                streams.append((definition, cast(Producer, getattr(self.instance, name)), False))
             if getattr(method, "__harmos_stop__", False):
-                cleanup.append(getattr(self.instance, name))
+                cleanup.append(cast(Cleanup, getattr(self.instance, name)))
         return operations, streams, cleanup
 
     def catalog(self) -> wire.Catalog:
@@ -97,7 +108,7 @@ class Plugin:
         if not re.fullmatch(core + rf"(?:-{prerelease}(?:\.{prerelease})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", self.version):
             raise ValueError("Invalid Plugin Version")
         catalog = wire.Catalog()
-        files = {}
+        files: dict[str, FileDescriptorProto] = {}
         _merge(files, *self.messages)
         operations, streams, _ = self._registrations()
         for definition, _ in operations:
@@ -136,7 +147,7 @@ class Plugin:
         pool = DescriptorPool()
         installed = set()
 
-        def install(name):
+        def install(name: str) -> None:
             if name in installed:
                 return
             definition = files[name]
@@ -155,7 +166,35 @@ class Plugin:
         service = _Service(self, self.catalog())
         maximum = message_bytes(self.transfer)
         server = grpc.aio.server(options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
-        add_InstanceServicer_to_server(service, server)
+        server.add_generic_rpc_handlers(
+            (
+                grpc.method_handlers_generic_handler(
+                    "harmos.plugin.v1.Instance",
+                    {
+                        "Get": grpc.unary_unary_rpc_method_handler(
+                            service.get,
+                            request_deserializer=carrier.InstanceGetRequest.FromString,
+                            response_serializer=carrier.InstanceGetResponse.SerializeToString,
+                        ),
+                        "Stop": grpc.unary_unary_rpc_method_handler(
+                            service.stop,
+                            request_deserializer=carrier.InstanceStopRequest.FromString,
+                            response_serializer=carrier.InstanceStopResponse.SerializeToString,
+                        ),
+                        "Invoke": grpc.stream_stream_rpc_method_handler(
+                            service.invoke,
+                            request_deserializer=carrier.InstanceInvokeRequest.FromString,
+                            response_serializer=carrier.InstanceInvokeResponse.SerializeToString,
+                        ),
+                        "Samples": grpc.stream_stream_rpc_method_handler(
+                            service.samples,
+                            request_deserializer=carrier.InstanceSamplesRequest.FromString,
+                            response_serializer=carrier.InstanceSamplesResponse.SerializeToString,
+                        ),
+                    },
+                ),
+            )
+        )
         port = server.add_insecure_port(address)
         if not port:
             raise ValueError(f"Cannot Bind: {address}")
@@ -172,7 +211,7 @@ class Plugin:
 
 
 class Endpoint:
-    def __init__(self, server: grpc.aio.Server, address: str):
+    def __init__(self, server: grpc.aio.Server, address: str) -> None:
         self.server = server
         self.address = address
 
@@ -180,14 +219,14 @@ class Endpoint:
         await self.server.stop(None)
 
 
-class _Fault(Exception):
-    def __init__(self, code: grpc.StatusCode, message: str):
+class _FaultError(Exception):
+    def __init__(self, code: grpc.StatusCode, message: str) -> None:
         self.code = code
         self.message = message
 
 
-class _Service(InstanceServicer):
-    def __init__(self, plugin: Plugin, catalog: wire.Catalog):
+class _Service:
+    def __init__(self, plugin: Plugin, catalog: wire.Catalog) -> None:
         self.description = carrier.InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
@@ -208,12 +247,12 @@ class _Service(InstanceServicer):
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
         self.requires = {requirement.id: requirement.fingerprint for requirement in catalog.requires}
 
-    async def Get(self, request, context):
+    async def get(self, request: carrier.InstanceGetRequest, context: grpc.aio.ServicerContext) -> carrier.InstanceGetResponse:
         if request.revision == 0:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Revision Must Be at Least One")
         return self.description
 
-    async def Stop(self, request, context):
+    async def stop(self, request: carrier.InstanceStopRequest, context: grpc.aio.ServicerContext) -> carrier.InstanceStopResponse:
         try:
             for cleanup in self.cleanup:
                 result = cleanup()
@@ -223,7 +262,7 @@ class _Service(InstanceServicer):
             await context.abort(grpc.StatusCode.INTERNAL, str(error))
         return carrier.InstanceStopResponse()
 
-    async def Invoke(self, request_iterator, context):
+    async def invoke(self, request_iterator: AsyncIterator[carrier.InstanceInvokeRequest], context: grpc.aio.ServicerContext) -> None:
         first = await anext(request_iterator, None)
         if first is None or first.WhichOneof("frame") != "request":
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Request Must Be First")
@@ -250,7 +289,7 @@ class _Service(InstanceServicer):
         try:
             while True:
                 frame = await output.get()
-                if isinstance(frame, _Fault):
+                if isinstance(frame, _FaultError):
                     await context.abort(frame.code, frame.message)
                 await context.write(frame)
                 if frame.WhichOneof("frame") == "response":
@@ -259,7 +298,7 @@ class _Service(InstanceServicer):
             execution._output = None
             await _release(running, reading)
 
-    async def Samples(self, request_iterator, context):
+    async def samples(self, request_iterator: AsyncIterator[carrier.InstanceSamplesRequest], context: grpc.aio.ServicerContext) -> None:
         first = await anext(request_iterator, None)
         if first is None or first.WhichOneof("frame") != "open":
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "Open Must Be First")
@@ -281,7 +320,7 @@ class _Service(InstanceServicer):
                 sample = await output.get()
                 if sample is None:
                     return
-                if isinstance(sample, _Fault):
+                if isinstance(sample, _FaultError):
                     await context.abort(sample.code, sample.message)
                 sequence += 1
                 sample.sequence = sequence
@@ -295,7 +334,7 @@ class _Service(InstanceServicer):
 # === Private Functions === #
 
 
-def _merge(files: dict, *messages: type[Message]) -> None:
+def _merge(files: dict[str, FileDescriptorProto], *messages: type[Message]) -> None:
     for message in messages:
         for file in message_types(message).file:
             existing = files.get(file.name)
@@ -323,7 +362,13 @@ async def _release(*tasks: asyncio.Task) -> None:
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def _execute(handler, execution, request, response, output):
+async def _execute(
+    handler: Handler,
+    execution: Context,
+    request: Message,
+    response: type[Message],
+    output: asyncio.Queue[carrier.InstanceInvokeResponse | _FaultError],
+) -> None:
     try:
         value = await handler(execution, request)
         if not isinstance(value, response):
@@ -332,15 +377,19 @@ async def _execute(handler, execution, request, response, output):
     except Failure as failure:
         result = wire.Response(failure=failure.value)
     except (ProtocolError, DecodeError) as error:
-        await output.put(_Fault(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
+        await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
         return
     except Exception as error:
-        await output.put(_Fault(grpc.StatusCode.INTERNAL, str(error)))
+        await output.put(_FaultError(grpc.StatusCode.INTERNAL, str(error)))
         return
     await output.put(carrier.InstanceInvokeResponse(response=result))
 
 
-async def _read_invoke(input, execution, output):
+async def _read_invoke(
+    input: AsyncIterator[carrier.InstanceInvokeRequest],
+    execution: Context,
+    output: asyncio.Queue[carrier.InstanceInvokeResponse | _FaultError],
+) -> None:
     try:
         async for frame in input:
             match frame.WhichOneof("frame"):
@@ -351,12 +400,17 @@ async def _read_invoke(input, execution, output):
                 case _:
                     raise ProtocolError("Expected Child Response or Cancel")
         if execution._pending or execution._watches:
-            await output.put(_Fault(grpc.StatusCode.UNAVAILABLE, "Host Closed Before Child Replies"))
+            await output.put(_FaultError(grpc.StatusCode.UNAVAILABLE, "Host Closed Before Child Replies"))
     except ProtocolError as error:
-        await output.put(_Fault(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
+        await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
 
 
-async def _read_publish(input, observing, ticks, output):
+async def _read_publish(
+    input: AsyncIterator[carrier.InstanceSamplesRequest],
+    observing: bool,
+    ticks: asyncio.Queue[Timestamp],
+    output: asyncio.Queue[wire.Sample | _FaultError | None],
+) -> None:
     try:
         async for frame in input:
             if frame.WhichOneof("frame") != "tick":
@@ -369,23 +423,30 @@ async def _read_publish(input, observing, ticks, output):
             await ticks.put(frame.tick.at)
         await output.put(None)
     except ProtocolError as error:
-        await output.put(_Fault(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
+        await output.put(_FaultError(grpc.StatusCode.INVALID_ARGUMENT, str(error)))
 
 
-async def _produce(handler, execution, row_type, observing, ticks, output):
+async def _produce(
+    handler: Observer | Producer,
+    execution: Context,
+    row_type: type[Message],
+    observing: bool,
+    ticks: asyncio.Queue[Timestamp],
+    output: asyncio.Queue[wire.Sample | _FaultError | None],
+) -> None:
     try:
         if not observing:
-            await handler(execution, Publisher(row_type, output))
+            await cast(Producer, handler)(execution, Publisher(row_type, output))
             return
         while True:
             at = await ticks.get()
             execution.sequence += 1
-            row = await handler(execution)
+            row = await cast(Observer, handler)(execution)
             if not isinstance(row, row_type):
                 raise TypeError("Observer Returned the Wrong Protobuf Type")
             await output.put(wire.Sample(at=at, row=row.SerializeToString()))
     except Exception as error:
-        await output.put(_Fault(grpc.StatusCode.INTERNAL, str(error)))
+        await output.put(_FaultError(grpc.StatusCode.INTERNAL, str(error)))
 
 
 # === Entry Point === #

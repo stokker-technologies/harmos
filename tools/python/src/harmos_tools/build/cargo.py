@@ -19,7 +19,7 @@ import sys
 import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 # Third Party Imports
 # Local Imports
@@ -36,6 +36,32 @@ from . import paths
 # === Types === #
 
 # === Classes === #
+
+
+class Target(TypedDict, total=False):
+    name: str
+    kind: list[str]
+    crate_types: list[str]
+    src_path: str
+    test: bool
+
+
+class Profile(TypedDict, total=False):
+    test: bool
+
+
+class Artifact(TypedDict, total=False):
+    reason: str
+    success: bool
+    manifest_path: str
+    package_id: str
+    target: Target
+    profile: Profile
+    filenames: list[str]
+    executable: str | None
+    features: list[str]
+    out_dir: str
+
 
 # === Public Functions === #
 
@@ -173,9 +199,9 @@ def record_target(directory: Path, messages: Path, profile: str, native: str | N
     destination.write_text(actual + "\n")
 
 
-def artifacts(directory: Path, messages: Path) -> Iterator[dict[str, Any]]:
+def artifacts(directory: Path, messages: Path) -> Iterator[Artifact]:
     for line in messages.read_text(encoding="utf-8").splitlines():
-        event = json.loads(line)
+        event: Artifact = json.loads(line)
         if event.get("reason") != "compiler-artifact" or event.get("profile", {}).get("test"):
             continue
         manifest = Path(event["manifest_path"])

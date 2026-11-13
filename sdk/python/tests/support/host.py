@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags

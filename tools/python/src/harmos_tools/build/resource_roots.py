@@ -13,12 +13,12 @@
 
 # Standard Library Imports
 import argparse
-import json
 import re
 from pathlib import Path
+from typing import TypedDict
 
 # Third Party Imports
-from google.protobuf.descriptor_pb2 import FileDescriptorSet
+from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
 # Local Imports
 
@@ -33,17 +33,41 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # === Classes === #
 
+
+class Method(TypedDict):
+    owner: str
+    face: str
+    version: str
+    parents: list[str]
+    service: str
+    method: str
+    package: str
+    path: list[str]
+    request: str
+    response: str
+    request_csharp: str
+    response_csharp: str
+    client_streaming: bool
+    server_streaming: bool
+    file: str
+
+
 # === Public Functions === #
 
 
-def table(descriptors: FileDescriptorSet) -> list[dict]:
-    methods = []
+def table(descriptors: FileDescriptorSet) -> list[Method]:
+    methods: list[Method] = []
     leaves = set()
     csharp_types = {}
+
+    def record_messages(messages: list[DescriptorProto], package: str, namespace: str) -> None:
+        for message in messages:
+            csharp_types[f"{package}.{message.name}"] = f"{namespace}.{message.name}"
+            record_messages(list(message.nested_type), f"{package}.{message.name}", f"{namespace}.{message.name}.Types")
+
     for file in descriptors.file:
         namespace = file.options.csharp_namespace or ".".join(part[0].upper() + part[1:] for part in file.package.split("."))
-        for message in file.message_type:
-            csharp_types[f".{file.package}.{message.name}"] = f"{namespace}.{message.name}"
+        record_messages(list(file.message_type), f".{file.package}", namespace)
 
     for file in descriptors.file:
         parts = file.package.split(".")
@@ -60,7 +84,7 @@ def table(descriptors: FileDescriptorSet) -> list[dict]:
                     raise ValueError(f"Client Resource Collision: {'.'.join(path)}")
                 leaves.add(leaf)
                 methods.append(
-                    dict(
+                    Method(
                         owner=owner,
                         face=face,
                         version=parts[version],
@@ -100,12 +124,8 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     ]:
         (root / folder).mkdir(parents=True, exist_ok=True)
     methods = table(descriptors)
-    output = root / "sdk/resources.json"
-    output.write_text(json.dumps(methods, indent=2) + "\n", encoding="utf-8", newline="\n")
     clients = [method for method in methods if method["face"] == "client"]
-    # The Shared Table Is the Only Naming Input to Every Language Generator.
-    python = root / "sdk/python/src/harmos/resources.json"
-    python.write_text(json.dumps(clients, indent=2) + "\n", encoding="utf-8", newline="\n")
+    python(root / "sdk/python/src/harmos/generated/client.py", clients, descriptors)
     rust(root, clients)
     if namespace == "harmos":
         rust_context(root, [method for method in methods if method["face"] == "context"])
@@ -114,16 +134,98 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
         fixture_methods = clients + table(FileDescriptorSet.FromString(fixture.read_bytes()))
-        (root / "sdk/tests/fixtures/client/resources.json").write_text(
-            json.dumps(fixture_methods, indent=2) + "\n", encoding="utf-8", newline="\n"
-        )
+        merged = FileDescriptorSet()
+        merged.file.extend(descriptors.file)
+        merged.file.extend(FileDescriptorSet.FromString(fixture.read_bytes()).file)
+        python(root / "sdk/python/tests/fixtures/client/client.py", fixture_methods, merged)
         for folder in ["sdk/csharp/tests/Harmos.Tests/Generated"]:
             (root / folder).mkdir(parents=True, exist_ok=True)
         rust(root, fixture_methods, target=fixture.parent / "resources.rs")
         csharp(root, fixture_methods, namespace="fixture", target=root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs")
 
 
-def rust(root: Path, methods: list[dict], *, target: Path | None = None) -> None:
+def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
+    """Render Explicit Resource Classes With Native Typed gRPC Calls."""
+    nodes: set[tuple[str, ...]] = {()}
+    leaves: set[tuple[str, ...]] = set()
+    for method in methods:
+        action = f"{method['package']}.{method['service']}/{method['method']}"
+        if method["face"] != "client" or method["client_streaming"]:
+            raise ValueError(f"Generate Python Client {action}: Client Unary or Server-Streaming Method Required")
+        leaf = tuple(method["path"])
+        if leaf in leaves:
+            raise ValueError(f"Generate Python Client {action}: Resource Collision")
+        leaves.add(leaf)
+        nodes.update(leaf[:length] for length in range(1, len(leaf)))
+    if nodes & leaves:
+        raise ValueError("Generate Python Client: Resource and Method Collision")
+    names = {node: "ClientRoot" if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
+    if len(set(names.values())) != len(names):
+        raise ValueError("Generate Python Client: Resource Class Collision")
+    messages: dict[str, tuple[str, str]] = {}
+
+    def record_messages(definitions: list[DescriptorProto], package: str, module: str, parent: str = "") -> None:
+        for definition in definitions:
+            name = parent + definition.name
+            messages[f"{package}.{name}"] = (module, name)
+            record_messages(list(definition.nested_type), package, module, name + ".")
+
+    for file in descriptors.file:
+        record_messages(list(file.message_type), file.package, file.name.removesuffix(".proto").replace("/", ".") + "_pb2")
+    for prefix, replacement in (module_prefixes or {}).items():
+        messages = {
+            name: (module.replace(prefix + ".", replacement + ".", 1) if module.startswith(prefix + ".") else module, message)
+            for name, (module, message) in messages.items()
+        }
+    modules = sorted({messages[method[field]][0] for method in methods for field in ("request", "response")})
+    aliases = {module: f"messages_{index}" for index, module in enumerate(modules)}
+    lines = [
+        "# @generated from protocol descriptors; do not edit.",
+        '"""Typed Client Resources."""',
+        "import grpc",
+        "from harmos.client_transport import Metadata, stream, unary",
+        *[f"import {module} as {aliases[module]}" for module in modules],
+        "",
+    ]
+    for node in sorted(nodes, key=lambda value: (-len(value), value)):
+        children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
+        lines += [f"class {names[node]}:", "    def __init__(self, channel: grpc.aio.Channel) -> None:", "        self._channel = channel"]
+        lines += [f"        self.{child[-1]}: {names[child]} = {names[child]}(channel)" for child in children]
+        for method in (method for method in methods if tuple(method["path"][:-1]) == node):
+            request_module, request_name = messages[method["request"]]
+            response_module, response_name = messages[method["response"]]
+            request = f"{aliases[request_module]}.{request_name}"
+            response = f"{aliases[response_module]}.{response_name}"
+            call = "stream" if method["server_streaming"] else "unary"
+            result = "UnaryStreamCall" if method["server_streaming"] else "UnaryUnaryCall"
+            path = f"/{method['package']}.{method['service']}/{method['method']}"
+            lines += [
+                "",
+                f"    def {method['path'][-1]}(",
+                f"        self, request: {request}, *, metadata: Metadata | None = None, timeout: float | None = None,",
+                "        credentials: grpc.CallCredentials | None = None,",
+                f"    ) -> grpc.aio.{result}[{request}, {response}]:",
+                f'        return {call}(self._channel, "{path}", request, {response}, metadata=metadata, timeout=timeout, credentials=credentials)',
+            ]
+        lines += [""]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    # Generated Files Follow the Same Import and Formatting Rules as Maintained Python.
+    import subprocess
+    import sys
+
+    from ..process import spawn_flags
+
+    config = Path(__file__).resolve().parents[5] / "sdk/python/pyproject.toml"
+    subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I", "--fix", str(target)],
+        check=True,
+        creationflags=spawn_flags(),
+    )
+    subprocess.run([sys.executable, "-m", "ruff", "format", "--config", str(config), str(target)], check=True, creationflags=spawn_flags())
+
+
+def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
     nodes = {()}
     for method in methods:
         for length in range(1, len(method["path"])):
@@ -174,14 +276,14 @@ def rust(root: Path, methods: list[dict], *, target: Path | None = None) -> None
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def rust_context(root: Path, methods: list[dict]) -> None:
+def rust_context(root: Path, methods: list[Method]) -> None:
     lines = ["// @generated from the protocol descriptor table; do not edit.", "use crate::{Message, OperationRequest};"]
     messages = sorted(
         {method[field] for method in methods for field in ("request", "response")}
         | {"harmos.v1.SettingDeclaration", "harmos.v1.SettingsDeclarations"}
     )
 
-    def path(name):
+    def path(name: str) -> str:
         parts = name.split(".")
         if parts[1] == "v1":
             return "harmos_protocol::v1::" + "::".join(parts[2:])
@@ -208,12 +310,12 @@ def rust_context(root: Path, methods: list[dict]) -> None:
     (root / "sdk/rust/src/context/contracts.rs").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: Path | None = None, check: bool = False) -> None:
+def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None, check: bool = False) -> None:
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
 
-    def title(part):
+    def title(part: str) -> str:
         return "".join(word.title() for word in part.split("_"))
 
     names = {node: "Client" if not node else "".join(title(part) for part in node) + "Resource" for node in nodes}
@@ -277,7 +379,7 @@ def csharp(root: Path, methods: list[dict], *, namespace: str = "harmos", target
         destination.write_text(source, encoding="utf-8", newline="\n")
 
 
-def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: Path | None = None) -> None:
+def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None) -> None:
     keywords = set(
         "alignas alignof and and_eq asm auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const "
         "consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else "
@@ -287,14 +389,14 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
         "volatile wchar_t while xor xor_eq".split()
     )
 
-    def identifier(value):
+    def identifier(value: str) -> str:
         return value + "_" if value in keywords else value
 
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
 
-    def title(part):
+    def title(part: str) -> str:
         return "".join(word.title() for word in part.split("_"))
 
     names = {node: "Client" if not node else "".join(title(part) for part in node) + "Resource" for node in nodes}
@@ -359,7 +461,7 @@ def cpp(root: Path, methods: list[dict], *, namespace: str = "harmos", target: P
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def compose(repository: Path, descriptors: list[Path], output: Path, namespace: str) -> None:
+def compose(repository: Path, descriptors: list[Path], output: Path, namespace: str, *, language: str | None = None) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
         raise ValueError("Generate Client: Invalid Output Namespace")
     merged = FileDescriptorSet()
@@ -371,7 +473,10 @@ def compose(repository: Path, descriptors: list[Path], output: Path, namespace: 
                 raise ValueError(f"Generate Client: Conflicting Descriptor File {file.name}")
             files[file.name] = file
     merged.file.extend(files[name] for name in sorted(files))
-    generate(output, merged, namespace=namespace)
+    if language == "python":
+        python(output, [method for method in table(merged) if method["face"] == "client"], merged)
+    else:
+        generate(output, merged, namespace=namespace)
 
 
 def main() -> None:
@@ -379,6 +484,7 @@ def main() -> None:
     parser.add_argument("--descriptors", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--namespace", default="harmos")
+    parser.add_argument("--language", choices=("python",))
     parser.add_argument("--cpp-fixture", type=Path)
     options = parser.parse_args()
     root = Path(__file__).resolve().parents[5]
@@ -390,7 +496,7 @@ def main() -> None:
     elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")
-        compose(root, options.descriptors, options.output, options.namespace)
+        compose(root, options.descriptors, options.output, options.namespace, language=options.language)
     else:
         generate(root)
 

@@ -14,9 +14,11 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import cast
 
 # Third Party Imports
 from google.protobuf import descriptor_pb2
+from google.protobuf.descriptor import Descriptor, EnumDescriptor
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 
@@ -137,11 +139,11 @@ def on_stop[F: Callable](handler: F) -> F:
 
 def message_types(message: type[Message]) -> descriptor_pb2.FileDescriptorSet:
     """Project Reachable Definitions Without Compiler Presentation Metadata."""
-    files = {}
-    seen = set()
-    selected = {}
+    files: dict[str, descriptor_pb2.FileDescriptorProto] = {}
+    seen: set[str] = set()
+    selected: dict[str, set[str]] = {}
 
-    def visit(node):
+    def visit(node: Descriptor | EnumDescriptor) -> None:
         root = node
         while root.containing_type is not None:
             root = root.containing_type
@@ -151,21 +153,21 @@ def message_types(message: type[Message]) -> descriptor_pb2.FileDescriptorSet:
         source = descriptor_pb2.FileDescriptorProto.FromString(root.file.serialized_pb)
         files[root.file.name] = source
         selected.setdefault(root.file.name, set()).add(root.name)
-        if hasattr(root, "fields"):
+        if isinstance(root, Descriptor):
             visit_fields(root)
 
-    def visit_fields(node):
+    def visit_fields(node: Descriptor) -> None:
         for field in (*node.fields, *node.extensions):
             if field.message_type is not None:
                 visit(field.message_type)
             elif field.enum_type is not None:
                 visit(field.enum_type)
-            if field.is_extension:
+            if field.is_extension and field.containing_type is not None:
                 visit(field.containing_type)
         for child in node.nested_types:
             visit_fields(child)
 
-    visit(message.DESCRIPTOR)
+    visit(cast(Descriptor, message.DESCRIPTOR))
     result = descriptor_pb2.FileDescriptorSet()
     for name, source in sorted(files.items()):
         definition = result.file.add()

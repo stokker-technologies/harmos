@@ -25,7 +25,8 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.package import changelog, conformance, run as packages
+from harmos_tools.package import changelog, conformance
+from harmos_tools.package import run as packages
 from harmos_tools.release import layout, notices, policy, sbom
 
 # Type Checking Imports
@@ -40,7 +41,7 @@ from harmos_tools.release import layout, notices, policy, sbom
 
 
 class ReleasePackage(unittest.TestCase):
-    def test_crate_notes_stage_and_restore_manifest_bytes(self):
+    def test_crate_notes_stage_and_restore_manifest_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             manifests = []
@@ -70,7 +71,7 @@ class ReleasePackage(unittest.TestCase):
             self.assertEqual(retained.read_bytes(), b"retained\n")
             self.assertFalse((manifests[1].parent / "CHANGELOG.md").exists())
 
-    def test_matching_product_bytes_and_locked_licenses_become_release_inputs(self):
+    def test_matching_product_bytes_and_locked_licenses_become_release_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / "tools").mkdir()

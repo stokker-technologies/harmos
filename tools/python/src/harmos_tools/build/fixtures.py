@@ -19,12 +19,13 @@ import shutil
 import stat
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from .. import temporary
+from .cargo import Artifact, Profile
 
 # Type Checking Imports
 
@@ -138,7 +139,7 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
     return record
 
 
-def messages(record: dict) -> list[dict]:
+def messages(record: dict) -> list[Artifact]:
     content = Path(record["messages"]["path"]).read_text(encoding="utf-8")
     return [json.loads(line) for line in content.splitlines() if line.startswith("{")]
 
@@ -268,7 +269,7 @@ def _requirements(project: Path, destination: Path) -> None:
         )
 
 
-def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
+def generate_python(tool: Path, build: Path, protoc: Path, files: dict, *, source_root: Path = ROOT) -> None:
     """Generate the Schematic Host's Python Client From Its Captured Contracts."""
     metadata = json.loads(build.read_text(encoding="utf-8"))
     catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-cli"}
@@ -282,7 +283,11 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
 
     catalog = catalogs.pop()
     schema = next(schema for schema in metadata["schemas"] if schema["producer"] == "schematic-cli" and schema["catalog"] == catalog)
-    request = {"action": "python", "export": schema["directory"], "output": str(output), "protoc": str(protoc)}
+    # Consume the Immutable Export, Including When the Producer Checkout Is Gone.
+    directory = build.parent.parent / "builds" / build.stem / Path(schema["directory"]).relative_to(source_root)
+    for name, expected in schema["files"].items():
+        verify(digest(directory / name), expected, f"Python client schema differs from captured bytes: {name}")
+    request = {"action": "python", "export": str(directory), "output": str(output), "protoc": str(protoc)}
     subprocess.run(
         [str(tool)],
         input=json.dumps(request),
@@ -292,6 +297,25 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict) -> None:
         check=True,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         stderr=sys.stderr,
+    )
+    # Normalize Product Bindings Before Recording Their Published Digests.
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--config",
+            str(ROOT / "tools/python/ruff.toml"),
+            "--select",
+            "I",
+            "--fix",
+            "--extend-exclude=_wire",
+            str(output / "src"),
+        ],
+        cwd=ROOT,
+        check=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     generated = sorted(output.rglob("*"))
     generated_files = (path for path in generated if path.is_file())
@@ -351,13 +375,14 @@ def verify(actual: str, expected: str, reason: str) -> None:
         raise RuntimeError(reason)
 
 
-def executable(messages: list[dict], name: str) -> Path:
+def executable(messages: Sequence[Artifact], name: str) -> Path:
     found = {
-        message["executable"]
+        executable
         for message in messages
+        if (executable := message.get("executable")) is not None
         if message.get("reason") == "compiler-artifact"
         and message["target"]["name"] == name
-        and message.get("executable")
+        and executable
         and not message["profile"]["test"]
     }
     if len(found) != 1:
@@ -365,13 +390,13 @@ def executable(messages: list[dict], name: str) -> Path:
     return Path(found.pop())
 
 
-def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, str]:
+def libraries(messages: Sequence[Artifact], files: dict, fixtures: Path) -> dict[str, str]:
     """Transfer exact compiler-emitted libraries needed by the authoring refusal stories.
 
     Prefer the build whose features include every other's. Equal-feature host and
     shipping builds resolve against the shipping Harmos profile and type identities.
     """
-    found: dict[str, dict[str, tuple[set[str], dict]]] = {name: {} for name in LIBRARIES}
+    found: dict[str, dict[str, tuple[set[str], Profile]]] = {name: {} for name in LIBRARIES}
     destination = fixtures / "libraries"
     destination.mkdir()
 
@@ -395,7 +420,7 @@ def libraries(messages: list[dict], files: dict, fixtures: Path) -> dict[str, st
     return {name: path for name, path in selected.items() if path is not None}
 
 
-def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple[str, str, set[str], dict] | None:
+def _library(message: Artifact, filename: str, files: dict, fixtures: Path) -> tuple[str, str, set[str], Profile] | None:
     source = Path(filename)
     if source.suffix not in {".rlib", ".rmeta", ".so", ".dylib", ".dll"}:
         return None
@@ -417,7 +442,7 @@ def _library(message: dict, filename: str, files: dict, fixtures: Path) -> tuple
     return name, destination.relative_to(fixtures).as_posix(), set(message["features"]), message["profile"]
 
 
-def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = None) -> str | None:
+def _widest(builds: dict[str, tuple[set[str], Profile]], profile: Profile | None = None) -> str | None:
     features = [enabled for enabled, _ in builds.values()]
     required = set().union(*features)
     widest = [path for path, (features, _) in builds.items() if required <= features]
@@ -426,7 +451,7 @@ def _widest(builds: dict[str, tuple[set[str], dict]], profile: dict | None = Non
     return widest[0] if len(widest) == 1 else None
 
 
-def _compatible_library(name: str, builds: dict[str, tuple[set[str], dict]], harmos: Path, libraries: Path) -> str | None:
+def _compatible_library(name: str, builds: dict[str, tuple[set[str], Profile]], harmos: Path, libraries: Path) -> str | None:
     """Resolve Equal-Feature Host/Target Builds Against The Shipping Type Identity."""
     required = set().union(*(features for features, _ in builds.values()))
     compatible = []

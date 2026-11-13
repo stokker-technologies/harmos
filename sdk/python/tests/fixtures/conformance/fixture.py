@@ -18,8 +18,9 @@ from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
 from harmos import GET_TIME, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
-from .v1.fixture_pb2 import Graph, PayloadOnly, Value
 from harmos.v1 import types_pb2 as wire
+
+from .v1.fixture_pb2 import Graph, PayloadOnly, Value
 
 # Type Checking Imports
 
@@ -44,11 +45,11 @@ HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=wire
 
 
 class Fixture:
-    def __init__(self):
+    def __init__(self) -> None:
         self.echoes = 0
 
     @operation("conformance.local", request=Value, response=Value, visibility=wire.VISIBILITY_PRIVATE, replay_safe=True)
-    async def local(self, context, request):
+    async def local(self, context: Context, request: Value) -> Value:
         if request.value in (b"deadline", b"overall"):
             await context.sleep(Duration(seconds=3600))
             return request
@@ -62,7 +63,7 @@ class Fixture:
         return request
 
     @operation("conformance.local_call", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC)
-    async def local_call(self, context, request):
+    async def local_call(self, context: Context, request: Value) -> Value:
         policy = {
             b"retry": wire.OperationPolicy(
                 retries=wire.RetryPolicy(
@@ -169,7 +170,7 @@ class Fixture:
         return Value(value=(await ctx.cancelled()).encode())
 
     @operation("conformance.watch", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC)
-    async def watch(self, ctx, request):
+    async def watch(self, ctx: Context, request: Value) -> Value:
         value = b""
         async with ctx.watch(HOST_WATCH, request, max_item_bytes=4096) as items:
             async for item in items:
@@ -179,7 +180,7 @@ class Fixture:
         return Value(value=value)
 
     @operation("conformance.peer_call", request=Value, response=Value, visibility=wire.VISIBILITY_PUBLIC)
-    async def peer_call(self, context, request):
+    async def peer_call(self, context: Context, request: Value) -> Value:
         if request.value == b"self":
             return await context.call(OWN_PROTECTED, request)
         if request.value == b"public":

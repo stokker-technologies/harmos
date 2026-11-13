@@ -16,7 +16,6 @@ import unittest
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.test import focused, policy
 
@@ -32,10 +31,10 @@ from harmos_tools.test import focused, policy
 
 
 class TestSelection(unittest.TestCase):
-    def test_changed_story_support_and_product_select_their_consumers(self):
+    def test_changed_story_support_and_product_select_their_consumers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary).resolve()
-            packages = []
+            packages: list[focused.Package] = []
             for name, dependencies in (("model", []), ("host", ["model"]), ("other", [])):
                 root = directory / name
                 (root / "tests/integration").mkdir(parents=True)
@@ -45,7 +44,7 @@ class TestSelection(unittest.TestCase):
                 (root / "tests/system/main.rs").write_text('#[path = "../support/fixture.rs"]\nmod fixture;\n')
                 (root / "tests/support/fixture.rs").write_text("")
                 (root / "tests/integration/save_and_reopen.rs").write_text("")
-                targets = [
+                targets: list[focused.Target] = [
                     {"kind": ["lib"], "name": name, "test": True, "src_path": str(root / "src/lib.rs")},
                     {"kind": ["test"], "name": "integration", "src_path": str(root / "tests/integration/main.rs")},
                     {"kind": ["test"], "name": "system", "src_path": str(root / "tests/system/main.rs")},
@@ -59,7 +58,7 @@ class TestSelection(unittest.TestCase):
                         "targets": targets,
                     }
                 )
-            metadata = {"packages": packages, "workspace_members": [item["id"] for item in packages]}
+            metadata: focused.Metadata = {"packages": packages, "workspace_members": [item["id"] for item in packages]}
 
             # Select One Story, Then Every Target Sharing Its Fixture.
             self.assertEqual(

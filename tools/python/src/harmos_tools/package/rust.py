@@ -19,15 +19,15 @@ import shutil
 import subprocess
 import sys
 import zipfile
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
+
+from .. import temporary
+from ..build import paths
 
 # Third Party Imports
-
 # Local Imports
 from ..build.fixtures import ROOT
-from ..build import paths
-from .. import temporary
 from . import conformance, run
 
 # Type Checking Imports

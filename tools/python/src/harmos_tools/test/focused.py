@@ -18,13 +18,13 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 from xml.etree import ElementTree
 
 # Third Party Imports
-
 # Local Imports
 from .. import temporary
+from ..build.cargo import Target
 from ..process import spawn_flags
 from . import nextest, policy, report
 
@@ -40,10 +40,29 @@ FIXTURES = Path("crates/harmos-runtime/tests/support/fixtures.rs")
 
 # === Classes === #
 
+
+class Dependency(TypedDict, total=False):
+    name: str
+    path: str
+
+
+class Package(TypedDict):
+    id: str
+    name: str
+    manifest_path: str
+    targets: list[Target]
+    dependencies: list[Dependency]
+
+
+class Metadata(TypedDict):
+    packages: list[Package]
+    workspace_members: list[str]
+
+
 # === Public Functions === #
 
 
-def select(directory: Path, metadata: dict[str, Any], paths: Sequence[Path]) -> dict[str, list[str]]:
+def select(directory: Path, metadata: Metadata, paths: Sequence[Path]) -> dict[str, list[str]]:
     """Select Test Targets, Including Local Consumers Of Changed Product Code."""
     packages = {item["name"]: item for item in metadata["packages"] if item["id"] in metadata["workspace_members"]}
     roots = {name: Path(item["manifest_path"]).parent.resolve() for name, item in packages.items()}
@@ -232,7 +251,7 @@ def run(
 # === Private Functions === #
 
 
-def _targets(package: dict[str, Any]) -> list[str]:
+def _targets(package: Package) -> list[str]:
     selected = []
     for target in package["targets"]:
         if "test" in target["kind"]:

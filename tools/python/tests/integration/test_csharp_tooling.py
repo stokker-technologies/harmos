@@ -18,7 +18,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools import csharp
 from harmos_tools.build.rust import tests as producer
@@ -35,7 +34,7 @@ from harmos_tools.build.rust import tests as producer
 
 
 class CSharpTooling(unittest.TestCase):
-    def test_generated_root_checks_detect_drift_without_rewriting_sources(self):
+    def test_generated_root_checks_detect_drift_without_rewriting_sources(self) -> None:
         root = Path(__file__).resolve().parents[4]
         with tempfile.TemporaryDirectory() as name:
             scratch = Path(name)
@@ -63,7 +62,7 @@ class CSharpTooling(unittest.TestCase):
                 self.assertFalse(target.exists())
                 target.write_bytes(original)
 
-    def test_rust_producer_stages_the_msbuild_selected_runtime_closure(self):
+    def test_rust_producer_stages_the_msbuild_selected_runtime_closure(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
             for profile, configuration in (("dev", "Debug"), ("release", "Release")):

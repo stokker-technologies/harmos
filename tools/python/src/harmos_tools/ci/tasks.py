@@ -20,7 +20,6 @@ import tomllib
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from ..build import cargo
 from ..process import spawn_flags
@@ -408,7 +407,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
             if options.output is None:
                 parser.error("composed client roots require --output")
-            compose(root, options.descriptors, options.output, options.namespace)
+            compose(root, options.descriptors, options.output, options.namespace, language=options.sdk)
             return 0
         if options.sdk == "python":
             return _execute(["mise", "-C", "sdk/python", "run", "generate"])
@@ -544,7 +543,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
     # Release Operations
     operation = options.command.partition(":")[2]
     if operation in ("publish", "verify") and options.channel == "nightly":
-        from ..release import nightly, policy as release_policy
+        from ..release import nightly
+        from ..release import policy as release_policy
 
         if operation == "verify":
             nightly.verify(root)

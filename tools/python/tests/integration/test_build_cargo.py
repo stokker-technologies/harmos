@@ -11,12 +11,12 @@
 # === Imports === #
 
 # Standard Library Imports
-import unittest
 import contextlib
 import io
 import json
 import os
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -40,7 +40,7 @@ from harmos_tools.test import archive as archives
 
 
 class FocusedCargoTests(unittest.TestCase):
-    def test_archive_publishes_complete_compiler_messages(self):
+    def test_archive_publishes_complete_compiler_messages(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             archive = archives.location(directory, "dev")
@@ -51,8 +51,9 @@ class FocusedCargoTests(unittest.TestCase):
             complete = {"reason": "build-finished", "success": True}
             encoded = json.dumps(complete) + "\n"
 
-            def compile_archive(command, **options):
+            def compile_archive(command: list[str], **options: object) -> SimpleNamespace:
                 output = options["stdout"]
+                assert isinstance(output, io.TextIOBase)
                 middle = len(encoded) // 2
                 output.write(encoded[:middle])
                 output.flush()
@@ -70,7 +71,7 @@ class FocusedCargoTests(unittest.TestCase):
             self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), complete)
             self.assertEqual(set(archive.parent.iterdir()), {archive, messages})
 
-    def test_dispatches_only_requested_operation(self):
+    def test_dispatches_only_requested_operation(self) -> None:
         directory = Path.cwd()
         operations = ("build", "check", "test", "clippy", "run")
         for operation in operations:
@@ -95,7 +96,7 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertEqual(options["env"]["CARGO_BUILD_WARNINGS"], "deny")
                 self.assertEqual(options["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
 
-    def test_nested_manifest_shares_repository_target(self):
+    def test_nested_manifest_shares_repository_target(self) -> None:
         directory = Path.cwd()
         with (
             patch.dict(os.environ, CARGO_TARGET_DIR="elsewhere"),
@@ -104,13 +105,13 @@ class FocusedCargoTests(unittest.TestCase):
             cargo.focused(directory, "build", ["--manifest-path", "examples/schematic/Cargo.toml"])
         self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
 
-    def test_rejects_target_redirection_before_dispatch(self):
+    def test_rejects_target_redirection_before_dispatch(self) -> None:
         with patch.object(cargo.subprocess, "run") as run:
             with self.assertRaises(ValueError):
                 cargo.focused(Path.cwd(), "build", ["--target-dir", "elsewhere"])
         run.assert_not_called()
 
-    def test_entry_points_dispatch_focused_cargo_directly(self):
+    def test_entry_points_dispatch_focused_cargo_directly(self) -> None:
         selections = [
             (
                 ["build", "--package", "example", "--lib", "--check"],
@@ -166,7 +167,7 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertEqual(tasks.main(arguments), 7)
                 focused.assert_called_once_with(Path.cwd(), operation, expected)
 
-    def test_invalid_focused_selections_do_not_start_cargo(self):
+    def test_invalid_focused_selections_do_not_start_cargo(self) -> None:
         selections = [
             ["build", "--lib"],
             ["build", "--package", "example", "--example", "fixture", "--lib"],
@@ -189,7 +190,7 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 2)
                 focused.assert_not_called()
 
-    def test_release_mode_task_exports_selected_squash(self):
+    def test_release_mode_task_exports_selected_squash(self) -> None:
         for mode, sha in (("tag", "a" * 40), ("prepare", ""), ("skip", "")):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
                 output = Path(temporary) / "output"
@@ -204,7 +205,7 @@ class FocusedCargoTests(unittest.TestCase):
 
 
 class WorkflowTaskTests(unittest.TestCase):
-    def test_fixture_join_selects_existing_inputs_without_compiling(self):
+    def test_fixture_join_selects_existing_inputs_without_compiling(self) -> None:
         for profile in ("dev", "release"):
             with (
                 self.subTest(profile=profile),
@@ -253,14 +254,14 @@ class WorkflowTaskTests(unittest.TestCase):
             )
             focused.assert_not_called()
 
-    def test_focused_layers_preserve_the_requested_filter(self):
+    def test_focused_layers_preserve_the_requested_filter(self) -> None:
         expression = "package(=harmos-runtime) & test(guest_contract::)"
         for layer in ("integration", "system"):
             with self.subTest(layer=layer), patch.object(tasks, "_task", return_value=0) as task:
                 self.assertEqual(tasks.dispatch(["test", "--language", "rust", "--layer", layer, "--filter", expression]), 0)
                 task.assert_called_once_with(f"test:rust:{layer}", "--profile", "dev", "--filter", expression)
 
-    def test_prepare_installs_only_the_root_toolchain(self):
+    def test_prepare_installs_only_the_root_toolchain(self) -> None:
         toolchain = '[toolchain]\nchannel = "custom"\nprofile = "minimal"\ncomponents = ["rustfmt"]\ntargets = ["wasm32-wasip2"]\n'
         with (
             patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
@@ -287,7 +288,7 @@ class WorkflowTaskTests(unittest.TestCase):
         )
         focused.assert_not_called()
 
-    def test_sdk_tests_use_their_project_and_preserve_selection(self):
+    def test_sdk_tests_use_their_project_and_preserve_selection(self) -> None:
         for exact in (None, "tests.integration.example.Story.test_behavior"):
             arguments = ["test", "--language", "python", "--package", "harmos-sdk", "--target", "integration", "--profile", "release"]
             selected = ["--profile", "release"]
@@ -307,7 +308,7 @@ class WorkflowTaskTests(unittest.TestCase):
             )
             self.assertNotIn("VIRTUAL_ENV", execute.call_args.kwargs["environment"])
 
-    def test_csharp_solution_tasks_preserve_profile_and_test_layer(self):
+    def test_csharp_solution_tasks_preserve_profile_and_test_layer(self) -> None:
         for verb in ("build", "test", "package"):
             arguments = [verb, "--language", "csharp", "--profile", "release"]
             selected = ["--profile", "release"]
@@ -318,7 +319,7 @@ class WorkflowTaskTests(unittest.TestCase):
                 self.assertEqual(tasks.dispatch(arguments), 0)
             execute.assert_called_once_with(["mise", "-C", "sdk/csharp", "run", verb, "--", *selected])
 
-    def test_publication_selectors_preserve_guards_and_default_order(self):
+    def test_publication_selectors_preserve_guards_and_default_order(self) -> None:
         selections = [
             (["--dry"], [("release:publish:dry",)], []),
             (["--stage", "assets"], [("release:publish:assets",)], [("release.checks",), ("release.run", "identity")]),
@@ -339,7 +340,7 @@ class WorkflowTaskTests(unittest.TestCase):
                 self.assertEqual([call.args for call in module.call_args_list], expected_modules)
                 self.assertEqual(events, [*expected_modules, *expected_tasks])
 
-    def test_invalid_task_selectors_do_not_dispatch(self):
+    def test_invalid_task_selectors_do_not_dispatch(self) -> None:
         selections = [
             ["prepare", "--fixtures"],
             ["prepare", "--profile", "release"],
@@ -365,7 +366,7 @@ class WorkflowTaskTests(unittest.TestCase):
                 task.assert_not_called()
                 module.assert_not_called()
 
-    def test_transport_surrounds_successful_task_and_does_not_recur(self):
+    def test_transport_surrounds_successful_task_and_does_not_recur(self) -> None:
         events = []
         environment = {
             "CI_INPUT_ARCHIVES": json.dumps(["target/ci/input.tar.zst"]),
@@ -374,7 +375,7 @@ class WorkflowTaskTests(unittest.TestCase):
             ),
         }
 
-        def dispatch(arguments):
+        def dispatch(arguments: list[str] | None) -> int:
             self.assertNotIn("CI_INPUT_ARCHIVES", os.environ)
             self.assertNotIn("CI_OUTPUT_ARCHIVES", os.environ)
             events.append("task")
@@ -391,7 +392,7 @@ class WorkflowTaskTests(unittest.TestCase):
         self.assertEqual(events, ["extract", "task", "pack"])
         self.assertEqual(pack.call_args.args[3:], ("release", "linux-x86_64"))
 
-    def test_failed_task_does_not_export_output(self):
+    def test_failed_task_does_not_export_output(self) -> None:
         with (
             patch.dict(os.environ, {"CI_OUTPUT_ARCHIVES": '[{"archive":"target/ci/output.tar.zst","paths":[]}]'}),
             patch.object(tasks, "dispatch", return_value=1),
@@ -400,7 +401,7 @@ class WorkflowTaskTests(unittest.TestCase):
             self.assertEqual(tasks.main(["build"]), 1)
         pack.assert_not_called()
 
-    def test_help_never_transports_artifacts(self):
+    def test_help_never_transports_artifacts(self) -> None:
         with (
             patch.dict(os.environ, {"CI_INPUT_ARCHIVES": '["target/ci/missing.tar.zst"]'}),
             patch.object(artifacts, "extract") as extract,
@@ -411,7 +412,7 @@ class WorkflowTaskTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 0)
         extract.assert_not_called()
 
-    def test_required_gate_refuses_unexpected_skips(self):
+    def test_required_gate_refuses_unexpected_skips(self) -> None:
         for result in ("failure", "cancelled", "skipped"):
             with self.subTest(result=result), patch.dict(os.environ, {"RESULTS": json.dumps({"test": {"result": result}})}):
                 with self.assertRaises(ValueError):

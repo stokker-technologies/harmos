@@ -15,10 +15,12 @@ import json
 import tomllib
 from pathlib import Path
 
+from ..package import run as packages
+
 # Third Party Imports
 # Local Imports
-from . import notices as licenses, policy
-from ..package import run as packages
+from . import notices as licenses
+from . import policy
 
 # Type Checking Imports
 

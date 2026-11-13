@@ -13,22 +13,25 @@
 # Standard Library Imports
 import asyncio
 import copy
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 # Third Party Imports
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from harmos.context.v1 import time_pb2 as clock
+from harmos.plugin.v1 import instance_pb2 as carrier
+
 # Local Imports
 from .contracts import Operation
 from .v1 import types_pb2 as wire
 
-from harmos.plugin.v1 import instance_pb2 as carrier
-
-from harmos.context.v1 import time_pb2 as clock
-
 # Type Checking Imports
+if TYPE_CHECKING:
+    from .authoring import _FaultError
 
 # === Public Exports === #
 
@@ -39,16 +42,21 @@ GET_TIME = Operation("harmos.context.v1.Time/Get", clock.TimeGetRequest, clock.T
 
 # === Types === #
 
+type Handler = Callable[[Context, Message], Coroutine[object, object, Message]]
+
 # === Classes === #
 
 
-class Failure(Exception):
+class FailureError(Exception):
     """An Application Failure, Preserved Without Reclassification."""
 
-    def __init__(self, value: wire.Failure):
+    def __init__(self, value: wire.Failure) -> None:
         super().__init__(value.message)
         self.value = wire.Failure()
         self.value.CopyFrom(value)
+
+
+Failure = FailureError
 
 
 class ProtocolError(Exception):
@@ -58,7 +66,13 @@ class ProtocolError(Exception):
 class Context:
     """Background Work Outside This Context Is Invisible to Virtual Time."""
 
-    def __init__(self, request: wire.Request, plugin: str, requires: dict[str, bytes], output: asyncio.Queue | None = None):
+    def __init__(
+        self,
+        request: wire.Request,
+        plugin: str,
+        requires: dict[str, bytes],
+        output: "asyncio.Queue[carrier.InstanceInvokeResponse | _FaultError] | None" = None,
+    ) -> None:
         self.invocation = request.invocation
         self.attempt = request.attempt
         self._scope = request.scope
@@ -67,13 +81,13 @@ class Context:
         self._plugin = plugin
         self._requires = requires
         self._output = output
-        self._pending: dict[int, asyncio.Future] = {}
+        self._pending: dict[int, asyncio.Future[wire.ChildResponse]] = {}
         self._next = [0]
-        self._local = {}
-        self._watches = {}
+        self._local: dict[str, tuple[Operation[Message, Message], Handler]] = {}
+        self._watches: dict[int, tuple[asyncio.Queue[wire.ChildResponse], int]] = {}
         self._background = False
-        self._retired = set()
-        self._children = []
+        self._retired: set[int] = set()
+        self._children: list[Context] = []
         self._cancelled = asyncio.Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
@@ -117,7 +131,7 @@ class Context:
 
         self._next[0] += 1
         call = self._next[0]
-        complete = asyncio.get_running_loop().create_future()
+        complete: asyncio.Future[wire.ChildResponse] = asyncio.get_running_loop().create_future()
         self._pending[call] = complete
         child = wire.ChildRequest(
             call=call,
@@ -140,7 +154,9 @@ class Context:
             raise
 
     @asynccontextmanager
-    async def watch(self, operation, request, *, max_item_bytes: int):
+    async def watch[Q: Message, R: Message](
+        self, operation: Operation[Q, R], request: Q, *, max_item_bytes: int
+    ) -> AsyncGenerator[AsyncIterator[R]]:
         output = self._output
         if output is None or self._requires.get(operation.id) != operation.fingerprint:
             raise ValueError(f"Watch {operation.id}: Undeclared Requirement or Missing Invocation")
@@ -152,7 +168,7 @@ class Context:
             raise TypeError(f"Watch {operation.id}: Request Does Not Match the Operation")
         self._next[0] += 1
         call = self._next[0]
-        queue = asyncio.Queue(maxsize=1)
+        queue: asyncio.Queue[wire.ChildResponse] = asyncio.Queue(maxsize=1)
         self._watches[call] = (queue, max_item_bytes)
         await output.put(
             carrier.InstanceInvokeResponse(
@@ -167,7 +183,7 @@ class Context:
             )
         )
 
-        async def items():
+        async def items() -> AsyncIterator[R]:
             while True:
                 await output.put(carrier.InstanceInvokeResponse(child_demand=wire.ChildDemand(call=call)))
                 reply = await queue.get()
@@ -184,7 +200,9 @@ class Context:
             if self._watches.pop(call, None) is not None:
                 await output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
 
-    async def _invoke_local(self, operation, request, override):
+    async def _invoke_local[Q: Message, R: Message](
+        self, operation: Operation[Q, R], request: Q, override: wire.OperationPolicy | None
+    ) -> R:
         definition, handler = self._local[operation.id]
         if operation.fingerprint != definition.fingerprint:
             raise ValueError(f"Invoke {operation.id}: Local Contract Differs")
@@ -200,7 +218,7 @@ class Context:
         context._children = []
 
         # Replies Stay on the Parent Carrier and Are Forwarded by Correlation.
-        def duration_ns(value):
+        def duration_ns(value: Duration | Timestamp) -> int:
             if value.seconds < 0 or not 0 <= value.nanos < 1_000_000_000 or value.seconds > 315_576_000_000:
                 raise ValueError(f"Invoke {operation.id}: Invalid Policy Duration")
             return value.seconds * 1_000_000_000 + value.nanos
@@ -283,7 +301,7 @@ class Context:
                                 )
                             )
                     result = await running
-                    if not isinstance(result, definition.response):
+                    if not isinstance(result, operation.response):
                         raise TypeError(f"Invoke {operation.id}: Response Does Not Match the Operation")
                     return result
                 except Failure as failure:
@@ -312,6 +330,7 @@ class Context:
                         if not task.done():
                             task.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
+            raise ProtocolError(f"Invoke {operation.id}: No Attempt Settled")
         finally:
             await context._cancel("Local Attempt Settled")
             await guard._cancel("Policy Guard Settled")
@@ -356,7 +375,7 @@ class Context:
             raise ProtocolError("Unknown or Duplicate Child")
         complete.set_result(reply)
 
-    def _has_pending(self, call):
+    def _has_pending(self, call: int) -> bool:
         return call in self._pending or call in self._watches or any(child._has_pending(call) for child in self._children)
 
     async def _cancel(self, reason: str) -> None:
@@ -395,7 +414,7 @@ class Context:
 
 
 class Publisher:
-    def __init__(self, row: type[Message], output: asyncio.Queue):
+    def __init__(self, row: type[Message], output: "asyncio.Queue[wire.Sample | _FaultError | None]") -> None:
         self._row = row
         self._output = output
 

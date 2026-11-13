@@ -6,26 +6,17 @@
 #
 # ***
 
-
-"""Descriptor-Derived Client Root"""
+"""Typed Host Client and Explicit Connection Ownership."""
 
 # === Imports === #
 
-# Standard Library Imports
-import json
-from importlib import import_module
-from importlib.resources import files
-from typing import Any
+from typing import Self
 
-# Third Party Imports
-from google.protobuf import descriptor_pool, message_factory
 import grpc
 
-# Local Imports
+from .generated.client import ClientRoot
 from .transfer import message_bytes
-
-# Type Checking Imports
-
+from .v1.storage_settings_pb2 import StorageTransferSettings
 
 # === Public Exports === #
 
@@ -36,60 +27,27 @@ from .transfer import message_bytes
 # === Classes === #
 
 
-class Client:
-    """Compose Client-Face Descriptors Into One Mechanical Resource Hierarchy."""
+class Client(ClientRoot):
+    """Library Resources, With an Optional Owned Connection."""
 
-    def __getattr__(self, name: str) -> Any:
-        raise AttributeError(name)
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        super().__init__(channel)
+        self._owned_channel: grpc.aio.Channel | None = None
 
     @classmethod
-    def connect(cls, address, *, transfer=None, message_ceiling=None):
+    def connect(cls, address: str, *, transfer: StorageTransferSettings | None = None, message_ceiling: int | None = None) -> Self:
         maximum = message_bytes(transfer, message_ceiling)
         channel = grpc.aio.insecure_channel(
             address.removeprefix("http://"),
             options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)],
         )
         client = cls(channel)
-        client._channel = channel
+        client._owned_channel = channel
         return client
 
-    async def close(self):
-        if self._channel is not None:
-            await self._channel.close()
-
-    def __init__(self, channel, *tables):
-        self._channel = None
-        builtin = json.loads(files("harmos").joinpath("resources.json").read_text(encoding="utf-8"))
-        for table in tables or (builtin,):
-            for method in table:
-                if method["face"] != "client":
-                    raise ValueError("Bind Client: Context and Instance Methods Are Not Client Capabilities")
-                import_module(method["file"].removesuffix(".proto").replace("/", ".") + "_pb2")
-                node = self
-                for part in method["path"][:-1]:
-                    if not hasattr(node, part):
-                        setattr(node, part, _Resource())
-                    node = getattr(node, part)
-                leaf = method["path"][-1]
-                if hasattr(node, leaf):
-                    raise ValueError(f"Client Resource Collision: {'.'.join(method['path'])}")
-                request = descriptor_pool.Default().FindMessageTypeByName(method["request"])
-                response = descriptor_pool.Default().FindMessageTypeByName(method["response"])
-                request_type = message_factory.GetMessageClass(request)
-                response_type = message_factory.GetMessageClass(response)
-                if method["client_streaming"]:
-                    raise ValueError("Bind Client: Managed Methods Require Their Explicit Invocation API")
-                factory = channel.unary_stream if method["server_streaming"] else channel.unary_unary
-                rpc = factory(
-                    f"/{method['package']}.{method['service']}/{method['method']}",
-                    request_serializer=request_type.SerializeToString,
-                    response_deserializer=response_type.FromString,
-                )
-                setattr(node, leaf, rpc)
-
-
-class _Resource:
-    pass
+    async def close(self) -> None:
+        if self._owned_channel is not None:
+            await self._owned_channel.close()
 
 
 # === Public Functions === #

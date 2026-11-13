@@ -21,9 +21,9 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
-from harmos_tools.process import spawn_flags
-from harmos_tools.csharp import run as csharp
 from harmos_tools.build.paths import output
+from harmos_tools.csharp import run as csharp
+from harmos_tools.process import spawn_flags
 
 # Third Party Imports
 
@@ -42,7 +42,7 @@ from harmos_tools.build.paths import output
 
 
 class PackagedCSharpConformance(unittest.TestCase):
-    def test_nuget_package_serves_the_public_fixture(self):
+    def test_nuget_package_serves_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
         dotnet_root = os.environ.get("DOTNET_ROOT")
         dotnet = str(Path(dotnet_root) / ("dotnet.exe" if os.name == "nt" else "dotnet")) if dotnet_root else "dotnet"

@@ -18,11 +18,11 @@ import stat
 import sys
 from pathlib import Path
 
-# Third Party Imports
+from ..build import paths
 
+# Third Party Imports
 # Local Imports
 from ..build.fixtures import ROOT
-from ..build import paths
 
 # Type Checking Imports
 

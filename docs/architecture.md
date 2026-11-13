@@ -21,6 +21,15 @@ same content boundary. See [Application-Owned Content](storage.md#application-ow
 
 ## How to Use This Document
 
+Python client resources are committed generated classes derived from protocol
+descriptors by `tools/python/src/harmos_tools/build/resource_roots.py`. Each RPC
+has explicit request, response and per-call option types; server streams retain
+typed async iteration and native cancellation. `sdk/python/src/harmos/client.py`
+initializes the library root and owns connections created by `Client.connect`.
+Products generate and compose their own typed resources. No runtime attribute
+binding or serialized resource table participates in any SDK's client naming.
+See the [Python SDK Guide](python-sdk.md).
+
 Read this contract before proposing architecture, protocol, public API or ownership
 changes. A proposal touching an invariant must quote it, explain the purpose of the
 mechanism it changes, and update this document in the same delivery. Never remove,
