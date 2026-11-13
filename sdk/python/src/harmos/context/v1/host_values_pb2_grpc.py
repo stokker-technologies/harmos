@@ -27,7 +27,14 @@ if _version_not_supported:
 
 
 class HostValuesStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Exposes product-owned values declared in the calling plugin's catalog without assigning storage ownership to Harmos.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -43,10 +50,18 @@ class HostValuesStub:
 
 
 class HostValuesServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Exposes product-owned values declared in the calling plugin's catalog without assigning storage ownership to Harmos.
+    """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Resolve a declared value through the product's registered resolver; missing declarations/resolvers and a mismatched returned type refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -68,7 +83,14 @@ def add_HostValuesServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class HostValues:
-    """Missing associated documentation comment in .proto file."""
+    """=== Imports === //
+
+    === Options === //
+
+    === Services === //
+
+    Exposes product-owned values declared in the calling plugin's catalog without assigning storage ownership to Harmos.
+    """
 
     @staticmethod
     def Get(request,

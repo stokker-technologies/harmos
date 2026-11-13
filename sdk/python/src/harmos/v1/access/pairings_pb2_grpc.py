@@ -27,7 +27,8 @@ if _version_not_supported:
 
 
 class PairingsStub:
-    """Missing associated documentation comment in .proto file."""
+    """Owns durable client credentials, metadata listing and revocation.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -53,22 +54,26 @@ class PairingsStub:
 
 
 class PairingsServicer:
-    """Missing associated documentation comment in .proto file."""
+    """Owns durable client credentials, metadata listing and revocation.
+    """
 
     def Create(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Persist a new client credential and return its bearer secret once; requires an enabled listener, nonempty bounded label and available capacity. A retry creates another pairing.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def List(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read pairing metadata at the current or explicitly issued current position; foreign, changed or unissued positions refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Delete(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Revoke an existing pairing immediately after persistence; deleting an absent pairing refuses.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -100,7 +105,8 @@ def add_PairingsServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Pairings:
-    """Missing associated documentation comment in .proto file."""
+    """Owns durable client credentials, metadata listing and revocation.
+    """
 
     @staticmethod
     def Create(request,

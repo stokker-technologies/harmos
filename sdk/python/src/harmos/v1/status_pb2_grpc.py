@@ -27,7 +27,8 @@ if _version_not_supported:
 
 
 class StatusStub:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes current host health and a live stream of contributed status changes.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -48,16 +49,19 @@ class StatusStub:
 
 
 class StatusServicer:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes current host health and a live stream of contributed status changes.
+    """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read the current host identity and contributed health with the status history boundary.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Watch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -84,7 +88,8 @@ def add_StatusServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Status:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes current host health and a live stream of contributed status changes.
+    """
 
     @staticmethod
     def Get(request,

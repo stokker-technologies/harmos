@@ -1,15 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.v1.status;
-option csharp_namespace = "Harmos.V1.StatusResources";
-import "harmos/v1/types.proto";
+
 import "google/protobuf/timestamp.proto";
-message Event { uint64 sequence = 1; google.protobuf.Timestamp observed_at = 2; string level = 3; string target = 4; string message = 5; map<string,string> fields = 6; }
-message LogsListRequest { harmos.v1.Position at = 1; harmos.v1.PageRequest page = 2; }
-message LogsListResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; string next_page_token = 3; }
-message LogsWatchRequest { harmos.v1.Position at = 1; uint64 max_bytes = 2; uint32 max_events = 3; }
-message LogsWatchResponse { repeated Event events = 1; harmos.v1.Position resolved_at = 2; }
+import "harmos/v1/types.proto";
+
+option csharp_namespace = "Harmos.V1.StatusResources";
+// Carries a bounded, redacted log or trace observation assigned a history sequence by the status owner.
+message Event {
+  // Sequence assigned by the owning log/trace history, not a globally comparable event ID.
+  uint64 sequence = 1;
+  // Authoritative host timestamp assigned when the status owner records the event.
+  google.protobuf.Timestamp observed_at = 2;
+  string level = 3;
+  string target = 4;
+  string message = 5;
+  map<string, string> fields = 6;
+}
+// Read bounded retained redacted log events at an issued boundary; expired tokens/positions and responses too small for one event refuse.
+message LogsListRequest {
+  // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
+  harmos.v1.Position at = 1;
+  // Required positive item and encoded-byte bounds, plus an optional retained continuation.
+  harmos.v1.PageRequest page = 2;
+}
+// Returns bounded retained log events at a fixed boundary and any continuation token.
+message LogsListResponse {
+  repeated Event events = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.Position resolved_at = 2;
+  // Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
+  string next_page_token = 3;
+}
+// Emit an opening boundary then bounded log batches after it; positive bounds are required and a history gap refuses with resynchronization guidance.
+message LogsWatchRequest {
+  // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
+  harmos.v1.Position at = 1;
+  // Positive encoded response byte limit, including boundary metadata; a single event that cannot fit refuses.
+  uint64 max_bytes = 2;
+  // Positive maximum events in each live response; zero refuses.
+  uint32 max_events = 3;
+}
+// Returns an opening boundary or bounded newly observed log events after the prior boundary.
+message LogsWatchResponse {
+  repeated Event events = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.Position resolved_at = 2;
+}
+// Exposes retained redacted log history and bounded live delivery.
 service Logs {
- rpc List(LogsListRequest) returns (LogsListResponse);
- rpc Watch(LogsWatchRequest) returns (stream LogsWatchResponse);
+  // Read bounded retained redacted log events at an issued boundary; expired tokens/positions and responses too small for one event refuse.
+  rpc List(LogsListRequest) returns (LogsListResponse);
+  // Emit an opening boundary then bounded log batches after it; positive bounds are required and a history gap refuses with resynchronization guidance.
+  rpc Watch(LogsWatchRequest) returns (stream LogsWatchResponse);
 }

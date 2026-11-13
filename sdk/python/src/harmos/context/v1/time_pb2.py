@@ -22,11 +22,11 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
+from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1charmos/context/v1/time.proto\x12\x11harmos.context.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/duration.proto\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponse\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp2\xa8\x01\n\x04Time\x12L\n\x03Get\x12!.harmos.context.v1.TimeGetRequest\x1a\".harmos.context.v1.TimeGetResponse\x12R\n\x05Sleep\x12#.harmos.context.v1.TimeSleepRequest\x1a$.harmos.context.v1.TimeSleepResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1charmos/context/v1/time.proto\x12\x11harmos.context.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponse\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp2\xa8\x01\n\x04Time\x12L\n\x03Get\x12!.harmos.context.v1.TimeGetRequest\x1a\".harmos.context.v1.TimeGetResponse\x12R\n\x05Sleep\x12#.harmos.context.v1.TimeSleepRequest\x1a$.harmos.context.v1.TimeSleepResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)

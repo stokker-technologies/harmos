@@ -2,35 +2,59 @@
 syntax = "proto3";
 package harmos.v1;
 
-import "harmos/v1/types.proto";
-import "harmos/v1/storage_types.proto";
 import "google/protobuf/timestamp.proto";
+import "harmos/v1/storage_types.proto";
+import "harmos/v1/types.proto";
 
 // Client-facing management of hosted entries, distinct from Instance.
 service Plugins {
+  // Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
   rpc Get(PluginsGetRequest) returns (PluginsGetResponse);
+  // Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
   rpc List(PluginsListRequest) returns (PluginsListResponse);
+  // Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
   rpc Watch(PluginsWatchRequest) returns (stream PluginsWatchResponse);
+  // Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
   rpc Create(PluginsCreateRequest) returns (PluginsCreateResponse);
+  // Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
   rpc Set(PluginsSetRequest) returns (PluginsSetResponse);
+  // Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
   rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse);
+  // Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
   rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse);
 }
 
-message PluginValue { bool enabled = 1; }
+// Contains the writable enablement state of a managed plugin entry.
+message PluginValue {
+  bool enabled = 1;
+}
+// Captures the running plugin's advertised identity, process start, negotiated revision and catalog.
 message PluginDescription {
+  // Plugin-advertised identity, distinct from the persisted management entry name.
   string id = 1;
+  // Plugin-advertised semantic version, distinct from the negotiated protocol revision.
   string version = 2;
+  // Plugin process startup timestamp, stable across connections to that process.
   google.protobuf.Timestamp started_at = 3;
   Catalog catalog = 4;
+  // Negotiated protocol revision, not a conditional management revision.
   uint32 revision = 5;
   string sdk = 6;
   string sdk_version = 7;
 }
-message PluginRemote { string url = 1; }
+// Connects the host to a remote plain HTTP plugin endpoint; the manager validates endpoint syntax.
+message PluginRemote {
+  string url = 1;
+}
 // Content names refer exclusively to published library upload content.
-message PluginManaged { harmos.storage.v1.FileReference content = 1; bytes sha256 = 2; }
+message PluginManaged {
+  harmos.storage.v1.FileReference content = 1;
+  // Expected 32-byte digest of the uploaded executable content.
+  bytes sha256 = 2;
+}
+// Chooses managed uploaded content or a remote process; exactly one placement is required for creation.
 message PluginPlacement {
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof kind {
     PluginManaged managed = 1;
     PluginRemote remote = 2;
@@ -44,56 +68,137 @@ enum PluginState {
   PLUGIN_STATE_STOPPED = 4;
   PLUGIN_STATE_STOPPING = 5;
 }
+// Reports the managed child process identity, executable digest and process start time.
 message PluginProcess {
+  // Native managed child process ID; absent process metadata does not imply a remote process ID.
   uint32 id = 1;
+  // Digest of the managed executable selected for this process.
   bytes executable_digest = 2;
+  // Managed process start timestamp, distinct from activation/reconnect identity.
   google.protobuf.Timestamp started_at = 3;
 }
+// Combines persisted management state with observed activation, process and failure information.
 message PluginEntry {
+  // Persisted management entry identity, distinct from the plugin's advertised catalog ID.
   string name = 1;
   PluginPlacement placement = 2;
   PluginValue value = 3;
+  // Opaque conditional revision of the management value; resend it unchanged to Set/Delete/Restart.
   bytes revision = 4;
   PluginState state = 5;
+  // Absent when the entry has no reported failure; failures retain machine classification and diagnostics.
   harmos.v1.Failure failure = 6;
+  // Advertised description when an activation has supplied it; absent before discovery is available.
   PluginDescription description = 7;
+  // Digest of the catalog observed for this entry's activation.
   bytes catalog_digest = 8;
+  // Managed process metadata when available; remote placement does not supply managed process metadata.
   PluginProcess process = 9;
+  // Generation of the entry's activation; old calls and handles do not follow its replacement.
   uint64 activation = 10;
 }
-message PluginsGetRequest { string name = 1; harmos.v1.ReadCut at = 2; }
-message PluginsGetResponse { PluginEntry entry = 1; harmos.v1.ReadCut resolved_at = 2; }
-message PluginsListRequest { harmos.v1.ReadCut at = 1; }
-message PluginsListResponse {
-  repeated PluginEntry entries = 1;
+// Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
+message PluginsGetRequest {
+  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  string name = 1;
+  // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+  harmos.v1.ReadCut at = 2;
+}
+// Returns one entry from the selected retained manager snapshot with its cut.
+message PluginsGetResponse {
+  PluginEntry entry = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
   harmos.v1.ReadCut resolved_at = 2;
 }
-message PluginsWatchRequest { string name = 1; harmos.v1.ReadCut at = 2; }
-message PluginSnapshot { repeated PluginEntry entries = 1; }
+// Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
+message PluginsListRequest {
+  // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+  harmos.v1.ReadCut at = 1;
+}
+// Returns the complete selected manager inventory with its cut.
+message PluginsListResponse {
+  repeated PluginEntry entries = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.ReadCut resolved_at = 2;
+}
+// Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
+message PluginsWatchRequest {
+  // Empty watches all entries; otherwise selects this exact management entry name.
+  string name = 1;
+  // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
+  harmos.v1.ReadCut at = 2;
+}
+// Carries the entries selected at the opening boundary of a plugin watch.
+message PluginSnapshot {
+  repeated PluginEntry entries = 1;
+}
+// Replaces one entry or identifies an entry removed from the manager.
 message PluginChange {
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof kind {
     PluginEntry entry = 1;
     string deleted = 2;
   }
 }
+// Distinguishes an opening snapshot, entry changes and a requirement to restart the read.
 message PluginsWatchResponse {
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
   harmos.v1.ReadCut resolved_at = 1;
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof event {
+    // Required retained snapshot handle issued by this owner; preserve its token and original position.
     PluginSnapshot snapshot = 2;
     PluginChange change = 3;
+    // Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
     string resync_required = 4;
   }
 }
+// Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
 message PluginsCreateRequest {
+  // Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
   string request_id = 1;
+  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
   string name = 2;
   PluginPlacement placement = 3;
   PluginValue value = 4;
 }
-message PluginsCreateResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
-message PluginsSetRequest { string name = 1; PluginValue value = 2; bytes expected_revision = 3; }
-message PluginsSetResponse { PluginEntry entry = 1; harmos.v1.Receipt receipt = 2; }
-message PluginsDeleteRequest { string name = 1; bytes expected_revision = 2; }
-message PluginsDeleteResponse { harmos.v1.Receipt receipt = 1; }
-message PluginsRestartRequest { string name = 1; bytes expected_revision = 2; }
-message PluginsRestartResponse { PluginEntry entry = 1; }
+// Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
+message PluginsCreateResponse {
+  PluginEntry entry = 1;
+  harmos.v1.Receipt receipt = 2;
+}
+// Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
+message PluginsSetRequest {
+  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  string name = 1;
+  PluginValue value = 2;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+  bytes expected_revision = 3;
+}
+// Returns the resulting entry and mutation receipt after applying its complete writable value.
+message PluginsSetResponse {
+  PluginEntry entry = 1;
+  harmos.v1.Receipt receipt = 2;
+}
+// Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
+message PluginsDeleteRequest {
+  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  string name = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+  bytes expected_revision = 2;
+}
+// Returns the durable management deletion receipt without exposing retired installation content.
+message PluginsDeleteResponse {
+  harmos.v1.Receipt receipt = 1;
+}
+// Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
+message PluginsRestartRequest {
+  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  string name = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+  bytes expected_revision = 2;
+}
+// Returns the entry with its replacement activation initiated; connection readiness is observed separately.
+message PluginsRestartResponse {
+  PluginEntry entry = 1;
+}

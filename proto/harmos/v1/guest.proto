@@ -1,79 +1,154 @@
-// Harmos WebAssembly Component Messages.
 // SPDX-License-Identifier: Apache-2.0
+
+// Web Assembly Guest Carrier
+//
+// Finite guest commands and host-issued capabilities for initialization, invocation and child control.
+
 syntax = "proto3";
+
 package harmos.v1;
+
+// === Imports === //
 
 import "harmos/v1/types.proto";
 
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
 
 // Metadata only: registration must not initialize authored resources.
 message GuestRegistration {
+  // Guest plugin identity advertised before authored resources are initialized.
   string id = 1;
+  // Guest plugin semantic version advertised during registration.
   string version = 2;
   Catalog catalog = 3;
+  // Execution policy for the guest initialization lifecycle operation.
   OperationPolicy initialization = 4;
+  // Execution policy for the guest shutdown lifecycle operation.
   OperationPolicy shutdown = 5;
   repeated GuestRequirement requirements = 6;
+  // Guest-advertised carrier message ceiling checked against the host's transfer/framing requirements.
   uint64 message_bytes = 7;
 }
+
+// Binds a guest dependency's request/response roots to its expected operation fingerprint.
 message GuestRequirement {
+  // Complete dependency operation identity expected by this guest.
   string id = 1;
   string request = 2;
   string response = 3;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
   bytes fingerprint = 4;
 }
+
+// Selects a finite guest lifecycle or invocation command using a host-issued invocation handle.
 message GuestCommand {
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof phase {
+    // Selects this lifecycle action for the host-issued invocation handle.
     GuestPrepare prepare = 1;
+    // Selects this lifecycle action for the host-issued invocation handle.
     GuestInvocation initialize = 2;
+    // Selects this lifecycle action for the host-issued invocation handle.
     GuestInvocation attempt = 3;
+    // Selects this lifecycle action for the host-issued invocation handle.
     uint64 finalize = 4;
+    // Selects this lifecycle action for the host-issued invocation handle.
     uint64 cancel = 5;
   }
 }
+
+// Prepares one admitted operation payload for a fixed activation generation.
 message GuestPrepare {
+  // Host-issued prepared-invocation handle used by later guest lifecycle commands.
   uint64 invocation = 1;
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
   string operation = 2;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
   bytes fingerprint = 3;
+  // Activation generation pinned during preparation.
   uint64 generation = 4;
+  // Encoded request payload of the admitted operation, decoded during guest preparation.
   bytes payload = 5;
 }
+
+// Enters one finite guest attempt with a host-issued capability and encoded contextual values.
 message GuestInvocation {
+  // Prepared-invocation handle supplied by the host, not an authored operation identifier.
   uint64 invocation = 1;
   // A host-issued capability for this finite attempt, never an authored id.
   bytes context = 2;
   repeated GuestValue values = 3;
 }
+
+// Carries one encoded contextual value under the key used by the guest resource adapter.
 message GuestValue {
+  // Contextual value key used by the guest resource adapter.
   string key = 1;
+  // Encoded contextual value consumed by the matching guest resource adapter.
   bytes payload = 2;
 }
+
+// Starts a guest generation with configuration, its host capability and frozen dependency assignments.
 message GuestInitialize {
+  // Encoded guest initialization configuration supplied by the host.
   bytes configuration = 1;
+  // Host-issued generation capability checked by the guest child-call boundary.
   bytes generation_context = 2;
   harmos.v1.OperationAssignments assignments = 3;
 }
-message GuestShutdown {}
+
+// Marks the guest shutdown operation without adding request fields.
+message GuestShutdown {
+  // No payload fields.
+}
+
+// Selects a child operation submission or control of a previously submitted child instance.
 message GuestChild {
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof action {
+    // Selects a child submission using the included host-issued capabilities.
     GuestChildRequest call = 1;
     GuestChildControl control = 2;
   }
 }
+
+// Submits a guest dependency call with generation and attempt capabilities checked by the host.
 message GuestChildRequest {
+  // Host-issued attempt capability; the host checks ownership and attempt lifetime.
   bytes context = 1;
+  // Host-issued generation capability, not a user-provided scope or credential.
   bytes generation_context = 2;
   ChildRequest request = 3;
+  // Pinned provider generation checked during child admission.
   uint64 generation = 4;
+  // True requests a submitted child handle instead of waiting for a unary result.
   bool submit = 5;
   repeated GuestValue values = 6;
 }
+
+// Controls a submitted child only through the capability of the attempt that owns it.
 message GuestChildControl {
   // Must be the capability of the attempt that submitted this instance.
   bytes context = 1;
+  // Host-issued child instance handle owned by the submitting attempt.
   uint64 instance = 2;
   GuestChildAction action = 3;
 }
+
+// Returns the host-issued child instance handle used for later control.
+message GuestSubmitted {
+  // Host-issued child instance handle; control requires the original submitting attempt capability.
+  uint64 instance = 1;
+}
+
+// === Enums === //
+
 enum GuestChildAction {
   GUEST_CHILD_ACTION_UNSPECIFIED = 0;
   GUEST_CHILD_ACTION_STATUS = 1;
@@ -82,4 +157,3 @@ enum GuestChildAction {
   GUEST_CHILD_ACTION_RELEASE = 4;
   GUEST_CHILD_ACTION_DETACH = 5;
 }
-message GuestSubmitted { uint64 instance = 1; }

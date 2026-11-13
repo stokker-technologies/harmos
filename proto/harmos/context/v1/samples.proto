@@ -1,16 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Context Samples
+//
+// Publication into the calling plugin activation's admitted stream definitions.
+
 syntax = "proto3";
+
 package harmos.context.v1;
-import "harmos/v1/types.proto";
+
+// === Imports === //
+
 import "google/protobuf/timestamp.proto";
-service Samples { rpc Append(SamplesAppendRequest) returns (SamplesAppendResponse); }
+import "harmos/v1/types.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Forwards encoded stream publication to the registered publication owner.
+service Samples {
+  // Validate the optional publication timestamp and forward sequence, context, row bytes and following rows to the registered publication owner.
+  rpc Append(SamplesAppendRequest) returns (SamplesAppendResponse);
+}
+
+// === Requests and Responses === //
+
+// Supplies row bytes and optional metadata to the registered publication owner; only the supplied timestamp is interpreted by the Append handler.
 message SamplesAppendRequest {
+  // Identity of the declared stream, resolved under the current caller/activation.
   string stream = 1;
+  // Optional producer sequence passed to PublicationHost; unset is forwarded as absent rather than assigned by this handler.
   optional uint64 sequence = 3;
+  // Optional valid protobuf Timestamp converted to Unix microseconds by truncating sub-microsecond nanos; unset is forwarded as absent.
   google.protobuf.Timestamp published_at = 4;
+  // Optional publication context forwarded unchanged to PublicationHost; unset is forwarded as absent.
   optional string context = 5;
+  // Encoded row of the admitted stream definition.
   bytes payload = 6;
+  // Additional rows and duration metadata forwarded to the publication owner; interpretation beyond forwarding is owner-defined.
   repeated harmos.v1.FollowingRow following = 7;
 }
 
-message SamplesAppendResponse {}
+// Acknowledges successful return from the registered publication owner without adding payload fields.
+message SamplesAppendResponse {
+  // No payload fields.
+}
+
+// === Resources === //
+
+// === Enums === //

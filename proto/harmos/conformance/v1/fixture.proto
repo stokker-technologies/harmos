@@ -1,15 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Protocol Conformance Fixtures
+//
+// Payloads used to verify byte preservation and reachable recursive schema projection across SDKs.
+
 syntax = "proto3";
+
 package harmos.conformance.v1;
+
+// === Imports === //
+
 import "google/protobuf/duration.proto";
 
-message Value { bytes value = 1; }
-message PayloadOnly { bytes value = 1; }
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Exercises byte payload preservation in the shared SDK conformance fixture.
+message Value {
+  bytes value = 1;
+}
+
+// Exercises a reachable payload-only type in descriptor graph projection.
+message PayloadOnly {
+  bytes value = 1;
+}
 
 // Additional Schema and Setting Fixtures; Value Remains Unchanged.
-message Zebra { Value value = 1; }
+message Zebra {
+  Value value = 1;
+}
+
+// Exercises recursive and nested schema projection, optional fields, durations and enums in conformance.
 message Graph {
   option deprecated = false;
+  // Exercises an optional scalar and a recursive reference in the conformance graph.
   message Nested {
+    // Unset exercises optional scalar absence; zero is a present conformance value.
     optional int32 count = 1;
     Graph next = 2;
   }
@@ -19,4 +50,10 @@ message Graph {
   google.protobuf.Duration interval = 4;
   Status status = 5;
 }
-enum Status { STATUS_UNSPECIFIED = 0; STATUS_READY = 1; }
+
+// === Enums === //
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_READY = 1;
+}

@@ -1,19 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Context Catalog Entries
+//
+// Admitted operation discovery and persisted resource catalogs.
+
 syntax = "proto3";
+
 package harmos.context.v1;
+
+// === Imports === //
+
 import "harmos/v1/types.proto";
 
+// === Options === //
+
+// === Services === //
+
+// Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
 service CatalogEntries {
+  // Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
   rpc List(CatalogEntriesListRequest) returns (CatalogEntriesListResponse);
 }
 
+// === Requests and Responses === //
+
+// Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
 message CatalogEntriesListRequest {
   harmos.v1.CatalogKind kind = 1;
+  // Unset leaves schema unfiltered; a present schema identifier is validated before catalog selection.
   optional string schema = 2;
 }
 
+// Separates typed operation discovery from JSON persisted-resource entries; current handlers do not issue a resolved cut.
 message CatalogEntriesListResponse {
+  // JSON array of persisted catalog entries; operation discovery uses the typed operations field.
   bytes entries = 1;
   repeated harmos.v1.DiscoveredOperation operations = 3;
+  // Current handlers leave this unset; its presence does not follow from catalog listing.
   harmos.v1.ReadCut resolved_at = 4;
 }
+
+// === Resources === //
+
+// === Enums === //

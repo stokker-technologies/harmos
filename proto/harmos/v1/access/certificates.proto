@@ -1,6 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Client Certificates
+//
+// TLS certificate rotation and pairing revocation.
+
 syntax = "proto3";
+
 package harmos.v1.access;
-message CertificatesCreateRequest {}
-message CertificatesCreateResponse { string certificate_pem = 1; }
-service Certificates { rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse); }
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// Owns TLS certificate rotation and the associated revocation of durable client pairings.
+service Certificates {
+  // Generate and persist a new TLS certificate, rotate the live listener and revoke all existing pairings; repeating the call rotates again.
+  rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse);
+}
+
+// === Requests and Responses === //
+
+// Generate and persist a new TLS certificate, rotate the live listener and revoke all existing pairings; repeating the call rotates again.
+message CertificatesCreateRequest {
+  // No payload fields.
+}
+
+// Returns the newly persisted TLS certificate after live rotation and pairing revocation.
+message CertificatesCreateResponse {
+  string certificate_pem = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

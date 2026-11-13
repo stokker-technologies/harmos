@@ -27,7 +27,8 @@ if _version_not_supported:
 
 
 class ListenerStub:
-    """Missing associated documentation comment in .proto file."""
+    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -48,16 +49,19 @@ class ListenerStub:
 
 
 class ListenerServicer:
-    """Missing associated documentation comment in .proto file."""
+    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read the persisted listener value, conditional revision and currently bound endpoint.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Set(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Validate and apply the complete listener value at its expected revision; failed staging preserves the active listener and revision conflicts refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -84,7 +88,8 @@ def add_ListenerServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Listener:
-    """Missing associated documentation comment in .proto file."""
+    """Owns the client TLS listener's persisted configuration and staged live replacement.
+    """
 
     @staticmethod
     def Get(request,

@@ -27,7 +27,8 @@ if _version_not_supported:
 
 
 class TimeStub:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -48,16 +49,19 @@ class TimeStub:
 
 
 class TimeServicer:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read the authoritative host clock used by operation deadlines, retries and plugin waits.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Sleep(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -84,7 +88,8 @@ def add_TimeServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Time:
-    """Missing associated documentation comment in .proto file."""
+    """Exposes the authoritative host clock, including virtual time, to operation callers.
+    """
 
     @staticmethod
     def Get(request,

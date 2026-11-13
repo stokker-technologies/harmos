@@ -1,34 +1,82 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// Shared Protocol Types
+//
+// Shared identities, execution contracts and carrier payloads used by the client, context and plugin faces.
+
 syntax = "proto3";
+
 package harmos.v1;
+
+// === Imports === //
+
 import "google/protobuf/descriptor.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
-message History { string store = 1; string epoch = 2; }
+// === Options === //
 
-message Position { History history = 1; uint64 sequence = 2; }
+// === Services === //
 
-message ResourceRevision { string name = 1; bytes revision = 2; }
+// === Requests and Responses === //
 
+// === Resources === //
+
+// Identifies one store incarnation; positions from another epoch are not interchangeable.
+message History {
+  // Store identity that owns the sequence space.
+  string store = 1;
+  // Incarnation identity; a position from another epoch cannot be reused in this history.
+  string epoch = 2;
+}
+
+// Identifies progress within one history, rather than a digest or a portable offset.
+message Position {
+  // History owning this sequence; issued positions must retain it unchanged.
+  History history = 1;
+  // Progress within the named history, not a globally comparable revision.
+  uint64 sequence = 2;
+}
+
+// Pins one named resource's opaque revision alongside a history boundary.
+message ResourceRevision {
+  // Resource identity whose revision participates in the cut.
+  string name = 1;
+  // Opaque resource-owned revision; preserve its bytes rather than choosing a numerically greater value.
+  bytes revision = 2;
+}
+
+// Combines issued history positions and resource revisions for a repeatable read; retain and resend it unchanged.
 message ReadCut {
+  // Issued history boundaries selected together for this read.
   repeated Position positions = 1;
+  // Additional resource revisions, including retained observations; an empty list adds no resource-specific revisions.
   repeated ResourceRevision revisions = 2;
 }
 
+// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
 message PageRequest {
+  // Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
   uint32 page_size = 1;
+  // Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
   uint64 max_bytes = 2;
+  // Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
   string page_token = 3;
 }
 
+// Reports a mutation's accepted and durable positions separately; acceptance alone does not promise persisted bytes.
 message Receipt {
+  // Caller request identity, or the mutation window/key correlation used by storage; some conditional operations leave it empty.
   string request_id = 1;
+  // Position accepted by the owner, when one exists; it is not by itself a durability acknowledgement.
   Position accepted_at = 2;
+  // Position acknowledged durable, when supplied; staging receipts may omit both positions.
   Position durable_at = 3;
+  // Whether the reported mutation outcome has completed, independently of whether a durable position is present.
   bool completed = 4;
 }
 
+// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
 message Catalog {
   // Operations the plugin serves.
   repeated OperationContract operations = 1;
@@ -44,14 +92,18 @@ message Catalog {
   google.protobuf.FileDescriptorSet types = 6;
 }
 
+// Declares an operation's routing identity, payload shapes, visibility and execution policy before activation.
 message OperationContract {
   // Unique among the host and all connected plugins, for example
   // "thermal.set".
   string id = 1;
   // Fully qualified message names found in Catalog.types.
   string request = 2;
+  // Fully qualified response message name resolved in Catalog.types.
   string response = 3;
+  // Wire catalogs admit Public or Protected; Private remains process-local and Unspecified is invalid.
   Visibility visibility = 4;
+  // Callee-owned execution budgets; the admitted catalog must provide a valid policy.
   OperationPolicy policy = 5;
   // SHA-256 over the id and the request and response definitions.
   bytes fingerprint = 6;
@@ -60,16 +112,7 @@ message OperationContract {
   bool replay_safe = 8;
 }
 
-enum Visibility {
-  VISIBILITY_UNSPECIFIED = 0;
-  // Process-local only; invalid in any wire catalog.
-  VISIBILITY_PRIVATE = 1;
-  // Everyone connected: other plugins and the host's clients.
-  VISIBILITY_PUBLIC = 2;
-  // The declaring plugin and its host, through the carrier only.
-  VISIBILITY_PROTECTED = 3;
-}
-
+// Owns invocation, attempt and cancellation budgets; a child override applies only to that call.
 message OperationPolicy {
   // Bound on the whole invocation including retries.
   google.protobuf.Duration timeout = 1;
@@ -81,13 +124,17 @@ message OperationPolicy {
   RetryPolicy retries = 4;
 }
 
+// Bounds attempts and host-clock backoff; enabled retries require an explicitly replay-safe operation.
 message RetryPolicy {
   uint64 total_attempts = 1; // Includes the first attempt; must be positive.
+  // Initial host-clock backoff between attempts.
   google.protobuf.Duration initial = 2;
   google.protobuf.Duration maximum = 3; // Presence selects exponential backoff.
+  // Enables reproducible jitter in the retry backoff.
   bool deterministic_jitter = 4;
 }
 
+// Binds a declared dependency to the contract fingerprint against which the caller was built.
 message Requirement {
   // Identifier of the operation the plugin calls.
   string id = 1;
@@ -95,7 +142,9 @@ message Requirement {
   bytes fingerprint = 2;
 }
 
+// Declares a row type and either host-driven interval sampling or device-driven publication.
 message StreamDeclaration {
+  // Stream identity unique within its admitted provider inventory.
   string id = 1;
   // Fully qualified message name of one row, found in Catalog.types.
   string row = 2;
@@ -107,14 +156,18 @@ message StreamDeclaration {
   string interval_setting = 5;
 }
 
+// Carries a typed product contribution whose payload is opaque to the library.
 message Section {
   // Fully qualified message name of the payload, for example
   // "application.v1.Contributions". At most one section per name.
   string type = 1;
+  // Encoded message named by type; interpretation belongs to the product contribution owner.
   bytes payload = 2;
 }
 
+// Opens exactly one plugin operation attempt; subsequent Request frames on that Invoke are invalid.
 message Request {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
   string operation = 1;
   // Serialized request message of the operation.
   bytes payload = 2;
@@ -126,11 +179,14 @@ message Request {
   string scope = 5;
 }
 
+// Asks an active attempt to cancel cooperatively; the handler may still return a typed final result.
 message Cancel {
   string reason = 1;
 }
 
+// Terminates an operation attempt with either encoded success or a structured failure, including empty success bytes.
 message Response {
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof result {
     // Serialized response message of the operation.
     bytes payload = 1;
@@ -138,10 +194,13 @@ message Response {
   }
 }
 
+// Submits a dependency call from the current attempt under its inherited caller context and checked grants.
 message ChildRequest {
   // Chosen by the plugin, unique within this Invoke call.
   uint64 call = 1;
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
   string operation = 2;
+  // Encoded request message of the operation bound by fingerprint.
   bytes payload = 3;
   // Fingerprint the plugin was built against.
   bytes fingerprint = 4;
@@ -155,21 +214,32 @@ message ChildRequest {
   bool background = 8;
 }
 
-message ChildDemand { uint64 call = 1; }
-
-message ChildCancel {
+// Permits one further item from a streaming child; demand is not a second child invocation.
+message ChildDemand {
+  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
 }
 
-message ChildResponse {
+// Cancels the outstanding child identified within this Invoke carrier.
+message ChildCancel {
+  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
   uint64 call = 1;
+}
+
+// Correlates a unary result, streaming item or failure with a child call on the same carrier.
+message ChildResponse {
+  // Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+  uint64 call = 1;
+  // Select exactly one variant; an unset discriminator carries no selected value.
   oneof result {
+    // Encoded terminal response of the declared operation; selecting empty bytes still represents success.
     bytes payload = 2;
     Failure failure = 3;
     bytes item = 4;
   }
 }
 
+// Preserves machine classification, refusal code, causal context and support diagnostics across operation carriers.
 message Failure {
   Classification classification = 1;
   // Stable machine-readable code, for example "provider_absent".
@@ -189,6 +259,149 @@ message Failure {
   string diagnostics = 9;
 }
 
+// Requests one interval sample at the authoritative host timestamp.
+message Tick {
+  // Host time of the tick. The answering sample carries it.
+  google.protobuf.Timestamp at = 1;
+}
+
+// Opens demand for one declared plugin stream under an opaque invocation scope.
+message SamplesSelection {
+  // Identity of the declared stream, resolved under the current caller/activation.
+  string stream = 1;
+  // Opaque to Harmos. The product names what the stream belongs to.
+  string scope = 2;
+}
+
+// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+message Sample {
+  // For an interval stream, the time of the Tick this sample answers. For
+  // other streams, the device's own time if it supplies one; when unset
+  // the host stamps the sample on arrival.
+  google.protobuf.Timestamp at = 1;
+  // Serialized row message of the stream.
+  bytes row = 2;
+  // Counts samples on this call from 1, so the host can see a gap.
+  uint64 sequence = 3;
+}
+
+// Freezes one dependency's routing identity, fingerprint and activation generation for a plugin.
+message AssignedOperation {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
+  bytes fingerprint = 2;
+  // Pinned activation generation; replacement admission must not redirect an existing handle.
+  uint64 generation = 3;
+}
+
+// Supplies the admitted dependency inventory; receivers reject duplicate identities and freeze the accepted assignment.
+message OperationAssignments {
+  repeated AssignedOperation operations = 1;
+}
+
+// Reports an invocation's phase, terminal outcome, cancellation request and current attempt without exposing its payload.
+message InstanceState {
+  string phase = 1;
+  string outcome = 2;
+  bool cancellation_requested = 3;
+  uint32 attempt = 4;
+}
+
+// Describes reachable protobuf types and root message names for unary and optional streaming directions.
+message Protobuf {
+  // Encoded FileDescriptorSet containing the reachable message graph.
+  bytes descriptors = 1;
+  // Fully qualified unary request root in descriptors.
+  string request = 2;
+  // Fully qualified unary response root in descriptors.
+  string response = 3;
+  // Streaming input root when present; unset means no streamed input direction.
+  optional string input = 4;
+  // Streaming output root when present; unset means no streamed output direction.
+  optional string output = 5;
+}
+
+// Names the service projection associated with a discovered operation.
+message Grpc {
+  string package = 1;
+  string service = 2;
+  string method = 3;
+  // Whether the projection uses the managed operation carrier rather than a direct service method.
+  bool managed = 4;
+}
+
+// Describes an admitted operation/resource scope; opaque invocation scope text does not itself confer this authority.
+message Grant {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Optional checked resource scope; unset is distinct from an authored invocation scope and is interpreted by grant admission.
+  optional string scope = 2;
+}
+
+// Advertises an operation's admitted policy, schema identity and available wire projections.
+message DiscoveredContract {
+  // Complete admitted operation routing identity; provider ownership is reported separately.
+  string id = 1;
+  string description = 2;
+  Visibility visibility = 3;
+  OperationPolicy policy = 4;
+  // True only for an explicitly replay-safe declaration.
+  bool replay_safe = 5;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
+  bytes fingerprint = 6;
+  // Absent for native-only declarations with no public protobuf binding.
+  Protobuf protobuf = 7;
+  Grpc grpc = 8;
+}
+
+// Pairs an admitted contract with its owner, activation generation and caller-specific access information.
+message DiscoveredOperation {
+  // Registered provider identity, not an operation routing prefix.
+  string owner = 1;
+  // Activation generation pinned by this discovered entry; a handle must not follow a replacement activation.
+  uint64 generation = 2;
+  DiscoveredContract contract = 3;
+  repeated Grant grants = 4;
+  // Whether admission also depends on request-specific resource grants.
+  bool conditional_access = 5;
+  // Whether this discovery exposes an available gRPC projection.
+  bool grpc_available = 6;
+}
+
+// Carries further encoded row bytes and optional duration metadata forwarded to the publication owner.
+message FollowingRow {
+  // Encoded row bytes forwarded to the registered publication owner.
+  bytes payload = 1;
+  // Optional duration metadata forwarded unchanged to the publication owner; unset remains absent at that boundary.
+  google.protobuf.Duration published_delta = 2;
+}
+
+// A Catalog Section Declares Values, Never Their Contents or Their Storage.
+message SettingsDeclarations {
+  repeated SettingDeclaration values = 1;
+}
+
+// Names a value and protobuf type that a plugin may request from the product's HostValues resolver.
+message SettingDeclaration {
+  // Value identity matched exactly by HostValues.Get against the calling plugin's declarations.
+  string name = 1;
+  // Protobuf message type expected from the product resolver; a mismatched returned type refuses.
+  string type = 2;
+}
+
+// === Enums === //
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  // Process-local only; invalid in any wire catalog.
+  VISIBILITY_PRIVATE = 1;
+  // Everyone connected: other plugins and the host's clients.
+  VISIBILITY_PUBLIC = 2;
+  // The declaring plugin and its host, through the carrier only.
+  VISIBILITY_PROTECTED = 3;
+}
+
 enum Classification {
   CLASSIFICATION_UNSPECIFIED = 0;
   // Retrying will not help.
@@ -201,91 +414,9 @@ enum Classification {
   CLASSIFICATION_REFUSED = 5;
 }
 
-message Tick {
-  // Host time of the tick. The answering sample carries it.
-  google.protobuf.Timestamp at = 1;
-}
-
-message SamplesSelection {
-  string stream = 1;
-  // Opaque to Harmos. The product names what the stream belongs to.
-  string scope = 2;
-}
-
-message Sample {
-  // For an interval stream, the time of the Tick this sample answers. For
-  // other streams, the device's own time if it supplies one; when unset
-  // the host stamps the sample on arrival.
-  google.protobuf.Timestamp at = 1;
-  // Serialized row message of the stream.
-  bytes row = 2;
-  // Counts samples on this call from 1, so the host can see a gap.
-  uint64 sequence = 3;
-}
-
-message AssignedOperation {
-  string operation = 1;
-  bytes fingerprint = 2;
-  uint64 generation = 3;
-}
-
-message OperationAssignments {
-  repeated AssignedOperation operations = 1;
-}
-
-message InstanceState {
-  string phase = 1;
-  string outcome = 2;
-  bool cancellation_requested = 3;
-  uint32 attempt = 4;
-}
-
 enum CatalogKind {
   CATALOG_KIND_OPERATIONS = 0;
   CATALOG_KIND_SCHEMAS = 1;
   CATALOG_KIND_STREAMS = 2;
   CATALOG_KIND_OBJECTS = 3;
 }
-
-message Protobuf {
-  bytes descriptors = 1;
-  string request = 2;
-  string response = 3;
-  optional string input = 4;
-  optional string output = 5;
-}
-
-message Grpc { string package = 1; string service = 2; string method = 3; bool managed = 4; }
-
-message Grant { string operation = 1; optional string scope = 2; }
-
-message DiscoveredContract {
-  string id = 1;
-  string description = 2;
-  Visibility visibility = 3;
-  OperationPolicy policy = 4;
-  // True only for an explicitly replay-safe declaration.
-  bool replay_safe = 5;
-  bytes fingerprint = 6;
-  // Absent for native-only declarations with no public protobuf binding.
-  Protobuf protobuf = 7;
-  Grpc grpc = 8;
-}
-
-message DiscoveredOperation {
-  string owner = 1;
-  uint64 generation = 2;
-  DiscoveredContract contract = 3;
-  repeated Grant grants = 4;
-  bool conditional_access = 5;
-  bool grpc_available = 6;
-}
-
-message FollowingRow {
-  bytes payload = 1;
-  google.protobuf.Duration published_delta = 2;
-}
-
-// A Catalog Section Declares Values, Never Their Contents or Their Storage.
-message SettingsDeclarations { repeated SettingDeclaration values = 1; }
-message SettingDeclaration { string name = 1; string type = 2; }

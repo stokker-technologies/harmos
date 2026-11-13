@@ -1,22 +1,52 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.context.v1;
+
 import "harmos/v1/types.proto";
 
+// Exposes lifecycle controls only for invocation instances owned by the caller.
 service Invocations {
+  // Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
   rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse);
+  // Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
   rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse);
+  // Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
   rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse);
 }
 
-message InvocationsGetRequest { uint64 instance = 1; }
+// Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
+message InvocationsGetRequest {
+  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+  uint64 instance = 1;
+}
 
-message InvocationsCancelRequest { uint64 instance = 1; string reason = 2; }
+// Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
+message InvocationsCancelRequest {
+  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+  uint64 instance = 1;
+  string reason = 2;
+}
 
-message InvocationsWatchRequest { uint64 instance = 1; }
+// Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
+message InvocationsWatchRequest {
+  // Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
+  uint64 instance = 1;
+}
 
-message InvocationsGetResponse { harmos.v1.InstanceState invocation = 1; }
+// Reports the caller-owned invocation's current lifecycle state without returning its operation payload.
+message InvocationsGetResponse {
+  // Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+  harmos.v1.InstanceState invocation = 1;
+}
 
-message InvocationsCancelResponse { harmos.v1.InstanceState invocation = 1; }
+// Reports lifecycle state after requesting cancellation; a cooperative handler may still produce its final result.
+message InvocationsCancelResponse {
+  // Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+  harmos.v1.InstanceState invocation = 1;
+}
 
-message InvocationsWatchResponse { harmos.v1.InstanceState invocation = 1; }
+// Reports a lifecycle state observed while following the caller-owned invocation through settlement.
+message InvocationsWatchResponse {
+  // Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
+  harmos.v1.InstanceState invocation = 1;
+}

@@ -1,22 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package harmos.context.v1;
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Exposes the authoritative host clock, including virtual time, to operation callers.
 service Time {
+  // Read the authoritative host clock used by operation deadlines, retries and plugin waits.
   rpc Get(TimeGetRequest) returns (TimeGetResponse);
+  // Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
   rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse);
 }
 
+// Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
 message TimeSleepRequest {
+  // Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
   google.protobuf.Duration duration = 1;
 }
 
-message TimeSleepResponse {}
+// Acknowledges completion of the host-clock wait without adding payload fields.
+message TimeSleepResponse {
+  // No payload fields.
+}
 
-message TimeGetRequest {}
+// Read the authoritative host clock used by operation deadlines, retries and plugin waits.
+message TimeGetRequest {
+  // No payload fields.
+}
 
+// Returns the authoritative host time, including virtual time when configured.
 message TimeGetResponse {
+  // Authoritative host time, including virtual time when the host uses it.
   google.protobuf.Timestamp now = 1;
 }

@@ -78,43 +78,50 @@ class PluginsServicer:
     """
 
     def Get(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def List(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Watch(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Create(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Set(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Delete(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Restart(self, request, context):
-        """Missing associated documentation comment in .proto file."""
+        """Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
