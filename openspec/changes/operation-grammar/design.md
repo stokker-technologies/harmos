@@ -1460,9 +1460,11 @@ requests catalog pages bounded to 2,048 bytes. The complete descriptor-bearing
 `harmos.v1.CatalogEntries/List` entry now encodes to 2,471 bytes by itself, so the
 catalog correctly refuses that page as `discovery schema bytes`. The existing
 test expects complete enumeration. Atomic entries, complete descriptors and the
-fixed consumer budget cannot satisfy that expectation together. Integration keeps
-the descriptor, refusal, test assertion and budget unchanged; a contract decision
-is required before this proof can pass. The generated descriptor is already
+fixed consumer budget cannot satisfy that expectation together. Resolved: the
+2,048 was a literal in the test, below its own client's decode ceiling. The test
+now requests pages bounded by that ceiling and asserts each page fits it; the
+descriptor, the refusal of an entry larger than the requested page and every
+product limit are unchanged. The generated descriptor is already
 normalized without source information, file options or redundant JSON names.
 
 Integration repair: automatic Time/HostValues contract admission propagates

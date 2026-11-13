@@ -716,7 +716,7 @@ async fn external_catalog(
             schema: None,
             page: Some(harmos_protocol::v1::PageRequest {
                 page_size: 64,
-                max_bytes: 2048,
+                max_bytes: decode.message_bytes.get() as u64,
                 page_token: after.take().unwrap_or_default(),
             }),
         };
@@ -728,7 +728,7 @@ async fn external_catalog(
             .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
             .await?;
         let page = response.into_inner();
-        assert!(prost::Message::encoded_len(&page) <= 2048);
+        assert!(prost::Message::encoded_len(&page) <= decode.message_bytes.get());
         entries.extend(page.operations);
         if page.next_page_token.is_empty() {
             return Ok(entries);
