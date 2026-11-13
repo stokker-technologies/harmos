@@ -10,7 +10,7 @@
 /* === Modules === */
 
 pub mod contract;
-mod protobuf;
+
 pub mod scalar;
 pub mod transform;
 

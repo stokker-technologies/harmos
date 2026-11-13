@@ -13,9 +13,6 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::storage::directory_event::Event as DirectoryEvent;
-pub use harmos_protocol::storage::{DirectoryCompletion, DirectoryEntry};
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,6 +28,35 @@ use crate::MemorySize;
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectoryEntry {
+    pub path: String,
+    pub directory: bool,
+    pub length: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectoryCompletion {
+    pub entries: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectoryRename {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DirectoryEvent {
+    Existing(DirectoryEntry),
+    Created(DirectoryEntry),
+    Modified(DirectoryEntry),
+    Removed(String),
+    Renamed(DirectoryRename),
+    InitialScanComplete(()),
+    RescanRequired(()),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DirectoryRule {
@@ -83,23 +109,6 @@ impl MemorySize for DirectoryEvent {
     }
 }
 
-impl TryFrom<harmos_protocol::storage::DirectorySelection> for DirectorySelection {
-    type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::DirectorySelection) -> crate::Result<Self> {
-        Ok(Self {
-            root: PathBuf::from(value.root),
-            recursive: value.recursive,
-            rules: value
-                .rules
-                .into_iter()
-                .map(|rule| DirectoryRule {
-                    pattern: rule.pattern,
-                    include: rule.include,
-                })
-                .collect(),
-        })
-    }
-}
 /* === Public Functions === */
 
 /* === Private Functions === */

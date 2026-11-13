@@ -52,27 +52,6 @@ impl MemorySize for DataBatch {
     }
 }
 
-impl From<DataBatch> for harmos_protocol::storage::DataBatch {
-    fn from(value: DataBatch) -> Self {
-        Self {
-            sequence: value.sequence,
-            destination: value.destination.to_string(),
-            schema: Some(value.schema.into()),
-            ipc: value.data.into_bytes(),
-        }
-    }
-}
-impl TryFrom<harmos_protocol::storage::DataBatch> for DataBatch {
-    type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::DataBatch) -> crate::Result<Self> {
-        Ok(Self {
-            sequence: value.sequence,
-            destination: Identifier::new(value.destination)?,
-            schema: value.schema.ok_or(crate::Error::InvalidInput { field: "schema", reason: "required" })?.try_into()?,
-            data: ArrowIpc::new(value.ipc),
-        })
-    }
-}
 /* === Public Functions === */
 
 /* === Private Functions === */

@@ -30,7 +30,7 @@ use tokio::sync::OwnedSemaphorePermit;
 use super::execute::Plan;
 use super::object_schemas::NormalizedObjects;
 use super::transform::{ProjectExecution, Transform, project::Project};
-use super::{QueryCompletion, QueryOutput, Source};
+use super::{QueryCompletion, Source};
 use crate::storage::arrow::{ArrowBatch, ArrowSchema};
 use crate::storage::backend::ScanPage;
 use crate::storage::config::SCAN_ROWS;
@@ -39,7 +39,6 @@ use crate::storage::selection::Entry;
 use crate::storage::snapshot::Snapshot;
 use crate::storage::{FileReference, ObjectEntry, SchemaKey, StorageManager, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, MemorySize, Result};
-use prost::Message;
 
 /* === Constants === */
 
@@ -149,33 +148,34 @@ impl QueryArrow {
     #[tracing::instrument(name = "storage.query.reader.output", level = "trace", skip_all)]
     pub fn output(self) -> QueryOutput {
         match self {
-            Self::Schema(schema) => QueryOutput {
-                output: Some(harmos_protocol::storage::query_output::Output::Schema(
-                    harmos_domain::model::storage::ArrowIpc::from(schema).into_bytes(),
-                )),
-            },
-            Self::Batch(batch) => QueryOutput {
-                output: Some(harmos_protocol::storage::query_output::Output::Batch(
-                    harmos_domain::model::storage::ArrowIpc::from(batch).into_bytes(),
-                )),
-            },
+            Self::Schema(schema) => QueryOutput::Schema(schema.ipc_bytes().to_vec()),
+            Self::Batch(batch) => QueryOutput::Batch(batch.ipc_bytes().to_vec()),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum QueryOutput {
+    Schema(Vec<u8>),
+    Batch(Vec<u8>),
+}
+
+impl MemorySize for QueryOutput {
+    fn memory_size(&self) -> usize {
+        let bytes = match self {
+            Self::Schema(bytes) | Self::Batch(bytes) => bytes,
+        };
+        std::mem::size_of::<Self>().saturating_add(bytes.capacity())
     }
 }
 
 impl TryFrom<QueryOutput> for QueryArrow {
     type Error = Error;
-
     fn try_from(output: QueryOutput) -> Result<Self> {
-        Ok(
-            match output.output.ok_or(crate::Error::InvalidInput {
-                field: "query output",
-                reason: "missing output",
-            })? {
-                harmos_protocol::storage::query_output::Output::Schema(ipc) => Self::Schema(ArrowSchema::from_ipc(ipc)?),
-                harmos_protocol::storage::query_output::Output::Batch(ipc) => Self::Batch(ArrowBatch::from_ipc(ipc)?),
-            },
-        )
+        match output {
+            QueryOutput::Schema(ipc) => Ok(Self::Schema(ArrowSchema::from_ipc(ipc)?)),
+            QueryOutput::Batch(ipc) => Ok(Self::Batch(ArrowBatch::from_ipc(ipc)?)),
+        }
     }
 }
 
@@ -506,12 +506,7 @@ impl QueryReader {
             let slice = batch.slice(self.pending_offset, rows);
             let output = ArrowBatch::try_new(slice)?;
 
-            // The Wire Output Adds Its Envelope Around The Arrow Bytes Field.
-            let envelope = QueryOutput {
-                output: Some(harmos_protocol::storage::query_output::Output::Batch(output.ipc_bytes().to_vec())),
-            };
-            let encoded = envelope.encoded_len();
-            drop(envelope);
+            let encoded = output.ipc_bytes().len().saturating_add(15);
             if encoded <= settings.batch_bytes.get() {
                 self.pending_offset += rows;
                 self.delivered += rows as u64;
@@ -574,18 +569,6 @@ impl Rows {
             Self::Files(rows) => rows.last().map(Entry::position),
         };
         position.map(|position| position.sequence)
-    }
-}
-
-impl TryFrom<Query> for harmos_protocol::storage::Query {
-    type Error = Error;
-    fn try_from(value: Query) -> Result<Self> {
-        Ok(Self {
-            at: Some(value.at.into()),
-            source: Some(value.source.into()),
-            transforms: value.transforms.into_iter().map(TryInto::try_into).collect::<harmos_domain::Result<_>>()?,
-            slice: Some(value.slice.into()),
-        })
     }
 }
 

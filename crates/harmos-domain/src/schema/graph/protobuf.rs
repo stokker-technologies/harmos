@@ -26,7 +26,7 @@ use crate::schema::{
     wire::{Form, Omission, Representation},
 };
 use crate::{Error, Result};
-use harmos_protocol::storage as wire;
+use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 

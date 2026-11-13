@@ -69,8 +69,8 @@ struct Queued {
 impl DirectoryWatcher {
     pub(super) async fn new(inner: Arc<Inner>, value: DirectorySelection, include_existing: bool) -> Result<Self> {
         let selected = selection(value).await?;
-        let initial_marker = item(&inner, DirectoryEvent::InitialScanComplete(harmos_protocol::storage::Empty {}))?;
-        let rescan = item(&inner, DirectoryEvent::RescanRequired(harmos_protocol::storage::Empty {}))?;
+        let initial_marker = item(&inner, DirectoryEvent::InitialScanComplete(()))?;
+        let rescan = item(&inner, DirectoryEvent::RescanRequired(()))?;
         let settings = inner.settings.filesystem;
 
         let (outgoing, incoming) = mpsc::channel(settings.event_capacity.get());
@@ -260,7 +260,7 @@ fn events(selection: &Selection, event: Event) -> Result<Vec<DirectoryEvent>> {
     let root_changed = matches!(event.kind, EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_)))
         && event.paths.iter().any(|path| path == &selection.value.root);
     if event.need_rescan() || event.paths.is_empty() || root_changed {
-        return Ok(vec![DirectoryEvent::RescanRequired(harmos_protocol::storage::Empty {})]);
+        return Ok(vec![DirectoryEvent::RescanRequired(())]);
     }
     let mut result = Vec::new();
     match event.kind {
@@ -286,7 +286,9 @@ fn events(selection: &Selection, event: Event) -> Result<Vec<DirectoryEvent>> {
             let from = selected_path(selection, &event.paths[0])?;
             let to = selected_path(selection, &event.paths[1])?;
             match (from, to) {
-                (Some(from), Some(to)) => result.push(DirectoryEvent::Renamed(harmos_protocol::storage::DirectoryRename { from, to })),
+                (Some(from), Some(to)) => {
+                    result.push(DirectoryEvent::Renamed(harmos_domain::model::storage::directory::DirectoryRename { from, to }))
+                }
                 (Some(path), None) => result.push(DirectoryEvent::Removed(path)),
                 (None, Some(_)) => {
                     if let Some(entry) = entry(selection, &event.paths[1])? {
@@ -311,7 +313,7 @@ fn events(selection: &Selection, event: Event) -> Result<Vec<DirectoryEvent>> {
             }
         }
         EventKind::Access(_) => {}
-        _ => result.push(DirectoryEvent::RescanRequired(harmos_protocol::storage::Empty {})),
+        _ => result.push(DirectoryEvent::RescanRequired(())),
     }
     Ok(result)
 }
@@ -353,14 +355,11 @@ mod tests {
             Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both))).add_path(root.join("before")).add_path(root.join("after"));
         assert_eq!(
             events(&selection, renamed).unwrap(),
-            vec![DirectoryEvent::Renamed(harmos_protocol::storage::DirectoryRename {
+            vec![DirectoryEvent::Renamed(harmos_domain::model::storage::directory::DirectoryRename {
                 from: "before".into(),
                 to: "after".into()
             })]
         );
-        assert_eq!(
-            events(&selection, Event::new(EventKind::Other)).unwrap(),
-            vec![DirectoryEvent::RescanRequired(harmos_protocol::storage::Empty {})]
-        );
+        assert_eq!(events(&selection, Event::new(EventKind::Other)).unwrap(), vec![DirectoryEvent::RescanRequired(())]);
     }
 }
