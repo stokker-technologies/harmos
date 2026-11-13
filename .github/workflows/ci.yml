@@ -14,6 +14,7 @@ run-name: ${{ github.event_name == 'pull_request' && github.event.action == 'clo
     - closed
   workflow_dispatch: {}
 permissions:
+  actions: read
   contents: read
 env:
   PROFILE: ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
