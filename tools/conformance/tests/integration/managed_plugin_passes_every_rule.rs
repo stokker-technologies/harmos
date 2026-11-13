@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error;
 
 // Third Party Imports
 use tokio::process::Command;
@@ -44,7 +45,7 @@ use super::support;
 /* === Tests === */
 
 #[tokio::test]
-async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn std::error::Error>> {
+async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     // Locate the Reference Host and Hand-Written Plugin.
     let host = support::binary("harmos-conformance", env!("CARGO_BIN_EXE_harmos-conformance"));
     let plugin = support::binary("harmos-conformance-plugin", env!("CARGO_BIN_EXE_harmos-conformance-plugin"));

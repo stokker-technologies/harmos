@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error;
 
 // Third Party Imports
 use futures_util::stream;
@@ -65,7 +66,7 @@ pub enum Fault {
 /* === Implementations === */
 
 impl CatalogFault {
-    pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn Error>> {
         let client = InstanceClient::connect(format!("http://{address}")).await?;
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?.to_string();
@@ -85,7 +86,7 @@ impl CatalogFault {
         Ok(Self { address, stop, task })
     }
 
-    pub async fn close(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn close(self) -> Result<(), Box<dyn Error>> {
         let _ = self.stop.send(());
         self.task.await??;
         Ok(())

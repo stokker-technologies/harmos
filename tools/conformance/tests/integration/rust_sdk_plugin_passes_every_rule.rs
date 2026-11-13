@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error;
 
 // Third Party Imports
 
@@ -44,7 +45,7 @@ use harmos_conformance::{Target, run};
 /* === Tests === */
 
 #[tokio::test]
-async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn std::error::Error>> {
+async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     // Locate the SDK-Authored Managed Plugin.
     let plugin = support::binary("harmos-sdk-conformance-plugin", env!("CARGO_BIN_EXE_harmos-sdk-conformance-plugin"));
 

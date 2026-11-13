@@ -20,6 +20,7 @@ pub use catalog_fault::{CatalogFault, Fault};
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error;
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader},
@@ -50,7 +51,7 @@ pub struct PluginProcess {
 /* === Implementations === */
 
 impl PluginProcess {
-    pub fn start(executable: &OsString) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn start(executable: &OsString) -> Result<Self, Box<dyn Error>> {
         let child = Command::new(executable)
             .arg("--remote")
             .env("HARMOS_ADDRESS", "127.0.0.1:0")
