@@ -210,6 +210,19 @@ class Fixture:
             raise ValueError("Get Operation: Contract Differs from Inventory")
         return Value(value=operation.contract.id.encode())
 
+    @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
+    async def ticks(self, ctx: Context) -> Value:
+        return Value(value=ctx.sequence.to_bytes(8, "little"))
+
+    @publisher("conformance.device", row=Value)
+    async def device(self, ctx: Context, publisher: Publisher) -> None:
+        await publisher.publish(Value(value=b"device"))
+        await ctx.cancelled()
+
+    @observer("conformance.settings", row=Value, interval=Duration(seconds=1), interval_setting="interval")
+    async def settings(self, ctx: Context) -> Value:
+        return Value(value=ctx.sequence.to_bytes(8, "little"))
+
     @observer("conformance.tick_children", row=Value, interval=Duration(seconds=1))
     async def tick_children(self, context: Context) -> Value:
         first, second = await asyncio.gather(context.call(HOST_ECHO, Value(value=b"\x01")), context.call(HOST_ECHO, Value(value=b"\x02")))
@@ -220,7 +233,11 @@ class Fixture:
         echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
         clock = await context.call(GET_TIME, TimeGetRequest())
         settings = await context.settings()
-        return Value(value=echo.SerializeToString() + clock.SerializeToString() + settings.SerializeToString())
+        value = b""
+        for reply in (echo, clock, settings):
+            payload = reply.SerializeToString()
+            value += len(payload).to_bytes(4, "little") + payload
+        return Value(value=value)
 
     @observer("conformance.tick_failure", row=Value, interval=Duration(seconds=1))
     async def tick_failure(self, context: Context) -> Value:
@@ -260,19 +277,6 @@ class Fixture:
         automatic.add_done_callback(_settled)
         await started.wait()
         return Value(value=b"cancelled")
-
-    @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
-    async def ticks(self, ctx: Context) -> Value:
-        return Value(value=ctx.sequence.to_bytes(8, "little"))
-
-    @publisher("conformance.device", row=Value)
-    async def device(self, ctx: Context, publisher: Publisher) -> None:
-        await publisher.publish(Value(value=b"device"))
-        await ctx.cancelled()
-
-    @observer("conformance.settings", row=Value, interval=Duration(seconds=1), interval_setting="harmos.conformance.v1.Graph.interval")
-    async def settings(self, ctx: Context) -> Value:
-        return Value(value=ctx.sequence.to_bytes(8, "little"))
 
 
 class ClockFixture:

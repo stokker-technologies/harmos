@@ -83,6 +83,14 @@ impl v1::jobs_server::Jobs for Endpoint {
     }
 }
 #[tonic::async_trait]
+impl v1::plugins::annotations_server::Annotations for Endpoint {
+    async fn get(
+        &self, request: Request<v1::plugins::AnnotationsGetRequest>,
+    ) -> Result<Response<v1::plugins::AnnotationsGetResponse>, Status> {
+        Ok(Response::new(v1::plugins::AnnotationsGetResponse { value: request.into_inner().name }))
+    }
+}
+#[tonic::async_trait]
 impl v1::jobs::progress_server::Progress for Endpoint {
     type WatchStream = Pin<Box<dyn Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
     async fn watch(&self, request: Request<v1::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
@@ -113,6 +121,7 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
             .add_service(status::diagnostics_server::DiagnosticsServer::new(Endpoint))
             .add_service(v1::jobs_server::JobsServer::new(Endpoint))
             .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint))
+            .add_service(v1::plugins::annotations_server::AnnotationsServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
                 let _ = stopped.await;
             }),
@@ -168,6 +177,17 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert_eq!(progress.next().await.unwrap().unwrap().value, "opened:selection");
     assert_eq!(progress.next().await.unwrap().unwrap().value, "finished:selection");
     assert!(progress.next().await.unwrap().is_none());
+    assert_eq!(
+        client
+            .plugins
+            .annotations
+            .get(Request::new(v1::plugins::AnnotationsGetRequest { name: "example".into() }))
+            .await
+            .unwrap()
+            .into_inner()
+            .value,
+        "example"
+    );
     stop.send(()).unwrap();
     serving.await.unwrap().unwrap();
 }

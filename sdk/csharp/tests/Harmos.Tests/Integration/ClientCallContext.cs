@@ -2,6 +2,7 @@
 
 using Google.Protobuf;
 using Grpc.Core;
+using Status = Grpc.Core.Status;
 using Harmos.Client.V1;
 using Xunit;
 

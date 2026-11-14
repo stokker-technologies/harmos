@@ -220,7 +220,7 @@ harmos::Plugin harmos::conformance::plugin() {
         for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(ctx.sequence >> (8 * index));
         return value(bytes);
     });
-    configured.every(interval).interval_setting("harmos.conformance.v1.Graph.interval");
+    configured.every(interval).interval_setting("interval");
     Graph section;
     section.mutable_interval()->set_seconds(2);
     plugin.message<harmos::conformance::v1::PayloadOnly>().message<harmos::conformance::v1::PayloadOnly>();

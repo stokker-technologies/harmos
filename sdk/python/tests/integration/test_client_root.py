@@ -17,7 +17,7 @@ from typing import assert_type
 import grpc
 
 from harmos import Client as LibraryClient
-from tests.support.client_protocol import diagnostics, jobs, progress, status
+from tests.support.client_protocol import annotations, diagnostics, jobs, progress, status
 
 # isort: split
 from tests.fixtures.client.client import ClientRoot as Client
@@ -74,6 +74,26 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
             response = status.StatusGetResponse()
             response.status.identity.application_name = "selection"
             return response
+
+        async def get_annotation(
+            request: annotations.AnnotationsGetRequest, context: grpc.aio.ServicerContext
+        ) -> annotations.AnnotationsGetResponse:
+            return annotations.AnnotationsGetResponse(value=request.name)
+
+        server.add_generic_rpc_handlers(
+            (
+                grpc.method_handlers_generic_handler(
+                    "application.v1.plugins.Annotations",
+                    {
+                        "Get": grpc.unary_unary_rpc_method_handler(
+                            get_annotation,
+                            request_deserializer=annotations.AnnotationsGetRequest.FromString,
+                            response_serializer=annotations.AnnotationsGetResponse.SerializeToString,
+                        )
+                    },
+                ),
+            )
+        )
 
         async def get_diagnostics(
             request: diagnostics.DiagnosticsGetRequest, context: grpc.aio.ServicerContext
@@ -133,6 +153,7 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                     (await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection"
                 )
                 self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
+                self.assertEqual((await client.plugins.annotations.get(annotations.AnnotationsGetRequest(name="example"))).value, "example")
                 self.assertEqual(
                     [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
                     ["opened:selection", "finished:selection"],

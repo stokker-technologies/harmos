@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Buffers.Binary;
 using Google.Protobuf;
+using System.Buffers.Binary;
 using Google.Protobuf.WellKnownTypes;
 using Harmos.Sdk;
 using Harmos.V1;
@@ -66,7 +66,7 @@ public sealed class Fixture
       .Requires(getOperation)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
       .Stream<Value>("conformance.device", Device)
-      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "harmos.conformance.v1.Graph.interval")
+      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "interval")
       .Observer("conformance.tick_children", new Duration { Seconds = 1 }, context => Children(context, new Value()))
       .Observer("conformance.tick_context", new Duration { Seconds = 1 }, TickContext)
       .Observer("conformance.tick_failure", new Duration { Seconds = 1 }, TickFailure)
@@ -98,7 +98,16 @@ public sealed class Fixture
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = await context.CallAsync(Clock.GetTime, new TimeGetRequest());
     var settings = await context.SettingsAsync();
-    return new Value { Value_ = ByteString.CopyFrom(echo.ToByteArray().Concat(clock.ToByteArray()).Concat(settings.ToByteArray()).ToArray()) };
+    using var value = new MemoryStream();
+    foreach (var reply in new IMessage[] { echo, clock, settings })
+    {
+      var payload = reply.ToByteArray();
+      var length = new byte[4];
+      BinaryPrimitives.WriteUInt32LittleEndian(length, (uint)payload.Length);
+      value.Write(length);
+      value.Write(payload);
+    }
+    return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
   }
 
   private async Task<Value> TickFailure(SdkContext context)

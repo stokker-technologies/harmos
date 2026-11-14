@@ -4,7 +4,7 @@ using Google.Protobuf;
 using Grpc.Core;
 using Harmos.Client.V1;
 using Harmos.Client.V1.StatusResources;
-using Client = Fixture.Sdk.Client;
+using FixtureClient = Fixture.Sdk.Client;
 using Status = Grpc.Core.Status;
 using Xunit;
 
@@ -16,7 +16,7 @@ public sealed class ResourceRoots
   public async Task LibraryAndProductServicesShareParentsAndRetainWatchCardinality()
   {
     var invoker = new Invoker();
-    var client = new Client(invoker);
+    var client = new FixtureClient(invoker);
     using var status = client.Status.Get(new StatusGetRequest());
     Assert.Equal("harmos.client.v1.Status/Get:selection", (await status.ResponseAsync).Status.Identity.ApplicationName);
     using var diagnostics = client.Status.Diagnostics.Get(new DiagnosticsGetRequest { Name = "selection" });
@@ -29,6 +29,8 @@ public sealed class ResourceRoots
     Assert.True(await progress.ResponseStream.MoveNext(CancellationToken.None));
     Assert.Equal("application.v1.jobs.Progress/Watch:selection:finished", progress.ResponseStream.Current.Value);
     Assert.False(await progress.ResponseStream.MoveNext(CancellationToken.None));
+    using var annotation = client.Plugins.Annotations.Get(new Application.V1.Plugins.AnnotationsGetRequest { Name = "example" });
+    Assert.Equal("application.v1.plugins.Annotations/Get:example", (await annotation.ResponseAsync).Value);
   }
 
   private sealed class Reader<T>(IEnumerable<T> values) : IAsyncStreamReader<T>
