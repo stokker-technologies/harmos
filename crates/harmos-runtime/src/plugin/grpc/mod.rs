@@ -52,13 +52,16 @@ type Outcome = Result<(), Arc<Error>>;
 
 #[derive(Clone)]
 pub struct CallingPlugin {
-    pub name: String,
+    pub name: Option<String>,
     pub description: harmos_protocol::plugin::InstanceGetResponse,
+    connection: Arc<Connection>,
+    provider: String,
 }
 
 #[derive(Clone)]
 pub struct Activation {
-    pub entry_name: String,
+    pub entry_name: Option<String>,
+    provider: String,
     pub settings: v1::SettingValues,
     pub number: u64,
     pub description: harmos_protocol::plugin::InstanceGetResponse,
@@ -137,6 +140,20 @@ pub enum Error {
 
 /* === Implementations === */
 
+impl CallingPlugin {
+    pub(crate) fn same_activation(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.connection, &other.connection)
+    }
+    pub(crate) fn owner(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.provider)
+    }
+}
+impl Activation {
+    pub(crate) fn owner(&self) -> &str {
+        self.entry_name.as_deref().unwrap_or(&self.provider)
+    }
+}
+
 impl<A: Application> Runtime<A> {
     pub(crate) async fn prepare_grpc_entry(
         &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<v1::SettingValues>,
@@ -160,7 +177,7 @@ impl<A: Application> Runtime<A> {
                 operations.transfer_message_bytes().get(),
             )
             .await?;
-            activation.entry_name = name;
+            activation.entry_name = Some(name);
             activation.settings =
                 crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
@@ -289,7 +306,7 @@ impl Attached {
             )
             .await?;
             if let Some(name) = entry_name {
-                activation.entry_name = name;
+                activation.entry_name = Some(name);
             }
             activation.settings =
                 crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
@@ -423,7 +440,8 @@ async fn connect(
         number,
         settings: crate::plugin::manager::settings::select(description.catalog.as_ref().expect("admitted description"), None)
             .map_err(|error| Error::Invalid(error.to_string()))?,
-        entry_name: description.id.clone(),
+        entry_name: None,
+        provider: connection.owner.clone(),
         description,
         previous_started_at,
         executable_digest,
@@ -560,6 +578,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                         continue;
                     }
                     next.entry_name = activation.entry_name.clone();
+                    next.provider = activation.provider.clone();
                     next.settings = crate::plugin::manager::settings::select(
                         next.description.catalog.as_ref().expect("admitted description"),
                         Some(activation.settings.clone()),

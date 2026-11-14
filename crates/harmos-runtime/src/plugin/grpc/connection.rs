@@ -45,6 +45,7 @@ use super::Error;
 /* === Structs === */
 
 pub(super) struct Connection {
+    pub(super) owner: String,
     pub(super) channel: Channel,
     message_bytes: usize,
     pub(super) closed: watch::Sender<bool>,
@@ -88,7 +89,10 @@ impl Connection {
             async move { socket.map(TokioIo::new).ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionAborted, "Plugin Connection Closed")) }
         });
         let channel = endpoint.connect_with_connector(connector).await.map_err(|error| Error::Transport(error.to_string()))?;
-        Ok(Self { channel, closed, message_bytes })
+        let mut identity = [0; 16];
+        getrandom::fill(&mut identity).map_err(|error| Error::Invalid(format!("Name Plugin Attachment: {error}")))?;
+        let owner = format!("attachment.{}", u128::from_le_bytes(identity));
+        Ok(Self { owner, channel, closed, message_bytes })
     }
 }
 

@@ -126,13 +126,8 @@ impl Manager {
         let factories = vec![
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
             OperationFactory::protobuf::<harmos_operations::clock::Get>(),
+            OperationFactory::protobuf::<crate::plugin::grpc::settings::List>(),
         ];
-        #[cfg(feature = "grpc")]
-        let factories = {
-            let mut factories = factories;
-            factories.push(OperationFactory::protobuf::<crate::plugin::grpc::settings::List>());
-            factories
-        };
         let mut both_faces = Vec::new();
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
@@ -206,7 +201,7 @@ impl Manager {
             let binding = Arc::new(Binding::new(activation, contract.clone()));
             let mut entry = self
                 .binding_erased(
-                    &activation.entry_name,
+                    activation.owner(),
                     lane,
                     binding,
                     definition,
@@ -231,13 +226,13 @@ impl Manager {
             Arc::get_mut(&mut entry).expect("unpublished plugin entry").contract = Some(metadata);
             entries.push(entry);
         }
-        self.reserve_inner(&entries, replace.then_some(activation.entry_name.as_str()), !replace)
+        self.reserve_inner(&entries, replace.then_some(activation.owner()), !replace)
             .map_err(|error| PlacementError::Invalid(error.to_string()))?;
         Ok(Admission {
             registry: Arc::downgrade(&self.registry),
             entries,
             manager: self.clone(),
-            replacing: replace.then(|| activation.entry_name.clone()),
+            replacing: replace.then(|| activation.owner().to_owned()),
             previous: Vec::new(),
             staged: replace,
             sealed: !replace,
@@ -267,7 +262,7 @@ impl crate::operations::Context<'_> {
     pub(crate) fn submit_grpc_child(
         &self, caller: &crate::plugin::grpc::CallingPlugin, child: v1::ChildRequest,
     ) -> Result<ChildInvocation> {
-        let owner = caller.name.as_str();
+        let owner = caller.owner();
         let requires = &caller.description.catalog.as_ref().expect("admitted description").requires;
         if child.background && child.operation != "harmos.plugin.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
@@ -283,7 +278,7 @@ impl crate::operations::Context<'_> {
             operation: child.operation.clone(),
         };
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if entry.owner.as_str() != owner && entry.definition.visibility != Visibility::Public {
+        if !plugin.is_some_and(|binding| caller.same_activation(&binding.caller)) && entry.definition.visibility != Visibility::Public {
             return Err(denied());
         }
         if !entry.context_visible() {
@@ -316,13 +311,8 @@ impl crate::operations::Context<'_> {
                     field: "child operation",
                     reason: "host operation has no protobuf codec",
                 })?;
-            let resources = self.operations.resources_for(&entry);
-            #[cfg(feature = "grpc")]
-            let resources = {
-                let mut resources = resources;
-                resources.replace(Arc::new(caller.clone()));
-                resources
-            };
+            let mut resources = self.operations.resources_for(&entry);
+            resources.replace(Arc::new(caller.clone()));
             factory
                 .prepare_grpc(
                     resources,
@@ -405,28 +395,36 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if contract.protobuf().is_some() {
         return Ok(contract.fingerprint().0.to_vec());
     }
-    let binding = contract.grpc().ok_or(Error::InvalidInput {
+    #[cfg(not(feature = "grpc"))]
+    return Err(Error::InvalidInput {
         field: "host contract",
-        reason: "child calls require the host operation's protobuf projection",
-    })?;
-    let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
-    let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
-        operation: entry.id().into(),
-        source: Arc::new(source),
-    })?;
-    let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
-    harmos_protocol::schema::fingerprint(
-        entry.id(),
-        &prost_types::FileDescriptorSet {
-            file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
-        },
-        method.input().full_name(),
-        method.output().full_name(),
-    )
-    .map_err(|source| Error::OperationFailed {
-        operation: entry.id().into(),
-        source: Arc::new(source),
-    })
+        reason: "native protobuf projections require the grpc feature",
+    });
+    #[cfg(feature = "grpc")]
+    {
+        let binding = contract.grpc().ok_or(Error::InvalidInput {
+            field: "host contract",
+            reason: "child calls require the host operation's protobuf projection",
+        })?;
+        let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
+        let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        })?;
+        let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
+        harmos_protocol::schema::fingerprint(
+            entry.id(),
+            &prost_types::FileDescriptorSet {
+                file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            },
+            method.input().full_name(),
+            method.output().full_name(),
+        )
+        .map_err(|source| Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        })
+    }
 }
 
 fn policy(policy: Option<&v1::OperationPolicy>) -> Result<OperationPolicy> {

@@ -212,3 +212,100 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     );
     host.close().await;
 }
+
+#[tokio::test]
+async fn unmanaged_reported_identity_cannot_select_a_stored_entry() {
+    use futures_util::stream;
+    use harmos_protocol::plugin::{
+        self, host::SettingsListRequest, instance_samples_request as request, instance_samples_response as response,
+    };
+    use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        },
+        time::{Duration, SystemTime},
+    };
+    use tokio::sync::mpsc;
+
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let mut host = Host::with_clock(root.path(), &backends, clock).await;
+    let victim = Remote::start().await;
+    victim.catalog(catalog());
+    let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
+    host.client.create(support::remote("remote", &victim.address)).await.unwrap();
+    support::state(&mut watch, "remote", client::PluginState::Ready, 1).await;
+
+    let descriptor = SettingsListRequest::default().descriptor();
+    let types = prost_types::FileDescriptorSet {
+        file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
+    let id = "harmos.plugin.host.v1.Settings/List";
+    let fingerprint = harmos_protocol::schema::fingerprint(
+        id,
+        &types,
+        "harmos.plugin.host.v1.SettingsListRequest",
+        "harmos.plugin.host.v1.SettingsListResponse",
+    )
+    .unwrap();
+    let mut description = v1::Catalog {
+        types: Some(types),
+        requires: vec![v1::Requirement {
+            id: id.into(),
+            fingerprint: fingerprint.clone(),
+        }],
+        streams: vec![v1::StreamDeclaration {
+            id: "probe".into(),
+            row: "harmos.plugin.host.v1.SettingsListRequest".into(),
+            interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    description.digest = harmos_protocol::schema::catalog_digest(&description);
+    let attacker = Remote::start().await;
+    // Both Instances Report "remote"; Only The Manager Selects The Entry Identity.
+    attacker.catalog(description);
+    let refused = Arc::new(AtomicBool::new(false));
+    let observed = refused.clone();
+    attacker.samples(move |mut input| {
+        let (output, receiver) = mpsc::channel(1);
+        let fingerprint = fingerprint.clone();
+        let observed = observed.clone();
+        tokio::spawn(async move {
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Tick(_))));
+            output
+                .send(Ok(plugin::InstanceSamplesResponse {
+                    samples: vec![],
+                    frame: Some(response::Frame::Child(v1::ChildRequest {
+                        call: 1,
+                        operation: id.into(),
+                        fingerprint,
+                        payload: SettingsListRequest::default().encode_to_vec(),
+                        ..Default::default()
+                    })),
+                }))
+                .await
+                .unwrap();
+            let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                panic!("Expected Child Reply");
+            };
+            let Some(v1::child_response::Result::Failure(failure)) = reply.result else {
+                panic!("Expected Refusal");
+            };
+            assert_eq!(reply.call, 1);
+            assert_eq!(failure.classification(), v1::Classification::Refused);
+            observed.store(true, Ordering::SeqCst);
+        });
+        Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
+    });
+    let attached = host.runtime.attach_grpc(Placement::Remote(attacker.address.clone()), super::super::support::settings()).await.unwrap();
+    assert!(attached.activation().unwrap().entry_name.is_none());
+    controller.advance_until(Duration::from_secs(2), || refused.load(Ordering::SeqCst)).await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.close().await;
+}

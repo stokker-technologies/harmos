@@ -88,7 +88,7 @@ impl Manager {
             let retired = state.retired();
             for entry in entries {
                 if let Some(previous) = state.entries.get(entry.id()).and_then(|providers| {
-                    providers.values().filter(|previous| Some(previous.owner.as_str()) != replacing).find(|previous| {
+                    providers.values().filter(|previous| replacing.is_none_or(|owner| !previous.managed_by(owner))).find(|previous| {
                         entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
                             || previous.binding.is::<crate::plugin::grpc::invoke::Binding>()
                     })
@@ -103,7 +103,7 @@ impl Manager {
                 .entries
                 .values()
                 .flat_map(|providers| providers.values())
-                .filter(|entry| Some(entry.owner.as_str()) != replacing)
+                .filter(|entry| replacing.is_none_or(|owner| !entry.managed_by(owner)))
                 .chain(entries)
             {
                 let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
@@ -204,9 +204,7 @@ impl Manager {
                         let ids = state
                             .entries
                             .iter()
-                            .filter(|(_, providers)| {
-                                providers.get(owner).is_some_and(|entry| entry.binding.is::<crate::plugin::grpc::invoke::Binding>())
-                            })
+                            .filter(|(_, providers)| providers.get(owner).is_some_and(|entry| entry.managed_by(owner)))
                             .map(|(id, _)| id.clone())
                             .collect::<Vec<_>>();
                         for id in ids {

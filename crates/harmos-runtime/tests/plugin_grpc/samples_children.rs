@@ -66,7 +66,7 @@ static DECLARATION: WireDeclaration = WireDeclaration::request::<Host>(
 struct Signals {
     first: Mutex<BTreeMap<String, Arc<Notify>>>,
     parked: Mutex<BTreeMap<String, Arc<Parked>>>,
-    callers: Mutex<Vec<(String, String)>>,
+    callers: Mutex<Vec<(Option<String>, String)>>,
     answered: AtomicUsize,
     rejected: Notify,
     refusals: AtomicUsize,
@@ -431,6 +431,6 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     });
     let ((), result) = tokio::join!(collect, drive);
     result.unwrap();
-    assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry == "tick-owner" && reported == "remote"));
+    assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick-owner") && reported == "remote"));
     host.close().await;
 }

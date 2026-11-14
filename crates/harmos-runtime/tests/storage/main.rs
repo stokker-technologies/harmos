@@ -13,10 +13,14 @@
 mod backend;
 #[path = "../storage/coordinator.rs"]
 mod coordinator;
+mod filtered_pages;
 #[path = "../support/storage_fixture.rs"]
 pub(crate) mod fixture;
+mod issued_cut_lifetime;
+mod issued_pages;
 #[path = "../storage/manager.rs"]
 mod manager;
+mod native_pages;
 #[path = "../storage/operations.rs"]
 mod operations;
 #[path = "../storage/runtime.rs"]

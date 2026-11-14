@@ -41,11 +41,9 @@ mod streaming;
 
 mod registration;
 
-#[cfg(feature = "grpc")]
 mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
-#[cfg(feature = "grpc")]
 mod wire;
 
 /* === Re-Exports === */
@@ -73,7 +71,6 @@ pub use harmos_operations::execution::operations::{
 };
 pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use harmos_operations::execution::operations::{ExecutionContext, FunctionContext, NativeInstance, OperationFactory, OperationSpec};
-#[cfg(feature = "grpc")]
 pub use harmos_operations::execution::operations::{
     ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
 };

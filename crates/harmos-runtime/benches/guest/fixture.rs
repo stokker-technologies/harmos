@@ -31,9 +31,7 @@ use std::time::{Duration, Instant};
 // Local Imports
 use harmos_runtime::Runtime;
 use prost::Message as _;
-use schematic_operations::protocol as propose;
-use schematic_operations::protocol as validate;
-use schematic_operations::protocol::Snapshot;
+use schematic_operations::protocol::{Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
 
 /* === Constants === */
 
@@ -100,17 +98,17 @@ impl Fixture {
         }
     }
 
-    pub async fn command(&self) -> propose::Route {
-        let request = propose::ProposeRoute {
-            from: Some(propose::Point { x: 0, y: 0 }),
-            to: Some(propose::Point { x: 3, y: 4 }),
+    pub async fn command(&self) -> Route {
+        let request = ProposeRoute {
+            from: Some(Point { x: 0, y: 0 }),
+            to: Some(Point { x: 3, y: 4 }),
         };
         let payload = self.runtime.operations.call_encoded("schematic.route", request.encode_to_vec()).await.unwrap();
-        propose::Route::decode(payload.as_slice()).unwrap()
+        Route::decode(payload.as_slice()).unwrap()
     }
-    pub async fn payload(&self, request: validate::ValidateSchematic) -> validate::Validation {
+    pub async fn payload(&self, request: ValidateSchematic) -> Validation {
         let payload = self.runtime.operations.call_encoded("schematic.validate", request.encode_to_vec()).await.unwrap();
-        validate::Validation::decode(payload.as_slice()).unwrap()
+        Validation::decode(payload.as_slice()).unwrap()
     }
 
     pub async fn finish(self) {
@@ -120,13 +118,13 @@ impl Fixture {
 
 /* === Public Functions === */
 
-pub fn verify_route(answer: &propose::Route) {
-    assert_eq!(answer.points, [propose::Point { x: 0, y: 0 }, propose::Point { x: 3, y: 0 }, propose::Point { x: 3, y: 4 },]);
+pub fn verify_route(answer: &Route) {
+    assert_eq!(answer.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
 }
 
-pub fn payload(symbols: usize) -> validate::ValidateSchematic {
+pub fn payload(symbols: usize) -> ValidateSchematic {
     let symbols = (0..symbols).map(|value| value as u64).collect();
-    validate::ValidateSchematic {
+    ValidateSchematic {
         schematic: Some(Snapshot { symbols, connections: Vec::new() }),
     }
 }
@@ -179,7 +177,10 @@ fn plugin_settings() -> harmos_runtime::config::PluginSettings {
         configuration: b"null".to_vec(),
         requires: Vec::new(),
         grants: Vec::new(),
-        host_operations: vec![harmos_runtime::Identifier::new("harmos.plugin.host.v1.Storage/GetFileHash").unwrap()],
+        host_operations: ["schematic.v1.Files/Hash", "harmos.plugin.host.v1.Settings/List"]
+            .into_iter()
+            .map(|id| harmos_runtime::Identifier::new(id).unwrap())
+            .collect(),
         initialization_timeout: Duration::from_secs(30),
         shutdown_timeout: Duration::from_secs(30),
         encoding_memory_bytes: nz(4 * 1024 * 1024),

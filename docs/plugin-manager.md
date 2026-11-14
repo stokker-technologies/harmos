@@ -145,12 +145,18 @@ there is no change notification. Host stream intervals configured by setting nam
 use the value selected for that activation; restart to apply a changed interval.
 
 Product plugin-host handlers declare the public resource
-`harmos_runtime::plugin::grpc::CallingPlugin`. Its `name` is the managed entry's
-identity and its `description` is the admitted instance description. The host
+`harmos_runtime::plugin::grpc::CallingPlugin`. Its `name` is the management entry
+identity when the attachment belongs to an entry,
+and `None` for a direct attachment. Its `description` is the admitted instance
+description. An unmanaged attachment cannot select a stored entry through its
+reported ID and cannot read library-stored settings. Direct attachments receive
+opaque provider identities; protected self-calls bind to their physical activation.
+The host
 inserts this resource when routing a plugin child; request fields do not select
 its identity. Products can inspect their own reported sections before serving data.
 
-Delete removes library settings and their retained read images with the entry in one durable registry commit and
+Delete removes library settings and their retained read images with the entry in
+one durable registry commit and
 publishes `PluginChange.deleted` through Watch. A product removes its own per-plugin
 data from that in-process watch and reconciles against List at startup. Product
 cleanup is eventual; it is not part of the library's deletion transaction.

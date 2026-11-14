@@ -101,6 +101,8 @@ impl Binding {
             contract,
             caller: super::CallingPlugin {
                 name: activation.entry_name.clone(),
+                connection: activation.connection.clone(),
+                provider: activation.provider.clone(),
                 description: activation.description.clone(),
             },
             connection: activation.connection.clone(),

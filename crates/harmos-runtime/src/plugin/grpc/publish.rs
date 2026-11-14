@@ -111,7 +111,7 @@ impl Publications {
             });
             rows.push((stream.id.clone(), row, interval));
         }
-        streams.validate_connection(&activation.entry_name, &declarations, replace).map_err(invalid)?;
+        streams.validate_connection(activation.owner(), &declarations, replace).map_err(invalid)?;
         let mut demands = Vec::new();
         for (id, row, interval) in rows {
             let (output, input) = mpsc::channel(1);
@@ -135,7 +135,7 @@ impl Publications {
         prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
         operations: &crate::operations::Manager, replace: bool,
     ) -> Result<Self, Error> {
-        let registration = streams.connect_publications(&activation.entry_name, prepared.declarations, replace).map_err(invalid)?;
+        let registration = streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?;
         let close = watch::channel(false).0;
         let mut publications = Self {
             close,
@@ -157,6 +157,8 @@ impl Publications {
             let operations = operations.clone();
             let caller = Arc::new(super::CallingPlugin {
                 name: activation.entry_name.clone(),
+                connection: activation.connection.clone(),
+                provider: activation.provider.clone(),
                 description: activation.description.clone(),
             });
             publications.jobs.spawn(async move {

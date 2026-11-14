@@ -20,7 +20,6 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
 use harmos_protocol::v1 as host;
-use prost::Message;
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
@@ -218,6 +217,7 @@ fn descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
 }
 #[cfg(feature = "grpc")]
 fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+    use prost::Message;
     let Some(binding) = contract.grpc() else { return Ok(None) };
     let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
         Error::OperationFailed {
