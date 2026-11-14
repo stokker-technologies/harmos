@@ -23,6 +23,7 @@ from subprocess import PIPE, STDOUT
 from tempfile import mkdtemp
 from unittest import IsolatedAsyncioTestCase
 
+from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags
 
 from tests.support import host
@@ -49,9 +50,10 @@ class PackagedConformance(IsolatedAsyncioTestCase):
         scratch = Path(mkdtemp())
         self.addCleanup(shutil.rmtree, scratch)
         # Consume the Published Wheel Without Test Fixtures.
-        wheels = sorted((root / "target/build/dev/any/python").glob("harmos_sdk-*.whl"))
+        profile = os.environ.get("TEST_PROFILE", "dev")
+        wheels = sorted((output(root, "build", profile, "any") / "python").glob("harmos_sdk-*.whl"))
         if not wheels:
-            raise FileNotFoundError("Install Python SDK: Run mise -C sdk/python run build")
+            raise FileNotFoundError(f"Install Python SDK: missing {profile} wheel; run mise -C sdk/python run build -- --profile {profile}")
         wheel = wheels[-1]
         environment = dict(os.environ)
         for variable in ("VIRTUAL_ENV", "PYTHONPATH", "UV_PROJECT_ENVIRONMENT"):

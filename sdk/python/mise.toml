@@ -47,7 +47,8 @@ run = "uv run --locked --no-sync python -m unittest tests.integration.test_clien
 
 [tasks."test:examples"]
 description = "Test the Python SDK Examples Through gRPC"
-run = "uv run --locked --no-sync python -m unittest tests.integration.test_examples -v"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "uv run --locked --no-sync python -c \"import os, runpy; os.environ['TEST_PROFILE'] = '{{usage.profile}}'; runpy.run_module('unittest', run_name='__main__')\" tests.integration.test_examples -v"
 
 [tasks.format]
 description = "Format the Python SDK"

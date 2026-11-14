@@ -306,7 +306,8 @@ run = [
 [tasks."test:python:examples"]
 hide = true
 description = "Test the Python SDK Examples Through gRPC"
-run = "mise -C sdk/python run test:examples"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "mise -C sdk/python run test:examples -- --profile {{usage.profile}}"
 
 [tasks."check:python:sdk"]
 hide = true
