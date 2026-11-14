@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{QueryOutput, Transform};
+
 use super::requests::required;
 
-use super::requests as wire;
 use super::snapshot::{SavedSnapshots, SnapshotRead};
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
@@ -37,7 +38,7 @@ use std::{
 
 #[derive(Clone)]
 pub(super) struct Page {
-    pub(super) rows: Vec<wire::QueryOutput>,
+    pub(super) rows: Vec<QueryOutput>,
     pub(super) resolved_at: v1::ReadCut,
     pub(super) next_page_token: String,
 }
@@ -130,8 +131,7 @@ impl Queries {
 /* === Public Functions === */
 
 pub(super) async fn list(
-    context: &ExecutionContext, id: &'static str, source: Option<wire::Source>, at: Option<v1::ReadCut>, transforms: Vec<wire::Transform>,
-    page: Option<v1::PageRequest>,
+    context: &ExecutionContext, source: Option<Source>, at: Option<v1::ReadCut>, transforms: Vec<Transform>, page: Option<v1::PageRequest>,
 ) -> Result<Page, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -144,7 +144,6 @@ pub(super) async fn list(
             plan.extend(super::admission::plan(&(source.clone(), transforms.clone()))?);
             let source: Source = required(source)?;
             source.validate()?;
-            let _grant = crate::plugin::Grant::of(id, source.grant_scope());
 
             let page = page.unwrap_or_default();
             let maximum = if page.max_bytes == 0 {

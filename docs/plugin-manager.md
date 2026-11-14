@@ -62,11 +62,13 @@ The entry also reports its runtime state, last connected description, catalog
 digest, activation identity, current managed process identity and failure.
 Unavailable entries stay in the set and remain manageable.
 
-Create, Replace and Settings.Set replay receipts are retained for the namespace's lifetime. Resending the
-same identifier and normalized payload returns the original response, including
-after host restart or entry deletion, without starting another process. A changed
-payload conflicts. Exhausting the configured receipt capacity refuses new
-mutations; keys never silently expire and repeat work.
+Create replay receipts are retained for the namespace's lifetime, including after
+entry deletion. Settings.Set and Replace receipts live beside their entry and are
+purged when it is deleted. Resending an identifier and normalized payload replays
+the retained original response, including after restart, without starting another
+process; changed input conflicts. `PluginManagerSettings.create_receipts` bounds
+the combined retained mutation receipts. Exhausting it refuses new mutations;
+retained keys never silently expire and repeat work.
 
 Latest reads resolve the manager's latest durable snapshot without causing a
 flush. List returns every configured entry in one response. Return `resolved_at`
@@ -148,7 +150,7 @@ identity and its `description` is the admitted instance description. The host
 inserts this resource when routing a plugin child; request fields do not select
 its identity. Products can inspect their own reported sections before serving data.
 
-Delete removes library settings with the entry in one durable registry commit and
+Delete removes library settings and their retained read images with the entry in one durable registry commit and
 publishes `PluginChange.deleted` through Watch. A product removes its own per-plugin
 data from that in-process watch and reconciles against List at startup. Product
 cleanup is eventual; it is not part of the library's deletion transaction.

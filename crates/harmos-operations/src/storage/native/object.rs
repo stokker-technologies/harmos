@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{MutationId, ObjectValue, SchemaInput, SchemaKey};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
 use harmos_storage::{
@@ -27,7 +28,7 @@ use harmos_storage::{
 use prost::Message;
 
 pub(super) enum SetOutcome {
-    Applied(Box<wire::ObjectValue>, Vec<u8>, v1::Receipt),
+    Applied(Box<ObjectValue>, Vec<u8>, v1::Receipt),
     Conflict(Vec<u8>),
 }
 
@@ -41,8 +42,8 @@ pub(super) fn revision(value: harmos_storage::ObjectVersionToken) -> Vec<u8> {
     .encode_to_vec()
 }
 pub(super) async fn get(
-    context: &ExecutionContext, _id: &'static str, schema: Option<wire::SchemaKey>, item: String, at: Option<v1::ReadCut>,
-) -> Result<(Option<wire::ObjectValue>, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, schema: Option<SchemaKey>, item: String, at: Option<v1::ReadCut>,
+) -> Result<(Option<ObjectValue>, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
@@ -63,8 +64,8 @@ pub(super) async fn get(
     result.map_err(super::admission::failure)
 }
 pub(super) async fn set(
-    context: &ExecutionContext, _id: &'static str, mutation: Option<wire::MutationId>, expected_revision: Vec<u8>, create_if_absent: bool,
-    schema: Option<wire::SchemaInput>, value: Option<wire::ObjectValue>,
+    context: &ExecutionContext, mutation: Option<MutationId>, expected_revision: Vec<u8>, create_if_absent: bool,
+    schema: Option<SchemaInput>, value: Option<ObjectValue>,
 ) -> Result<SetOutcome, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {

@@ -347,7 +347,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "harmos.v1.CatalogEntries/List" | "grpc.descendant" => (),
+            "harmos.client.v1.Operations/List" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
@@ -701,23 +701,20 @@ async fn external_call(
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_protocol::v1::{CatalogEntriesListRequest, CatalogEntriesListResponse, CatalogKind};
+    use harmos_protocol::client::{OperationsListRequest, OperationsListResponse};
     let settings = harmos_runtime::grpc::server::Settings::default();
     let (decode, encode) = (settings.decode, settings.encode);
     let mut client = tonic::client::Grpc::new(channel)
         .max_decoding_message_size(decode.message_bytes.get())
         .max_encoding_message_size(encode.message_bytes.get());
     client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
-    let catalog = CatalogEntriesListRequest {
-        kind: CatalogKind::Operations as i32,
-        schema: None,
-    };
+    let catalog = OperationsListRequest {};
     let mut request = tonic::Request::new(catalog);
     if let Some(token) = token {
         request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
-    let response: tonic::Response<CatalogEntriesListResponse> = client
-        .unary(request, http::uri::PathAndQuery::from_static("/harmos.v1.CatalogEntries/List"), tonic_prost::ProstCodec::default())
+    let response: tonic::Response<OperationsListResponse> = client
+        .unary(request, http::uri::PathAndQuery::from_static("/harmos.client.v1.Operations/List"), tonic_prost::ProstCodec::default())
         .await?;
     Ok(response.into_inner().operations)
 }

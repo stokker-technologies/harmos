@@ -15,12 +15,13 @@
 
 /* === Imports === */
 
+use super::requests::{FileMetadata, FileProducer, FileProgress, FileReference, FileSession, MutationId};
+
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use super::requests as wire;
 use harmos_protocol::v1;
 use harmos_storage::{StorageCursor, StorageManager};
 
@@ -58,7 +59,7 @@ pub(super) fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) 
     error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(crate::operations::FailureKind::Permanent)
 }
 
-pub(super) fn receipt(mutation: &wire::MutationId, position: Option<StorageCursor>) -> v1::Receipt {
+pub(super) fn receipt(mutation: &MutationId, position: Option<StorageCursor>) -> v1::Receipt {
     let position = position.map(position_to_wire);
     v1::Receipt {
         request_id: format!("{}:{}", mutation.window, mutation.key),
@@ -102,8 +103,8 @@ pub(super) fn required<T>(value: Option<T>) -> crate::Result<T> {
 }
 
 pub(super) async fn create(
-    storage: &StorageManager, metadata: wire::FileMetadata, mutation: wire::MutationId,
-) -> crate::Result<(wire::FileProducer, v1::Receipt)> {
+    storage: &StorageManager, metadata: FileMetadata, mutation: MutationId,
+) -> crate::Result<(FileProducer, v1::Receipt)> {
     if !storage.capabilities().file_sessions || !storage.capabilities().mutation_receipts {
         return Err(harmos_storage::Error::backend(
             "CreateFileProduction",
@@ -117,22 +118,22 @@ pub(super) async fn create(
 }
 
 pub(super) async fn append(
-    storage: &StorageManager, session: wire::FileSession, mutation: wire::MutationId, offset: u64, data: Vec<u8>,
-) -> crate::Result<(wire::FileProducer, v1::Receipt)> {
+    storage: &StorageManager, session: FileSession, mutation: MutationId, offset: u64, data: Vec<u8>,
+) -> crate::Result<(FileProducer, v1::Receipt)> {
     let production = storage.append_file_once(&mutation.clone(), &session, offset, harmos_storage::FileChunk::new(data)).await?;
     Ok((production.into(), receipt(&mutation, None)))
 }
 
 pub(super) async fn writer(
-    storage: &StorageManager, session: wire::FileSession, mutation: wire::MutationId,
-) -> crate::Result<(wire::FileProducer, v1::Receipt)> {
+    storage: &StorageManager, session: FileSession, mutation: MutationId,
+) -> crate::Result<(FileProducer, v1::Receipt)> {
     let production = storage.resume_file_once(&mutation.clone(), &session).await?;
     Ok((production.into(), receipt(&mutation, None)))
 }
 
 pub(super) async fn publish(
-    storage: &StorageManager, session: wire::FileSession, mutation: wire::MutationId, length: u64, sha256: Vec<u8>,
-) -> crate::Result<(wire::FileReference, v1::Receipt)> {
+    storage: &StorageManager, session: FileSession, mutation: MutationId, length: u64, sha256: Vec<u8>,
+) -> crate::Result<(FileReference, v1::Receipt)> {
     let digest = sha256.try_into().map_err(|_| crate::Error::InvalidInput {
         field: "PublishFileProduction",
         reason: "SHA-256 requires 32 bytes",
@@ -145,14 +146,14 @@ pub(super) async fn publish(
 }
 
 pub(super) async fn delete(
-    storage: &StorageManager, session: wire::FileSession, mutation: wire::MutationId,
-) -> crate::Result<(wire::FileProgress, v1::Receipt)> {
+    storage: &StorageManager, session: FileSession, mutation: MutationId,
+) -> crate::Result<(FileProgress, v1::Receipt)> {
     let progress = storage.abandon_file_once(&mutation.clone(), &session).await?;
     Ok((progress.into(), receipt(&mutation, None)))
 }
 
 pub(super) async fn get(
-    storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: wire::FileReference, offset: u64, max_bytes: u64,
+    storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: FileReference, offset: u64, max_bytes: u64,
     at: Option<v1::ReadCut>, scope: Option<&str>,
 ) -> crate::Result<(harmos_storage::FileBytesRange, v1::ReadCut)> {
     let max_bytes = if max_bytes == 0 { storage.settings().transfer.chunk_bytes() } else { max_bytes };

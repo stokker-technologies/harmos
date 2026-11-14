@@ -7,26 +7,26 @@
  * ***
  */
 
-// SamplesAppendRequest a Generated Native Request With Following Rows.
+// Native Publication Payload and Batch Metadata
 
 /* === Imports === */
 
 use harmos_operations::execution::operations::publication::{Publication, PublicationAccess, PublicationHost, Published};
-use harmos_protocol::context::SamplesAppendRequest;
-use harmos_protocol::v1::FollowingRow;
+use harmos_operations::streams::PublishRequest;
+use harmos_operations::streams::PublishedRow;
 use std::sync::{Arc, Mutex};
 
 /* === Structs === */
 
 #[derive(Default)]
-struct Publications(Mutex<Vec<SamplesAppendRequest>>);
+struct Publications(Mutex<Vec<PublishRequest>>);
 
 /* === Implementations === */
 
 impl PublicationHost for Publications {
     fn publish<'a>(&'a self, _: harmos_runtime::operations::CallContext, row: Publication<'a>) -> Published<'a> {
         Box::pin(async move {
-            self.0.lock().unwrap().push(SamplesAppendRequest {
+            self.0.lock().unwrap().push(PublishRequest {
                 stream: row.stream.into(),
                 sequence: row.sequence,
                 published_at: row.published_unix_micros.map(|micros| prost_types::Timestamp {
@@ -57,18 +57,18 @@ async fn native_publication_preserves_payload_and_batch_metadata() {
     })
     .await
     .unwrap();
-    let request = SamplesAppendRequest {
+    let request = PublishRequest {
         stream: "readings".into(),
         sequence: Some(4),
         published_at: Some(prost_types::Timestamp { seconds: 0, nanos: 7_000 }),
         context: Some("batch".into()),
         payload: vec![1, 2, 3],
-        following: vec![FollowingRow {
+        following: vec![PublishedRow {
             payload: vec![4, 5],
             published_delta: Some(prost_types::Duration { seconds: 0, nanos: 2_000 }),
         }],
     };
-    runtime.operations.call_protobuf::<harmos_operations::streams::Append>(request.clone()).await.unwrap();
+    runtime.operations.call_native::<harmos_operations::streams::Publish>(request.clone()).await.unwrap();
     assert_eq!(*publications.0.lock().unwrap(), vec![request]);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }

@@ -179,7 +179,7 @@ fn plugin_settings() -> harmos_runtime::config::PluginSettings {
         configuration: b"null".to_vec(),
         requires: Vec::new(),
         grants: Vec::new(),
-        host_operations: vec![harmos_runtime::Identifier::new("harmos.context.v1.Storage/GetFileHash").unwrap()],
+        host_operations: vec![harmos_runtime::Identifier::new("harmos.plugin.host.v1.Storage/GetFileHash").unwrap()],
         initialization_timeout: Duration::from_secs(30),
         shutdown_timeout: Duration::from_secs(30),
         encoding_memory_bytes: nz(4 * 1024 * 1024),

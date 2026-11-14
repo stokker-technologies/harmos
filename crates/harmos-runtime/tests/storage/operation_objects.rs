@@ -9,14 +9,6 @@
 
 /* === Modules === */
 
-#[path = "generated_object_exchange.rs"]
-mod exchange;
-
-#[path = "generated_object_follow.rs"]
-mod follow;
-#[path = "generated_object_pruned.rs"]
-mod pruned;
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,15 +16,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
-use arrow_array::{StringArray, StructArray};
-use arrow_schema::{DataType, Field, Fields};
 
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
-use harmos_operations::storage::AppendObjectRevisions;
 use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, ObjectVersion, StorageBackends, StorageManager, StoredObject};
-use harmos_runtime::{Identified, Identifier, Runtime};
-use harmos_storage::writes::DataBatch;
+use harmos_runtime::{Identified, Identifier};
 
 /* === Structs === */
 
@@ -106,29 +94,4 @@ async fn object_batch_atomic() {
     let admitted = storage.write_objects_once(&mutation, vec![good]).await.unwrap();
     assert_eq!(admitted[0].position.sequence, 2);
     crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-async fn query_fixture() -> (Runtime<Bank>, StorageManager, Arc<Data>) {
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
-    let storage = StorageManager::with_catalog(
-        objects_catalog(),
-        StorageBackends {
-            primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
-        },
-        config(),
-    )
-    .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
-            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
-            ..Default::default()
-        });
-    })
-    .await
-    .unwrap();
-    crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-        .await
-        .unwrap();
-    (runtime, storage, data)
 }

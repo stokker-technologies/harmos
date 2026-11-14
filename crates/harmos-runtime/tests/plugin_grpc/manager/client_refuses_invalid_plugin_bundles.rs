@@ -12,7 +12,6 @@
 /* === Imports === */
 
 use super::support::{self, Backends, Host};
-use harmos_protocol::v1 as wire;
 use harmos_runtime::plugin::manager::Management;
 
 /* === Tests === */
@@ -55,6 +54,6 @@ async fn client_refuses_invalid_plugin_bundles() {
     let mut content = host.upload("digest", support::bundle(true)).await;
     content.sha256[0] ^= 1;
     assert!(host.client.create(support::managed("digest", content, true)).await.is_err());
-    assert!(host.client.get(wire::PluginsGetRequest { name: "digest".into(), at: None }).await.is_err());
+    assert!(host.client.get(harmos_protocol::client::PluginsGetRequest { name: "digest".into(), at: None }).await.is_err());
     host.close().await;
 }

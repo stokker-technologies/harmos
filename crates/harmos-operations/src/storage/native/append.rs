@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{DataBatch, MutationId};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
@@ -33,19 +34,8 @@ pub(super) enum Kind {
 
 /* === Public Functions === */
 
-pub(super) fn grant(
-    id: &'static str, batch: Option<&wire::DataBatch>,
-) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
-    let destination = batch
-        .map(|batch| batch.destination.as_str())
-        .filter(|destination| !destination.is_empty())
-        .ok_or_else(|| harmos_domain::MessageError::new("Append requires a destination"))?;
-    harmos_domain::Identifier::new(destination).map_err(|error| harmos_domain::MessageError::new(error.to_string()))?;
-    Ok(Some(crate::plugin::Grant::of(id, destination.to_owned())))
-}
 pub(super) async fn append(
-    context: &ExecutionContext, id: &'static str, kind: Kind, mutation: Option<wire::MutationId>, scope: Option<String>,
-    batch: Option<wire::DataBatch>,
+    context: &ExecutionContext, id: &'static str, kind: Kind, mutation: Option<MutationId>, scope: Option<String>, batch: Option<DataBatch>,
 ) -> Result<v1::Receipt, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
 
@@ -59,13 +49,6 @@ pub(super) async fn append(
             .into());
         }
         let batch = required(batch)?;
-        let _grant = grant(id, Some(&batch))
-            .map_err(|_| crate::Error::InvalidInput {
-                field: "Append",
-                reason: "valid destination is required",
-            })?
-            .unwrap();
-
         if batch.memory_size() > storage.settings().max_batch_bytes().get() {
             return Err(harmos_storage::Error::ResourceExhausted { resource: "Append batch" }.into());
         }

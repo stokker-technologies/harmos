@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{ArrowPage, ColumnSelection, IndexPage, IndexSelection, ProjectionPage, ProjectionSelection};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
@@ -31,9 +32,8 @@ use std::num::NonZeroUsize;
 /* === Public Functions === */
 
 pub(super) async fn columns(
-    context: &ExecutionContext, _id: &'static str, selection: Option<wire::ColumnSelection>, at: Option<v1::ReadCut>,
-    page: Option<v1::PageRequest>,
-) -> Result<(wire::ArrowPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<ColumnSelection>, at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
+) -> Result<(ArrowPage, v1::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -80,7 +80,7 @@ pub(super) async fn columns(
             read.validate()?;
             let result = selected.list_column_rows(&read, &cancel).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: wire::ArrowPage = result;
+            let result: ArrowPage = result;
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -91,9 +91,9 @@ pub(super) async fn columns(
 }
 
 pub(super) async fn indexes(
-    context: &ExecutionContext, _id: &'static str, selection: Option<wire::IndexSelection>, source: Option<wire::ColumnSource>,
-    at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
-) -> Result<(wire::IndexPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<IndexSelection>, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
+    page: Option<v1::PageRequest>,
+) -> Result<(IndexPage, v1::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -106,7 +106,7 @@ pub(super) async fn indexes(
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
             plan.work = None;
-            let wire_source: wire::ColumnSource = source.clone().into();
+            let wire_source: ColumnSource = source.clone().into();
             let plan = [b"storage.index:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&wire_source)?].concat();
             let page = page.unwrap_or_default();
             let (definition, current) = storage.get_index_definition(&name).await?;
@@ -145,7 +145,7 @@ pub(super) async fn indexes(
             };
             let result = selected.list_index_entries(&read, &cancel).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: wire::IndexPage = result.into();
+            let result: IndexPage = result.into();
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -156,9 +156,9 @@ pub(super) async fn indexes(
 }
 
 pub(super) async fn projections(
-    context: &ExecutionContext, _id: &'static str, selection: Option<wire::ProjectionSelection>, source: Option<wire::ColumnSource>,
-    at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
-) -> Result<(wire::ProjectionPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<ProjectionSelection>, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
+    page: Option<v1::PageRequest>,
+) -> Result<(ProjectionPage, v1::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -171,7 +171,7 @@ pub(super) async fn projections(
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
             plan.work = None;
-            let wire_source: wire::ColumnSource = source.clone().into();
+            let wire_source: ColumnSource = source.clone().into();
             let plan =
                 [b"storage.projection:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&wire_source)?].concat();
             let page = page.unwrap_or_default();
@@ -214,7 +214,7 @@ pub(super) async fn projections(
             };
             let result = storage.list_projection_rows(&read).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: wire::ProjectionPage = result;
+            let result: ProjectionPage = result;
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))

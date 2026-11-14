@@ -349,7 +349,8 @@ exposes no storage service or storage object-definition listing on either bounda
 
 Products declare their own client and plugin-host operations with their own scope,
 attribution, authorization, typed results and policy. An admitted host handler calls
-the private native operation through `ExecutionContext::call_native`; the call keeps
+the private native operation through `ExecutionContext::call_native` or
+`FunctionContext::call_native`; the call keeps
 its context, parent cancellation and scope. Native host code uses
 `runtime.operations.call_native` or `submit_native` with typed endpoints. This helper
 performs ordinary operation admission and applies the callee's policy.

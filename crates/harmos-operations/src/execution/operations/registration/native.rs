@@ -13,7 +13,7 @@
 
 #[cfg(feature = "streaming")]
 mod streaming {
-    use super::*;
+    use super::{EndpointSet, MemorySize, TypeId};
     use crate::execution::operations::{StreamError, StreamInput, StreamOutput, StreamSettings, stream};
 
     pub struct NativeOutput<T>(StreamOutput<T>);
@@ -60,11 +60,14 @@ use std::{any::TypeId, future::Future, marker::PhantomData, sync::Arc};
 
 // Local Imports
 use super::{NativeInstance, OperationFactory, ServiceFuture};
+use crate::execution::__private::ErasedResponse;
 use crate::execution::operations::{
     Calls, EndpointSet, ExecutionContext, OperationDefinition, OperationPolicy, ReplaySafety, Resource, ResourceSet, Response,
     ServingError, Target, Visibility,
 };
+use crate::operations::{ContractError, FailureKind};
 use crate::{Fingerprint, Identifier, MemorySize, MessageError};
+use std::error::Error;
 
 /* === Constants === */
 
@@ -101,8 +104,8 @@ pub trait NativeOperation: Send + Sync + 'static {
     const POLICY: OperationPolicy;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[];
-    fn classify(_: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
-        crate::operations::FailureKind::Permanent
+    fn classify(_: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
+        FailureKind::Permanent
     }
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
@@ -154,7 +157,7 @@ impl OperationFactory {
             request_grant: Arc::new(|_| Ok(None)),
             builtin: false,
             resources: O::RESOURCES,
-            contract: Arc::new(|_| Err(crate::operations::ContractError::Codec { codec: "harmos.native".into() })),
+            contract: Arc::new(|_| Err(ContractError::Codec { codec: "harmos.native".into() })),
             native: Arc::new(|_, resources, request, endpoints| {
                 Ok(Box::new(Instance::<O> {
                     request: *request.downcast().map_err(|_| ServingError::EndpointTypes)?,
@@ -173,13 +176,13 @@ impl OperationFactory {
     }
 }
 impl<O: NativeOperation> NativeInstance for Instance<O> {
-    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::operations::FailureKind {
+    fn classify(&self, error: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
         O::classify(error)
     }
     fn initialize(&mut self, _: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, crate::execution::__private::ErasedResponse> {
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
         Box::pin(async move {
             let context = context.with_resources(self.resources.clone());
             O::run(context, self.request.clone(), &self.endpoints).await.map(|value| Response::new(value).into_erased())

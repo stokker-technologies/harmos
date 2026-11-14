@@ -16,17 +16,26 @@
 /* === Imports === */
 
 use super::{
-    CallingPlugin,
+    CallingPlugin, Error,
     invoke::{ChildReplies, failure, watch_child},
 };
 use crate::operations::HostContext;
+use crate::streams::StreamWriter;
+use crate::supervision::instance::Instance;
 use futures_util::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
+use harmos_domain::MemorySize;
 use harmos_operations::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
+use harmos_operations::{OperationPolicy, operations::UNBOUNDED};
 use harmos_protocol::{
-    plugin::{InstanceSamplesRequest, InstanceSamplesResponse},
+    plugin::{
+        InstanceSamplesRequest, InstanceSamplesResponse, instance_samples_request::Frame as RequestFrame,
+        instance_samples_response::Frame as ResponseFrame,
+    },
     v1::{self, ChildResponse, child_response},
 };
 use prost::Message;
+use prost_types::Timestamp;
+use std::time::Duration;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{Arc, Mutex},
@@ -46,7 +55,7 @@ use tokio::sync::{Mutex as AsyncMutex, mpsc};
 /* === Type Aliases === */
 
 type Child = BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>;
-type Control = (Arc<crate::supervision::instance::Instance>, bool, Option<mpsc::Sender<()>>);
+type Control = (Arc<Instance>, bool, Option<mpsc::Sender<()>>);
 
 /* === Structs === */
 
@@ -57,7 +66,8 @@ pub(crate) struct Request {
     pub(super) output: mpsc::Sender<InstanceSamplesRequest>,
     pub(super) caller: Arc<CallingPlugin>,
     pub(super) seen: Arc<Mutex<BTreeSet<u64>>>,
-    pub(super) at: prost_types::Timestamp,
+    pub(super) at: Timestamp,
+    pub(super) lease: Arc<StreamWriter>,
 }
 struct Children(BTreeMap<u64, Control>);
 
@@ -74,7 +84,7 @@ impl Drop for Children {
         }
     }
 }
-impl harmos_domain::MemorySize for Request {
+impl MemorySize for Request {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len())
     }
@@ -84,10 +94,10 @@ impl NativeOperation for Tick {
     type Response = InstanceSamplesResponse;
     type Endpoints = ();
     const ID: &'static str = "samples.tick";
-    const POLICY: harmos_operations::OperationPolicy = harmos_operations::OperationPolicy {
-        timeout: harmos_operations::operations::UNBOUNDED,
-        attempt_timeout: harmos_operations::operations::UNBOUNDED,
-        cancellation_timeout: std::time::Duration::ZERO,
+    const POLICY: OperationPolicy = OperationPolicy {
+        timeout: UNBOUNDED,
+        attempt_timeout: UNBOUNDED,
+        cancellation_timeout: Duration::ZERO,
         retries: crate::RetryPolicy::Never,
     };
     const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
@@ -101,7 +111,7 @@ impl NativeOperation for Tick {
 
 /* === Private Functions === */
 
-async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<InstanceSamplesResponse, super::Error> {
+async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<InstanceSamplesResponse, Error> {
     let mut children = FuturesUnordered::<Child>::new();
     let mut controls = Children(BTreeMap::new());
     let mut cancelled = BTreeSet::new();
@@ -110,7 +120,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     request
         .output
         .send(InstanceSamplesRequest {
-            frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Tick(v1::Tick { at: Some(request.at) })),
+            frame: Some(RequestFrame::Tick(v1::Tick { at: Some(request.at) })),
         })
         .await
         .map_err(|_| invalid("Send Sample Tick: stream closed"))?;
@@ -134,7 +144,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
         match event {
             Event::Cancel => break Err(invalid("Answer Sample Tick: tick cancelled")),
             Event::Frame(frame) => {
-                let Some(frame) = frame.map_err(|error| super::Error::Transport(error.to_string()))? else {
+                let Some(frame) = frame.map_err(|error| Error::Transport(error.to_string()))? else {
                     break Err(invalid("Answer Sample Tick: stream ended"));
                 };
                 if !frame.samples.is_empty() {
@@ -146,7 +156,10 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                 let Some(frame) = frame.frame else {
                     break Err(invalid("Answer Sample Tick: child-only response has no frame"));
                 };
-                if let harmos_protocol::plugin::instance_samples_response::Frame::Child(child) = frame.clone() {
+                if !request.lease.is_active() {
+                    break Err(invalid("Call Sample Child: activation lease has been revoked"));
+                }
+                if let ResponseFrame::Child(child) = frame.clone() {
                     let call = child.call;
                     if !request.seen.lock().expect("sample child identity lock is healthy").insert(call) {
                         break Err(invalid("Call Sample Child: duplicate child identity across ticks"));
@@ -170,7 +183,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                         (call, operation, result)
                     }));
                 }
-                if let harmos_protocol::plugin::instance_samples_response::Frame::ChildCancel(child) = frame.clone() {
+                if let ResponseFrame::ChildCancel(child) = frame.clone() {
                     if let Some((control, _, _)) = controls.0.get(&child.call) {
                         cancelled.insert(child.call);
                         control.request_cancel();
@@ -178,7 +191,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                         break Err(invalid("Cancel Sample Child: unknown child identity"));
                     }
                 }
-                if let harmos_protocol::plugin::instance_samples_response::Frame::ChildDemand(demand) = frame {
+                if let ResponseFrame::ChildDemand(demand) = frame {
                     let Some((_, _, Some(credits))) = controls.0.get(&demand.call) else {
                         break Err(invalid("Demand Sample Child: unknown watch identity"));
                     };
@@ -201,11 +214,13 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
         }
     };
     drop(controls);
-    while children.next().await.is_some() {}
+    // Carrier sends may be backpressured after the peer has answered its tick.
+    // The operation scope awaits cancelled descendants without retaining those sends.
+    drop(children);
     result
 }
-fn invalid(message: impl Into<String>) -> super::Error {
-    super::Error::Invalid(message.into())
+fn invalid(message: impl Into<String>) -> Error {
+    Error::Invalid(message.into())
 }
 
 /* === Tests === */

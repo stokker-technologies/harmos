@@ -99,6 +99,12 @@ where
     (Q::Input, Q::Output): Shape,
     Endpoints<Q>: Sync,
 {
+    pub async fn call_native<O: NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> Result<Response<O::Response>, InvocationError> {
+        self.execution.call_native::<O>(request).await.map_err(|error| InvocationError::failed(O::ID, error))
+    }
+
     pub fn resource<T: Send + Sync + 'static>(&self) -> Result<Arc<T>, super::super::InvocationError> {
         let declared = self.resources.iter().any(|resource| resource.id() == TypeId::of::<T>());
         if !declared {

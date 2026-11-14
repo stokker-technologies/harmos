@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use super::contract::{Echoed, ProviderEchoOperation, RetryChoice, Stage};
+use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
     Runtime,
     operations::{ExecutionContext, ProtobufOperation, Resource, ServingError, Visibility},
@@ -70,6 +70,7 @@ fn descriptors() -> &'static prost_reflect::DescriptorPool {
     POOL.get_or_init(|| {
         let mut types = <ProviderEchoOperation as harmos::Message>::types();
         harmos::encoding::merge_descriptor_types(&mut types, <Echoed as harmos::Message>::types());
+        harmos::encoding::merge_descriptor_types(&mut types, <PublishProgress as harmos::Message>::types());
         prost_reflect::DescriptorPool::from_file_descriptor_set(types).unwrap()
     })
 }
@@ -118,11 +119,16 @@ impl ProtobufOperation for Provider {
         Ok(Echoed { said: request.say })
     }
 }
+impl prost_reflect::ReflectMessage for PublishProgress {
+    fn descriptor(&self) -> prost_reflect::MessageDescriptor {
+        descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
+    }
+}
 impl ProtobufOperation for Publisher {
-    type Request = harmos_protocol::context::SamplesAppendRequest;
-    type Response = harmos_protocol::context::SamplesAppendResponse;
+    type Request = PublishProgress;
+    type Response = ();
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.Samples/Append";
+    const ID: &'static str = "example.plugin.host.v1.Progress/Publish";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_runtime::operations::HostContext>()];
@@ -135,12 +141,6 @@ impl ProtobufOperation for Publisher {
                 reason: "requires the original generation scope",
             }))
         })?;
-        if request.sequence.is_some() || request.published_at.is_some() || request.context.is_some() || !request.following.is_empty() {
-            return Err(ServingError::Native(Arc::new(harmos_runtime::Error::<std::convert::Infallible>::InvalidInput {
-                field: "guest publication",
-                reason: "sequence, batch and publication metadata are host-derived",
-            })));
-        }
         let lease = scope.publication(&request.stream).map_err(|error| ServingError::Native(Arc::new(error)))?;
         lease
             .stage_derived_row(
@@ -152,7 +152,7 @@ impl ProtobufOperation for Publisher {
                 0,
             )
             .map_err(|error| ServingError::Native(Arc::new(error)))?;
-        Ok(harmos_protocol::context::SamplesAppendResponse {})
+        Ok(())
     }
 }
 impl harmos_runtime::Message for Stage {
@@ -229,7 +229,7 @@ pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::H
 pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["harmos.context.v1.Samples/Append", "provider.echo"]
+        host_operations: ["example.plugin.host.v1.Progress/Publish", "provider.echo"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

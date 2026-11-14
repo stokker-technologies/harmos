@@ -19,7 +19,7 @@ use super::{
     Error,
     actor::{Actor, changed, managed, next_activation},
     content::Installation,
-    persistence::{SavedCreate, problem},
+    persistence::{SavedMutation, problem},
 };
 use harmos_protocol::client as wire;
 use prost::Message;
@@ -136,9 +136,16 @@ impl Actor {
             entry: Some(entry.clone()),
             receipt: Some(self.receipt(request.request_id.clone())),
         };
+        if response.encoded_len() > self.settings.response_bytes.get() {
+            return Err(Error::new(
+                "response_capacity",
+                "Replace Plugin",
+                "configure capacity for the complete replacement entry and receipt",
+            ));
+        }
         registry.entries.get_mut(&entry.name).expect("selected entry exists").replacements.insert(
             request.request_id,
-            SavedCreate {
+            SavedMutation {
                 request: encoded,
                 response: response.encode_to_vec(),
             },

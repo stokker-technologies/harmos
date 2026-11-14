@@ -17,7 +17,7 @@
 use std::sync::atomic::Ordering;
 
 // Third Party Imports
-use harmos_protocol::v1::access;
+use harmos_protocol::client::access;
 
 // Local Imports
 use super::support::*;

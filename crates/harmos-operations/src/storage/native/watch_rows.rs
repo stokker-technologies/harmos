@@ -17,7 +17,6 @@
 
 use super::requests::required;
 
-use super::requests as wire;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
 use harmos_storage::follow::Follower;
@@ -38,9 +37,9 @@ pub(super) struct Frame {
 #[derive(Clone)]
 pub(super) enum Event {
     Boundary,
-    Record(wire::StoredRecord),
-    Sample(wire::StoredRow),
-    Object(wire::ObjectEntry),
+    Record(StoredRecord),
+    Sample(StoredRow),
+    Object(ObjectEntry),
     Progress,
     Resync(String),
 }
@@ -74,7 +73,7 @@ impl Rows {
 /* === Public Functions === */
 
 pub(super) async fn run<F, Fut>(
-    context: &ExecutionContext, id: &'static str, source: Option<wire::Source>, at: Option<v1::ReadCut>, mut emit: F,
+    context: &ExecutionContext, source: Option<Source>, at: Option<v1::ReadCut>, mut emit: F,
 ) -> Result<Frame, ServingError>
 where
     F: FnMut(Frame) -> Fut,
@@ -86,7 +85,6 @@ where
     let selected: Result<_, crate::Error> = async {
         let source: Source = required(source)?;
         source.validate()?;
-        let grant = crate::plugin::Grant::of(id, source.grant_scope());
 
         let read = snapshots.resolve(&storage, at).await?;
         let rows = match source {
@@ -103,10 +101,10 @@ where
                 .into());
             }
         };
-        Ok((read, rows, grant))
+        Ok((read, rows))
     }
     .await;
-    let (read, mut rows, _grant) = selected.map_err(super::admission::failure)?;
+    let (read, mut rows) = selected.map_err(super::admission::failure)?;
     let mut last = read.cut().clone();
     emit(Frame { at: last.clone(), event: Event::Boundary }).await?;
     // The Follower Has Registered Its Own Pinned History And Queue Retention.

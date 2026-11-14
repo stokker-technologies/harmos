@@ -11,9 +11,10 @@
 
 /* === Imports === */
 
+use super::requests::{DirectoryEvent, DirectorySelection, FileBatch, FileCompletion, FileEvent, FileProgress, FollowStart, StagedFile};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_storage::{FileSource, StorageManager};
 use std::{future::Future, num::NonZeroUsize};
@@ -21,26 +22,25 @@ use std::{future::Future, num::NonZeroUsize};
 /* === Public Functions === */
 
 pub(super) async fn bytes<F, Fut>(
-    context: &ExecutionContext, id: &'static str, source: Option<wire::FileSource>, start: Option<wire::FollowStart>, mut emit: F,
-) -> Result<wire::FileCompletion, ServingError>
+    context: &ExecutionContext, source: Option<FileSource>, start: Option<FollowStart>, mut emit: F,
+) -> Result<FileCompletion, ServingError>
 where
-    F: FnMut(wire::FileEvent) -> Fut,
+    F: FnMut(FileEvent) -> Fut,
     Fut: Future<Output = Result<(), ServingError>>,
 {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
 
     let work: Result<_, crate::Error> = async {
         let source: FileSource = required(source)?;
-        let grant = source.grant_scope().map(|scope| crate::plugin::Grant::of(id, scope));
         if let FileSource::Stored(file) = &source
             && !storage.get_saved_position().covers(&file.position)?
         {
             return Err(harmos_storage::Error::NotReady { domain: "WatchFileBytes durable content" }.into());
         }
-        Ok((storage.follow_file(harmos_storage::FileFollow { source, start: required(start)? }).await?, grant))
+        storage.follow_file(harmos_storage::FileFollow { source, start: required(start)? }).await.map_err(Into::into)
     }
     .await;
-    let (mut reader, _grant) = work.map_err(super::admission::failure)?;
+    let mut reader = work.map_err(super::admission::failure)?;
     loop {
         let next = tokio::select! {
             biased;
@@ -50,15 +50,15 @@ where
         let Some(event) = next else {
             return reader.completion().map(Into::into).map_err(|error| super::admission::failure(error.into()));
         };
-        let event: wire::FileEvent = (*event).clone().into();
+        let event: FileEvent = (*event).clone().into();
         match event {
-            wire::FileEvent::Data(batch) => {
+            FileEvent::Data(batch) => {
                 let mut start = 0;
                 while start < batch.bytes.len() {
                     let offset = batch.offset + start as u64;
                     let count = capacity(storage.settings().response.batch_bytes.get(), offset, batch.bytes.len() - start, 2)
                         .map_err(|error| super::admission::failure(error.into()))?;
-                    emit(wire::FileEvent::Data(wire::FileBatch {
+                    emit(FileEvent::Data(FileBatch {
                         offset,
                         bytes: batch.bytes[start..start + count].to_vec(),
                     }))
@@ -72,10 +72,10 @@ where
 }
 
 pub(super) async fn production<F, Fut>(
-    context: &ExecutionContext, _id: &'static str, file: Option<wire::StagedFile>, offset: u64, mut emit: F,
-) -> Result<wire::FileProgress, ServingError>
+    context: &ExecutionContext, file: Option<StagedFile>, offset: u64, mut emit: F,
+) -> Result<FileProgress, ServingError>
 where
-    F: FnMut(wire::FileBatch) -> Fut,
+    F: FnMut(FileBatch) -> Fut,
     Fut: Future<Output = Result<(), ServingError>>,
 {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
@@ -103,7 +103,7 @@ where
         };
 
         next_offset = batch.offset() + batch.bytes().len() as u64;
-        emit(wire::FileBatch {
+        emit(FileBatch {
             offset: batch.offset(),
             bytes: batch.bytes().to_vec(),
         })
@@ -112,10 +112,10 @@ where
 }
 
 pub(super) async fn directory<F, Fut>(
-    context: &ExecutionContext, selection: Option<wire::DirectorySelection>, include_existing: bool, mut emit: F,
+    context: &ExecutionContext, selection: Option<DirectorySelection>, include_existing: bool, mut emit: F,
 ) -> Result<(), ServingError>
 where
-    F: FnMut(wire::DirectoryEvent) -> Fut,
+    F: FnMut(DirectoryEvent) -> Fut,
     Fut: Future<Output = Result<(), ServingError>>,
 {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;

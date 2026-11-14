@@ -17,7 +17,6 @@
 use std::sync::Arc;
 
 // Third Party Imports
-use harmos::client::v1;
 
 // Local Imports
 use super::support::*;
@@ -48,8 +47,8 @@ async fn client_reads_status() -> Result {
     let host = Host::start().await?;
     let facts = Arc::new(Facts::new("component diagnostics"));
     let registration = host.status.contribute(facts.clone())?;
-    let mut client = v1::status_client::StatusClient::new(host.channel.clone());
-    let initial = client.get(v1::StatusGetRequest {}).await?.into_inner();
+    let mut client = harmos_protocol::client::status_client::StatusClient::new(host.channel.clone());
+    let initial = client.get(harmos_protocol::client::StatusGetRequest {}).await?.into_inner();
     let value = initial.status.as_ref().unwrap();
     let identity = value.identity.as_ref().unwrap();
     assert_eq!(identity.application_name, "Example Host");
@@ -58,21 +57,28 @@ async fn client_reads_status() -> Result {
     assert_eq!(identity.host_id, "stable-example-host");
     assert_eq!(identity.process_started_at.as_ref().unwrap().seconds, 0);
     assert!(value.available);
-    assert!(value.components.iter().any(|c| c.name == "host.component" && c.state == v1::ComponentState::Healthy as i32));
+    assert!(
+        value.components.iter().any(|c| c.name == "host.component" && c.state == harmos_protocol::client::ComponentState::Healthy as i32)
+    );
     // Observe a Causally Published Health Change
-    let mut watch = client.watch(v1::StatusWatchRequest { at: initial.resolved_at }).await?.into_inner();
+    let mut watch = client.watch(harmos_protocol::client::StatusWatchRequest { at: initial.resolved_at }).await?.into_inner();
     let opening = watch.message().await?.unwrap();
     assert!(opening.status.unwrap().available);
     {
         let mut component = facts.component.lock().unwrap();
-        component.state = v1::ComponentState::Unavailable as i32;
+        component.state = harmos_protocol::client::ComponentState::Unavailable as i32;
         component.reason = "Waiting for Host Resource".into();
     }
     registration.changed()?;
     let changed = watch.message().await?.unwrap();
     let status = changed.status.unwrap();
     assert!(!status.available);
-    assert!(status.components.iter().any(|c| c.name == "host.component" && c.state == v1::ComponentState::Unavailable as i32));
+    assert!(
+        status
+            .components
+            .iter()
+            .any(|c| c.name == "host.component" && c.state == harmos_protocol::client::ComponentState::Unavailable as i32)
+    );
     // Withdrawing the Registration Removes Its Facts
     drop(registration);
     let removed = watch.message().await?.unwrap().status.unwrap();

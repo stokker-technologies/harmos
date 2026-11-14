@@ -142,12 +142,8 @@ impl super::Manager {
             &[],
         )?;
         let control = running.control.clone();
-        let child = Box::new(NativeChild(running, target));
         let future = Box::pin(async move {
-            let response = child.join().await.map_err(|source| crate::Error::OperationFailed {
-                operation: O::ID.into(),
-                source: Arc::new(source),
-            })?;
+            let response = crate::clock::waiting(running).await?.0.clone();
             response.restore().ok_or(crate::Error::InvalidInput {
                 field: "Call Native Operation",
                 reason: "native response type differs",

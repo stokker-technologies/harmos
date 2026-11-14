@@ -18,14 +18,14 @@
 use super::{
     Error,
     actor::{Actor, changed},
-    persistence::{Registry, SavedCreate, problem},
+    persistence::{Registry, SavedMutation, problem},
 };
 use harmos_protocol::{
     client::{PluginEntry, plugins as wire},
     v1::{Catalog, SettingDeclaration, SettingValue, SettingValues, SettingsDeclarations, setting_value::Value},
 };
 use prost::Message;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 // Standard Library Imports
 
@@ -119,12 +119,19 @@ impl Actor {
             revision: revision.clone(),
             receipt: Some(self.receipt(request.request_id.clone())),
         };
+        if response.encoded_len() > self.settings.response_bytes.get() {
+            return Err(Error::new(
+                "response_capacity",
+                "Set Plugin Settings",
+                "configure capacity for the complete settings value and receipt",
+            ));
+        }
         let saved = registry.entries.get_mut(&request.name).expect("entry was selected");
         saved.settings = value.encode_to_vec();
         saved.settings_revision = revision;
         saved.settings_receipts.insert(
             request.request_id,
-            SavedCreate {
+            SavedMutation {
                 request: encoded,
                 response: response.encode_to_vec(),
             },
@@ -144,7 +151,7 @@ pub(crate) fn declarations(catalog: &Catalog) -> Result<Vec<SettingDeclaration>,
     let values = SettingsDeclarations::decode(section.payload.as_slice())
         .map_err(|error| problem("Read Plugin Setting Declarations", error))?
         .values;
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = BTreeSet::new();
     for declaration in &values {
         if declaration.name.is_empty() || !names.insert(&declaration.name) {
             return Err(Error::new("setting_declaration", "Declare Plugin Settings", "declare each nonempty name once"));

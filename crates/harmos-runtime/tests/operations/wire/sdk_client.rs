@@ -155,7 +155,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .unwrap();
     let channel = Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(64 * 1024) },
+        transfer: harmos_protocol::v1::StorageTransferSettings { chunk_bytes: Some(64 * 1024) },
         retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),
@@ -165,11 +165,8 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Discover And Bind The Exact Generated Application Types.
     let page = client
-        .catalog_entries
-        .list(RpcRequest::new(host::CatalogEntriesListRequest {
-            kind: host::CatalogKind::Operations as i32,
-            ..Default::default()
-        }))
+        .operations
+        .list(RpcRequest::new(harmos_protocol::client::OperationsListRequest { ..Default::default() }))
         .await
         .unwrap()
         .into_inner();
@@ -309,16 +306,13 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
     let error = bounded
-        .catalog_entries
-        .list(RpcRequest::new(host::CatalogEntriesListRequest {
-            kind: host::CatalogKind::Operations as i32,
-            ..Default::default()
-        }))
+        .operations
+        .list(RpcRequest::new(harmos_protocol::client::OperationsListRequest { ..Default::default() }))
         .await
         .unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
 
-    assert!(error.message().contains("harmos.v1.CatalogEntries/List"));
+    assert!(error.message().contains("harmos.client.v1.Operations/List"));
 
     // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
     let first = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();

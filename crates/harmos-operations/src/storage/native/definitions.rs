@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{IndexDefinition, MutationId, ProjectionDefinition, ReadLimits};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
 use harmos_storage::{
@@ -28,12 +29,12 @@ use harmos_storage::{
 /* === Structs === */
 
 pub(super) struct SetIndexInput {
-    pub definition: Option<wire::IndexDefinition>,
+    pub definition: Option<IndexDefinition>,
     pub expected_revision: Vec<u8>,
     pub create_if_absent: bool,
     pub rebuild: bool,
-    pub work: Option<wire::ReadLimits>,
-    pub mutation: Option<wire::MutationId>,
+    pub work: Option<ReadLimits>,
+    pub mutation: Option<MutationId>,
 }
 
 /* === Public Functions === */
@@ -59,8 +60,8 @@ pub(super) fn revision(value: u64) -> Vec<u8> {
 }
 
 pub(super) async fn get_index(
-    context: &ExecutionContext, _id: &'static str, name: String, source: Option<wire::ColumnSource>, at: Option<v1::ReadCut>,
-) -> Result<(wire::IndexDefinition, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
+) -> Result<(IndexDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -87,8 +88,8 @@ pub(super) async fn get_index(
 }
 
 pub(super) async fn set_index(
-    context: &ExecutionContext, _id: &'static str, input: SetIndexInput,
-) -> Result<(wire::IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
+    context: &ExecutionContext, input: SetIndexInput,
+) -> Result<(IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
     let SetIndexInput {
         definition,
         expected_revision,
@@ -132,8 +133,8 @@ pub(super) async fn set_index(
 }
 
 pub(super) async fn get_projection(
-    context: &ExecutionContext, _id: &'static str, name: String, source: Option<wire::ColumnSource>, at: Option<v1::ReadCut>,
-) -> Result<(wire::ProjectionDefinition, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
+) -> Result<(ProjectionDefinition, Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -158,9 +159,9 @@ pub(super) async fn get_projection(
 }
 
 pub(super) async fn set_projection(
-    context: &ExecutionContext, _id: &'static str, definition: Option<wire::ProjectionDefinition>, expected_revision: Vec<u8>,
-    create_if_absent: bool, rebuild: bool, mutation: Option<wire::MutationId>,
-) -> Result<(wire::ProjectionDefinition, Vec<u8>, v1::Receipt), ServingError> {
+    context: &ExecutionContext, definition: Option<ProjectionDefinition>, expected_revision: Vec<u8>, create_if_absent: bool,
+    rebuild: bool, mutation: Option<MutationId>,
+) -> Result<(ProjectionDefinition, Vec<u8>, v1::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;

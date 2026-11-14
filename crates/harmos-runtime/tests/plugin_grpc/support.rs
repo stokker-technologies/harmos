@@ -46,6 +46,11 @@ use harmos_runtime::{
 
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 pub type App = crate::support::Bank;
+type SamplesHandler = Arc<
+    dyn Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
+        + Send
+        + Sync,
+>;
 
 /* === Structs === */
 
@@ -75,6 +80,7 @@ struct Fixture {
     stops: Arc<AtomicUsize>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    samples: Arc<Mutex<Option<SamplesHandler>>>,
 }
 
 /* === Implementations === */
@@ -139,6 +145,7 @@ impl Remote {
             stops: Arc::new(AtomicUsize::new(0)),
             pending_description: Arc::new(Mutex::new(None)),
             pending_stop: Arc::new(Mutex::new(None)),
+            samples: Arc::new(Mutex::new(None)),
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream = listener.local_addr().unwrap();
@@ -199,6 +206,16 @@ impl Remote {
 
     pub fn stops(&self) -> usize {
         self.service.stops.load(Ordering::SeqCst)
+    }
+
+    pub fn samples(
+        &self,
+        handler: impl Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        *self.service.samples.lock().unwrap() = Some(Arc::new(handler));
     }
 
     pub fn catalog(&self, catalog: v1::Catalog) {
@@ -262,9 +279,10 @@ impl Instance for Fixture {
     }
     type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
     async fn samples(
-        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
     ) -> Result<Response<Self::SamplesStream>, Status> {
-        Err(Status::not_found("Unknown Stream"))
+        let handler = self.samples.lock().unwrap().clone().ok_or_else(|| Status::not_found("Unknown Stream"))?;
+        Ok(Response::new(handler(request.into_inner())))
     }
     async fn stop(
         &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,

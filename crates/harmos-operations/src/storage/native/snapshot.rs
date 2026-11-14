@@ -11,7 +11,8 @@
 
 /* === Imports === */
 
-use super::requests as wire;
+use super::requests::SavedSnapshot;
+
 use harmos_protocol::v1;
 use harmos_storage::{Snapshot, StorageCursor, StorageManager};
 use ring::{digest, hmac};
@@ -38,7 +39,7 @@ struct Registry {
 }
 
 pub(crate) struct SnapshotRead {
-    handle: wire::SavedSnapshot,
+    handle: SavedSnapshot,
     snapshot: Arc<HeldSnapshot>,
 }
 
@@ -110,16 +111,14 @@ impl SavedSnapshots {
         }
         self.capacity.clone().try_acquire_owned().map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "saved snapshots" })
     }
-    pub(crate) fn insert(
-        &self, snapshot: Snapshot, permit: tokio::sync::OwnedSemaphorePermit,
-    ) -> harmos_storage::Result<wire::SavedSnapshot> {
+    pub(crate) fn insert(&self, snapshot: Snapshot, permit: tokio::sync::OwnedSemaphorePermit) -> harmos_storage::Result<SavedSnapshot> {
         let cut = super::transfers::cut(snapshot.at().clone());
         self.insert_cut(Arc::new(snapshot), cut, true, permit, None, None)
     }
     fn insert_cut(
         &self, snapshot: Arc<Snapshot>, cut: v1::ReadCut, explicit: bool, permit: tokio::sync::OwnedSemaphorePermit,
         observation: Option<Arc<super::file_access::Observation>>, identity: Option<Vec<u8>>,
-    ) -> harmos_storage::Result<wire::SavedSnapshot> {
+    ) -> harmos_storage::Result<SavedSnapshot> {
         let mut token = vec![0; 32];
         getrandom::fill(&mut token).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "snapshot entropy" })?;
         let identity = identity.unwrap_or_else(|| token.clone());
@@ -137,9 +136,9 @@ impl SavedSnapshots {
                 _permit: permit,
             }),
         );
-        Ok(wire::SavedSnapshot { token, at })
+        Ok(SavedSnapshot { token, at })
     }
-    fn get(&self, handle: &wire::SavedSnapshot) -> harmos_storage::Result<Arc<HeldSnapshot>> {
+    fn get(&self, handle: &SavedSnapshot) -> harmos_storage::Result<Arc<HeldSnapshot>> {
         let at: StorageCursor = super::requests::required(handle.at.clone())?;
         let registry = self.registry.lock().unwrap();
         let snapshot = registry.entries.get(&handle.token).ok_or_else(expired)?;
@@ -148,11 +147,11 @@ impl SavedSnapshots {
         }
         Ok(snapshot.clone())
     }
-    pub(crate) fn read(&self, handle: wire::SavedSnapshot) -> harmos_storage::Result<SnapshotRead> {
+    pub(crate) fn read(&self, handle: SavedSnapshot) -> harmos_storage::Result<SnapshotRead> {
         let snapshot = self.get(&handle)?;
         Ok(SnapshotRead { handle, snapshot })
     }
-    pub(crate) fn release(&self, handle: &wire::SavedSnapshot) -> harmos_storage::Result<()> {
+    pub(crate) fn release(&self, handle: &SavedSnapshot) -> harmos_storage::Result<()> {
         let at: StorageCursor = super::requests::required(handle.at.clone())?;
         let mut registry = self.registry.lock().unwrap();
         if registry.entries.get(&handle.token).is_some_and(|snapshot| snapshot.snapshot.at() != &at) {
@@ -162,9 +161,7 @@ impl SavedSnapshots {
         registry.order.retain(|token| token != &handle.token);
         Ok(())
     }
-    pub(crate) async fn create(
-        &self, storage: &StorageManager, at: Option<v1::ReadCut>,
-    ) -> crate::Result<(wire::SavedSnapshot, v1::ReadCut)> {
+    pub(crate) async fn create(&self, storage: &StorageManager, at: Option<v1::ReadCut>) -> crate::Result<(SavedSnapshot, v1::ReadCut)> {
         if let Some(at) = at {
             let read = self.resolve(storage, Some(at)).await?;
             let permit = self.reserve()?;
@@ -193,11 +190,9 @@ impl SavedSnapshots {
         let cut = at.unwrap_or_else(|| super::transfers::cut(storage.get_saved_position()));
         let found = {
             let registry = self.registry.lock().unwrap();
-            registry.entries.iter().find(|(_, held)| held.cut == cut && held.snapshot.is_available()).map(|(token, held)| {
-                wire::SavedSnapshot {
-                    token: token.clone(),
-                    at: Some(held.snapshot.at().clone().into()),
-                }
+            registry.entries.iter().find(|(_, held)| held.cut == cut && held.snapshot.is_available()).map(|(token, held)| SavedSnapshot {
+                token: token.clone(),
+                at: Some(held.snapshot.at().clone().into()),
             })
         };
         let handle = if let Some(handle) = found {
@@ -307,7 +302,7 @@ impl SavedSnapshots {
             let registry = self.registry.lock().unwrap();
             let (token, held) =
                 registry.entries.iter().find(|(_, held)| held.identity == identity && held.snapshot.is_available()).ok_or_else(expired)?;
-            wire::SavedSnapshot {
+            SavedSnapshot {
                 token: token.clone(),
                 at: Some(held.snapshot.at().clone().into()),
             }

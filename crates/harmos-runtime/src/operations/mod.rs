@@ -54,9 +54,7 @@ pub use harmos_operations::execution::operations::{NativeHost, NativeOperation, 
 pub use invocation::NativeInvocation;
 
 #[cfg(feature = "plugin-guest")]
-pub(crate) use crate::guest::host::envelope::{
-    WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
-};
+pub(crate) use crate::guest::host::envelope::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(feature = "plugin-guest")]
 pub use caller::Caller;

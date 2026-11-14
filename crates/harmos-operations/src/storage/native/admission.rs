@@ -73,7 +73,7 @@ pub(super) fn failure(error: crate::Error) -> ServingError {
 
 pub(super) fn page_bytes(bytes: usize, limit: usize) -> crate::Result<()> {
     if bytes > limit {
-        return Err(harmos_storage::Error::ResourceExhausted { resource: "storage wire page" }.into());
+        return Err(harmos_storage::Error::ResourceExhausted { resource: "storage response page" }.into());
     }
     Ok(())
 }

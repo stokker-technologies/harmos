@@ -9,26 +9,13 @@
 
 /* === Modules === */
 
-#[path = "generated_follow_budget.rs"]
-mod follow_budget;
-#[path = "generated_foreign_cursor.rs"]
-mod foreign_cursor;
-#[path = "generated_record_follow.rs"]
-mod record_follow;
-#[path = "generated_stream_follow.rs"]
-mod stream_follow;
+#[path = "native_operations.rs"]
+mod native;
 
 #[path = "operation_deletion.rs"]
 mod deletion;
-#[path = "operation_files.rs"]
-mod files;
 #[path = "operation_objects.rs"]
 mod objects;
-#[cfg(feature = "plugin-guest")]
-#[path = "operation_plugins.rs"]
-mod plugins;
-#[path = "operation_queries.rs"]
-mod queries;
 #[path = "operation_schemas.rs"]
 mod schemas;
 #[path = "operation_writes.rs"]
@@ -47,45 +34,24 @@ use harmos_operations::storage::storage_catalog;
 
 /* === Private Functions === */
 
-async fn watched_record(
-    watch: &mut harmos_runtime::operations::ProtobufDownload<harmos_operations::storage::WatchRows>,
-) -> (harmos_storage::StoredRecord, harmos_protocol::v1::ReadCut) {
-    loop {
-        let frame = watch.next().await.unwrap().unwrap();
-        if let Some(harmos_protocol::v1::storage_watch_rows_response::Event::Record(row)) = frame.event {
-            return (row.try_into().unwrap(), frame.resolved_at.unwrap());
-        }
-    }
-}
-
-fn records() -> harmos_runtime::storage::query::RecordSelection {
-    harmos_runtime::storage::query::RecordSelection {
-        schema: super::schema(),
-        scope: None,
-        item: None,
-        source_start: None,
-        source_end: None,
-    }
-}
-
 /* === Tests === */
 
-#[test]
-fn catalog_serves_operations() {
-    let contracts: Vec<_> = storage_catalog().operations.iter().map(|factory| factory.contract().unwrap()).collect();
-    let served: Vec<_> =
-        contracts.iter().filter(|contract| contract.grpc().is_some()).map(|contract| contract.operation().id.to_string()).collect();
-    for required in [
-        "harmos.v1.Storage/ListRows",
-        "storage.read_file",
-        "harmos.v1.Storage/AppendRecords",
-        "harmos.v1.Storage/AppendSamples",
-        "harmos.v1.Storage/AppendObjectRevisions",
-        "storage.write_file",
-    ] {
-        assert!(served.iter().any(|id| id == required), "missing {required}");
-    }
-    for retired in ["storage_read_records", "storage_read_objects", "storage_query_stream", "storage_read_files", "storage_reductions"] {
-        assert!(!served.iter().any(|id| id == retired), "retired {retired}");
-    }
+#[tokio::test]
+async fn private_operations_run_against_the_registered_backend() {
+    let fixture = Fixture::new(config()).await;
+    crate::support::app::register(&fixture.runtime, storage_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
+    let info = fixture
+        .runtime
+        .operations
+        .call_native::<harmos_operations::storage::Info>(harmos_operations::storage::InfoRequest {})
+        .await
+        .unwrap();
+    assert_eq!(info.accepted.unwrap(), fixture.storage.cursor_accepted());
+    assert_eq!(info.saved.unwrap(), fixture.storage.get_saved_position());
+    let private =
+        fixture.runtime.operations.definitions().into_iter().filter(|entry| entry.id.as_str().starts_with("storage.")).collect::<Vec<_>>();
+    assert!(!private.is_empty());
+    assert!(private.iter().all(|entry| entry.visibility == harmos_runtime::operations::Visibility::Private));
+    assert!(storage_catalog().operations.iter().all(|factory| factory.contract().is_err()));
+    fixture.finish().await;
 }

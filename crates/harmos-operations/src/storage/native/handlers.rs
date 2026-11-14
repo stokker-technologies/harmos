@@ -7,7 +7,7 @@
  * ***
  */
 
-// Client Storage Transfer Declarations
+// Private Native Storage Operations
 
 /* === Modules === */
 
@@ -15,12 +15,28 @@
 
 /* === Imports === */
 
+use super::requests::{
+    AdvanceProjectionRequest, AdvanceProjectionResponse, AppendFileBytesRequest, AppendFileBytesResponse, AppendObjectRevisionsRequest,
+    AppendObjectRevisionsResponse, AppendRecordsRequest, AppendRecordsResponse, AppendSamplesRequest, AppendSamplesResponse,
+    CapabilitiesRequest, CapabilitiesResponse, CaptureFileRequest, CaptureFileResponse, CreateFileProductionRequest,
+    CreateFileProductionResponse, CreateFileWriterRequest, CreateFileWriterResponse, CreateSnapshotRequest, CreateSnapshotResponse,
+    DeleteFileProductionRequest, DeleteFileProductionResponse, DeleteSnapshotRequest, DeleteSnapshotResponse, GetFileBytesRequest,
+    GetFileBytesResponse, GetFileHashRequest, GetFileHashResponse, GetFileProductionRequest, GetFileProductionResponse,
+    GetIndexDefinitionRequest, GetIndexDefinitionResponse, GetObjectRequest, GetObjectResponse, GetProjectionDefinitionRequest,
+    GetProjectionDefinitionResponse, GetProjectionStatusRequest, GetProjectionStatusResponse, ListColumnRowsRequest,
+    ListColumnRowsResponse, ListDirectoryEntriesRequest, ListDirectoryEntriesResponse, ListIndexEntriesRequest, ListIndexEntriesResponse,
+    ListProjectionRowsRequest, ListProjectionRowsResponse, ListRowsRequest, ListRowsResponse, PublishFileProductionRequest,
+    PublishFileProductionResponse, SetIndexDefinitionRequest, SetIndexDefinitionResponse, SetObjectRequest, SetObjectResponse,
+    SetProjectionDefinitionRequest, SetProjectionDefinitionResponse, WatchDirectoryEntriesRequest, WatchDirectoryEntriesResponse,
+    WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest, WatchFileProductionResponse, WatchRowsRequest,
+    WatchRowsResponse, set_object_response, watch_file_production_response, watch_rows_response,
+};
+
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use super::requests as wire;
 use super::transfers;
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use crate::operations::{FailureKind, ReplaySafety};
@@ -55,8 +71,8 @@ pub struct GetFileBytes;
 /* === Implementations === */
 
 impl NativeOperation for CreateFileProduction {
-    type Request = wire::CreateFileProductionRequest;
-    type Response = wire::CreateFileProductionResponse;
+    type Request = CreateFileProductionRequest;
+    type Response = CreateFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.create_file_production";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -83,8 +99,8 @@ impl NativeOperation for CreateFileProduction {
 }
 
 impl NativeOperation for GetFileProduction {
-    type Request = wire::GetFileProductionRequest;
-    type Response = wire::GetFileProductionResponse;
+    type Request = GetFileProductionRequest;
+    type Response = GetFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_production";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -92,7 +108,7 @@ impl NativeOperation for GetFileProduction {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (production, at) = super::file_access::production(&context, Self::ID, request.file, request.at).await?;
+        let (production, at) = super::file_access::production(&context, request.file, request.at).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -111,8 +127,8 @@ impl NativeOperation for GetFileProduction {
 }
 
 impl NativeOperation for AppendFileBytes {
-    type Request = wire::AppendFileBytesRequest;
-    type Response = wire::AppendFileBytesResponse;
+    type Request = AppendFileBytesRequest;
+    type Response = AppendFileBytesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_file_bytes";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -145,8 +161,8 @@ impl NativeOperation for AppendFileBytes {
 }
 
 impl NativeOperation for CreateFileWriter {
-    type Request = wire::CreateFileWriterRequest;
-    type Response = wire::CreateFileWriterResponse;
+    type Request = CreateFileWriterRequest;
+    type Response = CreateFileWriterResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.create_file_writer";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -173,8 +189,8 @@ impl NativeOperation for CreateFileWriter {
 }
 
 impl NativeOperation for PublishFileProduction {
-    type Request = wire::PublishFileProductionRequest;
-    type Response = wire::PublishFileProductionResponse;
+    type Request = PublishFileProductionRequest;
+    type Response = PublishFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.publish_file_production";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -204,8 +220,8 @@ impl NativeOperation for PublishFileProduction {
 }
 
 impl NativeOperation for DeleteFileProduction {
-    type Request = wire::DeleteFileProductionRequest;
-    type Response = wire::DeleteFileProductionResponse;
+    type Request = DeleteFileProductionRequest;
+    type Response = DeleteFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.delete_file_production";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -232,8 +248,8 @@ impl NativeOperation for DeleteFileProduction {
 }
 
 impl NativeOperation for GetFileBytes {
-    type Request = wire::GetFileBytesRequest;
-    type Response = wire::GetFileBytesResponse;
+    type Request = GetFileBytesRequest;
+    type Response = GetFileBytesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_bytes";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -287,8 +303,8 @@ impl NativeOperation for GetFileBytes {
 pub struct GetIndexDefinition;
 
 impl NativeOperation for GetIndexDefinition {
-    type Request = wire::GetIndexDefinitionRequest;
-    type Response = wire::GetIndexDefinitionResponse;
+    type Request = GetIndexDefinitionRequest;
+    type Response = GetIndexDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_index_definition";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -296,8 +312,7 @@ impl NativeOperation for GetIndexDefinition {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (definition, revision, resolved_at) =
-            super::definitions::get_index(&context, Self::ID, request.name, request.source, request.at).await?;
+        let (definition, revision, resolved_at) = super::definitions::get_index(&context, request.name, request.source, request.at).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -315,8 +330,8 @@ impl NativeOperation for GetIndexDefinition {
 pub struct SetIndexDefinition;
 
 impl NativeOperation for SetIndexDefinition {
-    type Request = wire::SetIndexDefinitionRequest;
-    type Response = wire::SetIndexDefinitionResponse;
+    type Request = SetIndexDefinitionRequest;
+    type Response = SetIndexDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_index_definition";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -326,7 +341,6 @@ impl NativeOperation for SetIndexDefinition {
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, receipt) = super::definitions::set_index(
             &context,
-            Self::ID,
             super::definitions::SetIndexInput {
                 definition: request.definition,
                 expected_revision: request.expected_revision,
@@ -354,8 +368,8 @@ impl NativeOperation for SetIndexDefinition {
 pub struct GetProjectionDefinition;
 
 impl NativeOperation for GetProjectionDefinition {
-    type Request = wire::GetProjectionDefinitionRequest;
-    type Response = wire::GetProjectionDefinitionResponse;
+    type Request = GetProjectionDefinitionRequest;
+    type Response = GetProjectionDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_projection_definition";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -364,7 +378,7 @@ impl NativeOperation for GetProjectionDefinition {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) =
-            super::definitions::get_projection(&context, Self::ID, request.name, request.source, request.at).await?;
+            super::definitions::get_projection(&context, request.name, request.source, request.at).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -382,8 +396,8 @@ impl NativeOperation for GetProjectionDefinition {
 pub struct SetProjectionDefinition;
 
 impl NativeOperation for SetProjectionDefinition {
-    type Request = wire::SetProjectionDefinitionRequest;
-    type Response = wire::SetProjectionDefinitionResponse;
+    type Request = SetProjectionDefinitionRequest;
+    type Response = SetProjectionDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_projection_definition";
     const POLICY: crate::OperationPolicy = super::POLICY;
@@ -393,7 +407,6 @@ impl NativeOperation for SetProjectionDefinition {
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, receipt) = super::definitions::set_projection(
             &context,
-            Self::ID,
             request.definition,
             request.expected_revision,
             request.create_if_absent,
@@ -418,8 +431,8 @@ impl NativeOperation for SetProjectionDefinition {
 pub struct ListRows;
 
 impl NativeOperation for ListRows {
-    type Request = wire::ListRowsRequest;
-    type Response = wire::ListRowsResponse;
+    type Request = ListRowsRequest;
+    type Response = ListRowsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_rows";
 
@@ -428,7 +441,7 @@ impl NativeOperation for ListRows {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let page = super::pages::list(&context, Self::ID, request.source, request.at, request.transforms, request.page).await?;
+        let page = super::pages::list(&context, request.source, request.at, request.transforms, request.page).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -445,8 +458,8 @@ impl NativeOperation for ListRows {
 
 pub struct Capabilities;
 impl NativeOperation for Capabilities {
-    type Request = wire::CapabilitiesRequest;
-    type Response = wire::CapabilitiesResponse;
+    type Request = CapabilitiesRequest;
+    type Response = CapabilitiesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.capabilities";
 
@@ -472,8 +485,8 @@ impl NativeOperation for Capabilities {
 
 pub struct CreateSnapshot;
 impl NativeOperation for CreateSnapshot {
-    type Request = wire::CreateSnapshotRequest;
-    type Response = wire::CreateSnapshotResponse;
+    type Request = CreateSnapshotRequest;
+    type Response = CreateSnapshotResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.create_snapshot";
 
@@ -498,8 +511,8 @@ impl NativeOperation for CreateSnapshot {
 
 pub struct DeleteSnapshot;
 impl NativeOperation for DeleteSnapshot {
-    type Request = wire::DeleteSnapshotRequest;
-    type Response = wire::DeleteSnapshotResponse;
+    type Request = DeleteSnapshotRequest;
+    type Response = DeleteSnapshotResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.delete_snapshot";
 
@@ -518,8 +531,8 @@ impl NativeOperation for DeleteSnapshot {
 
 pub struct ListColumnRows;
 impl NativeOperation for ListColumnRows {
-    type Request = wire::ListColumnRowsRequest;
-    type Response = wire::ListColumnRowsResponse;
+    type Request = ListColumnRowsRequest;
+    type Response = ListColumnRowsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_column_rows";
 
@@ -528,8 +541,7 @@ impl NativeOperation for ListColumnRows {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (page, resolved_at, next_page_token) =
-            super::lists::columns(&context, Self::ID, request.selection, request.at, request.page).await?;
+        let (page, resolved_at, next_page_token) = super::lists::columns(&context, request.selection, request.at, request.page).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -546,8 +558,8 @@ impl NativeOperation for ListColumnRows {
 
 pub struct ListIndexEntries;
 impl NativeOperation for ListIndexEntries {
-    type Request = wire::ListIndexEntriesRequest;
-    type Response = wire::ListIndexEntriesResponse;
+    type Request = ListIndexEntriesRequest;
+    type Response = ListIndexEntriesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_index_entries";
 
@@ -557,7 +569,7 @@ impl NativeOperation for ListIndexEntries {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at, next_page_token) =
-            super::lists::indexes(&context, Self::ID, request.selection, request.source, request.at, request.page).await?;
+            super::lists::indexes(&context, request.selection, request.source, request.at, request.page).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -574,8 +586,8 @@ impl NativeOperation for ListIndexEntries {
 
 pub struct AdvanceProjection;
 impl NativeOperation for AdvanceProjection {
-    type Request = wire::AdvanceProjectionRequest;
-    type Response = wire::AdvanceProjectionResponse;
+    type Request = AdvanceProjectionRequest;
+    type Response = AdvanceProjectionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.advance_projection";
 
@@ -585,7 +597,7 @@ impl NativeOperation for AdvanceProjection {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (revision, resolved_at) =
-            super::views::advance_projection(&context, Self::ID, request.snapshot, request.name, request.work, request.source).await?;
+            super::views::advance_projection(&context, request.snapshot, request.name, request.work, request.source).await?;
         super::admission::read_response(&context, Self::Response { revision, resolved_at: Some(resolved_at) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -595,8 +607,8 @@ impl NativeOperation for AdvanceProjection {
 
 pub struct GetProjectionStatus;
 impl NativeOperation for GetProjectionStatus {
-    type Request = wire::GetProjectionStatusRequest;
-    type Response = wire::GetProjectionStatusResponse;
+    type Request = GetProjectionStatusRequest;
+    type Response = GetProjectionStatusResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_projection_status";
 
@@ -606,7 +618,7 @@ impl NativeOperation for GetProjectionStatus {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (status, resolved_at) =
-            super::views::projection_status(&context, Self::ID, request.name, request.revision, request.at, request.source).await?;
+            super::views::projection_status(&context, request.name, request.revision, request.at, request.source).await?;
         super::admission::read_response(&context, Self::Response { status, resolved_at: Some(resolved_at) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -616,8 +628,8 @@ impl NativeOperation for GetProjectionStatus {
 
 pub struct ListProjectionRows;
 impl NativeOperation for ListProjectionRows {
-    type Request = wire::ListProjectionRowsRequest;
-    type Response = wire::ListProjectionRowsResponse;
+    type Request = ListProjectionRowsRequest;
+    type Response = ListProjectionRowsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_projection_rows";
 
@@ -627,7 +639,7 @@ impl NativeOperation for ListProjectionRows {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at, next_page_token) =
-            super::lists::projections(&context, Self::ID, request.selection, request.source, request.at, request.page).await?;
+            super::lists::projections(&context, request.selection, request.source, request.at, request.page).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -648,8 +660,8 @@ pub struct GetObject;
 pub struct SetObject;
 
 impl NativeOperation for GetObject {
-    type Request = wire::GetObjectRequest;
-    type Response = wire::GetObjectResponse;
+    type Request = GetObjectRequest;
+    type Response = GetObjectResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_object";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -657,7 +669,7 @@ impl NativeOperation for GetObject {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (value, revision, resolved_at) = super::object::get(&context, Self::ID, request.schema, request.item, request.at).await?;
+        let (value, revision, resolved_at) = super::object::get(&context, request.schema, request.item, request.at).await?;
         super::admission::read_response(
             &context,
             Self::Response {
@@ -670,8 +682,8 @@ impl NativeOperation for GetObject {
     }
 }
 impl NativeOperation for SetObject {
-    type Request = wire::SetObjectRequest;
-    type Response = wire::SetObjectResponse;
+    type Request = SetObjectRequest;
+    type Response = SetObjectResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_object";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -681,7 +693,6 @@ impl NativeOperation for SetObject {
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let result = super::object::set(
             &context,
-            Self::ID,
             request.mutation,
             request.expected_revision,
             request.create_if_absent,
@@ -689,7 +700,7 @@ impl NativeOperation for SetObject {
             request.value,
         )
         .await?;
-        use wire::set_object_response::{Applied, Conflict, Outcome};
+        use set_object_response::{Applied, Conflict, Outcome};
         let outcome = match result {
             super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Applied {
                 value: Some(*value),
@@ -709,8 +720,8 @@ impl NativeOperation for SetObject {
 
 pub struct AppendRecords;
 impl NativeOperation for AppendRecords {
-    type Request = wire::AppendRecordsRequest;
-    type Response = wire::AppendRecordsResponse;
+    type Request = AppendRecordsRequest;
+    type Response = AppendRecordsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_records";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -728,8 +739,8 @@ impl NativeOperation for AppendRecords {
 }
 pub struct AppendSamples;
 impl NativeOperation for AppendSamples {
-    type Request = wire::AppendSamplesRequest;
-    type Response = wire::AppendSamplesResponse;
+    type Request = AppendSamplesRequest;
+    type Response = AppendSamplesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_samples";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -747,8 +758,8 @@ impl NativeOperation for AppendSamples {
 }
 pub struct AppendObjectRevisions;
 impl NativeOperation for AppendObjectRevisions {
-    type Request = wire::AppendObjectRevisionsRequest;
-    type Response = wire::AppendObjectRevisionsResponse;
+    type Request = AppendObjectRevisionsRequest;
+    type Response = AppendObjectRevisionsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_object_revisions";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -768,9 +779,9 @@ impl NativeOperation for AppendObjectRevisions {
 pub struct WatchRows;
 
 impl NativeOperation for WatchRows {
-    type Request = wire::WatchRowsRequest;
-    type Response = wire::WatchRowsResponse;
-    type Endpoints = super::NativeOutput<wire::WatchRowsResponse>;
+    type Request = WatchRowsRequest;
+    type Response = WatchRowsResponse;
+    type Endpoints = super::NativeOutput<WatchRowsResponse>;
     const ID: &'static str = "storage.watch_rows";
     const POLICY: crate::OperationPolicy = super::STREAM_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
@@ -778,7 +789,7 @@ impl NativeOperation for WatchRows {
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let context = &context;
-        let frame = super::watch_rows::run(context, Self::ID, request.source, request.at, |frame| async move {
+        let frame = super::watch_rows::run(context, request.source, request.at, |frame| async move {
             let response = super::admission::read_response(context, Self::response(frame))?;
             output.send(response).await.map_err(ServingError::Stream)
         })
@@ -787,10 +798,10 @@ impl NativeOperation for WatchRows {
     }
 }
 impl WatchRows {
-    fn response(frame: super::watch_rows::Frame) -> wire::WatchRowsResponse {
+    fn response(frame: super::watch_rows::Frame) -> WatchRowsResponse {
         use super::watch_rows::Event;
-        use wire::watch_rows_response::Event as Wire;
-        wire::WatchRowsResponse {
+        use watch_rows_response::Event as Wire;
+        WatchRowsResponse {
             resolved_at: Some(frame.at),
             event: Some(match frame.event {
                 Event::Boundary => Wire::Boundary(()),
@@ -806,9 +817,9 @@ impl WatchRows {
 
 pub struct WatchFileBytes;
 impl NativeOperation for WatchFileBytes {
-    type Request = wire::WatchFileBytesRequest;
-    type Response = wire::WatchFileBytesResponse;
-    type Endpoints = super::NativeOutput<wire::WatchFileBytesResponse>;
+    type Request = WatchFileBytesRequest;
+    type Response = WatchFileBytesResponse;
+    type Endpoints = super::NativeOutput<WatchFileBytesResponse>;
     const ID: &'static str = "storage.watch_file_bytes";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
@@ -816,7 +827,7 @@ impl NativeOperation for WatchFileBytes {
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let context = &context;
-        let completion = super::file_watches::bytes(context, Self::ID, request.source, request.start, |event| async move {
+        let completion = super::file_watches::bytes(context, request.source, request.start, |event| async move {
             super::file_watches::send(context, Self::ID, output, Self::Response { event: Some(event), completion: None }).await
         })
         .await?;
@@ -831,9 +842,9 @@ impl NativeOperation for WatchFileBytes {
 
 pub struct WatchFileProduction;
 impl NativeOperation for WatchFileProduction {
-    type Request = wire::WatchFileProductionRequest;
-    type Response = wire::WatchFileProductionResponse;
-    type Endpoints = super::NativeOutput<wire::WatchFileProductionResponse>;
+    type Request = WatchFileProductionRequest;
+    type Response = WatchFileProductionResponse;
+    type Endpoints = super::NativeOutput<WatchFileProductionResponse>;
     const ID: &'static str = "storage.watch_file_production";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
@@ -841,20 +852,20 @@ impl NativeOperation for WatchFileProduction {
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let context = &context;
-        let progress = super::file_watches::production(context, Self::ID, request.file, request.offset, |data| async move {
+        let progress = super::file_watches::production(context, request.file, request.offset, |data| async move {
             super::file_watches::send(
                 context,
                 Self::ID,
                 output,
                 Self::Response {
-                    event: Some(wire::watch_file_production_response::Event::Data(data)),
+                    event: Some(watch_file_production_response::Event::Data(data)),
                 },
             )
             .await
         })
         .await?;
         let response = Self::Response {
-            event: Some(wire::watch_file_production_response::Event::Progress(progress)),
+            event: Some(watch_file_production_response::Event::Progress(progress)),
         };
         super::file_watches::send(context, Self::ID, output, response.clone()).await?;
         Ok(response)
@@ -863,9 +874,9 @@ impl NativeOperation for WatchFileProduction {
 
 pub struct WatchDirectoryEntries;
 impl NativeOperation for WatchDirectoryEntries {
-    type Request = wire::WatchDirectoryEntriesRequest;
-    type Response = wire::WatchDirectoryEntriesResponse;
-    type Endpoints = super::NativeOutput<wire::WatchDirectoryEntriesResponse>;
+    type Request = WatchDirectoryEntriesRequest;
+    type Response = WatchDirectoryEntriesResponse;
+    type Endpoints = super::NativeOutput<WatchDirectoryEntriesResponse>;
     const ID: &'static str = "storage.watch_directory_entries";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
@@ -883,8 +894,8 @@ impl NativeOperation for WatchDirectoryEntries {
 
 pub struct GetFileHash;
 impl NativeOperation for GetFileHash {
-    type Request = wire::GetFileHashRequest;
-    type Response = wire::GetFileHashResponse;
+    type Request = GetFileHashRequest;
+    type Response = GetFileHashResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_hash";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -892,7 +903,7 @@ impl NativeOperation for GetFileHash {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let (hash, at) = super::file_access::hash(&context, Self::ID, request.source, request.range, request.at).await?;
+        let (hash, at) = super::file_access::hash(&context, request.source, request.range, request.at).await?;
         super::admission::read_response(&context, Self::Response { hash: Some(hash), resolved_at: Some(at) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -902,8 +913,8 @@ impl NativeOperation for GetFileHash {
 
 pub struct CaptureFile;
 impl NativeOperation for CaptureFile {
-    type Request = wire::CaptureFileRequest;
-    type Response = wire::CaptureFileResponse;
+    type Request = CaptureFileRequest;
+    type Response = CaptureFileResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.capture_file";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;
@@ -912,7 +923,7 @@ impl NativeOperation for CaptureFile {
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (file, receipt) =
-            super::file_access::capture(&context, Self::ID, request.source, request.range, request.metadata, request.consistency).await?;
+            super::file_access::capture(&context, request.source, request.range, request.metadata, request.consistency).await?;
         super::admission::read_response(&context, Self::Response { file: Some(file), receipt: Some(receipt) })
     }
     fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
@@ -922,8 +933,8 @@ impl NativeOperation for CaptureFile {
 
 pub struct ListDirectoryEntries;
 impl NativeOperation for ListDirectoryEntries {
-    type Request = wire::ListDirectoryEntriesRequest;
-    type Response = wire::ListDirectoryEntriesResponse;
+    type Request = ListDirectoryEntriesRequest;
+    type Response = ListDirectoryEntriesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_directory_entries";
     const POLICY: crate::OperationPolicy = super::IO_POLICY;

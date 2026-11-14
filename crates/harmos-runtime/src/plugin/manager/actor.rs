@@ -33,7 +33,7 @@ use tokio::{
 use super::{
     Error, PluginManagerSettings,
     content::Installation,
-    persistence::{Registry, SavedCreate, SavedEntry, Store, problem},
+    persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
 use crate::plugin::grpc::{Attached, Managed, Placement, Status};
 use harmos_protocol::{client as wire, v1};
@@ -259,6 +259,9 @@ impl Actor {
             event: event.clone(),
             settings: super::settings::snapshots(&self.registry)?,
         };
+        for retained in &mut self.snapshots {
+            retained.settings.retain(|name, _| self.registry.entries.contains_key(name));
+        }
         self.snapshots.push_back(snapshot);
         while self.snapshots.len() > self.settings.retained_cuts.get() {
             self.snapshots.pop_front();
@@ -481,7 +484,7 @@ impl Actor {
         );
         registry.creates.insert(
             request.request_id,
-            SavedCreate {
+            SavedMutation {
                 request: encoded,
                 response: response.encode_to_vec(),
             },

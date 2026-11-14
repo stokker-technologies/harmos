@@ -22,6 +22,8 @@ pub use harmos_domain::model::storage::{
     FileCompletion, FileEvent, FileHash, FileMetadata, FileProgress, FileReference, FileSession, FileSource, FollowStart, MutationId,
     MutationWindow, ObjectEntry, ObjectValue, SchemaKey, StagedFile, StorageCursor, StoreHistory, StoredRecord, StoredRow,
 };
+use harmos_domain::schema::graph::Schema;
+use harmos_protocol::v1::{PageRequest, ReadCut, Receipt};
 pub use harmos_storage::query::columnar::{ArrowPage, ColumnPredicate, ColumnSource, StorageCapabilities, TimeBounds};
 pub use harmos_storage::query::index::{IndexDefinition, IndexPage};
 pub use harmos_storage::query::projection::{ProjectionDefinition, ProjectionPage, ProjectionStatus};
@@ -59,7 +61,7 @@ pub struct SavedSnapshot {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SchemaInput {
     pub key: Option<SchemaKey>,
-    pub graph: Option<harmos_domain::schema::graph::Schema>,
+    pub graph: Option<Schema>,
 }
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ColumnSelection {
@@ -96,20 +98,20 @@ pub struct CreateFileProductionRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateFileProductionResponse {
     pub production: Option<FileProducer>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GetFileProductionRequest {
     pub file: Option<StagedFile>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GetFileProductionResponse {
     pub production: Option<FileProgress>,
     pub writer_generation: u64,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub accepted_length: u64,
     pub durable_length: u64,
 }
@@ -125,7 +127,7 @@ pub struct AppendFileBytesRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppendFileBytesResponse {
     pub production: Option<FileProducer>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -137,7 +139,7 @@ pub struct CreateFileWriterRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateFileWriterResponse {
     pub production: Option<FileProducer>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -151,7 +153,7 @@ pub struct PublishFileProductionRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PublishFileProductionResponse {
     pub file: Option<FileReference>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -163,7 +165,7 @@ pub struct DeleteFileProductionRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeleteFileProductionResponse {
     pub production: Option<FileProgress>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -171,7 +173,7 @@ pub struct GetFileBytesRequest {
     pub file: Option<FileReference>,
     pub offset: u64,
     pub max_bytes: u64,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -179,7 +181,7 @@ pub struct GetFileBytesResponse {
     pub data: Vec<u8>,
     pub total_length: u64,
     pub sha256: Vec<u8>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -194,13 +196,13 @@ pub struct CapabilitiesResponse {
 
 #[derive(Clone, Debug)]
 pub struct CreateSnapshotRequest {
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateSnapshotResponse {
     pub snapshot: Option<SavedSnapshot>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -214,29 +216,29 @@ pub struct DeleteSnapshotResponse {}
 #[derive(Clone, Debug)]
 pub struct ListColumnRowsRequest {
     pub selection: Option<ColumnSelection>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
-    pub page: Option<harmos_protocol::v1::PageRequest>,
+    pub at: Option<ReadCut>,
+    pub page: Option<PageRequest>,
 }
 
 #[derive(Debug)]
 pub struct ListColumnRowsResponse {
     pub page: Option<ArrowPage>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct ListIndexEntriesRequest {
     pub selection: Option<IndexSelection>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
-    pub page: Option<harmos_protocol::v1::PageRequest>,
+    pub at: Option<ReadCut>,
+    pub page: Option<PageRequest>,
     pub source: Option<ColumnSource>,
 }
 
 #[derive(Debug)]
 pub struct ListIndexEntriesResponse {
     pub page: Option<IndexPage>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
 
@@ -254,7 +256,7 @@ pub struct SetIndexDefinitionRequest {
 pub struct SetIndexDefinitionResponse {
     pub definition: Option<IndexDefinition>,
     pub revision: Vec<u8>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -270,7 +272,7 @@ pub struct SetProjectionDefinitionRequest {
 pub struct SetProjectionDefinitionResponse {
     pub definition: Option<ProjectionDefinition>,
     pub revision: Vec<u8>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -284,21 +286,21 @@ pub struct AdvanceProjectionRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AdvanceProjectionResponse {
     pub revision: Vec<u8>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ListProjectionRowsRequest {
     pub selection: Option<ProjectionSelection>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
-    pub page: Option<harmos_protocol::v1::PageRequest>,
+    pub at: Option<ReadCut>,
+    pub page: Option<PageRequest>,
     pub source: Option<ColumnSource>,
 }
 
 #[derive(Debug)]
 pub struct ListProjectionRowsResponse {
     pub page: Option<ProjectionPage>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
 
@@ -306,14 +308,14 @@ pub struct ListProjectionRowsResponse {
 pub struct GetProjectionStatusRequest {
     pub name: String,
     pub revision: Vec<u8>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
     pub source: Option<ColumnSource>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GetProjectionStatusResponse {
     pub status: Option<ProjectionStatus>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -333,27 +335,27 @@ pub struct SetObjectResponse {
 #[derive(Clone, Debug)]
 pub struct ListRowsRequest {
     pub source: Option<Source>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
     pub transforms: Vec<Transform>,
-    pub page: Option<harmos_protocol::v1::PageRequest>,
+    pub page: Option<PageRequest>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListRowsResponse {
     pub rows: Vec<QueryOutput>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct WatchRowsRequest {
     pub source: Option<Source>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct WatchRowsResponse {
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
     pub event: Option<watch_rows_response::Event>,
 }
 
@@ -366,7 +368,7 @@ pub struct AppendRecordsRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppendRecordsResponse {
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -378,7 +380,7 @@ pub struct AppendSamplesRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppendSamplesResponse {
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -390,20 +392,20 @@ pub struct AppendObjectRevisionsRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppendObjectRevisionsResponse {
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GetFileHashRequest {
     pub source: Option<FileSource>,
     pub range: Option<ByteRange>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GetFileHashResponse {
     pub hash: Option<FileHash>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -417,7 +419,7 @@ pub struct CaptureFileRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CaptureFileResponse {
     pub file: Option<FileReference>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -446,15 +448,15 @@ pub struct WatchFileProductionResponse {
 #[derive(Clone, Debug)]
 pub struct ListDirectoryEntriesRequest {
     pub selection: Option<DirectorySelection>,
-    pub page: Option<harmos_protocol::v1::PageRequest>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub page: Option<PageRequest>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListDirectoryEntriesResponse {
     pub entries: Vec<DirectoryEntry>,
     pub next_page_token: String,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -472,35 +474,35 @@ pub struct WatchDirectoryEntriesResponse {
 pub struct GetIndexDefinitionRequest {
     pub name: String,
     pub source: Option<ColumnSource>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GetIndexDefinitionResponse {
     pub definition: Option<IndexDefinition>,
     pub revision: Vec<u8>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GetProjectionDefinitionRequest {
     pub name: String,
     pub source: Option<ColumnSource>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GetProjectionDefinitionResponse {
     pub definition: Option<ProjectionDefinition>,
     pub revision: Vec<u8>,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GetObjectRequest {
     pub schema: Option<SchemaKey>,
     pub item: String,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -508,7 +510,7 @@ pub struct GetObjectResponse {
     pub value: Option<ObjectValue>,
     pub revision: Vec<u8>,
     pub exists: bool,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug)]
@@ -531,7 +533,7 @@ pub struct DeleteFileRequest {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DeleteFileResponse {
     pub file: Option<StagedFile>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
@@ -546,13 +548,13 @@ pub struct SetSchemaRequest {
 pub struct SetSchemaResponse {
     pub schema: Option<SchemaInput>,
     pub revision: Vec<u8>,
-    pub receipt: Option<harmos_protocol::v1::Receipt>,
+    pub receipt: Option<Receipt>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GetSchemaRequest {
     pub key: Option<SchemaKey>,
-    pub at: Option<harmos_protocol::v1::ReadCut>,
+    pub at: Option<ReadCut>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -560,7 +562,7 @@ pub struct GetSchemaResponse {
     pub schema: Option<SchemaInput>,
     pub revision: Vec<u8>,
     pub exists: bool,
-    pub resolved_at: Option<harmos_protocol::v1::ReadCut>,
+    pub resolved_at: Option<ReadCut>,
 }
 
 /* === Enums === */
@@ -571,7 +573,7 @@ pub mod set_object_response {
     pub struct Applied {
         pub value: Option<ObjectValue>,
         pub revision: Vec<u8>,
-        pub receipt: Option<harmos_protocol::v1::Receipt>,
+        pub receipt: Option<Receipt>,
     }
     #[derive(Clone, Debug, PartialEq)]
     pub struct Conflict {

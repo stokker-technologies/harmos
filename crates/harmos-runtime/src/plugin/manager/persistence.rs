@@ -44,7 +44,7 @@ struct RegistryObject {
 pub(super) struct Registry {
     pub next_revision: u64,
     pub entries: BTreeMap<String, SavedEntry>,
-    pub creates: BTreeMap<String, SavedCreate>,
+    pub creates: BTreeMap<String, SavedMutation>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -58,13 +58,13 @@ pub(super) struct SavedEntry {
     #[serde(default)]
     pub settings_revision: Vec<u8>,
     #[serde(default)]
-    pub settings_receipts: BTreeMap<String, SavedCreate>,
+    pub settings_receipts: BTreeMap<String, SavedMutation>,
     #[serde(default)]
-    pub replacements: BTreeMap<String, SavedCreate>,
+    pub replacements: BTreeMap<String, SavedMutation>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct SavedCreate {
+pub(super) struct SavedMutation {
     pub request: Vec<u8>,
     pub response: Vec<u8>,
 }

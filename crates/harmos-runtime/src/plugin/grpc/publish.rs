@@ -18,6 +18,7 @@
 // Standard Library Imports
 use std::{
     collections::BTreeSet,
+    error::Error as StdError,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -232,6 +233,17 @@ fn interval(stream: &v1::StreamDeclaration, settings: &v1::SettingValues) -> Res
         .transpose()
 }
 
+fn sample_error(error: crate::Error) -> Error {
+    let mut source: Option<&(dyn StdError + 'static)> = Some(&error);
+    while let Some(current) = source {
+        if let Some(Error::Transport(message)) = current.downcast_ref::<Error>() {
+            return Error::Transport(message.clone());
+        }
+        source = current.source();
+    }
+    invalid(error)
+}
+
 async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
@@ -275,14 +287,20 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                             output: output.clone(),
                             caller: caller.clone(),
                             seen: seen.clone(),
+                            lease: lease.clone(),
                             at,
                         }))
                         .await
-                        .map_err(invalid)?;
+                        .map_err(sample_error)?;
                     response
                 } else {
-                    let response =
-                        input.lock().await.message().await.map_err(invalid)?.ok_or_else(|| invalid("Read Device Samples: demand ended"))?;
+                    let response = input
+                        .lock()
+                        .await
+                        .message()
+                        .await
+                        .map_err(|error| Error::Transport(error.to_string()))?
+                        .ok_or_else(|| invalid("Read Device Samples: demand ended"))?;
                     if response.frame.is_some() {
                         return Err(invalid("Read Device Samples: child calls require an unanswered tick"));
                     }
@@ -337,7 +355,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
     }
     drop(output);
     // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup.
-    while input.lock().await.message().await.map_err(invalid)?.is_some() {}
+    while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}
     Ok(())
 }
 

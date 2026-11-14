@@ -15,9 +15,10 @@
 
 /* === Imports === */
 
+use super::requests::{MutationWindow, ProjectionStatus, ReadLimits, SavedSnapshot, StorageCapabilities};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
 use harmos_storage::{
@@ -27,21 +28,17 @@ use harmos_storage::{
 
 /* === Public Functions === */
 
-pub(super) async fn capabilities(
-    context: &ExecutionContext,
-) -> Result<(wire::StorageCapabilities, Option<wire::MutationWindow>, u64), ServingError> {
+pub(super) async fn capabilities(context: &ExecutionContext) -> Result<(StorageCapabilities, Option<MutationWindow>, u64), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let info = storage.info().map_err(|error| super::admission::failure(error.into()))?;
     Ok((storage.capabilities().into(), info.mutations.map(Into::into), info.file_batch_bytes))
 }
-pub(super) async fn create(
-    context: &ExecutionContext, at: Option<v1::ReadCut>,
-) -> Result<(wire::SavedSnapshot, v1::ReadCut), ServingError> {
+pub(super) async fn create(context: &ExecutionContext, at: Option<v1::ReadCut>) -> Result<(SavedSnapshot, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     snapshots.create(&storage, at).await.map_err(super::admission::failure)
 }
-pub(super) async fn delete(context: &ExecutionContext, snapshot: Option<wire::SavedSnapshot>) -> Result<(), ServingError> {
+pub(super) async fn delete(context: &ExecutionContext, snapshot: Option<SavedSnapshot>) -> Result<(), ServingError> {
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<()> = async {
         snapshots.release(&required(snapshot)?)?;
@@ -52,8 +49,7 @@ pub(super) async fn delete(context: &ExecutionContext, snapshot: Option<wire::Sa
 }
 
 pub(super) async fn advance_projection(
-    context: &ExecutionContext, _id: &'static str, snapshot: Option<wire::SavedSnapshot>, name: String, work: Option<wire::ReadLimits>,
-    source: Option<wire::ColumnSource>,
+    context: &ExecutionContext, snapshot: Option<SavedSnapshot>, name: String, work: Option<ReadLimits>, source: Option<ColumnSource>,
 ) -> Result<(Vec<u8>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -77,9 +73,8 @@ pub(super) async fn advance_projection(
 }
 
 pub(super) async fn projection_status(
-    context: &ExecutionContext, _id: &'static str, name: String, revision: Vec<u8>, at: Option<v1::ReadCut>,
-    source: Option<wire::ColumnSource>,
-) -> Result<(Option<wire::ProjectionStatus>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, revision: Vec<u8>, at: Option<v1::ReadCut>, source: Option<ColumnSource>,
+) -> Result<(Option<ProjectionStatus>, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();

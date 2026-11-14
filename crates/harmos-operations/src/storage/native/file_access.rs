@@ -11,9 +11,13 @@
 
 /* === Imports === */
 
+use super::requests::{
+    ByteRange, CaptureConsistency, DirectoryEntry, DirectorySelection, FileHash, FileMetadata, FileProgress, FileReference,
+    ListDirectoryEntriesResponse, StagedFile,
+};
+
 use super::requests::required;
 
-use super::requests as wire;
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
@@ -25,7 +29,7 @@ use ring::digest;
 
 #[derive(Clone)]
 pub(super) struct Production {
-    pub(super) progress: wire::FileProgress,
+    pub(super) progress: FileProgress,
     pub(super) generation: u64,
     pub(super) accepted: u64,
     pub(super) durable: u64,
@@ -41,14 +45,14 @@ pub(super) struct Observation {
 pub(super) enum Data {
     Content(harmos_storage::ContentRead),
     Production(Production),
-    Hash(wire::FileHash),
-    Directory(Vec<wire::DirectoryEntry>),
+    Hash(FileHash),
+    Directory(Vec<DirectoryEntry>),
 }
 
 /* === Public Functions === */
 
 pub(super) async fn production(
-    context: &ExecutionContext, _id: &'static str, file: Option<wire::StagedFile>, at: Option<v1::ReadCut>,
+    context: &ExecutionContext, file: Option<StagedFile>, at: Option<v1::ReadCut>,
 ) -> Result<(Production, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -93,9 +97,8 @@ pub(super) async fn production(
 }
 
 pub(super) async fn hash(
-    context: &ExecutionContext, _id: &'static str, source: Option<wire::FileSource>, range: Option<wire::ByteRange>,
-    at: Option<v1::ReadCut>,
-) -> Result<(wire::FileHash, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, source: Option<FileSource>, range: Option<ByteRange>, at: Option<v1::ReadCut>,
+) -> Result<(FileHash, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
 
@@ -122,8 +125,7 @@ pub(super) async fn hash(
                 // Select The Primary Boundary Before Reading External Metadata.
                 let base = snapshots.resolve(&storage, None).await?;
                 let position = base.at().clone();
-                let hash: wire::FileHash =
-                    storage.hash_file(harmos_storage::FileRead { source: FileSource::Local(path), range }).await?.into();
+                let hash: FileHash = storage.hash_file(harmos_storage::FileRead { source: FileSource::Local(path), range }).await?.into();
                 drop(base);
                 let resource = resource("file_hash", &plan);
                 let observed =
@@ -137,9 +139,9 @@ pub(super) async fn hash(
 }
 
 pub(super) async fn capture(
-    context: &ExecutionContext, _id: &'static str, source: Option<wire::FileSource>, range: Option<wire::ByteRange>,
-    metadata: Option<wire::FileMetadata>, consistency: wire::CaptureConsistency,
-) -> Result<(wire::FileReference, v1::Receipt), ServingError> {
+    context: &ExecutionContext, source: Option<FileSource>, range: Option<ByteRange>, metadata: Option<FileMetadata>,
+    consistency: CaptureConsistency,
+) -> Result<(FileReference, v1::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
 
@@ -171,8 +173,8 @@ pub(super) async fn capture(
 }
 
 pub(super) async fn directory(
-    context: &ExecutionContext, selection: Option<wire::DirectorySelection>, at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
-) -> Result<wire::ListDirectoryEntriesResponse, ServingError> {
+    context: &ExecutionContext, selection: Option<DirectorySelection>, at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
+) -> Result<ListDirectoryEntriesResponse, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
@@ -252,7 +254,7 @@ pub(super) async fn directory(
         if end == start && start < entries.len() {
             return Err(exhausted().into());
         }
-        Ok(wire::ListDirectoryEntriesResponse {
+        Ok(ListDirectoryEntriesResponse {
             entries: entries[start..end].to_vec(),
             next_page_token: token,
             resolved_at: Some(cut),
