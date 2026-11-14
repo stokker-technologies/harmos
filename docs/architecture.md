@@ -1145,7 +1145,7 @@ from their source definitions; generated files have no independent ownership.
 | C# SDK | Public payload namespaces, shared client/context reply types, generated roots and fixture bindings, caller-owned call context. |
 | C++ SDK | Public payload barrel, generated client/context methods, native protocol inventory, conformance fixture barrel, installed-package consumers. |
 | Conformance | Both wrong-caller directions use the real runtime, including direct and managed invocation admission; all 38 rules apply to each SDK fixture. |
-| Schematic and Fixtures | Executor packages, explicit host callers, composition input, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Guest publication declares its own PLUGINS-only host service. |
+| Schematic and Fixtures | Executor packages, explicit host callers, composition input, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Guest publication declares its own PLUGINS-only host service. Guest admission validates protobuf identities through their checked contracts while native declarations retain their native identity rules. |
 
 Caller narrowing is exercised by
 `crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`: narrow ALL to
@@ -1153,6 +1153,12 @@ PLUGINS, refuse a client on direct and managed paths, omit the operation from
 client discovery, report effective PLUGINS to the plugin, and refuse widening.
 Generator composition coverage lives in
 `tools/python/tests/integration/test_protocol_callers.py`.
+
+Invocation selectors retain the submitting caller's ownership. A plugin cannot watch
+an invocation submitted by the host or another caller. A watch demand already in
+transit when its child ends does not replace the terminal response or refusal;
+unknown active watch identities and duplicate outstanding demand remain protocol
+errors on both invocation and sample carriers.
 
 ### Next Pin for Products That Vendor the Protocol
 

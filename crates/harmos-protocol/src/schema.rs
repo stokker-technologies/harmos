@@ -139,7 +139,8 @@ pub fn with_method_callers(mut types: FileDescriptorSet, callers: &BTreeMap<Stri
         }
     }
     for file in &mut types.file {
-        if !file.service.is_empty() && !file.dependency.iter().any(|name| name == "harmos/model/v1/callers.proto") {
+        let host = file.package.as_deref().is_some_and(|package| package.split('.').any(|segment| segment == "host"));
+        if host && !file.service.is_empty() && !file.dependency.iter().any(|name| name == "harmos/model/v1/callers.proto") {
             file.dependency.push("harmos/model/v1/callers.proto".into());
         }
     }
@@ -159,6 +160,9 @@ pub fn with_method_callers(mut types: FileDescriptorSet, callers: &BTreeMap<Stri
                 let method = method.as_message_mut().expect("method descriptor");
                 let name = method.get_field_by_name("name").expect("method name").as_str().unwrap_or_default().to_owned();
                 let id = format!("{package}.{service_name}/{name}");
+                if operation_identity(&id)? == Executor::Plugin {
+                    continue;
+                }
                 let caller = callers.get(&id).copied().ok_or_else(|| Error(format!("Declare {id}: Missing Caller Projection")))?;
                 if !matches!(caller, Callers::Clients | Callers::Plugins | Callers::All) {
                     return Err(Error(format!("Declare {id}: Invalid Caller Projection")));

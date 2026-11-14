@@ -129,7 +129,7 @@ fn boxed_messages_cross() {
     use harmos_packaging::proto::reflection;
     let settings = harmos_domain::config::SchemaSettings::default();
     let graph = harmos_domain::schema::graph::Schema::from_declaration(EnvelopeOperation::DEFINITION, &settings).unwrap();
-    let envelope = reflection::descriptor_schema(&graph, "test.v1", &settings).unwrap();
+    let envelope = reflection::descriptor_schema(&graph, "test.host.v1", &settings).unwrap();
     let inner = envelope.get_field_by_name("inner").unwrap();
     assert!(!inner.is_list());
     let prost_reflect::Kind::Message(nested) = inner.kind() else {

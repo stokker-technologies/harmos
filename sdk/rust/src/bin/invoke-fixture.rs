@@ -140,7 +140,8 @@ impl Message for HostInput {
         HOST.get().unwrap().1.clone()
     }
     fn types() -> FileDescriptorSet {
-        HOST.get().unwrap().0.clone()
+        let (types, request, ..) = HOST.get().unwrap();
+        harmos_protocol::schema::message_types(types, request).expect("projected host request descriptors")
     }
 }
 impl Message for HostOutput {
@@ -148,7 +149,8 @@ impl Message for HostOutput {
         HOST.get().unwrap().2.clone()
     }
     fn types() -> FileDescriptorSet {
-        HOST.get().unwrap().0.clone()
+        let (types, _, response, ..) = HOST.get().unwrap();
+        harmos_protocol::schema::message_types(types, response).expect("projected host response descriptors")
     }
 }
 #[derive(harmos::Message)]
@@ -184,7 +186,9 @@ impl<T: ReflectMessage + Default + 'static> Message for CallerProbe<T> {
     }
     fn types() -> FileDescriptorSet {
         let descriptors = T::default().descriptor().parent_pool().encode_to_vec();
-        FileDescriptorSet::decode(descriptors.as_slice()).expect("generated caller probe descriptors")
+        let types = FileDescriptorSet::decode(descriptors.as_slice()).expect("generated caller probe descriptors");
+        let name = T::default().descriptor().full_name().to_owned();
+        harmos_protocol::schema::message_types(&types, &name).expect("projected caller probe descriptors")
     }
 }
 
@@ -378,7 +382,6 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.value", setting_value).visibility(Visibility::Protected))
     } else if mode == "watch" {
         Plugin::new("watcher", "1.0.0")
-            .requires::<HostInput>()
             .requires_host(HostOperation::InvocationsWatch)
             .operation(Operation::new("fixture.watch", watch_invocation).visibility(Visibility::Protected))
     } else if mode == "provider" {
@@ -386,7 +389,12 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.step.0", echo).visibility(Visibility::Public))
             .requires::<HostInput>()
             .requires::<ProtectedInput>()
-            .operation(Operation::new("fixture.self", protected_self).visibility(Visibility::Protected))
+            .operation(
+                Operation::new("fixture.self", async |context: &Context, input: Value| {
+                    context.call(ProtectedInput { value: input.value }).await
+                })
+                .visibility(Visibility::Protected),
+            )
             .operation(Operation::new("fixture.peer", peer).visibility(Visibility::Public).policy(OperationPolicy {
                 cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
                 ..Default::default()
@@ -395,7 +403,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(Visibility::Protected))
     } else if mode == "incompatible" {
         Plugin::new("incompatible", "1.0.0")
-            .operation(Operation::new("example.plugin.v1.Steps/Execute", empty).visibility(Visibility::Public))
+            .operation(Operation::new("example.plugin.v1.Steps/Execute", async |_: &Context, _: ()| Ok(())).visibility(Visibility::Public))
     } else if mode == "duplicate" {
         Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
     } else {
@@ -456,10 +464,6 @@ async fn clock(context: &Context, _: Value) -> Result<Value> {
     })
 }
 
-async fn empty(_: &Context, _: ()) -> Result<()> {
-    Ok(())
-}
-
 async fn scope_identity(context: &Context, _: Value) -> Result<Value> {
     Ok(Value {
         value: context.scope()?.as_bytes().to_vec(),
@@ -483,10 +487,6 @@ async fn scoped(context: &Context, input: Value) -> Result<Value> {
 
 async fn echo(_: &Context, input: Value) -> Result<Value> {
     Ok(input)
-}
-
-async fn protected_self(context: &Context, input: Value) -> Result<Value> {
-    context.call(ProtectedInput { value: input.value }).await
 }
 
 async fn retry(context: &Context, input: Value) -> Result<Value> {
@@ -564,9 +564,6 @@ async fn watch_invocation(context: &Context, request: Value) -> Result<Value> {
     while let Some(state) = watch.next().await? {
         phases.extend(state.phase.as_bytes());
         phases.push(b'|');
-        if !phases[..phases.len() - 1].contains(&b'|') {
-            context.call(HostInput { value: b"watch opened".to_vec() }).await?;
-        }
     }
     Ok(Value { value: phases })
 }

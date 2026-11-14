@@ -116,6 +116,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     let mut children = FuturesUnordered::<Child>::new();
     let mut controls = Children(BTreeMap::new());
     let mut cancelled = BTreeSet::new();
+    let mut ended = BTreeSet::new();
     let mut input = request.input.lock().await;
     let output = ChildReplies::Samples(request.output.clone());
     request
@@ -193,6 +194,9 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                     }
                 }
                 if let ResponseFrame::ChildDemand(demand) = frame {
+                    if ended.contains(&demand.call) {
+                        continue;
+                    }
                     let Some((_, _, Some(credits))) = controls.0.get(&demand.call) else {
                         break Err(invalid("Demand Sample Child: unknown watch identity"));
                     };
@@ -203,6 +207,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
             }
             Event::Child(call, operation, result) => {
                 controls.0.remove(&call);
+                ended.insert(call);
                 if cancelled.remove(&call) {
                     continue;
                 }

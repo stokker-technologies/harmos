@@ -157,16 +157,18 @@ def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> 
 def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:
     directory.mkdir()
     reports = directory.parent / f"{directory.name}-reports"
-    subprocess.run(
+    result = subprocess.run(
         [str(executable), *arguments],
         env=dict(os.environ, STKR_TEST_REPORT_DIR=str(reports)),
         cwd=directory,
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         stdin=sys.stdin,
     )
+    if result.returncode:
+        raise RuntimeError(f"Run Packaged Schematic {directory.name}: exit {result.returncode}\n{result.stdout}{result.stderr}")
     (report,) = reports.glob("schematic-walkthrough-*.json")
     record = cast(WalkthroughResult, json.loads(report.read_text(encoding="utf-8")))
     document = record["document"]

@@ -86,7 +86,7 @@ struct ReadOperation {
 static READ_OPERATION_DESCRIPTION: harmos_operations::operations::WireDeclaration =
     harmos_operations::operations::WireDeclaration::request::<ReadOperation>("read", POLICY)
         .visibility(harmos_operations::operations::Visibility::Public)
-        .grpc(harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Read"));
+        .grpc(harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Read"));
 
 const READ_OPERATION_OPERATION: harmos_operations::operations::OperationSpec<ReadOperation> =
     harmos_operations::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
@@ -105,7 +105,7 @@ struct ExchangeOperation {
 static EXCHANGE_OPERATION_DESCRIPTION: harmos_operations::operations::WireDeclaration =
     harmos_operations::operations::WireDeclaration::request::<ExchangeOperation>("exchange", POLICY)
         .visibility(harmos_operations::operations::Visibility::Public)
-        .grpc(harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Exchange"));
+        .grpc(harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Exchange"));
 
 const EXCHANGE_OPERATION_OPERATION: harmos_operations::operations::OperationSpec<ExchangeOperation> =
     harmos_operations::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
@@ -124,7 +124,7 @@ struct UploadOperation {
 static UPLOAD_OPERATION_DESCRIPTION: harmos_operations::operations::WireDeclaration =
     harmos_operations::operations::WireDeclaration::request::<UploadOperation>("upload", POLICY)
         .visibility(harmos_operations::operations::Visibility::Public)
-        .grpc(harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Upload"));
+        .grpc(harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Upload"));
 
 const UPLOAD_OPERATION_OPERATION: harmos_operations::operations::OperationSpec<UploadOperation> =
     harmos_operations::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
@@ -143,7 +143,7 @@ struct DownloadOperation {
 static DOWNLOAD_OPERATION_DESCRIPTION: harmos_operations::operations::WireDeclaration =
     harmos_operations::operations::WireDeclaration::request::<DownloadOperation>("download", POLICY)
         .visibility(harmos_operations::operations::Visibility::Public)
-        .grpc(harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Download"));
+        .grpc(harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Download"));
 
 const DOWNLOAD_OPERATION_OPERATION: harmos_operations::operations::OperationSpec<DownloadOperation> =
     harmos_operations::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
@@ -293,7 +293,7 @@ fn contract(template: &Contract, id: &str, method: &'static str, mut schema: Sch
         Contract::new(operation, fingerprint, Codec::Protobuf, schema)
     }
     .unwrap()
-    .with_grpc(Some(Grpc::new("test.v1", "Shapes", method)))
+    .with_grpc(Some(Grpc::new("test.host.v1", "Shapes", method)))
     .unwrap()
 }
 

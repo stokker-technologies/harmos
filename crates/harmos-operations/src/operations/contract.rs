@@ -306,7 +306,7 @@ impl Contract {
     }
 
     pub fn from_protobuf(
-        operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
+        operation: OperationDefinition, protobuf: super::Protobuf, mut binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         harmos_protocol::schema::operation_identity(operation.id.as_str()).map_err(|error| ContractError::Protobuf(error.to_string()))?;
         if crate::reserved(operation.id.as_str()) {
@@ -340,9 +340,15 @@ impl Contract {
                 method: method.name().to_owned().into(),
                 managed: false,
             });
-            if protobuf != expected || binding != mapping || operation.visibility != super::Visibility::Public {
-                return Err(ContractError::Protobuf("built-in declaration differs from its authoritative protocol".into()));
+            let changed_binding = binding.as_ref().is_some_and(|binding| Some(binding) != mapping.as_ref());
+            if protobuf != expected || changed_binding || operation.visibility != super::Visibility::Public {
+                return Err(ContractError::Protobuf(format!(
+                    "Declare {}: built-in declaration differs from its authoritative protocol",
+                    operation.id
+                )));
             }
+            // Required Contracts Use the Protocol's Binding Without Redeclaring It.
+            binding = mapping;
             operation.policy.validate().map_err(crate::operations::Error::from)?;
         } else {
             operation.policy.validate().map_err(crate::operations::Error::from)?;

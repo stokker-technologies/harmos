@@ -47,6 +47,7 @@ class CSharpTooling(unittest.TestCase):
                 for relative in (
                     "crates/harmos-protocol/src/descriptors.bin",
                     "sdk/rust/tests/fixtures/client/client-descriptors.bin",
+                    "sdk/tests/fixtures/client/composition.toml",
                 ):
                     target = scratch / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -55,6 +56,9 @@ class CSharpTooling(unittest.TestCase):
                 schema = FileDescriptorSet.FromString(descriptor.read_bytes())
                 narrow_callers(schema, {"harmos.host.v1.Time/Get": callers})
                 descriptor.write_bytes(schema.SerializeToString())
+                composition = scratch / "sdk/tests/fixtures/client/composition.toml"
+                source = composition.read_text(encoding="utf-8").replace('= "PLUGINS"', f'= "{callers}"')
+                composition.write_text(source, encoding="utf-8")
 
                 # Generate the Actual Client and Context from the Restricted Input.
                 csharp.clients(scratch)
@@ -85,6 +89,7 @@ class CSharpTooling(unittest.TestCase):
             for relative in (
                 "crates/harmos-protocol/src/descriptors.bin",
                 "sdk/rust/tests/fixtures/client/client-descriptors.bin",
+                "sdk/tests/fixtures/client/composition.toml",
             ):
                 target = scratch / relative
                 target.parent.mkdir(parents=True, exist_ok=True)

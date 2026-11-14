@@ -73,7 +73,8 @@ async fn client_manages_remote_plugins() {
         host.channel.clone(),
         ClientSettings {
             transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
-            retained_bytes: capacity,
+            // Complete Declarations Retain Decoded Descriptor Values Beyond Their Wire Size.
+            retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
             message_bytes: capacity,
             input_items: NonZeroUsize::new(1).unwrap(),
             input_bytes: capacity,

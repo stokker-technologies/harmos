@@ -207,6 +207,7 @@ async fn invoke(
         >::new();
         let mut controls = BTreeMap::new();
         let mut seen = BTreeSet::new();
+        let mut ended = BTreeSet::new();
         let mut cancelled = false;
         let mut cancelled_children = BTreeSet::new();
         enum Event {
@@ -242,6 +243,7 @@ async fn invoke(
                 }
                 Event::Child(call, operation, result) => {
                     controls.remove(&call);
+                    ended.insert(call);
                     if cancelled_children.remove(&call) {
                         continue;
                     }
@@ -302,6 +304,10 @@ async fn invoke(
                         }
                     }
                     Some(instance_invoke_response::Frame::ChildDemand(demand)) => {
+                        // Demand Can Cross the Terminal Child Response on the Carrier.
+                        if ended.contains(&demand.call) {
+                            continue;
+                        }
                         let Some((_, _, Some(credits))) = controls.get(&demand.call) else {
                             return Err(CallError::Protocol(format!("Watch {}: Unknown Child Demand", demand.call)));
                         };

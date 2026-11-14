@@ -57,6 +57,9 @@ fn executors_and_callers_project_host_operations_for_each_audience() {
     for service in pool.services() {
         let id = format!("{}/{}", service.full_name(), service.methods().next().unwrap().name());
         let executor = operation_identity(&id).unwrap();
+        if executor == Executor::Plugin {
+            continue;
+        }
         for method in service.methods() {
             let callers = method_callers(&method).unwrap();
             let id = format!("{}/{}", service.full_name(), method.name());
@@ -85,6 +88,7 @@ fn executors_and_callers_project_host_operations_for_each_audience() {
     let types = prost_types::FileDescriptorSet::decode(raw.as_slice()).unwrap();
     let callers = pool
         .services()
+        .filter(|service| service.package_name().split('.').any(|segment| segment == "host"))
         .flat_map(|service| service.methods().collect::<Vec<_>>())
         .map(|method| (format!("{}/{}", method.parent_service().full_name(), method.name()), method_callers(&method).unwrap()))
         .collect();

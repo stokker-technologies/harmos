@@ -60,7 +60,7 @@ pub(crate) struct ReadOperation {
 pub(crate) static READ_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<ReadOperation>("read", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Read"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Read"));
 
 pub(crate) const READ_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<ReadOperation> =
     ::harmos_operations::operations::OperationSpec::<ReadOperation>::new(&READ_OPERATION_DESCRIPTION);
@@ -79,7 +79,7 @@ pub(crate) struct ExchangeOperation {
 pub(crate) static EXCHANGE_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<ExchangeOperation>("exchange", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Exchange"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Exchange"));
 
 pub(crate) const EXCHANGE_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<ExchangeOperation> =
     ::harmos_operations::operations::OperationSpec::<ExchangeOperation>::new(&EXCHANGE_OPERATION_DESCRIPTION);
@@ -98,7 +98,7 @@ pub(crate) struct UploadOperation {
 pub(crate) static UPLOAD_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<UploadOperation>("upload", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Upload"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Upload"));
 
 pub(crate) const UPLOAD_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<UploadOperation> =
     ::harmos_operations::operations::OperationSpec::<UploadOperation>::new(&UPLOAD_OPERATION_DESCRIPTION);
@@ -117,7 +117,7 @@ pub(crate) struct DownloadOperation {
 pub(crate) static DOWNLOAD_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<DownloadOperation>("download", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Shapes", "Download"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Shapes", "Download"));
 
 pub(crate) const DOWNLOAD_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<DownloadOperation> =
     ::harmos_operations::operations::OperationSpec::<DownloadOperation>::new(&DOWNLOAD_OPERATION_DESCRIPTION);
@@ -138,7 +138,7 @@ pub(crate) struct AnnotatedOperation {
 pub(crate) static ANNOTATED_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<AnnotatedOperation>("annotate", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Portable", "Annotate"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Portable", "Annotate"));
 
 pub(crate) const ANNOTATED_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<AnnotatedOperation> =
     ::harmos_operations::operations::OperationSpec::<AnnotatedOperation>::new(&ANNOTATED_OPERATION_DESCRIPTION);
@@ -156,7 +156,7 @@ pub(crate) struct EnvelopeOperation {
 pub(crate) static ENVELOPE_OPERATION_DESCRIPTION: ::harmos_operations::operations::WireDeclaration =
     ::harmos_operations::operations::WireDeclaration::request::<EnvelopeOperation>("wrap", POLICY)
         .visibility(::harmos_operations::operations::Visibility::Public)
-        .grpc(::harmos_operations::operations::Grpc::new("test.v1", "Boxed", "Wrap"));
+        .grpc(::harmos_operations::operations::Grpc::new("test.host.v1", "Boxed", "Wrap"));
 
 pub(crate) const ENVELOPE_OPERATION_OPERATION: ::harmos_operations::operations::OperationSpec<EnvelopeOperation> =
     ::harmos_operations::operations::OperationSpec::<EnvelopeOperation>::new(&ENVELOPE_OPERATION_DESCRIPTION);

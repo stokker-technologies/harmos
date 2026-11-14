@@ -38,9 +38,10 @@ class DependencyDirection(unittest.TestCase):
         owners = {
             "harmos-protocol": set(),
             "harmos-domain": {"harmos-protocol"},
-            "harmos-storage": {"harmos-domain", "harmos-protocol"},
-            "harmos-operations": {"harmos-storage", "harmos-domain", "harmos-protocol"},
-            "harmos-runtime": {"harmos-operations", "harmos-storage", "harmos-domain", "harmos-protocol"},
+            "harmos-query": {"harmos-domain", "harmos-protocol"},
+            "harmos-storage": {"harmos-query", "harmos-domain", "harmos-protocol"},
+            "harmos-operations": {"harmos-storage", "harmos-query", "harmos-domain", "harmos-protocol"},
+            "harmos-runtime": {"harmos-operations", "harmos-storage", "harmos-query", "harmos-domain", "harmos-protocol"},
             "harmos": {"harmos-protocol"},
         }
         workspace = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["workspace"]

@@ -135,7 +135,7 @@ impl Manager {
                 operation: "Time".into(),
                 source: Arc::new(source),
             })?;
-            let contract = factory.contract().map_err(|source| Error::OperationFailed {
+            let contract = factory.contract_with_settings(&self.schema_settings).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
             })?;

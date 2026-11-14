@@ -220,7 +220,7 @@ impl PluginDefinition {
         self.artifact.validate()?;
         harmos_operations::validate_config(&self.configuration)?;
 
-        operations::validate(&self.contributions.operations)?;
+        operations::validate(&self.contributions.operations, &self.contributions.wire_contracts)?;
         self.contributions.operations.sort_by(|a, b| a.id.cmp(&b.id));
 
         if self.contributions.wire_contracts.len() > self.contributions.operations.len() {

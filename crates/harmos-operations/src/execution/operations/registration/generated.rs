@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
 use std::{any::TypeId, future::Future, marker::PhantomData, ops::Deref};
 
 // Third Party Imports
@@ -467,25 +466,16 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
     let request = O::Request::default().descriptor();
     let response = O::Response::default().descriptor();
     let (input, output) = O::Endpoints::descriptors();
-    let mut files = BTreeMap::new();
+    let mut descriptors = prost_types::FileDescriptorSet::default();
     for message in [Some(&request), Some(&response), input.as_ref(), output.as_ref()].into_iter().flatten() {
-        for file in message.parent_pool().files() {
-            let file = file.file_descriptor_proto().clone();
-            if let Some(previous) = files.insert(file.name.clone(), file.clone())
-                && previous != file
-            {
-                return Err(super::super::ContractError::Protobuf("conflicting descriptor files".into()));
-            }
-        }
-    }
-    let roots: Vec<_> = [Some(&request), Some(&response), input.as_ref(), output.as_ref()]
-        .into_iter()
-        .flatten()
-        .map(|message| message.full_name())
-        .collect();
-    let descriptors =
-        harmos_protocol::schema::operation_types(&prost_types::FileDescriptorSet { file: files.into_values().collect() }, &roots)
+        let types = prost_types::FileDescriptorSet {
+            file: message.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        };
+        let projected = harmos_protocol::schema::message_types(&types, message.full_name())
             .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+        harmos_protocol::schema::merge_message_types(&mut descriptors, projected)
+            .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+    }
     let protobuf = harmos_operations::operations::Protobuf {
         descriptors: descriptors.encode_to_vec(),
         request: request.full_name().into(),
