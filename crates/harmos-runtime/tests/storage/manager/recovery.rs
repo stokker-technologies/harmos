@@ -66,11 +66,6 @@ fn crash_image(source: &Fixture) -> Arc<Backend> {
 pub(super) async fn restart(source: &Fixture) -> Fixture {
     let data = crash_image(source);
     let recovery = Arc::new(RecoveryBackend::new(source.data.history.clone()));
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog());
-    })
-    .await
-    .unwrap();
     let settings = config();
     let storage = StorageManager::new(
         StorageBackends {
@@ -80,7 +75,11 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         settings,
     )
     .unwrap();
-    storage.start(&runtime).await.unwrap();
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
     Fixture::from_parts(runtime, storage, data, recovery)
 }
 
@@ -193,11 +192,16 @@ async fn close_retains_production() {
         config(),
     )
     .unwrap();
-    restored.start(&f.runtime).await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&restored).register(catalog());
+    })
+    .await
+    .unwrap();
     let mut resumed = restored.resume_file(&token).await.unwrap();
     assert_eq!(resumed.length(), 17);
     resumed.abort().await.unwrap();
-    restored.close().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     f.finish().await;
 }
 
@@ -232,17 +236,17 @@ async fn failed_recovery_releases() {
             // File Restoration Succeeded Before The Recovery Owner Failed.
             _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
         }
-        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-            setup.settings().register(catalog());
-        })
-        .await
-        .unwrap();
         let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, settings).unwrap();
-        assert!(storage.start(&runtime).await.is_err());
+        assert!(
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+                setup.settings().storage(&storage).register(catalog());
+            })
+            .await
+            .is_err()
+        );
         storage.close().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
-        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     drop((first, second));
     source.finish().await;

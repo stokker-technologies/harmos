@@ -55,8 +55,7 @@ impl Fixture {
         let storage_fixture = shared::Fixture::build_with(config, |backends, config| StorageManager::new(backends, config).unwrap());
         let storage = &storage_fixture.storage;
         let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-            setup.resource(std::ops::Deref::deref(storage).clone());
-            setup.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
+            setup.settings().storage(storage);
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(
                     harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap(),

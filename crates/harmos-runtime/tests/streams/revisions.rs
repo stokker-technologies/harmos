@@ -150,8 +150,13 @@ fn candidate(text: bool, label: &str) -> PluginDefinitions {
     .unwrap()
 }
 
-async fn setup(text: bool) -> (Runtime<Bank>, PluginManager<Resources, Resources>, Host) {
-    let runtime = crate::support::booted(Ledger::default(), |_| {}).await;
+async fn setup(text: bool, storage: Option<&StorageManager>) -> (Runtime<Bank>, PluginManager<Resources, Resources>, Host) {
+    let runtime = crate::support::booted(Ledger::default(), |setup| {
+        if let Some(storage) = storage {
+            setup.settings().storage(storage);
+        }
+    })
+    .await;
     let host = Host {
         streams: runtime.streams.clone(),
         operations: runtime.operations.clone(),
@@ -198,7 +203,7 @@ async fn capture(storage: &StorageManager, feed: &mut harmos_runtime::streams::S
 
 #[tokio::test]
 async fn changed_row_commits_a_new_current_revision() {
-    let (runtime, mut manager, mut host) = setup(false).await;
+    let (runtime, mut manager, mut host) = setup(false, None).await;
     manager.initialize(&mut host).await.unwrap();
     let old = current(&host);
     let old_revision = old.definition().version();
@@ -230,7 +235,7 @@ async fn changed_row_commits_a_new_current_revision() {
 
 #[tokio::test]
 async fn failed_reload_keeps_old_revision_current() {
-    let (runtime, mut manager, mut host) = setup(false).await;
+    let (runtime, mut manager, mut host) = setup(false, None).await;
     manager.initialize(&mut host).await.unwrap();
     let old_revision = current(&host).definition().version();
     host.before = Some(old_revision);
@@ -250,7 +255,7 @@ async fn failed_reload_keeps_old_revision_current() {
 
 #[tokio::test]
 async fn label_only_reload_preserves_revision() {
-    let (runtime, mut manager, mut host) = setup(false).await;
+    let (runtime, mut manager, mut host) = setup(false, None).await;
     manager.initialize(&mut host).await.unwrap();
     let old = current(&host);
     host.before = Some(old.definition().version());
@@ -266,13 +271,12 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
     let data = Arc::new(crate::storage::fixture::Backend::new(crate::storage::fixture::history()));
     let mut keys = Vec::new();
     for text in [false, true] {
-        let (runtime, mut manager, mut host) = setup(text).await;
         let backends = harmos_storage::StorageBackends {
             primary: data.clone(),
             state: Arc::new(crate::storage::fixture::RecoveryBackend::new(crate::storage::fixture::history())),
         };
         let storage = StorageManager::new(backends, crate::storage::fixture::config()).unwrap();
-        storage.start(&runtime).await.unwrap();
+        let (runtime, mut manager, mut host) = setup(text, Some(&storage)).await;
         let mut feed = host.streams.follow(Cursor::ORIGIN);
         manager.initialize(&mut host).await.unwrap();
         keys.push(capture(&storage, &mut feed).await);

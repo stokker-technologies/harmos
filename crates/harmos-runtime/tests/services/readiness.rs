@@ -242,7 +242,7 @@ async fn activated_service_starting() {
     .await
     .expect("a runtime that declares no service of its own boots");
     let statuses = runtime.operations.watch_residents();
-    assert!(statuses.borrow().is_empty(), "nothing is on the watch before a tenant is admitted");
+    assert!(statuses.borrow().keys().all(|key| key.definition != "tenant"), "the tenant has not been admitted");
 
     runtime
         .operations

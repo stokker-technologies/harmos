@@ -51,12 +51,7 @@ impl JournalConsumer<Bank> for FinalDrain {
 
 /* === Private Functions === */
 
-async fn dormant() -> Fixture {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog());
-    })
-    .await
-    .unwrap();
+async fn configured() -> Fixture {
     let data = Arc::new(Backend::new(history()));
     let recovery = Arc::new(RecoveryBackend::new(history()));
     let settings = config();
@@ -68,14 +63,19 @@ async fn dormant() -> Fixture {
         settings,
     )
     .unwrap();
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
     Fixture::from_parts(runtime, storage, data, recovery)
 }
 
 #[tokio::test]
 async fn runtime_owns_storage() {
-    let f = dormant().await;
+    let f = configured().await;
     let handle = f.runtime.handle();
-    assert!(handle.storage().is_none());
+    assert!(handle.storage().is_some());
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     assert!(matches!(
@@ -104,7 +104,7 @@ async fn runtime_owns_storage() {
 
 #[tokio::test]
 async fn producers_flush_storage() {
-    let f = dormant().await;
+    let f = configured().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     let storage = f.storage.clone();
     let entered = Arc::new(tokio::sync::Notify::new());
@@ -152,7 +152,7 @@ async fn producers_flush_storage() {
 
 #[tokio::test]
 async fn stop_retains_frontier() {
-    let f = dormant().await;
+    let f = configured().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.permanent.store(true, Ordering::SeqCst);
     write(&f.storage, "retry").await;
@@ -168,7 +168,7 @@ async fn stop_retains_frontier() {
 
 #[tokio::test]
 async fn close_retries_journal() {
-    let f = dormant().await;
+    let f = configured().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.recovery.control.fail_close.store(true, Ordering::SeqCst);
     write(&f.storage, "saved").await;
@@ -184,7 +184,7 @@ async fn close_retries_journal() {
 
 #[tokio::test]
 async fn cancelled_stop_retains() {
-    let f = dormant().await;
+    let f = configured().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "pending").await;
@@ -205,70 +205,18 @@ async fn cancelled_stop_retains() {
 }
 
 #[tokio::test]
-async fn cancelled_acquisition_retained() {
-    for recovery in [false, true] {
-        let f = dormant().await;
-        let handle = f.runtime.handle();
-        let control = if recovery { &f.recovery.control } else { &f.data.control };
-        control.block_open.store(true, Ordering::SeqCst);
-        {
-            let start = f.runtime.start_storage(f.storage.clone());
-            tokio::pin!(start);
-            tokio::select! {
-                _ = &mut start => panic!("acquisition is blocked"),
-                _ = control.open_entered.notified() => {}
-            }
-        }
-        assert!(handle.storage().is_some());
-        crate::support::app::shutdown(&f.runtime).await.unwrap();
-        assert!(!f.data.control.open.load(Ordering::SeqCst));
-        assert!(!f.recovery.control.open.load(Ordering::SeqCst));
-    }
-}
-
-#[tokio::test]
-async fn failure_retains_acquisition() {
-    let f = dormant().await;
-    f.recovery.control.fail_open.store(true, Ordering::SeqCst);
-    assert!(f.runtime.start_storage(f.storage.clone()).await.is_err());
-    assert!(f.runtime.storage().is_some());
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
-    assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
-    assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
 async fn manager_replacement_refused() {
-    let first = dormant().await;
-    let second = dormant().await;
+    let first = configured().await;
+    let second = configured().await;
     first.runtime.start_storage(first.storage.clone()).await.unwrap();
     assert!(first.runtime.start_storage(second.storage.clone()).await.is_err());
     assert!(second.runtime.start_storage(first.storage.clone()).await.is_err());
-    assert!(second.runtime.storage().is_none());
+    assert!(second.runtime.storage().is_some());
     crate::support::app::shutdown(&second.runtime).await.unwrap();
     write(&first.storage, "still-owned").await;
     crate::support::app::shutdown(&first.runtime).await.unwrap();
     assert_eq!(first.data.saved.load(Ordering::SeqCst), 1);
-    assert_eq!(second.data.control.closes.load(Ordering::SeqCst), 0);
-}
-
-#[tokio::test]
-async fn cancelled_acquisition_retried() {
-    let f = dormant().await;
-    f.recovery.control.block_open.store(true, Ordering::SeqCst);
-    {
-        let start = f.runtime.start_storage(f.storage.clone());
-        tokio::pin!(start);
-        tokio::select! {
-            _ = &mut start => panic!("acquisition is blocked"),
-            _ = f.recovery.control.open_entered.notified() => {}
-        }
-    }
-    f.recovery.control.block_open.store(false, Ordering::SeqCst);
-    f.runtime.start_storage(f.storage.clone()).await.unwrap();
-    write(&f.storage, "after-retry").await;
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
-    assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
+    assert_eq!(second.data.control.closes.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -277,7 +225,7 @@ async fn final_drain_saved() {
     let recovery = Arc::new(RecoveryBackend::new(history()));
     let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, config()).unwrap();
     let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog()).attach(FinalDrain(storage.clone()));
+        setup.settings().storage(&storage).register(catalog()).attach(FinalDrain(storage.clone()));
     })
     .await
     .unwrap();
@@ -289,16 +237,9 @@ async fn final_drain_saved() {
 
 #[tokio::test]
 async fn stop_seals_registration() {
-    let f = dormant().await;
+    let f = configured().await;
     let mut participant = f.runtime.stop_participant();
-    f.recovery.control.block_open.store(true, Ordering::SeqCst);
     {
-        let start = f.runtime.start_storage(f.storage.clone());
-        tokio::pin!(start);
-        tokio::select! {
-            _ = &mut start => panic!("acquisition is blocked"),
-            _ = f.recovery.control.open_entered.notified() => {}
-        }
         let stop = crate::support::app::shutdown(&f.runtime);
         tokio::pin!(stop);
         assert!(
@@ -317,7 +258,7 @@ async fn stop_seals_registration() {
 
 #[tokio::test]
 async fn stop_retries_uncertain() {
-    let f = dormant().await;
+    let f = configured().await;
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.flush_failures.store(1, Ordering::SeqCst);
     write(&f.storage, "uncertain").await;

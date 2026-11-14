@@ -40,10 +40,23 @@ rather than admitted again. Admitted work remains owned until settlement.
 
 ## Backend Registration
 
-The built-in adapter requires no directory or file:
+Every runtime selects an independent in-memory primary adapter and in-memory
+recovery adapter automatically when setup does not register a manager. No storage
+configuration, path or directory is required. The fallback includes the plugin
+registry object catalog. Its worker starts before application initialization and
+closes with the runtime. This selects storage; managed host-state capture still
+requires `setup.settings().managed_storage(settings)` and its serialization contract.
+
+The fallback uses 256 file productions, 4,096 mutation receipts, 64 pending and
+4 active queries, 256 pending write batches, 4 active file operations and 16 MiB
+pending write bytes. Responses use 1,024 rows / 1 MiB; filesystem observation uses
+a 100 ms poll, 100,000 entries and 1,024 events. Transfer and operation policy use
+`StorageTransferSettings` and `StoragePolicy` defaults. Products choose different
+budgets and policy by explicitly registering their manager, including when keeping
+memory storage:
 
 ```rust,ignore
-let storage = harmos_runtime::storage::StorageManager::in_memory(catalog, settings)?;
+let storage = StorageManager::in_memory(catalog, settings)?;
 setup.settings().storage(&storage);
 ```
 
@@ -56,6 +69,11 @@ let backends = StorageBackends { primary: primary.clone(), state: recovery.clone
 let storage = StorageManager::with_catalog(catalog, backends, settings)?;
 setup.settings().storage(&storage);
 ```
+
+Registration during setup replaces the fallback selection completely; it does
+not copy data or open a second adapter. After startup, a different manager is
+refused. When using the plugin manager, include `harmos_runtime::plugin::manager::catalog()`
+in the catalog shared by the primary adapter and manager.
 
 Primary and recovery sessions are separate owners; there is no transaction across
 them. The product chooses persistence format, durability, backup, migration and
@@ -79,9 +97,11 @@ than a mandatory file.
 Keep both adapter instances to reopen their process-lifetime state. Dropping them
 loses their data; they provide no process-restart durability. The
 `durable_projections` capability names the publication contract within the
-backend's lifetime, not a disk guarantee. Budgets, policy and clock remain
-caller-owned. Runtime feature isolation is still pending; the locked off-by-default
-storage feature is not yet implemented in this tree.
+backend's lifetime, not a disk guarantee. Products own explicit budgets and policy; the automatic runtime fallback uses
+the defaults above. Storage remains always present because the plugin manager
+uses it for entries, settings and content. The owner has not closed the earlier
+feature-isolation proposal. See the [query-only assessment](architecture.md#query-only-feature-assessment)
+for remaining Arrow dependencies and the unimplemented engine gate.
 
 ## Saved Reads and Capabilities
 
@@ -633,22 +653,15 @@ conditional objects, schema exchange, bucket replacement, stream identity,
 snapshot singleton publication and runtime checkpoint reopen. These assert
 interface behavior, including failures, cancellation and exact retained answers.
 
-Fourteen disk/backend-only stories were removed for product ownership:
+Disk-format, physical-chunk, restart-durability, root-exclusivity and filesystem
+corruption stories belong with a product backend. They are absent from the
+library. Schematic application storage stories exercise the public memory adapter;
+manual document Save/Open remains application-owned serialization. Library tests
+do not claim disk durability.
 
-| Previous File | Deleted Story |
-| --- | --- |
-| `benchmark_boundary.rs` | `shared_workload_keeps_boundary_pages_and_replayed_projection_identical` |
-| `bounded_native_chunks.rs` | `coalesced_admissions_keep_physical_chunks_bounded_and_commit_atomically` |
-| `corrections_and_tied_seeks_do_not_revisit_unaffected_history.rs` | `corrections_and_tied_seeks_do_not_revisit_unaffected_history` |
-| `sqlite_files.rs` | `finished_files_and_mutation_receipts_reopen_without_resetting_incompatible_roots` |
-| `state/file.rs` | `rollback_requires_reopen`; `interrupted_segments_preserve_checkpoint_and_journal`; `segmented_manifest_rejects_missing_reordered_and_damaged_frames`; `existing_single_payload_checkpoint_remains_readable` |
-| `state/recovery_seeks_and_compacts_across_page_boundaries.rs` | `recovery_seeks_and_compacts_across_page_boundaries` |
-| `state/index_open_cancellation_preserves_the_durable_journal.rs` | `index_open_cancellation_preserves_the_durable_journal` |
-| Runtime `storage/state/files.rs` | `corruption_refused_preserved`; `state_root_exclusive`; `limits_bound_records`; `unsupported_format_refused` |
-
-Two implementation-local unit stories also leave with their implementations:
-`sqlite/files.rs::resumable_upload_reopens_at_the_checkpoint_and_fences_abandoned_writers`
-and `state/file/format.rs::complete_corruption_refused`. The schematic example's separate JSONL storage crate, format
-fixtures and disk-format stories are also removed. Its application storage
-stories exercise the public memory adapter; manual document Save/Open remains
-application-owned file serialization. Library tests do not claim disk durability.
+Runtime `tests/storage/default_backend.rs` proves automatic independent memory
+selection and primary/managed-recovery writes without storage configuration.
+`tests/storage/registered_backend.rs` proves explicit primary/recovery owners
+replace that selection and recover their state when those owners are reopened.
+Startup-acquisition failure and cancellation are covered in `tests/storage/state/boot.rs`;
+the superseded post-start acquisition stories are removed.

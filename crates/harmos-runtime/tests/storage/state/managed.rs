@@ -439,22 +439,6 @@ async fn recovery_history_admission() {
 }
 
 #[tokio::test]
-async fn managed_requires_storage() {
-    assert!(
-        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-            setup.settings().register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
-                replay: limits(),
-                capture: limits(),
-                snapshots: None,
-                journal_tail: 1024,
-            });
-        })
-        .await
-        .is_err()
-    );
-}
-
-#[tokio::test]
 async fn owner_refuses_raw() {
     let store = Store::new();
     let storage = store.manager(config());

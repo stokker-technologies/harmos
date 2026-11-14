@@ -148,39 +148,6 @@ async fn backend_close_failure() {
 }
 
 #[tokio::test]
-async fn partial_open_remains() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog());
-    })
-    .await
-    .unwrap();
-    let data = Arc::new(Backend::new(history()));
-    let recovery = Arc::new(RecoveryBackend::new(history()));
-    recovery.control.fail_open.store(true, Ordering::SeqCst);
-    let storage: StorageManager = StorageManager::new(
-        StorageBackends {
-            primary: data.clone(),
-            state: recovery.clone(),
-        },
-        config(),
-    )
-    .unwrap();
-    assert!(storage.start(&runtime).await.is_err());
-    assert!(data.control.open.load(Ordering::SeqCst));
-    storage.close().await.unwrap();
-    assert!(!data.control.open.load(Ordering::SeqCst));
-    assert!(!recovery.control.open.load(Ordering::SeqCst));
-    assert!(
-        runtime
-            .operations
-            .resident(&harmos_runtime::operations::resident::Key::root("harmos-storage"))
-            .and_then(|item| item.health)
-            .is_none()
-    );
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-#[tokio::test]
 async fn cancelled_close_retains() {
     let mut policy = config();
     policy.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();

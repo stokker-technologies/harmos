@@ -157,7 +157,7 @@ async fn runtime() -> (Runtime<Model>, Duration) {
     )
     .unwrap();
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.resource::<harmos_runtime::storage::StorageManager>(storage.clone());
+        setup.settings().storage(&storage);
         setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             queued: nz(64),
@@ -167,7 +167,6 @@ async fn runtime() -> (Runtime<Model>, Duration) {
     })
     .await
     .unwrap();
-    runtime.start_storage(storage).await.unwrap();
     let host_elapsed = started.elapsed();
     (runtime, host_elapsed)
 }

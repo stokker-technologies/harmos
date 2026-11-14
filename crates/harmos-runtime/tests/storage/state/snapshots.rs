@@ -37,8 +37,6 @@ mod snapshot_restores_state;
 mod snapshot_resumes_durable;
 #[path = "snapshots/snapshot_waits_queue.rs"]
 mod snapshot_waits_queue;
-#[path = "snapshots/snapshots_require_storage.rs"]
-mod snapshots_require_storage;
 
 #[path = "../../support/snapshot_store.rs"]
 mod store_fixture;

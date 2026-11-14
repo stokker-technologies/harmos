@@ -1457,11 +1457,12 @@ The listener's bind address, admission, middleware and shutdown ownership do not
 
 ## Saved Storage Queries
 
-The built-in storage catalog exposes bounded Arrow scans, ordered indexes, exact-frontier
-projections and atomic conditional object updates through generated SDK contracts. Compose the
-backend explicitly and retain/release saved cuts; see [Generated Storage Clients](storage.md#generated-storage-clients)
-for requests, grants, outcomes and the Schematic query-storage journey. The ordinary query,
-streamed write receipts, files and recovery interfaces remain available.
+The Private in-process storage catalog exposes bounded Arrow scans, ordered indexes,
+exact-frontier projections and atomic conditional object updates. A runtime automatically
+selects in-memory primary and recovery adapters. Register a product manager during setup
+to replace them; see [Backend Registration](storage.md#backend-registration). Products own
+their wire operations and retain/release saved cuts; the library storage catalog has no
+generated SDK storage surface.
 
 ## Access and Host Status
 

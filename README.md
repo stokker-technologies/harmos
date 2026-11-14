@@ -101,6 +101,7 @@ and bounded decoding, plus root optional payloads that preserve value presence. 
 describes their repeated key/value entry representation.
 
 `harmos-storage` ships a process-lifetime memory backend, manager and backend contracts.
+A runtime selects memory storage automatically unless setup registers a product backend.
 `harmos-query` executes Arrow scans, transforms, time merges and reductions below storage;
 products register their own durable primary and recovery backends.
 See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
