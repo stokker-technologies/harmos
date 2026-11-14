@@ -15,6 +15,13 @@
 
 /* === Imports === */
 
+use harmos_runtime::plugin::{
+    grpc::PlacementSettings,
+    manager::{self, Manager, PluginManagerSettings},
+};
+use harmos_runtime::storage::{StorageBackends, StorageManager};
+use tempfile::TempDir;
+
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
     MessageError, Runtime,
@@ -224,10 +231,7 @@ pub async fn runtime(
         .unwrap();
     runtime
 }
-pub fn entries() -> (harmos_runtime::storage::StorageManager, harmos_runtime::plugin::manager::Manager, tempfile::TempDir) {
-    use harmos_runtime::plugin::grpc::PlacementSettings;
-    use harmos_runtime::plugin::manager::{self, Manager, PluginManagerSettings};
-    use harmos_runtime::storage::{StorageBackends, StorageManager};
+pub fn entries() -> (StorageManager, Manager, TempDir) {
     use std::time::Duration;
     let root = tempfile::tempdir().unwrap();
     let catalog = manager::catalog();
