@@ -11,7 +11,15 @@
 
 /* === Modules === */
 
+include!("plugin/types.rs");
+mod host;
+include!("plugin/host_exports.rs");
+
 /* === Re-Exports === */
+
+pub use crate::context::{Context, Watching};
+pub use crate::operation::Operation;
+pub use crate::stream::{Observer, Publisher, Stream};
 
 /* === Imports === */
 
@@ -24,7 +32,7 @@ use std::{
 // Third Party Imports
 
 // Local Imports
-use crate::{Error, Message, Observer, Operation, OperationRequest, Result, Stream, message::merge_types, stream::StreamDefinition};
+use crate::{Error, Message, OperationRequest, Result, message::merge_types, stream::StreamDefinition};
 use harmos_protocol::v1::{SettingsDeclarations, StorageTransferSettings};
 use harmos_protocol::{v1, v1::Declarations};
 use prost_reflect::DescriptorPool;

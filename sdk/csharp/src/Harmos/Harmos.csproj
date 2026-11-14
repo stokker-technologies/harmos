@@ -8,8 +8,6 @@
     <PackageReference Include="Grpc.AspNetCore" />
     <PackageReference Include="Google.Protobuf" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
-    <Protobuf Include="$(ProtoRoot)harmos/**/*.proto"
-              Exclude="$(ProtoRoot)harmos/v1/guest.proto" ProtoRoot="$(ProtoRoot)" GrpcServices="Both" />
     <None Include="$(RepoRoot)README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
 </Project>

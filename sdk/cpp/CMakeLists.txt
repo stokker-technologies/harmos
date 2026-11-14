@@ -13,7 +13,7 @@ harmos_protocol(harmos_cpp_protocol "${CMAKE_CURRENT_SOURCE_DIR}/../../proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" ${HARMOS_PROTOCOLS})
 set_target_properties(harmos_cpp_protocol PROPERTIES EXPORT_NAME Protocol)
 
-add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)
+add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp src/generated/host.cpp)
 add_library(Harmos::Cpp ALIAS harmos_cpp)
 set_target_properties(harmos_cpp PROPERTIES EXPORT_NAME Cpp)
 target_compile_features(harmos_cpp PUBLIC cxx_std_20)

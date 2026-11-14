@@ -48,7 +48,7 @@ message PluginsGetRequest {
   // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 1;
   // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-  harmos.v1.ReadCut at = 2;
+  optional harmos.v1.ReadCut at = 2;
 }
 
 // Returns one entry from the selected retained manager snapshot with its cut.
@@ -61,7 +61,7 @@ message PluginsGetResponse {
 // Carries the read boundary for Plugins.List.
 message PluginsListRequest {
   // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-  harmos.v1.ReadCut at = 1;
+  optional harmos.v1.ReadCut at = 1;
 }
 
 // Returns the complete selected manager inventory with its cut.
@@ -74,9 +74,9 @@ message PluginsListResponse {
 // Carries the resource name and read boundary for Plugins.Watch.
 message PluginsWatchRequest {
   // Empty watches all entries; otherwise selects this exact management entry name.
-  string name = 1;
+  optional string name = 1;
   // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-  harmos.v1.ReadCut at = 2;
+  optional harmos.v1.ReadCut at = 2;
 }
 
 // Distinguishes an opening snapshot, entry changes and a requirement to restart the read.

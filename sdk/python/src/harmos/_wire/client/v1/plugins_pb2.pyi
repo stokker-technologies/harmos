@@ -1,11 +1,11 @@
 import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from harmos.v1 import description_pb2 as _description_pb2
-from harmos.v1 import failure_pb2 as _failure_pb2
-from harmos.v1 import file_pb2 as _file_pb2
-from harmos.v1 import position_pb2 as _position_pb2
-from harmos.v1 import receipt_pb2 as _receipt_pb2
+from harmos._wire.v1 import description_pb2 as _description_pb2
+from harmos._wire.v1 import failure_pb2 as _failure_pb2
+from harmos._wire.v1 import file_pb2 as _file_pb2
+from harmos._wire.v1 import position_pb2 as _position_pb2
+from harmos._wire.v1 import receipt_pb2 as _receipt_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor

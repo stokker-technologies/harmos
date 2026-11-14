@@ -298,7 +298,11 @@ impl Context {
         use harmos_protocol::policy::{FailureKind, OperationPolicy, ReplaySafety, UNBOUNDED};
         let policy = OperationPolicy::try_from(override_policy.as_ref().or(operation.contract.policy.as_ref()))
             .map_err(|error| Error::Invalid(format!("Invoke {}: {error}", operation.contract.id)))?;
-        let replay = if operation.contract.replay_safe { ReplaySafety::Idempotent } else { ReplaySafety::Unknown };
+        let replay = if operation.contract.replay_safe {
+            ReplaySafety::Idempotent
+        } else {
+            ReplaySafety::Unknown
+        };
         if replay == ReplaySafety::Unknown && !matches!(policy.retries, harmos_protocol::policy::RetryPolicy::Never) {
             return Err(Error::Invalid(format!("Invoke {}: Retry Requires Replay Safety", operation.contract.id)));
         }
@@ -310,7 +314,11 @@ impl Context {
         let mut guard = self.clone();
         guard.background = true;
         guard.group = Arc::new(());
-        let started = if policy.timeout < UNBOUNDED { Some(self.now().await?) } else { None };
+        let started = if policy.timeout < UNBOUNDED {
+            Some(self.now().await?)
+        } else {
+            None
+        };
         let mut attempt = 0;
         loop {
             if let Some(reason) = self.cancellation.borrow().clone() {
@@ -387,7 +395,7 @@ impl Context {
     }
 
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
-    /// Declare `.requires::<harmos::clock::TimeSleepRequest>()` when composing the plugin.
+    /// Declare `.requires_host(HostOperation::TimeSleep)` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = ProtoDuration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
         let request = TimeSleepRequest { duration: Some(duration) };
@@ -396,7 +404,7 @@ impl Context {
         Ok(())
     }
 
-    /// Read evidence time from the host; declare `.requires::<harmos::clock::TimeGetRequest>()`.
+    /// Read evidence time from the host; declare `.requires_host(HostOperation::TimeGet)`.
     pub async fn now(&self) -> Result<Timestamp> {
         let payload = self.clock_call("harmos.plugin.host.v1.Time/Get", TimeGetRequest {}.encode_to_vec()).await?;
         TimeGetResponse::decode(payload.as_slice())

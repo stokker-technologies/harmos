@@ -11,26 +11,28 @@
 
 /* === Modules === */
 
-pub mod v1;
+mod wire;
+pub use wire::{Graph, PayloadOnly, Value, graph};
 
 /* === Re-Exports === */
 
 /* === Imports === */
+
+use harmos::plugin::HostOperation;
 
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use harmos::v1::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
-use harmos::{
-    Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
-};
-use harmos_protocol::plugin::host::{OperationsGetRequest, OperationsListRequest, SettingsListRequest};
+use harmos::plugin::TimeGetResponse;
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
+use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
+use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
 use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
-use v1::{Graph, graph::Nested};
+use wire::graph::Nested;
 
 /* === Constants === */
 
@@ -39,8 +41,6 @@ use v1::{Graph, graph::Nested};
 /* === Type Aliases === */
 
 /* === Structs === */
-
-use v1::{PayloadOnly, Value};
 
 #[derive(Message)]
 #[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
@@ -101,7 +101,7 @@ impl Message for Value {
         "harmos.conformance.v1.Value".into()
     }
     fn types() -> FileDescriptorSet {
-        v1::types()
+        wire::types()
     }
 }
 impl Message for PayloadOnly {
@@ -109,7 +109,7 @@ impl Message for PayloadOnly {
         "harmos.conformance.v1.PayloadOnly".into()
     }
     fn types() -> FileDescriptorSet {
-        v1::types()
+        wire::types()
     }
 }
 impl Message for Graph {
@@ -117,7 +117,7 @@ impl Message for Graph {
         "harmos.conformance.v1.Graph".into()
     }
     fn types() -> FileDescriptorSet {
-        v1::types()
+        wire::types()
     }
 }
 impl Message for Nested {
@@ -125,7 +125,7 @@ impl Message for Nested {
         "harmos.conformance.v1.Graph.Nested".into()
     }
     fn types() -> FileDescriptorSet {
-        v1::types()
+        wire::types()
     }
 }
 
@@ -236,7 +236,7 @@ pub fn plugin() -> Plugin {
         .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
         .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
         .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
-        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::v1::Visibility::Protected))
+        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::Visibility::Protected))
         .operation(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())
         .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
         .operation(Operation::new("conformance.watch", watch).visibility(Visibility::Public))
@@ -252,11 +252,11 @@ pub fn plugin() -> Plugin {
         .requires::<HostPending>()
         .requires::<HostFail>()
         .requires::<Graph>()
-        .requires::<harmos::clock::TimeSleepRequest>()
-        .requires::<harmos::clock::TimeGetRequest>()
-        .requires::<SettingsListRequest>()
-        .requires::<OperationsListRequest>()
-        .requires::<OperationsGetRequest>()
+        .requires_host(HostOperation::TimeSleep)
+        .requires_host(HostOperation::TimeGet)
+        .requires_host(HostOperation::SettingsList)
+        .requires_host(HostOperation::OperationsList)
+        .requires_host(HostOperation::OperationsGet)
         .stream(ticks)
         .stream(device)
         .stream(settings)
@@ -280,8 +280,8 @@ pub fn plugin() -> Plugin {
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
     let policy = match request.value.as_slice() {
-        b"retry" => Some(harmos::v1::OperationPolicy {
-            retries: Some(harmos::v1::RetryPolicy {
+        b"retry" => Some(harmos::OperationPolicy {
+            retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
                 initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
                 maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
@@ -289,26 +289,26 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
             }),
             ..Default::default()
         }),
-        b"deadline" => Some(harmos::v1::OperationPolicy {
+        b"deadline" => Some(harmos::OperationPolicy {
             timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
             attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
             ..Default::default()
         }),
-        b"overall" => Some(harmos::v1::OperationPolicy {
+        b"overall" => Some(harmos::OperationPolicy {
             timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
             cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
-        b"retry-bound" => Some(harmos::v1::OperationPolicy {
+        b"retry-bound" => Some(harmos::OperationPolicy {
             timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-            retries: Some(harmos::v1::RetryPolicy {
+            retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
                 initial: Some(ProtoDuration { seconds: 3600, nanos: 0 }),
                 ..Default::default()
             }),
             ..Default::default()
         }),
-        b"cancel" => Some(harmos::v1::OperationPolicy {
+        b"cancel" => Some(harmos::OperationPolicy {
             cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
@@ -330,8 +330,8 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
     let first = ctx
         .call_with(
             HostEcho { value: request.value },
-            Some(harmos::v1::OperationPolicy {
-                retries: Some(harmos::v1::RetryPolicy {
+            Some(harmos::OperationPolicy {
+                retries: Some(harmos::RetryPolicy {
                     total_attempts: 3,
                     initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
                     maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
@@ -483,24 +483,27 @@ async fn peer_call(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn settings_read(context: &Context, _: Value) -> Result<Value> {
-    let settings = context.settings().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
+    let settings =
+        context.host().settings.list().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
     Ok(Value { value: settings.encode_to_vec() })
 }
 
 async fn discover(context: &Context, _: Value) -> Result<Value> {
     let first = context
-        .call(OperationsListRequest {})
-        .await?
+        .host()
         .operations
+        .list()
+        .await?
         .into_iter()
         .next()
         .and_then(|entry| entry.contract)
         .ok_or_else(|| harmos::Error::Invalid("List Operations: Contract Missing".into()))?;
     let selected = context
-        .call(OperationsGetRequest { id: first.id.clone() })
+        .host()
+        .operations
+        .get(first.id.clone())
         .await?
-        .operation
-        .and_then(|entry| entry.contract)
+        .contract
         .ok_or_else(|| harmos::Error::Invalid("Get Operation: Contract Missing".into()))?;
     if first != selected {
         return Err(harmos::Error::Invalid("Get Operation: Metadata Changed".into()));
@@ -522,8 +525,11 @@ async fn tick_context(context: &Context) -> Result<Value> {
         })
         .await?
         .encode_to_vec();
-    let clock = context.call(harmos::clock::TimeGetRequest {}).await?.encode_to_vec();
-    let settings = context.settings().await?.encode_to_vec();
+    let clock = TimeGetResponse {
+        now: Some(context.host().time.get().await?),
+    }
+    .encode_to_vec();
+    let settings = context.host().settings.list().await?.encode_to_vec();
     let mut value = Vec::new();
     for payload in [echo, clock, settings] {
         let length = u32::try_from(payload.len()).map_err(|error| harmos::Error::Invalid(format!("Encode Tick Context: {error}")))?;

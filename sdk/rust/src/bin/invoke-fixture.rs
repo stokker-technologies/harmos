@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos::plugin::HostOperation;
+
 // Standard Library Imports
 use std::{
     env, fs,
@@ -37,7 +39,8 @@ use prost_reflect::DescriptorPool;
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
 
 // Local Imports
-use harmos::{Context, Message, Operation, OperationRequest, Plugin, Result, Visibility};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Message, OperationRequest, Result, Visibility};
 use harmos_protocol::v1;
 
 /* === Constants === */
@@ -144,7 +147,7 @@ impl Message for HostOutput {
 #[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
 struct HostControl {}
 impl OperationRequest for HostControl {
-    type Response = harmos::clock::TimeGetResponse;
+    type Response = harmos::plugin::TimeGetResponse;
     const ID: &'static str = "fixture.control";
 }
 
@@ -165,7 +168,7 @@ impl OperationRequest for ClientTime {
 #[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationContext {}
 impl OperationRequest for ApplicationContext {
-    type Response = harmos::clock::TimeGetResponse;
+    type Response = harmos::plugin::TimeGetResponse;
     const ID: &'static str = "example.plugin.host.v1.Prompts/Create";
 }
 
@@ -173,7 +176,7 @@ impl OperationRequest for ApplicationContext {
 #[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationClient {}
 impl OperationRequest for ApplicationClient {
-    type Response = harmos::clock::TimeGetResponse;
+    type Response = harmos::plugin::TimeGetResponse;
     const ID: &'static str = "example.client.v1.Steps/Execute";
 }
 
@@ -181,7 +184,7 @@ impl OperationRequest for ApplicationClient {
 #[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationInstance {}
 impl OperationRequest for ApplicationInstance {
-    type Response = harmos::clock::TimeGetResponse;
+    type Response = harmos::plugin::TimeGetResponse;
     const ID: &'static str = "example.plugin.v1.Control/Execute";
 }
 
@@ -260,8 +263,9 @@ fn main() -> Result<()> {
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
-        let stream = harmos::Stream::<Value>::new("fixture.ticks");
-        let observer = harmos::Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
+        let stream = harmos::plugin::Stream::<Value>::new("fixture.ticks");
+        let observer =
+            harmos::plugin::Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
             .settings(v1::SettingsDeclarations {
                 values: vec![v1::SettingDeclaration {
@@ -288,19 +292,18 @@ fn main() -> Result<()> {
             }),
         )
     } else if mode == "deadline" {
-        Plugin::new("deadline", "1.0.0")
-            .requires::<harmos::clock::TimeGetRequest>()
-            .requires::<harmos::clock::TimeSleepRequest>()
-            .operation(Operation::new("fixture.clock", clock).visibility(Visibility::Protected).policy(v1::OperationPolicy {
+        Plugin::new("deadline", "1.0.0").requires_host(HostOperation::TimeGet).requires_host(HostOperation::TimeSleep).operation(
+            Operation::new("fixture.clock", clock).visibility(Visibility::Protected).policy(v1::OperationPolicy {
                 timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
                 attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
                 ..Default::default()
-            }))
+            }),
+        )
     } else if mode == "twins" {
-        let left = harmos::Stream::<Value>::new("fixture.left");
-        let right = harmos::Stream::<Value>::new("fixture.right");
-        let left_observer = harmos::Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
-        let right_observer = harmos::Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
+        let left = harmos::plugin::Stream::<Value>::new("fixture.left");
+        let right = harmos::plugin::Stream::<Value>::new("fixture.right");
+        let left_observer = harmos::plugin::Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let right_observer = harmos::plugin::Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -312,7 +315,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
             .on_stop(|| Err(harmos::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
-        let stream = harmos::Stream::<Value>::new("fixture.device").publish_on(device);
+        let stream = harmos::plugin::Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0")
             .stream(stream)
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
@@ -332,8 +335,8 @@ fn main() -> Result<()> {
             .operation(Operation::new("example.plugin.v1.Steps/Execute", scope_identity).visibility(Visibility::Public))
     } else if mode == "values" {
         Plugin::new("values", "1.0.0")
-            .requires::<harmos_protocol::plugin::host::SettingsListRequest>()
-            .message::<harmos::clock::TimeGetResponse>()
+            .requires_host(HostOperation::SettingsList)
+            .message::<harmos::plugin::TimeGetResponse>()
             .section(v1::SettingsDeclarations {
                 values: vec![v1::SettingDeclaration {
                     name: "reading".into(),
@@ -348,7 +351,7 @@ fn main() -> Result<()> {
     } else if mode == "watch" {
         Plugin::new("watcher", "1.0.0")
             .requires::<HostInput>()
-            .requires::<harmos_protocol::plugin::host::InvocationsWatchRequest>()
+            .requires_host(HostOperation::InvocationsWatch)
             .operation(Operation::new("fixture.watch", watch_invocation).visibility(Visibility::Protected))
     } else if mode == "provider" {
         Plugin::new("provider", "1.0.0")
@@ -375,8 +378,8 @@ fn main() -> Result<()> {
             .requires::<ApplicationContext>()
             .requires::<ApplicationClient>()
             .requires::<ApplicationInstance>()
-            .requires::<harmos::clock::TimeSleepRequest>()
-            .requires::<harmos::clock::TimeGetRequest>()
+            .requires_host(HostOperation::TimeSleep)
+            .requires_host(HostOperation::TimeGet)
             .requires::<PublicInput>()
             .requires::<PeerInput>()
             .operation(Operation::new("fixture.peer_forward", peer_forward).visibility(Visibility::Protected).policy(v1::OperationPolicy {
@@ -394,7 +397,11 @@ fn main() -> Result<()> {
                 ..Default::default()
             }))
     };
-    if args.next().as_deref() == Some("--managed") { plugin.serve() } else { plugin.remote().serve() }
+    if args.next().as_deref() == Some("--managed") {
+        plugin.serve()
+    } else {
+        plugin.remote().serve()
+    }
 }
 
 async fn observe(context: &Context) -> Result<Value> {
@@ -403,7 +410,7 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
-async fn device(context: &Context, publisher: harmos::Publisher<Value>) -> Result<()> {
+async fn device(context: &Context, publisher: harmos::plugin::Publisher<Value>) -> Result<()> {
     DEVICE_ACTIVE.store(true, Ordering::SeqCst);
     let _demand = DeviceDemand;
     publisher.publish(Value { value: b"device".to_vec() }).await?;
@@ -524,11 +531,10 @@ async fn wait(context: &Context, input: Value) -> Result<Value> {
 async fn watch_invocation(context: &Context, request: Value) -> Result<Value> {
     let instance =
         u64::from_le_bytes(request.value.as_slice().try_into().map_err(|_| harmos::Error::Invalid("Watch: Instance Required".into()))?);
-    let mut watch =
-        context.watch(harmos_protocol::plugin::host::InvocationsWatchRequest { instance }, NonZeroUsize::new(4096).unwrap()).await?;
+    let mut watch = context.host().invocations.watch(instance, NonZeroUsize::new(4096).unwrap()).await?;
     let mut phases = Vec::new();
     while let Some(state) = watch.next().await? {
-        phases.extend(state.invocation.unwrap().phase.as_bytes());
+        phases.extend(state.phase.as_bytes());
         phases.push(b'|');
         if !phases[..phases.len() - 1].contains(&b'|') {
             context.call(HostInput { value: b"watch opened".to_vec() }).await?;

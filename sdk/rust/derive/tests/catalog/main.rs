@@ -52,7 +52,11 @@ fn feature_catalog_compiles() {
     let rustc = rustc.unwrap_or("rustc".into());
     fs::create_dir_all(&output).unwrap();
 
-    let executable = output.join(if cfg!(windows) { "feature_catalog.exe" } else { "feature_catalog" });
+    let executable = output.join(if cfg!(windows) {
+        "feature_catalog.exe"
+    } else {
+        "feature_catalog"
+    });
     for features in [&[][..], &["--cfg", "feature=\"optional_operation\""][..]] {
         let mut compiler = fixtures::command(&rustc);
         compiler

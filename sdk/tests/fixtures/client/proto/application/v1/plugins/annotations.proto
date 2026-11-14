@@ -12,6 +12,8 @@ package application.v1.plugins;
 
 // === Options === //
 
+option csharp_namespace = "Application.Clients";
+
 // === Services === //
 
 // Stores application-owned per-plugin data outside the library settings owner.

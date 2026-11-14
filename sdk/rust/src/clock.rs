@@ -13,8 +13,6 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::plugin::host::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
-
 /* === Imports === */
 
 // Standard Library Imports

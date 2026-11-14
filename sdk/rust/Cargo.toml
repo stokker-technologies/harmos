@@ -94,6 +94,9 @@ tokio = { workspace = true, features = ["io-util", "process", "rt-multi-thread"]
 # === Target Dependencies === #
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Random
+getrandom = { workspace = true }
+
 # Async
 tokio = { workspace = true, features = ["net"] }
 

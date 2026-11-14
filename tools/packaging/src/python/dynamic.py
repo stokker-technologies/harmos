@@ -23,7 +23,7 @@ from google.protobuf.message import Message
 from google.protobuf.message_factory import GetMessageClass
 
 # Local Imports
-from .operation import Mode, Operation, owner_segment
+from ._operation import Mode, Operation, owner_segment
 
 # Type Checking Imports
 

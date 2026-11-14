@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import operation_pb2 as harmos_dot_v1_dot_operation__pb2
+from harmos._wire.v1 import operation_pb2 as harmos_dot_v1_dot_operation__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n!harmos/client/v1/operations.proto\x12\x10harmos.client.v1\x1a\x19harmos/v1/operation.proto\"\x17\n\x15OperationsListRequest\"L\n\x16OperationsListResponse\x12\x32\n\noperations\x18\x01 \x03(\x0b\x32\x1e.harmos.v1.DiscoveredOperation\"\"\n\x14OperationsGetRequest\x12\n\n\x02id\x18\x01 \x01(\t\"J\n\x15OperationsGetResponse\x12\x31\n\toperation\x18\x01 \x01(\x0b\x32\x1e.harmos.v1.DiscoveredOperation2\xbf\x01\n\nOperations\x12Y\n\x04List\x12\'.harmos.client.v1.OperationsListRequest\x1a(.harmos.client.v1.OperationsListResponse\x12V\n\x03Get\x12&.harmos.client.v1.OperationsGetRequest\x1a\'.harmos.client.v1.OperationsGetResponseb\x06proto3')

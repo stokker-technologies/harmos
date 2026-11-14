@@ -13,7 +13,7 @@ visibility = "public"
 generated = ["crates/harmos-protocol/src/v1.rs"]
 
 [languages.python]
-generated = ["sdk/python/src/harmos/v1/*_pb2*", "sdk/python/tests/fixtures/conformance/v1/*_pb2*"]
+generated = ["sdk/python/src/harmos/_wire/**/*_pb2*", "sdk/python/tests/fixtures/conformance/_wire/**/*_pb2*", "sdk/python/tests/fixtures/client/_wire/**/*_pb2*"]
 
 # === === Repository === === #
 

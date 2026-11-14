@@ -193,7 +193,13 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
         let types = arguments
             .args
             .iter()
-            .map(|argument| if let GenericArgument::Type(ty) = argument { Some(ty) } else { None })
+            .map(|argument| {
+                if let GenericArgument::Type(ty) = argument {
+                    Some(ty)
+                } else {
+                    None
+                }
+            })
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| unsupported(ty))?;
         if types.len() != 2 && !(name == "HashMap" && types.len() == 3) {
@@ -244,8 +250,11 @@ fn encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenS
         }
         let scalar = scalar(inner_name.as_deref().unwrap_or(""));
         let kind = scalar.map(|kind| quote!(#harmos::schema::graph::Kind::#kind)).unwrap_or_else(|| message_kind(inner, harmos));
-        let cardinality =
-            if name == "Option" { quote!(#harmos::schema::Cardinality::Optional) } else { quote!(#harmos::schema::Cardinality::Repeated) };
+        let cardinality = if name == "Option" {
+            quote!(#harmos::schema::Cardinality::Optional)
+        } else {
+            quote!(#harmos::schema::Cardinality::Repeated)
+        };
         return Ok((false, kind, cardinality));
     }
     if let Some(kind) = scalar(&name) {
@@ -310,14 +319,22 @@ fn message_kind(ty: &Type, harmos: &HarmosPath) -> TokenStream {
 }
 
 fn type_name(ty: &Type) -> Option<String> {
-    let Type::Path(path) = ty else { return None };
+    let Type::Path(path) = ty else {
+        return None;
+    };
     path.path.segments.last().map(|segment| segment.ident.to_string())
 }
 
 fn is_bytes(ty: &Type) -> bool {
-    let Type::Path(path) = ty else { return false };
-    let Some(segment) = path.path.segments.last() else { return false };
-    let PathArguments::AngleBracketed(arguments) = &segment.arguments else { return false };
+    let Type::Path(path) = ty else {
+        return false;
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return false;
+    };
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return false;
+    };
     arguments.args.len() == 1
         && matches!(arguments.args.first(), Some(GenericArgument::Type(inner)) if type_name(inner).as_deref() == Some("u8"))
 }
@@ -362,7 +379,9 @@ fn common(ty: &Type) -> bool {
         return true;
     }
     if name == "HashMap" || name == "BTreeMap" {
-        let PathArguments::AngleBracketed(arguments) = &segment.arguments else { return false };
+        let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+            return false;
+        };
         return arguments.args.iter().take(2).all(|arg| matches!(arg, GenericArgument::Type(inner) if common(inner)));
     }
     if name == "Vec" || name == "Option" {

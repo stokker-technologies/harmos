@@ -15,7 +15,8 @@
 
 /* === Imports === */
 
-use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Result, wasm::Registration};
 
 // Standard Library Imports
 

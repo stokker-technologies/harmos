@@ -1,4 +1,4 @@
-from harmos.v1 import operation_pb2 as _operation_pb2
+from harmos._wire.v1 import operation_pb2 as _operation_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message

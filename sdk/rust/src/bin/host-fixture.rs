@@ -20,7 +20,8 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Message, Operation, Plugin, Result};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Message, Result};
 
 /* === Constants === */
 

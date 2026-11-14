@@ -23,11 +23,11 @@ _sym_db = _symbol_database.Default()
 
 
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from harmos.v1 import page_pb2 as harmos_dot_v1_dot_page__pb2
-from harmos.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
+from harmos._wire.v1 import page_pb2 as harmos_dot_v1_dot_page__pb2
+from harmos._wire.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"harmos/client/v1/status/logs.proto\x12\x17harmos.client.v1.status\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14harmos/v1/page.proto\x1a\x18harmos/v1/position.proto\"X\n\x0fLogsListRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\x12$\n\x04page\x18\x02 \x01(\x0b\x32\x16.harmos.v1.PageRequest\"\x85\x01\n\x10LogsListResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x17\n\x0fnext_page_token\x18\x03 \x01(\t\"Z\n\x10LogsWatchRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\x12\x12\n\nmax_events\x18\x03 \x01(\r\"m\n\x11LogsWatchResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"\xe5\x01\n\x05\x45vent\x12\x10\n\x08sequence\x18\x01 \x01(\x04\x12/\n\x0bobserved_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05level\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\x12:\n\x06\x66ields\x18\x06 \x03(\x0b\x32*.harmos.client.v1.status.Event.FieldsEntry\x1a-\n\x0b\x46ieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x32\xc5\x01\n\x04Logs\x12[\n\x04List\x12(.harmos.client.v1.status.LogsListRequest\x1a).harmos.client.v1.status.LogsListResponse\x12`\n\x05Watch\x12).harmos.client.v1.status.LogsWatchRequest\x1a*.harmos.client.v1.status.LogsWatchResponse0\x01\x42#\xaa\x02 Harmos.Client.V1.StatusResourcesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"harmos/client/v1/status/logs.proto\x12\x17harmos.client.v1.status\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14harmos/v1/page.proto\x1a\x18harmos/v1/position.proto\"r\n\x0fLogsListRequest\x12$\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.PositionH\x00\x88\x01\x01\x12)\n\x04page\x18\x02 \x01(\x0b\x32\x16.harmos.v1.PageRequestH\x01\x88\x01\x01\x42\x05\n\x03_atB\x07\n\x05_page\"\x85\x01\n\x10LogsListResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x17\n\x0fnext_page_token\x18\x03 \x01(\t\"f\n\x10LogsWatchRequest\x12$\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.PositionH\x00\x88\x01\x01\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\x12\x12\n\nmax_events\x18\x03 \x01(\rB\x05\n\x03_at\"m\n\x11LogsWatchResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"\xe5\x01\n\x05\x45vent\x12\x10\n\x08sequence\x18\x01 \x01(\x04\x12/\n\x0bobserved_at\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\r\n\x05level\x18\x03 \x01(\t\x12\x0e\n\x06target\x18\x04 \x01(\t\x12\x0f\n\x07message\x18\x05 \x01(\t\x12:\n\x06\x66ields\x18\x06 \x03(\x0b\x32*.harmos.client.v1.status.Event.FieldsEntry\x1a-\n\x0b\x46ieldsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x32\xc5\x01\n\x04Logs\x12[\n\x04List\x12(.harmos.client.v1.status.LogsListRequest\x1a).harmos.client.v1.status.LogsListResponse\x12`\n\x05Watch\x12).harmos.client.v1.status.LogsWatchRequest\x1a*.harmos.client.v1.status.LogsWatchResponse0\x01\x42#\xaa\x02 Harmos.Client.V1.StatusResourcesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,17 +38,17 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_EVENT_FIELDSENTRY']._loaded_options = None
   _globals['_EVENT_FIELDSENTRY']._serialized_options = b'8\001'
   _globals['_LOGSLISTREQUEST']._serialized_start=144
-  _globals['_LOGSLISTREQUEST']._serialized_end=232
-  _globals['_LOGSLISTRESPONSE']._serialized_start=235
-  _globals['_LOGSLISTRESPONSE']._serialized_end=368
-  _globals['_LOGSWATCHREQUEST']._serialized_start=370
-  _globals['_LOGSWATCHREQUEST']._serialized_end=460
-  _globals['_LOGSWATCHRESPONSE']._serialized_start=462
-  _globals['_LOGSWATCHRESPONSE']._serialized_end=571
-  _globals['_EVENT']._serialized_start=574
-  _globals['_EVENT']._serialized_end=803
-  _globals['_EVENT_FIELDSENTRY']._serialized_start=758
-  _globals['_EVENT_FIELDSENTRY']._serialized_end=803
-  _globals['_LOGS']._serialized_start=806
-  _globals['_LOGS']._serialized_end=1003
+  _globals['_LOGSLISTREQUEST']._serialized_end=258
+  _globals['_LOGSLISTRESPONSE']._serialized_start=261
+  _globals['_LOGSLISTRESPONSE']._serialized_end=394
+  _globals['_LOGSWATCHREQUEST']._serialized_start=396
+  _globals['_LOGSWATCHREQUEST']._serialized_end=498
+  _globals['_LOGSWATCHRESPONSE']._serialized_start=500
+  _globals['_LOGSWATCHRESPONSE']._serialized_end=609
+  _globals['_EVENT']._serialized_start=612
+  _globals['_EVENT']._serialized_end=841
+  _globals['_EVENT_FIELDSENTRY']._serialized_start=796
+  _globals['_EVENT_FIELDSENTRY']._serialized_end=841
+  _globals['_LOGS']._serialized_start=844
+  _globals['_LOGS']._serialized_end=1041
 # @@protoc_insertion_point(module_scope)

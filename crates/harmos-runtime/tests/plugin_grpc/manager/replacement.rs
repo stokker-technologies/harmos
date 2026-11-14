@@ -50,7 +50,7 @@ async fn replacement_keeps_the_entry_and_failed_staging_keeps_its_process() {
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let bundle = host.upload("original", support::bundle(true)).await;
-    let mut watch = host.client.watch(wire::PluginsWatchRequest { name: "managed".into(), at: None }).await.unwrap().into_inner();
+    let mut watch = host.client.watch(wire::PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
     host.client.create(support::managed("managed", bundle, true)).await.unwrap();
     let first = support::state(&mut watch, "managed", wire::PluginState::Ready, 1).await;
     let original = support::Process::observe(first.process.as_ref().unwrap().id).await;

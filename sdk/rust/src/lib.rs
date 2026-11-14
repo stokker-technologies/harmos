@@ -10,7 +10,8 @@
 //! Plugin Authoring And Generated-Contract Clients Over The Harmos Protocol.
 //!
 //! ```no_run
-//! use harmos::{Context, Message, Observer, Operation, Plugin, Result, Stream, Visibility};
+//! use harmos::{Message, Result, Visibility};
+//! use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
 //!
 //! #[derive(Message)]
 //! struct SetTemperature { target: f64 }
@@ -37,15 +38,14 @@
 //!
 //! `Message` derives protobuf scalar, bytes, string, optional, repeated and nested
 //! named-struct fields. Fields receive consecutive tags; `#[harmos(tag = 3)]`
-//! pins a field's tag. `#[harmos(package = "thermal.v1", file = "thermal/v1/data.proto")]`
-//! controls descriptor identity; `name` supplies an existing protobuf message name.
-//! Enums, maps, tuple structs and generics require an explicit `Message` implementation
+//! pins a field's tag; `#[harmos(name = "Temperature")]` supplies an existing
+//! protobuf message name. Enums, maps, tuple structs and generics require an explicit `Message` implementation
 //! over their generated protobuf type. Required requests implement `OperationRequest`.
 //!
 //! `Context` resources live for one invocation or publication call. Observers answer
 //! host ticks and may call declared host operations, clock, settings and Watches until answering the tick. Device streams use `Stream::publish_on`
 //! and `Publisher::publish`, with backpressure and no replay after demand closes.
-//! Declare clock requirements with `clock::TimeSleepRequest` and `clock::TimeGetRequest`; every wait and
+//! Declare clock requirements with `HostOperation::TimeSleep` and `HostOperation::TimeGet`; every wait and
 //! evidence-time read then travels on the invoking call. Independently spawned
 //! background work is invisible to virtual time and must be driven in real time.
 //!
@@ -62,17 +62,19 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
-pub mod clock;
+mod clock;
+#[cfg(not(target_arch = "wasm32"))]
+mod connection;
 mod context;
 mod error;
 mod message;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 mod operation;
-mod plugin;
-pub mod prelude;
+pub mod plugin;
 #[cfg(not(target_arch = "wasm32"))]
 mod server;
+mod wire;
 
 mod stream;
 #[cfg(feature = "wasm")]
@@ -83,16 +85,14 @@ pub mod wasm;
 extern crate self as harmos;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use client::{Client, ClientSettings};
-pub use context::{Context, Watching};
+pub use connection::{Client, ClientSettings};
+use context::Context;
 pub use error::{Error, Result};
-pub use harmos_protocol::v1;
-pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, RetryPolicy, Section, Visibility};
+include!("exports.rs");
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
-pub use operation::Operation;
-pub use plugin::Plugin;
-pub use stream::{Observer, Publisher, Stream};
+use operation::Operation;
+use plugin::Plugin;
 
 // Dependencies Used by the Data Derive and Generated Protobuf Consumers.
 #[doc(hidden)]

@@ -49,7 +49,7 @@ message PairingsCreateResponse {
 // Carries the read boundary for Pairings.List.
 message PairingsListRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-  harmos.v1.Position at = 2;
+  optional harmos.v1.Position at = 2;
 }
 
 // Returns pairing metadata without bearer secrets and the issued current boundary.

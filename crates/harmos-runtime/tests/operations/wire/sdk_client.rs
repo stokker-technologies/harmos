@@ -26,7 +26,6 @@ use super::{
         messages::{Reply, Request},
     },
 };
-use harmos_protocol::client::OperationsListRequest;
 use harmos_runtime::operations::{
     ExecutionContext, Grpc, OperationPolicy, ProtobufInput, ProtobufOperation, ProtobufOutput, Registration, RetryPolicy, ServingError,
     Visibility,
@@ -160,10 +159,9 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let client = Client::new(channel.clone(), settings).unwrap();
 
     // Discover And Bind The Exact Generated Application Types.
-    let page = client.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap().into_inner();
-    let contract = |id: &str| {
-        page.operations.iter().filter_map(|operation| operation.contract.as_ref()).find(|operation| operation.id == id).unwrap().clone()
-    };
+    let page = client.operations.list().await.unwrap();
+    let contract =
+        |id: &str| page.iter().filter_map(|operation| operation.contract.as_ref()).find(|operation| operation.id == id).unwrap().clone();
     let echo = Method::<Request, Reply>::new(contract("generated.echo")).unwrap();
     let watch = Method::<Request, Reply>::new(contract("generated.watch")).unwrap().with_output::<Reply>().unwrap();
     let collect = Method::<Request, Reply>::new(contract("generated.collect")).unwrap().with_input::<Request>().unwrap();
@@ -181,7 +179,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     forged.fingerprint[0] ^= 1;
     assert!(Method::<Request, Reply>::new(forged).is_err());
     let unbound = Method::<Request, Reply>::new(contract("generated.watch")).unwrap();
-    assert!(client.start(&unbound, RpcRequest::new(Request::default())).await.is_err());
+    assert!(client.start(&unbound, Request::default()).await.is_err());
 
     // Preserve Signed Encoding, Repeated Scalars And Explicit Empty Presence.
     let request = Request {
@@ -196,17 +194,17 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         samples: vec![0, 127, 128],
         annotation: Some(String::new()),
     };
-    let response = client.call(&echo, RpcRequest::new(request.clone())).await.unwrap().into_inner();
+    let response = client.call(&echo, request.clone()).await.unwrap();
     assert_eq!(response, expected);
-    assert!(client.start(&echo, RpcRequest::new(request.clone())).await.is_err());
+    assert!(client.start(&echo, request.clone()).await.is_err());
 
     // Receive Output Items And The Distinct Final Response.
-    let mut handle = client.watch(&watch, RpcRequest::new(request)).await.unwrap();
+    let mut handle = client.watch(&watch, request).await.unwrap();
     assert_eq!(handle.next().await.unwrap().unwrap(), expected);
     assert!(handle.next().await.unwrap().is_none());
 
     // Upload Input Items, Half-Close Input And Join The Computed Result.
-    let mut handle = client.start(&collect, RpcRequest::new(Request { offset: 10, ..Default::default() })).await.unwrap();
+    let mut handle = client.start(&collect, Request { offset: 10, ..Default::default() }).await.unwrap();
     handle
         .send(Request {
             offset: -3,
@@ -230,7 +228,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(response.samples, [1, 2, 3]);
 
     // Upload And Receive Concurrently With One Independently Owned Input Direction.
-    let mut handle = client.start(&exchange, RpcRequest::new(Request { offset: 7, ..Default::default() })).await.unwrap();
+    let mut handle = client.start(&exchange, Request { offset: 7, ..Default::default() }).await.unwrap();
     let mut input = handle.take_input().unwrap();
     assert!(handle.take_input().is_err());
     assert!(handle.send(Request::default()).await.is_err());
@@ -262,11 +260,11 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let mut handle = client
         .start(
             &wait,
-            RpcRequest::new(Request {
+            Request {
                 text: "settled".into(),
                 offset: 19,
                 ..Default::default()
-            }),
+            },
         )
         .await
         .unwrap();
@@ -289,42 +287,42 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         ..Default::default()
     };
     assert!(prost::Message::encoded_len(&compact) < 384);
-    let error = bounded.call(&echo, RpcRequest::new(compact.clone())).await.unwrap_err();
+    let error = bounded.call(&echo, compact.clone()).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
     assert!(error.message().contains("retained_bytes"));
-    let mut running = bounded.watch(&watch, RpcRequest::new(compact)).await.unwrap();
+    let mut running = bounded.watch(&watch, compact).await.unwrap();
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
-    let error = bounded.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap_err();
+    let error = bounded.operations.list().await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
 
-    assert!(error.message().contains("harmos.client.v1.Operations/List"));
+    assert!(error.message().contains("operations.list"));
 
     // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
-    let first = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();
-    let second = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();
+    let first = bounded.call(&echo, Request::default()).await.unwrap();
+    let second = bounded.call(&echo, Request::default()).await.unwrap();
     assert_eq!(first, second);
-    let mut running = bounded.start(&wait, RpcRequest::new(Request { offset: 23, ..Default::default() })).await.unwrap();
+    let mut running = bounded.start(&wait, Request { offset: 23, ..Default::default() }).await.unwrap();
     // An Unpolled Stream Keeps Wire Backpressure Without Reserving Decoded Values.
-    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
+    assert!(bounded.call(&echo, Request::default()).await.is_ok());
     let item = running.next().await.unwrap().unwrap();
-    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
+    assert!(bounded.call(&echo, Request::default()).await.is_ok());
     running.request_cancel().await.unwrap();
     assert!(running.next().await.unwrap().is_none());
 
     // The Queued Final Response Keeps Its Claim Until Join Hands It To The Caller.
-    assert_eq!(bounded.clone().call(&echo, RpcRequest::new(Request::default())).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    assert_eq!(bounded.clone().call(&echo, Request::default()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
     assert_eq!(running.join().await.unwrap().offset, 23);
     assert_eq!(item.offset, 0);
-    assert!(bounded.call(&echo, RpcRequest::new(Request::default())).await.is_ok());
+    assert!(bounded.call(&echo, Request::default()).await.is_ok());
 
     // Refuse An Oversized Request Before It Enters The Outgoing Queue.
     let oversized = Request {
         text: "x".repeat(settings.message_bytes.get()),
         ..Default::default()
     };
-    assert_eq!(client.call(&echo, RpcRequest::new(oversized)).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    assert_eq!(client.call(&echo, oversized).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Close The Listener And Host.
     drop(attached);

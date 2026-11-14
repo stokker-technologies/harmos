@@ -12,21 +12,28 @@
 
 # Standard Library Imports
 import asyncio
+from asyncio import Event, Task
 
 # Third Party Imports
 from google.protobuf.duration_pb2 import Duration
 
 # Local Imports
-from harmos import GET_TIME, SETTINGS, SLEEP, Context, Failure, Operation, Plugin, Publisher, observer, operation, publisher
-from harmos.plugin.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
-from harmos.plugin.host.v1.time_pb2 import TimeGetRequest
-from harmos.v1.failure_pb2 import CLASSIFICATION_PERMANENT, CLASSIFICATION_TRANSIENT
-from harmos.v1.failure_pb2 import Failure as WireFailure
-from harmos.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
-from harmos.v1.policy_pb2 import OperationPolicy, RetryPolicy
-from harmos.v1.setting_pb2 import SettingDeclaration, SettingValue
+from harmos import (
+    CLASSIFICATION_PERMANENT,
+    CLASSIFICATION_TRANSIENT,
+    VISIBILITY_PRIVATE,
+    VISIBILITY_PROTECTED,
+    VISIBILITY_PUBLIC,
+    Failure,
+    OperationPolicy,
+    RetryPolicy,
+    SettingDeclaration,
+    SettingValue,
+)
+from harmos import FailureValue as WireFailure
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, TimeGetResponse, observer, operation, publisher
 
-from .v1.fixture_pb2 import Graph, PayloadOnly, Value
+from . import Graph, PayloadOnly, Value
 
 # Type Checking Imports
 
@@ -45,11 +52,6 @@ PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBI
 OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
 
-LIST_OPERATIONS = Operation(
-    "harmos.plugin.host.v1.Operations/List", OperationsListRequest, OperationsListResponse, visibility=VISIBILITY_PUBLIC
-)
-GET_OPERATION = Operation("harmos.plugin.host.v1.Operations/Get", OperationsGetRequest, OperationsGetResponse, visibility=VISIBILITY_PUBLIC)
-
 # === Types === #
 
 # === Classes === #
@@ -62,7 +64,7 @@ class Fixture:
     @operation("conformance.local", request=Value, response=Value, visibility=VISIBILITY_PRIVATE, replay_safe=True)
     async def local(self, context: Context, request: Value) -> Value:
         if request.value in (b"deadline", b"overall"):
-            await context.sleep(Duration(seconds=3600))
+            await context.host.time.sleep(Duration(seconds=3600))
             return request
         if request.value == b"cancel":
             await context.call(HOST_ECHO, request)
@@ -156,9 +158,9 @@ class Fixture:
 
     @operation("conformance.clock", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def clock(self, ctx: Context, request: Value) -> Value:
-        before = await ctx.now()
-        await ctx.sleep(Duration(seconds=3600))
-        after = await ctx.now()
+        before = await ctx.host.time.get()
+        await ctx.host.time.sleep(Duration(seconds=3600))
+        after = await ctx.host.time.get()
         return Value(value=(after.seconds - before.seconds).to_bytes(8, "little", signed=True))
 
     @operation("example.plugin.v1.Lifecycle/Initialize", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
@@ -179,11 +181,14 @@ class Fixture:
     @operation("conformance.watch", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def watch(self, ctx: Context, request: Value) -> Value:
         value = b""
-        async with ctx.watch(HOST_WATCH, request, max_item_bytes=4096) as items:
+        items = ctx.watch(HOST_WATCH, request, max_item_bytes=4096)
+        try:
             async for item in items:
                 value += item.value
                 if request.value == b"cancel":
                     break
+        finally:
+            await items.aclose()
         return Value(value=value)
 
     @operation("conformance.peer_call", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
@@ -196,17 +201,17 @@ class Fixture:
 
     @operation("conformance.settings_read", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def settings_read(self, context: Context, request: Value) -> Value:
-        settings = await context.settings()
+        settings = await context.host.settings.list()
         return Value(value=settings.value.SerializeToString())
 
     @operation("conformance.discover", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def discover(self, context: Context, request: Value) -> Value:
-        inventory = await context.call(LIST_OPERATIONS, OperationsListRequest())
-        if not inventory.operations:
+        inventory = await context.host.operations.list()
+        if not inventory:
             raise ValueError("Discover Operations: Empty Inventory")
-        operation = inventory.operations[0]
-        selected = await context.call(GET_OPERATION, OperationsGetRequest(id=operation.contract.id))
-        if selected.operation != operation:
+        operation = inventory[0]
+        selected = await context.host.operations.get(operation.contract.id)
+        if selected != operation:
             raise ValueError("Get Operation: Contract Differs from Inventory")
         return Value(value=operation.contract.id.encode())
 
@@ -231,8 +236,8 @@ class Fixture:
     @observer("conformance.tick_context", row=Value, interval=Duration(seconds=1))
     async def tick_context(self, context: Context) -> Value:
         echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
-        clock = await context.call(GET_TIME, TimeGetRequest())
-        settings = await context.settings()
+        clock = TimeGetResponse(now=await context.host.time.get())
+        settings = await context.host.settings.list()
         value = b""
         for reply in (echo, clock, settings):
             payload = reply.SerializeToString()
@@ -249,14 +254,17 @@ class Fixture:
     @observer("conformance.tick_watch", row=Value, interval=Duration(seconds=1))
     async def tick_watch(self, context: Context) -> Value:
         value = b""
-        async with context.watch(HOST_WATCH, Value(value=context.scope().encode()), max_item_bytes=4096) as items:
+        items = context.watch(HOST_WATCH, Value(value=context.scope().encode()), max_item_bytes=4096)
+        try:
             async for item in items:
                 value += item.value
+        finally:
+            await items.aclose()
         return Value(value=value)
 
     @observer("conformance.tick_cancel", row=Value, interval=Duration(seconds=1))
     async def tick_cancel(self, context: Context) -> Value:
-        started = asyncio.Event()
+        started = Event()
 
         async def pending() -> Value:
             started.set()
@@ -303,11 +311,11 @@ def plugin() -> Plugin:
             HOST_PENDING,
             HOST_FAIL,
             HOST_SCHEMA,
-            SLEEP,
-            GET_TIME,
-            SETTINGS,
-            LIST_OPERATIONS,
-            GET_OPERATION,
+            HostOperation.TIME_SLEEP,
+            HostOperation.TIME_GET,
+            HostOperation.SETTINGS_LIST,
+            HostOperation.OPERATIONS_LIST,
+            HostOperation.OPERATIONS_GET,
         ],
         sections=[Graph(interval=Duration(seconds=2))],
         messages=[PayloadOnly, PayloadOnly],
@@ -327,6 +335,6 @@ def plugin() -> Plugin:
 # === Private Functions === #
 
 
-def _settled(task: asyncio.Task[Value]) -> None:
+def _settled(task: Task[Value]) -> None:
     if not task.cancelled():
         task.exception()

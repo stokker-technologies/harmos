@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 
 [dependency-groups]
 test = ["build==1.6.1", "protobuf==7.36.2", "setuptools==84.2.1", "types-protobuf==7.35.1.20260906", "wheel==0.48.0"]
-dev = ["ruff==0.17.3", "ty==0.0.94", "hatchling==1.33.0", "grpcio-tools==1.85.1"]
+dev = ["ruff==0.17.3", "ty==0.0.94", "hatchling==1.33.0", "grpcio-tools==1.85.1", "clang-format==23.1.5"]
 
 [build-system]
 requires = ["hatchling==1.33.0"]

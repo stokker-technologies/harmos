@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Google.Protobuf;
 using Grpc.Core;
-using Status = Grpc.Core.Status;
-using Harmos.Client.V1;
+using Harmos.Clients;
 using Xunit;
+using FixtureClient = Fixture.Client;
+using Status = Grpc.Core.Status;
 
 namespace Harmos.Tests.Integration;
 
@@ -15,22 +19,21 @@ public sealed class ClientCallContext
   {
     // Bind All Three Caller Controls to One Generated Watch.
     var transport = new Invoker();
-    var client = new global::Fixture.Sdk.Client(transport);
+    var client = new FixtureClient(transport);
     using var cancellation = new CancellationTokenSource();
     var deadline = new DateTime(2031, 1, 1, 0, 0, 0, DateTimeKind.Utc);
     var options = new CallOptions(new Metadata { { "authorization", "Bearer fixture" } }, deadline, cancellation.Token);
-    using var call = client.Jobs.Progress.Watch(new Application.V1.Jobs.ProgressWatchRequest(), options);
-    Assert.True(await call.ResponseStream.MoveNext(CancellationToken.None));
-    Assert.Equal("Bearer fixture", call.ResponseStream.Current.Value);
+    await using var call = client.Jobs.Progress.Watch("selection", context: options).GetAsyncEnumerator();
+    Assert.True(await call.MoveNextAsync());
+    Assert.Equal("Bearer fixture", call.Current);
     Assert.Equal(deadline, transport.Options.Deadline);
     // Await Cancellation Without Sampling Time or Waiting for the Deadline.
-    var pending = call.ResponseStream.MoveNext(CancellationToken.None);
+    var pending = call.MoveNextAsync();
     cancellation.Cancel();
     await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await pending);
     await transport.Cancelled.Task;
     // The Following Resource Call Keeps Its Own Default Options.
-    using var following = client.Status.Get(new StatusGetRequest());
-    await following.ResponseAsync;
+    await client.Status.Get();
     Assert.Null(transport.Options.Deadline);
     Assert.Null(transport.Options.Headers);
     Assert.False(transport.Options.CancellationToken.CanBeCanceled);
@@ -58,7 +61,10 @@ public sealed class ClientCallContext
 
   private sealed class Invoker : CallInvoker
   {
-    public CallOptions Options { get; private set; }
+    public CallOptions Options
+    {
+      get; private set;
+    }
     public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request)
     {

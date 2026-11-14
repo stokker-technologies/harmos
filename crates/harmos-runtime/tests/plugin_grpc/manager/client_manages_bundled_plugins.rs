@@ -22,8 +22,12 @@ async fn client_manages_bundled_plugins() {
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let content = host.upload("bundle", support::bundle(true)).await;
-    let mut watch =
-        host.client.watch(harmos_protocol::client::PluginsWatchRequest { name: "managed".into(), at: None }).await.unwrap().into_inner();
+    let mut watch = host
+        .client
+        .watch(harmos_protocol::client::PluginsWatchRequest { name: Some("managed".into()), at: None })
+        .await
+        .unwrap()
+        .into_inner();
 
     // Create a Managed Entry and Observe Its Process Identity
     host.client.create(support::managed("managed", content, true)).await.unwrap();

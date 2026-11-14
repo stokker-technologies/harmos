@@ -15,7 +15,10 @@
 
 /* === Imports === */
 
-use harmos::{Context, Error, Operation, OperationRequest, Plugin, Result, Visibility};
+use harmos::plugin::HostOperation;
+
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Error, OperationRequest, Result, Visibility};
 use schematic_protocol::{Point, ProposeRoute, Route, ValidateSchematic, Validation};
 
 // Standard Library Imports
@@ -24,7 +27,7 @@ use schematic_protocol::{Point, ProposeRoute, Route, ValidateSchematic, Validati
 
 // Local Imports
 
-use harmos_protocol::{plugin::host::SettingsListRequest, v1::setting_value::Value};
+use harmos::setting_value::Value;
 
 /* === Constants === */
 
@@ -45,7 +48,7 @@ use harmos_protocol::{plugin::host::SettingsListRequest, v1::setting_value::Valu
 pub fn plugin() -> Plugin {
     Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
         .settings(schematic_protocol::settings_declarations())
-        .requires::<SettingsListRequest>()
+        .requires_host(HostOperation::SettingsList)
         .operation(Operation::new(ValidateSchematic::ID, validate).visibility(Visibility::Public).policy(super::POLICY))
         .operation(Operation::new(ProposeRoute::ID, route).visibility(Visibility::Public).policy(super::POLICY))
 }
@@ -60,7 +63,7 @@ async fn validate(_: &Context, request: ValidateSchematic) -> Result<Validation>
 async fn route(context: &Context, request: ProposeRoute) -> Result<Route> {
     let from = request.from.ok_or_else(|| Error::Invalid("Propose Route: Missing From Point".into()))?;
     let to = request.to.ok_or_else(|| Error::Invalid("Propose Route: Missing To Point".into()))?;
-    let settings = context.settings().await?.value.ok_or_else(|| Error::Invalid("Route: Missing Settings".into()))?;
+    let settings = context.host().settings.list().await?.value.ok_or_else(|| Error::Invalid("Route: Missing Settings".into()))?;
     let Some(Value::Flag(horizontal_first)) = settings.values.get("horizontal_first").and_then(|value| value.value.as_ref()) else {
         return Err(Error::Invalid("Route: Missing Horizontal First Flag".into()));
     };

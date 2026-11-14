@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Status = Grpc.Core.Status;
-using Harmos.Plugin.V1;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Channels;
-using Google.Protobuf;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Google.Protobuf.WellKnownTypes;
+using Google.Protobuf;
 using Grpc.Core;
-using Harmos.V1;
+using Harmos.Internal.Plugin;
+using Harmos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
+using InstanceBase = Harmos.Internal.Plugin.Instance.InstanceBase;
+using Status = Grpc.Core.Status;
 
-namespace Harmos.Sdk;
+namespace Harmos.Plugins;
 
 internal sealed class PluginService(InstanceGetResponse description, Dictionary<string, Handler> operations,
     Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
-    : Harmos.Plugin.V1.Instance.InstanceBase
+    : InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
 
@@ -36,7 +42,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       throw new RpcException(new Status(StatusCode.NotFound, "Unknown Operation"));
 
     IMessage decoded;
-    try { decoded = handler.Decode(request.Payload); }
+    try
+    {
+      decoded = handler.Decode(request.Payload);
+    }
     catch (InvalidProtocolBufferException error) { throw Invalid(error.Message); }
 
     await call.WriteResponseHeadersAsync(new Metadata());
@@ -102,7 +111,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       }
 
       Response response;
-      try { response = new Response { Payload = await executing }; }
+      try
+      {
+        response = new Response { Payload = await executing };
+      }
       catch (PluginFailureException error) { response = new Response { Failure = error.Failure }; }
       catch (OperationCanceledException) when (!transport.IsCancellationRequested)
       {
@@ -122,7 +134,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       await readingStopped.CancelAsync();
       if (reading is not null)
       {
-        try { await reading; }
+        try
+        {
+          await reading;
+        }
         catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
       }
       context.Disconnected();
@@ -133,7 +148,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
 
   private static async Task<ByteString> Execute(Handler handler, Context context, IMessage request)
   {
-    try { return await handler.Execute(context, request); }
+    try
+    {
+      return await handler.Execute(context, request);
+    }
     catch (PluginFailureException) { throw; }
     catch (RpcException) { throw; }
     catch (OperationCanceledException) { throw; }
@@ -185,7 +203,11 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
           tickContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
               description.Id, requires, tickStopped, frames.Writer, operations)
-          { Sequence = ++sequence, At = at.Clone(), LastCall = lastCall };
+          {
+            Sequence = ++sequence,
+            At = at.Clone(),
+            LastCall = lastCall
+          };
           observing = publication.Observer(tickContext);
           reading = input.MoveNext(readingStopped.Token);
           Task<bool>? available = null;
@@ -193,7 +215,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           {
             if (reading.IsCompleted)
             {
-              if (!await reading) return;
+              if (!await reading)
+                return;
               if (input.Current.FrameCase != InstanceSamplesRequest.FrameOneofCase.Child)
                 throw Invalid("Read Samples: Expected a Child Reply While a Tick Is Unanswered");
               await tickContext.Reply(input.Current.Child);
@@ -201,7 +224,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
             }
             while (frames.Reader.TryRead(out var frame))
               await output.WriteAsync(SampleChild(frame), call.CancellationToken);
-            if (observing.IsCompleted) break;
+            if (observing.IsCompleted)
+              break;
             if (available is null || available.IsCompleted)
               available = frames.Reader.WaitToReadAsync(tickStopped.Token).AsTask();
             await Task.WhenAny(observing, reading, available);
@@ -256,7 +280,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       await readingStopped.CancelAsync();
       if (reading is not null)
       {
-        try { await reading; }
+        try
+        {
+          await reading;
+        }
         catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
       }
       context.Disconnected();
@@ -266,7 +293,10 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       if (observing is not null)
       {
         // Observe Completion After Demand Closure; Active Failures Already Propagate Above.
-        try { await observing; }
+        try
+        {
+          await observing;
+        }
         catch (Exception) when (stopped.IsCancellationRequested) { }
       }
       tickStopped?.Dispose();

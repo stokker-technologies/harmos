@@ -21,9 +21,13 @@
 
 // Local Imports
 
-use super::{composed_resources::Root, v1};
+use super::client::PluginsSettingsSetOptions;
+use super::{
+    client::{AnnotationsGetResponse, JobsStartResponse, ProgressWatchResponse, Root},
+    v1,
+};
 use futures_core::Stream;
-use harmos::client::{Client, ClientSettings};
+use harmos::{Client, ClientSettings, SettingValues};
 use harmos_protocol::{
     client::{self as host, status},
     v1::StorageTransferSettings,
@@ -76,29 +80,42 @@ impl status::diagnostics_server::Diagnostics for Endpoint {
 }
 #[tonic::async_trait]
 impl v1::jobs_server::Jobs for Endpoint {
-    async fn start(&self, request: Request<v1::JobsStartRequest>) -> Result<Response<v1::JobsStartResponse>, Status> {
-        Ok(Response::new(v1::JobsStartResponse {
+    async fn start(&self, request: Request<v1::JobsStartRequest>) -> Result<Response<JobsStartResponse>, Status> {
+        Ok(Response::new(JobsStartResponse {
             value: format!("start:{}", request.into_inner().value),
         }))
     }
 }
 #[tonic::async_trait]
 impl v1::plugins::annotations_server::Annotations for Endpoint {
-    async fn get(
-        &self, request: Request<v1::plugins::AnnotationsGetRequest>,
-    ) -> Result<Response<v1::plugins::AnnotationsGetResponse>, Status> {
-        Ok(Response::new(v1::plugins::AnnotationsGetResponse { value: request.into_inner().name }))
+    async fn get(&self, request: Request<v1::plugins::AnnotationsGetRequest>) -> Result<Response<AnnotationsGetResponse>, Status> {
+        Ok(Response::new(AnnotationsGetResponse { value: request.into_inner().name }))
     }
 }
 #[tonic::async_trait]
 impl v1::jobs::progress_server::Progress for Endpoint {
-    type WatchStream = Pin<Box<dyn Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
+    type WatchStream = Pin<Box<dyn Stream<Item = Result<ProgressWatchResponse, Status>> + Send>>;
     async fn watch(&self, request: Request<v1::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
         let value = request.into_inner().value;
         Ok(Response::new(Box::pin(futures_util::stream::iter([
-            Ok(v1::jobs::ProgressWatchResponse { value: format!("opened:{value}") }),
-            Ok(v1::jobs::ProgressWatchResponse { value: format!("finished:{value}") }),
+            Ok(ProgressWatchResponse { value: format!("opened:{value}") }),
+            Ok(ProgressWatchResponse { value: format!("finished:{value}") }),
         ]))))
+    }
+}
+
+#[tonic::async_trait]
+impl host::plugins::settings_server::Settings for Endpoint {
+    async fn list(&self, _: Request<host::plugins::SettingsListRequest>) -> Result<Response<host::plugins::SettingsListResponse>, Status> {
+        Ok(Response::new(host::plugins::SettingsListResponse::default()))
+    }
+    async fn set(
+        &self, request: Request<host::plugins::SettingsSetRequest>,
+    ) -> Result<Response<host::plugins::SettingsSetResponse>, Status> {
+        Ok(Response::new(host::plugins::SettingsSetResponse {
+            revision: request.into_inner().request_id.into_bytes(),
+            ..Default::default()
+        }))
     }
 }
 
@@ -120,6 +137,7 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
             .add_service(host::status_server::StatusServer::new(Endpoint))
             .add_service(status::diagnostics_server::DiagnosticsServer::new(Endpoint))
             .add_service(v1::jobs_server::JobsServer::new(Endpoint))
+            .add_service(host::plugins::settings_server::SettingsServer::new(Endpoint))
             .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint))
             .add_service(v1::plugins::annotations_server::AnnotationsServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
@@ -140,54 +158,31 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     };
     assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
-    assert_eq!(
-        client
-            .status
-            .get(Request::new(host::StatusGetRequest {}))
-            .await
-            .unwrap()
-            .into_inner()
-            .status
-            .unwrap()
-            .identity
-            .unwrap()
-            .application_name,
-        "status:selection"
-    );
-    assert_eq!(
-        client
-            .status
-            .diagnostics
-            .get(Request::new(status::DiagnosticsGetRequest {
-                name: "selection".into(),
-                ..Default::default()
-            }))
-            .await
-            .unwrap()
-            .into_inner()
-            .name,
-        "diagnostics:selection"
-    );
-    assert_eq!(
-        client.jobs.start(Request::new(v1::JobsStartRequest { value: "selection".into() })).await.unwrap().into_inner().value,
-        "start:selection"
-    );
-    let mut progress =
-        client.jobs.progress.watch(Request::new(v1::jobs::ProgressWatchRequest { value: "selection".into() })).await.unwrap();
-    assert_eq!(progress.next().await.unwrap().unwrap().value, "opened:selection");
-    assert_eq!(progress.next().await.unwrap().unwrap().value, "finished:selection");
+    assert_eq!(client.status.get().await.unwrap().status.unwrap().identity.unwrap().application_name, "status:selection");
+    assert_eq!(client.status.diagnostics.get("selection", 0, 512).await.unwrap().name, "diagnostics:selection");
+    assert_eq!(client.jobs.start("selection").await.unwrap(), "start:selection");
+    let mut progress = client.jobs.progress.watch("selection").await.unwrap();
+    assert_eq!(progress.next().await.unwrap().unwrap(), "opened:selection");
+    assert_eq!(progress.next().await.unwrap().unwrap(), "finished:selection");
     assert!(progress.next().await.unwrap().is_none());
-    assert_eq!(
-        client
-            .plugins
-            .annotations
-            .get(Request::new(v1::plugins::AnnotationsGetRequest { name: "example".into() }))
-            .await
-            .unwrap()
-            .into_inner()
-            .value,
-        "example"
-    );
+    assert_eq!(client.plugins.annotations.get("example").await.unwrap(), "example");
+    let generated = client.plugins.settings.set("example", SettingValues::default(), Vec::new()).await.unwrap();
+    assert!(!generated.revision.is_empty());
+    let replayed = client
+        .plugins
+        .settings
+        .set_with(
+            "example",
+            SettingValues::default(),
+            Vec::new(),
+            PluginsSettingsSetOptions {
+                request_id: Some("replay".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(replayed.revision, b"replay");
     stop.send(()).unwrap();
     serving.await.unwrap().unwrap();
 }

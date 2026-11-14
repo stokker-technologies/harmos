@@ -1,12 +1,102 @@
-// @generated from the protocol descriptor table; do not edit.
+// @generated from protocol descriptors; do not edit.
 #nullable enable
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Grpc.Core;
+using Grpc.Net.Client;
 using Google.Protobuf;
-namespace Harmos.Sdk;
+using Google.Protobuf.WellKnownTypes;
+using StorageTransferSettings = global::Harmos.StorageTransferSettings;
+using Transfer = global::Harmos.Transfer;
+using Duration = global::Google.Protobuf.WellKnownTypes.Duration;
+using Timestamp = global::Google.Protobuf.WellKnownTypes.Timestamp;
+using CertificatesCreateRequest = global::Harmos.Clients.CertificatesCreateRequest;
+using CertificatesCreateResponse = global::Harmos.Clients.CertificatesCreateResponse;
+using ListenerGetRequest = global::Harmos.Clients.ListenerGetRequest;
+using ListenerGetResponse = global::Harmos.Clients.ListenerGetResponse;
+using ListenerSetRequest = global::Harmos.Clients.ListenerSetRequest;
+using ListenerSetResponse = global::Harmos.Clients.ListenerSetResponse;
+using ListenerValue = global::Harmos.Clients.ListenerValue;
+using PairingsCreateRequest = global::Harmos.Clients.PairingsCreateRequest;
+using PairingsCreateResponse = global::Harmos.Clients.PairingsCreateResponse;
+using PairingsDeleteRequest = global::Harmos.Clients.PairingsDeleteRequest;
+using PairingsDeleteResponse = global::Harmos.Clients.PairingsDeleteResponse;
+using PairingsListRequest = global::Harmos.Clients.PairingsListRequest;
+using PairingsListResponse = global::Harmos.Clients.PairingsListResponse;
+using InvocationsCancelRequest = global::Harmos.Clients.InvocationsCancelRequest;
+using InvocationsCancelResponse = global::Harmos.Clients.InvocationsCancelResponse;
+using InvocationsGetRequest = global::Harmos.Clients.InvocationsGetRequest;
+using InvocationsGetResponse = global::Harmos.Clients.InvocationsGetResponse;
+using InvocationsInvokeRequest = global::Harmos.Clients.InvocationsInvokeRequest;
+using InvocationsInvokeResponse = global::Harmos.Clients.InvocationsInvokeResponse;
+using InvocationsWatchRequest = global::Harmos.Clients.InvocationsWatchRequest;
+using InvocationsWatchResponse = global::Harmos.Clients.InvocationsWatchResponse;
+using OperationsGetRequest = global::Harmos.Clients.OperationsGetRequest;
+using OperationsGetResponse = global::Harmos.Clients.OperationsGetResponse;
+using OperationsListRequest = global::Harmos.Clients.OperationsListRequest;
+using OperationsListResponse = global::Harmos.Clients.OperationsListResponse;
+using PluginEntry = global::Harmos.Clients.PluginEntry;
+using PluginPlacement = global::Harmos.Clients.PluginPlacement;
+using PluginValue = global::Harmos.Clients.PluginValue;
+using PluginsCreateRequest = global::Harmos.Clients.PluginsCreateRequest;
+using PluginsCreateResponse = global::Harmos.Clients.PluginsCreateResponse;
+using PluginsDeleteRequest = global::Harmos.Clients.PluginsDeleteRequest;
+using PluginsDeleteResponse = global::Harmos.Clients.PluginsDeleteResponse;
+using PluginsGetRequest = global::Harmos.Clients.PluginsGetRequest;
+using PluginsGetResponse = global::Harmos.Clients.PluginsGetResponse;
+using PluginsListRequest = global::Harmos.Clients.PluginsListRequest;
+using PluginsListResponse = global::Harmos.Clients.PluginsListResponse;
+using PluginsReplaceRequest = global::Harmos.Clients.PluginsReplaceRequest;
+using PluginsReplaceResponse = global::Harmos.Clients.PluginsReplaceResponse;
+using SettingsListRequest = global::Harmos.Clients.SettingsListRequest;
+using SettingsListResponse = global::Harmos.Clients.SettingsListResponse;
+using SettingsSetRequest = global::Harmos.Clients.SettingsSetRequest;
+using SettingsSetResponse = global::Harmos.Clients.SettingsSetResponse;
+using PluginsRestartRequest = global::Harmos.Clients.PluginsRestartRequest;
+using PluginsRestartResponse = global::Harmos.Clients.PluginsRestartResponse;
+using PluginsSetRequest = global::Harmos.Clients.PluginsSetRequest;
+using PluginsSetResponse = global::Harmos.Clients.PluginsSetResponse;
+using PluginsWatchRequest = global::Harmos.Clients.PluginsWatchRequest;
+using PluginsWatchResponse = global::Harmos.Clients.PluginsWatchResponse;
+using SchemaDescription = global::Harmos.Clients.SchemaDescription;
+using SchemasListRequest = global::Harmos.Clients.SchemasListRequest;
+using SchemasListResponse = global::Harmos.Clients.SchemasListResponse;
+using StatusGetRequest = global::Harmos.Clients.StatusGetRequest;
+using StatusGetResponse = global::Harmos.Clients.StatusGetResponse;
+using DiagnosticsGetRequest = global::Harmos.Clients.DiagnosticsGetRequest;
+using DiagnosticsGetResponse = global::Harmos.Clients.DiagnosticsGetResponse;
+using LogsListRequest = global::Harmos.Clients.LogsListRequest;
+using LogsListResponse = global::Harmos.Clients.LogsListResponse;
+using LogsWatchRequest = global::Harmos.Clients.LogsWatchRequest;
+using LogsWatchResponse = global::Harmos.Clients.LogsWatchResponse;
+using TraceEventsListRequest = global::Harmos.Clients.TraceEventsListRequest;
+using TraceEventsListResponse = global::Harmos.Clients.TraceEventsListResponse;
+using TraceEventsWatchRequest = global::Harmos.Clients.TraceEventsWatchRequest;
+using TraceEventsWatchResponse = global::Harmos.Clients.TraceEventsWatchResponse;
+using StatusWatchRequest = global::Harmos.Clients.StatusWatchRequest;
+using StatusWatchResponse = global::Harmos.Clients.StatusWatchResponse;
+using StreamIdentity = global::Harmos.Clients.StreamIdentity;
+using StreamsListRequest = global::Harmos.Clients.StreamsListRequest;
+using StreamsListResponse = global::Harmos.Clients.StreamsListResponse;
+using TimeGetRequest = global::Harmos.Clients.TimeGetRequest;
+using TimeGetResponse = global::Harmos.Clients.TimeGetResponse;
+using TimeSleepRequest = global::Harmos.Clients.TimeSleepRequest;
+using TimeSleepResponse = global::Harmos.Clients.TimeSleepResponse;
+using DiscoveredOperation = global::Harmos.DiscoveredOperation;
+using InstanceState = global::Harmos.InstanceState;
+using PageRequest = global::Harmos.PageRequest;
+using Position = global::Harmos.Position;
+using ReadCut = global::Harmos.ReadCut;
+using Receipt = global::Harmos.Receipt;
+using SettingValues = global::Harmos.SettingValues;
+namespace Harmos;
 
-public sealed class Client : global::System.IDisposable
+public sealed class Client : IDisposable
 {
-  private global::Grpc.Net.Client.GrpcChannel? ownedChannel;
+  private GrpcChannel? ownedChannel;
   public AccessResource Access { get; }
   public InvocationsResource Invocations { get; }
   public OperationsResource Operations { get; }
@@ -26,10 +116,10 @@ public sealed class Client : global::System.IDisposable
     Streams = new StreamsResource(invoker);
     Time = new TimeResource(invoker);
   }
-  public static Client Connect(string address, global::Harmos.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)
+  public static Client Connect(string address, StorageTransferSettings? transfer = null, int? messageBytes = null)
   {
     var maximum = Transfer.MessageBytes(transfer, messageBytes);
-    var channel = global::Grpc.Net.Client.GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });
+    var channel = GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });
     return new Client(channel.CreateCallInvoker()) { ownedChannel = channel };
   }
   public void Dispose() => ownedChannel?.Dispose();
@@ -53,12 +143,25 @@ public sealed class AccessCertificatesResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.CertificatesCreateResponse> Create(global::Harmos.Client.V1.AccessResources.CertificatesCreateRequest request, CallOptions options = default)
+  public async Task<string> Create(CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.CertificatesCreateRequest, global::Harmos.Client.V1.AccessResources.CertificatesCreateResponse>(MethodType.Unary, "harmos.client.v1.access.Certificates", "Create",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.CertificatesCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.CertificatesCreateRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.CertificatesCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.CertificatesCreateResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new CertificatesCreateRequest
+    {
+    };
+    var method = new Method<CertificatesCreateRequest, CertificatesCreateResponse>(MethodType.Unary, "harmos.client.v1.access.Certificates", "Create",
+        Marshallers.Create<CertificatesCreateRequest>(value => value.ToByteArray(), bytes => CertificatesCreateRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<CertificatesCreateResponse>(value => value.ToByteArray(), bytes => CertificatesCreateResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    CertificatesCreateResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.certificates.create: " + error.Status.Detail), error.Trailers);
+    }
+    return response.CertificatePem;
   }
 }
 public sealed class AccessListenerResource
@@ -68,19 +171,47 @@ public sealed class AccessListenerResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.ListenerGetResponse> Get(global::Harmos.Client.V1.AccessResources.ListenerGetRequest request, CallOptions options = default)
+  public async Task<ListenerGetResponse> Get(CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.ListenerGetRequest, global::Harmos.Client.V1.AccessResources.ListenerGetResponse>(MethodType.Unary, "harmos.client.v1.access.Listener", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.ListenerGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.ListenerGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.ListenerGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.ListenerGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new ListenerGetRequest
+    {
+    };
+    var method = new Method<ListenerGetRequest, ListenerGetResponse>(MethodType.Unary, "harmos.client.v1.access.Listener", "Get",
+        Marshallers.Create<ListenerGetRequest>(value => value.ToByteArray(), bytes => ListenerGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<ListenerGetResponse>(value => value.ToByteArray(), bytes => ListenerGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    ListenerGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.listener.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.ListenerSetResponse> Set(global::Harmos.Client.V1.AccessResources.ListenerSetRequest request, CallOptions options = default)
+  public async Task<ListenerSetResponse> Set(ListenerValue value, ByteString expectedRevision, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.ListenerSetRequest, global::Harmos.Client.V1.AccessResources.ListenerSetResponse>(MethodType.Unary, "harmos.client.v1.access.Listener", "Set",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.ListenerSetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.ListenerSetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.ListenerSetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.ListenerSetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new ListenerSetRequest
+    {
+      Value = value,
+      ExpectedRevision = expectedRevision,
+    };
+    var method = new Method<ListenerSetRequest, ListenerSetResponse>(MethodType.Unary, "harmos.client.v1.access.Listener", "Set",
+        Marshallers.Create<ListenerSetRequest>(value => value.ToByteArray(), bytes => ListenerSetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<ListenerSetResponse>(value => value.ToByteArray(), bytes => ListenerSetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    ListenerSetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.listener.set: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }
 public sealed class AccessPairingsResource
@@ -90,26 +221,71 @@ public sealed class AccessPairingsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.PairingsCreateResponse> Create(global::Harmos.Client.V1.AccessResources.PairingsCreateRequest request, CallOptions options = default)
+  public async Task<PairingsCreateResponse> Create(string label, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.PairingsCreateRequest, global::Harmos.Client.V1.AccessResources.PairingsCreateResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "Create",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsCreateRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsCreateResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PairingsCreateRequest
+    {
+      Label = label,
+    };
+    var method = new Method<PairingsCreateRequest, PairingsCreateResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "Create",
+        Marshallers.Create<PairingsCreateRequest>(value => value.ToByteArray(), bytes => PairingsCreateRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PairingsCreateResponse>(value => value.ToByteArray(), bytes => PairingsCreateResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PairingsCreateResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.pairings.create: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.PairingsListResponse> List(global::Harmos.Client.V1.AccessResources.PairingsListRequest request, CallOptions options = default)
+  public async Task<PairingsListResponse> List(Position? at = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.PairingsListRequest, global::Harmos.Client.V1.AccessResources.PairingsListResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "List",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PairingsListRequest
+    {
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<PairingsListRequest, PairingsListResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "List",
+        Marshallers.Create<PairingsListRequest>(value => value.ToByteArray(), bytes => PairingsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PairingsListResponse>(value => value.ToByteArray(), bytes => PairingsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PairingsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.pairings.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.AccessResources.PairingsDeleteResponse> Delete(global::Harmos.Client.V1.AccessResources.PairingsDeleteRequest request, CallOptions options = default)
+  public async Task<PairingsDeleteResponse> Delete(string name, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.AccessResources.PairingsDeleteRequest, global::Harmos.Client.V1.AccessResources.PairingsDeleteResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "Delete",
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsDeleteRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsDeleteRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.AccessResources.PairingsDeleteResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.AccessResources.PairingsDeleteResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PairingsDeleteRequest
+    {
+      Name = name,
+    };
+    var method = new Method<PairingsDeleteRequest, PairingsDeleteResponse>(MethodType.Unary, "harmos.client.v1.access.Pairings", "Delete",
+        Marshallers.Create<PairingsDeleteRequest>(value => value.ToByteArray(), bytes => PairingsDeleteRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PairingsDeleteResponse>(value => value.ToByteArray(), bytes => PairingsDeleteResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PairingsDeleteResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call access.pairings.delete: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }
 public sealed class InvocationsResource
@@ -119,33 +295,101 @@ public sealed class InvocationsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.InvocationsInvokeResponse> Invoke(global::Harmos.Client.V1.InvocationsInvokeRequest request, CallOptions options = default)
+  public async Task<ByteString> Invoke(string operation, ByteString fingerprint, ByteString payload, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.InvocationsInvokeRequest, global::Harmos.Client.V1.InvocationsInvokeResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Invoke",
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsInvokeRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsInvokeRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsInvokeResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsInvokeResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new InvocationsInvokeRequest
+    {
+      Operation = operation,
+      Fingerprint = fingerprint,
+      Payload = payload,
+    };
+    var method = new Method<InvocationsInvokeRequest, InvocationsInvokeResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Invoke",
+        Marshallers.Create<InvocationsInvokeRequest>(value => value.ToByteArray(), bytes => InvocationsInvokeRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<InvocationsInvokeResponse>(value => value.ToByteArray(), bytes => InvocationsInvokeResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    InvocationsInvokeResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call invocations.invoke: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Payload;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.InvocationsGetResponse> Get(global::Harmos.Client.V1.InvocationsGetRequest request, CallOptions options = default)
+  public async Task<InstanceState> Get(ulong instance, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.InvocationsGetRequest, global::Harmos.Client.V1.InvocationsGetResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new InvocationsGetRequest
+    {
+      Instance = instance,
+    };
+    var method = new Method<InvocationsGetRequest, InvocationsGetResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Get",
+        Marshallers.Create<InvocationsGetRequest>(value => value.ToByteArray(), bytes => InvocationsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<InvocationsGetResponse>(value => value.ToByteArray(), bytes => InvocationsGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    InvocationsGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call invocations.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Invocation ?? throw new InvalidOperationException("Read Invocations.Get: Missing Payload");
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.InvocationsCancelResponse> Cancel(global::Harmos.Client.V1.InvocationsCancelRequest request, CallOptions options = default)
+  public async Task<InstanceState> Cancel(ulong instance, string reason, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.InvocationsCancelRequest, global::Harmos.Client.V1.InvocationsCancelResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Cancel",
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsCancelRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsCancelRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsCancelResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsCancelResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new InvocationsCancelRequest
+    {
+      Instance = instance,
+      Reason = reason,
+    };
+    var method = new Method<InvocationsCancelRequest, InvocationsCancelResponse>(MethodType.Unary, "harmos.client.v1.Invocations", "Cancel",
+        Marshallers.Create<InvocationsCancelRequest>(value => value.ToByteArray(), bytes => InvocationsCancelRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<InvocationsCancelResponse>(value => value.ToByteArray(), bytes => InvocationsCancelResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    InvocationsCancelResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call invocations.cancel: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Invocation ?? throw new InvalidOperationException("Read Invocations.Cancel: Missing Payload");
   }
-  public AsyncServerStreamingCall<global::Harmos.Client.V1.InvocationsWatchResponse> Watch(global::Harmos.Client.V1.InvocationsWatchRequest request, CallOptions options = default)
+  public async IAsyncEnumerable<InstanceState> Watch(ulong instance, CallOptions context = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var method = new Method<global::Harmos.Client.V1.InvocationsWatchRequest, global::Harmos.Client.V1.InvocationsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Invocations", "Watch",
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.InvocationsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.InvocationsWatchResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncServerStreamingCall(method, null, options, request);
+    var request = new InvocationsWatchRequest
+    {
+      Instance = instance,
+    };
+    var method = new Method<InvocationsWatchRequest, InvocationsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Invocations", "Watch",
+        Marshallers.Create<InvocationsWatchRequest>(value => value.ToByteArray(), bytes => InvocationsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<InvocationsWatchResponse>(value => value.ToByteArray(), bytes => InvocationsWatchResponse.Parser.ParseFrom(bytes)));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
+    using var call = invoker.AsyncServerStreamingCall(method, null, context.WithCancellationToken(linked.Token), request);
+    while (true)
+    {
+      bool available;
+      try
+      {
+        available = await call.ResponseStream.MoveNext(linked.Token);
+      }
+      catch (RpcException error)
+      {
+        throw new RpcException(new Status(error.StatusCode, "Call invocations.watch: " + error.Status.Detail), error.Trailers);
+      }
+      if (!available)
+      {
+        yield break;
+      }
+      var response = call.ResponseStream.Current;
+      yield return response.Invocation ?? throw new InvalidOperationException("Read Invocations.Watch: Missing Payload");
+    }
   }
 }
 public sealed class OperationsResource
@@ -155,19 +399,46 @@ public sealed class OperationsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.OperationsListResponse> List(global::Harmos.Client.V1.OperationsListRequest request, CallOptions options = default)
+  public async Task<IReadOnlyList<DiscoveredOperation>> List(CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.OperationsListRequest, global::Harmos.Client.V1.OperationsListResponse>(MethodType.Unary, "harmos.client.v1.Operations", "List",
-        Marshallers.Create<global::Harmos.Client.V1.OperationsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.OperationsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.OperationsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.OperationsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new OperationsListRequest
+    {
+    };
+    var method = new Method<OperationsListRequest, OperationsListResponse>(MethodType.Unary, "harmos.client.v1.Operations", "List",
+        Marshallers.Create<OperationsListRequest>(value => value.ToByteArray(), bytes => OperationsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<OperationsListResponse>(value => value.ToByteArray(), bytes => OperationsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    OperationsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call operations.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Operations;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.OperationsGetResponse> Get(global::Harmos.Client.V1.OperationsGetRequest request, CallOptions options = default)
+  public async Task<DiscoveredOperation> Get(string id, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.OperationsGetRequest, global::Harmos.Client.V1.OperationsGetResponse>(MethodType.Unary, "harmos.client.v1.Operations", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.OperationsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.OperationsGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.OperationsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.OperationsGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new OperationsGetRequest
+    {
+      Id = id,
+    };
+    var method = new Method<OperationsGetRequest, OperationsGetResponse>(MethodType.Unary, "harmos.client.v1.Operations", "Get",
+        Marshallers.Create<OperationsGetRequest>(value => value.ToByteArray(), bytes => OperationsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<OperationsGetResponse>(value => value.ToByteArray(), bytes => OperationsGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    OperationsGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call operations.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Operation ?? throw new InvalidOperationException("Read Operations.Get: Missing Payload");
   }
 }
 public sealed class PluginsResource
@@ -179,61 +450,206 @@ public sealed class PluginsResource
     this.invoker = invoker;
     Settings = new PluginsSettingsResource(invoker);
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsGetResponse> Get(global::Harmos.Client.V1.PluginsGetRequest request, CallOptions options = default)
+  public async Task<PluginsGetResponse> Get(string name, ReadCut? at = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsGetRequest, global::Harmos.Client.V1.PluginsGetResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsGetRequest
+    {
+      Name = name,
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<PluginsGetRequest, PluginsGetResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Get",
+        Marshallers.Create<PluginsGetRequest>(value => value.ToByteArray(), bytes => PluginsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsGetResponse>(value => value.ToByteArray(), bytes => PluginsGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsListResponse> List(global::Harmos.Client.V1.PluginsListRequest request, CallOptions options = default)
+  public async Task<PluginsListResponse> List(ReadCut? at = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsListRequest, global::Harmos.Client.V1.PluginsListResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "List",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsListRequest
+    {
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<PluginsListRequest, PluginsListResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "List",
+        Marshallers.Create<PluginsListRequest>(value => value.ToByteArray(), bytes => PluginsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsListResponse>(value => value.ToByteArray(), bytes => PluginsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncServerStreamingCall<global::Harmos.Client.V1.PluginsWatchResponse> Watch(global::Harmos.Client.V1.PluginsWatchRequest request, CallOptions options = default)
+  public async IAsyncEnumerable<PluginsWatchResponse> Watch(string? name = null, ReadCut? at = null, CallOptions context = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsWatchRequest, global::Harmos.Client.V1.PluginsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Plugins", "Watch",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsWatchResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncServerStreamingCall(method, null, options, request);
+    var request = new PluginsWatchRequest
+    {
+    };
+    if (name is not null)
+    {
+      request.Name = name;
+    }
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<PluginsWatchRequest, PluginsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Plugins", "Watch",
+        Marshallers.Create<PluginsWatchRequest>(value => value.ToByteArray(), bytes => PluginsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsWatchResponse>(value => value.ToByteArray(), bytes => PluginsWatchResponse.Parser.ParseFrom(bytes)));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
+    using var call = invoker.AsyncServerStreamingCall(method, null, context.WithCancellationToken(linked.Token), request);
+    while (true)
+    {
+      bool available;
+      try
+      {
+        available = await call.ResponseStream.MoveNext(linked.Token);
+      }
+      catch (RpcException error)
+      {
+        throw new RpcException(new Status(error.StatusCode, "Call plugins.watch: " + error.Status.Detail), error.Trailers);
+      }
+      if (!available)
+      {
+        yield break;
+      }
+      var response = call.ResponseStream.Current;
+      yield return response;
+    }
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsCreateResponse> Create(global::Harmos.Client.V1.PluginsCreateRequest request, CallOptions options = default)
+  public async Task<PluginsCreateResponse> Create(string name, PluginPlacement placement, PluginValue value, string? requestId = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsCreateRequest, global::Harmos.Client.V1.PluginsCreateResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Create",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsCreateRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsCreateResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsCreateRequest
+    {
+      RequestId = requestId ?? Guid.NewGuid().ToString("N"),
+      Name = name,
+      Placement = placement,
+      Value = value,
+    };
+    var method = new Method<PluginsCreateRequest, PluginsCreateResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Create",
+        Marshallers.Create<PluginsCreateRequest>(value => value.ToByteArray(), bytes => PluginsCreateRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsCreateResponse>(value => value.ToByteArray(), bytes => PluginsCreateResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsCreateResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.create: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsSetResponse> Set(global::Harmos.Client.V1.PluginsSetRequest request, CallOptions options = default)
+  public async Task<PluginsSetResponse> Set(string name, PluginValue value, ByteString expectedRevision, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsSetRequest, global::Harmos.Client.V1.PluginsSetResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Set",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsSetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsSetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsSetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsSetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsSetRequest
+    {
+      Name = name,
+      Value = value,
+      ExpectedRevision = expectedRevision,
+    };
+    var method = new Method<PluginsSetRequest, PluginsSetResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Set",
+        Marshallers.Create<PluginsSetRequest>(value => value.ToByteArray(), bytes => PluginsSetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsSetResponse>(value => value.ToByteArray(), bytes => PluginsSetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsSetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.set: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsDeleteResponse> Delete(global::Harmos.Client.V1.PluginsDeleteRequest request, CallOptions options = default)
+  public async Task<Receipt> Delete(string name, ByteString expectedRevision, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsDeleteRequest, global::Harmos.Client.V1.PluginsDeleteResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Delete",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsDeleteRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsDeleteRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsDeleteResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsDeleteResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsDeleteRequest
+    {
+      Name = name,
+      ExpectedRevision = expectedRevision,
+    };
+    var method = new Method<PluginsDeleteRequest, PluginsDeleteResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Delete",
+        Marshallers.Create<PluginsDeleteRequest>(value => value.ToByteArray(), bytes => PluginsDeleteRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsDeleteResponse>(value => value.ToByteArray(), bytes => PluginsDeleteResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsDeleteResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.delete: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Receipt ?? throw new InvalidOperationException("Read Plugins.Delete: Missing Payload");
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsRestartResponse> Restart(global::Harmos.Client.V1.PluginsRestartRequest request, CallOptions options = default)
+  public async Task<PluginEntry> Restart(string name, ByteString expectedRevision, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsRestartRequest, global::Harmos.Client.V1.PluginsRestartResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Restart",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsRestartRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsRestartRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsRestartResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsRestartResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsRestartRequest
+    {
+      Name = name,
+      ExpectedRevision = expectedRevision,
+    };
+    var method = new Method<PluginsRestartRequest, PluginsRestartResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Restart",
+        Marshallers.Create<PluginsRestartRequest>(value => value.ToByteArray(), bytes => PluginsRestartRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsRestartResponse>(value => value.ToByteArray(), bytes => PluginsRestartResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsRestartResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.restart: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Entry ?? throw new InvalidOperationException("Read Plugins.Restart: Missing Payload");
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsReplaceResponse> Replace(global::Harmos.Client.V1.PluginsReplaceRequest request, CallOptions options = default)
+  public async Task<PluginsReplaceResponse> Replace(string name, PluginPlacement placement, ByteString expectedRevision, string? requestId = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsReplaceRequest, global::Harmos.Client.V1.PluginsReplaceResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Replace",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsReplaceRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsReplaceRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsReplaceResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsReplaceResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new PluginsReplaceRequest
+    {
+      Name = name,
+      Placement = placement,
+      ExpectedRevision = expectedRevision,
+      RequestId = requestId ?? Guid.NewGuid().ToString("N"),
+    };
+    var method = new Method<PluginsReplaceRequest, PluginsReplaceResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Replace",
+        Marshallers.Create<PluginsReplaceRequest>(value => value.ToByteArray(), bytes => PluginsReplaceRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<PluginsReplaceResponse>(value => value.ToByteArray(), bytes => PluginsReplaceResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    PluginsReplaceResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.replace: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }
 public sealed class PluginsSettingsResource
@@ -243,19 +659,54 @@ public sealed class PluginsSettingsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsResources.SettingsListResponse> List(global::Harmos.Client.V1.PluginsResources.SettingsListRequest request, CallOptions options = default)
+  public async Task<SettingsListResponse> List(string name, ReadCut? at = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsResources.SettingsListRequest, global::Harmos.Client.V1.PluginsResources.SettingsListResponse>(MethodType.Unary, "harmos.client.v1.plugins.Settings", "List",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsResources.SettingsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsResources.SettingsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsResources.SettingsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsResources.SettingsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new SettingsListRequest
+    {
+      Name = name,
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<SettingsListRequest, SettingsListResponse>(MethodType.Unary, "harmos.client.v1.plugins.Settings", "List",
+        Marshallers.Create<SettingsListRequest>(value => value.ToByteArray(), bytes => SettingsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<SettingsListResponse>(value => value.ToByteArray(), bytes => SettingsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    SettingsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.settings.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.PluginsResources.SettingsSetResponse> Set(global::Harmos.Client.V1.PluginsResources.SettingsSetRequest request, CallOptions options = default)
+  public async Task<SettingsSetResponse> Set(string name, SettingValues value, ByteString expectedRevision, string? requestId = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.PluginsResources.SettingsSetRequest, global::Harmos.Client.V1.PluginsResources.SettingsSetResponse>(MethodType.Unary, "harmos.client.v1.plugins.Settings", "Set",
-        Marshallers.Create<global::Harmos.Client.V1.PluginsResources.SettingsSetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsResources.SettingsSetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.PluginsResources.SettingsSetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsResources.SettingsSetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new SettingsSetRequest
+    {
+      Name = name,
+      Value = value,
+      ExpectedRevision = expectedRevision,
+      RequestId = requestId ?? Guid.NewGuid().ToString("N"),
+    };
+    var method = new Method<SettingsSetRequest, SettingsSetResponse>(MethodType.Unary, "harmos.client.v1.plugins.Settings", "Set",
+        Marshallers.Create<SettingsSetRequest>(value => value.ToByteArray(), bytes => SettingsSetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<SettingsSetResponse>(value => value.ToByteArray(), bytes => SettingsSetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    SettingsSetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call plugins.settings.set: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }
 public sealed class SchemasResource
@@ -265,12 +716,29 @@ public sealed class SchemasResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.SchemasListResponse> List(global::Harmos.Client.V1.SchemasListRequest request, CallOptions options = default)
+  public async Task<IReadOnlyList<SchemaDescription>> List(string? schema = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.SchemasListRequest, global::Harmos.Client.V1.SchemasListResponse>(MethodType.Unary, "harmos.client.v1.Schemas", "List",
-        Marshallers.Create<global::Harmos.Client.V1.SchemasListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.SchemasListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.SchemasListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.SchemasListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new SchemasListRequest
+    {
+    };
+    if (schema is not null)
+    {
+      request.Schema = schema;
+    }
+    var method = new Method<SchemasListRequest, SchemasListResponse>(MethodType.Unary, "harmos.client.v1.Schemas", "List",
+        Marshallers.Create<SchemasListRequest>(value => value.ToByteArray(), bytes => SchemasListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<SchemasListResponse>(value => value.ToByteArray(), bytes => SchemasListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    SchemasListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call schemas.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Schemas;
   }
 }
 public sealed class StatusResource
@@ -286,19 +754,58 @@ public sealed class StatusResource
     Logs = new StatusLogsResource(invoker);
     TraceEvents = new StatusTraceEventsResource(invoker);
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.StatusGetResponse> Get(global::Harmos.Client.V1.StatusGetRequest request, CallOptions options = default)
+  public async Task<StatusGetResponse> Get(CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusGetRequest, global::Harmos.Client.V1.StatusGetResponse>(MethodType.Unary, "harmos.client.v1.Status", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.StatusGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new StatusGetRequest
+    {
+    };
+    var method = new Method<StatusGetRequest, StatusGetResponse>(MethodType.Unary, "harmos.client.v1.Status", "Get",
+        Marshallers.Create<StatusGetRequest>(value => value.ToByteArray(), bytes => StatusGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<StatusGetResponse>(value => value.ToByteArray(), bytes => StatusGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    StatusGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call status.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncServerStreamingCall<global::Harmos.Client.V1.StatusWatchResponse> Watch(global::Harmos.Client.V1.StatusWatchRequest request, CallOptions options = default)
+  public async IAsyncEnumerable<StatusWatchResponse> Watch(Position? at = null, CallOptions context = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusWatchRequest, global::Harmos.Client.V1.StatusWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Status", "Watch",
-        Marshallers.Create<global::Harmos.Client.V1.StatusWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusWatchResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncServerStreamingCall(method, null, options, request);
+    var request = new StatusWatchRequest
+    {
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<StatusWatchRequest, StatusWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.Status", "Watch",
+        Marshallers.Create<StatusWatchRequest>(value => value.ToByteArray(), bytes => StatusWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<StatusWatchResponse>(value => value.ToByteArray(), bytes => StatusWatchResponse.Parser.ParseFrom(bytes)));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
+    using var call = invoker.AsyncServerStreamingCall(method, null, context.WithCancellationToken(linked.Token), request);
+    while (true)
+    {
+      bool available;
+      try
+      {
+        available = await call.ResponseStream.MoveNext(linked.Token);
+      }
+      catch (RpcException error)
+      {
+        throw new RpcException(new Status(error.StatusCode, "Call status.watch: " + error.Status.Detail), error.Trailers);
+      }
+      if (!available)
+      {
+        yield break;
+      }
+      var response = call.ResponseStream.Current;
+      yield return response;
+    }
   }
 }
 public sealed class StatusDiagnosticsResource
@@ -308,12 +815,28 @@ public sealed class StatusDiagnosticsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.StatusResources.DiagnosticsGetResponse> Get(global::Harmos.Client.V1.StatusResources.DiagnosticsGetRequest request, CallOptions options = default)
+  public async Task<DiagnosticsGetResponse> Get(string name, ulong offset, ulong maxBytes, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusResources.DiagnosticsGetRequest, global::Harmos.Client.V1.StatusResources.DiagnosticsGetResponse>(MethodType.Unary, "harmos.client.v1.status.Diagnostics", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new DiagnosticsGetRequest
+    {
+      Name = name,
+      Offset = offset,
+      MaxBytes = maxBytes,
+    };
+    var method = new Method<DiagnosticsGetRequest, DiagnosticsGetResponse>(MethodType.Unary, "harmos.client.v1.status.Diagnostics", "Get",
+        Marshallers.Create<DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    DiagnosticsGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call status.diagnostics.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }
 public sealed class StatusLogsResource
@@ -323,19 +846,68 @@ public sealed class StatusLogsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.StatusResources.LogsListResponse> List(global::Harmos.Client.V1.StatusResources.LogsListRequest request, CallOptions options = default)
+  public async Task<LogsListResponse> List(Position? at = null, PageRequest? page = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusResources.LogsListRequest, global::Harmos.Client.V1.StatusResources.LogsListResponse>(MethodType.Unary, "harmos.client.v1.status.Logs", "List",
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.LogsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.LogsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.LogsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.LogsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new LogsListRequest
+    {
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    if (page is not null)
+    {
+      request.Page = page;
+    }
+    var method = new Method<LogsListRequest, LogsListResponse>(MethodType.Unary, "harmos.client.v1.status.Logs", "List",
+        Marshallers.Create<LogsListRequest>(value => value.ToByteArray(), bytes => LogsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<LogsListResponse>(value => value.ToByteArray(), bytes => LogsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    LogsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call status.logs.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncServerStreamingCall<global::Harmos.Client.V1.StatusResources.LogsWatchResponse> Watch(global::Harmos.Client.V1.StatusResources.LogsWatchRequest request, CallOptions options = default)
+  public async IAsyncEnumerable<LogsWatchResponse> Watch(ulong maxBytes, uint maxEvents, Position? at = null, CallOptions context = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusResources.LogsWatchRequest, global::Harmos.Client.V1.StatusResources.LogsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.status.Logs", "Watch",
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.LogsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.LogsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.LogsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.LogsWatchResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncServerStreamingCall(method, null, options, request);
+    var request = new LogsWatchRequest
+    {
+      MaxBytes = maxBytes,
+      MaxEvents = maxEvents,
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<LogsWatchRequest, LogsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.status.Logs", "Watch",
+        Marshallers.Create<LogsWatchRequest>(value => value.ToByteArray(), bytes => LogsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<LogsWatchResponse>(value => value.ToByteArray(), bytes => LogsWatchResponse.Parser.ParseFrom(bytes)));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
+    using var call = invoker.AsyncServerStreamingCall(method, null, context.WithCancellationToken(linked.Token), request);
+    while (true)
+    {
+      bool available;
+      try
+      {
+        available = await call.ResponseStream.MoveNext(linked.Token);
+      }
+      catch (RpcException error)
+      {
+        throw new RpcException(new Status(error.StatusCode, "Call status.logs.watch: " + error.Status.Detail), error.Trailers);
+      }
+      if (!available)
+      {
+        yield break;
+      }
+      var response = call.ResponseStream.Current;
+      yield return response;
+    }
   }
 }
 public sealed class StatusTraceEventsResource
@@ -345,19 +917,68 @@ public sealed class StatusTraceEventsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.StatusResources.TraceEventsListResponse> List(global::Harmos.Client.V1.StatusResources.TraceEventsListRequest request, CallOptions options = default)
+  public async Task<TraceEventsListResponse> List(Position? at = null, PageRequest? page = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusResources.TraceEventsListRequest, global::Harmos.Client.V1.StatusResources.TraceEventsListResponse>(MethodType.Unary, "harmos.client.v1.status.TraceEvents", "List",
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.TraceEventsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.TraceEventsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.TraceEventsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.TraceEventsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new TraceEventsListRequest
+    {
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    if (page is not null)
+    {
+      request.Page = page;
+    }
+    var method = new Method<TraceEventsListRequest, TraceEventsListResponse>(MethodType.Unary, "harmos.client.v1.status.TraceEvents", "List",
+        Marshallers.Create<TraceEventsListRequest>(value => value.ToByteArray(), bytes => TraceEventsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<TraceEventsListResponse>(value => value.ToByteArray(), bytes => TraceEventsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    TraceEventsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call status.trace_events.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
-  public AsyncServerStreamingCall<global::Harmos.Client.V1.StatusResources.TraceEventsWatchResponse> Watch(global::Harmos.Client.V1.StatusResources.TraceEventsWatchRequest request, CallOptions options = default)
+  public async IAsyncEnumerable<TraceEventsWatchResponse> Watch(ulong maxBytes, uint maxEvents, Position? at = null, CallOptions context = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StatusResources.TraceEventsWatchRequest, global::Harmos.Client.V1.StatusResources.TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.status.TraceEvents", "Watch",
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StatusResources.TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StatusResources.TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncServerStreamingCall(method, null, options, request);
+    var request = new TraceEventsWatchRequest
+    {
+      MaxBytes = maxBytes,
+      MaxEvents = maxEvents,
+    };
+    if (at is not null)
+    {
+      request.At = at;
+    }
+    var method = new Method<TraceEventsWatchRequest, TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.client.v1.status.TraceEvents", "Watch",
+        Marshallers.Create<TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
+    using var call = invoker.AsyncServerStreamingCall(method, null, context.WithCancellationToken(linked.Token), request);
+    while (true)
+    {
+      bool available;
+      try
+      {
+        available = await call.ResponseStream.MoveNext(linked.Token);
+      }
+      catch (RpcException error)
+      {
+        throw new RpcException(new Status(error.StatusCode, "Call status.trace_events.watch: " + error.Status.Detail), error.Trailers);
+      }
+      if (!available)
+      {
+        yield break;
+      }
+      var response = call.ResponseStream.Current;
+      yield return response;
+    }
   }
 }
 public sealed class StreamsResource
@@ -367,12 +988,29 @@ public sealed class StreamsResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.StreamsListResponse> List(global::Harmos.Client.V1.StreamsListRequest request, CallOptions options = default)
+  public async Task<IReadOnlyList<StreamIdentity>> List(string? schema = null, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.StreamsListRequest, global::Harmos.Client.V1.StreamsListResponse>(MethodType.Unary, "harmos.client.v1.Streams", "List",
-        Marshallers.Create<global::Harmos.Client.V1.StreamsListRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StreamsListRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.StreamsListResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.StreamsListResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new StreamsListRequest
+    {
+    };
+    if (schema is not null)
+    {
+      request.Schema = schema;
+    }
+    var method = new Method<StreamsListRequest, StreamsListResponse>(MethodType.Unary, "harmos.client.v1.Streams", "List",
+        Marshallers.Create<StreamsListRequest>(value => value.ToByteArray(), bytes => StreamsListRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<StreamsListResponse>(value => value.ToByteArray(), bytes => StreamsListResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    StreamsListResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call streams.list: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Streams;
   }
 }
 public sealed class TimeResource
@@ -382,18 +1020,45 @@ public sealed class TimeResource
   {
     this.invoker = invoker;
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.TimeGetResponse> Get(global::Harmos.Client.V1.TimeGetRequest request, CallOptions options = default)
+  public async Task<Timestamp> Get(CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.TimeGetRequest, global::Harmos.Client.V1.TimeGetResponse>(MethodType.Unary, "harmos.client.v1.Time", "Get",
-        Marshallers.Create<global::Harmos.Client.V1.TimeGetRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.TimeGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.TimeGetResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.TimeGetResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new TimeGetRequest
+    {
+    };
+    var method = new Method<TimeGetRequest, TimeGetResponse>(MethodType.Unary, "harmos.client.v1.Time", "Get",
+        Marshallers.Create<TimeGetRequest>(value => value.ToByteArray(), bytes => TimeGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<TimeGetResponse>(value => value.ToByteArray(), bytes => TimeGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    TimeGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call time.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Now ?? throw new InvalidOperationException("Read Time.Get: Missing Payload");
   }
-  public AsyncUnaryCall<global::Harmos.Client.V1.TimeSleepResponse> Sleep(global::Harmos.Client.V1.TimeSleepRequest request, CallOptions options = default)
+  public async Task<TimeSleepResponse> Sleep(Duration duration, CallOptions context = default)
   {
-    var method = new Method<global::Harmos.Client.V1.TimeSleepRequest, global::Harmos.Client.V1.TimeSleepResponse>(MethodType.Unary, "harmos.client.v1.Time", "Sleep",
-        Marshallers.Create<global::Harmos.Client.V1.TimeSleepRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.TimeSleepRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<global::Harmos.Client.V1.TimeSleepResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.TimeSleepResponse.Parser.ParseFrom(bytes)));
-    return invoker.AsyncUnaryCall(method, null, options, request);
+    var request = new TimeSleepRequest
+    {
+      Duration = duration,
+    };
+    var method = new Method<TimeSleepRequest, TimeSleepResponse>(MethodType.Unary, "harmos.client.v1.Time", "Sleep",
+        Marshallers.Create<TimeSleepRequest>(value => value.ToByteArray(), bytes => TimeSleepRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<TimeSleepResponse>(value => value.ToByteArray(), bytes => TimeSleepResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    TimeSleepResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call time.sleep: " + error.Status.Detail), error.Trailers);
+    }
+    return response;
   }
 }

@@ -21,7 +21,7 @@ mod support {
 }
 
 extern crate self as application_protocol;
-pub mod v1 {
+mod v1 {
     include!("../fixtures/client/application.v1.rs");
     pub mod jobs {
         include!("../fixtures/client/application.v1.jobs.rs");
@@ -33,8 +33,13 @@ pub mod v1 {
 mod client_reflection {
     include!("../fixtures/client/client-reflection.rs");
 }
-pub mod composed_resources {
+use v1 as wire;
+mod composed_resources {
     include!("../fixtures/client/resources.rs");
+}
+pub mod client {
+    pub use super::composed_resources::*;
+    include!("../fixtures/client/client_types.rs");
 }
 mod client_call_context;
 mod client_root;

@@ -11,7 +11,7 @@
 
 /* === Modules === */
 
-#[path = "../../../sdk/rust/tests/fixtures/conformance/v1.rs"]
+#[path = "../../../sdk/rust/tests/fixtures/conformance/wire.rs"]
 pub mod conformance;
 mod error;
 mod fixture;

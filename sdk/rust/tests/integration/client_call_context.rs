@@ -28,8 +28,12 @@ use tokio::sync::oneshot;
 use tonic::{Request, Response, Status};
 
 // Local Imports
-use super::{composed_resources::Root, v1};
-use harmos::client::{Client, ClientSettings};
+use super::{
+    client::{JobsProgressWatchOptions, Root},
+    v1,
+};
+use harmos::client::CallOptions;
+use harmos::{Client, ClientSettings};
 
 /* === Constants === */
 
@@ -110,11 +114,16 @@ async fn one_call_preserves_metadata_deadline_override_and_cancellation() {
     let settings = ClientSettings::for_storage(Default::default(), maximum.checked_mul(NonZeroUsize::new(6).unwrap()).unwrap()).unwrap();
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     // Bind Metadata and a Per-Call Deadline to the Generated Root Request.
-    let mut request = Request::new(v1::jobs::ProgressWatchRequest { value: "selection".into() });
-    request.metadata_mut().insert("authorization", "Bearer fixture".parse().unwrap());
-    request.set_timeout(std::time::Duration::from_secs(17));
-    let mut watching = client.jobs.progress.watch(request).await.unwrap();
-    assert_eq!(watching.next().await.unwrap().unwrap().value, "selection");
+    let mut metadata = tonic::metadata::MetadataMap::new();
+    metadata.insert("authorization", "Bearer fixture".parse().unwrap());
+    let options = JobsProgressWatchOptions {
+        context: CallOptions {
+            metadata,
+            timeout: Some(std::time::Duration::from_secs(17)),
+        },
+    };
+    let mut watching = client.jobs.progress.watch_with("selection", options).await.unwrap();
+    assert_eq!(watching.next().await.unwrap().unwrap(), "selection");
     // Dropping This Call Cancels Its Transport and Releases the Server Stream.
     drop(watching);
     cancelled.await.unwrap();

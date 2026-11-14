@@ -61,3 +61,7 @@ function(harmos_protocol target root output)
     target_compile_features(${target} PUBLIC cxx_std_20)
     target_link_libraries(${target} PUBLIC protobuf::libprotobuf gRPC::grpc++)
 endfunction()
+
+function(harmos_conformance_protocol target root output)
+    harmos_protocol(${target} "${root}" "${output}" harmos/conformance/v1/fixture.proto)
+endfunction()

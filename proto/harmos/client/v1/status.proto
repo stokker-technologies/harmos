@@ -40,7 +40,7 @@ message StatusGetResponse {
 // Carries the read boundary for Status.Watch.
 message StatusWatchRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-  harmos.v1.Position at = 1;
+  optional harmos.v1.Position at = 1;
 }
 
 // Returns a current host health observation and its issued status boundary.

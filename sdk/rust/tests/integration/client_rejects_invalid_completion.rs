@@ -203,26 +203,26 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     // Refuse Missing, Duplicate, Post-Terminal And Undeclared Item Frames.
     for kind in 0..4 {
         let request = JobsStartRequest { value: kind.to_string() };
-        let mut running = client.start(&method, Request::new(request)).await.unwrap();
+        let mut running = client.start(&method, request).await.unwrap();
         let error = running.next().await.unwrap_err();
         assert_eq!(error.code(), tonic::Code::DataLoss);
         assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
     }
 
     // Refuse Unknown Envelope Variants And Honor Protobuf's Last Oneof Variant.
-    let running = client.start(&method, Request::new(JobsStartRequest { value: "6".into() })).await.unwrap();
+    let running = client.start(&method, JobsStartRequest { value: "6".into() }).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
-    let running = client.start(&method, Request::new(JobsStartRequest { value: "7".into() })).await.unwrap();
+    let running = client.start(&method, JobsStartRequest { value: "7".into() }).await.unwrap();
     assert!(running.join().await.is_ok());
 
     // Preserve A Terminal gRPC Status And Its Binary Details.
-    let running = client.start(&method, Request::new(JobsStartRequest { value: "4".into() })).await.unwrap();
+    let running = client.start(&method, JobsStartRequest { value: "4".into() }).await.unwrap();
     let error = running.join().await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::PermissionDenied);
     assert_eq!(error.details(), b"evidence");
 
     // Refuse A Frame Larger Than The Consumer's Wire Budget.
-    let running = client.start(&method, Request::new(JobsStartRequest { value: "5".into() })).await.unwrap();
+    let running = client.start(&method, JobsStartRequest { value: "5".into() }).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::OutOfRange);
 
     // Close The Peer After Every Response Has Settled.

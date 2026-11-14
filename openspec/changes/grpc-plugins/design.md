@@ -861,3 +861,35 @@ Guest migration (7.1) follows Guest Lifecycle and Child Control above. Windows g
 
 The built-in visibility mapping awaits confirmation in `operation-visibility`; retaining the
 hand-maintained downsampling kernels awaits confirmation in `facility-trim`.
+
+## SDK Call-Style Source Inventory
+
+The call-style replacement owns all four SDKs, their generators and conformance/client
+fixtures, example client/plugin consumers and SDK guides. Its protocol edits mark optional
+read cuts/pages and the Plugins.Watch selector. Regeneration also updates protocol output.
+Minimal non-storage runtime consumers adapt that selector and the generated SDK calls;
+storage/query implementations remain with their separate owner. Manifests, locks, formatter
+configuration and generated-file inventories are included. Commits remain local.
+
+Required fields flatten positionally; optional fields and retry identity use optional
+arguments/options. Exactly one response field projects its payload; empty/multiple-field
+responses retain their envelope and metadata. Status.Get contains both status and resolved_at.
+It therefore stays wrapped under that rule pending the owner's decision about a direct
+HostStatus return. Public type ownership is root/shared, client and plugin; C# names its
+boundary namespaces Clients and Plugins to avoid the root Client class collision.
+
+The optional-marker edits are:
+
+| Protocol Input | Fields |
+| --- | --- |
+| `proto/harmos/client/v1/access/pairings.proto` | PairingsListRequest.at |
+| `proto/harmos/client/v1/plugins.proto` | Get/List/Watch read cuts; Watch.name |
+| `proto/harmos/client/v1/plugins/settings.proto` | SettingsListRequest.at |
+| `proto/harmos/client/v1/status.proto` | Get/Watch read cuts |
+| `proto/harmos/client/v1/status/logs.proto` | List.at/page; Watch.at |
+| `proto/harmos/client/v1/status/trace_events.proto` | List.at/page; Watch.at |
+| `proto/harmos/plugin/host/v1/settings.proto` | SettingsListRequest.at |
+
+Product binding acceptance retains static consumer typing and aggregate round-trip proof;
+the superseded snapshot of a public module's private wire imports is removed. Wire modules
+and their request aliases now stay behind the generated private binding module.
