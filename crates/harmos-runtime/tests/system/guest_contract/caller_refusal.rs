@@ -72,9 +72,7 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
     let runtime = Arc::new(runtime);
     entries.start(&runtime).await.unwrap();
     let host = support::host(&runtime);
-    let mut settings = support::settings("caller-refusal");
-    settings.host_operations.push(harmos_runtime::Identifier::new("harmos.host.v1.Time/Get").unwrap());
-    runtime.plugin.register_guest(host.load(&support::sandbox()).unwrap(), settings, lane).await.unwrap();
+    runtime.plugin.register_guest(host.load(&support::sandbox()).unwrap(), support::settings("caller-refusal"), lane).await.unwrap();
     runtime.plugin.initialize().await.unwrap();
 
     // The Real WebAssembly Import Returns the Same Failure as the Native Carriers.

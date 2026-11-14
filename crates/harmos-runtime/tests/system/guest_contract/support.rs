@@ -306,7 +306,7 @@ pub fn host(runtime: &Runtime<Bank>) -> Host<Bank> {
 pub fn settings(configuration: &str) -> PluginSettings {
     PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["example.host.v1.Progress/Publish", "provider.echo"]
+        host_operations: ["example.host.v1.Progress/Publish", "provider.echo", "harmos.host.v1.Time/Get"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),
