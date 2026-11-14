@@ -11,10 +11,6 @@
 
 /* === Modules === */
 
-#[path = "../support/clock.rs"]
-#[allow(dead_code)]
-mod clock;
-
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -27,6 +23,7 @@ use arrow_array::{Array, Int64Array, RecordBatch, UInt64Array};
 
 // Local Imports
 use super::manager::fixture::{self, Fixture};
+use crate::clock;
 use harmos_domain::model::storage::query::{Query, RecordSelection, RowSlice, Source, StreamSelection, TimeMerge, TimeMergeMode};
 use harmos_domain::model::storage::{PayloadEncoding, ReadLimits, RecordInput, SchemaKey, StreamInput};
 use harmos_domain::schema::{

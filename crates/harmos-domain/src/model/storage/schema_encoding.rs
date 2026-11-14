@@ -177,10 +177,12 @@ fn invalid() -> Error {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use super::*;
     use crate::config::SchemaSettings;
-    use crate::model::storage::StoreHistory;
-    use crate::schema::{graph::Schema, identity, json::JsonCodec};
+    use crate::model::storage::{PayloadEncoding, StoreHistory};
+    use crate::schema::{Described as SchemaDescribed, graph::Schema, identity, json::JsonCodec};
     use crate::{Described, Identifier};
 
     #[derive(Serialize, Described)]
@@ -192,7 +194,7 @@ mod tests {
 
     #[test]
     fn stored_schema_retains_serde_representation() {
-        let schema = Schema::from_declaration(<Stored as crate::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
+        let schema = Schema::from_declaration(<Stored as SchemaDescribed>::DEFINITION, &SchemaSettings::default()).unwrap();
         let revision = identity::revision(&schema).unwrap();
         let position = StorageCursor {
             history: StoreHistory {
@@ -203,8 +205,8 @@ mod tests {
         };
         let key = SchemaKey {
             id: Identifier::new("record").unwrap(),
-            version: std::num::NonZeroU32::new(revision).unwrap(),
-            payload_encoding: crate::PayloadEncoding::PostcardV1,
+            version: NonZeroU32::new(revision).unwrap(),
+            payload_encoding: PayloadEncoding::PostcardV1,
         };
         let stored = StorageSchema::new(position, key, schema);
         let bytes = serde_json::to_vec(&stored).unwrap();

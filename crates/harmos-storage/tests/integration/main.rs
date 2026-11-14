@@ -10,6 +10,9 @@
 /* === Modules === */
 
 mod cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection;
+#[path = "../support/clock.rs"]
+#[allow(dead_code, reason = "shared with runtime deadline stories")]
+mod clock;
 mod columnar_snapshot;
 mod conditional_objects;
 mod directory;
