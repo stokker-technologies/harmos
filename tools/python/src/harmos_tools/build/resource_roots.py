@@ -1880,8 +1880,8 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
         if operations:
             lines += ["  std::shared_ptr<grpc::Channel> channel;"]
         lines += [f"  {names[child]} {child[-1]};" for child in children]
-        initializers = (["channel(channel)"] if operations else []) + [f"{child[-1]}(channel)" for child in children]
-        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
+        initializers = (["channel(transport)"] if operations else []) + [f"{child[-1]}(transport)" for child in children]
+        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> transport) : {', '.join(initializers)} {{}}"]
         if not node:
             lines += [
                 "  static Client connect(std::string address, const ::harmos::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",

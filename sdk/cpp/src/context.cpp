@@ -304,15 +304,15 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
     try {
       Context parent(caller);
       auto started = policy.has_timeout() ? parent.now() : Timestamp{};
-      for (uint64_t attempt = 0; attempt < attempts; ++attempt) {
-        if (attempt >= UINT32_MAX)
+      for (uint64_t attempt_index = 0; attempt_index < attempts; ++attempt_index) {
+        if (attempt_index >= UINT32_MAX)
           throw invalid_argument("Invoke " + operation.contract.id() + ": Attempt Identity Exhausted");
         auto local = std::make_shared<detail::Invocation>();
         local->transport = root;
         local->caller = caller;
         local->request = caller->request;
         local->request.set_operation(operation.contract.id());
-        local->request.set_attempt(static_cast<uint32_t>(attempt + 1));
+        local->request.set_attempt(static_cast<uint32_t>(attempt_index + 1));
         local->plugin = caller->plugin;
         local->requirements = caller->requirements;
         local->local = caller->local;
@@ -397,9 +397,9 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
         } catch (const Failure &failure) {
           cancel_owned(local, "Local Attempt Settled", wire::CLASSIFICATION_CANCELLED);
           cancel_owned(guard, "Policy Guard Settled", wire::CLASSIFICATION_CANCELLED);
-          if (failure.value.classification() != wire::CLASSIFICATION_TRANSIENT || attempt + 1 == attempts)
+          if (failure.value.classification() != wire::CLASSIFICATION_TRANSIENT || attempt_index + 1 == attempts)
             throw;
-          auto delay = retry_delay(policy.retries(), attempt);
+          auto delay = retry_delay(policy.retries(), attempt_index);
           if (policy.has_timeout()) {
             auto remaining = policy.timeout() - (parent.now() - started);
             if (remaining < Duration{})
@@ -441,15 +441,15 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
     if (!state_->background)
       if (auto reason = cancellation(state_))
         throw Failure(interrupted(state_, wire::CLASSIFICATION_CANCELLED, *reason));
-    auto found = state_->requirements.find(request.operation());
-    if (found == state_->requirements.end() || found->second != request.fingerprint())
+    auto requirement = state_->requirements.find(request.operation());
+    if (requirement == state_->requirements.end() || requirement->second != request.fingerprint())
       throw invalid_argument("Invoke " + request.operation() + ": Undeclared Requirement");
     if (root->next == UINT64_MAX)
       throw TransportError(8, "Invoke " + request.operation() + ": Child Identity Exhausted");
     request.set_call(++root->next);
     request.set_background(state_->background);
-    auto &promise = root->pending[request.call()];
-    result = promise.get_future().share();
+    auto &pending = root->pending[request.call()];
+    result = pending.get_future().share();
     state_->owned.insert(request.call());
     if (state_->background)
       root->guards.insert(request.call());

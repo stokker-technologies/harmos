@@ -76,7 +76,7 @@ public:
   map<string, string> requirements;
   unique_ptr<Server> server;
   shared_ptr<Channel> channel;
-  mutex mutex;
+  mutex samples_mutex;
   condition_variable changed;
   size_t opened = 0;
   size_t closed = 0;
@@ -111,7 +111,7 @@ public:
   ~SamplesHost() {
     server->Shutdown();
     server->Wait();
-    unique_lock lock(mutex);
+    unique_lock lock(samples_mutex);
     changed.wait(lock, [&] {
       return opened == closed;
     });
@@ -119,11 +119,11 @@ public:
   ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
     auto *call = new authoring::detail::PublicationCall(streams, operations, requirements, "example");
     {
-      lock_guard lock(mutex);
+      lock_guard lock(samples_mutex);
       ++opened;
     }
     call->settled = [this] {
-      lock_guard lock(mutex);
+      lock_guard lock(samples_mutex);
       ++closed;
       changed.notify_all();
     };

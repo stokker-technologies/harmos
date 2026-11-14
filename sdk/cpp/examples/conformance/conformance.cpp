@@ -338,9 +338,10 @@ authoring::Plugin fixture_types::plugin() {
     const auto echoed = context.call(echo, value(context.scope())).get();
     sdk::TimeGetResponse time;
     *time.mutable_now() = context.host().time.get();
-    const auto settings = context.host().plugins.settings.list();
+    const auto setting_values = context.host().plugins.settings.list();
     string bytes;
-    for (const auto &reply : {authoring::detail::encode(echoed), authoring::detail::encode(time), authoring::detail::encode(settings)}) {
+    for (const auto &reply :
+         {authoring::detail::encode(echoed), authoring::detail::encode(time), authoring::detail::encode(setting_values)}) {
       const auto length = static_cast<uint32_t>(reply.size());
       for (unsigned index = 0; index < 4; ++index)
         bytes += static_cast<char>(length >> (8 * index));

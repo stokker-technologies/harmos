@@ -31,7 +31,7 @@ using grpc::InsecureServerCredentials;
 using grpc::ServerBuilder;
 using grpc::ServerContext;
 using grpc::ServerUnaryReactor;
-using grpc::ServerWriter;
+using grpc::ServerWriteReactor;
 using grpc::StatusCode;
 using std::string;
 
@@ -69,16 +69,37 @@ struct Jobs final : application_wire::Jobs::Service {
     return RpcStatus::OK;
   }
 };
-struct Progress final : application_wire::jobs::Progress::Service {
-  RpcStatus Watch(ServerContext *, const application_wire::jobs::ProgressWatchRequest *request,
-                  ServerWriter<application_wire::jobs::ProgressWatchResponse> *output) override {
-    for (const auto *phase : {"opened:", "finished:"}) {
-      application_wire::jobs::ProgressWatchResponse response;
-      response.set_value(string(phase) + request->value());
-      if (!output->Write(response))
-        return {StatusCode::CANCELLED, "Watch: Demand Closed"};
+class ProgressWatch final : public ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> {
+  application_wire::jobs::ProgressWatchResponse response_;
+  string value_;
+  bool finished_ = false;
+
+public:
+  explicit ProgressWatch(string value) : value_(std::move(value)) {
+    response_.set_value("opened:" + value_);
+    StartWrite(&response_);
+  }
+  void OnWriteDone(bool ok) override {
+    if (!ok) {
+      Finish({StatusCode::CANCELLED, "Watch: Demand Closed"});
+      return;
     }
-    return RpcStatus::OK;
+    if (finished_) {
+      Finish(RpcStatus::OK);
+      return;
+    }
+    response_.set_value("finished:" + value_);
+    finished_ = true;
+    StartWrite(&response_);
+  }
+  void OnDone() override {
+    delete this;
+  }
+};
+struct Progress final : application_wire::jobs::Progress::CallbackService {
+  ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> *
+  Watch(CallbackServerContext *, const application_wire::jobs::ProgressWatchRequest *request) override {
+    return new ProgressWatch(request->value());
   }
 };
 struct Annotations final : application_wire::plugins::Annotations::Service {

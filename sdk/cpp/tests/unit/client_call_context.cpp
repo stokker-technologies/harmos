@@ -106,7 +106,10 @@ TEST_CASE("One call preserves metadata deadline override and cancellation") {
     auto context = std::make_shared<ClientContext>();
     context->AddMetadata("authorization", "Bearer fixture");
     context->set_deadline(chrono::system_clock::time_point(chrono::seconds(4102444800)));
-    auto watching = client.jobs.progress.watch("selection", {.context = context});
+    fixture::client::JobsProgressWatchOptions options{.context = context};
+    const auto forwarded = options;
+    REQUIRE(forwarded.context == options.context);
+    auto watching = client.jobs.progress.watch("selection", forwarded);
     REQUIRE(watching.next() == "Bearer fixture:deadline");
     watching.cancel();
     REQUIRE_THROWS_AS(watching.next(), runtime_error);

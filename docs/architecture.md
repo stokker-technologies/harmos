@@ -1241,6 +1241,16 @@ overrides. No SDK invents a default deadline; operation policy owns it. Plugin h
 use `Context.host` (`host()` in Rust/C++) for typed Time, Plugins.Settings, Operations and
 Invocations calls, declaring their requirements with `HostOperation`.
 
+Rust `CallOptions` implements `Clone` and `Debug`; a clone retains metadata and the
+explicit timeout override for forwarding through generated clients. Python passes
+metadata and timeout values as keyword arguments, C# uses the copyable gRPC
+`CallOptions` struct, and C++ generated options are copyable values sharing their
+caller-owned `ClientContext`; the C# and C++ copies retain the same cancellation owner.
+Rust client and native protobuf session futures support `Send` for spawned tasks.
+Plugin handler futures run on the SDK's local executor and may use non-Send local state.
+Encoded settlement owns a cloned instance control handle, so it does not borrow
+the invocation's boxed response future across suspension.
+
 A response with exactly one declared field returns that field, including a repeated
 collection. Streaming calls project every item by the same rule. Missing singular message
 payloads refuse the read. Empty and multiple-field responses retain their response type:

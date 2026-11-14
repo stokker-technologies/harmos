@@ -266,8 +266,6 @@ def main() -> None:
     sys.stdout.write(result.stdout)
     (directory / "configure.log").write_text(result.stdout, encoding="utf-8")
     result.check_returncode()
-    if options.check:
-        return
     if options.generate:
         for path in (directory / "generated").rglob("*.pb.*"):
             path.unlink()
@@ -290,6 +288,40 @@ def main() -> None:
     print("\n".join(lines[-40:] if result.returncode else lines[-5:]))
     print(f"C++ Configure and Build: {time.perf_counter() - started:.1f} s; Complete Compiler Output: {log}", flush=True)
     result.check_returncode()
+    if options.check:
+        # Visual Studio's Clang Frontend Checks the Native Compile Commands Too.
+        if os.name == "nt":
+            clang = Path(child_environment["VCINSTALLDIR"]) / "Tools/Llvm/bin/clang-tidy.exe"
+            if not clang.is_file():
+                raise RuntimeError("Check C++ Shadowing: install the Visual Studio C++ Clang tools component")
+            commands = json.loads((directory / "compile_commands.json").read_text(encoding="utf-8"))
+            # Translate the MSVC-Only Preprocessor Flag for the Clang Frontend.
+            for command in commands:
+                command["command"] = command["command"].replace(" /Zc:preprocessor", "")
+            clang_directory = directory / "clang"
+            clang_directory.mkdir(exist_ok=True)
+            (clang_directory / "compile_commands.json").write_text(json.dumps(commands), encoding="utf-8")
+            sources = sorted({entry["file"] for entry in commands if Path(entry["file"]).suffix == ".cpp"})
+            subprocess.run(
+                [
+                    str(clang),
+                    "--checks=-*,clang-diagnostic-*,clang-analyzer-core.CallAndMessage",
+                    "--extra-arg=-Wshadow",
+                    "--extra-arg=-Wshadow-all",
+                    "--extra-arg=-Werror=shadow",
+                    "--extra-arg=-Werror=shadow-all",
+                    "--extra-arg=-D_CRT_USE_BUILTIN_OFFSETOF",
+                    "-p",
+                    str(clang_directory),
+                    *sources,
+                ],
+                env=child_environment,
+                check=True,
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+                creationflags=spawn_flags(),
+            )
+        return
 
     # Install the SDK Before Any Compile-Contract Consumer Runs.
     if not options.generate:
