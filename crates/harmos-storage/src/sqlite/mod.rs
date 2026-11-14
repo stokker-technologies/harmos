@@ -33,9 +33,10 @@ use tokio::sync::Mutex;
 use crate::query::columnar::{ArrowPage, ArrowScan, Cancellation, StorageCapabilities};
 use crate::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use crate::{
-    BackendFailure, BackendSnapshot, Error, FileCheckpoint, FileChunk, FileMetadata, FilePhase, FileProgress, FileReference,
-    MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey, ObjectPoint, ReadLimits, Result, ScanPage, SchemaKey, StagedFile,
-    StorageBackend, StorageBatch, StorageCursor, StorageFuture, StorageSchema, StoreHistory, StoredRecord, StoredRow,
+    BackendFailure, BackendSnapshot, Error, FileCheckpoint, FileChunk, FileMetadata, FilePhase, FileProgress, FileReference, Identifier,
+    IdentityKind, IdentitySelection, MemorySize, MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey, ObjectPoint, ReadLimits, Result,
+    ScanPage, SchemaKey, StagedFile, StorageBackend, StorageBatch, StorageCursor, StorageFuture, StorageSchema, StoreHistory,
+    StoredIdentity, StoredRecord, StoredRow,
 };
 
 /* === Constants === */
@@ -321,6 +322,12 @@ impl StorageBackend for SqliteBackend {
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         let (snapshot, selection) = (snapshot.clone(), selection.clone());
         Box::pin(self.call(move |state| rows::list_samples(state, &snapshot, &selection, page)))
+    }
+    fn list_identities<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredIdentity>> {
+        let (snapshot, selection) = (snapshot.clone(), selection.clone());
+        Box::pin(self.call(move |state| rows::list_identities(state, &snapshot, &selection, page)))
     }
     fn list_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
