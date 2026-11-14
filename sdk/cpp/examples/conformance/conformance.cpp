@@ -198,7 +198,7 @@ authoring::Plugin fixture_types::plugin() {
                    }).visibility(sdk::VISIBILITY_PUBLIC));
 
   plugin.requires_operation(authoring::HostOperation::TimeSleep).requires_operation(authoring::HostOperation::TimeGet);
-  plugin.requires_operation(authoring::HostOperation::SettingsList);
+  plugin.requires_operation(authoring::HostOperation::PluginsSettingsList);
   plugin.requires_operation(authoring::HostOperation::OperationsList).requires_operation(authoring::HostOperation::OperationsGet);
   plugin.operation(ValueOperation("conformance.clock", sdk::VISIBILITY_PUBLIC, [](Context &ctx, Value) {
                      const auto before = ctx.host().time.get();
@@ -268,7 +268,7 @@ authoring::Plugin fixture_types::plugin() {
       .requires_operation(peer_local)
       .requires_operation(own_protected);
   plugin.operation(ValueOperation("conformance.settings_read", sdk::VISIBILITY_PUBLIC, [](Context &context, Value) {
-    return value(authoring::detail::encode(context.host().settings.list().value()));
+    return value(authoring::detail::encode(context.host().plugins.settings.list().value()));
   }));
   plugin.operation(ValueOperation("conformance.discover", sdk::VISIBILITY_PUBLIC, [](Context &context, Value) {
     const auto listed = context.host().operations.list();
@@ -332,9 +332,9 @@ authoring::Plugin fixture_types::plugin() {
   authoring::Stream<Value> calls("conformance.tick_context");
   authoring::Observer<Value> call_observer(calls, [echo](Context &context) {
     const auto echoed = context.call(echo, value(context.scope())).get();
-    authoring::TimeGetResponse time;
+    sdk::TimeGetResponse time;
     *time.mutable_now() = context.host().time.get();
-    const auto settings = context.host().settings.list();
+    const auto settings = context.host().plugins.settings.list();
     string bytes;
     for (const auto &reply : {authoring::detail::encode(echoed), authoring::detail::encode(time), authoring::detail::encode(settings)}) {
       const auto length = static_cast<uint32_t>(reply.size());

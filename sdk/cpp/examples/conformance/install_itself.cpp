@@ -102,7 +102,7 @@ int install_itself(int argc, char **argv) {
   data.replace(0, 5, "hello");
   Value request;
   request.set_value(data);
-  const auto reply = client.invocations.invoke(operation, fingerprint, request.SerializeAsString());
+  const auto reply = client.invocations.create(operation, fingerprint, request.SerializeAsString());
   Value response;
   if (!response.ParseFromString(reply)) {
     throw runtime_error("Invoke example.echo: Invalid Response");

@@ -21,7 +21,7 @@
 #include "samples.hpp"
 
 namespace authoring = harmos::plugin;
-namespace host_wire = harmos::plugin::host::v1;
+namespace host_wire = harmos::host::v1;
 namespace sdk = harmos;
 using google::protobuf::Message;
 using grpc::CallbackServerContext;
@@ -95,7 +95,7 @@ public:
                                   .requires_operation(echo)
                                   .requires_operation(watching)
                                   .requires_operation(authoring::HostOperation::TimeGet)
-                                  .requires_operation(authoring::HostOperation::SettingsList)
+                                  .requires_operation(authoring::HostOperation::PluginsSettingsList)
                                   .declarations();
     for (const auto &requirement : declarations.requires_())
       requirements[requirement.id()] = requirement.fingerprint();
@@ -226,6 +226,8 @@ TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
     const auto settings = context.settings();
     auto watch = context.watch(watching, value(context.scope()), 4096);
     string result = std::to_string(now.seconds()) + settings.value().values().at("label").text();
+    result += settings.declarations(0).name() + settings.revision();
+    result += std::to_string(settings.resolved_at().positions(0).sequence());
     while (auto item = watch.next())
       result += item->value();
     return authoring::detail::encode(value(result));
@@ -233,14 +235,19 @@ TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
   Samples samples(host);
   samples.tick(10);
   auto child = samples.read();
-  REQUIRE(child.child().operation() == "harmos.plugin.host.v1.Time/Get");
+  REQUIRE(child.child().operation() == "harmos.host.v1.Time/Get");
   host_wire::TimeGetResponse now;
   now.mutable_now()->set_seconds(42);
   samples.reply(child.child().call(), now);
   child = samples.read();
-  REQUIRE(child.child().operation() == "harmos.plugin.host.v1.Settings/List");
-  host_wire::SettingsListResponse settings;
+  REQUIRE(child.child().operation() == "harmos.host.v1.plugins.Settings/List");
+  const auto request = authoring::decode<host_wire::plugins::SettingsListRequest>(child.child().payload());
+  REQUIRE_FALSE(request.has_name());
+  host_wire::plugins::SettingsListResponse settings;
   (*settings.mutable_value()->mutable_values())["label"].set_text("configured");
+  settings.add_declarations()->set_name("label");
+  settings.set_revision("revision");
+  settings.mutable_resolved_at()->add_positions()->set_sequence(17);
   samples.reply(child.child().call(), settings);
   child = samples.read();
   REQUIRE(child.child().watch());
@@ -254,7 +261,7 @@ TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
   REQUIRE(samples.stream->Write(item));
   REQUIRE(samples.read().child_demand().call() == call);
   samples.reply(call, Value{});
-  REQUIRE(authoring::decode<Value>(samples.read().samples(0).row()).value() == "42configureditem");
+  REQUIRE(authoring::decode<Value>(samples.read().samples(0).row()).value() == "42configuredlabelrevision17item");
   REQUIRE(samples.finish().ok());
 }
 

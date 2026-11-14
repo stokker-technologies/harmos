@@ -18,18 +18,20 @@
 #include <grpc/grpc.h>
 
 // Local Imports
+#include "client.hpp"
 #include "generated/types.hpp"
 #include "harmos/_generated/client.hpp"
 #include "harmos/harmos.hpp"
-#include "harmos/plugin/host/v1/time.pb.h"
+#include "harmos/host/v1/time.pb.h"
 
 namespace authoring = harmos::plugin;
-namespace host_wire = harmos::plugin::host::v1;
+namespace host_wire = harmos::host::v1;
 namespace sdk = harmos;
 using google::protobuf::DescriptorPool;
 using google::protobuf::Duration;
 using google::protobuf::SimpleDescriptorDatabase;
 using std::invalid_argument;
+using std::string;
 
 /* === Macros === */
 
@@ -43,7 +45,28 @@ using Value = harmos::conformance::Value;
 
 /* === Templates === */
 
+template <class T>
+concept ReadsTime = requires(T root) { root.time.get(); };
+template <class T>
+concept CreatesInvocation = requires(T root) { root.invocations.create(string{}, string{}, string{}); };
+template <class T>
+concept ListsSettings = requires(T root) { root.plugins.settings.list(); };
+template <class T>
+concept SetsSettings = requires(T root) { root.plugins.settings.set(string{}, sdk::SettingValues{}, string{}); };
+
 /* === Public Functions === */
+
+TEST_CASE("Caller Options Select SDK Surfaces and Composition Narrows Them") {
+  REQUIRE(ReadsTime<sdk::Client>);
+  REQUIRE(ReadsTime<authoring::HostRoot>);
+  REQUIRE_FALSE(ReadsTime<fixture::Client>);
+  REQUIRE(CreatesInvocation<sdk::Client>);
+  REQUIRE_FALSE(CreatesInvocation<authoring::HostRoot>);
+  REQUIRE(ListsSettings<sdk::Client>);
+  REQUIRE(ListsSettings<authoring::HostRoot>);
+  REQUIRE(SetsSettings<sdk::Client>);
+  REQUIRE_FALSE(SetsSettings<authoring::HostRoot>);
+}
 
 TEST_CASE("A declarations refuses duplicate operations") {
   SECTION("Duplicate Registrations Are Refused") {
@@ -97,8 +120,8 @@ TEST_CASE("A declarations preserves typed sections and their dependencies") {
       REQUIRE(database.Add(file));
     }
     DescriptorPool pool(&database);
-    for (const auto *name : {"harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse",
-                             "harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse"}) {
+    for (const auto *name : {"harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse", "harmos.host.v1.TimeGetRequest",
+                             "harmos.host.v1.TimeGetResponse"}) {
       REQUIRE(pool.FindMessageTypeByName(name));
     }
     REQUIRE(pool.FindMessageTypeByName(declarations.sections(0).type()));
@@ -113,7 +136,7 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   interval.set_name("interval");
   interval.mutable_default_()->mutable_duration()->set_seconds(2);
   authoring::Plugin plugin("example", "1.0.0");
-  plugin.setting(flag).setting(interval).requires_operation(authoring::HostOperation::SettingsList);
+  plugin.setting(flag).setting(interval).requires_operation(authoring::HostOperation::PluginsSettingsList);
   const auto declarations = plugin.declarations();
   const auto settings = authoring::decode<sdk::SettingsDeclarations>(declarations.sections(0).payload());
   REQUIRE(settings.values(0).default_().has_flag());
@@ -126,8 +149,8 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   for (const auto &file : declarations.types().file())
     REQUIRE(database.Add(file));
   DescriptorPool pool(&database);
-  REQUIRE(pool.FindMessageTypeByName("harmos.v1.SettingValue"));
-  REQUIRE(pool.FindMessageTypeByName("harmos.plugin.host.v1.SettingsListResponse"));
+  REQUIRE(pool.FindMessageTypeByName("harmos.model.v1.SettingValue"));
+  REQUIRE(pool.FindMessageTypeByName("harmos.host.v1.plugins.SettingsListResponse"));
 }
 
 /* === Private Functions === */

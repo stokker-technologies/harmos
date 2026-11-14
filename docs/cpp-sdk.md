@@ -50,6 +50,9 @@ GitHub persists that cache between runs. Compiler-cache settings are workstation
 `release` and `tests`. Tasks and CI use those presets; editors can select them too.
 Use `mise -C sdk/cpp run build -- --fresh` to reset CMake configuration while
 retaining the installed dependencies and their binary cache.
+For a focused native proof, `mise -C sdk/cpp run build -- --target harmos-cpp-tests`
+compiles only that target and its dependencies; the complete build also produces
+the conformance plugin and runnable examples.
 For direct CMake calls, export `VCPKG_ROOT` to the prepared checkout and activate
 the native compiler environment. `development` builds the shipping libraries;
 `tests` builds Debug libraries, the Catch2 journeys and the conformance plugin;
