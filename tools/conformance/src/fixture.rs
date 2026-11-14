@@ -25,13 +25,16 @@ use prost_types::{DescriptorProto, Duration, FieldDescriptorProto, FileDescripto
 
 // Local Imports
 use crate::conformance::Graph;
-use harmos_protocol::plugin::host::SettingsListRequest;
-use harmos_protocol::v1::*;
+use harmos_protocol::host::plugins::SettingsListRequest;
+use harmos_protocol::model::{
+    Classification, Declarations, Failure, OperationContract, Protobuf, Requirement, Section, SettingDeclaration, SettingValue,
+    SettingValues, SettingsDeclarations, StreamDeclaration, Visibility, setting_value,
+};
 
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.plugin.host.v1.Time/Sleep", "harmos.plugin.host.v1.Time/Get"];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.host.v1.Time/Sleep", "harmos.host.v1.Time/Get"];
 
 pub const TICK_STREAMS: &[&str] = &[
     "conformance.tick_children",
@@ -39,18 +42,16 @@ pub const TICK_STREAMS: &[&str] = &[
     "conformance.tick_failure",
     "conformance.tick_watch",
     "conformance.tick_cancel",
+    "conformance.tick_caller_refusal",
 ];
 pub const HOST_OPERATIONS: &[(&str, &str, &str)] = &[
-    ("harmos.plugin.host.v1.Settings/List", "harmos.plugin.host.v1.SettingsListRequest", "harmos.plugin.host.v1.SettingsListResponse"),
-    (
-        "harmos.plugin.host.v1.Operations/List",
-        "harmos.plugin.host.v1.OperationsListRequest",
-        "harmos.plugin.host.v1.OperationsListResponse",
-    ),
-    ("harmos.plugin.host.v1.Operations/Get", "harmos.plugin.host.v1.OperationsGetRequest", "harmos.plugin.host.v1.OperationsGetResponse"),
+    ("harmos.host.v1.Invocations/Create", "harmos.host.v1.InvocationsCreateRequest", "harmos.host.v1.InvocationsCreateResponse"),
+    ("harmos.host.v1.plugins.Settings/List", "harmos.host.v1.plugins.SettingsListRequest", "harmos.host.v1.plugins.SettingsListResponse"),
+    ("harmos.host.v1.Operations/List", "harmos.host.v1.OperationsListRequest", "harmos.host.v1.OperationsListResponse"),
+    ("harmos.host.v1.Operations/Get", "harmos.host.v1.OperationsGetRequest", "harmos.host.v1.OperationsGetResponse"),
 ];
 
-pub const ROW: &str = "harmos.conformance.v1.Value";
+pub const ROW: &str = "conformance.model.v1.Value";
 
 /* === Macros === */
 
@@ -83,8 +84,8 @@ pub fn timestamp(seconds: i64) -> Timestamp {
 pub fn types() -> FileDescriptorSet {
     FileDescriptorSet {
         file: vec![FileDescriptorProto {
-            name: Some("harmos/conformance/v1/fixture.proto".into()),
-            package: Some("harmos.conformance.v1".into()),
+            name: Some("conformance/model/v1/fixture.proto".into()),
+            package: Some("conformance.model.v1".into()),
             syntax: Some("proto3".into()),
             message_type: vec![DescriptorProto {
                 name: Some("Value".into()),
@@ -120,10 +121,10 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
         .unwrap();
     }
     if CLOCK_OPERATIONS.contains(&id) {
-        let (request, response) = if id == "harmos.plugin.host.v1.Time/Sleep" {
-            ("harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse")
+        let (request, response) = if id == "harmos.host.v1.Time/Sleep" {
+            ("harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse")
         } else {
-            ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse")
+            ("harmos.host.v1.TimeGetRequest", "harmos.host.v1.TimeGetResponse")
         };
         return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::declarations_types(), request, response)
             .expect("clock contract");
@@ -134,8 +135,11 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
 pub fn host_types() -> FileDescriptorSet {
     let pool = SettingsListRequest::default().descriptor().parent_pool().clone();
     let types = FileDescriptorSet::decode(pool.encode_to_vec().as_slice()).expect("generated host descriptors");
-    let names: Vec<_> =
-        HOST_OPERATIONS.iter().flat_map(|(_, request, response)| [*request, *response]).chain(["harmos.v1.SettingsDeclarations"]).collect();
+    let names: Vec<_> = HOST_OPERATIONS
+        .iter()
+        .flat_map(|(_, request, response)| [*request, *response])
+        .chain(["harmos.model.v1.SettingsDeclarations"])
+        .collect();
     harmos_protocol::schema::operation_types(&types, &names).expect("typed host projections")
 }
 
@@ -232,9 +236,9 @@ pub fn declarations() -> Declarations {
         })
         .collect();
     for (id, request, response) in [
-        ("conformance.schema", "harmos.conformance.v1.Graph", "harmos.conformance.v1.Graph.Nested"),
-        ("conformance.nested", "harmos.conformance.v1.Graph.Nested", "harmos.conformance.v1.Graph"),
-        ("conformance.projected", "harmos.conformance.v1.Graph", ROW),
+        ("conformance.schema", "conformance.model.v1.Graph", "conformance.model.v1.Graph.Nested"),
+        ("conformance.nested", "conformance.model.v1.Graph.Nested", "conformance.model.v1.Graph"),
+        ("conformance.projected", "conformance.model.v1.Graph", ROW),
     ] {
         operations.push(OperationContract {
             id: id.into(),
@@ -258,7 +262,7 @@ pub fn declarations() -> Declarations {
         fingerprint: harmos_protocol::schema::fingerprint(
             "conformance.host.schema",
             &crate::conformance::types(),
-            "harmos.conformance.v1.Graph",
+            "conformance.model.v1.Graph",
             ROW,
         )
         .expect("fixture requirement resolves"),
@@ -305,7 +309,7 @@ pub fn declarations() -> Declarations {
             fingerprint: fingerprint(id),
         });
     }
-    for id in ["conformance.settings_read", "conformance.discover"] {
+    for id in ["conformance.settings_read", "conformance.discover", "conformance.caller_refusal"] {
         operations.push(OperationContract {
             id: id.into(),
             request: ROW.into(),
@@ -347,7 +351,7 @@ pub fn declarations() -> Declarations {
         types: Some(types),
         sections: vec![
             Section {
-                r#type: "harmos.conformance.v1.Graph".into(),
+                r#type: "conformance.model.v1.Graph".into(),
                 payload: Graph {
                     interval: Some(Duration { seconds: 2, nanos: 0 }),
                     ..Default::default()
@@ -355,7 +359,7 @@ pub fn declarations() -> Declarations {
                 .encode_to_vec(),
             },
             Section {
-                r#type: "harmos.v1.SettingsDeclarations".into(),
+                r#type: "harmos.model.v1.SettingsDeclarations".into(),
                 payload: settings_declarations().encode_to_vec(),
             },
         ],

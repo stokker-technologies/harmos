@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[[libraries]]
+descriptors = "../../../../crates/harmos-protocol/src/descriptors.bin"
+packages = ["harmos.model.v1", "harmos.host.v1", "harmos.plugin.v1"]
+
+[callers]
+"harmos.host.v1.Time/Get" = "PLUGINS"

@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod callers;
 #[path = "../../../sdk/rust/tests/fixtures/conformance/wire.rs"]
 pub mod conformance;
 mod error;

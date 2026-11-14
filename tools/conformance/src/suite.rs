@@ -34,23 +34,24 @@ use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
 use crate::{Error, Result, fixture};
+use harmos_protocol::plugin::{child_response, response};
 use harmos_protocol::plugin::{
     instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
 };
-use harmos_protocol::v1::{child_response, response};
 
-use harmos_protocol::plugin::host::{
-    OperationsGetRequest, OperationsGetResponse, OperationsListResponse, SettingsListResponse, TimeGetResponse, TimeSleepRequest,
+use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListResponse, TimeGetResponse, TimeSleepRequest};
+use harmos_protocol::model::{
+    Classification, DiscoveredContract, DiscoveredOperation, Failure, OperationPolicy, SettingValues, SettingsDeclarations, Visibility,
+};
+use harmos_protocol::model::{RetryPolicy, StorageTransferSettings, TransferFraming};
+use harmos_protocol::plugin::{
+    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request, Response, Sample, SamplesSelection, Tick,
 };
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest,
 };
-use harmos_protocol::v1::{
-    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Classification, DiscoveredContract, DiscoveredOperation, Failure,
-    OperationPolicy, Request, Response, Sample, SamplesSelection, SettingValues, SettingsDeclarations, Tick, Visibility,
-};
-use harmos_protocol::v1::{RetryPolicy, StorageTransferSettings, TransferFraming};
 
 /* === Constants === */
 
@@ -87,6 +88,8 @@ pub const CASES: &[&str] = &[
     "Samples Child Calls and Correlation",
     "Samples Child Routing and Failures",
     "Samples Child Lifetime and Refusal",
+    "Client Caller Refusal",
+    "Plugin Caller Refusal",
     "Wire Operation Identities",
     "Message Ceiling Independent of Transfer Chunks",
     "Typed Settings Defaults and Stored Values",
@@ -366,14 +369,15 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"fixture")).await?;
             let echo_reply = fixture::payload(b"scoped");
             samples_reply(&send, echo.call, child_response::Result::Payload(echo_reply.clone())).await?;
-            let clock = samples_child(&mut input, "harmos.plugin.host.v1.Time/Get", &[]).await?;
+            let clock = samples_child(&mut input, "harmos.host.v1.Time/Get", &[]).await?;
             let clock_reply = TimeGetResponse { now: Some(fixture::timestamp(400)) }.encode_to_vec();
             samples_reply(&send, clock.call, child_response::Result::Payload(clock_reply.clone())).await?;
-            let settings = samples_child(&mut input, "harmos.plugin.host.v1.Settings/List", &[]).await?;
+            let settings = samples_child(&mut input, "harmos.host.v1.plugins.Settings/List", &[]).await?;
             let settings_reply = SettingsListResponse {
                 value: Some(fixture::settings_values(true)),
                 revision: vec![2],
                 resolved_at: None,
+                declarations: fixture::settings_declarations().values,
             }
             .encode_to_vec();
             samples_reply(&send, settings.call, child_response::Result::Payload(settings_reply.clone())).await?;
@@ -479,13 +483,14 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        33 | 34 => crate::callers::run(rule, address).await?,
         30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
-        35 => {
+        37 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let section = declarations
                 .sections
                 .iter()
-                .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
+                .find(|section| section.r#type == "harmos.model.v1.SettingsDeclarations")
                 .ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let declarations = SettingsDeclarations::decode(section.payload.as_slice())?;
             require(declarations.values.len() == fixture::settings_values(false).values.len(), "List Settings: Declaration Count Differs")?;
@@ -495,12 +500,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(declared == expected, "List Settings: Typed Defaults Differ")?;
             for stored in [false, true] {
                 let (send, mut input) = invoke(&mut client, "conformance.settings_read", fixture::payload(&[])).await?;
-                child(&mut input, 1, "harmos.plugin.host.v1.Settings/List", &[]).await?;
+                child(&mut input, 1, "harmos.host.v1.plugins.Settings/List", &[]).await?;
                 let values = fixture::settings_values(stored);
                 let reply = SettingsListResponse {
                     value: Some(values.clone()),
                     revision: vec![if stored { 2 } else { 1 }],
                     resolved_at: None,
+                    declarations: fixture::settings_declarations().values,
                 };
                 send_child(&send, 1, child_response::Result::Payload(reply.encode_to_vec())).await?;
                 let response::Result::Payload(payload) = terminal(&mut input).await? else {
@@ -510,9 +516,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(SettingValues::decode(value.value.as_slice())? == values, "List Settings: Values Differ")?;
             }
         }
-        36 => {
+        38 => {
             let (send, mut input) = invoke(&mut client, "conformance.discover", fixture::payload(&[])).await?;
-            child(&mut input, 1, "harmos.plugin.host.v1.Operations/List", &[]).await?;
+            child(&mut input, 1, "harmos.host.v1.Operations/List", &[]).await?;
             let operation = DiscoveredOperation {
                 owner: "host".into(),
                 generation: 7,
@@ -532,7 +538,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )
             .await?;
             let request = OperationsGetRequest { id: "conformance.host.echo".into() };
-            child(&mut input, 2, "harmos.plugin.host.v1.Operations/Get", &request.encode_to_vec()).await?;
+            child(&mut input, 2, "harmos.host.v1.Operations/Get", &request.encode_to_vec()).await?;
             send_child(&send, 2, child_response::Result::Payload(OperationsGetResponse { operation: Some(operation) }.encode_to_vec()))
                 .await?;
             require(
@@ -540,14 +546,14 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 "Discover Operation: Typed Contract Differs",
             )?;
         }
-        34 => {
+        36 => {
             // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.
             let chunk = StorageTransferSettings::default().chunk_bytes() as usize;
             let payload = fixture::payload(&vec![0x5a; chunk + TransferFraming::Bytes as usize]);
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
         }
-        33 => {
+        35 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declare: Missing Declarations".into()))?;
             for operation in &declarations.operations {
                 harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
@@ -881,9 +887,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             drop(send);
             require(terminal(&mut input).await? == response::Result::Payload(fixture::payload(&[255])), "Projected Response Differs")?;
             // Schema Fingerprints / Retain Options, Optional Presence, Recursion and Imports.
-            let actual = harmos_protocol::schema::message_types(types, "harmos.conformance.v1.Graph.Nested")
+            let actual = harmos_protocol::schema::message_types(types, "conformance.model.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            let expected = harmos_protocol::schema::message_types(&crate::conformance::types(), "harmos.conformance.v1.Graph.Nested")
+            let expected = harmos_protocol::schema::message_types(&crate::conformance::types(), "conformance.model.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
             require(actual == expected, "Reachable Schema Definitions Differ")?;
             // Schema Fingerprints / Round Trip a Nested Optional Zero Through the Graph.
@@ -905,8 +911,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 declarations
                     .sections
                     .iter()
-                    .filter(|section| section.r#type != "harmos.v1.SettingsDeclarations")
-                    .eq(expected.sections.iter().filter(|section| section.r#type != "harmos.v1.SettingsDeclarations"))
+                    .filter(|section| section.r#type != "harmos.model.v1.SettingsDeclarations")
+                    .eq(expected.sections.iter().filter(|section| section.r#type != "harmos.model.v1.SettingsDeclarations"))
                     && declarations.streams == expected.streams,
                 "Interval Setting or Section Differs",
             )?;
@@ -922,8 +928,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             let types = declarations.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             for (id, (request, response)) in fixture::CLOCK_OPERATIONS.into_iter().zip([
-                ("harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse"),
-                ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse"),
+                ("harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse"),
+                ("harmos.host.v1.TimeGetRequest", "harmos.host.v1.TimeGetResponse"),
             ]) {
                 let requirement = declarations
                     .requires
@@ -940,9 +946,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Answer Host Clock Calls Without Any Local Timer.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(&[])).await?;
             for (id, operation, payload, reply) in [
-                (1, "harmos.plugin.host.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
-                (2, "harmos.plugin.host.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
-                (3, "harmos.plugin.host.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
+                (1, "harmos.host.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
+                (2, "harmos.host.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
+                (3, "harmos.host.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
             ] {
                 child(&mut input, id, operation, &payload).await?;
                 send_child(&send, id, child_response::Result::Payload(reply)).await?;
@@ -955,7 +961,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         20 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
-            let name = "harmos.conformance.v1.PayloadOnly";
+            let name = "conformance.model.v1.PayloadOnly";
             require(
                 !declarations.operations.iter().any(|item| item.request == name || item.response == name)
                     && !declarations.streams.iter().any(|item| item.row == name)
@@ -1087,7 +1093,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             for mode in [b"deadline".as_slice(), b"overall"] {
                 let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(mode)).await?;
                 for call in 1..=2 {
-                    child(&mut input, call, "harmos.plugin.host.v1.Time/Get", &[]).await?;
+                    child(&mut input, call, "harmos.host.v1.Time/Get", &[]).await?;
                     send_child(
                         &send,
                         call,
@@ -1107,7 +1113,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     let Some(instance_invoke_response::Frame::Child(child)) = frame else {
                         return Err(Error::Invalid("Private Deadline: Expected Clock Child".into()));
                     };
-                    require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
+                    require(child.operation == "harmos.host.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
                     let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
                     if child.background {
                         require(duration == ProtoDuration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
@@ -1163,7 +1169,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(
-                            child.background && child.operation == "harmos.plugin.host.v1.Time/Sleep",
+                            child.background && child.operation == "harmos.host.v1.Time/Sleep",
                             "Private Cancellation Leaked a Local Call",
                         )?;
                         guards.insert(child.call);
@@ -1191,7 +1197,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 duration: Some(ProtoDuration { seconds: 1, nanos: 11 }),
             }
             .encode_to_vec();
-            child(&mut input, 1, "harmos.plugin.host.v1.Time/Sleep", &delay).await?;
+            child(&mut input, 1, "harmos.host.v1.Time/Sleep", &delay).await?;
             send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"2")),
@@ -1207,7 +1213,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(child.fingerprint == fixture::fingerprint(&child.operation), "Private Retry: Clock Fingerprint Differs")?;
-                        if child.operation == "harmos.plugin.host.v1.Time/Get" {
+                        if child.operation == "harmos.host.v1.Time/Get" {
                             send_child(
                                 &send,
                                 child.call,
@@ -1220,7 +1226,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                             )
                             .await?;
                         } else {
-                            require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
+                            require(child.operation == "harmos.host.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
                             let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
                             require(duration == ProtoDuration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
                             if child.background {

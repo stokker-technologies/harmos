@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package application.host.v1.jobs;
+
+import "harmos/model/v1/callers.proto";
+
+option csharp_namespace = "Application.Clients";
+// Reports application job progress.
+service Progress {
+  // Watch job progress.
+  rpc Watch(ProgressWatchRequest) returns (stream ProgressWatchResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+message ProgressWatchRequest {
+  string value = 1;
+}
+message ProgressWatchResponse {
+  string value = 1;
+}

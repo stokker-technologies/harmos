@@ -33,23 +33,23 @@ use tonic::{Request, Response, Status, Streaming};
 // Local Imports
 use crate::conformance::{Graph, graph::Nested};
 use crate::{Result, fixture};
+use harmos_protocol::plugin::{child_response, response};
 use harmos_protocol::plugin::{
     instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
     instance_server::{Instance, InstanceServer},
 };
-use harmos_protocol::v1::{child_response, response};
 
-use harmos_protocol::plugin::host::{
-    OperationsGetRequest, OperationsGetResponse, OperationsListResponse, SettingsListResponse, TimeGetResponse, TimeSleepRequest,
+use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListResponse, TimeGetResponse, TimeSleepRequest};
+use harmos_protocol::model::RetryPolicy;
+use harmos_protocol::model::{Classification, Failure, OperationPolicy};
+use harmos_protocol::plugin::{
+    ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request as InvocationRequest, Response as InvocationResponse, Sample,
+    SamplesSelection,
 };
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
-};
-use harmos_protocol::v1::RetryPolicy;
-use harmos_protocol::v1::{
-    ChildCancel, ChildDemand, ChildRequest, ChildResponse, Classification, Failure, OperationPolicy, Request as InvocationRequest,
-    Response as InvocationResponse, Sample, SamplesSelection,
 };
 
 /* === Constants === */
@@ -201,8 +201,19 @@ async fn invoke(
     output: &mpsc::Sender<StdResult<InstanceInvokeResponse, Status>>,
 ) -> StdResult<(), Status> {
     let result = match request.operation.as_str() {
+        "conformance.caller_refusal" => {
+            send_child(output, 1, "harmos.host.v1.Invocations/Create", crate::callers::request()).await?;
+            let Some(instance_invoke_request::Frame::Child(ChildResponse {
+                call: 1,
+                result: Some(child_response::Result::Failure(failure)),
+            })) = input.message().await?.and_then(|frame| frame.frame)
+            else {
+                return Err(Status::invalid_argument("Invoke Client Operation: Expected Caller Refusal"));
+            };
+            response::Result::Payload(fixture::payload(&failure.encode_to_vec()))
+        }
         "conformance.settings_read" => {
-            send_child(output, 1, "harmos.plugin.host.v1.Settings/List", Vec::new()).await?;
+            send_child(output, 1, "harmos.host.v1.plugins.Settings/List", Vec::new()).await?;
             let Some(instance_invoke_request::Frame::Child(child)) = input.message().await?.and_then(|frame| frame.frame) else {
                 return Err(Status::invalid_argument("List Settings: Expected Reply"));
             };
@@ -216,7 +227,7 @@ async fn invoke(
             ))
         }
         "conformance.discover" => {
-            send_child(output, 1, "harmos.plugin.host.v1.Operations/List", Vec::new()).await?;
+            send_child(output, 1, "harmos.host.v1.Operations/List", Vec::new()).await?;
             let Some(instance_invoke_request::Frame::Child(child)) = input.message().await?.and_then(|frame| frame.frame) else {
                 return Err(Status::invalid_argument("List Operations: Expected Reply"));
             };
@@ -227,7 +238,7 @@ async fn invoke(
                 .map_err(|_| Status::invalid_argument("List Operations: Invalid Inventory"))?;
             let operation = list.operations.first().ok_or_else(|| Status::invalid_argument("List Operations: Missing Contract"))?;
             let id = operation.contract.as_ref().ok_or_else(|| Status::invalid_argument("List Operations: Missing Contract"))?.id.clone();
-            send_child(output, 2, "harmos.plugin.host.v1.Operations/Get", OperationsGetRequest { id: id.clone() }.encode_to_vec()).await?;
+            send_child(output, 2, "harmos.host.v1.Operations/Get", OperationsGetRequest { id: id.clone() }.encode_to_vec()).await?;
             let Some(instance_invoke_request::Frame::Child(child)) = input.message().await?.and_then(|frame| frame.frame) else {
                 return Err(Status::invalid_argument("Get Operation: Expected Reply"));
             };
@@ -313,7 +324,7 @@ async fn invoke(
             let value = fixture::Value::decode(request.payload.as_slice()).unwrap().value;
             if matches!(value.as_slice(), b"deadline" | b"overall") {
                 for call in 1..=2 {
-                    send_child(output, call, "harmos.plugin.host.v1.Time/Get", Vec::new()).await?;
+                    send_child(output, call, "harmos.host.v1.Time/Get", Vec::new()).await?;
                     input.message().await?;
                 }
                 for (call, seconds, background) in [(3, 2, true), (4, 3600, false)] {
@@ -321,12 +332,12 @@ async fn invoke(
                         .send(Ok(InstanceInvokeResponse {
                             frame: Some(instance_invoke_response::Frame::Child(ChildRequest {
                                 call,
-                                operation: "harmos.plugin.host.v1.Time/Sleep".into(),
+                                operation: "harmos.host.v1.Time/Sleep".into(),
                                 payload: TimeSleepRequest {
                                     duration: Some(Duration { seconds, nanos: 0 }),
                                 }
                                 .encode_to_vec(),
-                                fingerprint: fixture::fingerprint("harmos.plugin.host.v1.Time/Sleep"),
+                                fingerprint: fixture::fingerprint("harmos.host.v1.Time/Sleep"),
                                 background,
                                 ..Default::default()
                             })),
@@ -355,12 +366,12 @@ async fn invoke(
                 };
                 response::Result::Payload(fixture::payload(cancel.reason.as_bytes()))
             } else if value == b"retry-bound" {
-                send_child(output, 1, "harmos.plugin.host.v1.Time/Get", Vec::new()).await?;
+                send_child(output, 1, "harmos.host.v1.Time/Get", Vec::new()).await?;
                 input.message().await?;
                 send_child(
                     output,
                     2,
-                    "harmos.plugin.host.v1.Time/Sleep",
+                    "harmos.host.v1.Time/Sleep",
                     TimeSleepRequest {
                         duration: Some(Duration { seconds: 1, nanos: 0 }),
                     }
@@ -378,7 +389,7 @@ async fn invoke(
                 send_child(
                     output,
                     1,
-                    "harmos.plugin.host.v1.Time/Sleep",
+                    "harmos.host.v1.Time/Sleep",
                     TimeSleepRequest {
                         duration: Some(Duration { seconds: 1, nanos: 11 }),
                     }
@@ -394,16 +405,16 @@ async fn invoke(
         "conformance.clock" => {
             let mut readings = Vec::new();
             for (call, operation, payload) in [
-                (1, "harmos.plugin.host.v1.Time/Get", vec![]),
+                (1, "harmos.host.v1.Time/Get", vec![]),
                 (
                     2,
-                    "harmos.plugin.host.v1.Time/Sleep",
+                    "harmos.host.v1.Time/Sleep",
                     TimeSleepRequest {
                         duration: Some(Duration { seconds: 3600, nanos: 0 }),
                     }
                     .encode_to_vec(),
                 ),
-                (3, "harmos.plugin.host.v1.Time/Get", vec![]),
+                (3, "harmos.host.v1.Time/Get", vec![]),
             ] {
                 send_child(output, call, operation, payload).await?;
                 let Some(instance_invoke_request::Frame::Child(ChildResponse {
@@ -416,7 +427,7 @@ async fn invoke(
                 if received != call {
                     return Err(Status::invalid_argument("Unexpected Clock Reply"));
                 }
-                if operation == "harmos.plugin.host.v1.Time/Get" {
+                if operation == "harmos.host.v1.Time/Get" {
                     readings.push(
                         TimeGetResponse::decode(payload.as_slice())
                             .map_err(|_| Status::invalid_argument("Invalid Time"))?
@@ -714,6 +725,14 @@ async fn samples_children(
     *next_call += 1;
     let first = *next_call;
     match open.stream.as_str() {
+        "conformance.tick_caller_refusal" => {
+            samples_child(output, first, "harmos.host.v1.Invocations/Create", crate::callers::request(), false).await?;
+            let reply = samples_reply(input, output).await?;
+            let Some(child_response::Result::Failure(failure)) = reply.result else {
+                return Err(Status::invalid_argument("Tick Client Operation: Expected Caller Refusal"));
+            };
+            Ok(fixture::payload(&failure.encode_to_vec()))
+        }
         "conformance.tick_children" => {
             *next_call += 1;
             let second = *next_call;
@@ -737,8 +756,8 @@ async fn samples_children(
             let mut value = Vec::new();
             for (operation, payload) in [
                 ("conformance.host.echo", fixture::payload(open.scope.as_bytes())),
-                ("harmos.plugin.host.v1.Time/Get", Vec::new()),
-                ("harmos.plugin.host.v1.Settings/List", Vec::new()),
+                ("harmos.host.v1.Time/Get", Vec::new()),
+                ("harmos.host.v1.plugins.Settings/List", Vec::new()),
             ] {
                 let call = *next_call;
                 samples_child(output, call, operation, payload, false).await?;

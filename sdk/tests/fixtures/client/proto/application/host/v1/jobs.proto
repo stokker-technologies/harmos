@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+syntax = "proto3";
+package application.host.v1;
+
+import "harmos/model/v1/callers.proto";
+
+option csharp_namespace = "Application.Clients";
+// Starts application jobs.
+service Jobs {
+  // Start one job.
+  rpc Start(JobsStartRequest) returns (JobsStartResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+message JobsStartRequest {
+  string value = 1;
+}
+message JobsStartResponse {
+  string value = 1;
+}
