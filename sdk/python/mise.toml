@@ -19,7 +19,8 @@ lockfile = true
 
 [tasks.prepare]
 description = "Prepare the Locked Python SDK Environment"
-run = "uv sync --locked --all-groups"
+usage = 'flag "--refresh-lock"'
+run = ["{% if usage.refresh_lock %}uv lock{% endif %}", "uv sync --locked --all-groups"]
 
 [tasks.generate]
 description = "Generate the Typed Python SDK and Fixture Roots"
@@ -66,6 +67,7 @@ run = [
 description = "Check the Python SDK and Protocol Drift"
 dir = "../.."
 run = [
+  "mise -C sdk/python run prepare",
   "mise -C sdk/python run format -- --check",
   "mise -C sdk/python run lint",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.python_protocol --check",

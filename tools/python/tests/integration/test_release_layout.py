@@ -50,10 +50,14 @@ class ReleaseLayout(unittest.TestCase):
                 "targets": list(targets),
                 "target_triples": targets,
             }
-            proto = directory / "proto/harmos/v1"
+            proto = directory / "proto/harmos/plugin/v1"
             proto.mkdir(parents=True)
             (proto / "plugin.proto").write_text('syntax = "proto3";')
             (proto / "behaviour.md").write_text("Fixture Behaviour")
+            for tree in ("model", "host"):
+                source = directory / "proto/harmos" / tree / "v1"
+                source.mkdir(parents=True)
+                (source / "messages.proto").write_text('syntax = "proto3";')
             for target, abi in targets.items():
                 packaged = directory / "target/package/release" / target
                 host = packaged / "rust" / layout.conformance_name(directory, settings, target, "1.2.3")
@@ -97,7 +101,15 @@ class ReleaseLayout(unittest.TestCase):
                         self.assertEqual(row["url"], f"https://github.com/owner/repo/releases/download/{manifest['tag']}/{row['name']}")
                     run._checksums(shared / "SHA256SUMS", {item["name"]: item for item in uploads})
                     with zipfile.ZipFile(shared / "harmos-proto-1.2.3.zip") as archive:
-                        self.assertEqual(set(archive.namelist()), {"harmos/v1/plugin.proto", "harmos/v1/behaviour.md"})
+                        self.assertEqual(
+                            set(archive.namelist()),
+                            {
+                                "harmos/model/v1/messages.proto",
+                                "harmos/host/v1/messages.proto",
+                                "harmos/plugin/v1/plugin.proto",
+                                "harmos/plugin/v1/behaviour.md",
+                            },
+                        )
                     with zipfile.ZipFile(shared / "harmos-compliance-1.2.3.zip") as archive:
                         self.assertEqual(len(archive.namelist()), 7)
                 # A File Occupying A Required Directory Fails Locally.

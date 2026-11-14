@@ -153,7 +153,7 @@ def stage(
     definitions = sorted(source.rglob("*.proto"))
     if not definitions:
         raise policy.ToolError("protocol archive requires definitions")
-    behaviour = packages.regular(directory, "proto/harmos/v1/behaviour.md")
+    behaviour = packages.regular(directory, "proto/harmos/plugin/v1/behaviour.md")
     with zipfile.ZipFile(protocol, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in [*definitions, behaviour]:
             original = packages.regular(source, path.relative_to(source).as_posix())

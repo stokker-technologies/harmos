@@ -24,6 +24,7 @@ mod backend;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // Third Party Imports
@@ -47,8 +48,9 @@ use schematic_operations::protocol::{Point, Snapshot};
 pub struct Model;
 
 pub struct Fixture {
-    pub runtime: Runtime<Model>,
+    pub runtime: Arc<Runtime<Model>>,
     pub startup_elapsed: Duration,
+    _directory: tempfile::TempDir,
 }
 
 /* === Enums === */
@@ -77,7 +79,7 @@ impl Fixture {
     #[cfg(feature = "plugin-guest")]
     #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn guest() -> Self {
-        let (runtime, host_elapsed) = runtime().await;
+        let (runtime, host_elapsed, directory) = runtime().await;
         let started = Instant::now();
         let bytes = std::fs::read(artifact("schematic-guest")).unwrap();
         let settings = harmos_runtime::config::PluginGuestSettings {
@@ -98,6 +100,7 @@ impl Fixture {
         Self {
             runtime,
             startup_elapsed: host_elapsed + started.elapsed(),
+            _directory: directory,
         }
     }
 
@@ -150,20 +153,47 @@ pub fn artifact(name: &str) -> PathBuf {
 
 /* === Private Functions === */
 
-async fn runtime() -> (Runtime<Model>, Duration) {
+async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
     let started = Instant::now();
     let preparation_bytes = nz(64 * 1024 * 1024);
-    let storage = harmos_runtime::storage::StorageManager::new(
+    let directory = tempfile::tempdir().unwrap();
+    let catalog = harmos_runtime::plugin::manager::catalog();
+    let storage = harmos_runtime::storage::StorageManager::with_catalog(
+        catalog.clone(),
         harmos_runtime::storage::StorageBackends {
-            primary: std::sync::Arc::new(backend::Backend::new(backend::history())),
-            state: std::sync::Arc::new(backend::RecoveryBackend::new(backend::history())),
+            primary: Arc::new(backend::Backend::with_catalog(catalog, backend::history())),
+            state: Arc::new(backend::RecoveryBackend::new(backend::history())),
         },
         backend::storage_settings(),
     )
     .unwrap();
+    let entries = harmos_runtime::plugin::manager::Manager::new(
+        storage.clone(),
+        harmos_runtime::plugin::manager::PluginManagerSettings {
+            namespace: "guest-benchmark".into(),
+            directory: directory.path().join("plugins"),
+            target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
+            placement: harmos_runtime::plugin::grpc::PlacementSettings {
+                connect_timeout: Duration::from_secs(10),
+                reconnect_delay: Duration::from_millis(100),
+                stop_grace: Duration::from_secs(10),
+                stream_window: nz(4),
+            },
+            bundle: Default::default(),
+            entries: nz(16),
+            create_receipts: nz(64),
+            registry_bytes: nz(1024 * 1024),
+            command_capacity: nz(16),
+            retained_cuts: nz(64),
+            watch_capacity: nz(16),
+            response_bytes: nz(1024 * 1024),
+        },
+    )
+    .unwrap();
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.settings().storage(&storage);
+        setup.settings().storage(&storage).plugins(entries.clone());
         setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
+        setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             queued: nz(64),
             lifecycle_queued: nz(16),
@@ -172,8 +202,10 @@ async fn runtime() -> (Runtime<Model>, Duration) {
     })
     .await
     .unwrap();
+    let runtime = Arc::new(runtime);
+    entries.start(&runtime).await.unwrap();
     let host_elapsed = started.elapsed();
-    (runtime, host_elapsed)
+    (runtime, host_elapsed, directory)
 }
 
 fn plugin_settings() -> harmos_runtime::config::PluginSettings {
