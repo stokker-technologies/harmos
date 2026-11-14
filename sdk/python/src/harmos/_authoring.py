@@ -49,7 +49,7 @@ from ._contracts import Operation, Stream, message_types
 from ._generated.host import HostOperation, host_requirement
 
 # Local Imports
-from ._invocation import Context, Failure, Handler, ProtocolError, Publisher, validate_timestamp
+from ._invocation import Context, FailureError, Handler, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
 from ._wire.v1.transfer_pb2 import StorageTransferSettings
 
@@ -465,7 +465,7 @@ async def _execute(
         if not isinstance(value, response):
             raise TypeError("Handler Returned the Wrong Protobuf Type")
         result = Response(payload=value.SerializeToString())
-    except Failure as failure:
+    except FailureError as failure:
         result = Response(failure=failure.value)
     except (ProtocolError, DecodeError) as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))

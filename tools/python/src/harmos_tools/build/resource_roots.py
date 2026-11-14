@@ -316,10 +316,11 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
         package / "__init__.py",
         [
             "from ._connection import Client as Client",
-            "from ._invocation import Failure as Failure",
+            "from ._invocation import FailureError as Failure",
+            "from ._invocation import ProtocolError as ProtocolError",
             *[f"from ._generated.shared import {name} as {name}" for name in shared],
         ],
-        ["Client", "Failure", *shared],
+        ["Client", "Failure", "ProtocolError", *shared],
     )
     client = sorted(name for _, _, name in groups["client_types"])
     nodes = {

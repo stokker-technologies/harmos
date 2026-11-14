@@ -70,9 +70,6 @@ class FailureError(Exception):
         self.value.CopyFrom(value)
 
 
-Failure = FailureError
-
-
 class ProtocolError(Exception):
     pass
 
@@ -113,7 +110,7 @@ class Context:
     def scope(self) -> str:
         """Require a Caller-Bound Scope for This Invocation."""
         if not self._scope:
-            raise Failure(
+            raise FailureError(
                 WireFailure(
                     classification=CLASSIFICATION_REFUSED,
                     code="scope_required",
@@ -165,7 +162,7 @@ class Context:
             await self._output.put(InstanceInvokeResponse(child=child))
             reply = await complete
             if reply.WhichOneof("result") == "failure":
-                raise Failure(reply.failure)
+                raise FailureError(reply.failure)
             return operation.response.FromString(reply.payload)
         except CancelledError:
             if self._pending.pop(call, None) is not None:
@@ -206,7 +203,7 @@ class Context:
                 reply = await queue.get()
                 kind = reply.WhichOneof("result")
                 if kind == "failure":
-                    raise Failure(reply.failure)
+                    raise FailureError(reply.failure)
                 if kind == "payload":
                     return
                 yield operation.response.FromString(reply.item)
@@ -272,7 +269,7 @@ class Context:
                 bounds = [value for value in (remaining, attempt_timeout) if value is not None]
                 bound = min(bounds) if bounds else None
                 if bound is not None and bound <= 0:
-                    raise Failure(
+                    raise FailureError(
                         WireFailure(
                             classification=CLASSIFICATION_TIMED_OUT,
                             code="deadline",
@@ -308,7 +305,7 @@ class Context:
                                 await asyncio.gather(settling, return_exceptions=True)
                         if not grace or deadline_reached or not running.done():
                             kind = CLASSIFICATION_CANCELLED if cancelled in done else CLASSIFICATION_TIMED_OUT
-                            raise Failure(
+                            raise FailureError(
                                 WireFailure(
                                     classification=kind,
                                     code="interrupted",
@@ -320,7 +317,7 @@ class Context:
                     if not isinstance(result, operation.response):
                         raise TypeError(f"Invoke {operation.id}: Response Does Not Match the Operation")
                     return result
-                except Failure as failure:
+                except FailureError as failure:
                     if failure.value.classification != CLASSIFICATION_TRANSIENT or attempt + 1 >= attempts:
                         raise
                     await context._cancel("Local Attempt Settled")
@@ -363,7 +360,7 @@ class Context:
     async def now(self) -> Timestamp:
         reply = await self.call(GET_TIME, TimeGetRequest())
         if not reply.HasField("now"):
-            raise ProtocolError("Host Time Missing")
+            raise ProtocolError("Read Host Time: Missing Value")
         validate_timestamp(reply.now)
         return reply.now
 
@@ -375,7 +372,7 @@ class Context:
         if reply.call in self._retired:
             return
         if reply.WhichOneof("result") is None:
-            raise ProtocolError("Child Result Missing")
+            raise ProtocolError("Read Child Result: Missing Payload")
         watching = self._watches.get(reply.call)
         if watching is not None:
             queue, limit = watching
@@ -392,7 +389,7 @@ class Context:
                     await child._reply(reply)
                     return
         if complete is None or complete.done():
-            raise ProtocolError("Unknown or Duplicate Child")
+            raise ProtocolError("Reply to Child: Unknown or Duplicate Identity")
         complete.set_result(reply)
 
     def _has_pending(self, call: int) -> bool:
@@ -422,8 +419,8 @@ class Context:
             if not complete.done():
                 complete.set_exception(self._cancel_failure())
 
-    def _cancel_failure(self) -> Failure:
-        return Failure(
+    def _cancel_failure(self) -> FailureError:
+        return FailureError(
             WireFailure(
                 classification=CLASSIFICATION_CANCELLED,
                 code="cancelled",
@@ -453,7 +450,7 @@ class Publisher:
 
 def validate_timestamp(at: Timestamp) -> None:
     if not -62_135_596_800 <= at.seconds <= 253_402_300_799 or not 0 <= at.nanos < 1_000_000_000:
-        raise ProtocolError("Invalid Timestamp")
+        raise ProtocolError("Validate Timestamp: Invalid Value")
 
 
 # === Private Functions === #

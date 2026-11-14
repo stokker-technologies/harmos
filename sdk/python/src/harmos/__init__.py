@@ -94,7 +94,8 @@ from ._generated.shared import TransferFraming as TransferFraming
 from ._generated.shared import Upload as Upload
 from ._generated.shared import UploadState as UploadState
 from ._generated.shared import Visibility as Visibility
-from ._invocation import Failure as Failure
+from ._invocation import FailureError as Failure
+from ._invocation import ProtocolError as ProtocolError
 
 __all__ = [
     "ADJACENT",
@@ -144,6 +145,7 @@ __all__ = [
     "PayloadEncoding",
     "Position",
     "Protobuf",
+    "ProtocolError",
     "REPEATED",
     "REQUIRED",
     "ReadCut",
