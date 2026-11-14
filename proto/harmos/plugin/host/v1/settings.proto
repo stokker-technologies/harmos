@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Plugin Host Settings
+//
+// Calls a plugin makes on the host through the plugin-host boundary.
+
+syntax = "proto3";
+
+package harmos.plugin.host.v1;
+
+// === Imports === //
+
+import "harmos/v1/position.proto";
+import "harmos/v1/setting.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Reads library-stored settings only for the calling plugin entry, without a caller-supplied plugin selector.
+service Settings {
+  // Return the calling plugin's complete values, settings revision and issued read cut; this call does not subscribe to changes.
+  rpc List(SettingsListRequest) returns (SettingsListResponse);
+}
+
+// === Requests and Responses === //
+
+// Requests the calling plugin's values at the latest or an issued settings boundary.
+message SettingsListRequest {
+  // Unset selects latest durable settings; otherwise resend an issued cut for this plugin unchanged.
+  harmos.v1.ReadCut at = 1;
+}
+
+// Returns only the calling plugin's complete typed values and their selected boundary.
+message SettingsListResponse {
+  harmos.v1.SettingValues value = 1;
+  bytes revision = 2;
+  harmos.v1.ReadCut resolved_at = 3;
+}
+
+// === Resources === //
+
+// === Enums === //

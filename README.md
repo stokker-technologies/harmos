@@ -45,7 +45,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
-- **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote plugin entries.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist settings and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
@@ -66,6 +66,9 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
+The native and guest walkthroughs run end to end, including library-stored typed
+settings through their plugin entries; see [Schematic](docs/schematic.md).
+
 ### Python
 
 Install `harmos-sdk` (import `harmos`) for plugin authoring and the host client root.
@@ -73,9 +76,10 @@ Applications generate their own protobuf messages and own connection and authent
 
 #### Examples
 
-The [contract and binding examples](docs/product-guide.md#cargo-features) show
-how a producer exports its interface. Keep generated clients matched to the
-application revision that produced them.
+The [Python SDK Guide](docs/python-sdk.md) covers typed clients, product roots and
+the runnable [client](sdk/python/examples/client.py) and
+[plugin](sdk/python/examples/plugin.py) examples. Keep generated clients matched
+to the application revision that produced them.
 
 ### Rust
 
@@ -83,6 +87,9 @@ Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
 Clients bind `client::Method` to generated application types, then use `Client::call`,
 `Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
+The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
+and reads its calling entry through `Context::settings`. Discover contracts through
+`client.operations.list`; client wrappers live in `harmos_protocol::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote `harmos.plugin.v1.Instance` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
@@ -95,8 +102,9 @@ describes their repeated key/value entry representation.
 
 `harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
 ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
-See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations, bounded unary pages and retained-cut query examples.
-Clients and plugins share resumable unary file productions and bounded content ranges.
+See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
+Applications expose their own wire operations over private native storage.
+Applications can expose resumable unary file productions and bounded content ranges through product operations.
 Hosts can register [application-owned immutable content](docs/storage.md#application-owned-content)
 for those ranged reads without copying it into library persistence.
 

@@ -5,6 +5,7 @@ run-name: Nightly / Validation
   - cron: 0 */4 * * *
   workflow_dispatch: {}
 permissions:
+  actions: read
   contents: read
 env:
   PROFILE: release

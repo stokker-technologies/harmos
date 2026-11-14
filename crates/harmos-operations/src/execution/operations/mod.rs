@@ -43,10 +43,12 @@ pub use registration::generated::{
     ProtobufOutput,
 };
 pub use registration::{
-    Catalog, CatalogDescription, FunctionContext, FunctionHandle, FunctionInvocation, NativeInstance, OperationFactory, ServiceFactory,
-    ServiceInstance,
+    Catalog, CatalogDescription, FunctionContext, FunctionHandle, FunctionInvocation, NativeHost, NativeInstance, NativeOperation,
+    OperationFactory, ServiceFactory, ServiceInstance,
 };
 pub use registration::{FunctionContext as Context, OperationFactory as Operation};
+#[cfg(feature = "streaming")]
+pub use registration::{NativeOutput, native_stream};
 pub(crate) use resources::ResourceSet;
 pub use resources::{AssignedOperation, ExecutionContext, OperationAssignments, ResourceError};
 pub use response::Response;

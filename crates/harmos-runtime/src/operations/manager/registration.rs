@@ -44,7 +44,9 @@ impl Manager {
             std::any::TypeId::of::<harmos_operations::execution::operations::access::GrantAccess>(),
             std::any::TypeId::of::<harmos_operations::execution::operations::instances::InstanceAccess>(),
             std::any::TypeId::of::<crate::operations::HostContext>(),
+            std::any::TypeId::of::<crate::plugin::grpc::CallingPlugin>(),
             std::any::TypeId::of::<harmos_operations::clock::ClockAccess>(),
+            std::any::TypeId::of::<Option<Arc<harmos_storage::StorageManager>>>(),
         ]
     }
 

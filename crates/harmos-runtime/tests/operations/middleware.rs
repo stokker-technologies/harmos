@@ -485,7 +485,8 @@ impl Middleware for Wait {
 struct RetryDeclaration {}
 
 static RETRY_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
-    harmos_runtime::operations::WireDeclaration::request::<RetryDeclaration>("middleware.retry", super::COMPUTE_OPERATION.entry().policy);
+    harmos_runtime::operations::WireDeclaration::request::<RetryDeclaration>("middleware.retry", super::COMPUTE_OPERATION.entry().policy)
+        .replay(harmos_runtime::operations::ReplaySafety::Idempotent);
 
 const RETRY_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<RetryDeclaration> =
     harmos_runtime::operations::OperationSpec::<RetryDeclaration>::new(&RETRY_DECLARATION_DESCRIPTION);

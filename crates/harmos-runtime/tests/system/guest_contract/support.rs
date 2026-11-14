@@ -15,9 +15,16 @@
 
 /* === Imports === */
 
-use super::contract::{Echoed, ProviderEchoOperation, RetryChoice, Stage};
+use harmos_runtime::plugin::{
+    grpc::PlacementSettings,
+    manager::{self, Manager, PluginManagerSettings},
+};
+use harmos_runtime::storage::{StorageBackends, StorageManager};
+use tempfile::TempDir;
+
+use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
-    Runtime,
+    MessageError, Runtime,
     operations::{ExecutionContext, ProtobufOperation, Resource, ServingError, Visibility},
 };
 use prost::Message as _;
@@ -70,6 +77,7 @@ fn descriptors() -> &'static prost_reflect::DescriptorPool {
     POOL.get_or_init(|| {
         let mut types = <ProviderEchoOperation as harmos::Message>::types();
         harmos::encoding::merge_descriptor_types(&mut types, <Echoed as harmos::Message>::types());
+        harmos::encoding::merge_descriptor_types(&mut types, <PublishProgress as harmos::Message>::types());
         prost_reflect::DescriptorPool::from_file_descriptor_set(types).unwrap()
     })
 }
@@ -118,11 +126,16 @@ impl ProtobufOperation for Provider {
         Ok(Echoed { said: request.say })
     }
 }
+impl prost_reflect::ReflectMessage for PublishProgress {
+    fn descriptor(&self) -> prost_reflect::MessageDescriptor {
+        descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
+    }
+}
 impl ProtobufOperation for Publisher {
-    type Request = harmos_protocol::context::SamplesAppendRequest;
-    type Response = harmos_protocol::context::SamplesAppendResponse;
+    type Request = PublishProgress;
+    type Response = ();
     type Endpoints = ();
-    const ID: &'static str = "harmos.context.v1.Samples/Append";
+    const ID: &'static str = "example.plugin.host.v1.Progress/Publish";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_runtime::operations::HostContext>()];
@@ -135,24 +148,21 @@ impl ProtobufOperation for Publisher {
                 reason: "requires the original generation scope",
             }))
         })?;
-        if request.sequence.is_some() || request.published_at.is_some() || request.context.is_some() || !request.following.is_empty() {
-            return Err(ServingError::Native(Arc::new(harmos_runtime::Error::<std::convert::Infallible>::InvalidInput {
-                field: "guest publication",
-                reason: "sequence, batch and publication metadata are host-derived",
-            })));
-        }
         let lease = scope.publication(&request.stream).map_err(|error| ServingError::Native(Arc::new(error)))?;
+        let sample = Echoed::decode(request.payload.as_slice())
+            .map_err(|error| ServingError::Codec(MessageError::new(format!("Publish Progress: {error}"))))?;
+        let payload = harmos_runtime::Message::encode(&sample.said);
         lease
             .stage_derived_row(
                 harmos_runtime::streams::PublicationRow {
-                    payload: request.payload,
+                    payload,
                     published_unix_micros: None,
                     context: None,
                 },
                 0,
             )
             .map_err(|error| ServingError::Native(Arc::new(error)))?;
-        Ok(harmos_protocol::context::SamplesAppendResponse {})
+        Ok(())
     }
 }
 impl harmos_runtime::Message for Stage {
@@ -196,9 +206,12 @@ impl harmos_runtime::operations::ContextValue for RetryChoice {
 
 pub async fn runtime(
     owner: Arc<ProviderOwner>, lane: harmos_runtime::operations::Lane, clock: harmos_runtime::clock::Clock,
-) -> Runtime<crate::support::Bank> {
+) -> Arc<Runtime<crate::support::Bank>> {
+    let (storage, entries, root) = entries();
     let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<ProviderOwner>(owner);
+        setup.resource(root);
+        setup.settings().storage(&storage).plugins(entries.clone());
         setup.settings().clock(clock);
         setup.settings().register(crate::support::catalog());
         setup.operation(harmos_runtime::operations::OperationFactory::protobuf::<Publisher>().unwrap(), lane);
@@ -209,6 +222,8 @@ pub async fn runtime(
     })
     .await
     .unwrap();
+    let runtime = Arc::new(runtime);
+    entries.start(&runtime).await.unwrap();
     runtime
         .operations
         .register_operation(harmos_runtime::operations::OperationFactory::protobuf::<Provider>().unwrap(), lane)
@@ -216,6 +231,42 @@ pub async fn runtime(
         .unwrap();
     runtime
 }
+pub fn entries() -> (StorageManager, Manager, TempDir) {
+    use std::time::Duration;
+    let root = tempfile::tempdir().unwrap();
+    let catalog = manager::catalog();
+    let storage = StorageManager::with_catalog(
+        catalog.clone(),
+        StorageBackends {
+            primary: Arc::new(crate::backend::Data::with_catalog(catalog, crate::backend::history())),
+            state: Arc::new(crate::backend::Recovery::new(crate::backend::history())),
+        },
+        crate::backend::storage_settings(),
+    )
+    .unwrap();
+    let settings = PluginManagerSettings {
+        namespace: "guest-entries".into(),
+        directory: root.path().join("plugins"),
+        target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
+        placement: PlacementSettings {
+            connect_timeout: Duration::from_secs(10),
+            reconnect_delay: Duration::from_millis(100),
+            stop_grace: Duration::from_secs(10),
+            stream_window: NonZeroUsize::new(4).unwrap(),
+        },
+        bundle: Default::default(),
+        entries: NonZeroUsize::new(16).unwrap(),
+        create_receipts: NonZeroUsize::new(64).unwrap(),
+        registry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        command_capacity: NonZeroUsize::new(16).unwrap(),
+        retained_cuts: NonZeroUsize::new(64).unwrap(),
+        watch_capacity: NonZeroUsize::new(16).unwrap(),
+        response_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+    };
+    let manager = Manager::new(storage.clone(), settings).unwrap();
+    (storage, manager, root)
+}
+
 pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::Host<crate::support::Bank> {
     harmos_runtime::guest::Host::with_settings(
         runtime,
@@ -229,7 +280,7 @@ pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::H
 pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
     harmos_runtime::config::PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["harmos.context.v1.Samples/Append", "provider.echo"]
+        host_operations: ["example.plugin.host.v1.Progress/Publish", "provider.echo"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

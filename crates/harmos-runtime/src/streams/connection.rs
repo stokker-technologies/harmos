@@ -40,8 +40,16 @@ pub(crate) struct ConnectionStreams {
 
 /* === Implementations === */
 impl<A: Application> StreamManager<A> {
+    pub(crate) fn validate_connection(
+        &self, owner: &str, declarations: &[harmos_operations::StreamDeclaration], replace: bool,
+    ) -> Result<(), StreamRegistrationError> {
+        let definitions = publication_definitions(owner, declarations.iter().cloned())?;
+        let _visibility = self.windows.visibility.read().expect("stream visibility poisoned");
+        let windows = self.windows.windows.read().expect("stream registry poisoned");
+        validate_existing(&windows, &definitions, !replace)
+    }
     pub(crate) fn connect_publications(
-        &self, owner: &str, declarations: impl IntoIterator<Item = harmos_operations::StreamDeclaration>,
+        &self, owner: &str, declarations: impl IntoIterator<Item = harmos_operations::StreamDeclaration>, replace: bool,
     ) -> Result<ConnectionStreams, StreamRegistrationError> {
         let definitions = publication_definitions(owner, declarations)?;
         let validations = definitions
@@ -58,7 +66,18 @@ impl<A: Application> StreamManager<A> {
         let _visibility = self.windows.visibility.write().expect("stream visibility poisoned");
         let mut windows = self.windows.windows.write().expect("stream registry poisoned");
         self.windows.retire(&mut windows);
-        validate_existing(&windows, &definitions, true)?;
+        validate_existing(&windows, &definitions, !replace)?;
+        if replace {
+            for revisions in windows.values() {
+                for wired in revisions.wires.values() {
+                    if wired.definition.owner() == Some(owner)
+                        && let Some(active) = wired.publisher.lock().expect("stream publisher poisoned").upgrade()
+                    {
+                        *active.lock().expect("stream lease poisoned") = false;
+                    }
+                }
+            }
+        }
         let mut leases = Vec::with_capacity(definitions.len());
         for (definition, validation) in definitions.into_iter().zip(validations) {
             let revisions = windows.entry(Arc::<str>::from(definition.id())).or_default();

@@ -35,7 +35,7 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FieldPath {
     pub fields: Vec<String>,
 }
@@ -54,7 +54,7 @@ pub struct TimeBucketPlan {
 
 /* === Enums === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Transform {
     Filter(filter::Filter),
     Project(project::Project),

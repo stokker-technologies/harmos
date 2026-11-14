@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::{Error, PluginManagerSettings, persistence::problem};
 use crate::bundle::{Bundle, Facility};
-use harmos_protocol::v1 as wire;
+use harmos_protocol::client as wire;
 use harmos_storage::{FileReference, StorageManager};
 
 /* === Constants === */
@@ -123,6 +123,21 @@ impl Installation {
 }
 
 /* === Public Functions === */
+
+pub(super) fn remove(executable: &str, settings: &PluginManagerSettings) -> Result<(), Error> {
+    crate::bundle::validate_path(executable).map_err(|error| problem("Delete Plugin Installation", error))?;
+    let parent = executable.split('/').next().expect("installation path has a parent");
+    let root = settings.directory.canonicalize().map_err(|error| problem("Resolve Plugin Directory", error))?;
+    let directory = root.join(parent).canonicalize().map_err(|error| problem("Resolve Plugin Installation", error))?;
+    if directory.parent() != Some(root.as_path()) {
+        return Err(Error::new(
+            "installation_path",
+            "Delete Plugin Installation",
+            "restore an installation directly beneath the manager directory",
+        ));
+    }
+    std::fs::remove_dir_all(directory).map_err(|error| problem("Delete Plugin Installation", error))
+}
 
 /* === Private Functions === */
 

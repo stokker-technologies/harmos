@@ -99,8 +99,6 @@ pub(crate) struct Registry {
     pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,
     pub(crate) status_started: prost_types::Timestamp,
     pub(crate) service_runner: crate::services::ServiceRunner,
-    #[cfg(feature = "grpc")]
-    pub(crate) values: std::sync::RwLock<Option<Arc<dyn super::values::Resolver>>>,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }
@@ -211,6 +209,7 @@ impl Manager {
             .clone();
         resources.replace(self.registry.access.clone());
         resources.replace(self.registry.status.clone());
+        resources.replace(Arc::new(self.resources().resource::<harmos_storage::StorageManager>().ok()));
         resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
         resources
     }

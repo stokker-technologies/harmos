@@ -34,7 +34,8 @@ use harmos_operations::{
     execution::operations::ServingError,
     status::{EventStream, Pending},
 };
-use harmos_protocol::v1::{self, status as wire};
+use harmos_protocol::client::status as wire;
+use harmos_protocol::v1::{self};
 use history::History;
 use tokio::sync::watch;
 
@@ -67,7 +68,7 @@ pub struct StatusSettings {
 pub struct Status {
     clock: crate::clock::Clock,
     settings: StatusSettings,
-    identity: v1::HostIdentity,
+    identity: harmos_protocol::client::HostIdentity,
     pub redaction: Redaction,
     state: Mutex<State>,
     changes: watch::Sender<u64>,
@@ -79,7 +80,7 @@ struct State {
     providers: BTreeMap<u64, Arc<dyn Contribution>>,
     next_provider: u64,
     providers_revision: u64,
-    components: Vec<v1::HealthComponent>,
+    components: Vec<harmos_protocol::client::HealthComponent>,
     available: bool,
     archive: Option<Arc<diagnostics::Archive>>,
 }
@@ -93,7 +94,7 @@ pub struct Registration {
 /* === Traits === */
 
 pub trait Contribution: Send + Sync + 'static {
-    fn health(&self) -> Result<Vec<v1::HealthComponent>, Box<dyn std::error::Error + Send + Sync>>;
+    fn health(&self) -> Result<Vec<harmos_protocol::client::HealthComponent>, Box<dyn std::error::Error + Send + Sync>>;
     fn diagnostics(&self) -> Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
@@ -123,7 +124,7 @@ impl Status {
         let epoch = identifier("Status.Configure")?;
         let history =
             |name| History::new(name, &epoch, settings.history_items.get(), settings.history_bytes.get(), settings.read_leases.get());
-        let identity = v1::HostIdentity {
+        let identity = harmos_protocol::client::HostIdentity {
             application_name: settings.application_name.clone(),
             application_version: settings.application_version.clone(),
             host_id: settings.host_id.clone(),
@@ -178,23 +179,25 @@ impl Status {
             };
             let mut components = BTreeMap::from([(
                 "services".to_owned(),
-                v1::HealthComponent {
+                harmos_protocol::client::HealthComponent {
                     name: "services".into(),
-                    state: v1::ComponentState::Healthy as i32,
+                    state: harmos_protocol::client::ComponentState::Healthy as i32,
                     reason: String::new(),
                 },
             )]);
             for (id, provider) in providers {
                 let facts = provider.health().unwrap_or_else(|_| {
-                    vec![v1::HealthComponent {
+                    vec![harmos_protocol::client::HealthComponent {
                         name: format!("contribution.{id}"),
-                        state: v1::ComponentState::Unavailable as i32,
+                        state: harmos_protocol::client::ComponentState::Unavailable as i32,
                         reason: "Status.Get: contribution unavailable".into(),
                     }]
                 });
                 for mut component in facts {
                     if component.name.is_empty()
-                        || v1::ComponentState::try_from(component.state).ok().is_none_or(|s| s == v1::ComponentState::Unspecified)
+                        || harmos_protocol::client::ComponentState::try_from(component.state)
+                            .ok()
+                            .is_none_or(|s| s == harmos_protocol::client::ComponentState::Unspecified)
                     {
                         return Err(failure("Status.Get", "contribution returned invalid health"));
                     }
@@ -210,7 +213,7 @@ impl Status {
                 continue;
             }
             let components: Vec<_> = components.into_values().collect();
-            let status = v1::HostStatus {
+            let status = harmos_protocol::client::HostStatus {
                 identity: Some(self.identity.clone()),
                 available: state.available,
                 components: components.clone(),
@@ -270,10 +273,11 @@ impl Status {
         drop(state);
         self.changed();
     }
-    fn snapshot(&self, state: &State) -> v1::HostStatus {
-        v1::HostStatus {
+    fn snapshot(&self, state: &State) -> harmos_protocol::client::HostStatus {
+        harmos_protocol::client::HostStatus {
             identity: Some(self.identity.clone()),
-            available: state.available && state.components.iter().all(|c| c.state != v1::ComponentState::Unavailable as i32),
+            available: state.available
+                && state.components.iter().all(|c| c.state != harmos_protocol::client::ComponentState::Unavailable as i32),
             components: state.components.clone(),
         }
     }
@@ -357,15 +361,17 @@ impl Drop for Registration {
     }
 }
 impl harmos_operations::status::Status for Port {
-    fn get(&self, _: v1::StatusGetRequest) -> Pending<'_, v1::StatusGetResponse> {
+    fn get(&self, _: harmos_protocol::client::StatusGetRequest) -> Pending<'_, harmos_protocol::client::StatusGetResponse> {
         Box::pin(async move {
             let mut state = self.state.lock().expect("status lock is healthy");
             let status = self.snapshot(&state);
             let resolved_at = Some(state.status_history.latest());
-            Ok(v1::StatusGetResponse { status: Some(status), resolved_at })
+            Ok(harmos_protocol::client::StatusGetResponse { status: Some(status), resolved_at })
         })
     }
-    fn watch(&self, request: v1::StatusWatchRequest) -> Pending<'_, EventStream<v1::StatusWatchResponse>> {
+    fn watch(
+        &self, request: harmos_protocol::client::StatusWatchRequest,
+    ) -> Pending<'_, EventStream<harmos_protocol::client::StatusWatchResponse>> {
         Box::pin(async move {
             let changes = self.changes.subscribe();
             self.state.lock().expect("status lock is healthy").status_history.resolve(request.at.as_ref(), "Status.Watch")?;
@@ -379,7 +385,7 @@ impl harmos_operations::status::Status for Port {
                     if opening.is_none() || Some(boundary.sequence) != opening {
                         changes.borrow_and_update();
                         let sequence = boundary.sequence;
-                        let event = v1::StatusWatchResponse {
+                        let event = harmos_protocol::client::StatusWatchResponse {
                             status: Some(status),
                             resolved_at: Some(boundary),
                         };

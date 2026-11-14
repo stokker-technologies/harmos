@@ -46,6 +46,11 @@ use harmos_runtime::{
 
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 pub type App = crate::support::Bank;
+type SamplesHandler = Arc<
+    dyn Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
+        + Send
+        + Sync,
+>;
 
 /* === Structs === */
 
@@ -70,11 +75,12 @@ pub struct Remote {
 
 #[derive(Clone)]
 struct Fixture {
-    catalog: Arc<Mutex<v1::Catalog>>,
+    catalog: Arc<Mutex<v1::Declarations>>,
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    samples: Arc<Mutex<Option<SamplesHandler>>>,
 }
 
 /* === Implementations === */
@@ -131,14 +137,15 @@ impl Remote {
     pub async fn start() -> Self {
         let service = Fixture {
             catalog: Arc::new(Mutex::new({
-                let mut catalog = v1::Catalog::default();
-                catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+                let mut catalog = v1::Declarations::default();
+                catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
                 catalog
             })),
             started_at: Arc::new(AtomicI64::new(100)),
             stops: Arc::new(AtomicUsize::new(0)),
             pending_description: Arc::new(Mutex::new(None)),
             pending_stop: Arc::new(Mutex::new(None)),
+            samples: Arc::new(Mutex::new(None)),
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let upstream = listener.local_addr().unwrap();
@@ -201,7 +208,17 @@ impl Remote {
         self.service.stops.load(Ordering::SeqCst)
     }
 
-    pub fn catalog(&self, catalog: v1::Catalog) {
+    pub fn samples(
+        &self,
+        handler: impl Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        *self.service.samples.lock().unwrap() = Some(Arc::new(handler));
+    }
+
+    pub fn declarations(&self, catalog: v1::Declarations) {
         *self.service.catalog.lock().unwrap() = catalog;
     }
 
@@ -251,7 +268,7 @@ impl Instance for Fixture {
                 seconds: self.started_at.load(Ordering::SeqCst),
                 nanos: 0,
             }),
-            catalog: Some(self.catalog.lock().unwrap().clone()),
+            declarations: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
     type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
@@ -262,9 +279,10 @@ impl Instance for Fixture {
     }
     type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
     async fn samples(
-        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
+        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
     ) -> Result<Response<Self::SamplesStream>, Status> {
-        Err(Status::not_found("Unknown Stream"))
+        let handler = self.samples.lock().unwrap().clone().ok_or_else(|| Status::not_found("Unknown Stream"))?;
+        Ok(Response::new(handler(request.into_inner())))
     }
     async fn stop(
         &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
@@ -281,7 +299,7 @@ impl Instance for Fixture {
 
 /* === Public Functions === */
 
-pub fn catalog() -> v1::Catalog {
+pub fn catalog() -> v1::Declarations {
     let types = prost_types::FileDescriptorSet {
         file: vec![prost_types::FileDescriptorProto {
             name: Some("fixture.proto".into()),
@@ -295,7 +313,7 @@ pub fn catalog() -> v1::Catalog {
         }],
     };
     let fingerprint = harmos_protocol::schema::fingerprint("fixture.echo", &types, "fixture.Value", "fixture.Value").unwrap();
-    let mut catalog = v1::Catalog {
+    let mut catalog = v1::Declarations {
         types: Some(types),
         operations: vec![v1::OperationContract {
             id: "fixture.echo".into(),
@@ -307,7 +325,7 @@ pub fn catalog() -> v1::Catalog {
         }],
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
     catalog
 }
 

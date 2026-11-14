@@ -25,7 +25,8 @@ use std::{
 };
 
 // Third Party Imports
-use harmos_protocol::v1::{self, access};
+use harmos_protocol::client::access;
+use harmos_protocol::v1::{self};
 use harmos_runtime::{
     Runtime,
     grpc::access::{CredentialStore, Credentials, Pending},
@@ -63,7 +64,7 @@ pub struct Host {
     pub management: harmos_runtime::grpc::Attached,
 }
 pub struct Facts {
-    pub component: Mutex<v1::HealthComponent>,
+    pub component: Mutex<harmos_protocol::client::HealthComponent>,
     pub text: String,
 }
 
@@ -186,9 +187,9 @@ impl Host {
 impl Facts {
     pub fn new(text: &str) -> Self {
         Self {
-            component: Mutex::new(v1::HealthComponent {
+            component: Mutex::new(harmos_protocol::client::HealthComponent {
                 name: "host.component".into(),
-                state: v1::ComponentState::Healthy as i32,
+                state: harmos_protocol::client::ComponentState::Healthy as i32,
                 reason: "Ready".into(),
             }),
             text: text.into(),
@@ -196,7 +197,7 @@ impl Facts {
     }
 }
 impl Contribution for Facts {
-    fn health(&self) -> std::result::Result<Vec<v1::HealthComponent>, Box<dyn std::error::Error + Send + Sync>> {
+    fn health(&self) -> std::result::Result<Vec<harmos_protocol::client::HealthComponent>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(vec![self.component.lock().unwrap().clone()])
     }
     fn diagnostics(&self) -> std::result::Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>> {

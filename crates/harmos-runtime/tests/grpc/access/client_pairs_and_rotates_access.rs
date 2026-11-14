@@ -17,7 +17,7 @@
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
-use harmos_protocol::v1::{self, access};
+use harmos_protocol::client::access;
 
 // Local Imports
 use super::support::*;
@@ -79,19 +79,36 @@ async fn client_pairs_and_rotates_access() -> Result {
     let mut pairings = access::pairings_client::PairingsClient::new(host.channel.clone());
     let first = pairings.create(access::PairingsCreateRequest { label: "First Client".into() }).await?.into_inner();
     let channel = paired(&first).await?;
-    let mut client = v1::status_client::StatusClient::new(channel.clone());
-    assert_eq!(client.get(v1::StatusGetRequest {}).await.unwrap_err().code(), tonic::Code::Unauthenticated);
-    let identity = client.get(authorized(v1::StatusGetRequest {}, &first.credential)).await?.into_inner().status.unwrap().identity.unwrap();
+    let mut client = harmos_protocol::client::status_client::StatusClient::new(channel.clone());
+    assert_eq!(client.get(harmos_protocol::client::StatusGetRequest {}).await.unwrap_err().code(), tonic::Code::Unauthenticated);
+    let identity = client
+        .get(authorized(harmos_protocol::client::StatusGetRequest {}, &first.credential))
+        .await?
+        .into_inner()
+        .status
+        .unwrap()
+        .identity
+        .unwrap();
     assert!(principals.lock().unwrap().contains(&first.pairing.as_ref().unwrap().id));
     // Rotate Live Trust and Refuse the Old Credential on an Existing Connection
     let mut certificates = access::certificates_client::CertificatesClient::new(host.channel.clone());
     let rotated = certificates.create(access::CertificatesCreateRequest {}).await?.into_inner();
     assert_ne!(rotated.certificate_pem, first.pinned_certificate_pem);
-    assert_eq!(client.get(authorized(v1::StatusGetRequest {}, &first.credential)).await.unwrap_err().code(), tonic::Code::Unauthenticated);
+    assert_eq!(
+        client.get(authorized(harmos_protocol::client::StatusGetRequest {}, &first.credential)).await.unwrap_err().code(),
+        tonic::Code::Unauthenticated
+    );
     assert!(paired(&first).await.is_err());
     let second = pairings.create(access::PairingsCreateRequest { label: "Current Client".into() }).await?.into_inner();
-    let mut current = v1::status_client::StatusClient::new(paired(&second).await?);
-    let after = current.get(authorized(v1::StatusGetRequest {}, &second.credential)).await?.into_inner().status.unwrap().identity.unwrap();
+    let mut current = harmos_protocol::client::status_client::StatusClient::new(paired(&second).await?);
+    let after = current
+        .get(authorized(harmos_protocol::client::StatusGetRequest {}, &second.credential))
+        .await?
+        .into_inner()
+        .status
+        .unwrap()
+        .identity
+        .unwrap();
     assert_eq!(identity, after);
     assert_eq!(listener.get(access::ListenerGetRequest {}).await?.into_inner().revision, enabled.revision);
     // List and Revoke a Durable Pairing Without Exposing Its Credential
@@ -107,10 +124,10 @@ async fn client_pairs_and_rotates_access() -> Result {
         access::listener_client::ListenerClient::new(reopened.channel.clone()).get(access::ListenerGetRequest {}).await?.into_inner();
     let mut retained = second.clone();
     retained.endpoint = bound.bound_endpoint;
-    let mut current = v1::status_client::StatusClient::new(paired(&retained).await?);
+    let mut current = harmos_protocol::client::status_client::StatusClient::new(paired(&retained).await?);
     assert_eq!(
         current
-            .get(authorized(v1::StatusGetRequest {}, &retained.credential))
+            .get(authorized(harmos_protocol::client::StatusGetRequest {}, &retained.credential))
             .await?
             .into_inner()
             .status
@@ -123,7 +140,7 @@ async fn client_pairs_and_rotates_access() -> Result {
     let mut pairings = access::pairings_client::PairingsClient::new(reopened.channel.clone());
     pairings.delete(access::PairingsDeleteRequest { name: retained.pairing.unwrap().id }).await?;
     assert_eq!(
-        current.get(authorized(v1::StatusGetRequest {}, &retained.credential)).await.unwrap_err().code(),
+        current.get(authorized(harmos_protocol::client::StatusGetRequest {}, &retained.credential)).await.unwrap_err().code(),
         tonic::Code::Unauthenticated
     );
     drop((current, pairings));

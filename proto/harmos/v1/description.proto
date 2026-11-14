@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Plugin Descriptions
+//
+// Shared vocabulary for the client, plugin and plugin-host boundaries.
+
+syntax = "proto3";
+
+package harmos.v1;
+
+// === Imports === //
+
+import "google/protobuf/descriptor.proto";
+import "harmos/v1/operation.proto";
+import "harmos/v1/stream.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
+message Declarations {
+  // Operations the plugin serves.
+  repeated OperationContract operations = 1;
+  // Operations it calls on the host or on other plugins.
+  repeated Requirement requires = 2;
+  // Streams it can publish.
+  repeated StreamDeclaration streams = 3;
+  // Product contributions, opaque to Harmos.
+  repeated Section sections = 4;
+  // SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+  bytes digest = 5;
+  // Definitions of every message named in this declarations.
+  google.protobuf.FileDescriptorSet types = 6;
+}
+
+// Carries a typed product contribution whose payload is opaque to the library.
+message Section {
+  // Fully qualified message name of the payload, for example
+  // "application.v1.Contributions". At most one section per name.
+  string type = 1;
+  // Encoded message named by type; interpretation belongs to the product contribution owner.
+  bytes payload = 2;
+}
+
+// === Enums === //

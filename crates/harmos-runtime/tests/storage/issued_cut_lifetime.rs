@@ -7,16 +7,15 @@
  * ***
  */
 
-// Resume Unary Transfers Across Audience Faces
-
-// Resume Saved Pages Across Faces While A Later Commit Is Blocked
+// Resume Private Storage Pages at Their Issued Cuts
 
 /* === Imports === */
 
 use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
-use harmos_protocol::{storage as wire, v1};
+use harmos_protocol::v1;
+use harmos_storage::query::{RecordSelection, Source};
 use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
 use std::num::{NonZeroU32, NonZeroUsize};
 
@@ -62,13 +61,14 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         .await
         .unwrap();
     fixture.storage.flush().await.unwrap();
-    let selection = v1::StorageListRowsRequest {
-        source: Some(wire::QuerySource {
-            source: Some(wire::query_source::Source::Records(wire::RecordSelection {
-                schema: Some(schema.clone().into()),
-                ..Default::default()
-            })),
-        }),
+    let selection = operations::ListRowsRequest {
+        source: Some(Source::Records(RecordSelection {
+            schema: schema.clone(),
+            scope: None,
+            item: None,
+            source_start: None,
+            source_end: None,
+        })),
         at: None,
         transforms: vec![],
         page: None,
@@ -86,10 +86,9 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         slice: Default::default(),
     };
     let image = std::sync::Arc::new(fixture.storage.snapshot(&local_query.at).await.unwrap());
-    let old = fixture.runtime.operations.call_protobuf::<operations::ListRows>(selection.clone()).await.unwrap();
+    let old = fixture.runtime.operations.call_native::<operations::ListRows>(selection.clone()).await.unwrap();
     // Construction Against A Preopened Image Performs No I/O: The Paused Page
     // Must Leave The Only Active-Query Slot Available To Another Native Reader.
-    tokio::task::yield_now().await;
     let mut native = Box::pin(fixture.storage.query_snapshot(local_query, image));
     let ready = std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(native.as_mut(), cx))).await;
     let std::task::Poll::Ready(Ok(native_reader)) = ready else {
@@ -111,13 +110,13 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         .await
         .unwrap();
     fixture.storage.flush().await.unwrap();
-    let current = fixture.runtime.operations.call_protobuf::<operations::ListRows>(selection.clone()).await.unwrap();
+    let current = fixture.runtime.operations.call_native::<operations::ListRows>(selection.clone()).await.unwrap();
     assert_ne!(current.resolved_at, old.resolved_at);
     assert!(
         fixture
             .runtime
             .operations
-            .call_protobuf::<operations::ListRows>(v1::StorageListRowsRequest { at: old.resolved_at, ..selection.clone() })
+            .call_native::<operations::ListRows>(operations::ListRowsRequest { at: old.resolved_at, ..selection.clone() })
             .await
             .is_err()
     );
@@ -125,7 +124,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         fixture
             .runtime
             .operations
-            .call_protobuf::<operations::ListRows>(v1::StorageListRowsRequest {
+            .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 page: Some(v1::PageRequest {
                     page_token: old.next_page_token,
                     ..Default::default()
@@ -135,12 +134,8 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .await
             .is_err()
     );
-    let pinned = fixture
-        .runtime
-        .operations
-        .call_protobuf::<operations::CreateSnapshot>(v1::StorageCreateSnapshotRequest { at: None })
-        .await
-        .unwrap();
+    let pinned =
+        fixture.runtime.operations.call_native::<operations::CreateSnapshot>(operations::CreateSnapshotRequest { at: None }).await.unwrap();
     fixture
         .storage
         .append_records(vec![RecordInput {
@@ -154,11 +149,11 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         .await
         .unwrap();
     fixture.storage.flush().await.unwrap();
-    assert!(fixture.runtime.operations.call_protobuf::<operations::ListRows>(selection.clone()).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(selection.clone()).await.is_err());
     let retained = fixture
         .runtime
         .operations
-        .call_protobuf::<operations::ListRows>(v1::StorageListRowsRequest {
+        .call_native::<operations::ListRows>(operations::ListRowsRequest {
             at: pinned.resolved_at.clone(),
             ..selection.clone()
         })
@@ -168,10 +163,10 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
     fixture
         .runtime
         .operations
-        .call_protobuf::<operations::DeleteSnapshot>(v1::StorageDeleteSnapshotRequest { snapshot: pinned.snapshot })
+        .call_native::<operations::DeleteSnapshot>(operations::DeleteSnapshotRequest { snapshot: pinned.snapshot })
         .await
         .unwrap();
-    let fresh = fixture.runtime.operations.call_protobuf::<operations::ListRows>(selection.clone()).await.unwrap();
+    let fresh = fixture.runtime.operations.call_native::<operations::ListRows>(selection.clone()).await.unwrap();
     assert_ne!(fresh.resolved_at, retained.resolved_at);
     let other = Fixture::new(config()).await;
     crate::support::app::register(&other.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
@@ -181,7 +176,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         other
             .runtime
             .operations
-            .call_protobuf::<operations::ListRows>(v1::StorageListRowsRequest {
+            .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 at: fresh.resolved_at,
                 ..selection.clone()
             })
@@ -192,7 +187,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         other
             .runtime
             .operations
-            .call_protobuf::<operations::ListRows>(v1::StorageListRowsRequest {
+            .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 page: Some(v1::PageRequest {
                     page_token: fresh.next_page_token,
                     ..Default::default()

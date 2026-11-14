@@ -1,21 +1,0 @@
-
-à
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.proto"‚
-StorageCreateFileWriterRequest/
-session (2.harmos.storage.v1.FileSession/
-mutation (2.harmos.storage.v1.MutationIdbproto3
-ô
-harmos/v1/storage_types.protoharmos.storage.v1"_
-FileSession0
-history (2.harmos.storage.v1.StoreHistory
-
-id (	
-
-generation (")
-
-MutationId
-window (	
-key (	",
-StoreHistory
-store (	
-epoch (	bproto3

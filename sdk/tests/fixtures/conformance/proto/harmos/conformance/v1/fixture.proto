@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Protocol Conformance Fixtures
+//
+// Payloads used to verify byte preservation and reachable recursive schema projection across SDKs.
+
+syntax = "proto3";
+
+package harmos.conformance.v1;
+
+// === Imports === //
+
+import "google/protobuf/duration.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// The same reference-host rules exercise every SDK fixture. In addition to the
+// original streams, all fixtures declare these one-second observers of Value:
+// - conformance.tick_children: two concurrent host.echo calls with Value([1]) and
+//   Value([2]); concatenate their replies in request order into the tick row.
+// - conformance.tick_context: call host.echo with Value(context.scope), Time.Get
+//   and Settings.List in order; frame each encoded reply with its four-byte
+//   little-endian length, then concatenate the three frames into Value.
+// - conformance.tick_failure: call host.fail with Value(empty); encode its exact
+//   structured Failure into Value without changing any field.
+// - conformance.tick_watch: Watch host.watch with Value(context.scope), bound
+//   each response to 4096 bytes, concatenate demanded Value items into the row.
+// - conformance.tick_cancel: start host.pending and host.echo(Value("release"));
+//   after echo completes cancel the first child, start another host.pending and
+//   answer Value("cancelled"), cancelling the remaining child on tick completion.
+// Child IDs remain unique across ticks; a new Samples call has its own ID space.
+// All host operation names above have the conformance. prefix; Time and Settings
+// use harmos.plugin.host.v1. The controlled host supplies all clocks and replies.
+// conformance.settings_read calls Settings.List and returns Value containing the
+// encoded SettingValues. Declarations cover enabled=false, count=3, gain=1.5,
+// label="default" and interval=2s. Stored values are true, 9, 2.5, "stored", 4s.
+// conformance.discover calls Operations.List then Operations.Get for the first
+// returned contract, checks identical metadata and returns Value(contract.id).
+// These operations use Value for both request and response, Public visibility,
+// and declare their typed host requirements and the SettingsDeclarations section.
+
+
+// Exercises byte payload preservation in the shared SDK conformance fixture.
+message Value {
+  bytes value = 1;
+}
+
+// Exercises a reachable payload-only type in descriptor graph projection.
+message PayloadOnly {
+  bytes value = 1;
+}
+
+// Carries a fixture name for schema and setting projection.
+message Zebra {
+  Value value = 1;
+}
+
+// Exercises recursive and nested schema projection, optional fields, durations and enums in conformance.
+message Graph {
+  option deprecated = false;
+  // Exercises an optional scalar and a recursive reference in the conformance graph.
+  message Nested {
+    // Unset exercises optional scalar absence; zero is a present conformance value.
+    optional int32 count = 1;
+    Graph next = 2;
+  }
+  repeated Nested items = 1;
+  Zebra tail = 2;
+  Graph next = 3;
+  google.protobuf.Duration interval = 4;
+  Status status = 5;
+}
+
+// === Enums === //
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_READY = 1;
+}

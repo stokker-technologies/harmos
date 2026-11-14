@@ -29,7 +29,7 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Downsample {
     pub max_rows: usize,
     pub algorithm: Algorithm,
@@ -39,7 +39,7 @@ pub struct Downsample {
 
 /* === Enums === */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Algorithm {
     Decimate,
     Extrema,

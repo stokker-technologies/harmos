@@ -10,14 +10,17 @@
 
 # === Imports === #
 
-import json
 import unittest
-from pathlib import Path
+from collections.abc import AsyncIterator
+from typing import assert_type
 
 import grpc
 
-from harmos import Client
-from tests.support.client_protocol import jobs, plugins, progress, settings
+from harmos import Client as LibraryClient
+from tests.support.client_protocol import annotations, diagnostics, jobs, progress, status
+
+# isort: split
+from tests.fixtures.client.client import ClientRoot as Client
 
 # Third Party Imports
 
@@ -34,18 +37,24 @@ from tests.support.client_protocol import jobs, plugins, progress, settings
 # === Classes === #
 
 
+class ApplicationClient(LibraryClient):
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        super().__init__(channel)
+        self.jobs = Client(channel).jobs
+
+
 class ClientRoot(unittest.IsolatedAsyncioTestCase):
-    async def test_library_and_product_services_share_parents_and_keep_watch_cardinality(self):
+    async def test_library_and_product_services_share_parents_and_keep_watch_cardinality(self) -> None:
         server = grpc.aio.server()
         # The Native Service Names Are the Dispatch Authority for the Generated Root.
         methods = [
-            ("library.v1.Plugins", "Get", plugins.PluginsGetRequest, plugins.PluginsGetResponse),
-            ("library.v1.plugins.Settings", "Get", settings.SettingsGetRequest, settings.SettingsGetResponse),
             ("application.v1.Jobs", "Start", jobs.JobsStartRequest, jobs.JobsStartResponse),
         ]
         for service, method, request, response in methods:
 
-            def unary(value, context, response=response):
+            def unary(
+                value: jobs.JobsStartRequest, context: grpc.aio.ServicerContext, response: type[jobs.JobsStartResponse] = response
+            ) -> jobs.JobsStartResponse:
                 return response(value=value.value)
 
             server.add_generic_rpc_handlers(
@@ -61,7 +70,56 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
                 )
             )
 
-        async def watch(request, context):
+        async def get_status(request: status.StatusGetRequest, context: grpc.aio.ServicerContext) -> status.StatusGetResponse:
+            response = status.StatusGetResponse()
+            response.status.identity.application_name = "selection"
+            return response
+
+        async def get_annotation(
+            request: annotations.AnnotationsGetRequest, context: grpc.aio.ServicerContext
+        ) -> annotations.AnnotationsGetResponse:
+            return annotations.AnnotationsGetResponse(value=request.name)
+
+        server.add_generic_rpc_handlers(
+            (
+                grpc.method_handlers_generic_handler(
+                    "application.v1.plugins.Annotations",
+                    {
+                        "Get": grpc.unary_unary_rpc_method_handler(
+                            get_annotation,
+                            request_deserializer=annotations.AnnotationsGetRequest.FromString,
+                            response_serializer=annotations.AnnotationsGetResponse.SerializeToString,
+                        )
+                    },
+                ),
+            )
+        )
+
+        async def get_diagnostics(
+            request: diagnostics.DiagnosticsGetRequest, context: grpc.aio.ServicerContext
+        ) -> diagnostics.DiagnosticsGetResponse:
+            return diagnostics.DiagnosticsGetResponse(name=request.name)
+
+        for service, request, response, handler in [
+            ("harmos.client.v1.Status", status.StatusGetRequest, status.StatusGetResponse, get_status),
+            ("harmos.client.v1.status.Diagnostics", diagnostics.DiagnosticsGetRequest, diagnostics.DiagnosticsGetResponse, get_diagnostics),
+        ]:
+            server.add_generic_rpc_handlers(
+                (
+                    grpc.method_handlers_generic_handler(
+                        service,
+                        {
+                            "Get": grpc.unary_unary_rpc_method_handler(
+                                handler, request_deserializer=request.FromString, response_serializer=response.SerializeToString
+                            )
+                        },
+                    ),
+                )
+            )
+
+        async def watch(
+            request: progress.ProgressWatchRequest, context: grpc.aio.ServicerContext
+        ) -> AsyncIterator[progress.ProgressWatchResponse]:
             yield progress.ProgressWatchResponse(value="opened:" + request.value)
             yield progress.ProgressWatchResponse(value="finished:" + request.value)
 
@@ -82,20 +140,23 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         port = server.add_insecure_port("127.0.0.1:0")
         await server.start()
         try:
-            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
-                table = json.loads((Path(__file__).resolve().parents[3] / "fixtures/client/resources.json").read_text())
-                client = Client(channel, table)
-                self.assertEqual((await client.plugins.get(plugins.PluginsGetRequest(value="selection"))).value, "selection")
-                self.assertEqual((await client.plugins.settings.get(settings.SettingsGetRequest(value="selection"))).value, "selection")
-                self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
-                self.assertEqual(
-                    [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
-                    ["opened:selection", "finished:selection"],
-                )
-                with self.assertRaises(ValueError):
-                    Client(channel, table, table)
-                with self.assertRaises(ValueError):
-                    Client(channel, [{**table[0], "face": "context"}])
+            channel = grpc.aio.insecure_channel(f"127.0.0.1:{port}")
+            self.addAsyncCleanup(channel.close)
+            client = Client(channel)
+            product = ApplicationClient.connect(f"127.0.0.1:{port}")
+            self.addAsyncCleanup(product.close)
+            assert_type(product, ApplicationClient)
+            reply = await product.jobs.start(jobs.JobsStartRequest(value="product"))
+            assert_type(reply, jobs.JobsStartResponse)
+            self.assertEqual(reply.value, "product")
+            self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
+            self.assertEqual((await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection")
+            self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
+            self.assertEqual((await client.plugins.annotations.get(annotations.AnnotationsGetRequest(name="example"))).value, "example")
+            self.assertEqual(
+                [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
+                ["opened:selection", "finished:selection"],
+            )
         finally:
             await server.stop(None)
 

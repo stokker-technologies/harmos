@@ -14,6 +14,7 @@
 # Standard Library Imports
 import asyncio
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,7 @@ import unittest
 from pathlib import Path
 
 from harmos_tools.process import spawn_flags
+
 from tests.support import host
 
 # Third Party Imports
@@ -40,11 +42,11 @@ from tests.support import host
 
 
 class PackagedConformance(unittest.IsolatedAsyncioTestCase):
-    async def test_installed_wheel_serves_the_public_fixture(self):
+    async def test_installed_wheel_serves_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
         with tempfile.TemporaryDirectory() as name:
             scratch = Path(name)
-            # Build the Published Wheel, Including Its Fixture and Generated Messages.
+            # Build the Published Wheel Without Test Fixtures.
             result = subprocess.run(
                 ["mise", "run", "build", "--", "--package", "harmos-sdk"],
                 cwd=root,
@@ -77,10 +79,11 @@ class PackagedConformance(unittest.IsolatedAsyncioTestCase):
                 creationflags=spawn_flags(),
             )
             self.assertEqual(result.returncode, 0, result.stdout)
-            # Import Only the Installed SDK and Serve Its Stable Public Fixture.
+            # Load Test-Owned Fixture Support Against Only the Installed SDK.
+            shutil.copytree(root / "sdk/python/tests/fixtures/conformance", scratch / "conformance")
             source = scratch / "plugin.py"
             source.write_text(
-                "import asyncio\nfrom harmos.conformance import plugin\nasync def main():\n    endpoint = await plugin().start('127.0.0.1:0')\n    print(endpoint.address, flush=True)\n    await endpoint.server.wait_for_termination()\nasyncio.run(main())\n",
+                "import asyncio\nimport sys\nfrom pathlib import Path\nsys.path.insert(0, str(Path(__file__).parent))\nfrom conformance import plugin\nasync def main():\n    endpoint = await plugin().start('127.0.0.1:0')\n    print(endpoint.address, flush=True)\n    await endpoint.server.wait_for_termination()\nasyncio.run(main())\n",
                 encoding="utf-8",
             )
             process = await asyncio.create_subprocess_exec(

@@ -17,7 +17,6 @@ import unittest
 from unittest.mock import patch
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.ci import tasks
 from harmos_tools.test import focused
@@ -34,7 +33,7 @@ from harmos_tools.test import focused
 
 
 class FocusedDispatch(unittest.TestCase):
-    def test_developer_selections_reach_only_the_focused_runner(self):
+    def test_developer_selections_reach_only_the_focused_runner(self) -> None:
         # Select a Story, Its Package and a Set of Changed Paths.
         selections = [
             ["--package", "model", "--target", "integration", "--story", "save_and_reopen"],

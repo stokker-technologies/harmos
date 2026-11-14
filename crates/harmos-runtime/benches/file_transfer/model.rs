@@ -30,7 +30,6 @@
 /* === Structs === */
 
 pub struct Model;
-pub struct AllowTransfers;
 
 /* === Enums === */
 
@@ -51,14 +50,6 @@ impl harmos_runtime::Application for Model {
     type Transaction = harmos_runtime::state::Never;
     type Record = ();
 }
-impl harmos_runtime::operations::authorization::Authorizer for AllowTransfers {
-    fn authorize(
-        &self, _: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
-    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
-        Ok(Some(harmos_runtime::operations::authorization::Authorization::Full(provider.contract.clone())))
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

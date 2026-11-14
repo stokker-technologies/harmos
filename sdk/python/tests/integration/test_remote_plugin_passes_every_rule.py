@@ -6,7 +6,7 @@
 #
 # ***
 
-"""A Python Author Serves the Catalog to the Reference Host."""
+"""A Python Author Serves the Declarations to the Reference Host."""
 
 # === Imports === #
 
@@ -14,9 +14,8 @@
 import unittest
 
 # Third Party Imports
-
 # Local Imports
-from harmos.conformance import plugin
+from tests.fixtures.conformance import plugin
 from tests.support import host
 
 # Type Checking Imports
@@ -31,7 +30,7 @@ from tests.support import host
 
 
 class RemotePlugin(unittest.IsolatedAsyncioTestCase):
-    async def test_remote_plugin_passes_every_rule(self):
+    async def test_remote_plugin_passes_every_rule(self) -> None:
         # Serve the Author's Instance at an Explicit Remote Address.
         endpoint = await plugin().start("127.0.0.1:0")
         self.addAsyncCleanup(endpoint.close)
@@ -40,7 +39,7 @@ class RemotePlugin(unittest.IsolatedAsyncioTestCase):
         status, stdout, stderr = await host.run(endpoint.address)
         self.assertEqual(status, 0, stdout + stderr)
         rows = [line for line in stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 31, stdout)
+        self.assertEqual(len(rows), 36, stdout)
 
 
 # === Public Functions === #

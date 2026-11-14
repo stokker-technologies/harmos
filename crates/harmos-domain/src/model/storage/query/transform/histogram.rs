@@ -29,7 +29,7 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Histogram {
     pub field: FieldPath,
     pub edges: Vec<f64>,

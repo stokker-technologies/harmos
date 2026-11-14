@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Bounded Pages
+//
+// Shared vocabulary for the client, plugin and plugin-host boundaries.
+
+syntax = "proto3";
+
+package harmos.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
+message PageRequest {
+  // Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
+  uint32 page_size = 1;
+  // Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
+  uint64 max_bytes = 2;
+  // Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
+  string page_token = 3;
+}
+
+// === Enums === //

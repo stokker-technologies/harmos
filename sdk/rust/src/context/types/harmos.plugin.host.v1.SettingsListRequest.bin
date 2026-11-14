@@ -1,0 +1,19 @@
+
+–
+$harmos/plugin/host/v1/settings.protoharmos.plugin.host.v1harmos/v1/position.proto"5
+SettingsListRequest
+at (2.harmos.v1.ReadCutbproto3
+°
+harmos/v1/position.proto	harmos.v1"'
+History
+store (	
+epoch (	"A
+Position#
+history (2.harmos.v1.History
+sequence ("a
+ReadCut&
+	positions (2.harmos.v1.Position.
+	revisions (2.harmos.v1.ResourceRevision"2
+ResourceRevision
+name (	
+revision (bproto3

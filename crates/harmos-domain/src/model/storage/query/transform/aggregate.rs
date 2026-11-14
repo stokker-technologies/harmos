@@ -31,12 +31,12 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Aggregate {
     pub groups: Vec<Projection>,
     pub measures: Vec<Measure>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Measure {
     pub field: FieldPath,
     pub statistic: crate::Aggregate,

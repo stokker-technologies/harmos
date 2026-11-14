@@ -22,52 +22,6 @@ use harmos_runtime::Runtime;
 /* === Tests === */
 
 #[tokio::test]
-async fn filesystem_hash_roundtrip() {
-    use harmos_runtime::storage::StorageManager;
-    use sha2::{Digest, Sha256};
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("input.bin");
-    let bytes = b"host filesystem across grpc";
-    std::fs::write(&path, bytes).unwrap();
-    let settings = crate::storage::fixture::config();
-    let backends = harmos_runtime::storage::StorageBackends {
-        primary: Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history())),
-        state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
-    };
-    let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
-        setup.settings().storage(&storage);
-        setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
-    })
-    .await
-    .unwrap();
-
-    let attached = runtime.grpc().attach(super::settings()).await.unwrap();
-    let address = format!("http://{}", attached.local_addr());
-    let channel = tonic::transport::Endpoint::from_shared(address).unwrap().connect().await.unwrap();
-    let request = harmos_protocol::v1::StorageGetFileHashRequest {
-        source: Some(harmos_protocol::storage::FileSource {
-            source: Some(harmos_protocol::storage::file_source::Source::Local(path.to_str().unwrap().into())),
-        }),
-        range: Some(harmos_protocol::storage::ByteRange { offset: 5, limit: Some(10) }),
-        at: None,
-    };
-    let answer = generated_call::<harmos_protocol::v1::StorageGetFileHashRequest, harmos_protocol::v1::StorageGetFileHashResponse>(
-        channel,
-        "/harmos.v1.Storage/GetFileHash",
-        request,
-    )
-    .await
-    .unwrap();
-    let answer = answer.hash.unwrap();
-    assert_eq!(answer.bytes_read, 10);
-    assert_eq!(answer.sha256, <[u8; 32]>::from(Sha256::digest(&bytes[5..15])));
-    drop(attached);
-    storage.close().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
-}
-
-#[tokio::test]
 async fn builtin_grpc_roundtrip() {
     use harmos_operations::lifecycle::{Cancel, Get};
 
@@ -133,8 +87,8 @@ async fn builtin_grpc_roundtrip() {
         .into_iter()
         .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
         .collect::<Vec<_>>();
-    assert!(paths.contains(&"/harmos.v1.Invocations/Get".to_owned()));
-    assert!(paths.contains(&"/harmos.v1.Invocations/Cancel".to_owned()));
+    assert!(paths.contains(&"/harmos.client.v1.Invocations/Get".to_owned()));
+    assert!(paths.contains(&"/harmos.client.v1.Invocations/Cancel".to_owned()));
 
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
@@ -142,24 +96,24 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = generated_call::<harmos_protocol::v1::InvocationsGetRequest, harmos_protocol::v1::InvocationsGetResponse>(
+    let status = generated_call::<harmos_protocol::client::InvocationsGetRequest, harmos_protocol::client::InvocationsGetResponse>(
         channel.clone(),
-        "/harmos.v1.Invocations/Get",
+        "/harmos.client.v1.Invocations/Get",
         Get::of(id),
     )
     .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
+    let cancel = generated_call::<harmos_protocol::client::InvocationsCancelRequest, harmos_protocol::client::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.v1.Invocations/Cancel",
+        "/harmos.client.v1.Invocations/Cancel",
         Cancel::of(unknown),
     )
     .await;
     assert!(cancel.is_err());
-    let foreign = generated_call::<harmos_protocol::v1::InvocationsCancelRequest, harmos_protocol::v1::InvocationsCancelResponse>(
+    let foreign = generated_call::<harmos_protocol::client::InvocationsCancelRequest, harmos_protocol::client::InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.v1.Invocations/Cancel",
+        "/harmos.client.v1.Invocations/Cancel",
         Cancel::of(id),
     )
     .await;
@@ -178,13 +132,7 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_storage::StorageManager;
-
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
-        setup.resource::<Option<Arc<StorageManager>>>(None);
-    })
-    .await
-    .unwrap();
+    let runtime = crate::support::app::launch::<App>((), (), |_| {}).await.unwrap();
     runtime
         .operations
         .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())

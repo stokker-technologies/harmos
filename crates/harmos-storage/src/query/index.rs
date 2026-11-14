@@ -70,6 +70,7 @@ pub struct IndexRead {
     pub work: ReadLimits,
 }
 
+#[derive(Debug)]
 pub struct IndexPage {
     pub entries: Vec<IndexEntry>,
     pub next: Option<IndexSeek>,
@@ -335,3 +336,24 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+impl crate::MemorySize for IndexDefinition {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(crate::MemorySize::memory_size(&self.name))
+            .saturating_add(crate::MemorySize::memory_size(&self.source))
+            .saturating_add(crate::MemorySize::memory_size(&self.columns))
+    }
+}
+
+impl crate::MemorySize for IndexEntry {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.key))
+    }
+}
+
+impl crate::MemorySize for IndexPage {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.entries))
+    }
+}

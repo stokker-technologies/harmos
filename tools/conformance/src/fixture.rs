@@ -7,7 +7,7 @@
  * ***
  */
 
-// Fixed Cross-Language Catalog and Protobuf Fixture Values.
+// Fixed Cross-Language Declarations and Protobuf Fixture Values.
 
 /* === Modules === */
 
@@ -20,15 +20,35 @@ use std::collections::HashMap;
 
 // Third Party Imports
 use prost::Message;
-use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
+use prost_reflect::ReflectMessage;
+use prost_types::{DescriptorProto, Duration, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
 
 // Local Imports
+use crate::conformance::Graph;
+use harmos_protocol::plugin::host::SettingsListRequest;
 use harmos_protocol::v1::*;
 
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.plugin.host.v1.Time/Sleep", "harmos.plugin.host.v1.Time/Get"];
+
+pub const TICK_STREAMS: &[&str] = &[
+    "conformance.tick_children",
+    "conformance.tick_context",
+    "conformance.tick_failure",
+    "conformance.tick_watch",
+    "conformance.tick_cancel",
+];
+pub const HOST_OPERATIONS: &[(&str, &str, &str)] = &[
+    ("harmos.plugin.host.v1.Settings/List", "harmos.plugin.host.v1.SettingsListRequest", "harmos.plugin.host.v1.SettingsListResponse"),
+    (
+        "harmos.plugin.host.v1.Operations/List",
+        "harmos.plugin.host.v1.OperationsListRequest",
+        "harmos.plugin.host.v1.OperationsListResponse",
+    ),
+    ("harmos.plugin.host.v1.Operations/Get", "harmos.plugin.host.v1.OperationsGetRequest", "harmos.plugin.host.v1.OperationsGetResponse"),
+];
 
 pub const ROW: &str = "harmos.conformance.v1.Value";
 
@@ -83,6 +103,9 @@ pub fn types() -> FileDescriptorSet {
 }
 
 pub fn fingerprint(id: &str) -> Vec<u8> {
+    if let Some((_, request, response)) = HOST_OPERATIONS.iter().find(|(operation, _, _)| *operation == id) {
+        return harmos_protocol::schema::fingerprint(id, &host_types(), request, response).expect("typed host contract");
+    }
     if id == "conformance.host.watch" {
         return harmos_protocol::schema::host_fingerprint(
             id,
@@ -97,18 +120,78 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
         .unwrap();
     }
     if CLOCK_OPERATIONS.contains(&id) {
-        let (request, response) = if id == "harmos.context.v1.Time/Sleep" {
-            ("harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse")
+        let (request, response) = if id == "harmos.plugin.host.v1.Time/Sleep" {
+            ("harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse")
         } else {
-            ("harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse")
+            ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse")
         };
-        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::declarations_types(), request, response)
             .expect("clock contract");
     }
     harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
 }
 
-pub fn catalog() -> Catalog {
+pub fn host_types() -> FileDescriptorSet {
+    let pool = SettingsListRequest::default().descriptor().parent_pool().clone();
+    let types = FileDescriptorSet::decode(pool.encode_to_vec().as_slice()).expect("generated host descriptors");
+    let names: Vec<_> =
+        HOST_OPERATIONS.iter().flat_map(|(_, request, response)| [*request, *response]).chain(["harmos.v1.SettingsDeclarations"]).collect();
+    harmos_protocol::schema::operation_types(&types, &names).expect("typed host projections")
+}
+
+pub fn settings_values(stored: bool) -> SettingValues {
+    use setting_value::Value;
+    SettingValues {
+        values: HashMap::from([
+            ("enabled".into(), SettingValue { value: Some(Value::Flag(stored)) }),
+            (
+                "count".into(),
+                SettingValue {
+                    value: Some(Value::Integer(if stored { 9 } else { 3 })),
+                },
+            ),
+            (
+                "gain".into(),
+                SettingValue {
+                    value: Some(Value::Number(if stored { 2.5 } else { 1.5 })),
+                },
+            ),
+            (
+                "label".into(),
+                SettingValue {
+                    value: Some(Value::Text(if stored { "stored" } else { "default" }.into())),
+                },
+            ),
+            (
+                "interval".into(),
+                SettingValue {
+                    value: Some(Value::Duration(Duration {
+                        seconds: if stored { 4 } else { 2 },
+                        nanos: 0,
+                    })),
+                },
+            ),
+        ]),
+    }
+}
+
+pub fn settings_declarations() -> SettingsDeclarations {
+    let mut defaults: Vec<_> = settings_values(false).values.into_iter().collect();
+    defaults.sort_by(|first, second| first.0.cmp(&second.0));
+    SettingsDeclarations {
+        values: defaults
+            .into_iter()
+            .map(|(name, value)| SettingDeclaration {
+                title: format!("{}{}", name[..1].to_uppercase(), &name[1..]),
+                description: format!("Conformance {name}"),
+                name,
+                default: Some(value),
+            })
+            .collect(),
+    }
+}
+
+pub fn declarations() -> Declarations {
     let mut operations: Vec<_> = OPERATIONS
         .iter()
         .map(|name| {
@@ -144,7 +227,7 @@ pub fn catalog() -> Catalog {
         .map(|name| StreamDeclaration {
             id: format!("conformance.{name}"),
             row: ROW.into(),
-            interval: (name == "ticks").then_some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            interval: (name == "ticks").then_some(Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         })
         .collect();
@@ -158,7 +241,7 @@ pub fn catalog() -> Catalog {
             request: request.into(),
             response: response.into(),
             visibility: Visibility::Public as i32,
-            fingerprint: harmos_protocol::schema::fingerprint(id, &harmos::conformance::v1::types(), request, response)
+            fingerprint: harmos_protocol::schema::fingerprint(id, &crate::conformance::types(), request, response)
                 .expect("fixture schema resolves"),
             ..Default::default()
         });
@@ -166,15 +249,15 @@ pub fn catalog() -> Catalog {
     streams.push(StreamDeclaration {
         id: "conformance.settings".into(),
         row: ROW.into(),
-        interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-        interval_setting: "harmos.conformance.v1.Graph.interval".into(),
+        interval: Some(Duration { seconds: 1, nanos: 0 }),
+        interval_setting: "interval".into(),
         ..Default::default()
     });
     requires.push(Requirement {
         id: "conformance.host.schema".into(),
         fingerprint: harmos_protocol::schema::fingerprint(
             "conformance.host.schema",
-            &harmos::conformance::v1::types(),
+            &crate::conformance::types(),
             "harmos.conformance.v1.Graph",
             ROW,
         )
@@ -222,29 +305,64 @@ pub fn catalog() -> Catalog {
             fingerprint: fingerprint(id),
         });
     }
-    let mut types = harmos::conformance::v1::types();
-    for file in harmos_protocol::clock::catalog_types().file {
+    for id in ["conformance.settings_read", "conformance.discover"] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: fingerprint(id),
+            ..Default::default()
+        });
+    }
+    for name in TICK_STREAMS {
+        streams.push(StreamDeclaration {
+            id: (*name).into(),
+            row: ROW.into(),
+            interval: Some(Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        });
+    }
+    for (id, _, _) in HOST_OPERATIONS {
+        requires.push(Requirement {
+            id: (*id).into(),
+            fingerprint: fingerprint(id),
+        });
+    }
+    let mut types = crate::conformance::types();
+    for file in host_types().file {
         if !types.file.iter().any(|existing| existing.name == file.name) {
             types.file.push(file);
         }
     }
-    let mut catalog = Catalog {
+    for file in harmos_protocol::clock::declarations_types().file {
+        if !types.file.iter().any(|existing| existing.name == file.name) {
+            types.file.push(file);
+        }
+    }
+    let mut declarations = Declarations {
         operations,
         requires,
         streams,
         types: Some(types),
-        sections: vec![Section {
-            r#type: "harmos.conformance.v1.Graph".into(),
-            payload: harmos::conformance::v1::Graph {
-                interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-                ..Default::default()
-            }
-            .encode_to_vec(),
-        }],
+        sections: vec![
+            Section {
+                r#type: "harmos.conformance.v1.Graph".into(),
+                payload: Graph {
+                    interval: Some(Duration { seconds: 2, nanos: 0 }),
+                    ..Default::default()
+                }
+                .encode_to_vec(),
+            },
+            Section {
+                r#type: "harmos.v1.SettingsDeclarations".into(),
+                payload: settings_declarations().encode_to_vec(),
+            },
+        ],
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
-    catalog
+    declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
+    declarations
 }
 
 pub fn failure(operation: &str) -> Failure {

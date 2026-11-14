@@ -25,7 +25,7 @@ use harmos_protocol::{
     v1::{self, guest_child, guest_command, response},
 };
 use prost::Message as _;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
@@ -114,11 +114,11 @@ impl Session {
         v1::Response::decode(bytes.as_slice()).unwrap().result.unwrap()
     }
     async fn prepare(&mut self, id: &str, invocation: u64, payload: Vec<u8>) -> response::Result {
-        let catalog = self.metadata.catalog.as_ref().unwrap();
+        let declarations = self.metadata.declarations.as_ref().unwrap();
         let fingerprint = if id.starts_with("harmos.") {
             harmos_protocol::guest::lifecycle_fingerprint(id).unwrap()
         } else {
-            catalog.operations.iter().find(|operation| operation.id == id).unwrap().fingerprint.clone()
+            declarations.operations.iter().find(|operation| operation.id == id).unwrap().fingerprint.clone()
         };
         self.phase(guest_command::Phase::Prepare(v1::GuestPrepare {
             invocation,
@@ -169,8 +169,8 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                 imports.children.insert(instance, (request.payload, false));
                 return Ok(v1::GuestSubmitted { instance }.encode_to_vec());
             }
-            if request.operation == "host.harmos.context.v1.Samples/Append" {
-                return Ok(harmos_protocol::context::SamplesAppendResponse {}.encode_to_vec());
+            if request.operation == "host.example.plugin.host.v1.Progress/Publish" {
+                return Ok(Vec::new());
             }
             Ok(request.payload)
         }
@@ -217,12 +217,17 @@ fn world(component: &[u8]) -> String {
 
 #[tokio::test]
 async fn component_authoring_preserves_lifecycle_and_child_handles() {
-    // Compare the Same SDK World Across Two Authored Catalogs
+    // Compare the Same SDK World Across Two Authored Declarationss
     let sandbox = super::support::component("harmos-sandbox-guest");
     let schematic = super::support::component("schematic-guest");
     assert_eq!(world(&sandbox), world(&schematic));
     let example = Session::new(&schematic).await;
     assert_eq!(example.metadata.id, "schematic_tools");
+    let declarations = example.metadata.declarations.as_ref().unwrap();
+    let operations = declarations.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
+    assert_eq!(operations, BTreeSet::from(["schematic.route", "schematic.validate"]));
+    assert!(declarations.types.as_ref().is_some_and(|types| !types.file.is_empty()));
+    assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.plugin.host.v1.Settings/List"));
 
     // Register Inert Metadata Before Initializing Any Authored State
     let mut session = Session::new(&sandbox).await;
@@ -237,7 +242,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
                 "{}.{}",
                 if required.id == "provider.echo" {
                     "provider"
-                } else if required.id == "harmos.context.v1.Samples/Append" {
+                } else if required.id == "example.plugin.host.v1.Progress/Publish" {
                     "host"
                 } else {
                     "sandbox_guest"
@@ -269,7 +274,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     let answer = session.call("probe.echo", 2, request).await;
     assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "heard hello"));
     // Private Dispatch Never Acquires an Assignment or Crosses the Component Import.
-    assert!(!metadata.catalog.as_ref().unwrap().operations.iter().any(|operation| operation.id == "probe.local"));
+    assert!(!metadata.declarations.as_ref().unwrap().operations.iter().any(|operation| operation.id == "probe.local"));
     let imported = session.store.data().calls.len();
     let answer = session.call("probe.echo", 12, EchoOperation { say: "local:inside".into() }.encode_to_vec()).await;
     assert!(matches!(answer, response::Result::Payload(payload) if Echoed::decode(payload.as_slice()).unwrap().said == "inside"));

@@ -349,9 +349,6 @@ impl From<harmos_protocol::v1::Failure> for Failure {
         let mut failure = Self::new(code, wire.message);
         failure.0.refusal_code = wire.code.parse().ok();
         failure.0.details = wire.details.into_iter().collect();
-        if !wire.code.is_empty() && failure.0.refusal_code.is_none() {
-            failure.0.details.insert("harmos.code".into(), wire.code);
-        }
         failure.0.context = Context {
             operation: (!wire.operation.is_empty()).then_some(wire.operation),
             step,
@@ -461,6 +458,7 @@ mod tests {
         assert_eq!(encoded.cause, wire.cause);
         assert_eq!(encoded.diagnostics, wire.diagnostics);
         assert_eq!(encoded.plugin, wire.plugin);
+        assert_eq!(encoded.details, wire.details);
         assert_eq!(encoded.operation, "sensor.read");
         let redacted = retained.without_diagnostics();
         let redacted = Failure::decode(&redacted.encode()).unwrap();

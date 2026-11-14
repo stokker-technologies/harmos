@@ -21,6 +21,8 @@
 
 // Local Imports
 #include "invocation.hpp"
+#include "duplex.hpp"
+#include "samples.hpp"
 #include "harmos/plugin/v1/instance.grpc.pb.h"
 
 /* === Macros === */
@@ -31,85 +33,10 @@
 
 namespace harmos {
 namespace {
+using detail::Duplex;
 using Requirements = std::map<std::string, std::string>;
 
 /* === Classes === */
-
-// Each Call Owns Its Handler and One Flow-Controlled Outgoing Message.
-template<class I, class O> class Duplex : public grpc::ServerBidiReactor<I, O> {
-public:
-    Duplex() { this->StartSendInitialMetadata(); }
-    I input;
-    std::thread worker;
-    std::recursive_mutex mutex;
-    std::condition_variable_any room;
-    std::deque<O> output;
-    bool ending = false;
-    bool finishing = false;
-    bool metadata_sent = false;
-    bool read_requested = false;
-    grpc::Status status;
-
-    void read_next() {
-        std::lock_guard lock(mutex);
-        if (ending) return;
-        if (metadata_sent) this->StartRead(&input);
-        else read_requested = true;
-    }
-    void OnSendInitialMetadataDone(bool ok) override {
-        std::lock_guard lock(mutex);
-        if (!ok) {
-            closed();
-            end({grpc::StatusCode::CANCELLED, "Transport Closed"});
-            return;
-        }
-        metadata_sent = true;
-        if (read_requested && !ending) this->StartRead(&input);
-    }
-    void write(O message) {
-        std::unique_lock lock(mutex);
-        room.wait(lock, [&] { return output.empty() || ending; });
-        if (ending) throw TransportError(1, "Call Closed");
-        output.push_back(std::move(message));
-        this->StartWrite(&output.front());
-    }
-    void end(grpc::Status result) {
-        std::lock_guard lock(mutex);
-        if (ending) return;
-        ending = true;
-        status = std::move(result);
-        room.notify_all();
-        if (output.empty()) {
-            finishing = true;
-            this->Finish(status);
-        }
-    }
-    void OnWriteDone(bool ok) override {
-        std::lock_guard lock(mutex);
-        output.pop_front();
-        room.notify_all();
-        if (!ok && !ending) {
-            closed();
-            end(grpc::Status(grpc::StatusCode::CANCELLED, "Transport Closed"));
-        }
-        if (ending && !finishing) {
-            finishing = true;
-            this->Finish(status);
-        }
-    }
-    void OnCancel() override {
-        closed();
-        end(grpc::Status(grpc::StatusCode::CANCELLED, "Transport Closed"));
-    }
-    void OnDone() override {
-        closed();
-        if (worker.joinable()) worker.join();
-        settle_children();
-        delete this;
-    }
-    virtual void closed() = 0;
-    virtual void settle_children() {}
-};
 
 class InvocationCall final : public Duplex<plugin::v1::InstanceInvokeRequest, plugin::v1::InstanceInvokeResponse> {
 public:
@@ -167,35 +94,7 @@ public:
             return;
         }
         if (input.has_child()) {
-            bool valid = false;
-            {
-                std::lock_guard lock(state_->mutex);
-                const auto& child = input.child();
-                auto watching = state_->watches.find(child.call());
-                if (state_->retired.contains(child.call())) { valid = true; }
-                else if (watching != state_->watches.end()) {
-                    auto& watch = *watching->second;
-                    valid = child.result_case() != wire::ChildResponse::RESULT_NOT_SET && child.item().size() <= watch.max_item_bytes && child.payload().size() <= watch.max_item_bytes;
-                    if (child.has_item()) {
-                        valid = valid && watch.demanded && !watch.item && !watch.terminal;
-                        if (valid) watch.item = child;
-                    } else {
-                        valid = valid && !watch.terminal;
-                        if (valid) watch.terminal = child;
-                    }
-                    state_->changed.notify_all();
-                } else {
-                auto found = state_->pending.find(child.call());
-                valid = !child.has_item() && found != state_->pending.end() && child.result_case() != wire::ChildResponse::RESULT_NOT_SET;
-                if (valid) {
-                    if (child.has_failure()) found->second.set_exception(std::make_exception_ptr(Failure(child.failure())));
-                    else found->second.set_value(child.payload());
-                    state_->guards.erase(child.call());
-                    state_->pending.erase(found);
-                    state_->changed.notify_all();
-                }
-                }
-            }
+            const bool valid = state_->receive(input.child());
             if (!valid) {
                 end({grpc::StatusCode::INVALID_ARGUMENT, "Unknown or Duplicate Child Response"});
                 closed();
@@ -254,79 +153,6 @@ private:
     bool started_ = false;
 };
 
-bool valid_timestamp(const google::protobuf::Timestamp& at) {
-    return at.seconds() >= -62135596800LL && at.seconds() <= 253402300799LL && at.nanos() >= 0 && at.nanos() < 1000000000;
-}
-
-class PublicationCall final : public Duplex<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> {
-public:
-    explicit PublicationCall(const std::vector<detail::StreamDefinition>& streams)
-        : streams_(streams), state_(std::make_shared<detail::Invocation>()) {
-        read_next();
-    }
-    void closed() override { state_->close(std::make_exception_ptr(TransportError(1, "Demand Closed"))); }
-    void OnReadDone(bool ok) override {
-        if (!ok) {
-            end(stream_ ? grpc::Status::OK : grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Open Must Be First"));
-            closed();
-            return;
-        }
-        if (!stream_) {
-            if (!input.has_open()) { end({grpc::StatusCode::INVALID_ARGUMENT, "Open Must Be First"}); return; }
-            for (const auto& stream : streams_) if (stream.declaration.id() == input.open().stream()) stream_ = &stream;
-            if (!stream_) { end({grpc::StatusCode::NOT_FOUND, "Unknown Stream"}); return; }
-            state_->request.set_scope(input.open().scope());
-            if (stream_->producer) {
-                worker = std::thread([this] {
-                    try {
-                        Context context(state_);
-                        stream_->producer(context, [this](std::string row, std::optional<google::protobuf::Timestamp> at) {
-                            if (at && !valid_timestamp(*at)) throw TransportError(3, "Invalid Device Timestamp");
-                            plugin::v1::InstanceSamplesResponse samples;
-                            auto* sample = samples.add_samples();
-                            sample->set_row(std::move(row));
-                            sample->set_sequence(++sequence_);
-                            if (at) *sample->mutable_at() = std::move(*at);
-                            write(std::move(samples));
-                        });
-                    } catch (const std::exception& error) {
-                        end({grpc::StatusCode::INTERNAL, error.what()});
-                    }
-                });
-            }
-            read_next();
-            return;
-        }
-        if (!input.has_tick() || !input.tick().has_at() || !valid_timestamp(input.tick().at()) || !stream_->observer) {
-            end({grpc::StatusCode::INVALID_ARGUMENT, "Expected a Valid Observer Tick"});
-            closed();
-            return;
-        }
-        // Observers Cannot Wait; the Next Tick Is Read Only After This Sample Is Sent.
-        try {
-            Context context(state_);
-            context.sequence = ++sequence_;
-            plugin::v1::InstanceSamplesResponse samples;
-            auto* sample = samples.add_samples();
-            *sample->mutable_at() = input.tick().at();
-            sample->set_sequence(sequence_);
-            sample->set_row(stream_->observer(context));
-            tick_pending_ = true;
-            write(std::move(samples));
-        } catch (const std::exception& error) { end({grpc::StatusCode::INTERNAL, error.what()}); }
-    }
-    void OnWriteDone(bool ok) override {
-        Duplex::OnWriteDone(ok);
-        if (tick_pending_ && ok) { tick_pending_ = false; read_next(); }
-    }
-private:
-    const std::vector<detail::StreamDefinition>& streams_;
-    const detail::StreamDefinition* stream_ = nullptr;
-    std::shared_ptr<detail::Invocation> state_;
-    std::uint64_t sequence_ = 0;
-    bool tick_pending_ = false;
-};
-
 class Stopped final : public grpc::ServerUnaryReactor {
 public:
     explicit Stopped(std::function<void()> done) : done_(std::move(done)) { Finish(grpc::Status::OK); }
@@ -359,7 +185,7 @@ public:
         return new InvocationCall(operations, requirements, description.id());
     }
     grpc::ServerBidiReactor<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse>* Samples(grpc::CallbackServerContext*) override {
-        return new PublicationCall(streams);
+        return new detail::PublicationCall(streams, operations, requirements, description.id());
     }
     grpc::ServerUnaryReactor* Stop(grpc::CallbackServerContext* context, const plugin::v1::InstanceStopRequest*, plugin::v1::InstanceStopResponse*) override {
         try { for (const auto& hook : cleanup) hook(); }
@@ -400,7 +226,7 @@ void Plugin::serve(std::string address) const {
     const auto maximum = transfer_message_bytes(transfer_);
     description.set_sdk_version("0.1.0");
     description.set_message_bytes(maximum);
-    *description.mutable_catalog() = catalog();
+    *description.mutable_declarations() = declarations();
     static const auto started = std::chrono::system_clock::now().time_since_epoch();
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(started);
     description.mutable_started_at()->set_seconds(seconds.count());

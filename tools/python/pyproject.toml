@@ -23,7 +23,7 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "UP", "B"]
+select = ["E4", "E7", "E9", "F", "I", "N", "UP", "B", "ANN"]
 
 [tool.ty.environment]
 python-version = "3.13"

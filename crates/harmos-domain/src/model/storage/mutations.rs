@@ -93,55 +93,6 @@ impl MemorySize for StorageInfo {
     }
 }
 
-impl From<MutationWindow> for harmos_protocol::storage::MutationWindow {
-    fn from(value: MutationWindow) -> Self {
-        Self {
-            history: Some(value.history.into()),
-            id: value.id.to_string(),
-            expires_at: Some(value.expires_at.into()),
-        }
-    }
-}
-
-impl From<StorageInfo> for harmos_protocol::storage::StorageInfoResponse {
-    fn from(value: StorageInfo) -> Self {
-        Self {
-            accepted: Some(value.accepted.into()),
-            saved: Some(value.saved.into()),
-            mutations: value.mutations.map(Into::into),
-            file_batch_bytes: value.file_batch_bytes,
-        }
-    }
-}
-
-impl From<MutationId> for harmos_protocol::storage::MutationId {
-    fn from(value: MutationId) -> Self {
-        Self {
-            window: value.window.to_string(),
-            key: value.key.to_string(),
-        }
-    }
-}
-
-impl TryFrom<harmos_protocol::storage::MutationId> for MutationId {
-    type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::MutationId) -> crate::Result<Self> {
-        Ok(Self {
-            window: Identifier::new(value.window)?,
-            key: Identifier::new(value.key)?,
-        })
-    }
-}
-
-impl From<FileProducer> for harmos_protocol::storage::FileProducer {
-    fn from(value: FileProducer) -> Self {
-        Self {
-            session: Some(value.session.into()),
-            length: value.length,
-        }
-    }
-}
-
 /* === Public Functions === */
 
 /* === Private Functions === */

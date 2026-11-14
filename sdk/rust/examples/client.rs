@@ -16,12 +16,12 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
+use std::{env, error::Error as StdError, num::NonZeroUsize, result::Result as StdResult};
 
 // Third Party Imports
 use harmos::prelude::*;
-use harmos_protocol::v1 as host;
-use schematic_protocol::{ValidateSchematic, Validation};
+use harmos_protocol::{client as host, v1::StorageTransferSettings};
+use schematic_protocol::{Connection, Snapshot, ValidateSchematic, Validation};
 use tonic::{Request, transport::Endpoint};
 
 // Local Imports
@@ -42,14 +42,14 @@ use tonic::{Request, transport::Endpoint};
 
 /* === Public Functions === */
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // Connect To The Application's gRPC Listener.
-    let address = std::env::args().nth(1).ok_or("pass the application's gRPC URL")?;
+#[tokio::main]
+async fn main() -> StdResult<(), Box<dyn StdError>> {
+    // Connect to the Application's gRPC Listener.
+    let address = env::args().nth(1).ok_or("pass the application's gRPC URL")?;
     let channel = Endpoint::from_shared(address)?.connect().await?;
-    let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<NonZeroUsize>()?;
+    let retained_bytes = env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<NonZeroUsize>()?;
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
+        transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
         retained_bytes,
         message_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
         input_items: NonZeroUsize::new(4).unwrap(),
@@ -57,25 +57,22 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     };
     let client = Client::new(channel, settings)?;
 
-    // Find The Application's Generated Contract.
-    let request = host::CatalogEntriesListRequest {
-        kind: host::CatalogKind::Operations as i32,
-        ..Default::default()
-    };
-    let catalog = client.catalog_entries.list(Request::new(request)).await?.into_inner();
-    let contract = catalog
+    // Find the Application's Generated Contract.
+    let request = host::OperationsListRequest {};
+    let declarations = client.operations.list(Request::new(request)).await?.into_inner();
+    let contract = declarations
         .operations
         .into_iter()
         .filter_map(|entry| entry.contract)
         .find(|contract| contract.id == "schematic.validate")
         .ok_or("the host does not expose schematic.validate")?;
 
-    // Bind Generated Application Messages And Observe The Operation's Status.
+    // Bind Generated Application Messages and Observe the Operation's Status.
     let method = Method::<ValidateSchematic, Validation>::new(contract)?;
     let request = ValidateSchematic {
-        schematic: Some(schematic_protocol::Snapshot {
+        schematic: Some(Snapshot {
             symbols: vec![1, 2],
-            connections: vec![schematic_protocol::Connection { from: 1, to: 2 }],
+            connections: vec![Connection { from: 1, to: 2 }],
         }),
     };
     match client.call(&method, Request::new(request)).await {

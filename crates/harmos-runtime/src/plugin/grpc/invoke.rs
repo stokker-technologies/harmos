@@ -41,10 +41,8 @@ use crate::operations::{ErasedResponse, FailureKind, HostContext, NativeInstance
 
 #[derive(Clone)]
 pub(crate) struct Binding {
-    pub(crate) owner: String,
     pub(crate) contract: v1::OperationContract,
-    pub(crate) requires: Vec<v1::Requirement>,
-    declarations: Vec<v1::SettingDeclaration>,
+    pub(crate) caller: super::CallingPlugin,
     connection: Arc<Connection>,
 }
 
@@ -54,6 +52,12 @@ struct Invocation {
 }
 
 /* === Enums === */
+
+#[derive(Clone)]
+pub(super) enum ChildReplies {
+    Invoke(mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>),
+    Samples(mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>),
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CallError {
@@ -71,26 +75,36 @@ pub enum CallError {
 
 /* === Implementations === */
 
+impl ChildReplies {
+    pub(super) async fn send(&self, child: v1::ChildResponse) -> crate::Result<()> {
+        let result = match self {
+            Self::Invoke(output) => output
+                .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                    frame: Some(instance_invoke_request::Frame::Child(child)),
+                })
+                .await
+                .map_err(|_| ()),
+            Self::Samples(output) => output
+                .send(harmos_protocol::plugin::InstanceSamplesRequest {
+                    frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Child(child)),
+                })
+                .await
+                .map_err(|_| ()),
+        };
+        result.map_err(|()| crate::Error::Closing { domain: "child response carrier" })
+    }
+}
+
 impl Binding {
     pub(crate) fn new(activation: &Activation, contract: v1::OperationContract) -> Self {
         Self {
-            owner: activation.description.id.clone(),
             contract,
-            requires: activation.description.catalog.as_ref().unwrap().requires.clone(),
-            declarations: activation
-                .description
-                .catalog
-                .as_ref()
-                .unwrap()
-                .sections
-                .iter()
-                .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
-                .map(|section| {
-                    <v1::SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
-                        .expect("admitted settings section")
-                        .values
-                })
-                .unwrap_or_default(),
+            caller: super::CallingPlugin {
+                name: activation.entry_name.clone(),
+                connection: activation.connection.clone(),
+                provider: activation.provider.clone(),
+                description: activation.description.clone(),
+            },
             connection: activation.connection.clone(),
         }
     }
@@ -253,7 +267,7 @@ async fn invoke(
                         let call = child.call;
                         let operation = child.operation.clone();
                         let background = child.background;
-                        let invocation = host.borrow().submit_grpc_child(&binding.owner, &binding.requires, &binding.declarations, child);
+                        let invocation = host.borrow().submit_grpc_child(&binding.caller, child);
                         let (demand, credits) = mpsc::channel(1);
                         if let Ok(child) = &invocation {
                             controls.insert(call, (child.invocation.control.clone(), background, child.streams.as_ref().map(|_| demand)));
@@ -262,7 +276,9 @@ async fn invoke(
                         children.push(Box::pin(async move {
                             let result = match invocation {
                                 Ok(child) => match child.streams {
-                                    Some(streams) => watch_child(call, child.invocation, streams, credits, output).await,
+                                    Some(streams) => {
+                                        watch_child(call, child.invocation, streams, credits, ChildReplies::Invoke(output)).await
+                                    }
                                     None => child.invocation.await,
                                 },
                                 Err(error) => Err(error),
@@ -296,9 +312,9 @@ async fn invoke(
     }
 }
 
-async fn watch_child(
+pub(super) async fn watch_child(
     call: u64, mut invocation: crate::operations::EncodedInvocation, streams: harmos_operations::execution::operations::WireStreams,
-    mut credits: mpsc::Receiver<()>, output: mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>,
+    mut credits: mpsc::Receiver<()>, output: ChildReplies,
 ) -> crate::Result<Vec<u8>> {
     let mut response = None;
     loop {
@@ -322,14 +338,11 @@ async fn watch_child(
             };
         };
         output
-            .send(harmos_protocol::plugin::InstanceInvokeRequest {
-                frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
-                    call,
-                    result: Some(v1::child_response::Result::Item(payload)),
-                })),
+            .send(v1::ChildResponse {
+                call,
+                result: Some(v1::child_response::Result::Item(payload)),
             })
-            .await
-            .map_err(|_| crate::Error::Closing { domain: "Watch child carrier" })?;
+            .await?;
     }
 }
 

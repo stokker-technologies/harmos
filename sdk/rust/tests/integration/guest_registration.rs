@@ -55,12 +55,12 @@ fn guest_registration_describes_values_before_initialization() {
         .on_initialize(async |_: &Context, _: Vec<u8>| panic!("inspection initialized a plugin"))
         .on_cleanup(|| panic!("inspection entered cleanup"));
 
-    // Read the Authoritative Catalog Without Entering Authored Code
+    // Read the Authoritative Declarations Without Entering Authored Code
     let metadata = registration.metadata().unwrap();
-    let catalog = metadata.catalog.unwrap();
-    assert_eq!(catalog.operations[0].id, "guest.echo");
-    assert_eq!(catalog.operations[0].fingerprint.len(), 32);
-    assert_eq!(catalog.digest, harmos_protocol::schema::catalog_digest(&catalog));
+    let declarations = metadata.declarations.unwrap();
+    assert_eq!(declarations.operations[0].id, "guest.echo");
+    assert_eq!(declarations.operations[0].fingerprint.len(), 32);
+    assert_eq!(declarations.digest, harmos_protocol::schema::declarations_digest(&declarations));
 
     // Refuse Invalid Builder Values Before Creating an Adapter
     assert!(Registration::new(Plugin::new("fixture", "1.0.0")).capacity(0).metadata().is_err());

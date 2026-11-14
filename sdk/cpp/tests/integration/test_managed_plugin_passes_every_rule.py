@@ -29,14 +29,14 @@ from tests.support import host
 
 
 class ManagedPlugin(unittest.TestCase):
-    def test_managed_plugin_passes_every_rule(self):
+    def test_managed_plugin_passes_every_rule(self) -> None:
         # Start the Managed Plugin and Run Every Reference-Host Case Through Stop.
         result = host.run_managed()
 
         # Check Every Rule and the Managed Process's Successful Cleanup and Exit.
         self.assertEqual(result.returncode, 0, result.stdout)
         rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 31, result.stdout)
+        self.assertEqual(len(rows), 36, result.stdout)
 
 
 # === Public Functions === #

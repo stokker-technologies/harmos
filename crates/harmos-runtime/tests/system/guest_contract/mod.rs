@@ -17,7 +17,7 @@ mod lifecycle;
 mod publications;
 mod sandbox_limits;
 mod shutdown;
-mod support;
+pub(super) mod support;
 
 #[path = "../../../../../sdk/rust/tests/fixtures/sandbox/src/contract.rs"]
 pub mod contract;

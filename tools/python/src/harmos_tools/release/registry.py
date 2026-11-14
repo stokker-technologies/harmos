@@ -13,6 +13,7 @@
 import base64
 import email.utils
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -21,8 +22,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import IO, Literal, overload
 
 # Third Party Imports
 # Local Imports
@@ -59,7 +61,9 @@ IDEMPOTENT = frozenset({"GET", "PUT", "PATCH", "DELETE"})
 
 
 class ProviderRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: http.client.HTTPMessage, newurl: str
+    ) -> urllib.request.Request | None:
         redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
         origin = urllib.parse.urlsplit(req.full_url)
         destination = urllib.parse.urlsplit(newurl)
@@ -74,7 +78,7 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 # === Public Functions === #
 
 
-def publish_crates(directory: Path, *, sleep=time.sleep, clock=time.monotonic) -> None:
+def publish_crates(directory: Path, *, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> None:
     """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
         raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
@@ -268,9 +272,38 @@ def request(
     raise AssertionError("unreachable")
 
 
-def document(settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, *, channel: bool = False) -> Any:
+@overload
+def document(
+    settings: dict,
+    endpoint: str,
+    method: str = "GET",
+    body: dict | None = None,
+    *,
+    channel: bool = False,
+    collection: Literal[False] = False,
+) -> dict | None: ...
+
+
+@overload
+def document(
+    settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, *, channel: bool = False, collection: Literal[True]
+) -> list[dict] | None: ...
+
+
+def document(
+    settings: dict, endpoint: str, method: str = "GET", body: dict | None = None, *, channel: bool = False, collection: bool = False
+) -> dict | list[dict] | None:
     value = request(settings, endpoint, method, json.dumps(body).encode() if body is not None else None, channel=channel)
-    return json.loads(value) if value else None
+    if not value:
+        return None
+    result = json.loads(value)
+    if collection:
+        if not isinstance(result, list) or any(not isinstance(item, dict) for item in result):
+            raise policy.ToolError("provider collection must contain objects")
+        return result
+    if not isinstance(result, dict):
+        raise policy.ToolError("provider response must be an object")
+    return result
 
 
 def pages(settings: dict, endpoint: str, key: str | None = None, *, channel: bool = False) -> list:
@@ -278,7 +311,8 @@ def pages(settings: dict, endpoint: str, key: str | None = None, *, channel: boo
     page = 1
     while True:
         separator = "&" if "?" in endpoint else "?"
-        response = document(settings, f"{endpoint}{separator}per_page=100&page={page}", channel=channel)
+        address = f"{endpoint}{separator}per_page=100&page={page}"
+        response = document(settings, address, channel=channel) if key else document(settings, address, channel=channel, collection=True)
         values = response.get(key, []) if key and isinstance(response, dict) else response
         if not isinstance(values, list):
             raise policy.ToolError("provider returned invalid paginated evidence")
@@ -288,7 +322,7 @@ def pages(settings: dict, endpoint: str, key: str | None = None, *, channel: boo
         page += 1
 
 
-def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep=time.sleep) -> None:
+def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep: Callable[[float], None] = time.sleep) -> None:
     """Arm Native Squash Auto-Merge After Opening The Release Review, Waiting Briefly For GitLab's Pipeline."""
     if settings["provider"] == "github":
         repository = settings.get("repository", os.environ.get("GITHUB_REPOSITORY", ""))
@@ -611,7 +645,9 @@ def _pause(seconds: float) -> None:
     time.sleep(seconds)
 
 
-def _publish_crates(directory: Path, packages: dict, deadline: float, *, sleep, clock) -> None:
+def _publish_crates(
+    directory: Path, packages: dict, deadline: float, *, sleep: Callable[[float], None], clock: Callable[[], float]
+) -> None:
     for name in _publication_order(packages):
         version = packages[name]["version"]
         if crate_published(name, version):

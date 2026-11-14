@@ -127,7 +127,7 @@ impl MemorySize for FileProgress {
     }
 }
 
-impl From<FileMetadata> for harmos_protocol::storage::FileMetadata {
+impl From<FileMetadata> for harmos_protocol::v1::FileMetadata {
     fn from(value: FileMetadata) -> Self {
         Self {
             id: value.id.to_string(),
@@ -138,9 +138,9 @@ impl From<FileMetadata> for harmos_protocol::storage::FileMetadata {
         }
     }
 }
-impl TryFrom<harmos_protocol::storage::FileMetadata> for FileMetadata {
+impl TryFrom<harmos_protocol::v1::FileMetadata> for FileMetadata {
     type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::FileMetadata) -> crate::Result<Self> {
+    fn try_from(value: harmos_protocol::v1::FileMetadata) -> crate::Result<Self> {
         Ok(Self {
             id: Identifier::new(value.id)?,
             scope: value.scope.map(Identifier::new).transpose()?,
@@ -158,43 +158,8 @@ impl TryFrom<harmos_protocol::storage::FileMetadata> for FileMetadata {
         })
     }
 }
-impl From<StagedFile> for harmos_protocol::storage::StagedFile {
-    fn from(value: StagedFile) -> Self {
-        Self {
-            history: Some(value.history.into()),
-            id: value.id.to_string(),
-        }
-    }
-}
-impl TryFrom<harmos_protocol::storage::StagedFile> for StagedFile {
-    type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::StagedFile) -> crate::Result<Self> {
-        Ok(Self {
-            history: value.history.ok_or(crate::Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
-            id: Identifier::new(value.id)?,
-        })
-    }
-}
-impl From<FileSession> for harmos_protocol::storage::FileSession {
-    fn from(value: FileSession) -> Self {
-        Self {
-            history: Some(value.history.into()),
-            id: value.id.to_string(),
-            generation: value.generation,
-        }
-    }
-}
-impl TryFrom<harmos_protocol::storage::FileSession> for FileSession {
-    type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::FileSession) -> crate::Result<Self> {
-        Ok(Self {
-            history: value.history.ok_or(crate::Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
-            id: Identifier::new(value.id)?,
-            generation: value.generation,
-        })
-    }
-}
-impl From<FileReference> for harmos_protocol::storage::FileReference {
+
+impl From<FileReference> for harmos_protocol::v1::FileReference {
     fn from(value: FileReference) -> Self {
         Self {
             position: Some(value.position.into()),
@@ -204,18 +169,10 @@ impl From<FileReference> for harmos_protocol::storage::FileReference {
         }
     }
 }
-impl From<FileProgress> for harmos_protocol::storage::FileProgress {
-    fn from(value: FileProgress) -> Self {
-        Self {
-            length: value.length,
-            phase: value.phase as i32,
-        }
-    }
-}
 
-impl TryFrom<harmos_protocol::storage::FileReference> for FileReference {
+impl TryFrom<harmos_protocol::v1::FileReference> for FileReference {
     type Error = crate::Error;
-    fn try_from(value: harmos_protocol::storage::FileReference) -> crate::Result<Self> {
+    fn try_from(value: harmos_protocol::v1::FileReference) -> crate::Result<Self> {
         Ok(Self {
             position: value.position.ok_or(crate::Error::InvalidInput { field: "position", reason: "required" })?.try_into()?,
             metadata: value.metadata.ok_or(crate::Error::InvalidInput { field: "metadata", reason: "required" })?.try_into()?,

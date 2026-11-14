@@ -20,7 +20,7 @@ mod object_schemas;
 mod order_stats;
 mod ordering;
 pub mod projection;
-pub mod protobuf;
+
 pub mod quantiles;
 mod reader;
 mod reduction;
@@ -43,7 +43,7 @@ pub use harmos_domain::model::storage::query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
     scalar,
 };
-pub use harmos_protocol::storage::QueryOutput;
+pub use reader::QueryOutput;
 pub(crate) use reader::schema_at;
 pub use reader::{Query, QueryArrow, QueryReader, QueryStep};
 pub use table::{Table, TableReader, TableWriter};

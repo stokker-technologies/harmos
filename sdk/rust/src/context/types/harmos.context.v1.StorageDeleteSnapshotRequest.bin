@@ -1,16 +1,0 @@
-
-¯
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.proto"R
-StorageDeleteSnapshotRequest2
-snapshot (2 .harmos.storage.v1.SavedSnapshotbproto3
-‹
-harmos/v1/storage_types.protoharmos.storage.v1"L
-SavedSnapshot
-token (,
-at (2 .harmos.storage.v1.StorageCursor"S
-StorageCursor0
-history (2.harmos.storage.v1.StoreHistory
-sequence (",
-StoreHistory
-store (	
-epoch (	bproto3

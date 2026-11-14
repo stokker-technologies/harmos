@@ -22,7 +22,12 @@
 // Local Imports
 
 use super::{composed_resources::Root, v1};
+use futures_core::Stream;
 use harmos::client::{Client, ClientSettings};
+use harmos_protocol::{
+    client::{self as host, status},
+    v1::StorageTransferSettings,
+};
 use std::{num::NonZeroUsize, pin::Pin};
 use tonic::{Request, Response, Status};
 
@@ -42,18 +47,30 @@ struct Endpoint;
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl v1::plugins_server::Plugins for Endpoint {
-    async fn get(&self, request: Request<v1::PluginsGetRequest>) -> Result<Response<v1::PluginsGetResponse>, Status> {
-        Ok(Response::new(v1::PluginsGetResponse {
-            value: format!("plugins:{}", request.into_inner().value),
+impl host::status_server::Status for Endpoint {
+    async fn get(&self, _: Request<host::StatusGetRequest>) -> Result<Response<host::StatusGetResponse>, Status> {
+        Ok(Response::new(host::StatusGetResponse {
+            status: Some(host::HostStatus {
+                identity: Some(host::HostIdentity {
+                    application_name: "status:selection".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
         }))
+    }
+    type WatchStream = Pin<Box<dyn Stream<Item = Result<host::StatusWatchResponse, Status>> + Send>>;
+    async fn watch(&self, _: Request<host::StatusWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
+        Ok(Response::new(Box::pin(futures_util::stream::empty())))
     }
 }
 #[tonic::async_trait]
-impl v1::plugins::settings_server::Settings for Endpoint {
-    async fn get(&self, request: Request<v1::plugins::SettingsGetRequest>) -> Result<Response<v1::plugins::SettingsGetResponse>, Status> {
-        Ok(Response::new(v1::plugins::SettingsGetResponse {
-            value: format!("settings:{}", request.into_inner().value),
+impl status::diagnostics_server::Diagnostics for Endpoint {
+    async fn get(&self, request: Request<status::DiagnosticsGetRequest>) -> Result<Response<status::DiagnosticsGetResponse>, Status> {
+        Ok(Response::new(status::DiagnosticsGetResponse {
+            name: format!("diagnostics:{}", request.into_inner().name),
+            ..Default::default()
         }))
     }
 }
@@ -66,8 +83,16 @@ impl v1::jobs_server::Jobs for Endpoint {
     }
 }
 #[tonic::async_trait]
+impl v1::plugins::annotations_server::Annotations for Endpoint {
+    async fn get(
+        &self, request: Request<v1::plugins::AnnotationsGetRequest>,
+    ) -> Result<Response<v1::plugins::AnnotationsGetResponse>, Status> {
+        Ok(Response::new(v1::plugins::AnnotationsGetResponse { value: request.into_inner().name }))
+    }
+}
+#[tonic::async_trait]
 impl v1::jobs::progress_server::Progress for Endpoint {
-    type WatchStream = Pin<Box<dyn futures_core::Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
+    type WatchStream = Pin<Box<dyn Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
     async fn watch(&self, request: Request<v1::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
         let value = request.into_inner().value;
         Ok(Response::new(Box::pin(futures_util::stream::iter([
@@ -92,17 +117,18 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let serving = tokio::spawn(
         tonic::transport::Server::builder()
-            .add_service(v1::plugins_server::PluginsServer::new(Endpoint))
-            .add_service(v1::plugins::settings_server::SettingsServer::new(Endpoint))
+            .add_service(host::status_server::StatusServer::new(Endpoint))
+            .add_service(status::diagnostics_server::DiagnosticsServer::new(Endpoint))
             .add_service(v1::jobs_server::JobsServer::new(Endpoint))
             .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint))
+            .add_service(v1::plugins::annotations_server::AnnotationsServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
                 let _ = stopped.await;
             }),
     );
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(1024) },
+        transfer: StorageTransferSettings { chunk_bytes: Some(1024) },
         retained_bytes: NonZeroUsize::new(4096).unwrap(),
         message_bytes: NonZeroUsize::new(4096).unwrap(),
         input_items: NonZeroUsize::MIN,
@@ -115,19 +141,32 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert!(matches!(Client::new(channel.clone(), incompatible), Err(error) if error.code() == tonic::Code::InvalidArgument));
     let client = Root::new(Client::new(channel, settings).unwrap().transport_handle());
     assert_eq!(
-        client.plugins.get(Request::new(v1::PluginsGetRequest { value: "selection".into() })).await.unwrap().into_inner().value,
-        "plugins:selection"
-    );
-    assert_eq!(
         client
-            .plugins
-            .settings
-            .get(Request::new(v1::plugins::SettingsGetRequest { value: "selection".into() }))
+            .status
+            .get(Request::new(host::StatusGetRequest {}))
             .await
             .unwrap()
             .into_inner()
-            .value,
-        "settings:selection"
+            .status
+            .unwrap()
+            .identity
+            .unwrap()
+            .application_name,
+        "status:selection"
+    );
+    assert_eq!(
+        client
+            .status
+            .diagnostics
+            .get(Request::new(status::DiagnosticsGetRequest {
+                name: "selection".into(),
+                ..Default::default()
+            }))
+            .await
+            .unwrap()
+            .into_inner()
+            .name,
+        "diagnostics:selection"
     );
     assert_eq!(
         client.jobs.start(Request::new(v1::JobsStartRequest { value: "selection".into() })).await.unwrap().into_inner().value,
@@ -138,6 +177,17 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert_eq!(progress.next().await.unwrap().unwrap().value, "opened:selection");
     assert_eq!(progress.next().await.unwrap().unwrap().value, "finished:selection");
     assert!(progress.next().await.unwrap().is_none());
+    assert_eq!(
+        client
+            .plugins
+            .annotations
+            .get(Request::new(v1::plugins::AnnotationsGetRequest { name: "example".into() }))
+            .await
+            .unwrap()
+            .into_inner()
+            .value,
+        "example"
+    );
     stop.send(()).unwrap();
     serving.await.unwrap().unwrap();
 }

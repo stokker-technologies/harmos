@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use crate::v1::Declarations;
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -72,14 +74,24 @@ pub fn operation_identity(id: &str) -> Result<OperationFace, Error> {
     }
     let segments: Vec<_> = package.split('.').collect();
     let mut face = OperationFace::Client;
-    for pair in segments.windows(2) {
+    for (index, segment) in segments.iter().enumerate().skip(1) {
         let version =
-            pair[1].strip_prefix('v').is_some_and(|version| !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()));
-        if version && matches!(pair[0], "plugin" | "context") {
+            segment.strip_prefix('v').is_some_and(|version| !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()));
+        if !version {
+            continue;
+        }
+        let boundary = if index >= 2 && segments[index - 2..index] == ["plugin", "host"] {
+            Some(OperationFace::Context)
+        } else if segments[index - 1] == "plugin" {
+            Some(OperationFace::Plugin)
+        } else {
+            None
+        };
+        if let Some(boundary) = boundary {
             if face != OperationFace::Client {
                 return Err(invalid());
             }
-            face = if pair[0] == "plugin" { OperationFace::Plugin } else { OperationFace::Context };
+            face = boundary;
         }
     }
     Ok(face)
@@ -97,7 +109,7 @@ pub fn plugin_operation_identity(id: &str) -> Result<(), Error> {
 }
 
 /// Hash an operation's reachable request and response descriptors, independently
-/// of unrelated declarations in the catalog. See the v1 behaviour contract.
+/// of unrelated declarations in the declarations. See the v1 behaviour contract.
 pub fn fingerprint(id: &str, types: &FileDescriptorSet, request: &str, response: &str) -> Result<Vec<u8>, Error> {
     let request = message_types(types, request)?;
     let response = message_types(types, response)?;
@@ -131,11 +143,16 @@ pub fn host_fingerprint(id: &str, contract: &crate::v1::Protobuf) -> Result<Vec<
     Ok(hash.finalize().to_vec())
 }
 
-/// Compute the wire catalog digest without its advertised digest field.
-pub fn catalog_digest(catalog: &crate::v1::Catalog) -> Vec<u8> {
-    let mut catalog = catalog.clone();
-    catalog.digest.clear();
-    Sha256::digest(catalog.encode_to_vec()).to_vec()
+/// Compute the wire declarations digest without its advertised digest field.
+pub fn declarations_digest(declarations: &Declarations) -> Vec<u8> {
+    let mut declarations = declarations.clone();
+    declarations.digest.clear();
+    Sha256::digest(declarations.encode_to_vec()).to_vec()
+}
+
+/// Preprojected Message Options for Validation Without Loading Unrelated Meta-Schemas.
+pub fn descriptor_options() -> FileDescriptorSet {
+    FileDescriptorSet::decode(include_bytes!("message-options-descriptors.bin").as_slice()).expect("generated message option descriptors")
 }
 
 /// Project a message's descriptor graph into the canonical data-only set.
@@ -334,8 +351,8 @@ mod tests {
             ("example.criterion.12", OperationFace::Plugin),
             ("example.plugin.v1.Lifecycle/Initialize", OperationFace::Plugin),
             ("example.plugin.v2.steps.Progress/Get", OperationFace::Plugin),
-            ("example.context.v1.Prompts/Create", OperationFace::Context),
-            ("example.context.v1.jobs.Progress/Watch", OperationFace::Context),
+            ("example.plugin.host.v1.Prompts/Create", OperationFace::Context),
+            ("example.plugin.host.v1.jobs.Progress/Watch", OperationFace::Context),
             ("example.v1.Steps/Execute", OperationFace::Client),
             ("example.v1.jobs.Progress/Get", OperationFace::Client),
             ("example.context.values.Prompts/Create", OperationFace::Client),
@@ -359,13 +376,15 @@ mod tests {
             "example.plugin.v1.Steps/Execute/Again",
             "example.0.Steps/Execute",
             "example.v1.Steps/0",
-            "example.plugin.v1.context.v1.Steps/Execute",
+            "example.plugin.v1.plugin.host.v1.Steps/Execute",
         ] {
             let error = operation_identity(id).unwrap_err().to_string();
             assert!(error.contains("Declare"), "{error}");
             assert!(error.contains(id), "{error}");
         }
-        for id in ["harmos.plugin.v1.Instance/Invoke", "harmos.context.v1.Time/Get", "harmos.v1.Time/Get", "harmos_forged.step.0"] {
+        for id in
+            ["harmos.plugin.v1.Instance/Invoke", "harmos.plugin.host.v1.Time/Get", "harmos.client.v1.Time/Get", "harmos_forged.step.0"]
+        {
             assert!(operation_identity(id).is_ok());
             assert!(plugin_operation_identity(id).unwrap_err().to_string().contains(id));
         }

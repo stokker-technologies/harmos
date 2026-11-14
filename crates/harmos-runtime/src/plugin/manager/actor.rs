@@ -15,6 +15,15 @@
 
 /* === Imports === */
 
+use harmos_protocol::client::PluginDescription;
+
+use harmos_protocol::client::{
+    PluginChange, PluginEntry, PluginProcess, PluginSnapshot, PluginState, PluginsCreateRequest, PluginsCreateResponse,
+    PluginsDeleteRequest, PluginsDeleteResponse, PluginsGetRequest, PluginsGetResponse, PluginsListRequest, PluginsListResponse,
+    PluginsReplaceRequest, PluginsReplaceResponse, PluginsRestartRequest, PluginsRestartResponse, PluginsSetRequest, PluginsSetResponse,
+    PluginsWatchRequest, PluginsWatchResponse,
+};
+
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -33,10 +42,10 @@ use tokio::{
 use super::{
     Error, PluginManagerSettings,
     content::Installation,
-    persistence::{Registry, SavedCreate, SavedEntry, Store, problem},
+    persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
 use crate::plugin::grpc::{Attached, Managed, Placement, Status};
-use harmos_protocol::{v1 as wire, v1};
+use harmos_protocol::{client as wire, v1};
 
 /* === Constants === */
 
@@ -47,32 +56,48 @@ pub(super) const GAP_ACTION: &str = "Watch Plugins: event history expired; open 
 
 /* === Type Aliases === */
 
+pub(super) type GuestControl = Arc<dyn Fn(String, GuestAction) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>;
+
 type Reply<T> = oneshot::Sender<Result<T, Error>>;
 type Attachment = Pin<Box<dyn Future<Output = Result<Attached, crate::plugin::grpc::Error>> + Send>>;
-pub(super) type Attach = Arc<dyn Fn(Placement) -> Attachment + Send + Sync>;
+pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<v1::SettingValues>) -> Attachment + Send + Sync>;
+pub(super) type Stage = Arc<
+    dyn Fn(
+            String,
+            Placement,
+            Option<v1::SettingValues>,
+        ) -> Pin<Box<dyn Future<Output = Result<crate::plugin::grpc::PreparedPlugin, crate::plugin::grpc::Error>> + Send>>
+        + Send
+        + Sync,
+>;
+pub(super) type Activate = Arc<dyn Fn(crate::plugin::grpc::PreparedPlugin) -> Result<Attached, crate::plugin::grpc::Error> + Send + Sync>;
 
 /* === Structs === */
 
 pub(super) struct Actor {
-    store: Store,
-    registry: Registry,
-    settings: PluginManagerSettings,
+    pub(super) store: Store,
+    pub(super) guest_control: Option<GuestControl>,
+    pub(super) registry: Registry,
+    pub(super) settings: PluginManagerSettings,
     attach: Attach,
+    pub(super) stage: Stage,
+    pub(super) activate: Activate,
     commands: mpsc::Sender<Command>,
     participant: crate::runtime::StopParticipant,
     history: v1::History,
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
-    issued: BTreeSet<u64>,
-    changes: broadcast::Sender<wire::PluginsWatchResponse>,
+    pub(super) issued: BTreeSet<u64>,
+    changes: broadcast::Sender<PluginsWatchResponse>,
     workers: BTreeMap<String, Worker>,
 }
 
 #[derive(Clone)]
-struct Snapshot {
-    cut: v1::ReadCut,
-    entries: BTreeMap<String, wire::PluginEntry>,
-    event: Option<wire::PluginChange>,
+pub(super) struct Snapshot {
+    pub(super) cut: v1::ReadCut,
+    entries: BTreeMap<String, PluginEntry>,
+    event: Option<PluginChange>,
+    pub(super) settings: BTreeMap<String, super::settings::Snapshot>,
 }
 
 struct Worker {
@@ -82,15 +107,37 @@ struct Worker {
 
 /* === Enums === */
 
+pub(super) enum GuestAction {
+    Restart,
+    Stop,
+    Remove,
+}
+
 pub(super) enum Command {
-    Get(wire::PluginsGetRequest, Reply<wire::PluginsGetResponse>),
-    List(wire::PluginsListRequest, Reply<wire::PluginsListResponse>),
-    Watch(wire::PluginsWatchRequest, Reply<mpsc::Receiver<wire::PluginsWatchResponse>>),
-    Create(Box<wire::PluginsCreateRequest>, Reply<wire::PluginsCreateResponse>),
-    Set(wire::PluginsSetRequest, Reply<wire::PluginsSetResponse>),
-    Delete(wire::PluginsDeleteRequest, Reply<wire::PluginsDeleteResponse>),
-    Restart(wire::PluginsRestartRequest, Reply<wire::PluginsRestartResponse>),
-    Health { name: String, activation: u64, status: Box<Result<Status, String>> },
+    #[cfg(feature = "plugin-guest")]
+    Guest(Box<PluginDescription>, Reply<PluginEntry>),
+    #[cfg(feature = "plugin-guest")]
+    GuestHealth {
+        name: String,
+        state: PluginState,
+        activation: u64,
+        failure: Option<String>,
+    },
+    Replace(PluginsReplaceRequest, Reply<PluginsReplaceResponse>),
+    SettingsList(wire::plugins::SettingsListRequest, Reply<wire::plugins::SettingsListResponse>),
+    SettingsSet(wire::plugins::SettingsSetRequest, Reply<wire::plugins::SettingsSetResponse>),
+    Get(PluginsGetRequest, Reply<PluginsGetResponse>),
+    List(PluginsListRequest, Reply<PluginsListResponse>),
+    Watch(PluginsWatchRequest, Reply<mpsc::Receiver<PluginsWatchResponse>>),
+    Create(Box<PluginsCreateRequest>, Reply<PluginsCreateResponse>),
+    Set(PluginsSetRequest, Reply<PluginsSetResponse>),
+    Delete(PluginsDeleteRequest, Reply<PluginsDeleteResponse>),
+    Restart(PluginsRestartRequest, Reply<PluginsRestartResponse>),
+    Health {
+        name: String,
+        activation: u64,
+        status: Box<Result<Status, String>>,
+    },
 }
 
 /* === Traits === */
@@ -100,10 +147,14 @@ pub(super) enum Command {
 impl Actor {
     pub async fn open(
         storage: harmos_storage::StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>,
-        participant: crate::runtime::StopParticipant,
+        stage: Stage, activate: Activate, participant: crate::runtime::StopParticipant,
     ) -> Result<Self, Error> {
         let (store, mut registry) = Store::open(storage, &settings).await?;
-        if registry.entries.len() > settings.entries.get() || registry.creates.len() > settings.create_receipts.get() {
+        if registry.entries.len() > settings.entries.get()
+            || (registry.creates.len()
+                + registry.entries.values().map(|entry| entry.settings_receipts.len() + entry.replacements.len()).sum::<usize>())
+                > settings.create_receipts.get()
+        {
             return Err(Error::new(
                 "registry_capacity",
                 "Restore Plugin Registry",
@@ -115,10 +166,10 @@ impl Actor {
             entry.process = None;
             entry.failure = None;
             if entry.value.as_ref().is_some_and(|value| value.enabled) {
-                entry.state = wire::PluginState::Connecting as i32;
+                entry.state = PluginState::Connecting as i32;
                 entry.activation = next_activation(entry.activation)?;
             } else {
-                entry.state = wire::PluginState::Stopped as i32;
+                entry.state = PluginState::Stopped as i32;
             }
             let saved = registry.entries.get_mut(name).expect("restored entry exists");
             saved.generation = entry.activation;
@@ -133,9 +184,12 @@ impl Actor {
         let changes = broadcast::channel(settings.watch_capacity.get()).0;
         let mut actor = Self {
             store,
+            guest_control: None,
             registry,
             settings,
             attach,
+            stage,
+            activate,
             commands,
             participant,
             history,
@@ -163,6 +217,25 @@ impl Actor {
                 command = receiver.recv() => match command { Some(command) => command, None => break },
             };
             match command {
+                #[cfg(feature = "plugin-guest")]
+                Command::Guest(description, reply) => {
+                    let _ = reply.send(self.guest(*description).await);
+                }
+                #[cfg(feature = "plugin-guest")]
+                Command::GuestHealth { name, state, activation, failure } => {
+                    if let Err(error) = self.guest_health(name, state, activation, failure).await {
+                        tracing::error!(%error, "guest entry state persistence failed");
+                    }
+                }
+                Command::Replace(request, reply) => {
+                    let _ = reply.send(self.replace(request).await);
+                }
+                Command::SettingsList(request, reply) => {
+                    let _ = reply.send(self.settings_list(request));
+                }
+                Command::SettingsSet(request, reply) => {
+                    let _ = reply.send(self.settings_set(request).await);
+                }
                 Command::Get(request, reply) => {
                     let _ = reply.send(self.get(request));
                 }
@@ -187,7 +260,7 @@ impl Actor {
                 Command::Health { name, activation, status } => {
                     if let Err(error) = self.health(name, activation, *status).await {
                         tracing::error!(%error, "plugin state persistence failed; stopping manager");
-                        let _ = self.changes.send(wire::PluginsWatchResponse {
+                        let _ = self.changes.send(PluginsWatchResponse {
                             resolved_at: Some(self.cut()),
                             event: Some(wire::plugins_watch_response::Event::ResyncRequired(error.to_string())),
                         });
@@ -208,7 +281,7 @@ impl Actor {
         }
     }
 
-    fn cut(&self) -> v1::ReadCut {
+    pub(super) fn cut(&self) -> v1::ReadCut {
         v1::ReadCut {
             positions: vec![v1::Position {
                 history: Some(self.history.clone()),
@@ -218,7 +291,7 @@ impl Actor {
         }
     }
 
-    fn publish(&mut self, event: Option<wire::PluginChange>) -> Result<(), Error> {
+    pub(super) fn publish(&mut self, event: Option<PluginChange>) -> Result<(), Error> {
         self.sequence =
             self.sequence.checked_add(1).ok_or_else(|| Error::new("history_exhausted", "Publish Plugin State", "restart the host"))?;
         let cut = self.cut();
@@ -226,7 +299,11 @@ impl Actor {
             cut: cut.clone(),
             entries: self.registry.values()?,
             event: event.clone(),
+            settings: super::settings::snapshots(&self.registry)?,
         };
+        for retained in &mut self.snapshots {
+            retained.settings.retain(|name, _| self.registry.entries.contains_key(name));
+        }
         self.snapshots.push_back(snapshot);
         while self.snapshots.len() > self.settings.retained_cuts.get() {
             self.snapshots.pop_front();
@@ -237,7 +314,7 @@ impl Actor {
             if self.changes.receiver_count() > 0 {
                 self.issued.insert(self.sequence);
             }
-            let _ = self.changes.send(wire::PluginsWatchResponse {
+            let _ = self.changes.send(PluginsWatchResponse {
                 resolved_at: Some(cut),
                 event: Some(wire::plugins_watch_response::Event::Change(event)),
             });
@@ -245,7 +322,7 @@ impl Actor {
         Ok(())
     }
 
-    fn snapshot(&self, at: Option<&v1::ReadCut>) -> Result<&Snapshot, Error> {
+    pub(super) fn snapshot(&self, at: Option<&v1::ReadCut>) -> Result<&Snapshot, Error> {
         match at {
             Some(at) => self
                 .snapshots
@@ -262,11 +339,11 @@ impl Actor {
         }
     }
 
-    fn get(&mut self, request: wire::PluginsGetRequest) -> Result<wire::PluginsGetResponse, Error> {
+    fn get(&mut self, request: PluginsGetRequest) -> Result<PluginsGetResponse, Error> {
         let snapshot = self.snapshot(request.at.as_ref())?;
         let entry = snapshot.entries.get(&request.name).cloned().ok_or_else(missing)?;
         let cut = snapshot.cut.clone();
-        let response = wire::PluginsGetResponse {
+        let response = PluginsGetResponse {
             entry: Some(entry),
             resolved_at: Some(cut.clone()),
         };
@@ -277,9 +354,9 @@ impl Actor {
         Ok(response)
     }
 
-    fn list(&mut self, request: wire::PluginsListRequest) -> Result<wire::PluginsListResponse, Error> {
+    fn list(&mut self, request: PluginsListRequest) -> Result<PluginsListResponse, Error> {
         let snapshot = self.snapshot(request.at.as_ref())?.clone();
-        let response = wire::PluginsListResponse {
+        let response = PluginsListResponse {
             entries: snapshot.entries.into_values().collect(),
             resolved_at: Some(snapshot.cut.clone()),
         };
@@ -287,12 +364,12 @@ impl Actor {
         Ok(response)
     }
 
-    fn watch(&mut self, request: wire::PluginsWatchRequest) -> Result<mpsc::Receiver<wire::PluginsWatchResponse>, Error> {
+    fn watch(&mut self, request: PluginsWatchRequest) -> Result<mpsc::Receiver<PluginsWatchResponse>, Error> {
         let snapshot = self.snapshot(request.at.as_ref())?.clone();
         let entries = snapshot.entries.values().filter(|entry| request.name.is_empty() || entry.name == request.name).cloned().collect();
-        let opening = wire::PluginsWatchResponse {
+        let opening = PluginsWatchResponse {
             resolved_at: Some(snapshot.cut.clone()),
-            event: Some(wire::plugins_watch_response::Event::Snapshot(wire::PluginSnapshot { entries })),
+            event: Some(wire::plugins_watch_response::Event::Snapshot(PluginSnapshot { entries })),
         };
         if opening.encoded_len() > self.settings.response_bytes.get() {
             return Err(Error::new(
@@ -313,7 +390,7 @@ impl Actor {
             .iter()
             .filter(|snapshot| snapshot.cut.positions[0].sequence > sequence)
             .filter_map(|snapshot| {
-                snapshot.event.clone().map(|event| wire::PluginsWatchResponse {
+                snapshot.event.clone().map(|event| PluginsWatchResponse {
                     resolved_at: Some(snapshot.cut.clone()),
                     event: Some(wire::plugins_watch_response::Event::Change(event)),
                 })
@@ -341,7 +418,7 @@ impl Actor {
                         Ok(event) if selected(&event, &name) => if !watch_event(&sender, event, response_bytes, &mut resolved_at).await { return; },
                         Ok(_) => {},
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            let event = wire::PluginsWatchResponse { resolved_at, event: Some(wire::plugins_watch_response::Event::ResyncRequired(GAP_ACTION.into())) };
+                            let event = PluginsWatchResponse { resolved_at, event: Some(wire::plugins_watch_response::Event::ResyncRequired(GAP_ACTION.into())) };
                             let _ = sender.send(event).await;
                             return;
                         },
@@ -353,13 +430,14 @@ impl Actor {
         Ok(receiver)
     }
 
-    async fn commit(&mut self, registry: Registry, change: wire::PluginChange) -> Result<(), Error> {
+    pub(super) async fn commit(&mut self, mut registry: Registry, change: PluginChange) -> Result<(), Error> {
+        super::settings::materialize(&mut registry)?;
         self.store.save(&registry).await?;
         self.registry = registry;
         self.publish(Some(change))
     }
 
-    fn receipt(&mut self, request_id: String) -> v1::Receipt {
+    pub(super) fn receipt(&mut self, request_id: String) -> v1::Receipt {
         let position = v1::Position {
             history: Some(self.history.clone()),
             sequence: self.sequence + 1,
@@ -373,7 +451,7 @@ impl Actor {
         }
     }
 
-    async fn create(&mut self, request: wire::PluginsCreateRequest) -> Result<wire::PluginsCreateResponse, Error> {
+    async fn create(&mut self, request: PluginsCreateRequest) -> Result<PluginsCreateResponse, Error> {
         if request.request_id.is_empty() || request.name.is_empty() {
             return Err(Error::new("identity_required", "Create Plugin", "supply a nonempty request identifier and entry name"));
         }
@@ -382,15 +460,15 @@ impl Actor {
             if original.request != encoded {
                 return Err(Error::new("request_conflict", "Create Plugin", "resend the original payload or use a new request identifier"));
             }
-            return wire::PluginsCreateResponse::decode(original.response.as_slice())
-                .map_err(|error| problem("Replay Plugin Create", error));
+            return PluginsCreateResponse::decode(original.response.as_slice()).map_err(|error| problem("Replay Plugin Create", error));
         }
         if self.registry.entries.contains_key(&request.name) {
             return Err(Error::new("entry_exists", "Create Plugin", "choose an unused entry name"));
         }
-        if self.registry.entries.len() == self.settings.entries.get() || self.registry.creates.len() == self.settings.create_receipts.get()
-        {
-            return Err(Error::new("manager_capacity", "Create Plugin", "configure capacity for entries and retained Create receipts"));
+        let receipts = self.registry.creates.len()
+            + self.registry.entries.values().map(|entry| entry.settings_receipts.len() + entry.replacements.len()).sum::<usize>();
+        if self.registry.entries.len() >= self.settings.entries.get() || receipts >= self.settings.create_receipts.get() {
+            return Err(Error::new("manager_capacity", "Create Plugin", "configure capacity for entries and retained mutation receipts"));
         }
         let placement = request
             .placement
@@ -411,24 +489,31 @@ impl Actor {
                 }
                 None
             }
+            wire::plugin_placement::Kind::Guest(_) => {
+                return Err(Error::new(
+                    "host_registration_required",
+                    "Create Guest Plugin",
+                    "register the loaded module through PluginHost.register_guest",
+                ));
+            }
             wire::plugin_placement::Kind::Managed(managed) => {
                 Some(Installation::prepare(&self.store.storage, managed, &self.settings).await?)
             }
         };
         let mut registry = self.registry.clone();
-        let entry = wire::PluginEntry {
+        let entry = PluginEntry {
             name: request.name.clone(),
             placement: request.placement.clone(),
             value: Some(value),
             revision: registry.revision()?,
-            state: if value.enabled { wire::PluginState::Connecting } else { wire::PluginState::Stopped } as i32,
+            state: if value.enabled { PluginState::Connecting } else { PluginState::Stopped } as i32,
             failure: None,
             description: None,
-            catalog_digest: vec![],
+            declarations_digest: vec![],
             process: None,
             activation: u64::from(value.enabled),
         };
-        let response = wire::PluginsCreateResponse {
+        let response = PluginsCreateResponse {
             entry: Some(entry.clone()),
             receipt: Some(self.receipt(request.request_id.clone())),
         };
@@ -439,11 +524,15 @@ impl Actor {
                 executable: installation.as_ref().map(|installation| installation.executable().to_owned()),
                 executable_digest: installation.as_ref().map(Installation::digest),
                 generation: entry.activation,
+                settings: Vec::new(),
+                settings_revision: Vec::new(),
+                settings_receipts: BTreeMap::new(),
+                replacements: BTreeMap::new(),
             },
         );
         registry.creates.insert(
             request.request_id,
-            SavedCreate {
+            SavedMutation {
                 request: encoded,
                 response: response.encode_to_vec(),
             },
@@ -456,7 +545,7 @@ impl Actor {
         Ok(response)
     }
 
-    fn entry(&self, name: &str, revision: &[u8], action: &str) -> Result<wire::PluginEntry, Error> {
+    pub(super) fn entry(&self, name: &str, revision: &[u8], action: &str) -> Result<PluginEntry, Error> {
         let entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(|| {
             Error::new("entry_missing", format!("{action}: Entry Does Not Exist"), "list plugins and select an existing entry")
         })?;
@@ -470,16 +559,16 @@ impl Actor {
         Ok(entry)
     }
 
-    async fn set(&mut self, request: wire::PluginsSetRequest) -> Result<wire::PluginsSetResponse, Error> {
+    async fn set(&mut self, request: PluginsSetRequest) -> Result<PluginsSetResponse, Error> {
         let mut entry = self.entry(&request.name, &request.expected_revision, "Set Plugin")?;
         let value = request.value.ok_or_else(|| Error::new("value_required", "Set Plugin", "supply the complete writable value"))?;
-        if entry.value.as_ref() == Some(&value) && entry.state != wire::PluginState::Stopping as i32 {
+        if entry.value.as_ref() == Some(&value) && entry.state != PluginState::Stopping as i32 {
             let position = v1::Position {
                 history: Some(self.history.clone()),
                 sequence: self.sequence,
             };
             self.issued.insert(position.sequence);
-            return Ok(wire::PluginsSetResponse {
+            return Ok(PluginsSetResponse {
                 entry: Some(entry),
                 receipt: Some(v1::Receipt {
                     request_id: String::new(),
@@ -497,17 +586,24 @@ impl Actor {
         }
         entry.failure = None;
         entry.activation = next_activation(entry.activation)?;
-        entry.state = if value.enabled { wire::PluginState::Connecting } else { wire::PluginState::Stopping } as i32;
+        entry.state = if value.enabled { PluginState::Connecting } else { PluginState::Stopping } as i32;
         registry.entries.get_mut(&entry.name).expect("entry exists").generation = entry.activation;
         registry.entries.get_mut(&entry.name).expect("entry exists").entry = entry.encode_to_vec();
-        let mut response = wire::PluginsSetResponse {
+        let mut response = PluginsSetResponse {
             entry: Some(entry.clone()),
             receipt: Some(self.receipt(String::new())),
         };
         self.commit(registry, changed(entry.clone())).await?;
-        let stopped = self.stop(&entry.name).await;
+        let stopped = if is_guest(&entry) && !value.enabled {
+            match &self.guest_control {
+                Some(control) => control(entry.name.clone(), GuestAction::Stop).await,
+                None => Ok(()),
+            }
+        } else {
+            self.stop(&entry.name).await
+        };
         if !value.enabled {
-            entry.state = wire::PluginState::Stopped as i32;
+            entry.state = PluginState::Stopped as i32;
             entry.process = None;
             entry.failure = stopped.err().map(|error| *error.0);
             let mut registry = self.registry.clone();
@@ -523,13 +619,13 @@ impl Actor {
         Ok(response)
     }
 
-    async fn restart(&mut self, request: wire::PluginsRestartRequest) -> Result<wire::PluginsRestartResponse, Error> {
+    async fn restart(&mut self, request: PluginsRestartRequest) -> Result<PluginsRestartResponse, Error> {
         let mut entry = self.entry(&request.name, &request.expected_revision, "Restart Plugin")?;
         if !entry.value.as_ref().is_some_and(|value| value.enabled) {
             return Err(Error::new("plugin_disabled", "Restart Plugin", "enable the entry with Set before restarting it"));
         }
         entry.activation = next_activation(entry.activation)?;
-        entry.state = wire::PluginState::Connecting as i32;
+        entry.state = PluginState::Connecting as i32;
         entry.failure = None;
         entry.process = None;
         let mut registry = self.registry.clone();
@@ -540,37 +636,33 @@ impl Actor {
             entry = self.cleanup_failure(&entry.name, error).await?;
         }
         self.start(&entry.name);
-        Ok(wire::PluginsRestartResponse { entry: Some(entry) })
+        Ok(PluginsRestartResponse { entry: Some(entry) })
     }
 
-    async fn delete(&mut self, request: wire::PluginsDeleteRequest) -> Result<wire::PluginsDeleteResponse, Error> {
+    async fn delete(&mut self, request: PluginsDeleteRequest) -> Result<PluginsDeleteResponse, Error> {
         let entry = self.entry(&request.name, &request.expected_revision, "Delete Plugin")?;
         let mut registry = self.registry.clone();
         let saved = registry.entries.remove(&entry.name).expect("entry exists");
-        let response = wire::PluginsDeleteResponse {
+        let response = PluginsDeleteResponse {
             receipt: Some(self.receipt(String::new())),
         };
         self.commit(
             registry,
-            wire::PluginChange {
+            PluginChange {
                 kind: Some(wire::plugin_change::Kind::Deleted(entry.name.clone())),
             },
         )
         .await?;
-        let stopped = self.stop(&entry.name).await;
-        if let Some(executable) = saved.executable {
-            crate::bundle::validate_path(&executable).map_err(|error| problem("Delete Plugin Installation", error))?;
-            let parent = executable.split('/').next().expect("installation path has a parent");
-            let root = self.settings.directory.canonicalize().map_err(|error| problem("Resolve Plugin Directory", error))?;
-            let directory = root.join(parent).canonicalize().map_err(|error| problem("Resolve Plugin Installation", error))?;
-            if directory.parent() != Some(root.as_path()) {
-                return Err(Error::new(
-                    "installation_path",
-                    "Delete Plugin Installation",
-                    "restore an installation directly beneath the manager directory",
-                ));
+        let stopped = if is_guest(&entry) {
+            match &self.guest_control {
+                Some(control) => control(entry.name.clone(), GuestAction::Remove).await,
+                None => Ok(()),
             }
-            std::fs::remove_dir_all(directory).map_err(|error| problem("Delete Plugin Installation", error))?;
+        } else {
+            self.stop(&entry.name).await
+        };
+        if let Some(executable) = saved.executable {
+            super::content::remove(&executable, &self.settings)?;
         }
         stopped?;
         Ok(response)
@@ -582,15 +674,33 @@ impl Actor {
             return;
         }
         let saved = self.registry.entries.get(name).expect("persisted entry exists");
+        if is_guest(entry) {
+            if let Some(control) = &self.guest_control {
+                let future = control(name.to_owned(), GuestAction::Restart);
+                tokio::spawn(async move {
+                    if let Err(error) = future.await {
+                        tracing::error!(%error, "guest entry activation failed");
+                    }
+                });
+            }
+            return;
+        }
         let placement = match entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()) {
             Some(wire::plugin_placement::Kind::Remote(remote)) => Ok(Placement::Remote(remote.url.clone())),
             Some(wire::plugin_placement::Kind::Managed(_)) => managed(saved, &self.settings),
+            Some(wire::plugin_placement::Kind::Guest(_)) => unreachable!("guest handled above"),
             None => Err(Error::new("placement_required", "Start Plugin", "restore a valid placement")),
         };
-        let attachment = placement.map(|placement| (self.attach)(placement));
+        let values = (!saved.settings.is_empty())
+            .then(|| v1::SettingValues::decode(saved.settings.as_slice()))
+            .transpose()
+            .map_err(|error| problem("Restore Plugin Settings", error));
+        let attachment = placement.and_then(|placement| values.map(|values| (self.attach)(name.to_owned(), placement, values)));
+        self.monitor(name, saved.generation, attachment);
+    }
+    pub(super) fn monitor(&mut self, name: &str, activation: u64, attachment: Result<Attachment, Error>) {
         let commands = self.commands.clone();
         let name = name.to_owned();
-        let activation = saved.generation;
         let (stop, mut stopping) = oneshot::channel();
         let worker_name = name.clone();
         let task = tokio::spawn(async move {
@@ -649,7 +759,7 @@ impl Actor {
         self.workers.insert(name, Worker { stop, task });
     }
 
-    async fn stop(&mut self, name: &str) -> Result<(), Error> {
+    pub(super) async fn stop(&mut self, name: &str) -> Result<(), Error> {
         if let Some(worker) = self.workers.remove(name) {
             let _ = worker.stop.send(());
             worker.task.await.map_err(|error| problem("Join Plugin Activation", error))??;
@@ -657,7 +767,7 @@ impl Actor {
         Ok(())
     }
 
-    async fn cleanup_failure(&mut self, name: &str, error: Error) -> Result<wire::PluginEntry, Error> {
+    pub(super) async fn cleanup_failure(&mut self, name: &str, error: Error) -> Result<PluginEntry, Error> {
         let mut entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(missing)?;
         entry.failure = Some(*error.0);
         let mut registry = self.registry.clone();
@@ -681,25 +791,25 @@ impl Actor {
                     entry.activation = activation
                         .checked_add(current.number - 1)
                         .ok_or_else(|| Error::new("activation_exhausted", "Reconnect Plugin", "create a new entry"))?;
-                    entry.state = wire::PluginState::Ready as i32;
+                    entry.state = PluginState::Ready as i32;
                     entry.failure = None;
-                    entry.catalog_digest = current.description.catalog.as_ref().expect("admitted catalog exists").digest.clone();
-                    entry.process = current.process_id.map(|id| wire::PluginProcess {
+                    entry.declarations_digest = current.description.declarations.as_ref().expect("admitted catalog exists").digest.clone();
+                    entry.process = current.process_id.map(|id| PluginProcess {
                         id,
                         executable_digest: current.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
                         started_at: current.description.started_at,
                     });
-                    entry.description = Some(wire::PluginDescription {
+                    entry.description = Some(PluginDescription {
                         id: current.description.id,
                         version: current.description.version,
                         started_at: current.description.started_at,
-                        catalog: current.description.catalog,
+                        declarations: current.description.declarations,
                         revision: current.description.revision,
                         sdk: current.description.sdk,
                         sdk_version: current.description.sdk_version,
                     });
                 } else {
-                    entry.state = wire::PluginState::Unavailable as i32;
+                    entry.state = PluginState::Unavailable as i32;
                     entry.process = None;
                     entry.failure = Some(unavailable(
                         &name,
@@ -708,7 +818,7 @@ impl Actor {
                 }
             }
             Err(error) => {
-                entry.state = wire::PluginState::Unavailable as i32;
+                entry.state = PluginState::Unavailable as i32;
                 entry.process = None;
                 entry.failure = Some(unavailable(&name, error));
             }
@@ -723,18 +833,22 @@ impl Actor {
 
 /* === Private Functions === */
 
+pub(super) fn is_guest(entry: &PluginEntry) -> bool {
+    matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(wire::plugin_placement::Kind::Guest(_)))
+}
+
 fn missing() -> Error {
     Error::new("entry_missing", "Get Plugin Entry", "list plugins and select an existing entry")
 }
-fn next_activation(value: u64) -> Result<u64, Error> {
+pub(super) fn next_activation(value: u64) -> Result<u64, Error> {
     value.checked_add(1).ok_or_else(|| Error::new("activation_exhausted", "Restart Plugin", "create a new entry"))
 }
-fn changed(entry: wire::PluginEntry) -> wire::PluginChange {
-    wire::PluginChange {
+pub(super) fn changed(entry: PluginEntry) -> PluginChange {
+    PluginChange {
         kind: Some(wire::plugin_change::Kind::Entry(entry)),
     }
 }
-fn unavailable(name: &str, cause: String) -> v1::Failure {
+pub(super) fn unavailable(name: &str, cause: String) -> v1::Failure {
     v1::Failure {
         classification: v1::Classification::Transient as i32,
         code: "plugin_unavailable".into(),
@@ -745,11 +859,10 @@ fn unavailable(name: &str, cause: String) -> v1::Failure {
     }
 }
 async fn watch_event(
-    sender: &mpsc::Sender<wire::PluginsWatchResponse>, event: wire::PluginsWatchResponse, max_bytes: usize,
-    resolved_at: &mut Option<v1::ReadCut>,
+    sender: &mpsc::Sender<PluginsWatchResponse>, event: PluginsWatchResponse, max_bytes: usize, resolved_at: &mut Option<v1::ReadCut>,
 ) -> bool {
     if event.encoded_len() > max_bytes {
-        let event = wire::PluginsWatchResponse {
+        let event = PluginsWatchResponse {
             resolved_at: resolved_at.clone(),
             event: Some(wire::plugins_watch_response::Event::ResyncRequired(CAPACITY_ACTION.into())),
         };
@@ -764,7 +877,7 @@ async fn watch_event(
     true
 }
 
-fn selected(event: &wire::PluginsWatchResponse, name: &str) -> bool {
+fn selected(event: &PluginsWatchResponse, name: &str) -> bool {
     if name.is_empty() {
         return true;
     }
@@ -777,7 +890,7 @@ fn selected(event: &wire::PluginsWatchResponse, name: &str) -> bool {
         _ => true,
     }
 }
-fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> Result<Placement, Error> {
+pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> Result<Placement, Error> {
     let executable = saved
         .executable
         .as_ref()

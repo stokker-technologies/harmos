@@ -1,7 +1,7 @@
 # Plugin Management
 
 `harmos_runtime::plugin::manager` owns a persistent set of hosted plugins.
-Its client-facing `harmos.v1.Plugins` service is separate from
+Its client-facing `harmos.client.v1.Plugins` service is separate from
 `harmos.plugin.v1.Instance`, which each plugin executable implements.
 
 ## Host Composition
@@ -28,12 +28,12 @@ manager.start(&runtime).await?;
 ```
 
 The host's existing gRPC listener projects the registered operations. Generated
-Rust clients use `harmos_protocol::v1::plugins_client::PluginsClient`;
+Rust clients use `harmos_protocol::client::plugins_client::PluginsClient`;
 `harmos::client::Client` exposes the descriptor-generated `client.plugins`
 hierarchy for the same request/response contracts.
 Native hosts can also use the `Management` trait on `Manager` directly.
 
-`PluginManagerSettings` supplies entry and Create-receipt capacities, encoded
+`PluginManagerSettings` supplies entry and mutation-receipt capacities, encoded
 registry bytes, command queue capacity, retained cuts,
 Watch capacity and Get/Watch response bytes. It also contains the
 existing placement policy and bundle limits. No resource budget is inferred
@@ -51,19 +51,24 @@ write fails rather than overwriting another manager's registry.
 | `Set` | Name, whole `PluginValue { enabled }` and expected revision from Get; entry and durable receipt. |
 | `Delete` | Name and expected revision; durable removal receipt after activation cleanup. |
 | `Restart` | Name and expected revision; replaces an enabled entry's activation. |
+| `Replace` | Name, managed bundle placement, expected revision and request identity; replaces the bundle in place and returns the entry and receipt. |
+| `Settings.List` | Name and optional issued cut; typed declarations, complete values, settings revision and resolved cut. |
+| `Settings.Set` | Name, complete typed value, expected settings revision and request identity; applied value, revision and durable receipt. |
 
 Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
-Placement is immutable. Use Delete/Create to change it. Set carries all writable
+Replace changes a managed bundle while retaining the entry name, settings and product attachments. It validates the replacement description, contracts and sample channels before activating it. Failed staging leaves the previous bundle serving. Remote entries cannot be replaced by this operation. Set carries all writable
 fields and refuses stale revisions with the action to get again and retry.
-The entry also reports its runtime state, last connected description, catalog
+The entry also reports its runtime state, last connected description, declarations
 digest, activation identity, current managed process identity and failure.
 Unavailable entries stay in the set and remain manageable.
 
-Create replay receipts are retained for the namespace's lifetime. Resending the
-same identifier and normalized payload returns the original response, including
-after host restart or entry deletion, without starting another process. A changed
-payload conflicts. Exhausting the configured receipt capacity refuses new
-creates; keys never silently expire and repeat work.
+Create replay receipts are retained for the namespace's lifetime, including after
+entry deletion. Settings.Set and Replace receipts live beside their entry and are
+purged when it is deleted. Resending an identifier and normalized payload replays
+the retained original response, including after restart, without starting another
+process; changed input conflicts. `PluginManagerSettings.create_receipts` bounds
+the combined retained mutation receipts. Exhausting it refuses new mutations;
+retained keys never silently expire and repeat work.
 
 Latest reads resolve the manager's latest durable snapshot without causing a
 flush. List returns every configured entry in one response. Return `resolved_at`
@@ -76,7 +81,7 @@ A disconnected Watch never deletes its entries.
 
 ## Bundles and Processes
 
-Upload the existing bundle format through the library's file-production session:
+Upload the existing bundle format through the product's own upload operation over the library's private native file-production operations:
 Create the production, Append bounded ordered chunks, Get progress to resume,
 and Publish the verified content. Supply that immutable published file reference
 and the archive SHA-256 in `PluginManaged`. The manager opens one retained
@@ -94,7 +99,7 @@ before each activation. Invalid content never creates an entry or starts a proce
 
 Managed executables receive `HARMOS_ADDRESS=127.0.0.1:0` and announce their actual
 bound endpoint through the existing readiness line. Windows launches use
-`CREATE_NO_WINDOW`. Existing attachment code owns catalog admission, dispatch,
+`CREATE_NO_WINDOW`. Existing attachment code owns declaration admission, dispatch,
 streams, reconnect and process supervision. A managed process exit reports an
 unavailable entry with its failure; explicit Restart replaces it. Remote
 attachments reconnect under their existing placement policy. Delete stops and
@@ -119,8 +124,50 @@ the manager never interprets that scope or treats it as authorization.
 A product adopting this manager removes its own entry registry, placement
 persistence, bundle installer, enable/restart/remove handlers and duplicated
 connection, dispatch, stream and process-launch implementation. Its client
-interface calls the generated `Plugins` service. Catalog interpretation, selection
-of plugins for a unit of work, per-plugin settings and secrets stay with the
-product. The owner's boundary decision closes the settings/secrets question:
-generic catalog declarations and context host-value delivery belong to their
-existing library owners; stores, schemas and credential policy remain product-owned.
+interface calls the generated `Plugins` service. Declaration interpretation, selection
+of plugins for a unit of work and secrets stay with the product. Product-defined
+declaration sections describe product resources, including secret requirements.
+The library neither stores nor interprets those sections.
+
+## Typed Settings
+
+A plugin reports `harmos.v1.SettingsDeclarations` in `Declarations.sections`. Each
+setting has a name, title, description and typed default. `SettingValue` carries
+one flag, integer, finite number, text or duration. List materializes defaults;
+Set replaces the complete map, rejects unknown or missing names and checks each
+value's variant against its declared default. Settings have a revision separate
+from the plugin entry revision. Resending the same request identity and normalized
+value replays its original receipt, including after restart; changed input refuses.
+
+`harmos.plugin.host.v1.Settings/List` reads only the calling entry's values.
+The SDK handler remains named `context`. Running plugins explicitly read settings;
+there is no change notification. Host stream intervals configured by setting name
+use the value selected for that activation; restart to apply a changed interval.
+
+Product plugin-host handlers declare the public resource
+`harmos_runtime::plugin::grpc::CallingPlugin`. Its `name` is the management entry
+identity when the attachment belongs to an entry,
+and `None` for a direct attachment. Its `description` is the admitted instance
+description. An unmanaged attachment cannot select a stored entry through its
+reported ID and cannot read library-stored settings. Direct attachments receive
+opaque provider identities; protected self-calls bind to their physical activation.
+The host
+inserts this resource when routing a plugin child; request fields do not select
+its identity. Products can inspect their own reported sections before serving data.
+
+Delete removes library settings and their retained read images with the entry in
+one durable registry commit and
+publishes `PluginChange.deleted` through Watch. A product removes its own per-plugin
+data from that in-process watch and reconciles against List at startup. Product
+cleanup is eventual; it is not part of the library's deletion transaction.
+
+## WebAssembly Guests
+
+A loaded guest is registered through `PluginHost.register_guest` after configuring
+and starting the entry manager. Its identity names a durable entry with the empty
+`guest` placement. The host supplies the module again after restart; registration
+reuses the stored typed settings. Guests appear in `Plugins.List/Get`, share
+`Plugins.Settings.List/Set`, and read only their own values through plugin-host
+`Settings.List`. Deletion removes the entry and its settings atomically, then
+retires its activation. Product data cleanup remains eventual through Watch.
+`Plugins.Create` cannot load a guest; `Plugins.Replace` accepts managed bundles only.

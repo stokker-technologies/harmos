@@ -27,7 +27,12 @@ if _version_not_supported:
 
 
 class InstanceStub:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -58,10 +63,15 @@ class InstanceStub:
 
 
 class InstanceServicer:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """
 
     def Get(self, request, context):
-        """Identity, start time and catalog. Called once per connection, first.
+        """Identity, start time and declarations. Called once per connection, first.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -81,7 +91,17 @@ class InstanceServicer:
         """One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
         opening it is the demand for the stream and closing it ends the demand.
         For a stream with an interval the host then sends one harmos.v1.Tick per interval
-        and the plugin answers each with one sample.
+        and the plugin answers each with one sample. Only one tick may be unanswered.
+        Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+        ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
+        same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
+        caller context and grants, with the same routing and policy checks as Invoke.
+        Replies may arrive out of order and are matched by call ID, unique for the whole
+        Samples call, not reused on later ticks. Failures retain every field unchanged.
+        Answering the tick or ending the stream cancels its outstanding children and
+        suppresses their later replies. ChildCancel does the same for its child only.
+        Child traffic outside an unanswered tick (including device streams), unknown or
+        duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -128,7 +148,12 @@ def add_InstanceServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class Instance:
-    """Missing associated documentation comment in .proto file."""
+    """=== Options === //
+
+    === Services === //
+
+    Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
+    """
 
     @staticmethod
     def Get(request,

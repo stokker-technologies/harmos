@@ -16,9 +16,10 @@
 #include <mutex>
 
 // Third Party Imports
+#include <catch2/catch_test_macros.hpp>
 
 // Local Imports
-#include "../generated/client.hpp"
+#include "client.hpp"
 
 
 /* === Macros === */
@@ -71,31 +72,34 @@ struct Progress final : application::v1::jobs::Progress::CallbackService {
 
 /* === Public Functions === */
 
-void one_call_preserves_metadata_deadline_override_and_cancellation() {
-    // Serve a Watch That Waits for the Caller to Cancel Its Context.
-    Progress progress;
-    auto cancelled = progress.cancelled.get_future();
-    grpc::ServerBuilder builder;
-    int port = 0;
-    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
-    builder.RegisterService(&progress);
-    auto server = builder.BuildAndStart();
-    if (!server) throw std::logic_error("Start Progress: Server Is Unavailable");
-    fixture::Client client(grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
-    // Own the Context for the Whole Stream and Supply All Three Per-Call Controls.
-    grpc::ClientContext context;
-    context.AddMetadata("authorization", "Bearer fixture");
-    context.set_deadline(std::chrono::system_clock::time_point(std::chrono::seconds(4102444800)));
-    application::v1::jobs::ProgressWatchRequest request;
-    auto watching = client.jobs.progress.watch(context, request);
-    application::v1::jobs::ProgressWatchResponse opening;
-    if (!watching->Read(&opening) || opening.value() != "Bearer fixture:deadline") throw std::logic_error("Watch Progress: Metadata or Deadline Was Lost");
-    context.TryCancel();
-    const auto status = watching->Finish();
-    if (status.error_code() != grpc::StatusCode::CANCELLED) throw std::logic_error("Watch Progress: Caller Cancellation Was Lost");
-    cancelled.get();
-    server->Shutdown();
-    server->Wait();
+TEST_CASE("One call preserves metadata deadline override and cancellation") {
+    SECTION("Caller Controls Reach a Watch and Cancel It") {
+        // Serve a Watch That Waits for the Caller to Cancel Its Context.
+        Progress progress;
+        auto cancelled = progress.cancelled.get_future();
+        grpc::ServerBuilder builder;
+        int port = 0;
+        builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+        builder.RegisterService(&progress);
+        auto server = builder.BuildAndStart();
+        REQUIRE(server);
+        fixture::Client client(grpc::CreateChannel("127.0.0.1:" + std::to_string(port), grpc::InsecureChannelCredentials()));
+        // Own the Context for the Whole Stream and Supply All Three Per-Call Controls.
+        grpc::ClientContext context;
+        context.AddMetadata("authorization", "Bearer fixture");
+        context.set_deadline(std::chrono::system_clock::time_point(std::chrono::seconds(4102444800)));
+        application::v1::jobs::ProgressWatchRequest request;
+        auto watching = client.jobs.progress.watch(context, request);
+        application::v1::jobs::ProgressWatchResponse opening;
+        REQUIRE(watching->Read(&opening));
+        REQUIRE(opening.value() == "Bearer fixture:deadline");
+        context.TryCancel();
+        const auto status = watching->Finish();
+        REQUIRE(status.error_code() == grpc::StatusCode::CANCELLED);
+        cancelled.get();
+        server->Shutdown();
+        server->Wait();
+    }
 }
 
 

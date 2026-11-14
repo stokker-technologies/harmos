@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>Harmos</PackageId>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Harmos.Tests" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
+    <Protobuf Include="$(ProtoRoot)harmos/**/*.proto"
+              Exclude="$(ProtoRoot)harmos/v1/guest.proto" ProtoRoot="$(ProtoRoot)" GrpcServices="Both" />
+    <None Include="$(RepoRoot)README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

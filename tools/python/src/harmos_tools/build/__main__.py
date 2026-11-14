@@ -21,11 +21,10 @@ import sys
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from .. import temporary
 from . import cargo, fixtures, paths
-from .fixtures import ROOT, TARGET, SCHEMATIC
+from .fixtures import ROOT, SCHEMATIC, TARGET
 
 # Type Checking Imports
 
@@ -118,7 +117,7 @@ def product(profile: str, scratch: Path) -> None:
         artifacts[package] = destination.relative_to(export).as_posix()
         builds[package] = f"product/examples/{staged}"
         if package == "schematic-sidecar":
-            # Consume Producer-Local Schemas Before The Guest Build.
+            # Generate From the Staged Schema Before the Guest Build.
             fixtures.generate_python(tool, export / builds[package], protoc, files)
 
     catalog = {
@@ -136,7 +135,13 @@ def generate(profile: str) -> None:
     catalog_path = export / "product/examples/catalog.json"
     catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
     tool = export / "product/tools" / ("fixture-driver.exe" if os.name == "nt" else "fixture-driver")
-    fixtures.generate_python(tool, export / catalog["builds"]["schematic-sidecar"], _protoc(), catalog["files"])
+    fixtures.generate_python(
+        tool,
+        export / catalog["builds"]["schematic-sidecar"],
+        _protoc(),
+        catalog["files"],
+        source_root=Path(catalog["build_roots"]["schematic-sidecar"]),
+    )
     catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
 

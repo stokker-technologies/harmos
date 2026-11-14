@@ -13,7 +13,7 @@ name = "harmos"
 description = "Rust plugin authoring and generated-contract clients for Harmos."
 autotests = false
 autobins = false
-exclude = ["src/bin/**"]
+exclude = ["src/bin/**", "tests/fixtures/conformance/**"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,6 +25,9 @@ publish.workspace = true
 
 [[example]]
 name = "client"
+
+[[example]]
+name = "plugin"
 
 # === Features === #
 
@@ -86,7 +89,7 @@ wit-component = { workspace = true, default-features = true }
 tempfile = { workspace = true }
 
 # Async
-tokio = { workspace = true, features = ["process", "io-util"] }
+tokio = { workspace = true, features = ["io-util", "process", "rt-multi-thread"] }
 
 # === Target Dependencies === #
 
@@ -109,6 +112,10 @@ required-features = ["wasm"]
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+
+[[test]]
+name = "samples"
+path = "tests/system/main.rs"
 
 # === Bench Targets === #
 

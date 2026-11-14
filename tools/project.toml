@@ -10,13 +10,6 @@ unit = 120
 
 
 [[conventions.testing.overrides]]
-category = "acceptance"
-language = "rust"
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"
-timeout_seconds = 120
-
-[[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
@@ -53,7 +46,7 @@ timeout_seconds = 120
 
 [languages.python]
 exclude = [".venv", "tools/python/.ruff_cache"]
-generated = ["target/generated/python/src", "sdk/python/src/harmos/v1/*_pb2*", "sdk/python/src/harmos/conformance/v1/*_pb2*"]
+generated = ["target/generated/python/src", "sdk/python/src/harmos/v1/*_pb2*", "sdk/python/tests/fixtures/conformance/v1/*_pb2*"]
 roots = ["tools/python", "sdk/python"]
 
 [languages.rust]

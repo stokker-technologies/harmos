@@ -42,6 +42,11 @@ pub(crate) struct ChildInvocation {
 pub(crate) struct Admission {
     registry: Weak<Registry>,
     entries: Vec<Arc<Entry>>,
+    manager: Manager,
+    replacing: Option<String>,
+    previous: Vec<Arc<Entry>>,
+    staged: bool,
+    sealed: bool,
 }
 
 /* === Enums === */
@@ -51,6 +56,23 @@ pub(crate) struct Admission {
 /* === Implementations === */
 
 impl Admission {
+    pub(crate) fn commit(&mut self) -> Result<()> {
+        if self.staged {
+            self.previous = self.manager.reserve_inner(&self.entries, self.replacing.as_deref(), true)?;
+            self.staged = false;
+        }
+        Ok(())
+    }
+    pub(crate) fn seal(&mut self) {
+        self.sealed = true;
+        for entry in &self.previous {
+            entry.active.store(false, std::sync::atomic::Ordering::Release);
+            for control in entry.pending.lock().expect("operation settlement lock is healthy").values() {
+                control.request_cancel();
+            }
+        }
+    }
+
     pub(crate) fn remove(&self) {
         if let Some(registry) = self.registry.upgrade() {
             let mut state = registry.state.lock().expect("operation registry lock is healthy");
@@ -65,6 +87,21 @@ impl Admission {
 
 impl Drop for Admission {
     fn drop(&mut self) {
+        if !self.sealed
+            && !self.staged
+            && let Some(registry) = self.registry.upgrade()
+        {
+            let mut state = registry.state.lock().expect("operation registry lock is healthy");
+            for entry in &self.entries {
+                if state.owned(entry.id(), entry.owner.as_str()).is_some_and(|current| Arc::ptr_eq(current, entry)) {
+                    state.remove_owned(entry.id(), entry.owner.as_str());
+                }
+            }
+            for entry in &self.previous {
+                state.entries.entry(entry.id().to_owned()).or_default().insert(entry.owner.to_string(), entry.clone());
+            }
+            return;
+        }
         self.remove();
     }
 }
@@ -73,16 +110,24 @@ impl Manager {
     pub(crate) fn register_grpc_clock(&self) -> Result<()> {
         let mut entries = Vec::new();
         use harmos_operations::execution::operations::OperationFactory;
+        let sample_tick = OperationFactory::native::<crate::plugin::grpc::samples::Tick>().map_err(|source| Error::OperationFailed {
+            operation: "samples.tick".into(),
+            source: Arc::new(source),
+        })?;
+        self.register_native(crate::operations::Registration {
+            batch: crate::operations::Catalog {
+                name: "harmos.samples",
+                operations: vec![sample_tick],
+                services: vec![],
+            },
+            lane: None,
+            defaults: std::collections::BTreeMap::new(),
+        })?;
         let factories = vec![
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
             OperationFactory::protobuf::<harmos_operations::clock::Get>(),
+            OperationFactory::protobuf::<crate::plugin::grpc::settings::List>(),
         ];
-        #[cfg(feature = "grpc")]
-        let factories = {
-            let mut factories = factories;
-            factories.push(OperationFactory::protobuf::<crate::operations::values::Get>());
-            factories
-        };
         let mut both_faces = Vec::new();
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
@@ -133,7 +178,12 @@ impl Manager {
     }
 
     pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<Admission, PlacementError> {
-        let catalog = activation.description.catalog.as_ref().unwrap();
+        self.prepare_grpc_admission(activation, lane, false)
+    }
+    pub(crate) fn prepare_grpc_admission(
+        &self, activation: &Activation, lane: &'static str, replace: bool,
+    ) -> std::result::Result<Admission, PlacementError> {
+        let catalog = activation.description.declarations.as_ref().unwrap();
         let mut entries = Vec::new();
         for contract in &catalog.operations {
             let definition = OperationDefinition {
@@ -151,7 +201,7 @@ impl Manager {
             let binding = Arc::new(Binding::new(activation, contract.clone()));
             let mut entry = self
                 .binding_erased(
-                    &activation.description.id,
+                    activation.owner(),
                     lane,
                     binding,
                     definition,
@@ -176,16 +226,22 @@ impl Manager {
             Arc::get_mut(&mut entry).expect("unpublished plugin entry").contract = Some(metadata);
             entries.push(entry);
         }
-        self.reserve(&entries).map_err(|error| PlacementError::Invalid(error.to_string()))?;
+        self.reserve_inner(&entries, replace.then_some(activation.owner()), !replace)
+            .map_err(|error| PlacementError::Invalid(error.to_string()))?;
         Ok(Admission {
             registry: Arc::downgrade(&self.registry),
             entries,
+            manager: self.clone(),
+            replacing: replace.then(|| activation.owner().to_owned()),
+            previous: Vec::new(),
+            staged: replace,
+            sealed: !replace,
         })
     }
 }
 
 impl crate::operations::Context<'_> {
-    pub(crate) async fn invoke_client(&self, request: v1::InvocationsInvokeRequest) -> Result<Vec<u8>> {
+    pub(crate) async fn invoke_client(&self, request: harmos_protocol::client::InvocationsInvokeRequest) -> Result<Vec<u8>> {
         let entry = self.operations.capture_entry(&request.operation)?;
         if !entry.client_visible() {
             return Err(Error::OperationUnauthorized {
@@ -204,9 +260,11 @@ impl crate::operations::Context<'_> {
     }
 
     pub(crate) fn submit_grpc_child(
-        &self, owner: &str, requires: &[v1::Requirement], declarations: &[v1::SettingDeclaration], child: v1::ChildRequest,
+        &self, caller: &crate::plugin::grpc::CallingPlugin, child: v1::ChildRequest,
     ) -> Result<ChildInvocation> {
-        if child.background && child.operation != "harmos.context.v1.Time/Sleep" {
+        let owner = caller.owner();
+        let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
+        if child.background && child.operation != "harmos.plugin.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
                 reason: "Invoke permits background waits only for context Time.Sleep",
@@ -220,7 +278,7 @@ impl crate::operations::Context<'_> {
             operation: child.operation.clone(),
         };
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if entry.owner.as_str() != owner && entry.definition.visibility != Visibility::Public {
+        if !plugin.is_some_and(|binding| caller.same_activation(&binding.caller)) && entry.definition.visibility != Visibility::Public {
             return Err(denied());
         }
         if !entry.context_visible() {
@@ -253,18 +311,8 @@ impl crate::operations::Context<'_> {
                     field: "child operation",
                     reason: "host operation has no protobuf codec",
                 })?;
-            let resources = self.operations.resources_for(&entry);
-            #[cfg(feature = "grpc")]
-            let resources = {
-                let mut resources = resources;
-                resources.replace(Arc::new(crate::operations::values::Caller {
-                    plugin: owner.into(),
-                    declarations: declarations.to_vec(),
-                }));
-                resources
-            };
-            #[cfg(not(feature = "grpc"))]
-            let _ = declarations;
+            let mut resources = self.operations.resources_for(&entry);
+            resources.replace(Arc::new(caller.clone()));
             factory
                 .prepare_grpc(
                     resources,
@@ -347,28 +395,36 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     if contract.protobuf().is_some() {
         return Ok(contract.fingerprint().0.to_vec());
     }
-    let binding = contract.grpc().ok_or(Error::InvalidInput {
+    #[cfg(not(feature = "grpc"))]
+    return Err(Error::InvalidInput {
         field: "host contract",
-        reason: "child calls require the host operation's protobuf projection",
-    })?;
-    let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
-    let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
-        operation: entry.id().into(),
-        source: Arc::new(source),
-    })?;
-    let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
-    harmos_protocol::schema::fingerprint(
-        entry.id(),
-        &prost_types::FileDescriptorSet {
-            file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
-        },
-        method.input().full_name(),
-        method.output().full_name(),
-    )
-    .map_err(|source| Error::OperationFailed {
-        operation: entry.id().into(),
-        source: Arc::new(source),
-    })
+        reason: "native protobuf projections require the grpc feature",
+    });
+    #[cfg(feature = "grpc")]
+    {
+        let binding = contract.grpc().ok_or(Error::InvalidInput {
+            field: "host contract",
+            reason: "child calls require the host operation's protobuf projection",
+        })?;
+        let (package, service, method) = (binding.package.as_ref(), binding.service.as_ref(), binding.method.as_ref());
+        let service = crate::grpc::descriptor(package, service, &[(method, contract)]).map_err(|source| Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        })?;
+        let method = service.methods().find(|candidate| candidate.name() == method).unwrap();
+        harmos_protocol::schema::fingerprint(
+            entry.id(),
+            &prost_types::FileDescriptorSet {
+                file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            },
+            method.input().full_name(),
+            method.output().full_name(),
+        )
+        .map_err(|source| Error::OperationFailed {
+            operation: entry.id().into(),
+            source: Arc::new(source),
+        })
+    }
 }
 
 fn policy(policy: Option<&v1::OperationPolicy>) -> Result<OperationPolicy> {

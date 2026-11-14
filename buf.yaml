@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+version: v2
+modules:
+  - path: proto
+    # Library Contracts and Product Wrappers Are Independent Modules.
+    includes:
+      - proto/harmos
+  - path: examples/schematic/proto
+lint:
+  use:
+    - STANDARD
+    - COMMENT_SERVICE
+    - COMMENT_RPC
+    - COMMENT_MESSAGE
+  except:
+    # Resource grammar uses names such as Operations and Instance without a Service suffix.
+    - SERVICE_SUFFIX
+    # Persisted schema enums retain their encoded value names.
+    - ENUM_VALUE_PREFIX
+    # Persisted schema enums retain meaningful zero values without UNSPECIFIED.
+    - ENUM_ZERO_VALUE_SUFFIX
+    # Nested client resource packages end in access, status or plugins after their v1 segment.
+    - PACKAGE_VERSION_SUFFIX
+  disallow_comment_ignores: true

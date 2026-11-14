@@ -16,7 +16,32 @@ On Windows, use `windows-x86_64` and the `.exe` suffix for native executables.
 
 Shared models, vertical operations, host app, CLI, guest and sidecar have separate crates under
 `examples/schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed
-analysis and cancellation. The example's JSONL persistence adapter is `examples/schematic/storage/`.
+analysis and cancellation. Application contracts live in `examples/schematic/proto/schematic/v1/operations.proto`;
+`examples/schematic/protocol` owns their generator and generated-code drift test.
+The example's JSONL persistence adapter is `examples/schematic/storage/`.
+Its own `Files` and `Uploads` contracts use shared `harmos.v1.File` and `Upload`
+messages over private native storage operations. Both plugins declare typed routing
+settings and read them through caller-scoped plugin-host `Settings.List`.
+Client roots use `harmos.client.v1`; plugin implementations use
+`harmos.plugin.v1`, and their `context` calls use `harmos.plugin.host.v1`.
+
+The shared client-composition fixture is
+`sdk/tests/fixtures/client/proto/application/v1/plugins/annotations.proto`.
+It adds application-owned `Annotations.Get` under the library `Plugins` parent,
+alongside the sibling application `Jobs` root:
+
+```text
+client.jobs.start
+client.jobs.progress.watch
+client.plugins.annotations.get
+client.plugins.settings.list
+```
+
+The library plugin entry is the sole plugin record. Application annotations remain
+application-owned; cleanup follows the in-process deletion watch and startup
+reconciliation and is eventual. Library-stored settings are deleted atomically
+with the plugin entry. In-place `Plugins.Replace` preserves the entry name,
+settings and application data.
 
 
 Each operation file owns its request, response, policy and execution. Shared data

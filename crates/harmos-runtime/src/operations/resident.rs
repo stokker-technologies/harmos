@@ -25,7 +25,7 @@ use std::any::{Any, TypeId};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
 use tokio::sync::watch;
@@ -38,8 +38,6 @@ use crate::supervision::{self, Task, instance::Instance, instance::Phase};
 use crate::{Error, Result};
 
 /* === Constants === */
-
-static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
 
 const ROOT: ScopeId = ScopeId(0);
 
@@ -465,7 +463,10 @@ impl Registry {
     }
 
     // The scope that shares these resources, opened on first use.
+    #[cfg(feature = "grpc")]
     pub(crate) fn scope<R: Send + Sync + 'static>(&self, resources: Arc<R>) -> Result<Arc<Scope>> {
+        use std::sync::atomic::AtomicU64;
+        static NEXT_SCOPE: AtomicU64 = AtomicU64::new(1);
         let resources: Resources = resources;
         let address = address(&resources);
         let mut state = self.state();

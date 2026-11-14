@@ -7,16 +7,14 @@
  * ***
  */
 
-// Resume Unary Transfers Across Audience Faces
-
-// Resume Saved Pages Across Faces While A Later Commit Is Blocked
+// Resume Private Storage Pages at Their Issued Cuts
 
 /* === Imports === */
 
 use super::{Fixture, config};
 use harmos_domain::Message;
-use harmos_operations::storage::ListRows;
-use harmos_protocol::{storage as wire, v1};
+use harmos_operations::storage::{ListRows, ListRowsRequest};
+use harmos_protocol::v1;
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_storage::query::transform::{
     Transform,
@@ -99,34 +97,33 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         ],
         slice: RowSlice::default(),
     };
-    let query: wire::Query = query.try_into().unwrap();
-    let mut request = v1::StorageListRowsRequest {
-        source: query.source,
+    let mut request = ListRowsRequest {
+        source: Some(query.source),
         transforms: query.transforms,
         at: None,
         page: None,
     };
-    let schema = fixture.runtime.operations.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+    let schema = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
     assert!(matches!(QueryArrow::try_from(schema.rows[0].clone()).unwrap(), QueryArrow::Schema(_)));
     assert_eq!(fixture.data.control.record_rows_examined.load(Ordering::Relaxed), 0);
     request.page = Some(v1::PageRequest {
         page_token: schema.next_page_token,
         ..Default::default()
     });
-    let filtered = fixture.runtime.operations.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+    let filtered = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
     assert!(filtered.rows.is_empty());
     assert!(!filtered.next_page_token.is_empty());
     let examined = fixture.data.control.record_rows_examined.load(Ordering::Relaxed);
     assert!(examined > 0 && examined < fixture.data.records.lock().unwrap().len());
     assert_eq!(
-        fixture.runtime.operations.call_protobuf::<ListRows>(request.clone()).await.unwrap().next_page_token,
+        fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap().next_page_token,
         filtered.next_page_token
     );
     assert_eq!(fixture.data.control.record_rows_examined.load(Ordering::Relaxed), examined);
     request.page.as_mut().unwrap().page_token = filtered.next_page_token;
     let mut items = Vec::new();
     loop {
-        let response = fixture.runtime.operations.call_protobuf::<ListRows>(request.clone()).await.unwrap();
+        let response = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
         assert_eq!(response.resolved_at, filtered.resolved_at);
         for row in response.rows {
             if let QueryArrow::Batch(batch) = QueryArrow::try_from(row).unwrap() {

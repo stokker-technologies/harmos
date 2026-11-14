@@ -52,6 +52,7 @@ pub struct Calls(pub Arc<dyn Caller>);
 // A Child Operation Erased For Carrier Dispatch; Every Function Is Monomorphized For The Callee.
 #[derive(Clone)]
 pub struct Target {
+    pub in_process: bool,
     pub id: &'static str,
     pub protobuf_native: bool,
     pub definition: OperationDefinition,
@@ -115,6 +116,7 @@ impl Target {
     pub fn request<Q: super::RequestShape>(specification: super::OperationSpec<Q>) -> Result<Self, super::ServingError> {
         let id = specification.declaration.operation.id;
         Ok(Self {
+            in_process: false,
             id,
             protobuf_native: false,
             definition: specification.definition().map_err(super::ServingError::Declaration)?,

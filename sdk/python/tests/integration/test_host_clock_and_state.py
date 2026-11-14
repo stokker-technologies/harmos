@@ -19,15 +19,13 @@ from google.protobuf.timestamp_pb2 import Timestamp
 
 # Local Imports
 from harmos import GET_TIME, SLEEP, Plugin
-from harmos.conformance.v1.fixture_pb2 import Value
-from harmos.v1 import types_pb2 as wire
+from harmos.plugin.host.v1 import time_pb2 as clock
+from harmos.plugin.v1 import instance_pb2 as carrier
 from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos.v1.stream_pb2 import SamplesSelection, Tick
+from tests.fixtures.conformance.v1.fixture_pb2 import Value
 from tests.support import calls
 from tests.support.author import Author
-
-from harmos.plugin.v1 import instance_pb2 as carrier
-
-from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
 
@@ -41,7 +39,7 @@ from harmos.context.v1 import time_pb2 as clock
 
 
 class HostClockAndState(unittest.IsolatedAsyncioTestCase):
-    async def test_host_clock_and_state(self):
+    async def test_host_clock_and_state(self) -> None:
         # Serve an Instance with Clock Requirements and a Typed Settings Section.
         author = Author()
         plugin = Plugin(author, id="author", version="1.0.0", requires=[SLEEP, GET_TIME], sections=[Value(value=b"settings")])
@@ -51,20 +49,20 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
         description = await client.Get(carrier.InstanceGetRequest(revision=1))
-        self.assertEqual(description.catalog.streams[0].interval_setting, "author.interval")
-        self.assertEqual(Value.FromString(description.catalog.sections[0].payload).value, b"settings")
+        self.assertEqual(description.declarations.streams[0].interval_setting, "author.interval")
+        self.assertEqual(Value.FromString(description.declarations.sections[0].payload).value, b"settings")
 
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
-        self.assertEqual(sleep.operation, "harmos.context.v1.Time/Sleep")
+        self.assertEqual(sleep.operation, "harmos.plugin.host.v1.Time/Sleep")
         self.assertEqual(clock.TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
-        self.assertEqual(sleep.fingerprint, description.catalog.requires[0].fingerprint)
+        self.assertEqual(sleep.fingerprint, description.declarations.requires[0].fingerprint)
         await calls.reply(call, sleep, clock.TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
-        self.assertEqual(now.operation, "harmos.context.v1.Time/Get")
+        self.assertEqual(now.operation, "harmos.plugin.host.v1.Time/Get")
         at = Timestamp(seconds=12345, nanos=67890)
         await calls.reply(call, now, clock.TimeGetResponse(now=at))
         result = (await call.read()).response
@@ -78,8 +76,8 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
 
         # Closing Demand Cancels an Observer's In-Progress Read.
         demand = client.Samples()
-        await demand.write(carrier.InstanceSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
-        await demand.write(carrier.InstanceSamplesRequest(tick=wire.Tick(at=at)))
+        await demand.write(carrier.InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
+        await demand.write(carrier.InstanceSamplesRequest(tick=Tick(at=at)))
         await author.reading.wait()
         await demand.done_writing()
         self.assertIs(await demand.read(), grpc.aio.EOF)
@@ -87,8 +85,8 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
 
         # Reject Invalid Timestamp Ranges Without Losing the Connection.
         invalid = client.Samples()
-        await invalid.write(carrier.InstanceSamplesRequest(open=wire.SamplesSelection(stream="author.reading")))
-        await invalid.write(carrier.InstanceSamplesRequest(tick=wire.Tick(at=Timestamp(seconds=0, nanos=-1))))
+        await invalid.write(carrier.InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
+        await invalid.write(carrier.InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=0, nanos=-1))))
         with self.assertRaises(grpc.aio.AioRpcError) as error:
             await invalid.read()
         self.assertEqual(error.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
@@ -98,9 +96,9 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(author.cleaned, 1)
         self.assertEqual(await client.Get(carrier.InstanceGetRequest(revision=1)), description)
 
-        # Duplicate Declarations Fail When the Author Builds the Catalog.
+        # Duplicate Declarations Fail When the Author Builds the Declarations.
         with self.assertRaises(ValueError):
-            Plugin(author, id="author", version="1.0.0", requires=[SLEEP, SLEEP]).catalog()
+            Plugin(author, id="author", version="1.0.0", requires=[SLEEP, SLEEP]).declarations()
 
 
 # === Public Functions === #

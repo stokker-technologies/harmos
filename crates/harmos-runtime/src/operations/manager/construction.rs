@@ -53,8 +53,6 @@ impl Manager {
                 status_owner: std::sync::Mutex::new(None),
                 status_started,
                 service_runner: crate::services::authored_runner::<A>,
-                #[cfg(feature = "grpc")]
-                values: std::sync::RwLock::new(None),
                 middleware: crate::operations::middleware::Configuration::default(),
                 state: Mutex::new(State {
                     closing: false,
@@ -155,7 +153,7 @@ impl Manager {
         handle
     }
 
-    pub(in crate::operations) fn call_context(&self) -> &crate::operations::CallContext {
+    pub(crate) fn call_context(&self) -> &crate::operations::CallContext {
         self.context.get().expect("context freezes before operation execution")
     }
 

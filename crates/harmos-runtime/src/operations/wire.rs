@@ -29,6 +29,7 @@ use super::{Manager, OperationInstanceId};
 #[cfg(test)]
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
+use harmos_protocol::schema::operation_identity;
 
 /* === Constants === */
 
@@ -52,6 +53,7 @@ struct EncodedOptions {
 
 pub(super) struct EncodedInput {
     pub(super) payload: Vec<u8>,
+    pub(super) protobuf: bool,
     pub(super) retry: Option<super::RetryPolicy>,
     pub(super) policy: Option<super::OperationPolicy>,
     pub(super) preparation: Option<OwnedSemaphorePermit>,
@@ -190,8 +192,8 @@ impl Manager {
         }
         // Guest Assignments Retain Their Provider Beside the Canonical Service/Method Identity.
         if let Some((owner, local)) = operation.split_once('.')
-            && local.starts_with("harmos.")
             && local.contains('/')
+            && operation_identity(local).is_ok()
         {
             let entry = self.capture_routed(local, owner, &origin)?;
             return self.dispatch_encoded(entry, payload, source, parent, submitted, options);
@@ -246,6 +248,7 @@ impl Manager {
                 retry,
                 policy,
                 payload,
+                protobuf: true,
                 preparation: None,
             },
         )
@@ -355,6 +358,7 @@ impl PluginCallback {
                 retry,
                 policy: None,
                 payload,
+                protobuf: self.contract.protobuf().is_some(),
                 preparation: Some(preparation),
             },
         )
@@ -474,6 +478,7 @@ pub(super) fn dispatch_native(
         return dispatch_prepared(operations, submission, source, parent, prepared, request);
     }
     let factory = submission.entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>();
+    let protobuf = input.protobuf;
     let name = submission.entry.id().to_owned();
     submission.preparation = match input.preparation {
         Some(original) => Some(original),
@@ -481,7 +486,7 @@ pub(super) fn dispatch_native(
     };
     let decoding_bytes = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.grpc_decoding_memory(&input.payload);
+            return if protobuf { factory.grpc_decoding_memory(&input.payload) } else { factory.decoding_memory(&input.payload) };
         }
         Err(crate::MessageError::borrowed("entry does not own a native codec"))
     }))
@@ -498,7 +503,7 @@ pub(super) fn dispatch_native(
     let resources = operations.resources_for(&submission.entry);
     let prepared = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
-            return factory.prepare_envelope(resources, &input.payload, true, None);
+            return factory.prepare_envelope(resources, &input.payload, protobuf, None);
         }
         Err(harmos_operations::execution::ServingError::Catalog)
     }))

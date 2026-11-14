@@ -5,12 +5,10 @@
 ### Requirement: Application-Owned Immutable Content
 
 StorageManager SHALL accept one registered ContentSource for immutable references
-outside its own history. Resolution SHALL pass the inherited caller authorization
-scope unchanged and obtain authoritative length, SHA-256 and a bounded lease with
-explicit expiry. The application SHALL retain bytes and metadata; the library SHALL
-retain ordering, bounds, digest checking, range framing and the separate faces.
-Diagnostics and bundle installation SHALL use the same library content boundary,
-with no second content-source trait or persistence owner.
+outside its own history. Resolution SHALL pass the inherited caller authorization scope
+unchanged and obtain authoritative length, SHA-256 and a bounded lease with explicit
+expiry. The application SHALL retain bytes and metadata; the library SHALL retain
+ordering, bounds, digest checking, range framing and the separate faces.
 
 #### Scenario: Client and Plugin Complete a Read
 
@@ -31,3 +29,13 @@ with no second content-source trait or persistence owner.
 
 - **WHEN** a caller reads the library's own published immutable file
 - **THEN** existing saved-history selection, reference checks, bounded ranges and digest checks remain in force
+
+### Requirement: Shared Library Content Boundary
+
+Diagnostics and bundle installation SHALL use the same library content boundary, with no
+second content-source trait or persistence owner.
+
+#### Scenario: Diagnostics and Bundle Content
+
+- **WHEN** diagnostics or bundle installation accesses application-owned content
+- **THEN** it uses the same library content boundary, with no second content-source trait or persistence owner

@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Client Status
+//
+// Calls an application or tool makes on the host through the client boundary.
+
+syntax = "proto3";
+
+package harmos.client.v1;
+
+// === Imports === //
+
+import "google/protobuf/timestamp.proto";
+import "harmos/v1/position.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Exposes current host health and a live stream of contributed status changes.
+service Status {
+  // Read the current host identity and contributed health with the status history boundary.
+  rpc Get(StatusGetRequest) returns (StatusGetResponse);
+  // Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
+  rpc Watch(StatusWatchRequest) returns (stream StatusWatchResponse);
+}
+
+// === Requests and Responses === //
+
+// Request for Status.Get.
+message StatusGetRequest {}
+
+// Returns current host health and its issued status boundary.
+message StatusGetResponse {
+  HostStatus status = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.Position resolved_at = 2;
+}
+
+// Carries the read boundary for Status.Watch.
+message StatusWatchRequest {
+  // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
+  harmos.v1.Position at = 1;
+}
+
+// Returns a current host health observation and its issued status boundary.
+message StatusWatchResponse {
+  HostStatus status = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.Position resolved_at = 2;
+}
+
+// === Resources === //
+
+// Identifies this host process and the application/library versions it is running.
+message HostIdentity {
+  string application_name = 1;
+  string application_version = 2;
+  string library_version = 3;
+  // Timestamp captured for this host process, rather than a status revision.
+  google.protobuf.Timestamp process_started_at = 4;
+  // Host identity supplied by the composing application.
+  string host_id = 5;
+}
+
+// Reports one contributed component's availability and explanation.
+message HealthComponent {
+  // Identity of the contributed component within this host's status inventory.
+  string name = 1;
+  ComponentState state = 2;
+  string reason = 3;
+}
+
+// Combines host identity and contributed health; an unavailable component makes the host unavailable.
+message HostStatus {
+  HostIdentity identity = 1;
+  bool available = 2;
+  repeated HealthComponent components = 3;
+}
+
+// === Enums === //
+
+enum ComponentState {
+  COMPONENT_STATE_UNSPECIFIED = 0;
+  COMPONENT_STATE_HEALTHY = 1;
+  COMPONENT_STATE_DEGRADED = 2;
+  COMPONENT_STATE_UNAVAILABLE = 3;
+}

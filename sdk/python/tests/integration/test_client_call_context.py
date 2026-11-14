@@ -13,13 +13,17 @@
 
 # Standard Library Imports
 import asyncio
-import json
 import unittest
-from pathlib import Path
+from collections.abc import AsyncIterator
+from unittest.mock import patch
 
 import grpc
-from harmos import Client
+
+from harmos.client_transport import stream
 from tests.support.client_protocol import progress
+
+# isort: split
+from tests.fixtures.client.client import ClientRoot as Client
 
 # Third Party Imports
 
@@ -38,14 +42,16 @@ from tests.support.client_protocol import progress
 
 
 class CallerContext(unittest.IsolatedAsyncioTestCase):
-    async def test_one_call_preserves_metadata_deadline_override_and_cancellation(self):
+    async def test_one_call_preserves_metadata_deadline_override_and_cancellation(self) -> None:
         # Serve a Watch That Acknowledges Metadata and Waits for Caller Cancellation.
         stopped = asyncio.Event()
         server = grpc.aio.server()
 
-        async def watch(request, context):
+        async def watch(
+            request: progress.ProgressWatchRequest, context: grpc.aio.ServicerContext
+        ) -> AsyncIterator[progress.ProgressWatchResponse]:
             try:
-                token = dict(context.invocation_metadata()).get("authorization", "")
+                token = str(next((value for key, value in (context.invocation_metadata() or ()) if key == "authorization"), ""))
                 yield progress.ProgressWatchResponse(value=token)
                 await asyncio.Future()
             finally:
@@ -70,38 +76,25 @@ class CallerContext(unittest.IsolatedAsyncioTestCase):
         try:
             async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as native:
                 # Record the Deadline Option at the Transport Boundary Without Sampling Wall Time.
-                options = []
-
-                class Channel:
-                    def unary_unary(self, *args, **kwargs):
-                        return native.unary_unary(*args, **kwargs)
-
-                    def unary_stream(self, *args, **kwargs):
-                        call = native.unary_stream(*args, **kwargs)
-
-                        def start(request, **kwargs):
-                            options.append(kwargs)
-                            return call(request, **kwargs)
-
-                        return start
-
-                table = json.loads((Path(__file__).resolve().parents[3] / "fixtures/client/resources.json").read_text())
-                client = Client(Channel(), table)
+                client = Client(native)
                 # Supply All Three Controls to One Generated Resource Call.
-                call = client.jobs.progress.watch(
-                    progress.ProgressWatchRequest(value="selection"), metadata=(("authorization", "Bearer fixture"),), timeout=17
-                )
+                with patch("tests.fixtures.client.client.stream", wraps=stream) as dispatch:
+                    call = client.jobs.progress.watch(
+                        progress.ProgressWatchRequest(value="selection"), metadata=(("authorization", "Bearer fixture"),), timeout=17
+                    )
+                self.assertEqual(dispatch.call_args.kwargs["timeout"], 17)
                 self.assertEqual((await call.read()).value, "Bearer fixture")
-                self.assertEqual(options[0]["timeout"], 17)
                 self.assertTrue(call.cancel())
                 with self.assertRaises(asyncio.CancelledError):
                     await call.read()
                 await stopped.wait()
                 # A Following Call Keeps Its Own Default Options.
                 stopped.clear()
-                following = client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))
+                with patch("tests.fixtures.client.client.stream", wraps=stream) as dispatch:
+                    following = client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))
+                self.assertIsNone(dispatch.call_args.kwargs["timeout"])
+                self.assertIsNone(dispatch.call_args.kwargs["metadata"])
                 self.assertEqual((await following.read()).value, "")
-                self.assertEqual(options[1], {})
                 following.cancel()
                 await stopped.wait()
         finally:

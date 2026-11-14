@@ -219,8 +219,8 @@ def bench(
         rows, status = _bench_python(directory, category, project, refresh, measure, extra, identity)
     else:
         raise policy.TestError("benchmarks run for rust and python")
-    from ..release import reports
     from ..release import policy as release_policy
+    from ..release import reports
 
     revision = os.environ.get("GITHUB_SHA") or os.environ.get("CI_COMMIT_SHA") or archive.revision(directory) or "unknown"
     measurements = reports.measurements(rows, f"{category}-{language}", revision, rules.bench_regression_percent)

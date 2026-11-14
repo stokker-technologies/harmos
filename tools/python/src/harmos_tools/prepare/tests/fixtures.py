@@ -17,13 +17,12 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Any
 
 # Third Party Imports
-
 # Local Imports
 from ...build import fixtures as staging
 from ...build import paths
+from ...build.cargo import Artifact
 from ...build.fixtures import ROOT
 from ...test import archive
 
@@ -115,7 +114,7 @@ def prepare_focused(
             subprocess.run([str(componentizer.resolve())], input=json.dumps(request), text=True, check=True)
     metadata["inspections"] = {name: str(path) for name, path in inspection_paths.items()}
     metadata["inspection_sha256"] = {name: staging.digest(path) for name, path in inspection_paths.items()}
-    metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items() if path.suffix == ".wasm"}
+    metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items()}
     for name, library in libraries.items():
         library_path = Path(library["path"])
         digest = staging.digest(library_path)
@@ -163,7 +162,7 @@ def _stage_inspections(sources: dict[str, Path]) -> dict[str, Path]:
     return staged
 
 
-def _cargo_events(messages: list[Path]) -> list[dict[str, Any]]:
+def _cargo_events(messages: list[Path]) -> list[Artifact]:
     """Read Cargo JSON Captures Only After Every Invocation Reports Success."""
     events = []
     for message_path in messages:
@@ -171,9 +170,9 @@ def _cargo_events(messages: list[Path]) -> list[dict[str, Any]]:
     return events
 
 
-def _successful_capture(message_path: Path) -> list[dict[str, Any]]:
+def _successful_capture(message_path: Path) -> list[Artifact]:
     lines = message_path.read_text(encoding="utf-8").splitlines()
-    captured = [json.loads(line) for line in lines if line.startswith("{")]
+    captured: list[Artifact] = [json.loads(line) for line in lines if line.startswith("{")]
     completions = [event for event in captured if event.get("reason") == "build-finished"]
     if not completions:
         raise RuntimeError(f"Cargo capture has no build-finished event: {message_path}")
@@ -182,17 +181,17 @@ def _successful_capture(message_path: Path) -> list[dict[str, Any]]:
     return captured
 
 
-def _compiler_artifacts(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _compiler_artifacts(events: list[Artifact]) -> list[Artifact]:
     return [event for event in events if _is_build_artifact(event)]
 
 
-def _is_build_artifact(event: dict[str, Any]) -> bool:
+def _is_build_artifact(event: Artifact) -> bool:
     is_artifact = event.get("reason") == "compiler-artifact"
     is_test = event.get("profile", {}).get("test") is True
     return is_artifact and not is_test
 
 
-def _inspection_matches(events: list[dict[str, Any]], target_name: str) -> list[Path]:
+def _inspection_matches(events: list[Artifact], target_name: str) -> list[Path]:
     matches = []
     matching_events = filter(lambda event: _is_shipping_target(event, target_name), events)
     for event in matching_events:
@@ -200,14 +199,14 @@ def _inspection_matches(events: list[dict[str, Any]], target_name: str) -> list[
     return matches
 
 
-def _is_shipping_target(event: dict[str, Any], target_name: str) -> bool:
+def _is_shipping_target(event: Artifact, target_name: str) -> bool:
     target = event.get("target", {})
     name = target.get("name", "")
     is_test = event.get("profile", {}).get("test") is True
     return name.replace("-", "_") == target_name and not is_test
 
 
-def _inspection_paths(event: dict[str, Any]) -> list[Path]:
+def _inspection_paths(event: Artifact) -> list[Path]:
     executable = event.get("executable")
     if executable:
         return [Path(executable).resolve()]
@@ -229,7 +228,9 @@ def prepare(profile: str) -> None:
     staging.verify(stamp["profile"], profile, "test fixtures belong to another profile")
     staging.verify(stamp["target"], paths.target(), "test fixtures belong to another native target")
     catalog = json.loads((export / "product/examples/catalog.json").read_text(encoding="utf-8"))
-    files = {**stamp["files"], **catalog["files"]}
+    product = (export / "product").relative_to(ROOT).as_posix() + "/"
+    files = {name: digest for name, digest in stamp["files"].items() if not name.startswith(product)}
+    files.update(catalog["files"])
     for relative, expected in files.items():
         staging.verify(staging.digest(ROOT / relative), expected, f"fixture bytes differ from their producer: {relative}")
 

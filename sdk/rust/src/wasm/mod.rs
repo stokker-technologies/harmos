@@ -37,7 +37,7 @@ pub(crate) use harmos_protocol::guest::lifecycle_fingerprint;
 
 /* === Constants === */
 
-/// Component world carried by every SDK guest, independent of its catalog.
+/// Component world carried by every SDK guest, independent of its declarations.
 pub const WIT: &str = include_str!("../../wit/harmos.wit");
 
 /* === Macros === */

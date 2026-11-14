@@ -39,7 +39,7 @@ from harmos_tools.release import layout, nightly, policy, reports, run
 
 
 class ReleaseLayout(unittest.TestCase):
-    def test_clean_packages_publish_exact_channel_inventories_and_owned_reports(self):
+    def test_clean_packages_publish_exact_channel_inventories_and_owned_reports(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             targets = {"linux-x86_64": "x86_64-unknown-linux-gnu", "windows-x86_64": "x86_64-pc-windows-msvc"}
@@ -136,7 +136,7 @@ class ReleaseLayout(unittest.TestCase):
             initial_manifest = (directory / run.ASSETS / "upload.json").read_bytes()
             remote = {item["name"]: (directory / item["path"]).read_bytes() for item in layout.uploads(directory)}
 
-            def pages(settings, endpoint, **kwargs):
+            def pages(settings: dict, endpoint: str, **kwargs: object) -> list[dict]:
                 if endpoint == "releases":
                     return []
                 owner = endpoint.removesuffix("/assets")
@@ -152,12 +152,12 @@ class ReleaseLayout(unittest.TestCase):
                     for name, data in assets.items()
                 ]
 
-            def request(settings, endpoint, method="GET", payload=None, **kwargs):
+            def request(settings: dict, endpoint: str, method: str = "GET", payload: dict | None = None, **kwargs: object) -> bytes | None:
                 owner, name = endpoint.removeprefix("releases/assets/").rsplit("/", 1)
                 assets = remote if owner == f"releases/{current['id']}" else draft_assets[owner]
                 return assets[name]
 
-            def document(settings, endpoint, method="GET", payload=None, **kwargs):
+            def document(settings: dict, endpoint: str, method: str = "GET", payload: dict | None = None, **kwargs: object) -> dict | None:
                 payload = payload or {}
                 if endpoint == "git/ref/tags/nightly":
                     return {"object": {"sha": "a" * 40}}
@@ -175,7 +175,7 @@ class ReleaseLayout(unittest.TestCase):
                     remote.update(draft_assets[endpoint])
                 return dict(current)
 
-            def upload(directory, settings, endpoint, item):
+            def upload(directory: Path, settings: dict, endpoint: str, item: dict) -> None:
                 draft_assets[endpoint][item["name"]] = (directory / item["path"]).read_bytes()
 
             with (

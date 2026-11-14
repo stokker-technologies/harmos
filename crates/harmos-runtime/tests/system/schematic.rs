@@ -14,15 +14,15 @@
 // Standard Library Imports
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Stdio};
+use std::{env, fs, path::PathBuf};
 
 // Third Party Imports
+use serde_json::{Value, json};
 
 // Local Imports
 use super::support::fixtures;
 
 /* === Constants === */
-
-const REOPENED: &str = "Reopened: 2 symbols, 1 net, 3 route points";
 
 /* === Enums === */
 
@@ -38,6 +38,8 @@ enum Startup {
 fn cli_backends_reopen() {
     let _report = crate::report::system();
     let directory = tempfile::tempdir().unwrap();
+    let reports = tempfile::tempdir().unwrap();
+    let report_directory = env::var_os("STKR_TEST_REPORT_DIR").map(PathBuf::from).unwrap_or_else(|| reports.path().to_owned());
     let cli = fixtures::artifact("schematic-cli");
     let mut children = Vec::new();
 
@@ -46,34 +48,35 @@ fn cli_backends_reopen() {
 
         // Nominal Editing Persists Through The Backend And Reopens.
         let child = fixtures::command(&cli)
+            .env("STKR_TEST_REPORT_DIR", &report_directory)
             .current_dir(directory.path())
             .arg(backend)
             .arg(&plugin)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
-        children.push((backend, child));
+        children.push((backend, child.map(|child| (child.id(), child))));
     }
 
     let mut outputs = Vec::new();
     for (backend, child) in children {
-        let output = child.and_then(Child::wait_with_output);
+        let output = child.and_then(|(process, child)| Child::wait_with_output(child).map(|output| (process, output)));
         outputs.push((backend, output));
     }
     for (backend, output) in outputs {
-        let output = output.unwrap_or_else(|error| panic!("{backend}: {error}"));
+        let (process, output) = output.unwrap_or_else(|error| panic!("{backend}: {error}"));
         assert!(
             output.status.success(),
             "{backend}: {}\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let lines: Vec<_> = stdout.lines().collect();
-        assert_eq!(lines.first().copied(), Some("Placed R1 and U1, connected POWER, moved R1"));
-        assert!(lines.contains(&"Undid and redid the route"));
-        assert_eq!(lines.last().copied(), Some(REOPENED));
-        assert!(!lines.iter().any(|line| line.starts_with("Analysis")));
+        let bytes = fs::read(report_directory.join(format!("schematic-walkthrough-{process}.json"))).unwrap();
+        let report: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(report["document"]["symbols"].as_object().unwrap().len(), 2);
+        assert_eq!(report["document"]["nets"].as_object().unwrap().len(), 1);
+        assert_eq!(report["document"]["nets"]["1"]["route"].as_array().unwrap().len(), 3);
+        assert!(report["analysis"].is_null());
     }
 }
 
@@ -81,6 +84,8 @@ fn cli_backends_reopen() {
 fn cli_streams_settle() {
     let _report = crate::report::system();
     let directory = tempfile::tempdir().unwrap();
+    let reports = tempfile::tempdir().unwrap();
+    let report_directory = env::var_os("STKR_TEST_REPORT_DIR").map(PathBuf::from).unwrap_or_else(|| reports.path().to_owned());
     std::fs::create_dir(directory.path().join("zeta")).unwrap();
     std::fs::create_dir(directory.path().join("alpha")).unwrap();
     std::fs::write(directory.path().join("file.txt"), "not a directory").unwrap();
@@ -92,6 +97,7 @@ fn cli_streams_settle() {
 
         // Start The Next Backend Only After This CLI Has Initialized Its Plugin.
         let mut child = fixtures::command(&cli)
+            .env("STKR_TEST_REPORT_DIR", &report_directory)
             .current_dir(directory.path())
             .arg(backend)
             .arg(&plugin)
@@ -100,6 +106,7 @@ fn cli_streams_settle() {
             .stderr(Stdio::piped())
             .spawn()
             .unwrap_or_else(|error| panic!("{backend}: {error}"));
+        let process = child.id();
         let stderr = child.stderr.take().expect("the CLI startup events are piped");
         let (started, ready) = std::sync::mpsc::sync_channel(2);
         let reader = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
@@ -133,36 +140,39 @@ fn cli_streams_settle() {
                 String::from_utf8_lossy(&output.stdout)
             );
         }
-        children.push((backend, child, reader));
+        children.push((backend, process, child, reader));
     }
 
     let mut outputs = Vec::new();
-    for (backend, child, reader) in children {
+    for (backend, process, child, reader) in children {
         let mut output = child.wait_with_output().unwrap_or_else(|error| panic!("{backend}: {error}"));
         output.stderr = reader.join().expect("the startup reader settles").expect("the CLI startup events are readable");
-        outputs.push((backend, output));
+        outputs.push((backend, process, output));
     }
     let mut advanced_outputs = Vec::new();
-    for (backend, output) in outputs {
+    for (backend, process, output) in outputs {
         assert!(
             output.status.success(),
             "{backend}: {}\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let lines = stdout.lines().map(str::to_owned);
-        advanced_outputs.push(lines.collect::<Vec<_>>());
+        let bytes = fs::read(report_directory.join(format!("schematic-walkthrough-{process}.json"))).unwrap();
+        let report: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(report["document"]["symbols"].as_object().unwrap().len(), 2);
+        assert_eq!(report["document"]["nets"].as_object().unwrap().len(), 1);
+        assert_eq!(report["document"]["nets"]["1"]["route"].as_array().unwrap().len(), 3);
+        assert_eq!(report["analysis"]["checked"], 3);
+        assert_eq!(report["analysis"]["findings"], 3);
+        assert_eq!(report["analysis"]["cancelled"], true);
+        advanced_outputs.push(report);
     }
 
     // Only The Native Backend Lists The Caller's Directories.
     let guest = advanced_outputs.pop().unwrap();
-    let native = advanced_outputs.pop().unwrap();
-    let is_directory = |line: &String| line.starts_with("Native directories:");
-    let (directories, shared): (Vec<_>, Vec<_>) = native.into_iter().partition(is_directory);
-    assert_eq!(directories, [r#"Native directories: ["alpha", "zeta"]"#]);
-    assert_eq!(shared, guest);
-    for expected in ["Analysis settled: 3 findings", "Cancelled analysis and waited for settlement", REOPENED] {
-        assert!(guest.iter().any(|line| line == expected), "missing {expected}");
-    }
+    let mut native = advanced_outputs.pop().unwrap();
+    assert_eq!(native["analysis"]["directories"], json!(["alpha", "zeta"]));
+    assert!(guest["analysis"]["directories"].is_null());
+    native["analysis"]["directories"] = Value::Null;
+    assert_eq!(native, guest);
 }

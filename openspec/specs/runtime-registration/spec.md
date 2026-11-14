@@ -23,15 +23,6 @@ The host SHALL prefix plugin and guest contributions once with their owner ident
 - **WHEN** plugin bench registers its local operation run_bench
 - **THEN** other plugins address bench.run_bench and transport forwarding does not prefix the ID again.
 
-### Requirement: Typed Invocation Lanes
-
-The application runtime SHALL own a closed lane enum and lane capacities. Invocation builders SHALL accept typed lane overrides, validate them before admission and preserve the selected lane throughout execution. Portable contracts SHALL not depend on consumer runtime enum types.
-
-#### Scenario: Lane Override
-
-- **WHEN** an invocation selects an admitted host lane using lane(Lane::Interactive)
-- **THEN** that invocation uses the selected lane without changing the operation structural fingerprint or other invocations' defaults.
-
 ### Requirement: Service Restart Ownership
 
 ServicePolicy SHALL own stop_timeout and restart independently of request retry policy. Every service execution error SHALL be eligible for restart under RestartPolicy without author classification or recovery predicates. Restart policy SHALL use failure-based terminology, preserve credit/health replenishment, and wait for required cleanup. Explicit shutdown and cancellation SHALL not restart services.
@@ -54,17 +45,3 @@ Plugin scopes SHALL support dynamic service and operation registration through t
 
 - **WHEN** a running plugin registers a service contribution
 - **THEN** the contribution can be individually withdrawn and is also associated with that plugin for coordinated unload.
-
-### Requirement: Catalog Batch Registration
-
-Enum catalogs SHALL organize large operation inventories and register their members as a batch through register. Entries SHALL remain individually addressable and removable. Batch validation SHALL precede publication; an invalid member SHALL not leave a partially registered batch.
-
-#### Scenario: Individual Removal from a Catalog
-
-- **WHEN** a catalog registers Read and Calibrate and an authorized caller unregisters Read by qualified identity
-- **THEN** Calibrate remains registered and no catalog handle is required.
-
-#### Scenario: Invalid Batch
-
-- **WHEN** a catalog contains a conflicting or invalid registration
-- **THEN** registration fails without publishing a subset of its contributions.

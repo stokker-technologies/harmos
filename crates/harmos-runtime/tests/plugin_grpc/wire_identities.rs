@@ -51,7 +51,7 @@ async fn numeric_plugin_operation_is_admitted_and_invoked() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let activation = attached.activation().unwrap();
     let operation =
-        activation.description.catalog.as_ref().unwrap().operations.iter().find(|operation| operation.id == "fixture.step.0").unwrap();
+        activation.description.declarations.as_ref().unwrap().operations.iter().find(|operation| operation.id == "fixture.step.0").unwrap();
     assert_eq!(operation.visibility(), harmos_protocol::v1::Visibility::Public);
 
     // Invoke Through the Host and Await the SDK Result.

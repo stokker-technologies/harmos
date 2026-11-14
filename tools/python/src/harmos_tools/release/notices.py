@@ -22,7 +22,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
+from typing import BinaryIO
 
 # Third Party Imports
 # Local Imports
@@ -50,8 +53,8 @@ def download(
     *,
     operation: str = "download",
     timeout_s: float = 60,
-    opener=None,
-    before_retry=None,
+    opener: Callable[..., AbstractContextManager[BinaryIO]] | None = None,
+    before_retry: Callable[[], None] | None = None,
 ) -> bytes:
     """Fetch Complete Bytes with Bounded Retries for Transient Network Failures."""
     address = url.full_url if isinstance(url, urllib.request.Request) else url

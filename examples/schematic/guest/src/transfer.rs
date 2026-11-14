@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use harmos::{Context, Error, Operation, Plugin, Visibility};
-use schematic_protocol::{Batch, Hash, Put, Receipt, Take};
+use schematic_protocol::{Batch, FileHash, FilesHashRequest, Hash, Put, Receipt, Record, Sample, Take};
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex},
@@ -81,20 +81,16 @@ pub fn plugin() -> Plugin {
     .visibility(Visibility::Public)
     .policy(super::POLICY);
     let hash = Operation::new("benchmark.hash.file", async |context: &Context, request: Hash| {
-        let request = request.request.ok_or_else(|| Error::Invalid("Hash Request Is Required".into()))?;
-        let response = context.call(request).await?.hash.ok_or_else(|| Error::Invalid("GetFileHash Result Is Required".into()))?;
-        Ok(schematic_protocol::FileHash {
-            read_bytes: response.bytes_read,
+        let request = request.request.ok_or_else(|| Error::Invalid("Hash Through Plugin: Missing Request".into()))?;
+        let response = context.call(request).await?;
+        Ok(FileHash {
+            read_bytes: response.read_bytes,
             sha256: response.sha256,
         })
     })
     .visibility(Visibility::Public)
     .policy(super::POLICY);
-    super::operations::plugin()
-        .operation(put)
-        .operation(take)
-        .operation(hash)
-        .requires::<harmos_protocol::context::StorageGetFileHashRequest>()
+    super::operations::plugin().operation(put).operation(take).operation(hash).requires::<FilesHashRequest>()
 }
 
 /* === Private Functions === */
@@ -103,10 +99,8 @@ fn memory(batch: &Batch) -> usize {
     batch
         .bytes
         .capacity()
-        .saturating_add(
-            batch.records.iter().map(|record| record.payload.capacity() + std::mem::size_of::<schematic_protocol::Record>()).sum::<usize>(),
-        )
-        .saturating_add(batch.samples.capacity() * std::mem::size_of::<schematic_protocol::Sample>())
+        .saturating_add(batch.records.iter().map(|record| record.payload.capacity() + std::mem::size_of::<Record>()).sum::<usize>())
+        .saturating_add(batch.samples.capacity() * std::mem::size_of::<Sample>())
 }
 
 /* === Tests === */

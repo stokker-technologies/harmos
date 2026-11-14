@@ -19,7 +19,8 @@ mod codegen;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{fs, path::Path};
+use std::env::consts::{ARCH, OS};
+use std::{env, error::Error, fs, path::Path};
 
 // Third Party Imports
 
@@ -46,7 +47,7 @@ use std::{fs, path::Path};
 /* === Tests === */
 
 #[test]
-fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
+fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     // Locate the Wire Definition and Disposable Output.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let output_root = root.join("target/generated/rust/harmos-protocol");
@@ -54,10 +55,10 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     let output = tempfile::tempdir_in(output_root)?;
 
     // Archived Tests Consume the Transferred Compiler, Not the Producer's Registry.
-    let (compiler, includes) = if let Ok(profile) = std::env::var("STKR_TEST_PROFILE") {
-        let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    let (compiler, includes) = if let Ok(profile) = env::var("STKR_TEST_PROFILE") {
+        let target = format!("{}-{}", OS, ARCH);
         let vendor = root.join("target/build").join(profile).join(target).join("fixtures/inputs/vendor");
-        let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+        let platform = match (OS, ARCH) {
             ("linux", "x86_64") => "linux-x86_64",
             ("linux", "aarch64") => "linux-aarch_64",
             ("macos", "x86_64") => "macos-x86_64",
@@ -89,42 +90,38 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn std::error::Error>> {
     codegen::generate(&compiler, &includes, output.path())?;
 
     // Compare the Complete Generated Source, Retaining Evidence on Failure.
-    for (package, module) in [("harmos.v1", "v1"), ("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin")] {
-        assert_eq!(
-            fs::read(output.path().join(format!("{package}.rs")))?,
-            fs::read(root.join(format!("crates/harmos-protocol/src/{module}.rs")))?
-        );
+    for entry in fs::read_dir(output.path())? {
+        let path = entry?.path();
+        let name = path.file_name().unwrap().to_string_lossy();
+        if !name.starts_with("harmos.") || !name.ends_with(".rs") {
+            continue;
+        }
+        let module = codegen::module_path(name.trim_end_matches(".rs"))?;
+        let committed = root.join(format!("crates/harmos-protocol/src/{}.rs", module.replace("::", "/")));
+        assert_eq!(fs::read(path)?, fs::read(committed)?, "{module}");
     }
-    assert_eq!(fs::read(output.path().join("harmos.v1.access.rs"))?, include_bytes!("../../src/v1/access.rs"));
-    assert_eq!(fs::read(output.path().join("harmos.v1.status.rs"))?, include_bytes!("../../src/v1/status.rs"));
-    assert_eq!(fs::read(output.path().join("harmos.storage.v1.rs"))?, include_bytes!("../../src/storage.rs"));
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
+    assert_eq!(fs::read(output.path().join("clock-descriptors.bin"))?, include_bytes!("../../src/clock-descriptors.bin"));
+    assert_eq!(
+        fs::read(output.path().join("message-options-descriptors.bin"))?,
+        include_bytes!("../../src/message-options-descriptors.bin")
+    );
+    assert_eq!(fs::read(output.path().join("client-clock-descriptors.bin"))?, include_bytes!("../../src/client-clock-descriptors.bin"));
     for entry in fs::read_dir(output.path().join("context-types"))? {
         let path = entry?.path();
         assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
     }
-    codegen::generate_example(&compiler, &includes, output.path())?;
-    for (generated, committed) in
-        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
-    {
-        assert_eq!(fs::read(output.path().join(generated))?, fs::read(root.join("examples/schematic/protocol/src").join(committed))?);
-    }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
-    for name in [
-        "library.v1.rs",
-        "library.v1.plugins.rs",
-        "application.v1.rs",
-        "application.v1.jobs.rs",
-        "client-descriptors.bin",
-        "client-reflection.rs",
-    ] {
+    for name in
+        ["application.v1.rs", "application.v1.jobs.rs", "application.v1.plugins.rs", "client-descriptors.bin", "client-reflection.rs"]
+    {
         assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     codegen::generate_conformance(&compiler, &includes, output.path())?;
     for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
-        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/src/conformance").join(target))?);
+        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/tests/fixtures/conformance").join(target))?);
     }
     Ok(())
 }

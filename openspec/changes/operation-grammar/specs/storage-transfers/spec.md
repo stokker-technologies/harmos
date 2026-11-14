@@ -110,25 +110,32 @@ throughput. This SHALL be a benchmark measurement, never a test assertion.
 
 ### Requirement: One Storage-Owned Transfer Default
 
-Amended by the owner on 2026-11-13: `StorageSettings.transfer` SHALL own generated
-`StorageTransferSettings.chunk_bytes`, whose sole default is 4 MiB. Append sizes
-and omitted ranged-read sizes on both faces SHALL use it. Every SDK-created client
-connection, listener, plugin carrier and Wasm guest SHALL use the separate generated
-`MessageSettings.message_bytes` default of 8 MiB, declared once. The minimum
-ceiling SHALL remain the configured chunk plus protocol framing. Invalid or insufficient ceilings SHALL
-refuse construction/startup with an error naming the action and setting.
+`StorageSettings.transfer` SHALL own generated `StorageTransferSettings.chunk_bytes`,
+whose sole default is 4 MiB. Append sizes and omitted ranged-read sizes on both faces
+SHALL use it.
 
 #### Scenario: Default Chunk Across Carriers
 
 - **WHEN** a default client or plugin appends a full default chunk or reads with maximum bytes omitted
 - **THEN** the unary message passes every configured carrier and reads return at most the shared storage chunk size
 
-#### Scenario: Incompatible Ceiling
+### Requirement: One Generated Message Default
 
-- **WHEN** a listener, SDK connection, plugin or guest ceiling cannot carry its storage chunk plus framing
-- **THEN** startup refuses naming the configuring action, storage chunk setting and conflicting ceiling
+Every SDK-created client connection, listener, plugin carrier and Wasm guest SHALL use
+the separate generated `MessageSettings.message_bytes` default of 8 MiB, declared once.
 
 #### Scenario: Messages Larger Than a Transfer Chunk
 
 - **WHEN** a caller sends a non-transfer message larger than the default chunk but within the default message ceiling
 - **THEN** all four default SDK carriers accept and return the complete message without changing the storage chunk size
+
+### Requirement: Transfer Message Ceiling Validation
+
+The minimum ceiling SHALL remain the configured chunk plus protocol framing. Invalid or
+insufficient ceilings SHALL refuse construction/startup with an error naming the action
+and setting.
+
+#### Scenario: Incompatible Ceiling
+
+- **WHEN** a listener, SDK connection, plugin or guest ceiling cannot carry its storage chunk plus framing
+- **THEN** startup refuses naming the configuring action, storage chunk setting and conflicting ceiling

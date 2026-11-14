@@ -342,7 +342,7 @@ async fn resident_leases_watched() {
         .submit_protobuf::<harmos_operations::lifecycle::Watch>(harmos_operations::lifecycle::Watch::of(id), Some(limits))
         .unwrap();
     let stream = stream.unwrap();
-    let current = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(
+    let current = <harmos_protocol::client::InvocationsWatchResponse as prost::Message>::decode(
         stream.receive_current().await.unwrap().unwrap().as_slice(),
     )
     .unwrap();
@@ -353,10 +353,10 @@ async fn resident_leases_watched() {
     second.request_cancel();
     let mut phases = Vec::new();
     while let Some(bytes) = stream.receive_current().await.unwrap() {
-        let state = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(bytes.as_slice()).unwrap();
+        let state = <harmos_protocol::client::InvocationsWatchResponse as prost::Message>::decode(bytes.as_slice()).unwrap();
         phases.push(state.invocation.unwrap().phase);
     }
-    let last = <harmos_protocol::v1::InvocationsWatchResponse as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
+    let last = <harmos_protocol::client::InvocationsWatchResponse as prost::Message>::decode(watch.await.unwrap().as_slice()).unwrap();
     assert_eq!(last.invocation.unwrap().phase, Phase::Stopped.as_str());
     assert_eq!(phases.last().map(String::as_str), Some(Phase::Stopped.as_str()));
     assert!(phases.iter().any(|phase| phase == Phase::Stopping.as_str()));

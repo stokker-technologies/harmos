@@ -65,19 +65,30 @@ their parent sub-packages and bare verbs within their face.
 
 ### Requirement: One SDK Package per Language
 
-Amended by the owner on 2026-11-13: each language SHALL ship one SDK package
-containing plugin authoring, the client root and its host protocol needs:
-Python `harmos-sdk` (import `harmos`), Rust `harmos`, C# `Harmos`, and C++
-`HarmosCpp` (`Harmos::Cpp`). Audience-specific builds, source-slicing hooks,
-selector environment variables/features/switches and generated-stub guards/tests
-SHALL be removed. The host SHALL enforce faces and visibility at runtime;
-SDK-local Private calls SHALL retain their existing policy and wire isolation.
+Each language SHALL ship one SDK package containing plugin authoring, the client root
+and its host protocol needs: Python `harmos-sdk` (import `harmos`), Rust `harmos`, C#
+`Harmos`, and C++ `HarmosCpp` (`Harmos::Cpp`).
 
 #### Scenario: Plugin Codebase Installs Itself
 
 - **WHEN** a Rust, Python, C# or C++ plugin codebase runs its client entry program against a running host
 - **THEN** the same SDK package registers and starts its own instance through Plugins, awaits Ready, and invokes its Public operation through the host
 - **AND** each language has one flat, copyable example and one deterministic journey
+
+### Requirement: Remove Audience-Specific SDK Selection
+
+Audience-specific builds, source-slicing hooks, selector environment
+variables/features/switches and generated-stub guards/tests SHALL be removed.
+
+#### Scenario: SDK Packaging Review
+
+- **WHEN** a language SDK is built and packaged
+- **THEN** audience-specific builds, source-slicing hooks, selector environment variables/features/switches and generated-stub guards/tests are absent
+
+### Requirement: Runtime Face and Visibility Enforcement
+
+The host SHALL enforce faces and visibility at runtime; SDK-local Private calls SHALL
+retain their existing policy and wire isolation.
 
 #### Scenario: Binding Possession Grants No Authority
 
@@ -295,20 +306,28 @@ GrpcManager SHALL own Access.Listener Get/Set, durable Access.Pairings
 Create/List/Delete and live Access.Certificates.Create. ServiceManager SHALL own
 Status.Get/Watch, Status.Logs and Status.TraceEvents List/Watch, and
 Status.Diagnostics.Get for bounded unary archive ranges. These expose host identity,
-health, availability and bounded redacted logs/traces under their one manager. A narrow product-fact registration SHALL
-contribute product version/identity and component health/availability while the
-library retains aggregation and lifecycle. Product-only reads SHALL remain in
-product services.
-
-#### Scenario: Product Health Contribution
-
-- **WHEN** a product registers a component health provider and version facts
-- **THEN** the library's Status includes those contributions under the service manager's lifetime and failure handling without a second product status service
+health, availability and bounded redacted logs/traces under their one manager.
 
 #### Scenario: Access Rotation
 
 - **WHEN** authorized access operations replace listener settings or regenerate a certificate
 - **THEN** GrpcManager owns the live listener/certificate lifecycle and validation rather than a product copy
+
+#### Scenario: Host Status Read
+
+- **WHEN** a caller uses Status.Get/Watch, Status.Logs or Status.TraceEvents List/Watch, or Status.Diagnostics.Get
+- **THEN** ServiceManager owns the host identity, health, availability and bounded redacted logs/traces, with bounded unary diagnostics archive ranges
+
+### Requirement: Product Fact Contributions
+
+A narrow product-fact registration SHALL contribute product version/identity and
+component health/availability while the library retains aggregation and lifecycle.
+Product-only reads SHALL remain in product services.
+
+#### Scenario: Product Health Contribution
+
+- **WHEN** a product registers a component health provider and version facts
+- **THEN** the library's Status includes those contributions under the service manager's lifetime and failure handling without a second product status service
 
 ### Requirement: Library Dependency Direction
 

@@ -15,19 +15,21 @@
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 import zipfile
-from pathlib import Path
 from collections.abc import Iterable
+from pathlib import Path
+from typing import TypedDict, cast
+
+from .. import temporary
+from ..build import paths
 
 # Third Party Imports
-
 # Local Imports
 from ..build.fixtures import ROOT
-from ..build import paths
-from .. import temporary
 from . import conformance, run
 
 # Type Checking Imports
@@ -40,6 +42,20 @@ from . import conformance, run
 # === Types === #
 
 # === Classes === #
+
+
+class ReopenedNet(TypedDict):
+    route: list[object]
+
+
+class ReopenedDocument(TypedDict):
+    symbols: dict[str, object]
+    nets: dict[str, ReopenedNet]
+
+
+class WalkthroughResult(TypedDict):
+    document: ReopenedDocument
+
 
 # === Public Functions === #
 
@@ -140,8 +156,10 @@ def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> 
 
 def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:
     directory.mkdir()
-    result = subprocess.run(
+    reports = directory.parent / f"{directory.name}-reports"
+    subprocess.run(
         [str(executable), *arguments],
+        env=dict(os.environ, STKR_TEST_REPORT_DIR=str(reports)),
         cwd=directory,
         capture_output=True,
         text=True,
@@ -149,8 +167,11 @@ def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> Non
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         stdin=sys.stdin,
     )
-    if "Reopened: 2 symbols, 1 net, 3 route points" not in result.stdout.splitlines():
-        raise RuntimeError(f"packaged Schematic {directory.name} walkthrough did not reopen its document")
+    (report,) = reports.glob("schematic-walkthrough-*.json")
+    record = cast(WalkthroughResult, json.loads(report.read_text(encoding="utf-8")))
+    document = record["document"]
+    if len(document["symbols"]) != 2 or len(document["nets"]) != 1 or len(document["nets"]["1"]["route"]) != 3:
+        raise RuntimeError(f"Reopen Packaged Schematic {directory.name}: saved document differs from the walkthrough")
 
 
 def _records(sources: Iterable[Path], destination: Path) -> dict:

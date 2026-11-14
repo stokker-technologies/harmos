@@ -16,7 +16,6 @@ use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::v1 as host;
 use tonic::{Request as RpcRequest, transport::Endpoint};
 
 // Local Imports
@@ -27,6 +26,7 @@ use super::{
         messages::{Reply, Request},
     },
 };
+use harmos_protocol::client::OperationsListRequest;
 use harmos_runtime::operations::{
     ExecutionContext, Grpc, OperationPolicy, ProtobufInput, ProtobufOperation, ProtobufOutput, Registration, RetryPolicy, ServingError,
     Visibility,
@@ -126,11 +126,7 @@ impl ProtobufOperation for Wait {
 #[tokio::test]
 async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     // Register The Application's Generated Contracts And Start Its Listener.
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Option<std::sync::Arc<harmos_storage::StorageManager>>>(None);
-    })
-    .await
-    .unwrap();
+    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |_| {}).await.unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
         .protobuf::<harmos_operations::host::List>()
         .unwrap()
@@ -155,7 +151,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .unwrap();
     let channel = Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(64 * 1024) },
+        transfer: harmos_protocol::v1::StorageTransferSettings { chunk_bytes: Some(64 * 1024) },
         retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),
@@ -164,15 +160,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let client = Client::new(channel.clone(), settings).unwrap();
 
     // Discover And Bind The Exact Generated Application Types.
-    let page = client
-        .catalog_entries
-        .list(RpcRequest::new(host::CatalogEntriesListRequest {
-            kind: host::CatalogKind::Operations as i32,
-            ..Default::default()
-        }))
-        .await
-        .unwrap()
-        .into_inner();
+    let page = client.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap().into_inner();
     let contract = |id: &str| {
         page.operations.iter().filter_map(|operation| operation.contract.as_ref()).find(|operation| operation.id == id).unwrap().clone()
     };
@@ -308,17 +296,10 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
-    let error = bounded
-        .catalog_entries
-        .list(RpcRequest::new(host::CatalogEntriesListRequest {
-            kind: host::CatalogKind::Operations as i32,
-            ..Default::default()
-        }))
-        .await
-        .unwrap_err();
+    let error = bounded.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
 
-    assert!(error.message().contains("harmos.v1.CatalogEntries/List"));
+    assert!(error.message().contains("harmos.client.v1.Operations/List"));
 
     // Retained Caller Values Do Not Consume SDK Claims In Later Calls Or Cancellation.
     let first = bounded.call(&echo, RpcRequest::new(Request::default())).await.unwrap().into_inner();

@@ -13,14 +13,14 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::context::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
+pub use harmos_protocol::plugin::host::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
 
 /* === Imports === */
 
 // Standard Library Imports
 
 // Third Party Imports
-use harmos_protocol::clock::catalog_types;
+use harmos_protocol::clock::declarations_types;
 use prost_types::FileDescriptorSet;
 
 // Local Imports
@@ -45,7 +45,7 @@ impl Message for prost_types::Duration {
         "google.protobuf.Duration".into()
     }
     fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
+        harmos_protocol::schema::message_types(&declarations_types(), &Self::name()).expect("generated clock message")
     }
 }
 
@@ -54,7 +54,7 @@ impl Message for prost_types::Timestamp {
         "google.protobuf.Timestamp".into()
     }
     fn types() -> FileDescriptorSet {
-        harmos_protocol::schema::message_types(&catalog_types(), &Self::name()).expect("generated clock message")
+        harmos_protocol::schema::message_types(&declarations_types(), &Self::name()).expect("generated clock message")
     }
 }
 

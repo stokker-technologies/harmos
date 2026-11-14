@@ -16,9 +16,6 @@
 mod backend;
 mod carrier;
 mod model;
-#[path = "../../tests/storage/transfer_plugin.rs"]
-#[allow(dead_code, reason = "The same plugin carrier also serves deterministic transfer stories")]
-mod transfer_plugin;
 
 /* === Re-Exports === */
 
@@ -29,8 +26,15 @@ mod transfer_plugin;
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::transfer::default_message_bytes;
+use harmos_runtime::{
+    Runtime,
+    operations::{Lane, Settings},
+    storage::StorageManager,
+};
+use harmos_storage::StorageBackends;
 use harmos_storage::bench_support::file_transfer;
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{num::NonZeroUsize, sync::Arc};
 
 /* === Constants === */
 
@@ -50,47 +54,38 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 /* === Private Functions === */
 
-fn main() {
-    let executor = tokio::runtime::Runtime::new().unwrap();
+#[tokio::main]
+async fn main() {
     for repetition in 1..=3 {
-        for plugin_carrier in [false, true] {
-            executor.block_on(async {
-                // Compose an Isolated Host With the Same Reference Backend and Budgets.
-                let data = Arc::new(backend::Data::new(backend::history()));
-                let recovery = Arc::new(backend::Recovery::new(backend::history()));
-                let settings = backend::storage_settings();
-                let chunk_bytes = settings.transfer_chunk_bytes();
-                let storage = harmos_runtime::storage::StorageManager::new(harmos_storage::StorageBackends { primary: data, state: recovery }, settings).unwrap();
-                let host = harmos_runtime::Runtime::<model::Model>::launch_with((), (), |setup| {
-                    setup.settings().storage(&storage).operation_settings(harmos_runtime::operations::Settings {
-                        preparation_bytes: Some(harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap()), ..Default::default()
-                    });
-                    setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
-                }).await.unwrap();
-                host.operations.register_authorizer(Arc::new(model::AllowTransfers)).unwrap();
-
-                // Attach Both Real Socket Carriers.
-                let plugin = transfer_plugin::TransferPlugin::start().await;
-                let placement = harmos_runtime::plugin::grpc::PlacementSettings { connect_timeout: Duration::from_secs(30), reconnect_delay: Duration::from_secs(1), stop_grace: Duration::from_secs(30), stream_window: NonZeroUsize::new(64).unwrap() };
-                let attached = host.attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(plugin.address.clone()), placement).await.unwrap();
-                let listener = host.grpc().attach(harmos_runtime::grpc::Settings::default()).await.unwrap();
-                let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
-                let carrier = carrier::Transport::new(host.operations.clone(), channel, storage.mutation_window().unwrap().id.to_string(), plugin_carrier);
-
-                // Measure Upload and Download, Including Publication and Integrity.
-                let measurements = file_transfer::run(&carrier, chunk_bytes).await.unwrap();
-                for measurement in measurements {
-                    println!("STORAGE_FILE_TRANSFER {}", serde_json::json!({ "case": format!("integration/file_transfer/{}/{}/{}", measurement.carrier, measurement.transfer, measurement.direction), "backend": "reference-memory", "repetition": repetition, "measurement": measurement }));
-                }
-
-                // Settle Owned Work and Release the Isolated Dataset.
-                drop(carrier);
-                listener.detach().await.unwrap();
-                attached.stop("transfer benchmark complete").await.unwrap();
-                plugin.stop().await;
-                host.shutdown().await.unwrap();
+        // Compose an Isolated Host With the Reference Backend and Consumer Budgets.
+        let data = Arc::new(backend::Data::new(backend::history()));
+        let recovery = Arc::new(backend::Recovery::new(backend::history()));
+        let settings = backend::storage_settings();
+        let chunk_bytes = settings.transfer_chunk_bytes();
+        let storage = StorageManager::new(StorageBackends { primary: data, state: recovery }, settings).unwrap();
+        let host = Runtime::<model::Model>::launch_with((), (), |setup| {
+            setup.settings().storage(&storage).operation_settings(Settings {
+                preparation_bytes: Some(default_message_bytes().checked_mul(NonZeroUsize::new(6).unwrap()).unwrap()),
+                ..Default::default()
             });
+            setup.catalog(harmos_operations::storage_catalog(), Lane::default());
+        })
+        .await
+        .unwrap();
+        let carrier = carrier::Native::new(host.operations.clone(), storage.mutation_window().unwrap().id);
+
+        // Measure Upload and Download, Including Publication and Integrity.
+        let measurements = file_transfer::run(&carrier, chunk_bytes).await.unwrap();
+        for measurement in measurements {
+            println!(
+                "STORAGE_FILE_TRANSFER {}",
+                serde_json::json!({ "case": format!("integration/file_transfer/{}/{}/{}", measurement.carrier, measurement.transfer, measurement.direction), "backend": "reference-memory", "repetition": repetition, "measurement": measurement })
+            );
         }
+
+        // Settle Owned Work and Release the Isolated Dataset.
+        drop(carrier);
+        host.shutdown().await.unwrap();
     }
 }
 

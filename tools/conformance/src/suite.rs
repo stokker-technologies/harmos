@@ -16,6 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
+use prost_types::{Duration as ProtoDuration, Timestamp};
+use std::{
+    collections::{BTreeSet, HashMap},
+    result::Result as StdResult,
+};
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -30,14 +35,27 @@ use tonic::{Code, Streaming, transport::Channel};
 // Local Imports
 use crate::{Error, Result, fixture};
 use harmos_protocol::plugin::{
-    instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request,
+    instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
 };
-use harmos_protocol::v1::{self as v1, child_response, response};
+use harmos_protocol::v1::{child_response, response};
+
+use harmos_protocol::plugin::host::{
+    OperationsGetRequest, OperationsGetResponse, OperationsListResponse, SettingsListResponse, TimeGetResponse, TimeSleepRequest,
+};
+use harmos_protocol::plugin::{
+    InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
+    InstanceSamplesResponse, InstanceStopRequest,
+};
+use harmos_protocol::v1::{
+    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Classification, DiscoveredContract, DiscoveredOperation, Failure,
+    OperationPolicy, Request, Response, Sample, SamplesSelection, SettingValues, SettingsDeclarations, Tick, Visibility,
+};
+use harmos_protocol::v1::{RetryPolicy, StorageTransferSettings, TransferFraming};
 
 /* === Constants === */
 
 pub const CASES: &[&str] = &[
-    "Get and Catalog",
+    "Get and Declarations",
     "Activation and Started At",
     "Invoke Result and EOF",
     "Invoke Frame Validation",
@@ -66,8 +84,13 @@ pub const CASES: &[&str] = &[
     "Local Private Attempt Deadline",
     "Local Private Cooperative Cancellation",
     "Host-Mediated Peer Visibility",
+    "Samples Child Calls and Correlation",
+    "Samples Child Routing and Failures",
+    "Samples Child Lifetime and Refusal",
     "Wire Operation Identities",
     "Message Ceiling Independent of Transfer Chunks",
+    "Typed Settings Defaults and Stored Values",
+    "Typed Operations Discovery",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -77,8 +100,8 @@ static INVOCATION: AtomicU64 = AtomicU64::new(1);
 /* === Type Aliases === */
 
 type Client = InstanceClient<Channel>;
-type Invoke = (mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, Streaming<harmos_protocol::plugin::InstanceInvokeResponse>);
-type Publish = (mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, Streaming<harmos_protocol::plugin::InstanceSamplesResponse>);
+type Invoke = (mpsc::Sender<InstanceInvokeRequest>, Streaming<InstanceInvokeResponse>);
+type Publish = (mpsc::Sender<InstanceSamplesRequest>, Streaming<InstanceSamplesResponse>);
 
 /* === Structs === */
 
@@ -102,7 +125,7 @@ pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
     let order = (1..=CASES.len()).filter(|rule| *rule != 16).chain(std::iter::once(16));
     for rule in order {
         let name = CASES[rule - 1];
-        let result = tokio::time::timeout(Duration::from_secs(30), case(rule, address, managed)).await;
+        let result = tokio::time::timeout(Duration::from_secs(30), Box::pin(case(rule, address, managed))).await;
         let error = match result {
             Ok(Ok(())) => None,
             Ok(Err(error)) => Some(error.to_string()),
@@ -115,16 +138,16 @@ pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
 
 /* === Private Functions === */
 
-async fn connect(address: &str) -> Result<(Client, harmos_protocol::plugin::InstanceGetResponse)> {
+async fn connect(address: &str) -> Result<(Client, InstanceGetResponse)> {
     let maximum = harmos_protocol::transfer::default_message_bytes().get();
     let mut client = Client::connect(address.to_owned()).await?.max_decoding_message_size(maximum).max_encoding_message_size(maximum);
     let description = describe(&mut client).await?;
     Ok((client, description))
 }
 
-async fn describe(client: &mut Client) -> Result<harmos_protocol::plugin::InstanceGetResponse> {
+async fn describe(client: &mut Client) -> Result<InstanceGetResponse> {
     Ok(client
-        .get(harmos_protocol::plugin::InstanceGetRequest {
+        .get(InstanceGetRequest {
             revision: 1,
             host: "conformance_host".into(),
             host_version: "1.0.0".into(),
@@ -137,10 +160,10 @@ fn require(condition: bool, message: &str) -> Result<()> {
     if condition { Ok(()) } else { Err(Error::Invalid(message.into())) }
 }
 
-fn request(operation: &str, payload: Vec<u8>) -> harmos_protocol::plugin::InstanceInvokeRequest {
+fn request(operation: &str, payload: Vec<u8>) -> InstanceInvokeRequest {
     let invocation = INVOCATION.fetch_add(1, Ordering::Relaxed);
-    harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Request(v1::Request {
+    InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Request(Request {
             operation: operation.into(),
             payload,
             invocation: format!("fixture-{invocation}"),
@@ -158,18 +181,16 @@ async fn invoke(client: &mut Client, operation: &str, payload: Vec<u8>) -> Resul
     Ok((send, incoming))
 }
 
-async fn terminal(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<response::Result> {
+async fn terminal(input: &mut Streaming<InstanceInvokeResponse>) -> Result<response::Result> {
     let frame = input.message().await?.and_then(|frame| frame.frame);
-    let Some(instance_invoke_response::Frame::Response(v1::Response { result: Some(result) })) = frame else {
+    let Some(instance_invoke_response::Frame::Response(Response { result: Some(result) })) = frame else {
         return Err(Error::Invalid(format!("Expected Terminal Response, Got {frame:?}")));
     };
     require(input.message().await?.is_none(), "Frames After Terminal Response")?;
     Ok(result)
 }
 
-async fn child(
-    input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>, id: u64, operation: &str, payload: &[u8],
-) -> Result<()> {
+async fn child(input: &mut Streaming<InstanceInvokeResponse>, id: u64, operation: &str, payload: &[u8]) -> Result<()> {
     let frame = input.message().await?.and_then(|frame| frame.frame);
     let Some(instance_invoke_response::Frame::Child(child)) = frame else {
         return Err(Error::Invalid(format!("Expected Child Request, Got {frame:?}")));
@@ -184,11 +205,9 @@ async fn child(
     )
 }
 
-async fn send_child(
-    send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, result: child_response::Result,
-) -> Result<()> {
-    send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse { call, result: Some(result) })),
+async fn send_child(send: &mpsc::Sender<InstanceInvokeRequest>, call: u64, result: child_response::Result) -> Result<()> {
+    send.send(InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Child(ChildResponse { call, result: Some(result) })),
     })
     .await
     .map_err(|error| Error::Invalid(error.to_string()))
@@ -196,8 +215,8 @@ async fn send_child(
 
 async fn open(client: &mut Client, name: &str) -> Result<Publish> {
     let (send, receive) = mpsc::channel(8);
-    send.send(harmos_protocol::plugin::InstanceSamplesRequest {
-        frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
+    send.send(InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Open(SamplesSelection {
             stream: name.into(),
             scope: "fixture".into(),
         })),
@@ -210,17 +229,16 @@ async fn open(client: &mut Client, name: &str) -> Result<Publish> {
 }
 
 async fn tick(
-    send: &mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
-    input: &mut Streaming<harmos_protocol::plugin::InstanceSamplesResponse>, sequence: u64, seconds: i64,
+    send: &mpsc::Sender<InstanceSamplesRequest>, input: &mut Streaming<InstanceSamplesResponse>, sequence: u64, seconds: i64,
 ) -> Result<()> {
     let at = fixture::timestamp(seconds);
-    send.send(harmos_protocol::plugin::InstanceSamplesRequest {
-        frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
+    send.send(InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(at) })),
     })
     .await
     .map_err(|error| Error::Invalid(error.to_string()))?;
     let samples = input.message().await?.ok_or_else(|| Error::Invalid("Missing Tick Sample".into()))?;
-    let expected = v1::Sample {
+    let expected = Sample {
         at: Some(at),
         row: fixture::payload(&sequence.to_le_bytes()),
         sequence,
@@ -228,9 +246,49 @@ async fn tick(
     require(samples.samples == [expected], "Tick Time, Row, Sequence or Sample Count Differs")
 }
 
-async fn invoke_status(
-    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceInvokeResponse>>, tonic::Status>, expected: Code,
-) -> Result<()> {
+async fn samples_tick(send: &mpsc::Sender<InstanceSamplesRequest>, seconds: i64) -> Result<()> {
+    send.send(InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(fixture::timestamp(seconds)) })),
+    })
+    .await
+    .map_err(|error| Error::Invalid(format!("Send Tick: {error}")))
+}
+
+async fn samples_child(input: &mut Streaming<InstanceSamplesResponse>, operation: &str, payload: &[u8]) -> Result<ChildRequest> {
+    let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Samples Child: Missing Frame".into()))?;
+    require(frame.samples.is_empty(), "Read Samples Child: Child Frame Also Answers Tick")?;
+    let Some(instance_samples_response::Frame::Child(child)) = frame.frame else {
+        return Err(Error::Invalid("Read Samples Child: Expected Request".into()));
+    };
+    require(
+        child.operation == operation && child.payload == payload && child.fingerprint == fixture::fingerprint(operation),
+        "Read Samples Child: Contract Differs",
+    )?;
+    Ok(child)
+}
+
+async fn samples_reply(send: &mpsc::Sender<InstanceSamplesRequest>, call: u64, result: child_response::Result) -> Result<()> {
+    send.send(InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Child(ChildResponse { call, result: Some(result) })),
+    })
+    .await
+    .map_err(|error| Error::Invalid(format!("Reply to Samples Child: {error}")))
+}
+
+async fn samples_answer(input: &mut Streaming<InstanceSamplesResponse>, sequence: u64, seconds: i64) -> Result<Vec<u8>> {
+    let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Tick Answer: Missing Frame".into()))?;
+    require(frame.frame.is_none() && frame.samples.len() == 1, "Read Tick Answer: Expected One Sample Without Child Traffic")?;
+    let sample = &frame.samples[0];
+    require(sample.sequence == sequence && sample.at == Some(fixture::timestamp(seconds)), "Read Tick Answer: Sequence or Clock Differs")?;
+    Ok(fixture::Value::decode(sample.row.as_slice())?.value)
+}
+
+async fn samples_control(input: &mut Streaming<InstanceSamplesResponse>, expected: instance_samples_response::Frame) -> Result<()> {
+    let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Samples Control: Missing Frame".into()))?;
+    require(frame.samples.is_empty() && frame.frame == Some(expected), "Read Samples Control: Demand or Cancellation Differs")
+}
+
+async fn invoke_status(result: StdResult<tonic::Response<Streaming<InstanceInvokeResponse>>, tonic::Status>, expected: Code) -> Result<()> {
     let status = match result {
         Err(status) => status,
         Ok(response) => response.into_inner().message().await.err().ok_or_else(|| Error::Invalid("Expected gRPC Error".into()))?,
@@ -239,8 +297,7 @@ async fn invoke_status(
 }
 
 async fn publish_status(
-    result: std::result::Result<tonic::Response<Streaming<harmos_protocol::plugin::InstanceSamplesResponse>>, tonic::Status>,
-    expected: Code,
+    result: StdResult<tonic::Response<Streaming<InstanceSamplesResponse>>, tonic::Status>, expected: Code,
 ) -> Result<()> {
     let status = match result {
         Err(status) => status,
@@ -249,27 +306,258 @@ async fn publish_status(
     require(status.code() == expected, &format!("Expected {expected:?}, Got {status}"))
 }
 
+async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
+    match rule {
+        30 => {
+            let (send, mut input) = open(client, "conformance.tick_children").await?;
+            let mut used = BTreeSet::new();
+            for (sequence, seconds) in [(1, 100), (2, 101)] {
+                samples_tick(&send, seconds).await?;
+                let first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
+                let second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
+                require(used.insert(first.call) && used.insert(second.call), "Samples: Child ID Reused Across Ticks")?;
+                // Interleave Another Samples Call and Invoke Before Resolving the First Tick.
+                let (other_send, mut other) = open(client, "conformance.tick_children").await?;
+                samples_tick(&other_send, 200).await?;
+                let other_first = samples_child(&mut other, "conformance.host.echo", &fixture::payload(&[1])).await?;
+                let other_second = samples_child(&mut other, "conformance.host.echo", &fixture::payload(&[2])).await?;
+                let payload = fixture::payload(b"independent");
+                let (_invoke_send, mut invocation) = invoke(client, "conformance.step.0", payload.clone()).await?;
+                require(terminal(&mut invocation).await? == response::Result::Payload(payload), "Samples: Tick Blocked Invoke")?;
+                samples_reply(&other_send, other_second.call, child_response::Result::Payload(fixture::payload(&[8]))).await?;
+                samples_reply(&other_send, other_first.call, child_response::Result::Payload(fixture::payload(&[7]))).await?;
+                require(samples_answer(&mut other, 1, 200).await? == [7, 8], "Samples: Separate Call Correlation Differs")?;
+                samples_reply(&send, second.call, child_response::Result::Payload(fixture::payload(&[2]))).await?;
+                samples_reply(&send, first.call, child_response::Result::Payload(fixture::payload(&[1]))).await?;
+                require(samples_answer(&mut input, sequence, seconds).await? == [1, 2], "Samples: Reverse Reply Correlation Differs")?;
+            }
+            samples_tick(&send, 102).await?;
+            let _first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
+            let _second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
+            samples_reply(&send, *used.first().expect("earlier tick child"), child_response::Result::Payload(fixture::payload(&[9])))
+                .await?;
+            require(
+                input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
+                "Samples: Earlier Tick Reply Assigned to Later Tick",
+            )?;
+            for duplicate in [false, true] {
+                let (send, mut input) = open(client, "conformance.tick_children").await?;
+                samples_tick(&send, 300).await?;
+                let first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
+                let _second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
+                if duplicate {
+                    samples_reply(&send, first.call, child_response::Result::Payload(fixture::payload(&[1]))).await?;
+                }
+                samples_reply(
+                    &send,
+                    if duplicate { first.call } else { u64::MAX },
+                    child_response::Result::Payload(fixture::payload(&[9])),
+                )
+                .await?;
+                require(
+                    input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
+                    "Samples: Unknown or Duplicate Reply Accepted",
+                )?;
+            }
+        }
+        31 => {
+            let (send, mut input) = open(client, "conformance.tick_context").await?;
+            samples_tick(&send, 400).await?;
+            let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"fixture")).await?;
+            let echo_reply = fixture::payload(b"scoped");
+            samples_reply(&send, echo.call, child_response::Result::Payload(echo_reply.clone())).await?;
+            let clock = samples_child(&mut input, "harmos.plugin.host.v1.Time/Get", &[]).await?;
+            let clock_reply = TimeGetResponse { now: Some(fixture::timestamp(400)) }.encode_to_vec();
+            samples_reply(&send, clock.call, child_response::Result::Payload(clock_reply.clone())).await?;
+            let settings = samples_child(&mut input, "harmos.plugin.host.v1.Settings/List", &[]).await?;
+            let settings_reply = SettingsListResponse {
+                value: Some(fixture::settings_values(true)),
+                revision: vec![2],
+                resolved_at: None,
+            }
+            .encode_to_vec();
+            samples_reply(&send, settings.call, child_response::Result::Payload(settings_reply.clone())).await?;
+            let answer = samples_answer(&mut input, 1, 400).await?;
+            let mut remaining = answer.as_slice();
+            let mut replies = Vec::new();
+            for _ in 0..3 {
+                let length: [u8; 4] = remaining
+                    .get(..4)
+                    .ok_or_else(|| Error::Invalid("Samples: Missing Context Result Length".into()))?
+                    .try_into()
+                    .expect("four bytes");
+                let length = u32::from_le_bytes(length) as usize;
+                remaining = &remaining[4..];
+                let payload = remaining.get(..length).ok_or_else(|| Error::Invalid("Samples: Truncated Context Result".into()))?;
+                replies.push(payload);
+                remaining = &remaining[length..];
+            }
+            require(remaining.is_empty() && replies[0] == echo_reply, "Samples: Scoped Echo Differs")?;
+            require(
+                TimeGetResponse::decode(replies[1])? == TimeGetResponse::decode(clock_reply.as_slice())?,
+                "Samples: Clock Result Differs",
+            )?;
+            require(
+                SettingsListResponse::decode(replies[2])? == SettingsListResponse::decode(settings_reply.as_slice())?,
+                "Samples: Typed Settings Result Differs",
+            )?;
+
+            let (send, mut input) = open(client, "conformance.tick_failure").await?;
+            samples_tick(&send, 401).await?;
+            let child = samples_child(&mut input, "conformance.host.fail", &fixture::payload(&[])).await?;
+            let failure = fixture::failure("conformance.host.fail");
+            samples_reply(&send, child.call, child_response::Result::Failure(failure.clone())).await?;
+            let answer = samples_answer(&mut input, 1, 401).await?;
+            require(Failure::decode(answer.as_slice())? == failure, "Samples: Structured Failure Changed")?;
+
+            let (send, mut input) = open(client, "conformance.tick_watch").await?;
+            samples_tick(&send, 402).await?;
+            let watch = samples_child(&mut input, "conformance.host.watch", &fixture::payload(b"fixture")).await?;
+            require(watch.watch && watch.max_response_bytes == 4096, "Samples: Watch Bounds Differ")?;
+            for item in [7, 8] {
+                samples_control(&mut input, instance_samples_response::Frame::ChildDemand(ChildDemand { call: watch.call })).await?;
+                samples_reply(&send, watch.call, child_response::Result::Item(fixture::payload(&[item]))).await?;
+            }
+            samples_control(&mut input, instance_samples_response::Frame::ChildDemand(ChildDemand { call: watch.call })).await?;
+            samples_reply(&send, watch.call, child_response::Result::Payload(fixture::payload(&[]))).await?;
+            require(samples_answer(&mut input, 1, 402).await? == [7, 8], "Samples: Watch Items Differ")?;
+        }
+        32 => {
+            for name in ["conformance.ticks", "conformance.device"] {
+                let (send, mut input) = open(client, name).await?;
+                if name == "conformance.device" {
+                    require(input.message().await?.is_some(), "Samples: Missing Device Row")?;
+                }
+                samples_reply(&send, 1, child_response::Result::Payload(Vec::new())).await?;
+                require(
+                    input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
+                    "Samples: Child Outside Tick Accepted",
+                )?;
+            }
+            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
+            samples_tick(&send, 500).await?;
+            let pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
+            let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
+            samples_reply(&send, echo.call, child_response::Result::Payload(fixture::payload(b"released"))).await?;
+            samples_control(&mut input, instance_samples_response::Frame::ChildCancel(ChildCancel { call: pending.call })).await?;
+            let automatic = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
+            samples_control(&mut input, instance_samples_response::Frame::ChildCancel(ChildCancel { call: automatic.call })).await?;
+            require(samples_answer(&mut input, 1, 500).await? == b"cancelled", "Samples: Cancellation Answer Differs")?;
+            samples_reply(&send, pending.call, child_response::Result::Payload(Vec::new())).await?;
+            require(
+                input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
+                "Samples: Late Child After Tick Accepted",
+            )?;
+            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
+            samples_tick(&send, 501).await?;
+            let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
+            let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
+            drop(send);
+            while let Some(frame) = input.message().await? {
+                require(
+                    frame.samples.is_empty() && matches!(frame.frame, Some(instance_samples_response::Frame::ChildCancel(_))),
+                    "Samples: Row or New Child After Demand End",
+                )?;
+            }
+            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
+            samples_tick(&send, 501).await?;
+            let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
+            let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
+            drop(input);
+            drop(send);
+            let (send, mut input) = open(client, "conformance.ticks").await?;
+            tick(&send, &mut input, 1, 502).await?;
+            let payload = fixture::payload(b"after samples cancellation");
+            let (_send, mut input) = invoke(client, "conformance.step.0", payload.clone()).await?;
+            require(terminal(&mut input).await? == response::Result::Payload(payload), "Samples: Cancellation Broke Invoke")?;
+        }
+        _ => return Err(Error::Invalid("Run Samples Case: Unknown Rule".into())),
+    }
+    Ok(())
+}
+
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
-        31 => {
+        30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
+        35 => {
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
+            let section = declarations
+                .sections
+                .iter()
+                .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
+                .ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
+            let declarations = SettingsDeclarations::decode(section.payload.as_slice())?;
+            require(declarations.values.len() == fixture::settings_values(false).values.len(), "List Settings: Declaration Count Differs")?;
+            let declared: HashMap<_, _> = declarations.values.into_iter().map(|value| (value.name, value.default)).collect();
+            let expected: HashMap<_, _> =
+                fixture::settings_values(false).values.into_iter().map(|(name, value)| (name, Some(value))).collect();
+            require(declared == expected, "List Settings: Typed Defaults Differ")?;
+            for stored in [false, true] {
+                let (send, mut input) = invoke(&mut client, "conformance.settings_read", fixture::payload(&[])).await?;
+                child(&mut input, 1, "harmos.plugin.host.v1.Settings/List", &[]).await?;
+                let values = fixture::settings_values(stored);
+                let reply = SettingsListResponse {
+                    value: Some(values.clone()),
+                    revision: vec![if stored { 2 } else { 1 }],
+                    resolved_at: None,
+                };
+                send_child(&send, 1, child_response::Result::Payload(reply.encode_to_vec())).await?;
+                let response::Result::Payload(payload) = terminal(&mut input).await? else {
+                    return Err(Error::Invalid("List Settings: Expected Values".into()));
+                };
+                let value = fixture::Value::decode(payload.as_slice())?;
+                require(SettingValues::decode(value.value.as_slice())? == values, "List Settings: Values Differ")?;
+            }
+        }
+        36 => {
+            let (send, mut input) = invoke(&mut client, "conformance.discover", fixture::payload(&[])).await?;
+            child(&mut input, 1, "harmos.plugin.host.v1.Operations/List", &[]).await?;
+            let operation = DiscoveredOperation {
+                owner: "host".into(),
+                generation: 7,
+                contract: Some(DiscoveredContract {
+                    id: "conformance.host.echo".into(),
+                    fingerprint: fixture::fingerprint("conformance.host.echo"),
+                    visibility: Visibility::Public as i32,
+                    ..Default::default()
+                }),
+                grpc_available: true,
+                ..Default::default()
+            };
+            send_child(
+                &send,
+                1,
+                child_response::Result::Payload(OperationsListResponse { operations: vec![operation.clone()] }.encode_to_vec()),
+            )
+            .await?;
+            let request = OperationsGetRequest { id: "conformance.host.echo".into() };
+            child(&mut input, 2, "harmos.plugin.host.v1.Operations/Get", &request.encode_to_vec()).await?;
+            send_child(&send, 2, child_response::Result::Payload(OperationsGetResponse { operation: Some(operation) }.encode_to_vec()))
+                .await?;
+            require(
+                terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"conformance.host.echo")),
+                "Discover Operation: Typed Contract Differs",
+            )?;
+        }
+        34 => {
             // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.
-            let chunk = harmos_protocol::storage::StorageTransferSettings::default().chunk_bytes() as usize;
-            let payload = fixture::payload(&vec![0x5a; chunk + harmos_protocol::storage::TransferFraming::Bytes as usize]);
+            let chunk = StorageTransferSettings::default().chunk_bytes() as usize;
+            let payload = fixture::payload(&vec![0x5a; chunk + TransferFraming::Bytes as usize]);
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
         }
-        30 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Declare: Missing Catalog".into()))?;
-            for operation in &catalog.operations {
+        33 => {
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declare: Missing Declarations".into()))?;
+            for operation in &declarations.operations {
                 harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
             }
             for (id, visibility) in [
-                ("conformance.step.0", v1::Visibility::Public),
-                ("example.plugin.v1.Lifecycle/Initialize", v1::Visibility::Protected),
-                ("example.plugin.v1.Steps/Execute", v1::Visibility::Public),
+                ("conformance.step.0", Visibility::Public),
+                ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected),
+                ("example.plugin.v1.Steps/Execute", Visibility::Public),
             ] {
-                let operation = catalog
+                let operation = declarations
                     .operations
                     .iter()
                     .find(|operation| operation.id == id)
@@ -298,16 +586,19 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && !description.sdk_version.is_empty(),
                 "Plugin Identity Missing",
             )?;
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let expected = fixture::catalog();
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let expected = fixture::declarations();
             require(
-                expected.operations.iter().all(|entry| catalog.operations.iter().find(|actual| actual.id == entry.id) == Some(entry))
-                    && catalog.requires.len() == expected.requires.len()
-                    && expected.requires.iter().all(|entry| catalog.requires.iter().find(|actual| actual.id == entry.id) == Some(entry))
-                    && catalog.streams.get(..2) == expected.streams.get(..2),
-                "Fixed Fixture Catalog Differs",
+                expected.operations.iter().all(|entry| declarations.operations.iter().find(|actual| actual.id == entry.id) == Some(entry))
+                    && declarations.requires.len() == expected.requires.len()
+                    && expected
+                        .requires
+                        .iter()
+                        .all(|entry| declarations.requires.iter().find(|actual| actual.id == entry.id) == Some(entry))
+                    && declarations.streams.get(..2) == expected.streams.get(..2),
+                "Fixed Fixture Declarations Differs",
             )?;
-            require(catalog.digest == harmos_protocol::schema::catalog_digest(&catalog), "Catalog Digest Differs")?;
+            require(declarations.digest == harmos_protocol::schema::declarations_digest(&declarations), "Declarations Digest Differs")?;
         }
         2 => {
             let first = description;
@@ -318,7 +609,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 at.nanos >= 0 && at.nanos < 1_000_000_000 && (-62_135_596_800..=253_402_300_799).contains(&at.seconds),
                 "Invalid Started At",
             )?;
-            require(second.started_at == Some(at) && second.catalog == first.catalog, "Reconnect Changed Process Identity or Catalog")?;
+            require(
+                second.started_at == Some(at) && second.declarations == first.declarations,
+                "Reconnect Changed Process Identity or Declarations",
+            )?;
         }
         3 => {
             for value in [vec![], vec![0, 255, 1, 128]] {
@@ -338,7 +632,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 if scope.is_empty() {
                     require(
                         matches!(result, response::Result::Failure(failure)
-                        if failure.classification == v1::Classification::Refused as i32
+                        if failure.classification == Classification::Refused as i32
                             && failure.code == "scope_required"),
                         "Missing Scope Was Not Refused",
                     )?;
@@ -357,21 +651,17 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         4 => {
             for frame in [
-                harmos_protocol::plugin::InstanceInvokeRequest { frame: None },
-                harmos_protocol::plugin::InstanceInvokeRequest {
-                    frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "early".into() })),
+                InstanceInvokeRequest { frame: None },
+                InstanceInvokeRequest {
+                    frame: Some(instance_invoke_request::Frame::Cancel(Cancel { reason: "early".into() })),
                 },
-                harmos_protocol::plugin::InstanceInvokeRequest {
-                    frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse::default())),
+                InstanceInvokeRequest {
+                    frame: Some(instance_invoke_request::Frame::Child(ChildResponse::default())),
                 },
             ] {
                 invoke_status(client.invoke(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            invoke_status(
-                client.invoke(stream::iter(Vec::<harmos_protocol::plugin::InstanceInvokeRequest>::new())).await,
-                Code::InvalidArgument,
-            )
-            .await?;
+            invoke_status(client.invoke(stream::iter(Vec::<InstanceInvokeRequest>::new())).await, Code::InvalidArgument).await?;
             let frames = [request("conformance.cancel", fixture::payload(b"")), request("conformance.step.0", fixture::payload(b""))];
             let mut input = client.invoke(stream::iter(frames)).await?.into_inner();
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"")).await?;
@@ -391,11 +681,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && overridden.payload == payload
                     && overridden.fingerprint == fixture::fingerprint("conformance.host.echo")
                     && overridden.policy
-                        == Some(v1::OperationPolicy {
-                            retries: Some(harmos_protocol::v1::RetryPolicy {
+                        == Some(OperationPolicy {
+                            retries: Some(RetryPolicy {
                                 total_attempts: 3,
-                                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+                                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
                                 deterministic_jitter: true,
                             }),
                             ..Default::default()
@@ -427,19 +717,19 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         7 => {
             let (send, mut input) = invoke(&mut client, "conformance.cancel", fixture::payload(b"pending")).await?;
             child(&mut input, 1, "conformance.host.pending", &fixture::payload(b"pending")).await?;
-            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "fixture_cancel".into() })),
+            send.send(InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(Cancel { reason: "fixture_cancel".into() })),
             })
             .await
             .map_err(|error| Error::Invalid(error.to_string()))?;
             let frame = input.message().await?.and_then(|frame| frame.frame);
-            require(frame == Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call: 1 })), "Missing Child Cancel")?;
+            require(frame == Some(instance_invoke_response::Frame::ChildCancel(ChildCancel { call: 1 })), "Missing Child Cancel")?;
             let result = terminal(&mut input).await?;
             let response::Result::Failure(failure) = result else {
                 return Err(Error::Invalid("Expected Cancelled Failure".into()));
             };
             require(
-                failure.classification == v1::Classification::Cancelled as i32
+                failure.classification == Classification::Cancelled as i32
                     && failure.code == "cancelled"
                     && failure.message == "fixture_cancel"
                     && failure.operation == "conformance.cancel"
@@ -490,7 +780,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let samples = input.message().await?.ok_or_else(|| Error::Invalid("Missing Device Sample".into()))?;
             require(
                 samples.samples
-                    == [v1::Sample {
+                    == [Sample {
                         at: None,
                         row: fixture::payload(b"device"),
                         sequence: 1,
@@ -520,20 +810,16 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         14 => {
             for frame in [
-                harmos_protocol::plugin::InstanceSamplesRequest { frame: None },
-                harmos_protocol::plugin::InstanceSamplesRequest {
-                    frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(fixture::timestamp(1)) })),
+                InstanceSamplesRequest { frame: None },
+                InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(fixture::timestamp(1)) })),
                 },
             ] {
                 publish_status(client.samples(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
-            publish_status(
-                client.samples(stream::iter(Vec::<harmos_protocol::plugin::InstanceSamplesRequest>::new())).await,
-                Code::InvalidArgument,
-            )
-            .await?;
-            let open = harmos_protocol::plugin::InstanceSamplesRequest {
-                frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
+            publish_status(client.samples(stream::iter(Vec::<InstanceSamplesRequest>::new())).await, Code::InvalidArgument).await?;
+            let open = InstanceSamplesRequest {
+                frame: Some(instance_samples_request::Frame::Open(SamplesSelection {
                     stream: "conformance.ticks".into(),
                     scope: "fixture".into(),
                 })),
@@ -542,17 +828,17 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Rule 14 / Reject Missing and Out-of-Range Tick Timestamps.
             for at in [
                 None,
-                Some(prost_types::Timestamp { seconds: 253_402_300_800, nanos: 0 }),
-                Some(prost_types::Timestamp { seconds: 0, nanos: -1 }),
-                Some(prost_types::Timestamp { seconds: 0, nanos: 1_000_000_000 }),
+                Some(Timestamp { seconds: 253_402_300_800, nanos: 0 }),
+                Some(Timestamp { seconds: 0, nanos: -1 }),
+                Some(Timestamp { seconds: 0, nanos: 1_000_000_000 }),
             ] {
-                let tick = harmos_protocol::plugin::InstanceSamplesRequest {
-                    frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at })),
+                let tick = InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Tick(Tick { at })),
                 };
                 publish_status(client.samples(stream::iter([open.clone(), tick])).await, Code::InvalidArgument).await?;
             }
-            let missing = harmos_protocol::plugin::InstanceSamplesRequest {
-                frame: Some(instance_samples_request::Frame::Open(v1::SamplesSelection {
+            let missing = InstanceSamplesRequest {
+                frame: Some(instance_samples_request::Frame::Open(SamplesSelection {
                     stream: "conformance.absent".into(),
                     scope: "fixture".into(),
                 })),
@@ -576,12 +862,12 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         17 => {
             // Schema Fingerprints / Check Both Roots Against the Shared General Rule.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
-            let expected = fixture::catalog();
-            require(catalog.operations == expected.operations, "Schema Operation Order or Contracts Differ")?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let types = declarations.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let expected = fixture::declarations();
+            require(declarations.operations == expected.operations, "Schema Operation Order or Contracts Differ")?;
             for operation in &expected.operations[6..] {
-                let actual = catalog
+                let actual = declarations
                     .operations
                     .iter()
                     .find(|item| item.id == operation.id)
@@ -597,7 +883,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Schema Fingerprints / Retain Options, Optional Presence, Recursion and Imports.
             let actual = harmos_protocol::schema::message_types(types, "harmos.conformance.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
-            let expected = harmos_protocol::schema::message_types(&harmos::conformance::v1::types(), "harmos.conformance.v1.Graph.Nested")
+            let expected = harmos_protocol::schema::message_types(&crate::conformance::types(), "harmos.conformance.v1.Graph.Nested")
                 .map_err(|error| Error::Invalid(error.to_string()))?;
             require(actual == expected, "Reachable Schema Definitions Differ")?;
             // Schema Fingerprints / Round Trip a Nested Optional Zero Through the Graph.
@@ -613,9 +899,17 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         18 => {
             // Host Stream Settings / Advertise the Setting and Its Overridden Default.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let expected = fixture::catalog();
-            require(catalog.sections == expected.sections && catalog.streams == expected.streams, "Interval Setting or Section Differs")?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let expected = fixture::declarations();
+            require(
+                declarations
+                    .sections
+                    .iter()
+                    .filter(|section| section.r#type != "harmos.v1.SettingsDeclarations")
+                    .eq(expected.sections.iter().filter(|section| section.r#type != "harmos.v1.SettingsDeclarations"))
+                    && declarations.streams == expected.streams,
+                "Interval Setting or Section Differs",
+            )?;
             // Host Stream Settings / Answer Only the Host's Resolved Ticks.
             let (send, mut input) = open(&mut client, "conformance.settings").await?;
             tick(&send, &mut input, 1, 100).await?;
@@ -625,20 +919,20 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         19 => {
             // Check Both Advertised Clock Requirements Against Fixed Fingerprints.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let types = declarations.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             for (id, (request, response)) in fixture::CLOCK_OPERATIONS.into_iter().zip([
-                ("harmos.context.v1.TimeSleepRequest", "harmos.context.v1.TimeSleepResponse"),
-                ("harmos.context.v1.TimeGetRequest", "harmos.context.v1.TimeGetResponse"),
+                ("harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse"),
+                ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse"),
             ]) {
-                let requirement = catalog
+                let requirement = declarations
                     .requires
                     .iter()
                     .find(|item| item.id == id)
                     .ok_or_else(|| Error::Invalid(format!("Missing Clock Requirement: {id}")))?;
                 let actual = harmos_protocol::schema::fingerprint(id, types, request, response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
-                let host = harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+                let host = harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::declarations_types(), request, response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
                 let expected = fixture::fingerprint(id);
                 require(requirement.fingerprint == expected && actual == expected && host == expected, "Clock Fingerprint Differs")?;
@@ -646,9 +940,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Answer Host Clock Calls Without Any Local Timer.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(&[])).await?;
             for (id, operation, payload, reply) in [
-                (1, "harmos.context.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
-                (2, "harmos.context.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
-                (3, "harmos.context.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
+                (1, "harmos.plugin.host.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
+                (2, "harmos.plugin.host.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
+                (3, "harmos.plugin.host.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
             ] {
                 child(&mut input, id, operation, &payload).await?;
                 send_child(&send, id, child_response::Result::Payload(reply)).await?;
@@ -660,15 +954,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )?;
         }
         20 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             let name = "harmos.conformance.v1.PayloadOnly";
             require(
-                !catalog.operations.iter().any(|item| item.request == name || item.response == name)
-                    && !catalog.streams.iter().any(|item| item.row == name)
-                    && !catalog.sections.iter().any(|item| item.r#type == name),
+                !declarations.operations.iter().any(|item| item.request == name || item.response == name)
+                    && !declarations.streams.iter().any(|item| item.row == name)
+                    && !declarations.sections.iter().any(|item| item.r#type == name),
                 "Payload Has An Executable Declaration",
             )?;
-            let types = catalog.types.ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let types = declarations.types.ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types).map_err(|error| Error::Invalid(error.to_string()))?;
             let descriptor =
                 pool.get_message_by_name(name).ok_or_else(|| Error::Invalid("Missing Independent Payload Descriptor".into()))?;
@@ -678,13 +972,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(value.encode_to_vec() == bytes, "Independent Payload Round Trip Differs")?;
         }
         21 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             for (id, visibility, replay_safe) in [
-                ("example.plugin.v1.Lifecycle/Initialize", v1::Visibility::Protected, false),
-                ("example.plugin.v1.Steps/Execute", v1::Visibility::Public, true),
-                ("conformance.step.0", v1::Visibility::Public, false),
+                ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
+                ("example.plugin.v1.Steps/Execute", Visibility::Public, true),
+                ("conformance.step.0", Visibility::Public, false),
             ] {
-                let operation = catalog
+                let operation = declarations
                     .operations
                     .iter()
                     .find(|operation| operation.id == id)
@@ -713,8 +1007,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, mut input) = invoke(&mut client, "conformance.cancel_reason", payload.clone()).await?;
             child(&mut input, 1, "conformance.host.echo", &payload).await?;
             send_child(&send, 1, child_response::Result::Payload(payload)).await?;
-            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "Requested Stop".into() })),
+            send.send(InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(Cancel { reason: "Requested Stop".into() })),
             })
             .await
             .map_err(|_| Error::Invalid("Cancel Closed".into()))?;
@@ -724,16 +1018,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )?;
         }
         24 => {
-            let description =
-                client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Catalog Missing".into()))?;
+            let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declarations Missing".into()))?;
             require(
-                !catalog.operations.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Operation Leaked Into Catalog",
+                !declarations.operations.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Operation Leaked Into Declarations",
             )?;
             require(
-                !catalog.requires.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Requirement Leaked Into Catalog",
+                !declarations.requires.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Requirement Leaked Into Declarations",
             )?;
             let payload = fixture::payload(b"local payload");
             let (_send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
@@ -776,10 +1069,14 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     )?;
                 } else {
                     let mut failure = fixture::failure(operation);
-                    failure.classification = v1::Classification::Refused as i32;
+                    failure.classification = Classification::Refused as i32;
                     failure.message = format!(
                         "Invoke {operation}: {}",
-                        if mode == b"protected" { "Protected Peer Operation" } else { "Operation Is Not Declared in the Peer Catalog" }
+                        if mode == b"protected" {
+                            "Protected Peer Operation"
+                        } else {
+                            "Operation Is Not Declared in the Peer Declarations"
+                        }
                     );
                     send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
                     require(terminal(&mut input).await? == response::Result::Failure(failure), "Peer Refusal Lost Its Action or Cause")?;
@@ -790,13 +1087,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             for mode in [b"deadline".as_slice(), b"overall"] {
                 let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(mode)).await?;
                 for call in 1..=2 {
-                    child(&mut input, call, "harmos.context.v1.Time/Get", &[]).await?;
+                    child(&mut input, call, "harmos.plugin.host.v1.Time/Get", &[]).await?;
                     send_child(
                         &send,
                         call,
                         child_response::Result::Payload(
-                            harmos_protocol::context::TimeGetResponse {
-                                now: Some(prost_types::Timestamp { seconds: 0, nanos: 0 }),
+                            TimeGetResponse {
+                                now: Some(Timestamp { seconds: 0, nanos: 0 }),
                             }
                             .encode_to_vec(),
                         ),
@@ -810,13 +1107,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     let Some(instance_invoke_response::Frame::Child(child)) = frame else {
                         return Err(Error::Invalid("Private Deadline: Expected Clock Child".into()));
                     };
-                    require(child.operation == "harmos.context.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
-                    let duration = harmos_protocol::context::TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
+                    require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
+                    let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
                     if child.background {
-                        require(duration == prost_types::Duration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
+                        require(duration == ProtoDuration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
                         deadline = Some(child.call);
                     } else {
-                        require(duration == prost_types::Duration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
+                        require(duration == ProtoDuration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
                         sleeping = Some(child.call);
                     }
                 }
@@ -835,11 +1132,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                                 cancelled = true;
                             }
                         }
-                        Some(instance_invoke_response::Frame::Response(v1::Response {
+                        Some(instance_invoke_response::Frame::Response(Response {
                             result: Some(response::Result::Failure(failure)),
                         })) => {
                             require(
-                                cancelled && failure.classification() == v1::Classification::TimedOut,
+                                cancelled && failure.classification() == Classification::TimedOut,
                                 "Private Deadline Did Not Cancel Its Child Before Settling",
                             )?;
                             require(input.message().await?.is_none(), "Frame After Private Deadline")?;
@@ -855,18 +1152,18 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
             child(&mut input, 1, "conformance.host.echo", &payload).await?;
             send_child(&send, 1, child_response::Result::Payload(payload)).await?;
-            send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-                frame: Some(instance_invoke_request::Frame::Cancel(v1::Cancel { reason: "Local Stop".into() })),
+            send.send(InstanceInvokeRequest {
+                frame: Some(instance_invoke_request::Frame::Cancel(Cancel { reason: "Local Stop".into() })),
             })
             .await
             .map_err(|_| Error::Invalid("Private Cancel: Carrier Closed".into()))?;
-            let mut guards = std::collections::BTreeSet::new();
+            let mut guards = BTreeSet::new();
             loop {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(
-                            child.background && child.operation == "harmos.context.v1.Time/Sleep",
+                            child.background && child.operation == "harmos.plugin.host.v1.Time/Sleep",
                             "Private Cancellation Leaked a Local Call",
                         )?;
                         guards.insert(child.call);
@@ -874,7 +1171,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     Some(instance_invoke_response::Frame::ChildCancel(child)) => {
                         guards.remove(&child.call);
                     }
-                    Some(instance_invoke_response::Frame::Response(v1::Response {
+                    Some(instance_invoke_response::Frame::Response(Response {
                         result: Some(response::Result::Payload(payload)),
                     })) => {
                         require(
@@ -890,11 +1187,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         26 => {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry")).await?;
-            let delay = harmos_protocol::context::TimeSleepRequest {
-                duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
+            let delay = TimeSleepRequest {
+                duration: Some(ProtoDuration { seconds: 1, nanos: 11 }),
             }
             .encode_to_vec();
-            child(&mut input, 1, "harmos.context.v1.Time/Sleep", &delay).await?;
+            child(&mut input, 1, "harmos.plugin.host.v1.Time/Sleep", &delay).await?;
             send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"2")),
@@ -904,28 +1201,28 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry-bound")).await?;
             let mut now = 0;
             let mut slept = false;
-            let mut guards = std::collections::BTreeSet::new();
+            let mut guards = BTreeSet::new();
             loop {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(child.fingerprint == fixture::fingerprint(&child.operation), "Private Retry: Clock Fingerprint Differs")?;
-                        if child.operation == "harmos.context.v1.Time/Get" {
+                        if child.operation == "harmos.plugin.host.v1.Time/Get" {
                             send_child(
                                 &send,
                                 child.call,
                                 child_response::Result::Payload(
-                                    harmos_protocol::context::TimeGetResponse {
-                                        now: Some(prost_types::Timestamp { seconds: now, nanos: 0 }),
+                                    TimeGetResponse {
+                                        now: Some(Timestamp { seconds: now, nanos: 0 }),
                                     }
                                     .encode_to_vec(),
                                 ),
                             )
                             .await?;
                         } else {
-                            require(child.operation == "harmos.context.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
-                            let duration = harmos_protocol::context::TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
-                            require(duration == prost_types::Duration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
+                            require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
+                            let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
+                            require(duration == ProtoDuration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
                             if child.background {
                                 guards.insert(child.call);
                             } else {
@@ -939,11 +1236,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     Some(instance_invoke_response::Frame::ChildCancel(cancel)) => {
                         guards.remove(&cancel.call);
                     }
-                    Some(instance_invoke_response::Frame::Response(v1::Response {
+                    Some(instance_invoke_response::Frame::Response(Response {
                         result: Some(response::Result::Failure(failure)),
                     })) => {
                         require(
-                            slept && guards.is_empty() && failure.classification() == v1::Classification::TimedOut,
+                            slept && guards.is_empty() && failure.classification() == Classification::TimedOut,
                             &format!(
                                 "Private Retry Did Not Settle at Its Overall Deadline: slept={slept}, guards={}, failure={failure:?}",
                                 guards.len()
@@ -971,7 +1268,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 for bytes in [b"first".as_slice(), b"second"] {
                     let frame = input.message().await?.and_then(|frame| frame.frame);
                     require(
-                        frame == Some(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call })),
+                        frame == Some(instance_invoke_response::Frame::ChildDemand(ChildDemand { call })),
                         "Watch Item Without Demand",
                     )?;
                     send_child(&send, call, child_response::Result::Item(fixture::payload(bytes))).await?;
@@ -982,7 +1279,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 if mode == b"cancel" {
                     require(
                         input.message().await?.and_then(|frame| frame.frame)
-                            == Some(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })),
+                            == Some(instance_invoke_response::Frame::ChildCancel(ChildCancel { call })),
                         "Watch Demand Not Cancelled",
                     )?;
                     require(
@@ -992,7 +1289,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 } else {
                     require(
                         input.message().await?.and_then(|frame| frame.frame)
-                            == Some(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call })),
+                            == Some(instance_invoke_response::Frame::ChildDemand(ChildDemand { call })),
                         "Watch Terminal Demand Missing",
                     )?;
                     if mode == b"failure" {
@@ -1010,7 +1307,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             }
         }
         16 => {
-            client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Conformance Complete".into() }).await?;
+            client.stop(InstanceStopRequest { reason: "Conformance Complete".into() }).await?;
             if !managed {
                 connect(address).await?;
             }

@@ -30,9 +30,13 @@
 #include <google/protobuf/message.h>
 
 // Local Imports
-#include "harmos/v1/types.pb.h"
+#include "harmos/v1/description.pb.h"
+#include "harmos/v1/invocation.pb.h"
+#include "harmos/v1/setting.pb.h"
 #include "harmos/transfer.hpp"
-#include "harmos/context/v1/time.pb.h"
+#include "harmos/generated/client.hpp"
+#include "harmos/plugin/host/v1/time.pb.h"
+#include "harmos/plugin/host/v1/settings.pb.h"
 
 /* === Macros === */
 
@@ -101,6 +105,7 @@ public:
     template<class Q, class R> Watching<R> watch(const Operation<Q, R>& operation, const Q& request, std::size_t max_item_bytes);
     void sleep(const google::protobuf::Duration& duration);
     google::protobuf::Timestamp now();
+    plugin::host::v1::SettingsListResponse settings();
     std::string cancelled();
     template<class T> void set(T value) { resources_[typeid(T)] = std::move(value); }
     template<class T> T& get() { return std::any_cast<T&>(resources_.at(typeid(T))); }
@@ -109,9 +114,9 @@ private:
     std::string scope_;
     std::shared_ptr<detail::Invocation> state_;
     std::unordered_map<std::type_index, std::any> resources_;
-    std::shared_future<std::string> send(wire::ChildRequest request);
+    std::shared_future<std::string> send(wire::ChildRequest request, std::function<void()>* cancel = nullptr);
     std::shared_ptr<detail::Watch> open_watch(wire::ChildRequest request);
-    std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition& operation, const std::string& payload, std::optional<wire::OperationPolicy> policy);
+    std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition& operation, const std::string& payload, std::optional<wire::OperationPolicy> policy, std::function<void()>* cancel);
 };
 
 class Plugin {
@@ -144,15 +149,17 @@ public:
         sections_.emplace_back(std::move(section), detail::types(T::descriptor()));
         return *this;
     }
-    Plugin& transfer(const ::harmos::storage::v1::StorageTransferSettings& settings) { transfer_ = settings; return *this; }
+    Plugin& transfer(const ::harmos::v1::StorageTransferSettings& settings) { transfer_ = settings; return *this; }
+    Plugin& setting(wire::SettingDeclaration declaration);
     Plugin& on_stop(std::function<void()> cleanup);
-    wire::Catalog catalog() const;
+    wire::Declarations declarations() const;
     // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
     void serve(std::string address = {}) const;
 
 private:
     google::protobuf::FileDescriptorSet messages_;
-    ::harmos::storage::v1::StorageTransferSettings transfer_;
+    ::harmos::v1::StorageTransferSettings transfer_;
+    wire::SettingsDeclarations settings_;
     std::string id_;
     std::string version_;
     std::vector<detail::OperationDefinition> operations_;
@@ -173,10 +180,12 @@ template<class T> T decode(const std::string& bytes) {
 
 template<class R> class Call {
 public:
-    explicit Call(std::shared_future<std::string> result) : result_(std::move(result)) {}
+    explicit Call(std::shared_future<std::string> result, std::function<void()> cancel = {}) : result_(std::move(result)), cancel_(std::move(cancel)) {}
     R get() const { return decode<R>(result_.get()); }
+    void cancel() const { if (cancel_) cancel_(); }
 private:
     std::shared_future<std::string> result_;
+    std::function<void()> cancel_;
 };
 
 template<class Q, class R> class Operation {
@@ -241,13 +250,15 @@ template<class Q, class R> Call<R> Context::call(const Operation<Q, R>& operatio
                                                std::optional<wire::OperationPolicy> policy) {
     if (operation.definition.watch) throw std::invalid_argument("Call " + operation.definition.contract.id() + ": Use Watch for a Streaming Contract");
     const auto payload = detail::encode(request);
-    if (auto result = local(operation.definition, payload, policy)) return Call<R>(*result);
+    std::function<void()> cancel;
+    if (auto result = local(operation.definition, payload, policy, &cancel)) return Call<R>(*result, std::move(cancel));
     wire::ChildRequest child;
     child.set_operation(operation.definition.contract.id());
     child.set_fingerprint(operation.definition.contract.fingerprint());
     child.set_payload(detail::encode(request));
     if (policy) *child.mutable_policy() = std::move(*policy);
-    return Call<R>(send(std::move(child)));
+    auto result = send(std::move(child), &cancel);
+    return Call<R>(std::move(result), std::move(cancel));
 }
 
 template<class R> class Publisher {
@@ -309,6 +320,7 @@ template<class R> Plugin& Plugin::observer(const Observer<R>& observer) {
 
 /* === Public Declarations === */
 
-inline const Operation<context::v1::TimeSleepRequest, context::v1::TimeSleepResponse> SLEEP("harmos.context.v1.Time/Sleep", wire::VISIBILITY_PUBLIC);
-inline const Operation<context::v1::TimeGetRequest, context::v1::TimeGetResponse> GET_TIME("harmos.context.v1.Time/Get", wire::VISIBILITY_PUBLIC);
+inline const Operation<plugin::host::v1::TimeSleepRequest, plugin::host::v1::TimeSleepResponse> SLEEP("harmos.plugin.host.v1.Time/Sleep", wire::VISIBILITY_PUBLIC);
+inline const Operation<plugin::host::v1::TimeGetRequest, plugin::host::v1::TimeGetResponse> GET_TIME("harmos.plugin.host.v1.Time/Get", wire::VISIBILITY_PUBLIC);
+inline const Operation<plugin::host::v1::SettingsListRequest, plugin::host::v1::SettingsListResponse> LIST_SETTINGS("harmos.plugin.host.v1.Settings/List", wire::VISIBILITY_PUBLIC);
 }

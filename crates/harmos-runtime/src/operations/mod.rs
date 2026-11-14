@@ -41,20 +41,18 @@ mod streaming;
 
 mod registration;
 
-#[cfg(feature = "grpc")]
 mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
-#[cfg(feature = "grpc")]
-pub mod values;
 mod wire;
 
 /* === Re-Exports === */
 
+pub use harmos_operations::execution::operations::{NativeHost, NativeOperation, NativeOutput, native_stream};
+pub use invocation::NativeInvocation;
+
 #[cfg(feature = "plugin-guest")]
-pub(crate) use crate::guest::host::envelope::{
-    WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCodecError, WireCommand,
-};
+pub(crate) use crate::guest::host::envelope::{WireAnswer, WireChild, WireChildAction, WireChildCall, WireChildControl, WireCommand};
 pub use crate::supervision::instance::{Outcome as OperationOutcome, Phase as OperationPhase, Status as OperationStatus};
 #[cfg(feature = "plugin-guest")]
 pub use caller::Caller;
@@ -73,7 +71,6 @@ pub use harmos_operations::execution::operations::{
 };
 pub use harmos_operations::execution::operations::{CallContext, Cancellation, Instance, OperationHost, RequestClaims, Response, instance};
 pub use harmos_operations::execution::operations::{ExecutionContext, FunctionContext, NativeInstance, OperationFactory, OperationSpec};
-#[cfg(feature = "grpc")]
 pub use harmos_operations::execution::operations::{
     ProtobufDependency, ProtobufEndpoints, ProtobufInput, ProtobufItem, ProtobufOperation, ProtobufOutput,
 };

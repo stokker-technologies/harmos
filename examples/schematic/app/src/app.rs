@@ -15,6 +15,7 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
+use std::ops::Deref;
 use std::result::Result;
 use std::sync::Arc;
 
@@ -29,7 +30,9 @@ use crate::state::Schematic;
 use crate::storage;
 use crate::streams;
 use crate::transactions::{Transactions, transactions_state_catalog};
+use harmos_runtime::plugin::manager::{self, Manager};
 use harmos_runtime::prelude::*;
+use harmos_runtime::storage::{StoreHistory, state::StorageStateSettings};
 
 /* === Constants === */
 
@@ -71,6 +74,30 @@ impl Lifecycle for SchematicEditor {
             let checkpoint = Arc::new(recovery.sidecars());
             setup.resource::<schematic_storage::Sidecar>(Arc::clone(&checkpoint));
             storage::attach(setup, recovery, &config.settings)?;
+            if config.plugins {
+                let root = std::fs::canonicalize(config.settings.recordings())?;
+                let history = StoreHistory {
+                    store: Identifier::new("schematic-plugins").unwrap(),
+                    epoch: Identifier::new("first").unwrap(),
+                };
+                let recovery = StorageStateSettings {
+                    max_entry_bytes: NonZeroUsize::new(2 * 1024 * 1024).unwrap(),
+                    max_checkpoint_bytes: NonZeroUsize::new(4 * 1024 * 1024).unwrap(),
+                };
+                let storage = crate::services::queries::attach(
+                    setup,
+                    &root.join("registry"),
+                    history,
+                    manager::catalog(),
+                    config.settings.storage(),
+                    recovery,
+                )
+                .map_err(std::io::Error::other)?;
+                let settings = config.settings.plugins(root.join("plugins"));
+                setup.resource(settings.clone());
+                let manager = Manager::new(storage, settings).map_err(std::io::Error::other)?;
+                setup.settings().plugins(manager.clone());
+            }
             Some(checkpoint)
         } else {
             None
@@ -113,10 +140,19 @@ impl Application for SchematicEditor {
         generation = document.generation(),
     )
 )]
-pub async fn launch(document: Document, config: &Settings) -> Result<Runtime, Error> {
+pub async fn launch(document: Document, config: &Settings) -> Result<Arc<Runtime>, Error> {
     let origin = document.clone().into_origin();
-    let config = LaunchConfig { document, settings: config.clone() };
-    let runtime = Runtime::launch(origin, Some(config)).await?;
+    let config = LaunchConfig {
+        document,
+        settings: config.clone(),
+        plugins: true,
+    };
+    let runtime = Arc::new(Runtime::launch(origin, Some(config)).await?);
+    let manager = runtime.operations.deref().context().resource::<Manager>().map_err(std::io::Error::other)?;
+    if let Err(error) = Box::pin(manager.start(&runtime)).await {
+        runtime.shutdown().await.map_err(std::io::Error::other)?;
+        return Err(std::io::Error::other(error).into());
+    }
     Ok(runtime)
 }
 

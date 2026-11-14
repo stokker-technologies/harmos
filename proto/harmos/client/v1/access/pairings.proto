@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Client Pairings
+//
+// Calls an application or tool makes on the host through the client boundary.
+
+syntax = "proto3";
+
+package harmos.client.v1.access;
+
+// === Imports === //
+
+import "harmos/v1/position.proto";
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Client.V1.AccessResources";
+
+// === Services === //
+
+// Owns durable client credentials, metadata listing and revocation.
+service Pairings {
+  // Persist a new client credential and return its bearer secret once; requires an enabled listener, nonempty bounded label and available capacity. A retry creates another pairing.
+  rpc Create(PairingsCreateRequest) returns (PairingsCreateResponse);
+  // Read pairing metadata at the current or explicitly issued current position; foreign, changed or unissued positions refuse.
+  rpc List(PairingsListRequest) returns (PairingsListResponse);
+  // Revoke an existing pairing immediately after persistence; deleting an absent pairing refuses.
+  rpc Delete(PairingsDeleteRequest) returns (PairingsDeleteResponse);
+}
+
+// === Requests and Responses === //
+
+// Carries the label for Pairings.Create.
+message PairingsCreateRequest {
+  // Nonempty client label bounded by the host's configured label_bytes capacity.
+  string label = 1;
+}
+
+// Returns the persisted pairing, actual endpoint, certificate pin and one-time bearer secret.
+message PairingsCreateResponse {
+  Pairing pairing = 1;
+  string endpoint = 2;
+  // TLS certificate to pin when connecting with this pairing; certificate rotation invalidates existing pairings.
+  string pinned_certificate_pem = 3;
+  // Bearer secret returned on creation; the host persists only its SHA-256 digest. A new Create does not recover this secret.
+  string credential = 4;
+}
+
+// Carries the read boundary for Pairings.List.
+message PairingsListRequest {
+  // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
+  harmos.v1.Position at = 2;
+}
+
+// Returns pairing metadata without bearer secrets and the issued current boundary.
+message PairingsListResponse {
+  repeated Pairing pairings = 1;
+  // Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
+  harmos.v1.Position resolved_at = 2;
+}
+
+// Carries the resource name for Pairings.Delete.
+message PairingsDeleteRequest {
+  // Pairing ID returned by Create/List; deleting an absent identity refuses.
+  string name = 1;
+}
+
+// Acknowledges persisted credential revocation.
+message PairingsDeleteResponse {}
+
+// === Resources === //
+
+// Identifies a durable client pairing without disclosing its bearer credential.
+message Pairing {
+  // Owner-generated pairing identity used by Delete; the bearer credential is returned separately only at creation.
+  string id = 1;
+  string label = 2;
+}
+
+// === Enums === //

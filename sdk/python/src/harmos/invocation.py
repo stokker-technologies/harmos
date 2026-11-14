@@ -13,52 +13,79 @@
 # Standard Library Imports
 import asyncio
 import copy
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Protocol
 
 # Third Party Imports
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from harmos.plugin.host.v1 import time_pb2 as clock
+from harmos.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos.plugin.v1 import instance_pb2 as carrier
+from harmos.v1.failure_pb2 import CLASSIFICATION_CANCELLED, CLASSIFICATION_REFUSED, CLASSIFICATION_TIMED_OUT, CLASSIFICATION_TRANSIENT
+from harmos.v1.failure_pb2 import Failure as WireFailure
+from harmos.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
+from harmos.v1.operation_pb2 import VISIBILITY_PUBLIC
+from harmos.v1.policy_pb2 import OperationPolicy
+from harmos.v1.position_pb2 import ReadCut
+from harmos.v1.stream_pb2 import Sample
+
 # Local Imports
 from .contracts import Operation
-from .v1 import types_pb2 as wire
-
-from harmos.plugin.v1 import instance_pb2 as carrier
-
-from harmos.context.v1 import time_pb2 as clock
 
 # Type Checking Imports
+if TYPE_CHECKING:
+    from .authoring import _FaultError
 
 # === Public Exports === #
 
 # === Constants === #
 
-SLEEP = Operation("harmos.context.v1.Time/Sleep", clock.TimeSleepRequest, clock.TimeSleepResponse, visibility=wire.VISIBILITY_PUBLIC)
-GET_TIME = Operation("harmos.context.v1.Time/Get", clock.TimeGetRequest, clock.TimeGetResponse, visibility=wire.VISIBILITY_PUBLIC)
+SLEEP = Operation("harmos.plugin.host.v1.Time/Sleep", clock.TimeSleepRequest, clock.TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
+GET_TIME = Operation("harmos.plugin.host.v1.Time/Get", clock.TimeGetRequest, clock.TimeGetResponse, visibility=VISIBILITY_PUBLIC)
+
+SETTINGS = Operation("harmos.plugin.host.v1.Settings/List", SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC)
 
 # === Types === #
+
+type Handler = Callable[[Context, Message], Coroutine[object, object, Message]]
 
 # === Classes === #
 
 
-class Failure(Exception):
+class FailureError(Exception):
     """An Application Failure, Preserved Without Reclassification."""
 
-    def __init__(self, value: wire.Failure):
+    def __init__(self, value: WireFailure) -> None:
         super().__init__(value.message)
-        self.value = wire.Failure()
+        self.value = WireFailure()
         self.value.CopyFrom(value)
+
+
+Failure = FailureError
 
 
 class ProtocolError(Exception):
     pass
 
 
+class _Output(Protocol):
+    async def put(self, frame: "carrier.InstanceInvokeResponse | _FaultError", /) -> None: ...
+
+
 class Context:
     """Background Work Outside This Context Is Invisible to Virtual Time."""
 
-    def __init__(self, request: wire.Request, plugin: str, requires: dict[str, bytes], output: asyncio.Queue | None = None):
+    def __init__(
+        self,
+        request: Request,
+        plugin: str,
+        requires: dict[str, bytes],
+        output: "_Output | None" = None,
+    ) -> None:
         self.invocation = request.invocation
         self.attempt = request.attempt
         self._scope = request.scope
@@ -67,13 +94,13 @@ class Context:
         self._plugin = plugin
         self._requires = requires
         self._output = output
-        self._pending: dict[int, asyncio.Future] = {}
+        self._pending: dict[int, asyncio.Future[ChildResponse]] = {}
         self._next = [0]
-        self._local = {}
-        self._watches = {}
+        self._local: dict[str, tuple[Operation[Message, Message], Handler]] = {}
+        self._watches: dict[int, tuple[asyncio.Queue[ChildResponse], int]] = {}
         self._background = False
-        self._retired = set()
-        self._children = []
+        self._retired: set[int] = set()
+        self._children: list[Context] = []
         self._cancelled = asyncio.Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
@@ -82,8 +109,8 @@ class Context:
         """Require a Caller-Bound Scope for This Invocation."""
         if not self._scope:
             raise Failure(
-                wire.Failure(
-                    classification=wire.CLASSIFICATION_REFUSED,
+                WireFailure(
+                    classification=CLASSIFICATION_REFUSED,
                     code="scope_required",
                     message="Invocation Scope Is Required: the caller must bind a scope",
                 )
@@ -99,11 +126,9 @@ class Context:
             raise TypeError("Invalid Resource Type")
         return value
 
-    async def call[Q: Message, R: Message](
-        self, operation: Operation[Q, R], request: Q, *, policy: wire.OperationPolicy | None = None
-    ) -> R:
+    async def call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
         if self._output is None:
-            raise ValueError("Observers Cannot Call Operations or Wait")
+            raise ValueError(f"Call {operation.id}: No Active Invocation or Unanswered Tick")
         if operation.watch:
             raise ValueError(f"Call {operation.id}: Use Watch for a Streaming Contract")
         if not isinstance(request, operation.request):
@@ -117,9 +142,9 @@ class Context:
 
         self._next[0] += 1
         call = self._next[0]
-        complete = asyncio.get_running_loop().create_future()
+        complete: asyncio.Future[ChildResponse] = asyncio.get_running_loop().create_future()
         self._pending[call] = complete
-        child = wire.ChildRequest(
+        child = ChildRequest(
             call=call,
             operation=operation.id,
             payload=request.SerializeToString(),
@@ -136,11 +161,13 @@ class Context:
         except asyncio.CancelledError:
             if self._pending.pop(call, None) is not None:
                 self._retired.add(call)
-                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
+                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
             raise
 
     @asynccontextmanager
-    async def watch(self, operation, request, *, max_item_bytes: int):
+    async def watch[Q: Message, R: Message](
+        self, operation: Operation[Q, R], request: Q, *, max_item_bytes: int
+    ) -> AsyncGenerator[AsyncIterator[R]]:
         output = self._output
         if output is None or self._requires.get(operation.id) != operation.fingerprint:
             raise ValueError(f"Watch {operation.id}: Undeclared Requirement or Missing Invocation")
@@ -152,11 +179,11 @@ class Context:
             raise TypeError(f"Watch {operation.id}: Request Does Not Match the Operation")
         self._next[0] += 1
         call = self._next[0]
-        queue = asyncio.Queue(maxsize=1)
+        queue: asyncio.Queue[ChildResponse] = asyncio.Queue(maxsize=1)
         self._watches[call] = (queue, max_item_bytes)
         await output.put(
             carrier.InstanceInvokeResponse(
-                child=wire.ChildRequest(
+                child=ChildRequest(
                     call=call,
                     operation=operation.id,
                     payload=request.SerializeToString(),
@@ -167,9 +194,9 @@ class Context:
             )
         )
 
-        async def items():
+        async def items() -> AsyncIterator[R]:
             while True:
-                await output.put(carrier.InstanceInvokeResponse(child_demand=wire.ChildDemand(call=call)))
+                await output.put(carrier.InstanceInvokeResponse(child_demand=ChildDemand(call=call)))
                 reply = await queue.get()
                 kind = reply.WhichOneof("result")
                 if kind == "failure":
@@ -182,14 +209,14 @@ class Context:
             yield items()
         finally:
             if self._watches.pop(call, None) is not None:
-                await output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
+                await output.put(carrier.InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
 
-    async def _invoke_local(self, operation, request, override):
+    async def _invoke_local[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, override: OperationPolicy | None) -> R:
         definition, handler = self._local[operation.id]
         if operation.fingerprint != definition.fingerprint:
             raise ValueError(f"Invoke {operation.id}: Local Contract Differs")
         policy = override if override is not None else definition.policy
-        policy = policy if policy is not None else wire.OperationPolicy()
+        policy = policy if policy is not None else OperationPolicy()
         context = copy.copy(self)
         context._operation = operation.id
         context._cancelled = asyncio.Event()
@@ -200,7 +227,7 @@ class Context:
         context._children = []
 
         # Replies Stay on the Parent Carrier and Are Forwarded by Correlation.
-        def duration_ns(value):
+        def duration_ns(value: Duration | Timestamp) -> int:
             if value.seconds < 0 or not 0 <= value.nanos < 1_000_000_000 or value.seconds > 315_576_000_000:
                 raise ValueError(f"Invoke {operation.id}: Invalid Policy Duration")
             return value.seconds * 1_000_000_000 + value.nanos
@@ -239,8 +266,8 @@ class Context:
                 bound = min(bounds) if bounds else None
                 if bound is not None and bound <= 0:
                     raise Failure(
-                        wire.Failure(
-                            classification=wire.CLASSIFICATION_TIMED_OUT,
+                        WireFailure(
+                            classification=CLASSIFICATION_TIMED_OUT,
                             code="deadline",
                             message=f"Invoke {operation.id}: Deadline Reached",
                             action="Invoke Again If Safe",
@@ -273,9 +300,9 @@ class Context:
                                 settling.cancel()
                                 await asyncio.gather(settling, return_exceptions=True)
                         if not grace or deadline_reached or not running.done():
-                            kind = wire.CLASSIFICATION_CANCELLED if cancelled in done else wire.CLASSIFICATION_TIMED_OUT
+                            kind = CLASSIFICATION_CANCELLED if cancelled in done else CLASSIFICATION_TIMED_OUT
                             raise Failure(
-                                wire.Failure(
+                                WireFailure(
                                     classification=kind,
                                     code="interrupted",
                                     message=f"Invoke {operation.id}: {reason}",
@@ -283,11 +310,11 @@ class Context:
                                 )
                             )
                     result = await running
-                    if not isinstance(result, definition.response):
+                    if not isinstance(result, operation.response):
                         raise TypeError(f"Invoke {operation.id}: Response Does Not Match the Operation")
                     return result
                 except Failure as failure:
-                    if failure.value.classification != wire.CLASSIFICATION_TRANSIENT or attempt + 1 >= attempts:
+                    if failure.value.classification != CLASSIFICATION_TRANSIENT or attempt + 1 >= attempts:
                         raise
                     await context._cancel("Local Attempt Settled")
                     if timer is not None:
@@ -312,11 +339,16 @@ class Context:
                         if not task.done():
                             task.cancel()
                     await asyncio.gather(*tasks, return_exceptions=True)
+            raise ProtocolError(f"Invoke {operation.id}: No Attempt Settled")
         finally:
             await context._cancel("Local Attempt Settled")
             await guard._cancel("Policy Guard Settled")
             self._children.remove(context)
             self._children.remove(guard)
+
+    async def settings(self, *, at: ReadCut | None = None) -> SettingsListResponse:
+        """Read the Calling Plugin's Complete Settings and Revision."""
+        return await self.call(SETTINGS, SettingsListRequest(at=at))
 
     async def sleep(self, duration: Duration) -> None:
         await self.call(SLEEP, clock.TimeSleepRequest(duration=duration))
@@ -332,7 +364,7 @@ class Context:
         await self._cancelled.wait()
         return self._reason
 
-    async def _reply(self, reply: wire.ChildResponse) -> None:
+    async def _reply(self, reply: ChildResponse) -> None:
         if reply.call in self._retired:
             return
         if reply.WhichOneof("result") is None:
@@ -356,7 +388,7 @@ class Context:
             raise ProtocolError("Unknown or Duplicate Child")
         complete.set_result(reply)
 
-    def _has_pending(self, call):
+    def _has_pending(self, call: int) -> bool:
         return call in self._pending or call in self._watches or any(child._has_pending(call) for child in self._children)
 
     async def _cancel(self, reason: str) -> None:
@@ -371,20 +403,22 @@ class Context:
         for call, (queue, _) in watches.items():
             self._retired.add(call)
             if self._output is not None:
-                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
-            await queue.put(wire.ChildResponse(call=call, failure=self._cancel_failure().value))
+                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
+            if queue.full():
+                queue.get_nowait()
+            queue.put_nowait(ChildResponse(call=call, failure=self._cancel_failure().value))
         pending, self._pending = self._pending, {}
         for call, complete in pending.items():
             self._retired.add(call)
             if self._output is not None:
-                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=wire.ChildCancel(call=call)))
+                await self._output.put(carrier.InstanceInvokeResponse(child_cancel=ChildCancel(call=call)))
             if not complete.done():
                 complete.set_exception(self._cancel_failure())
 
     def _cancel_failure(self) -> Failure:
         return Failure(
-            wire.Failure(
-                classification=wire.CLASSIFICATION_CANCELLED,
+            WireFailure(
+                classification=CLASSIFICATION_CANCELLED,
                 code="cancelled",
                 message=self._reason,
                 action="Retry If Needed",
@@ -395,7 +429,7 @@ class Context:
 
 
 class Publisher:
-    def __init__(self, row: type[Message], output: asyncio.Queue):
+    def __init__(self, row: type[Message], output: "asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None]") -> None:
         self._row = row
         self._output = output
 
@@ -404,7 +438,7 @@ class Publisher:
             raise TypeError("Invalid Stream Row")
         if at is not None:
             validate_timestamp(at)
-        await self._output.put(wire.Sample(row=row.SerializeToString(), at=at))
+        await self._output.put(Sample(row=row.SerializeToString(), at=at))
 
 
 # === Public Functions === #

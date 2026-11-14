@@ -19,11 +19,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from harmos_tools import storage_bench
+from harmos_tools.release import reports
+
 # Third Party Imports
 # Local Imports
 from harmos_tools.test import run
-from harmos_tools.release import reports
-from harmos_tools import storage_bench
 
 # Type Checking Imports
 
@@ -37,7 +38,7 @@ from harmos_tools import storage_bench
 
 
 class BenchmarkRelease(unittest.TestCase):
-    def test_repeated_lag_events_keep_one_case_with_spread_and_stage_work(self):
+    def test_repeated_lag_events_keep_one_case_with_spread_and_stage_work(self) -> None:
         events = []
         for p95, writing in [(178, 12), (570, 20), (391, 16)]:
             events.append(
@@ -82,7 +83,7 @@ class BenchmarkRelease(unittest.TestCase):
         self.assertEqual(rows["stages/backend/total_ns"]["unit"], "ns")
         self.assertEqual(rows["maximum_commit_bytes"]["value"], 120)
 
-    def test_ordinary_bench_runner_skips_large_storage_and_runs_other_integration_cases(self):
+    def test_ordinary_bench_runner_skips_large_storage_and_runs_other_integration_cases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             messages = run.paths.output(directory, "build", "bench") / "bench/compiler.json"
@@ -106,7 +107,7 @@ class BenchmarkRelease(unittest.TestCase):
             self.assertEqual(execute.call_count, 1)
             self.assertEqual(Path(execute.call_args.args[0][0]).name, "integration-query")
 
-    def test_storage_events_keep_units_platforms_and_repeated_contention_in_release_inventory(self):
+    def test_storage_events_keep_units_platforms_and_repeated_contention_in_release_inventory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             events = [
@@ -186,7 +187,7 @@ class BenchmarkRelease(unittest.TestCase):
             with self.assertRaises(reports.policy.ToolError):
                 storage_bench.measurements(events, "revision", "windows")
 
-    def test_native_measurements_survive_runner_failure_and_baseline_refresh(self):
+    def test_native_measurements_survive_runner_failure_and_baseline_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             rules = run.policy.Policy(limits={}, deadlines={}, overrides=(), bench_regression_percent=10)

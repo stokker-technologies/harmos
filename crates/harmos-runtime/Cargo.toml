@@ -30,7 +30,7 @@ default = ["grpc"]
 benchmark-fixtures = ["grpc"]
 # Focused Storage Transfer Measurements Use the Reusable Test Workload Only.
 storage-benchmarks = ["grpc", "harmos-storage/testing"]
-plugin-guest = ["dep:wasmtime"]
+plugin-guest = ["dep:wasmtime", "grpc"]
 grpc = [
   "dep:heck",
   "harmos-operations/grpc",
@@ -122,7 +122,7 @@ harmos = { workspace = true, features = ["wasm"] }
 harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }
 schematic-domain = { path = "../../examples/schematic/domain" }
-schematic-operations = { path = "../../examples/schematic/operations", features = ["runtime"] }
+schematic-operations = { path = "../../examples/schematic/operations" }
 
 # Git
 
@@ -247,10 +247,6 @@ tokio = { workspace = true, default-features = true, features = ["rt-multi-threa
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
-
-[[test]]
-name = "acceptance"
-path = "tests/acceptance/main.rs"
 
 [[test]]
 name = "system"

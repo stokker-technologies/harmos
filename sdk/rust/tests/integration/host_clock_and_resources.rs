@@ -18,7 +18,11 @@
 // Standard Library Imports
 
 // Third Party Imports
+use harmos_protocol::plugin::host::{TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
+use harmos_protocol::plugin::{InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest, instance_samples_request};
 use prost::Message as _;
+use prost_types::{Duration as ProtoDuration, Timestamp};
+use std::{error::Error as StdError, fs, time::Duration};
 
 // Local Imports
 use super::support;
@@ -38,7 +42,7 @@ struct Evidence {
     resource: u64,
 
     #[prost(message, optional, tag = "2")]
-    at: Option<prost_types::Timestamp>,
+    at: Option<Timestamp>,
 }
 
 #[derive(prost::Message)]
@@ -60,36 +64,38 @@ struct Isolation {
 /* === Tests === */
 
 #[tokio::test]
-async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
+async fn host_clock_and_resources() -> Result<(), Box<dyn StdError>> {
     let story = async {
         // Start the Remote SDK Plugin and Admit Its Clock Requirements.
         let scratch = tempfile::tempdir()?;
         let cleanup = scratch.path().join("cleanup");
         let mut process = support::Process::start(&cleanup).await?;
         let first = support::describe(&mut process.client).await?;
-        let catalog = first.catalog.as_ref().ok_or("Missing Catalog")?;
+        let declarations = first.declarations.as_ref().ok_or("Missing Declarations")?;
         assert_eq!(
-            catalog.requires.iter().map(|requirement| requirement.id.as_str()).collect::<Vec<_>>(),
-            ["harmos.context.v1.Time/Sleep", "harmos.context.v1.Time/Get"]
+            declarations.requires.iter().map(|requirement| requirement.id.as_str()).collect::<Vec<_>>(),
+            [
+                "harmos.plugin.host.v1.Settings/List",
+                "harmos.plugin.host.v1.Invocations/Watch",
+                "harmos.plugin.host.v1.Time/Sleep",
+                "harmos.plugin.host.v1.Time/Get"
+            ]
         );
 
         // Begin an Execution That Stores a Resource and Requests an Hour-Long Host Wait.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         let sleep = support::child(&mut input).await?;
-        assert_eq!(sleep.operation, "harmos.context.v1.Time/Sleep");
-        assert_eq!(sleep.fingerprint, catalog.requires[0].fingerprint);
-        assert_eq!(
-            harmos_protocol::context::TimeSleepRequest::decode(sleep.payload.as_slice())?.duration,
-            Some(prost_types::Duration { seconds: 3600, nanos: 0 })
-        );
+        assert_eq!(sleep.operation, "harmos.plugin.host.v1.Time/Sleep");
+        assert_eq!(sleep.fingerprint, declarations.requires[2].fingerprint);
+        assert_eq!(TimeSleepRequest::decode(sleep.payload.as_slice())?.duration, Some(ProtoDuration { seconds: 3600, nanos: 0 }));
 
         // Complete the Wait by Protocol Event and Supply Literal Host Evidence Time.
-        support::reply(&send, sleep.call, harmos_protocol::context::TimeSleepResponse {}).await?;
+        support::reply(&send, sleep.call, TimeSleepResponse {}).await?;
         let now = support::child(&mut input).await?;
-        assert_eq!(now.operation, "harmos.context.v1.Time/Get");
-        assert_eq!(now.fingerprint, catalog.requires[1].fingerprint);
-        let at = prost_types::Timestamp { seconds: 12345, nanos: 67890 };
-        support::reply(&send, now.call, harmos_protocol::context::TimeGetResponse { now: Some(at) }).await?;
+        assert_eq!(now.operation, "harmos.plugin.host.v1.Time/Get");
+        assert_eq!(now.fingerprint, declarations.requires[3].fingerprint);
+        let at = Timestamp { seconds: 12345, nanos: 67890 };
+        support::reply(&send, now.call, TimeGetResponse { now: Some(at) }).await?;
         let evidence = support::terminal::<Evidence>(&mut input).await?;
         assert_eq!(evidence.resource, 42);
         assert_eq!(evidence.at, Some(at));
@@ -104,8 +110,8 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         // Demand Closure Releases an Observer's In-Progress Device Read.
         let (demand, mut samples) = support::publish(&mut process.client, "execution.reading").await?;
         demand
-            .send(harmos_protocol::plugin::InstanceSamplesRequest {
-                frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
+            .send(InstanceSamplesRequest {
+                frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
             })
             .await?;
         assert_eq!(process.event().await?, "observer_reading");
@@ -113,17 +119,17 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
         assert!(samples.message().await?.is_none());
         let (_send, mut input) = support::invoke(&mut process.client, "execution.reading_released").await?;
         assert!(support::terminal::<Isolation>(&mut input).await?.absent);
-        assert_eq!(std::fs::read(cleanup.with_extension("reading"))?, b"released");
+        assert_eq!(fs::read(cleanup.with_extension("reading"))?, b"released");
 
         // Reject an Unset Frame During an Active Call Without Losing the Connection.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         support::child(&mut input).await?;
-        send.send(harmos_protocol::plugin::InstanceInvokeRequest { frame: None }).await?;
+        send.send(InstanceInvokeRequest { frame: None }).await?;
         assert_eq!(input.message().await.unwrap_err().code(), tonic::Code::InvalidArgument);
 
         // Stop Completes Cleanup Before Replying and Keeps the Remote Process Available.
-        process.client.stop(harmos_protocol::plugin::InstanceStopRequest { reason: "Story Finished".into() }).await?;
-        assert_eq!(std::fs::read(&cleanup)?, b"cleaned");
+        process.client.stop(InstanceStopRequest { reason: "Story Finished".into() }).await?;
+        assert_eq!(fs::read(&cleanup)?, b"cleaned");
         let second = support::describe(&mut process.client).await?;
         assert_eq!(first, second);
         process.close().await?;
@@ -131,5 +137,5 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Bound Only Transport Hangs; Scenario Time Is Entirely Host-Controlled.
-    tokio::time::timeout(std::time::Duration::from_secs(30), story).await?
+    tokio::time::timeout(Duration::from_secs(30), story).await?
 }

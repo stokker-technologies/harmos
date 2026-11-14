@@ -24,7 +24,7 @@ pub use settings::storage_settings;
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -839,6 +839,44 @@ impl StorageBackend for Data {
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         self.fixture_read_stream(snapshot, selection, page)
+    }
+    fn list_identities<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, selection: &'a IdentitySelection, page: ScanPage,
+    ) -> StorageFuture<'a, Vec<StoredIdentity>> {
+        Box::pin(async move {
+            let image = self.image(snapshot)?;
+            let mut seen = BTreeSet::new();
+            let mut identities = Vec::new();
+            for row in image.rows.values().filter(|row| row.record.position.sequence <= snapshot.at.sequence) {
+                if seen.insert(serde_json::to_vec(&(&row.record.schema, &row.record.scope, &row.record.item, &row.stream)).unwrap()) {
+                    identities.push(StoredIdentity::Stream {
+                        schema: row.record.schema.clone(),
+                        scope: row.record.scope.clone(),
+                        item: row.record.item.clone(),
+                        stream: row.stream.clone(),
+                        first: row.record.position.clone(),
+                    });
+                }
+            }
+            let mut seen = BTreeSet::new();
+            for object in image.objects.values().filter(|object| object.position.sequence <= snapshot.at.sequence) {
+                if seen.insert(serde_json::to_vec(&(&object.value.schema, &object.value.item)).unwrap()) {
+                    identities.push(StoredIdentity::Object {
+                        schema: object.value.schema.clone(),
+                        key: object.value.item.clone(),
+                        first: object.position.clone(),
+                    });
+                }
+            }
+            identities.retain(|identity| selection.matches(identity) && identity.first().sequence > page.after);
+            identities.sort_by_key(|identity| identity.first().sequence);
+            identities.truncate(page.rows.get());
+            let required: usize = identities.iter().map(MemorySize::memory_size).sum();
+            if required > page.bytes.get() {
+                return Err(failure(BackendFailure::Permanent));
+            }
+            Ok(identities)
+        })
     }
     fn list_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,

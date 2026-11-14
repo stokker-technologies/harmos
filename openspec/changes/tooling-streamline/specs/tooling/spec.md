@@ -35,3 +35,22 @@ Everything needed to prepare, build, test, package and release the project SHALL
 #### Scenario: Fresh Clone
 - **WHEN** a developer clones this repository alone and runs the prepare task
 - **THEN** every entry point works, with no other repository checked out and no company tooling installed
+
+### Requirement: C# Solution Ownership
+The C# SDK SHALL build, test, format/check and pack every project through `sdk/csharp/Harmos.slnx`, with a pinned SDK, central properties and package versions, committed dependency locks and locked normal restore. The public package id `Harmos` and public namespaces SHALL remain unchanged.
+
+#### Scenario: Generated Root Drift
+- **WHEN** a committed library or test client root differs from its descriptor-derived output
+- **THEN** check fails with the generation command without rewriting the file, and only generate updates committed roots
+
+#### Scenario: Relocated Build Outputs
+- **WHEN** a test or fixture producer locates the C# executable
+- **THEN** it reads the MSBuild output manifest under ignored artifacts rather than constructing framework-specific output directories
+
+#### Scenario: Local NuGet Consumption
+- **WHEN** an independent .NET application restores Harmos from the local package feed
+- **THEN** it consumes the workspace version, authoring APIs and client roots with complete package metadata and SourceLink, while conformance support remains test-owned
+
+#### Scenario: Native Validation
+- **WHEN** PR or Nightly validation runs
+- **THEN** native Linux and Windows C# lanes check the solution and test compiled producer outputs using only their declared tools

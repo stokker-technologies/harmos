@@ -18,13 +18,13 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 from xml.etree import ElementTree
 
 # Third Party Imports
-
 # Local Imports
 from .. import temporary
+from ..build.cargo import Target
 from ..process import spawn_flags
 from . import nextest, policy, report
 
@@ -40,10 +40,29 @@ FIXTURES = Path("crates/harmos-runtime/tests/support/fixtures.rs")
 
 # === Classes === #
 
+
+class Dependency(TypedDict, total=False):
+    name: str
+    path: str
+
+
+class Package(TypedDict):
+    id: str
+    name: str
+    manifest_path: str
+    targets: list[Target]
+    dependencies: list[Dependency]
+
+
+class Metadata(TypedDict):
+    packages: list[Package]
+    workspace_members: list[str]
+
+
 # === Public Functions === #
 
 
-def select(directory: Path, metadata: dict[str, Any], paths: Sequence[Path]) -> dict[str, list[str]]:
+def select(directory: Path, metadata: Metadata, paths: Sequence[Path]) -> dict[str, list[str]]:
     """Select Test Targets, Including Local Consumers Of Changed Product Code."""
     packages = {item["name"]: item for item in metadata["packages"] if item["id"] in metadata["workspace_members"]}
     roots = {name: Path(item["manifest_path"]).parent.resolve() for name, item in packages.items()}
@@ -130,7 +149,7 @@ def run(
 ) -> int:
     selectors = ["--manifest-path", str(manifest)] if manifest else []
     selected: dict[str, list[str]]
-    if target is not None and package is not None:
+    if target is not None and package is not None and manifest is None:
         selected = {package: [target]}
     else:
         result = subprocess.run(
@@ -153,13 +172,27 @@ def run(
             candidates = {item["name"]: item for item in metadata["packages"]}
             if package is None or package not in candidates:
                 raise policy.TestError(f"unknown Rust package: {package}")
-            selected = {package: _targets(candidates[package])}
+            selected = {package: [target] if target is not None else _targets(candidates[package])}
     if not selected or not any(selected.values()):
         raise policy.TestError("selection contains no Rust test targets")
 
     rules = policy.load(directory)
     names = sorted({name for targets in selected.values() for name in targets if name != "lib"})
     overrides = nextest.overrides(rules, None, coverage=False, binaries={name: name for name in names})
+    if manifest is not None:
+        # A Separate Workspace Cannot Match The Root Workspace's Binary IDs.
+        packages = {item["name"] for item in metadata["packages"]}
+        overrides = [
+            (
+                re.sub(
+                    r"binary_id\(=([^:()]+)::[^()]+\)",
+                    lambda match: match[0] if match[1] in packages else "none()",
+                    expression,
+                ),
+                seconds,
+            )
+            for expression, seconds in overrides
+        ]
     composite = target is None
     executed = 0
     output = report.native_directory(directory, Path("target/tests/focused"))
@@ -205,10 +238,13 @@ def run(
                 if exact:
                     command += ["--", exact, "--exact"]
                 print(f"Focused Tests: {name} / {', '.join(group)}", flush=True)
+                environment = dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target"))
+                suffix = ".exe" if os.name == "nt" else ""
+                environment.setdefault("HARMOS_CPP_PLUGIN", str(directory / "target/cpp/tests" / f"harmos-cpp-conformance{suffix}"))
                 result = subprocess.run(
                     command,
                     cwd=directory,
-                    env=dict(os.environ, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")),
+                    env=environment,
                     stdin=sys.stdin,
                     stdout=sys.stdout,
                     stderr=sys.stderr,
@@ -229,7 +265,7 @@ def run(
 # === Private Functions === #
 
 
-def _targets(package: dict[str, Any]) -> list[str]:
+def _targets(package: Package) -> list[str]:
     selected = []
     for target in package["targets"]:
         if "test" in target["kind"]:
