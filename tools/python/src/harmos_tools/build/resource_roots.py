@@ -748,6 +748,13 @@ def rust_message(full: str) -> str:
 
 
 def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
+    selected: list[Method] = []
+    for method in methods:
+        method = method.copy()
+        if method["face"] == "client" and method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
+            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
+        selected.append(method)
+    methods = selected
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
