@@ -44,7 +44,7 @@ use harmos_protocol::plugin::{
     instance_samples_request,
     instance_server::{Instance as Service, InstanceServer},
 };
-use harmos_protocol::v1::{self as v1, response};
+use harmos_protocol::v1::{self as v1, Declarations, response};
 use prost_types::Timestamp;
 use std::{
     env,
@@ -205,7 +205,7 @@ impl Service for Server {
 
 /* === Public Functions === */
 
-pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
+pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
     let message_bytes = harmos_protocol::transfer::message_bytes(&plugin.transfer)
         .filter(|bytes| bytes.get() <= u32::MAX as usize)
@@ -220,7 +220,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
     let (shutdown, stopped) = oneshot::channel();
     let (jobs, receiver) = mpsc::channel(1);
     let executor = tokio::task::spawn_local(execute(receiver));
-    let requires = Plugin::requirements(&catalog);
+    let requires = Plugin::requirements(&declarations);
     let streams = plugin
         .streams
         .into_iter()
@@ -238,7 +238,7 @@ pub(crate) async fn serve(plugin: Plugin, catalog: v1::Catalog) -> Result<()> {
                 seconds: started_at.as_secs() as i64,
                 nanos: started_at.subsec_nanos() as i32,
             }),
-            catalog: Some(catalog),
+            declarations: Some(declarations),
             revision: 1,
             sdk: "harmos_rust".into(),
             sdk_version: env!("CARGO_PKG_VERSION").into(),

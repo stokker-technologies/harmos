@@ -58,7 +58,7 @@ write fails rather than overwriting another manager's registry.
 Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
 Replace changes a managed bundle while retaining the entry name, settings and product attachments. It validates the replacement description, contracts and sample channels before activating it. Failed staging leaves the previous bundle serving. Remote entries cannot be replaced by this operation. Set carries all writable
 fields and refuses stale revisions with the action to get again and retry.
-The entry also reports its runtime state, last connected description, catalog
+The entry also reports its runtime state, last connected description, declarations
 digest, activation identity, current managed process identity and failure.
 Unavailable entries stay in the set and remain manageable.
 
@@ -99,7 +99,7 @@ before each activation. Invalid content never creates an entry or starts a proce
 
 Managed executables receive `HARMOS_ADDRESS=127.0.0.1:0` and announce their actual
 bound endpoint through the existing readiness line. Windows launches use
-`CREATE_NO_WINDOW`. Existing attachment code owns catalog admission, dispatch,
+`CREATE_NO_WINDOW`. Existing attachment code owns declaration admission, dispatch,
 streams, reconnect and process supervision. A managed process exit reports an
 unavailable entry with its failure; explicit Restart replaces it. Remote
 attachments reconnect under their existing placement policy. Delete stops and
@@ -124,14 +124,14 @@ the manager never interprets that scope or treats it as authorization.
 A product adopting this manager removes its own entry registry, placement
 persistence, bundle installer, enable/restart/remove handlers and duplicated
 connection, dispatch, stream and process-launch implementation. Its client
-interface calls the generated `Plugins` service. Catalog interpretation, selection
+interface calls the generated `Plugins` service. Declaration interpretation, selection
 of plugins for a unit of work and secrets stay with the product. Product-defined
-catalog sections describe product resources, including secret requirements.
+declaration sections describe product resources, including secret requirements.
 The library neither stores nor interprets those sections.
 
 ## Typed Settings
 
-A plugin reports `harmos.v1.SettingsDeclarations` in `Catalog.sections`. Each
+A plugin reports `harmos.v1.SettingsDeclarations` in `Declarations.sections`. Each
 setting has a name, title, description and typed default. `SettingValue` carries
 one flag, integer, finite number, text or duration. List materializes defaults;
 Set replaces the complete map, rejects unknown or missing names and checks each
@@ -160,3 +160,14 @@ one durable registry commit and
 publishes `PluginChange.deleted` through Watch. A product removes its own per-plugin
 data from that in-process watch and reconciles against List at startup. Product
 cleanup is eventual; it is not part of the library's deletion transaction.
+
+## WebAssembly Guests
+
+A loaded guest is registered through `PluginHost.register_guest` after configuring
+and starting the entry manager. Its identity names a durable entry with the empty
+`guest` placement. The host supplies the module again after restart; registration
+reuses the stored typed settings. Guests appear in `Plugins.List/Get`, share
+`Plugins.Settings.List/Set`, and read only their own values through plugin-host
+`Settings.List`. Deletion removes the entry and its settings atomically, then
+retires its activation. Product data cleanup remains eventual through Watch.
+`Plugins.Create` cannot load a guest; `Plugins.Replace` accepts managed bundles only.

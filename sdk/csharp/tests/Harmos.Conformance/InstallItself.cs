@@ -38,7 +38,7 @@ internal static class InstallItself
     }
     if (ready is null) throw new InvalidOperationException("Watch Plugins: closed before Ready");
     // Invoke Its Public Operation Through the Host
-    var contract = ready.Description.Catalog.Operations.Single(operation => operation.Id == "example.echo");
+    var contract = ready.Description.Declarations.Operations.Single(operation => operation.Id == "example.echo");
     var data = new byte[checked((int)transfer.ChunkBytes)];
     "hello"u8.CopyTo(data);
     var reply = await client.Invocations.Invoke(new InvocationsInvokeRequest

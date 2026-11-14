@@ -92,7 +92,7 @@ impl Publications {
         streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &crate::operations::Manager,
         replace: bool,
     ) -> Result<PreparedPublications, Error> {
-        let catalog = activation.description.catalog.as_ref().expect("admitted description");
+        let catalog = activation.description.declarations.as_ref().expect("admitted description");
         let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().unwrap_or_default()).map_err(invalid)?;
         let mut declarations = Vec::new();
         let mut rows = Vec::new();

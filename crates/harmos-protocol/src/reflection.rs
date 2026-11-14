@@ -165,6 +165,11 @@ impl ReflectMessage for crate::client::PluginManaged {
         pool().get_message_by_name("harmos.client.v1.PluginManaged").expect("generated message")
     }
 }
+impl ReflectMessage for crate::client::PluginGuest {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.client.v1.PluginGuest").expect("generated message")
+    }
+}
 impl ReflectMessage for crate::client::PluginPlacement {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.client.v1.PluginPlacement").expect("generated message")
@@ -705,9 +710,9 @@ impl ReflectMessage for crate::v1::Sample {
         pool().get_message_by_name("harmos.v1.Sample").expect("generated message")
     }
 }
-impl ReflectMessage for crate::v1::Catalog {
+impl ReflectMessage for crate::v1::Declarations {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.v1.Catalog").expect("generated message")
+        pool().get_message_by_name("harmos.v1.Declarations").expect("generated message")
     }
 }
 impl ReflectMessage for crate::v1::Section {

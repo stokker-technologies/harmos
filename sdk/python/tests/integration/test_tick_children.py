@@ -98,7 +98,7 @@ class TickChildren(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
         description = await host.Get(InstanceGetRequest(revision=1))
-        settings = SettingsDeclarations.FromString(description.catalog.sections[0].payload)
+        settings = SettingsDeclarations.FromString(description.declarations.sections[0].payload)
         self.assertEqual(settings.values, [declaration])
 
         # Complete Concurrent Children Out of Order, Preserving the Parent Scope.
@@ -234,10 +234,10 @@ class TickChildren(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await active.call(ECHO, BytesValue())
 
-        # Reject Incomplete or Duplicate Settings at Catalog Construction.
+        # Reject Incomplete or Duplicate Settings at Declarations Construction.
         for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
             with self.assertRaises(ValueError):
-                Plugin(reader, id="example", version="1.0.0", settings=declarations).catalog()
+                Plugin(reader, id="example", version="1.0.0", settings=declarations).declarations()
 
 
 # === Public Functions === #

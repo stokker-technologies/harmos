@@ -920,7 +920,7 @@ package harmos.plugin.v1;
 message InstanceGetRequest { uint32 revision = 1; }
 message InstanceGetResponse {
   string id = 1;
-  Catalog catalog = 2;
+  Declarations declarations = 2;
   // Version, start time and negotiated protocol/SDK identity remain included.
 }
 message InstanceInvokeRequest { HostFrame frame = 1; }
@@ -950,7 +950,7 @@ message OperationContract {
   bytes fingerprint = 6;
 }
 message Requirement { string id = 1; bytes fingerprint = 2; }
-message Catalog {
+message Declarations {
   repeated OperationContract operations = 1;
   repeated Requirement requires = 2;
   // Streams, sections, digest and descriptors remain required as today.
@@ -1239,7 +1239,7 @@ message PluginDescription {
   string id = 1;
   string version = 2;
   google.protobuf.Timestamp started_at = 3;
-  harmos.v1.Catalog catalog = 4;
+  harmos.v1.Declarations declarations = 4;
   uint32 revision = 5;
   string sdk = 6;
   string sdk_version = 7;
@@ -1273,7 +1273,7 @@ message PluginEntry {
   PluginState state = 5;
   harmos.v1.Failure failure = 6;
   PluginDescription description = 7;
-  bytes catalog_digest = 8;
+  bytes declarations_digest = 8;
   PluginProcess process = 9;
   uint64 activation = 10;
 }

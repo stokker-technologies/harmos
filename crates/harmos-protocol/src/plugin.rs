@@ -13,7 +13,7 @@ pub struct InstanceGetRequest {
     #[prost(string, tag = "3")]
     pub host_version: ::prost::alloc::string::String,
 }
-/// Supplies process identity, startup time, complete catalog and carrier limits for connection admission.
+/// Supplies process identity, startup time, complete declarations and carrier limits for connection admission.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceGetResponse {
@@ -28,7 +28,7 @@ pub struct InstanceGetResponse {
     #[prost(message, optional, tag = "3")]
     pub started_at: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "4")]
-    pub catalog: ::core::option::Option<crate::v1::Catalog>,
+    pub declarations: ::core::option::Option<crate::v1::Declarations>,
     /// Highest revision of harmos.v1 the plugin implements.
     #[prost(uint32, tag = "5")]
     pub revision: u32,
@@ -240,7 +240,7 @@ pub mod instance_client {
             self.inner = self.inner.max_encoding_message_size(limit);
             self
         }
-        /// Identity, start time and catalog. Called once per connection, first.
+        /// Identity, start time and declarations. Called once per connection, first.
         pub async fn get(
             &mut self,
             request: impl tonic::IntoRequest<super::InstanceGetRequest>,
@@ -378,7 +378,7 @@ pub mod instance_server {
     /// Generated trait containing gRPC methods that should be implemented for use with InstanceServer.
     #[async_trait]
     pub trait Instance: std::marker::Send + std::marker::Sync + 'static {
-        /// Identity, start time and catalog. Called once per connection, first.
+        /// Identity, start time and declarations. Called once per connection, first.
         async fn get(
             &self,
             request: tonic::Request<super::InstanceGetRequest>,

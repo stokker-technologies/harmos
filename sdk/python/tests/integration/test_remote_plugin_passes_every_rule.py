@@ -6,7 +6,7 @@
 #
 # ***
 
-"""A Python Author Serves the Catalog to the Reference Host."""
+"""A Python Author Serves the Declarations to the Reference Host."""
 
 # === Imports === #
 

@@ -95,7 +95,12 @@ pub fn inspect(path: &Path) -> Result<Inspection, Error> {
                 version: description.version,
                 description: String::new(),
                 config: String::new(),
-                operations: description.catalog.into_iter().flat_map(|catalog| catalog.operations).map(|operation| operation.id).collect(),
+                operations: description
+                    .declarations
+                    .into_iter()
+                    .flat_map(|catalog| catalog.operations)
+                    .map(|operation| operation.id)
+                    .collect(),
                 sha256: digest(&bytes),
                 facility: "sidecar",
             });
@@ -115,7 +120,7 @@ fn guest_inspection(bytes: &[u8]) -> Result<Inspection, Error> {
         version: declaration.version,
         description: String::new(),
         config: String::new(),
-        operations: declaration.catalog.into_iter().flat_map(|catalog| catalog.operations).map(|operation| operation.id).collect(),
+        operations: declaration.declarations.into_iter().flat_map(|catalog| catalog.operations).map(|operation| operation.id).collect(),
         sha256: digest(bytes),
         facility: "guest",
     })

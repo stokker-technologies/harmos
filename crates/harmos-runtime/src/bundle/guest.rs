@@ -63,9 +63,9 @@ pub fn registration(component: &[u8]) -> Result<harmos_protocol::v1::GuestRegist
             return Err(Error::Limit("guest registration bytes"));
         }
         let value = harmos_protocol::v1::GuestRegistration::decode(custom).map_err(|error| invalid(error.to_string()))?;
-        let catalog = value.catalog.as_ref().ok_or_else(|| invalid("guest catalog is missing"))?;
-        if catalog.digest != harmos_protocol::schema::catalog_digest(catalog) {
-            return Err(invalid("guest catalog digest differs"));
+        let declarations = value.declarations.as_ref().ok_or_else(|| invalid("guest declarations is missing"))?;
+        if declarations.digest != harmos_protocol::schema::declarations_digest(declarations) {
+            return Err(invalid("guest declarations digest differs"));
         }
         registration = Some(value);
     }

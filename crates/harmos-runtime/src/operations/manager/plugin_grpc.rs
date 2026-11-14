@@ -183,7 +183,7 @@ impl Manager {
     pub(crate) fn prepare_grpc_admission(
         &self, activation: &Activation, lane: &'static str, replace: bool,
     ) -> std::result::Result<Admission, PlacementError> {
-        let catalog = activation.description.catalog.as_ref().unwrap();
+        let catalog = activation.description.declarations.as_ref().unwrap();
         let mut entries = Vec::new();
         for contract in &catalog.operations {
             let definition = OperationDefinition {
@@ -263,7 +263,7 @@ impl crate::operations::Context<'_> {
         &self, caller: &crate::plugin::grpc::CallingPlugin, child: v1::ChildRequest,
     ) -> Result<ChildInvocation> {
         let owner = caller.owner();
-        let requires = &caller.description.catalog.as_ref().expect("admitted description").requires;
+        let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
         if child.background && child.operation != "harmos.plugin.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",

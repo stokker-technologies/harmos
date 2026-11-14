@@ -226,7 +226,7 @@ void Plugin::serve(std::string address) const {
     const auto maximum = transfer_message_bytes(transfer_);
     description.set_sdk_version("0.1.0");
     description.set_message_bytes(maximum);
-    *description.mutable_catalog() = catalog();
+    *description.mutable_declarations() = declarations();
     static const auto started = std::chrono::system_clock::now().time_since_epoch();
     const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(started);
     description.mutable_started_at()->set_seconds(seconds.count());

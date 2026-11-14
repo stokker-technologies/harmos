@@ -1166,7 +1166,7 @@ the current connection. An activation exposes its `description`, monotonic `numb
 previous `started_at` timestamps to distinguish a reconnect from a process restart.
 Retained activations fail after disconnect and never follow the next connection.
 
-Before admission the host verifies the catalog digest, resolves its declared
+Before admission the host verifies the declarations digest, resolves its declared
 message names, and verifies operation fingerprints using the shared
 [descriptor rule](../proto/harmos/v1/behaviour.md#schema-fingerprints). The Rust SDK,
 reference fixture and host use `harmos-protocol` for this computation. Inconsistent
@@ -1470,3 +1470,13 @@ The gRPC manager owns client access and the service manager owns host status.
 Supply a credential store, identity and optional health/diagnostics contributions;
 see [Access and Host Status](access-status.md) for composition, paging, redaction
 and ranged archive reads.
+
+## Reported Plugin Declarations
+
+Plugins report `harmos.v1.Declarations` through `InstanceGetResponse.declarations`,
+`GuestRegistration.declarations` and `PluginDescription.declarations`. Inspect them
+with Rust/Python/C++ `plugin.declarations()` or C# `plugin.Declarations()`. Consumers
+regenerate bindings and migrate these message, field and builder names when pinning
+this revision; no Catalog alias remains. In-process operation and storage registries
+retain their catalog APIs. Configure and start the plugin entry manager before
+registering guests; see [Guest Entries](plugin-manager.md#webassembly-guests).

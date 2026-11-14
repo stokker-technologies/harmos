@@ -187,7 +187,7 @@ public sealed class SamplesCalls
     var publication = device
         ? new Publication(null, async (context, rows) => { await context.CancelledAsync(); })
         : new Publication(async context => (await observer(context)).ToByteString(), null);
-    return new PluginService(new InstanceGetResponse { Id = "fixture", Catalog = plugin.Catalog() },
+    return new PluginService(new InstanceGetResponse { Id = "fixture", Declarations = plugin.Declarations() },
         [], new Dictionary<string, Publication> { ["fixture"] = publication }, [], true, new Lifetime());
   }
 

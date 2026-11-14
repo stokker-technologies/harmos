@@ -25,8 +25,8 @@ use std::{
 
 // Local Imports
 use crate::{Error, Message, Observer, Operation, OperationRequest, Result, Stream, message::merge_types, stream::StreamDefinition};
-use harmos_protocol::v1;
 use harmos_protocol::v1::{SettingsDeclarations, StorageTransferSettings};
+use harmos_protocol::{v1, v1::Declarations};
 use prost_reflect::DescriptorPool;
 use prost_types::FileDescriptorSet;
 
@@ -147,14 +147,14 @@ impl Plugin {
         self
     }
 
-    pub fn catalog(&self) -> Result<v1::Catalog> {
+    pub fn declarations(&self) -> Result<Declarations> {
         let id_valid = !self.id.is_empty()
             && self.id.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'.' || byte == b'_');
         if !id_valid {
             return Err(Error::Invalid("Plugin Identity Must Be Lowercase with Dots or Underscores".into()));
         }
         semver::Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
-        let mut catalog = v1::Catalog::default();
+        let mut declarations = Declarations::default();
         let mut types = FileDescriptorSet::default();
         for (_, definitions) in &self.messages {
             merge_types(&mut types, definitions.clone())?;
@@ -178,7 +178,7 @@ impl Plugin {
                 continue;
             }
             harmos_protocol::schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
-            catalog.operations.push(contract);
+            declarations.operations.push(contract);
             merge_types(&mut types, operation.types.clone())?;
         }
         let mut requires = HashSet::new();
@@ -205,7 +205,7 @@ impl Plugin {
                 },
             )
             .map_err(|error| Error::Invalid(error.to_string()))?;
-            catalog.requires.push(v1::Requirement { id: requirement.id.clone(), fingerprint });
+            declarations.requires.push(v1::Requirement { id: requirement.id.clone(), fingerprint });
             merge_types(&mut types, requirement.types.clone())?;
         }
         let mut streams = HashSet::new();
@@ -228,7 +228,7 @@ impl Plugin {
                 declaration.interval = observer.interval;
                 declaration.interval_setting = observer.interval_setting.clone();
             }
-            catalog.streams.push(declaration);
+            declarations.streams.push(declaration);
             merge_types(&mut types, stream.types.clone())?;
         }
         for observer in &self.observers {
@@ -255,7 +255,7 @@ impl Plugin {
                         .ok_or_else(|| Error::Invalid(format!("Declare Setting {}: Typed Default Required", declaration.name)))?;
                 }
             }
-            catalog.sections.push(section.clone());
+            declarations.sections.push(section.clone());
             merge_types(&mut types, definitions.clone())?;
         }
         let mut validation = types.clone();
@@ -270,25 +270,25 @@ impl Plugin {
         }
         let pool = DescriptorPool::from_file_descriptor_set(validation)
             .map_err(|error| Error::Invalid(format!("Invalid Protobuf Definitions: {error}")))?;
-        let names = catalog
+        let names = declarations
             .operations
             .iter()
             .flat_map(|operation| [&operation.request, &operation.response])
-            .chain(catalog.streams.iter().map(|stream| &stream.row))
-            .chain(catalog.sections.iter().map(|section| &section.r#type))
+            .chain(declarations.streams.iter().map(|stream| &stream.row))
+            .chain(declarations.sections.iter().map(|section| &section.r#type))
             .chain(self.messages.iter().map(|(name, _)| name));
         for name in names {
             if pool.get_message_by_name(name).is_none() {
                 return Err(Error::Invalid(format!("Missing Protobuf Message: {name}")));
             }
         }
-        catalog.types = Some(types);
-        catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
-        Ok(catalog)
+        declarations.types = Some(types);
+        declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
+        Ok(declarations)
     }
 
-    pub(crate) fn requirements(catalog: &v1::Catalog) -> Arc<HashMap<String, Vec<u8>>> {
-        Arc::new(catalog.requires.iter().map(|requirement| (requirement.id.clone(), requirement.fingerprint.clone())).collect())
+    pub(crate) fn requirements(declarations: &Declarations) -> Arc<HashMap<String, Vec<u8>>> {
+        Arc::new(declarations.requires.iter().map(|requirement| (requirement.id.clone(), requirement.fingerprint.clone())).collect())
     }
 }
 
@@ -316,20 +316,20 @@ mod tests {
     }
 
     async fn not_called(_: &Context, _: ()) -> Result<()> {
-        panic!("Catalog Inspection Entered A Handler");
+        panic!("Declarations Inspection Entered A Handler");
     }
 
     #[test]
-    fn catalog_describes_values_without_running_handlers_or_cleanup() {
-        let plugin = Plugin::new("catalog_fixture", "1.0.0")
-            .operation(Operation::new("catalog.read", not_called).visibility(v1::Visibility::Protected))
+    fn declarations_describes_values_without_running_handlers_or_cleanup() {
+        let plugin = Plugin::new("declarations_fixture", "1.0.0")
+            .operation(Operation::new("declarations.read", not_called).visibility(v1::Visibility::Protected))
             .section(Settings { interval_ms: 250 })
-            .on_stop(|| panic!("Catalog Inspection Entered Cleanup"));
-        let catalog = plugin.catalog().unwrap();
-        assert_eq!(catalog.operations.len(), 1);
-        assert_eq!(catalog.operations[0].id, "catalog.read");
-        assert_eq!(catalog.sections.len(), 1);
-        let settings = <Settings as prost::Message>::decode(catalog.sections[0].payload.as_slice()).unwrap();
+            .on_stop(|| panic!("Declarations Inspection Entered Cleanup"));
+        let declarations = plugin.declarations().unwrap();
+        assert_eq!(declarations.operations.len(), 1);
+        assert_eq!(declarations.operations[0].id, "declarations.read");
+        assert_eq!(declarations.sections.len(), 1);
+        let settings = <Settings as prost::Message>::decode(declarations.sections[0].payload.as_slice()).unwrap();
         assert_eq!(settings.interval_ms, 250);
     }
 
@@ -353,15 +353,15 @@ mod tests {
                 },
             ],
         };
-        let catalog = Plugin::new("settings", "1.0.0").settings(declarations.clone()).catalog().unwrap();
-        let decoded = <SettingsDeclarations as prost::Message>::decode(catalog.sections[0].payload.as_slice()).unwrap();
+        let reported = Plugin::new("settings", "1.0.0").settings(declarations.clone()).declarations().unwrap();
+        let decoded = <SettingsDeclarations as prost::Message>::decode(reported.sections[0].payload.as_slice()).unwrap();
         assert_eq!(decoded, declarations);
         let mut duplicate = declarations.clone();
         duplicate.values.push(duplicate.values[0].clone());
-        assert!(Plugin::new("settings", "1.0.0").settings(duplicate).catalog().is_err());
+        assert!(Plugin::new("settings", "1.0.0").settings(duplicate).declarations().is_err());
         let mut missing = declarations;
         missing.values[0].default = None;
-        assert!(Plugin::new("settings", "1.0.0").settings(missing).catalog().is_err());
+        assert!(Plugin::new("settings", "1.0.0").settings(missing).declarations().is_err());
         let unset = SettingsDeclarations {
             values: vec![v1::SettingDeclaration {
                 name: "unset".into(),
@@ -369,24 +369,24 @@ mod tests {
                 ..Default::default()
             }],
         };
-        assert!(Plugin::new("settings", "1.0.0").settings(unset).catalog().is_err());
+        assert!(Plugin::new("settings", "1.0.0").settings(unset).declarations().is_err());
     }
 
     #[test]
-    fn duplicate_operations_are_rejected_at_catalog_construction() {
+    fn duplicate_operations_are_rejected_at_declarations_construction() {
         let plugin = Plugin::new("test", "1.0.0")
             .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected))
             .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected));
-        assert!(plugin.catalog().is_err());
+        assert!(plugin.declarations().is_err());
     }
 
     #[test]
     fn observer_must_own_one_declared_stream() {
         let stream = Stream::<()>::new("test.samples");
         let observer = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        assert!(Plugin::new("test", "1.0.0").observer(observer).catalog().is_err());
+        assert!(Plugin::new("test", "1.0.0").observer(observer).declarations().is_err());
         let first = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         let second = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        assert!(Plugin::new("test", "1.0.0").stream(stream).observer(first).observer(second).catalog().is_err());
+        assert!(Plugin::new("test", "1.0.0").stream(stream).observer(first).observer(second).declarations().is_err());
     }
 }

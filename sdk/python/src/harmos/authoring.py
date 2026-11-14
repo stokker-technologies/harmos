@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Remote Plugin Catalog Construction and Plain gRPC Serving."""
+"""Remote Plugin Declarations Construction and Plain gRPC Serving."""
 
 # === Imports === #
 
@@ -27,7 +27,7 @@ from google.protobuf.message import DecodeError, Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos.plugin.v1 import instance_pb2 as carrier
-from harmos.v1.description_pb2 import Catalog
+from harmos.v1.description_pb2 import Declarations
 from harmos.v1.invocation_pb2 import Request, Response
 from harmos.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
 from harmos.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
@@ -106,14 +106,14 @@ class Plugin:
                 cleanup.append(cast(Cleanup, getattr(self.instance, name)))
         return operations, streams, cleanup
 
-    def catalog(self) -> Catalog:
+    def declarations(self) -> Declarations:
         if not re.fullmatch(r"[a-z0-9._]+", self.id):
             raise ValueError("Plugin Identity Must Be Lowercase with Dots or Underscores")
         core = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
         prerelease = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
         if not re.fullmatch(core + rf"(?:-{prerelease}(?:\.{prerelease})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", self.version):
             raise ValueError("Invalid Plugin Version")
-        catalog = Catalog()
+        declarations = Declarations()
         files: dict[str, FileDescriptorProto] = {}
         _merge(files, *self.messages)
         operations, streams, _ = self._registrations()
@@ -124,12 +124,12 @@ class Plugin:
                 raise ValueError(f"Invalid Visibility: {definition.id}")
             if definition.visibility == VISIBILITY_PRIVATE:
                 continue
-            catalog.operations.add().CopyFrom(definition.contract())
+            declarations.operations.add().CopyFrom(definition.contract())
             _merge(files, definition.request, definition.response)
         for definition in self.requires:
             if definition.visibility == VISIBILITY_PRIVATE:
                 raise ValueError(f"Require {definition.id}: Private Calls Are Local")
-            catalog.requires.add(id=definition.id, fingerprint=definition.fingerprint)
+            declarations.requires.add(id=definition.id, fingerprint=definition.fingerprint)
             _merge(files, definition.request, definition.response)
         for definition, _, observing in streams:
             interval = definition.interval
@@ -140,7 +140,7 @@ class Plugin:
                     raise ValueError("Invalid Observer Interval")
                 if interval.seconds == 0 and interval.nanos == 0:
                     raise ValueError("Positive Observer Interval Required")
-            catalog.streams.add().CopyFrom(definition.declaration())
+            declarations.streams.add().CopyFrom(definition.declaration())
             _merge(files, definition.row)
         names = [setting.name for setting in self.settings]
         if any(not name for name in names) or len(set(names)) != len(names):
@@ -158,13 +158,18 @@ class Plugin:
         if self.settings:
             sections.append(SettingsDeclarations(values=self.settings))
         for section in sections:
-            catalog.sections.add(type=section.DESCRIPTOR.full_name, payload=section.SerializeToString())
+            declarations.sections.add(type=section.DESCRIPTOR.full_name, payload=section.SerializeToString())
             _merge(files, type(section))
-        for entries, key in ((catalog.operations, "id"), (catalog.requires, "id"), (catalog.streams, "id"), (catalog.sections, "type")):
+        for entries, key in (
+            (declarations.operations, "id"),
+            (declarations.requires, "id"),
+            (declarations.streams, "id"),
+            (declarations.sections, "type"),
+        ):
             names = [getattr(entry, key) for entry in entries]
             if any(not name for name in names) or len(set(names)) != len(names):
-                raise ValueError("Duplicate or Empty Catalog Identifier")
-        catalog.types.file.extend(files.values())
+                raise ValueError("Duplicate or Empty Declarations Identifier")
+        declarations.types.file.extend(files.values())
         pool = DescriptorPool()
         installed = set()
 
@@ -179,12 +184,12 @@ class Plugin:
 
         for name in files:
             install(name)
-        catalog.digest = sha256(catalog.SerializeToString(deterministic=True)).digest()
-        return catalog
+        declarations.digest = sha256(declarations.SerializeToString(deterministic=True)).digest()
+        return declarations
 
     async def start(self, address: str) -> "Endpoint":
         """Bind the Author's Address; Stop Runs Cleanup and Keeps Serving."""
-        service = _Service(self, self.catalog())
+        service = _Service(self, self.declarations())
         maximum = message_bytes(self.transfer)
         server = grpc.aio.server(options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
         server.add_generic_rpc_handlers(
@@ -290,12 +295,12 @@ class _SamplesScope:
 
 
 class _Service:
-    def __init__(self, plugin: Plugin, catalog: Catalog) -> None:
+    def __init__(self, plugin: Plugin, declarations: Declarations) -> None:
         self.description = carrier.InstanceGetResponse(
             id=plugin.id,
             version=plugin.version,
             started_at=STARTED_AT,
-            catalog=catalog,
+            declarations=declarations,
             revision=1,
             sdk="harmos_python",
             sdk_version=version("harmos-sdk"),
@@ -309,7 +314,7 @@ class _Service:
             definition.id: (definition, handler) for definition, handler in operations if definition.visibility != VISIBILITY_PRIVATE
         }
         self.streams = {definition.id: (definition, handler, observing) for definition, handler, observing in streams}
-        self.requires = {requirement.id: requirement.fingerprint for requirement in catalog.requires}
+        self.requires = {requirement.id: requirement.fingerprint for requirement in declarations.requires}
 
     async def get(self, request: carrier.InstanceGetRequest, context: grpc.aio.ServicerContext) -> carrier.InstanceGetResponse:
         if request.revision == 0:

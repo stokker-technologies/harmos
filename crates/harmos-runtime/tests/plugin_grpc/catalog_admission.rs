@@ -31,35 +31,35 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     // Private and Unspecified Visibility Never Enter the Wire Registry.
     let mut catalog = support::catalog();
     catalog.operations[0].visibility = v1::Visibility::Private as i32;
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
     assert!(runtime.operations.definition("fixture.echo").is_err());
 
     let mut catalog = support::catalog();
     catalog.operations[0].visibility = v1::Visibility::Unspecified as i32;
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
     assert!(runtime.operations.definition("fixture.echo").is_err());
 
     // Refuse A Catalog Whose Bytes Do Not Match Its Advertised Digest
-    remote.catalog(v1::Catalog::default());
+    remote.declarations(v1::Declarations::default());
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
 
     // Refuse A Rehashed Catalog Built Against A Different Operation Schema
     let mut catalog = support::catalog();
     catalog.operations[0].fingerprint[0] ^= 1;
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
 
     // Refuse A Correctly Hashed Catalog With An Unresolved Operation Schema
-    let mut catalog = v1::Catalog {
+    let mut catalog = v1::Declarations {
         operations: vec![v1::OperationContract {
             id: "fixture.echo".into(),
             request: "fixture.Missing".into(),
@@ -69,8 +69,8 @@ async fn host_refuses_tampered_catalogs_before_activation() {
         }],
         ..Default::default()
     };
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
 
@@ -82,8 +82,8 @@ async fn host_refuses_tampered_catalogs_before_activation() {
         interval: Some(prost_types::Duration { seconds: 0, nanos: 0 }),
         ..Default::default()
     });
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
     assert!(runtime.operations.definition("fixture.echo").is_err());
@@ -96,17 +96,17 @@ async fn host_refuses_tampered_catalogs_before_activation() {
         interval_setting: "fixture.Settings.interval".into(),
         ..Default::default()
     });
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
     assert!(runtime.operations.definition("fixture.echo").is_err());
 
     // Admit The Repaired Endpoint And Cleanly Remove It
     let catalog = support::catalog();
-    remote.catalog(catalog.clone());
+    remote.declarations(catalog.clone());
     let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
-    assert_eq!(attached.activation().unwrap().description.catalog, Some(catalog));
+    assert_eq!(attached.activation().unwrap().description.declarations, Some(catalog));
     attached.stop("Catalog Verified").await.unwrap();
     runtime.shutdown().await.unwrap();
 }

@@ -77,7 +77,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     // Public Operations Are Invoked Through the Host Registry.
     let operation = activation
         .description
-        .catalog
+        .declarations
         .as_ref()
         .unwrap()
         .operations
@@ -99,7 +99,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     // Neither a Matching Fingerprint nor the Client Carrier Broadens Protected Visibility.
     let operation = activation
         .description
-        .catalog
+        .declarations
         .as_ref()
         .unwrap()
         .operations

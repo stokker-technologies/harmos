@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use crate::v1::Declarations;
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -107,7 +109,7 @@ pub fn plugin_operation_identity(id: &str) -> Result<(), Error> {
 }
 
 /// Hash an operation's reachable request and response descriptors, independently
-/// of unrelated declarations in the catalog. See the v1 behaviour contract.
+/// of unrelated declarations in the declarations. See the v1 behaviour contract.
 pub fn fingerprint(id: &str, types: &FileDescriptorSet, request: &str, response: &str) -> Result<Vec<u8>, Error> {
     let request = message_types(types, request)?;
     let response = message_types(types, response)?;
@@ -141,11 +143,11 @@ pub fn host_fingerprint(id: &str, contract: &crate::v1::Protobuf) -> Result<Vec<
     Ok(hash.finalize().to_vec())
 }
 
-/// Compute the wire catalog digest without its advertised digest field.
-pub fn catalog_digest(catalog: &crate::v1::Catalog) -> Vec<u8> {
-    let mut catalog = catalog.clone();
-    catalog.digest.clear();
-    Sha256::digest(catalog.encode_to_vec()).to_vec()
+/// Compute the wire declarations digest without its advertised digest field.
+pub fn declarations_digest(declarations: &Declarations) -> Vec<u8> {
+    let mut declarations = declarations.clone();
+    declarations.digest.clear();
+    Sha256::digest(declarations.encode_to_vec()).to_vec()
 }
 
 /// Preprojected Message Options for Validation Without Loading Unrelated Meta-Schemas.

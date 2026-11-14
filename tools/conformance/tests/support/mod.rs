@@ -11,11 +11,11 @@
 
 /* === Modules === */
 
-mod catalog_fault;
+mod declarations_fault;
 
 /* === Re-Exports === */
 
-pub use catalog_fault::{CatalogFault, Fault};
+pub use declarations_fault::{DeclarationsFault, Fault};
 
 /* === Imports === */
 

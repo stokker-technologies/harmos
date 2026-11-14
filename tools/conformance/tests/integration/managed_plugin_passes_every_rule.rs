@@ -67,8 +67,8 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     assert!(output.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
     assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT, "{stdout}");
 
-    // Diagnose a Broken Catalog and Continue Running Every Other Case.
-    let fault = support::CatalogFault::start(&remote.address, support::Fault::Identity).await?;
+    // Diagnose a Broken Declarations and Continue Running Every Other Case.
+    let fault = support::DeclarationsFault::start(&remote.address, support::Fault::Identity).await?;
     let output = Command::new(&host).arg("--address").arg(&fault.address).output().await?;
     let stdout = String::from_utf8(output.stdout)?;
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
@@ -78,9 +78,9 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     // Release the Identity Adapter.
     fault.close().await?;
 
-    // Reject Wrong Fingerprints and Lost Metadata Even With a Correct Catalog Digest.
+    // Reject Wrong Fingerprints and Lost Metadata Even With a Correct Declarations Digest.
     for corruption in [support::Fault::Fingerprint, support::Fault::Options] {
-        let fault = support::CatalogFault::start(&remote.address, corruption).await?;
+        let fault = support::DeclarationsFault::start(&remote.address, corruption).await?;
         let output = Command::new(&host).arg("--address").arg(&fault.address).output().await?;
         let stdout = String::from_utf8(output.stdout)?;
         assert_eq!(output.status.code(), Some(1), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));

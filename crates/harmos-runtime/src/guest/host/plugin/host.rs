@@ -56,6 +56,8 @@ pub(super) type Factory = Arc<dyn Fn() -> Result<Driver> + Send + Sync>;
 type Backends = PluginBackend<Driver, Driver>;
 type Registry = PluginManager<Driver, Driver>;
 type Bind = Arc<dyn Fn(&mut Bindings<'_>) -> Result<()> + Send + Sync>;
+pub(crate) type EntryObserver = Arc<dyn Fn(BTreeMap<String, PluginStatus>) + Send + Sync>;
+
 type Snapshots = Arc<RwLock<BTreeMap<String, PluginStatus>>>;
 
 /* === Structs === */
@@ -68,6 +70,7 @@ pub struct PluginHost<A: Application> {
 struct Shared<A: Application> {
     commands: mpsc::Sender<Command>,
     statuses: Snapshots,
+    entry_observer: Arc<RwLock<Option<EntryObserver>>>,
     closing: AtomicBool,
     stop_requests: tokio::sync::watch::Sender<Option<String>>,
     task: Task<std::result::Result<(), Arc<Error>>>,
@@ -168,12 +171,17 @@ impl<A: Application> PluginHost<A> {
         let cleanup = registry.cleanup();
         let statuses: Snapshots = Arc::new(RwLock::new(BTreeMap::new()));
         let snapshots = statuses.clone();
+        let entry_observer: Arc<RwLock<Option<EntryObserver>>> = Arc::new(RwLock::new(None));
+        let observer = entry_observer.clone();
         registry.observe(Arc::new(move |id, status| {
             let mut snapshots = snapshots.write().expect("plugin snapshot owner is healthy");
             if let Some(status) = status {
                 snapshots.insert(id.to_owned(), status);
             } else {
                 snapshots.remove(id);
+            }
+            if let Some(observer) = observer.read().expect("plugin entry observer is healthy").as_ref() {
+                observer(snapshots.clone());
             }
         }));
         let (commands, incoming) = mpsc::channel(COMMANDS);
@@ -193,6 +201,7 @@ impl<A: Application> PluginHost<A> {
             shared: Arc::new(Shared {
                 commands,
                 statuses,
+                entry_observer,
                 closing: AtomicBool::new(false),
                 stop_requests,
                 task,
@@ -202,6 +211,10 @@ impl<A: Application> PluginHost<A> {
                 application: PhantomData,
             }),
         })
+    }
+
+    pub(crate) fn observe_entries(&self, observer: EntryObserver) {
+        *self.shared.entry_observer.write().expect("plugin entry observer is healthy") = Some(observer);
     }
 
     pub fn same_instance(&self, other: &Self) -> bool {
@@ -753,7 +766,24 @@ async fn run(
                     _ = stopped.changed() => Initialization::Closing,
                     _ = reply.closed() => Initialization::Cancelled,
                     _ = interrupts.changed() => Initialization::Cancelled,
-                    result = registry.initialize(&mut lifecycle) => Initialization::Complete(result),
+                    result = async {
+                        use crate::plugin::manager::{Manager, Management};
+                        use harmos_protocol::client::{PluginsListRequest, plugin_placement::Kind};
+                        let mut selected = registry.definitions().map(|definition| definition.id.clone()).collect::<BTreeSet<_>>();
+                        if let Ok(manager) = lifecycle.operations.resources().resource::<Manager>() {
+                            let entries = manager.list(PluginsListRequest { at: None }).await.map_err(|source| Error::OperationFailed {
+                                operation: "Initialize Guest Plugins".into(), source: Arc::new(source),
+                            })?;
+                            for entry in entries.entries {
+                                if matches!(entry.placement.and_then(|placement| placement.kind), Some(Kind::Guest(_)))
+                                    && !entry.value.is_some_and(|value| value.enabled) {
+                                    selected.remove(&entry.name);
+                                    if let Some(source) = lifecycle.sources.get_mut(&entry.name) { source.enabled = false; }
+                                }
+                            }
+                        }
+                        registry.initialize_selected(&selected, &mut lifecycle).await
+                    } => Initialization::Complete(result),
                 };
                 match outcome {
                     Initialization::Complete(result) => {

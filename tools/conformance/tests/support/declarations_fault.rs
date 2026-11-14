@@ -46,7 +46,7 @@ use harmos_protocol::plugin::{
 
 /* === Structs === */
 
-pub struct CatalogFault {
+pub struct DeclarationsFault {
     pub address: String,
     stop: oneshot::Sender<()>,
     task: JoinHandle<Result<(), tonic::transport::Error>>,
@@ -70,7 +70,7 @@ pub enum Fault {
 
 /* === Implementations === */
 
-impl CatalogFault {
+impl DeclarationsFault {
     pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn Error>> {
         let maximum = harmos_protocol::transfer::default_message_bytes().get();
         let client = InstanceClient::connect(format!("http://{address}"))
@@ -112,15 +112,15 @@ impl Instance for Forward {
         match self.fault {
             Fault::Identity => description.sdk.clear(),
             Fault::Fingerprint => {
-                let catalog = description.catalog.as_mut().expect("reference catalog");
+                let declarations = description.declarations.as_mut().expect("reference declarations");
                 let operation =
-                    catalog.operations.iter_mut().find(|operation| operation.id == "conformance.schema").expect("schema operation");
+                    declarations.operations.iter_mut().find(|operation| operation.id == "conformance.schema").expect("schema operation");
                 operation.fingerprint[0] ^= 1;
-                catalog.digest = harmos_protocol::schema::catalog_digest(catalog);
+                declarations.digest = harmos_protocol::schema::declarations_digest(declarations);
             }
             Fault::Options => {
-                let catalog = description.catalog.as_mut().expect("reference catalog");
-                let types = catalog.types.as_mut().expect("reference types");
+                let declarations = description.declarations.as_mut().expect("reference declarations");
+                let types = declarations.types.as_mut().expect("reference types");
                 for file in &mut types.file {
                     for message in &mut file.message_type {
                         if message.name.as_deref() == Some("Graph") {
@@ -128,7 +128,7 @@ impl Instance for Forward {
                         }
                     }
                 }
-                catalog.digest = harmos_protocol::schema::catalog_digest(catalog);
+                declarations.digest = harmos_protocol::schema::declarations_digest(declarations);
             }
         }
         Ok(response)

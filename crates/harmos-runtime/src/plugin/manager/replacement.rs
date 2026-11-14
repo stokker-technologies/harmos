@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::client::{PluginDescription, PluginProcess, PluginState, PluginsReplaceRequest, PluginsReplaceResponse};
+
 use super::{
     Error,
     actor::{Actor, changed, managed, next_activation},
@@ -45,7 +47,7 @@ use prost::Message;
 /* === Implementations === */
 
 impl Actor {
-    pub(super) async fn replace(&mut self, request: wire::PluginsReplaceRequest) -> Result<wire::PluginsReplaceResponse, Error> {
+    pub(super) async fn replace(&mut self, request: PluginsReplaceRequest) -> Result<PluginsReplaceResponse, Error> {
         if request.request_id.is_empty() {
             return Err(Error::new("identity_required", "Replace Plugin", "supply a nonempty request identity"));
         }
@@ -63,8 +65,7 @@ impl Actor {
                     "resend the original payload or choose a new request identity",
                 ));
             }
-            return wire::PluginsReplaceResponse::decode(original.response.as_slice())
-                .map_err(|error| problem("Replay Plugin Replace", error));
+            return PluginsReplaceResponse::decode(original.response.as_slice()).map_err(|error| problem("Replay Plugin Replace", error));
         }
         let previous_executable = saved.executable.clone();
         let mut entry = self.entry(&request.name, &request.expected_revision, "Replace Plugin")?;
@@ -109,30 +110,30 @@ impl Actor {
             .await
             .map_err(|error| problem("Stage Plugin Replacement", error))?;
             let description = &prepared.activation.description;
-            entry.state = wire::PluginState::Ready as i32;
-            entry.catalog_digest = description.catalog.as_ref().expect("admitted description").digest.clone();
-            entry.description = Some(wire::PluginDescription {
+            entry.state = PluginState::Ready as i32;
+            entry.declarations_digest = description.declarations.as_ref().expect("admitted description").digest.clone();
+            entry.description = Some(PluginDescription {
                 id: description.id.clone(),
                 version: description.version.clone(),
                 started_at: description.started_at,
-                catalog: description.catalog.clone(),
+                declarations: description.declarations.clone(),
                 revision: description.revision,
                 sdk: description.sdk.clone(),
                 sdk_version: description.sdk_version.clone(),
             });
-            entry.process = prepared.activation.process_id.map(|id| wire::PluginProcess {
+            entry.process = prepared.activation.process_id.map(|id| PluginProcess {
                 id,
                 executable_digest: prepared.activation.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
                 started_at: description.started_at,
             });
             Some(prepared)
         } else {
-            entry.state = wire::PluginState::Stopped as i32;
+            entry.state = PluginState::Stopped as i32;
             None
         };
         registry.entries.get_mut(&entry.name).expect("selected entry exists").entry = entry.encode_to_vec();
         super::settings::materialize(&mut registry)?;
-        let response = wire::PluginsReplaceResponse {
+        let response = PluginsReplaceResponse {
             entry: Some(entry.clone()),
             receipt: Some(self.receipt(request.request_id.clone())),
         };

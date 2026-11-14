@@ -25,7 +25,7 @@ import "google/protobuf/timestamp.proto";
 message StreamDeclaration {
   // Stream identity unique within its admitted provider inventory.
   string id = 1;
-  // Fully qualified message name of one row, found in Catalog.types.
+  // Fully qualified message name of one row, found in Declarations.types.
   string row = 2;
   string description = 3;
   // Set for a stream sampled on the host's clock. Unset means the plugin

@@ -40,7 +40,7 @@ use prost_types::FileDescriptorSet;
 /* === Public Functions === */
 
 /// Complete descriptor inventory for the two built-in clock operations.
-pub fn catalog_types() -> FileDescriptorSet {
+pub fn declarations_types() -> FileDescriptorSet {
     FileDescriptorSet::decode(include_bytes!("clock-descriptors.bin").as_slice()).expect("generated plugin-host clock descriptors")
 }
 
