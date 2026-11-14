@@ -45,6 +45,12 @@ from harmos_tools.process import spawn_flags
 class PackagedCSharpConformance(unittest.TestCase):
     def test_nuget_package_serves_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
+        profile = os.environ.get("TEST_PROFILE", "dev")
+        suffix = ".exe" if os.name == "nt" else ""
+        exported = output(root, "build", profile) / f"bin/harmos-conformance{suffix}"
+        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported))
+        if not host.is_file():
+            raise FileNotFoundError(f"Test Packaged C# SDK: missing host {host}; run mise run build -- --profile {profile}")
         dotnet_root = os.environ.get("DOTNET_ROOT")
         dotnet = str(Path(dotnet_root) / ("dotnet.exe" if os.name == "nt" else "dotnet")) if dotnet_root else "dotnet"
         environment = dict(os.environ, DOTNET_NOLOGO="1", DOTNET_CLI_TELEMETRY_OPTOUT="1")
@@ -108,7 +114,6 @@ class PackagedCSharpConformance(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout)
             # Run All Reference-Host Cases Against the Package-Only Plugin.
-            suffix = ".exe" if os.name == "nt" else ""
             result = subprocess.run(
                 [dotnet, "msbuild", str(project), "-getProperty:TargetPath"],
                 cwd=consumer,
@@ -119,9 +124,6 @@ class PackagedCSharpConformance(unittest.TestCase):
                 creationflags=spawn_flags(),
             )
             plugin = Path(result.stdout.strip()).with_suffix(suffix)
-            exported = output(root, "build", os.environ.get("TEST_PROFILE", "dev")) / f"bin/harmos-conformance{suffix}"
-            local = root / f"target/debug/harmos-conformance{suffix}"
-            host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", local if local.is_file() else exported))
             result = subprocess.run(
                 [str(host), "--plugin", str(plugin)],
                 cwd=consumer,

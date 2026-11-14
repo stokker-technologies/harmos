@@ -43,6 +43,12 @@ from harmos_tools.process import spawn_flags
 class PackagedRustConformance(unittest.TestCase):
     def test_published_crates_serve_the_public_fixture(self) -> None:
         root = Path(__file__).resolve().parents[4]
+        profile = os.environ.get("TEST_PROFILE", "dev")
+        suffix = ".exe" if os.name == "nt" else ""
+        exported = output(root, "build", profile) / f"bin/harmos-conformance{suffix}"
+        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported))
+        if not host.is_file():
+            raise FileNotFoundError(f"Test Packaged Rust SDK: missing host {host}; run mise run build -- --profile {profile}")
         version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
         environment = dict(os.environ, CARGO_TARGET_DIR=str(root / "target"), CARGO_BUILD_WARNINGS="deny")
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
@@ -95,10 +101,6 @@ class PackagedRustConformance(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout)
             # Run the Reference Host Against This Package-Only Consumer.
-            suffix = ".exe" if os.name == "nt" else ""
-            exported = output(root, "build", os.environ.get("TEST_PROFILE", "dev")) / f"bin/harmos-conformance{suffix}"
-            local = root / f"target/debug/harmos-conformance{suffix}"
-            host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
             result = subprocess.run(
                 [str(host), "--plugin", str(root / f"target/debug/packaged-conformance{suffix}")],
                 cwd=consumer,

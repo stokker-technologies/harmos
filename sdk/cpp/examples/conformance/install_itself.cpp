@@ -60,7 +60,9 @@ int install_itself(int argc, char **argv) {
   PluginValue value;
   value.set_enabled(true);
   client.plugins.create("example", placement, value);
-  auto watch = client.plugins.watch({.name = "example"});
+  harmos::client::PluginsWatchOptions options;
+  options.name = "example";
+  auto watch = client.plugins.watch(options);
   PluginEntry ready;
   while (const auto event = watch.next()) {
     if (event->has_snapshot()) {

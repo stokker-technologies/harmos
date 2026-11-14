@@ -20,12 +20,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # Third Party Imports
 # Local Imports
 from harmos_tools.build import cargo, paths
-from harmos_tools.ci import artifacts, tasks
+from harmos_tools.ci import artifacts, compiler, tasks
 from harmos_tools.prepare.tests import fixtures as fixture_join
 from harmos_tools.release import review
 from harmos_tools.test import archive as archives
@@ -42,6 +42,44 @@ from harmos_tools.test import archive as archives
 
 
 class FocusedCargoTests(unittest.TestCase):
+    def test_cache_write_failures_preserve_compile_status_and_statistics(self) -> None:
+        for status, reason, category in ((0, "Cannot write to a read-only cache", "ReadOnly"), (7, "PermissionDenied", "PermissionDenied")):
+            with self.subTest(status=status):
+                # Start an Owned Cache That Cannot Write Its Compiled Miss.
+                server = MagicMock()
+                server.stderr = io.StringIO(f"server started, listening on 127.0.0.1:23456\nError executing cache write: {reason}\n")
+                server.poll.return_value = None
+                server.__enter__.return_value = server
+
+                def terminate(server: MagicMock = server) -> None:
+                    server.poll.return_value = 0
+
+                server.terminate.side_effect = terminate
+                child = MagicMock()
+                child.poll.return_value = status
+                child.returncode = status
+                child.__enter__.return_value = child
+
+                def inspect(command: list[str], **options: object) -> SimpleNamespace:
+                    output = "sccache 0.19.0\n" if "--version" in command else json.dumps({"stats": {"cache_write_errors": 1}})
+                    return SimpleNamespace(returncode=0, stdout=output)
+
+                # Keep Both Successful and Failed Compiles Authoritative.
+                statistics = {}
+                diagnostic = io.StringIO()
+                with (
+                    patch.object(compiler.subprocess, "Popen", side_effect=[server, child]) as launch,
+                    patch.object(compiler.subprocess, "run", side_effect=inspect),
+                    contextlib.redirect_stderr(diagnostic),
+                ):
+                    result = compiler._execute(["compiler", "input"], None, {}, statistics=statistics)
+                self.assertEqual(result, status)
+                self.assertEqual(launch.call_count, 2)
+                self.assertEqual(statistics["cache_write_errors"], 1)
+                self.assertEqual(statistics[f"write_error_{category}"], 1)
+                self.assertIn("cache write warning", diagnostic.getvalue())
+                self.assertNotIn("cache write failed", diagnostic.getvalue())
+
     def test_archive_publishes_complete_compiler_messages(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

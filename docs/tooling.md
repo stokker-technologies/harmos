@@ -39,7 +39,9 @@ not run Clippy. `check --repository` checks repository configuration without a b
 
 The repository Python check includes package-isolation stories for Rust and C#;
 its tooling suite therefore runs in the C# SDK tool environment and needs the root
-Rust toolchain. Generated-Python-only checks need Python and uv.
+Rust toolchain. The tooling task restores the locked C# generator tools before
+running its stories and passes the selected profile to package consumers.
+Generated-Python-only checks need Python and uv.
 
 ## Workstation Builds
 
@@ -52,6 +54,11 @@ queuing it through the machine-wide server's compiler jobserver. Cargo starts or
 reuses the persistent server for cache storage; tasks never restart it per invocation.
 `SCCACHE_BASEDIRS` is configured by the workstation to normalize cache keys across
 worktrees and drives. CI retains its explicitly configured cache settings.
+
+CI cache read/write errors remain warnings and build statistics; the compiler's
+exit status decides build success. Read-only Nightly caches can report failed
+writes after compiling misses. Backend configuration and readiness failures still
+name and fail their action rather than silently selecting a different store.
 
 Leave `SCCACHE_LOG` unset during ordinary builds: in the pinned sccache version,
 setting it disables client-side mode. Read native statistics separately instead.
