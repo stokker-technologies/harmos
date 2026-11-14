@@ -283,7 +283,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     None
                 };
                 let samples = if let Some(at) = tick {
-                    let response = activity
+                    activity
                         .wait(operations.call_native::<super::samples::Tick>(super::samples::Request {
                             input: input.clone(),
                             output: output.clone(),
@@ -293,8 +293,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                             at,
                         }))
                         .await
-                        .map_err(sample_error)?;
-                    response
+                        .map_err(sample_error)?
                 } else {
                     let response = input
                         .lock()

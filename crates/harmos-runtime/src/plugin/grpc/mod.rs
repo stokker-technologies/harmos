@@ -38,7 +38,9 @@ use tokio::sync::watch;
 // Local Imports
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
+use harmos_protocol::v1::SettingValues;
 use managed::Process;
+use publish::{PreparedPublications, Publications};
 
 /* === Constants === */
 
@@ -62,7 +64,7 @@ pub struct CallingPlugin {
 pub struct Activation {
     pub entry_name: Option<String>,
     provider: String,
-    pub settings: v1::SettingValues,
+    pub settings: SettingValues,
     pub number: u64,
     pub description: harmos_protocol::plugin::InstanceGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
@@ -90,7 +92,19 @@ pub(crate) struct PreparedPlugin {
     address: String,
     pub(crate) activation: Activation,
     admission: crate::operations::GrpcAdmission,
-    publications: publish::PreparedPublications,
+    publications: PreparedPublications,
+}
+
+struct EntrySettings {
+    name: String,
+    values: Option<SettingValues>,
+}
+
+struct ConnectedPlugin {
+    process: Option<Process>,
+    address: String,
+    activation: Activation,
+    publications: Publications,
 }
 
 struct Session<A: Application> {
@@ -102,7 +116,7 @@ struct Session<A: Application> {
     process: Option<Process>,
     address: String,
     activation: Activation,
-    publications: publish::Publications,
+    publications: Publications,
     stop: watch::Receiver<Option<String>>,
     participant: crate::runtime::StopParticipant,
 }
@@ -156,7 +170,7 @@ impl Activation {
 
 impl<A: Application> Runtime<A> {
     pub(crate) async fn prepare_grpc_entry(
-        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<v1::SettingValues>,
+        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<SettingValues>,
     ) -> Result<PreparedPlugin, Error> {
         let operations = self.operations.execution();
         let clock = operations.clock();
@@ -183,7 +197,7 @@ impl<A: Application> Runtime<A> {
                     .map_err(|error| Error::Invalid(error.to_string()))?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
-            let publications = publish::Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
+            let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
             Ok(PreparedPlugin {
                 process,
                 address,
@@ -205,7 +219,7 @@ impl<A: Application> Runtime<A> {
         let operations = self.operations.execution();
         let clock = operations.clock().clone();
         admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
-        let publications = publish::Publications::activate(publications, &self.streams, &activation, &clock, &operations, true)?;
+        let publications = Publications::activate(publications, &self.streams, &activation, &clock, &operations, true)?;
         admission.seal();
         activation.admission = Some(Arc::new(admission));
         Ok(Attached::launch(
@@ -214,15 +228,17 @@ impl<A: Application> Runtime<A> {
             crate::operations::Lane::default().name(),
             settings,
             self.stop_participant(),
-            process,
-            address,
-            activation,
-            publications,
+            ConnectedPlugin {
+                process,
+                address,
+                activation,
+                publications,
+            },
         ))
     }
 
     pub(crate) async fn attach_grpc_entry(
-        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<v1::SettingValues>,
+        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<SettingValues>,
     ) -> Result<Attached, Error> {
         Attached::start(
             self.operations.execution(),
@@ -231,8 +247,7 @@ impl<A: Application> Runtime<A> {
             placement,
             settings,
             self.stop_participant(),
-            Some(name),
-            values,
+            Some(EntrySettings { name, values }),
         )
         .await
     }
@@ -249,7 +264,6 @@ impl<A: Application> Runtime<A> {
             placement,
             settings,
             participant,
-            None,
             None,
         )
         .await
@@ -280,8 +294,7 @@ impl Activation {
 impl Attached {
     async fn start<A: Application>(
         operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
-        settings: PlacementSettings, participant: crate::runtime::StopParticipant, entry_name: Option<String>,
-        values: Option<v1::SettingValues>,
+        settings: PlacementSettings, participant: crate::runtime::StopParticipant, entry: Option<EntrySettings>,
     ) -> Result<Self, Error> {
         let clock = operations.clock().clone();
         if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
@@ -305,9 +318,10 @@ impl Attached {
                 operations.transfer_message_bytes().get(),
             )
             .await?;
-            if let Some(name) = entry_name {
-                activation.entry_name = Some(name);
-            }
+            let values = entry.and_then(|entry| {
+                activation.entry_name = Some(entry.name);
+                entry.values
+            });
             activation.settings =
                 crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
@@ -316,19 +330,28 @@ impl Attached {
                 activation.connection.closed.send_replace(true);
             })?;
             activation.admission = Some(Arc::new(admission));
-            let publications = publish::Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
-            Ok::<_, Error>((process, address, activation, publications))
+            let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
+            Ok::<_, Error>(ConnectedPlugin {
+                process,
+                address,
+                activation,
+                publications,
+            })
         };
-        let (process, address, activation, publications) =
-            clock.timeout(settings.connect_timeout, setup).await.map_err(|_| Error::Timeout("startup"))??;
-        Ok(Self::launch(operations, streams, lane, settings, participant, process, address, activation, publications))
+        let connected = clock.timeout(settings.connect_timeout, setup).await.map_err(|_| Error::Timeout("startup"))??;
+        Ok(Self::launch(operations, streams, lane, settings, participant, connected))
     }
 
     fn launch<A: Application>(
         operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, settings: PlacementSettings,
-        participant: crate::runtime::StopParticipant, process: Option<Process>, address: String, activation: Activation,
-        publications: publish::Publications,
+        participant: crate::runtime::StopParticipant, connected: ConnectedPlugin,
     ) -> Self {
+        let ConnectedPlugin {
+            process,
+            address,
+            activation,
+            publications,
+        } = connected;
         let clock = operations.clock().clone();
         let (status, receiver) = watch::channel(Status {
             activation: Some(activation.clone()),
@@ -592,7 +615,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                             continue;
                         }
                     }
-                    match publish::Publications::open(&streams, &next, &clock, &settings, &operations).await {
+                    match Publications::open(&streams, &next, &clock, &settings, &operations).await {
                         Ok(opened) => publications = opened,
                         Err(error) => {
                             next.connection.closed.send_replace(true);
