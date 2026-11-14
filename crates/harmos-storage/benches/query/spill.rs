@@ -21,15 +21,16 @@ use criterion::Criterion;
 // Local Imports
 use harmos_query::Accumulator;
 use harmos_query::TableWriter;
+use harmos_query::config::QueryAccumulatorSettings;
 use harmos_query::transform::FieldPath;
 use harmos_query::transform::Transform;
 use harmos_query::transform::downsample::Algorithm;
 use harmos_query::transform::downsample::Downsample;
 use harmos_query::transform::sort::Sort;
 use harmos_query::transform::sort::SortKey;
+use harmos_storage::Aggregate;
 use harmos_storage::query::scalar::Agg;
 use harmos_storage::query::scalar::ScalarValue;
-use harmos_storage::{Aggregate, QueryAccumulatorSettings};
 
 /* === Public Functions === */
 
