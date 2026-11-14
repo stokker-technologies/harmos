@@ -1,5 +1,12 @@
 # Tasks
 
+## Nightly Repairs After Protocol Layout
+
+- [x] 10.1 Refresh the standalone Python SDK lock through its prepare task and make local Python checks validate the same locked environment as CI. Own `sdk/python/mise.toml`, `sdk/python/uv.lock`, root Python task dispatch and `docs/tooling.md`. The SDK lock omitted the referenced tooling package's added formatter metadata; `--no-sync` skipped freshness validation.
+- [x] 10.2 Match benchmark object schemas to the registered catalog and configure the guest benchmark's plugin entry manager and declared host file operations. Own storage benchmark workload/setup and runtime guest benchmark fixtures; preserve production admission checks. Derive the workload key from the registered Sample definition instead of hardcoding revision one; focused workspace and guest benchmark compilation pass.
+- [x] 10.3 Migrate release protocol inputs and archive fixtures to the model/host/plugin layout; search packaging, release and documentation tooling for retired paths. Own release staging and its tooling stories. The archive story covers all three trees and both channels and passes; the retired-path search is clean.
+- [ ] 10.4 On the committed candidate, run Windows format, language/repository checks, locked workspace/tests/benches compilation, CI's Python prepare, all storage/query/runtime benches, language test lanes, packaging and credential-free release rehearsal. Repair discovered failures; retain native Linux and live publication proof as hosted obligations. Commits stay local.
+
 ## Caller Surfaces and Refusal Repairs
 
 - [x] 9.1 Generate client and plugin surfaces from effective composition callers in all four languages; prove narrowing with the shared SDK fixture and negative consumers. Own `tools/python`, `sdk` generators and fixtures.

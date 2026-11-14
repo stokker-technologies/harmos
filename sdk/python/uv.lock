@@ -79,6 +79,7 @@ source = { editable = "../../tools/python" }
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "clang-format", specifier = "==23.1.5" },
     { name = "grpcio-tools", specifier = "==1.85.1" },
     { name = "hatchling", specifier = "==1.33.0" },
     { name = "ruff", specifier = "==0.17.3" },

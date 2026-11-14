@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::num::{NonZeroU64, NonZeroUsize};
 
 // Third Party Imports
 
@@ -89,11 +89,7 @@ impl Workload {
             },
             source: ColumnSource {
                 kind: ColumnKind::Records,
-                schema: SchemaKey {
-                    id: Identifier::new("sample").unwrap(),
-                    version: NonZeroU32::MIN,
-                    payload_encoding: PayloadEncoding::PostcardV1,
-                },
+                schema: ObjectDefinition::of::<Sample>().schema().unwrap(),
             },
         }
     }

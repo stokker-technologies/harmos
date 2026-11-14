@@ -71,7 +71,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 
 [tasks."check"]
 description = "Check Formatting, Lint and Repository Contracts"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks check"
+run = "uv run --locked --all-groups --project tools/python python -m harmos_tools.ci.tasks check"
 
 [tasks."build"]
 description = "Build Products, Tests, Benchmarks or Fixtures"

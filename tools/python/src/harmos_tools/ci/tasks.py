@@ -453,6 +453,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 extra = ["--check"] if options.command == "check" or options.check else []
                 _task(f"format:{language}", *extra)
             if options.command in ("lint", "check") and language != "toml":
+                if language == "python":
+                    _execute(["mise", "-C", "sdk/python", "run", "prepare"])
                 extra = ["--extended"] if language == "rust" and options.extended else []
                 _task(f"lint:{language}", *extra)
             if options.command == "check" and language == "rust":

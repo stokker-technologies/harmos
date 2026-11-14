@@ -23,7 +23,12 @@ explicitly. Mise puts Ruff caches in `tools/python/.ruff_cache/`.
 Contributor guidance lives in [Contributing](CONTRIBUTING.md).
 The SDK's development group includes tooling for reference-host test support;
 this dependency does not enter the tooling workspace or the SDK runtime.
-Every other entry point uses `uv run --locked --no-sync`.
+Other entry points use `uv run --locked --no-sync`; the root `check` synchronizes
+all locked tooling groups as `prepare` does.
+Python checks also run the SDK's `prepare` task with CI's `uv sync --locked
+--all-groups`; `--no-sync` alone does not check lock freshness. After changing
+SDK or referenced tooling metadata, refresh its lock explicitly with
+`mise -C sdk/python run prepare -- --refresh-lock`.
 
 `mise run lint -- --language rust` owns Clippy with warnings denied, including
 benchmark targets and their fixtures. `mise run check -- --language rust` includes
