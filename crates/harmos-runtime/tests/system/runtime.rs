@@ -41,6 +41,7 @@ struct Reading {
 // Every Saved Record of One Schema as (Item, Value), Through the Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
     let query = harmos_runtime::storage::Query {
+            merge: None,
         at: storage.get_saved_position(),
         source: Source::Records(RecordSelection {
             schema: schema.clone(),

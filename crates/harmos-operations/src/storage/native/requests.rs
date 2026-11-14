@@ -340,6 +340,7 @@ pub struct SetObjectResponse {
 
 #[derive(Clone, Debug)]
 pub struct ListRowsRequest {
+    pub merge: Option<harmos_domain::model::storage::query::TimeMerge>,
     pub source: Option<Source>,
     pub at: Option<ReadCut>,
     pub transforms: Vec<Transform>,
@@ -939,6 +940,7 @@ impl MemorySize for ListRowsRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size())
+            .saturating_add(self.merge.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.transforms.memory_size())
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))

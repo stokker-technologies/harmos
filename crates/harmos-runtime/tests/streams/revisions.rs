@@ -277,6 +277,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
                 .query(harmos_runtime::storage::Query {
+            merge: None,
                     at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {
                         schema: key.clone(),

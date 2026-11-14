@@ -76,6 +76,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
     let at = fixture.storage.flush().await.unwrap();
     fixture.data.control.record_page_rows.store(2, Ordering::Relaxed);
     let query = Query {
+            merge: None,
         at,
         source: Source::Records(RecordSelection {
             schema,
@@ -107,6 +108,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         slice: RowSlice::default(),
     };
     let mut request = ListRowsRequest {
+            merge: None,
         source: Some(query.source),
         transforms: query.transforms,
         at: None,

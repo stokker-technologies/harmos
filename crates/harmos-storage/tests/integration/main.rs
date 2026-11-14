@@ -26,6 +26,7 @@ mod schema_exchange;
 mod sqlite_files;
 mod state;
 mod time_bucket_replacement;
+mod time_merge;
 
 /* === Imports === */
 

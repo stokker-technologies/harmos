@@ -717,6 +717,7 @@ async fn registration_stores_schema() {
     storage.flush().await.unwrap();
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
+            merge: None,
             at: storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
                 schema: Some(key.clone()),

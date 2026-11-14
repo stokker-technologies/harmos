@@ -19,6 +19,7 @@ pub mod columnar;
 pub mod config;
 pub mod execute;
 pub mod index;
+pub mod merge;
 pub mod quantiles;
 pub mod source;
 pub mod table;

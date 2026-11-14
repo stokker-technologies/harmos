@@ -372,6 +372,7 @@ async fn historical_plugin_values(storage: &StorageManager, schema: &harmos_runt
     ] {
         let mut reader = storage
             .query(harmos_runtime::storage::Query {
+            merge: None,
                 at: storage.get_saved_position(),
                 source,
                 transforms: vec![],

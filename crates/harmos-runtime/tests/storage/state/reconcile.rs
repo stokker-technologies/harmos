@@ -115,6 +115,7 @@ async fn restore(journal: harmos_runtime::state::StateManager<Bank>, storage: St
     use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_runtime::storage::Query {
+            merge: None,
             at: storage.get_saved_position(),
             source: Source::Records(RecordSelection {
                 schema: schema(),

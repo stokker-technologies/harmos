@@ -91,7 +91,7 @@ impl StorageManager {
         if !Arc::ptr_eq(&self.inner, &snapshot.inner) || snapshot.at() != &query.at {
             return Err(Error::InvalidInput { field: "open query", reason: "query must use its retained owner's exact cut" });
         }
-        let projection = match query.transforms.first() {
+        let projection = match query.transforms.first().filter(|_| query.merge.is_none()) {
             Some(Transform::Project(project)) => Some(project.clone()),
             _ => None,
         };
@@ -99,19 +99,23 @@ impl StorageManager {
             limits: crate::ReadLimits { rows: SCAN_ROWS, bytes: self.inner.settings.scan_bytes() },
             projection, pruning: None,
         };
-        let skipped = if query.slice.offset > 0 && query.transforms.iter().all(|transform| matches!(transform, Transform::Project(_))) {
+        let skipped = if query.merge.is_none() && query.slice.offset > 0 && query.transforms.iter().all(|transform| matches!(transform, Transform::Project(_))) {
             match &query.source {
                 Source::Records(selection) => snapshot.get_record_position(selection, query.slice.offset).await?,
                 _ => None,
             }
         } else { None };
-        let mut source = StoredBatches::open(Arc::clone(&self.inner), snapshot, query.source.clone(), &scan).await?;
+        let mut source = StoredBatches::open(Arc::clone(&self.inner), Arc::clone(&snapshot), query.source.clone(), &scan).await?;
         if let Some(after) = skipped { source.after = after; query.slice.offset = 0; }
         let output = QueryResponse {
             batch_rows: self.inner.settings.response.batch_rows,
             batch_bytes: self.inner.settings.response.batch_bytes,
         };
-        let reader = harmos_query::QueryReader::from_reader(Box::new(source), query, scan.projection.is_some(), output)?;
+        let secondary = match &query.merge {
+            Some(merge) => Some(Box::new(StoredBatches::open(Arc::clone(&self.inner), snapshot, merge.source.clone(), &scan).await?) as Box<dyn BatchReader>),
+            None => None,
+        };
+        let reader = harmos_query::QueryReader::from_sources(Box::new(source), secondary, query, scan.projection.is_some(), output, scan.limits)?;
         Ok(QueryReader::new(Arc::clone(&self.inner), reader, active))
     }
 }

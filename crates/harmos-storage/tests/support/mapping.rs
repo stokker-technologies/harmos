@@ -108,6 +108,7 @@ impl Mapped {
             identifier.unwrap()
         });
         Query {
+            merge: None,
             at: self.at.clone(),
             source: Source::Records(RecordSelection {
                 schema: self.schema.clone(),

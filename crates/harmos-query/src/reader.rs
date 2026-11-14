@@ -25,6 +25,8 @@ use harmos_domain::model::storage::query::{Query, QueryCompletion};
 use crate::arrow::{ArrowBatch, ArrowSchema};
 use crate::batches::{BatchReader, BatchScan, BatchSource};
 use crate::execute::Plan;
+use crate::merge::TimeMergeReader;
+use harmos_domain::model::storage::ReadLimits;
 use crate::transform::Transform;
 use crate::{Error, Result};
 
@@ -149,7 +151,26 @@ impl QueryReader {
     pub async fn open(source: &dyn BatchSource, query: Query, scan: BatchScan, output: QueryResponse) -> Result<Self> {
         query.validate()?;
         let reader = source.open(&query.source, &query.at, &scan).await?;
-        Self::from_reader(reader, query, scan.projection.is_some(), output)
+        let secondary = match &query.merge {
+            Some(merge) => Some(source.open(&merge.source, &query.at, &scan).await?),
+            None => None,
+        };
+        Self::from_sources(reader, secondary, query, scan.projection.is_some(), output, scan.limits)
+    }
+
+    pub fn from_sources(
+        primary: Box<dyn BatchReader>, secondary: Option<Box<dyn BatchReader>>, query: Query,
+        projected: bool, output: QueryResponse, limits: ReadLimits,
+    ) -> Result<Self> {
+        let source: Box<dyn BatchReader> = match (&query.merge, secondary) {
+            (Some(merge), Some(secondary)) => {
+                if projected { return Err(Error::InvalidInput { field: "open time merge", reason: "project after merging both sources" }); }
+                Box::new(TimeMergeReader::new(primary, secondary, merge.clone(), limits.rows)?)
+            }
+            (None, None) => primary,
+            _ => return Err(Error::InvalidInput { field: "open time merge", reason: "request and second source must agree" }),
+        };
+        Self::from_reader(source, query, projected, output)
     }
 
     pub fn from_reader(source: Box<dyn BatchReader>, mut query: Query, projected: bool, output: QueryResponse) -> Result<Self> {

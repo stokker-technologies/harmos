@@ -204,6 +204,7 @@ async fn native_row_pages_replay_and_keep_their_durable_image() {
     assert_eq!(fixture.runtime.operations.call_native::<operation::AppendRecords>(request).await.unwrap(), accepted);
     fixture.storage.flush().await.unwrap();
     let mut request = operation::ListRowsRequest {
+            merge: None,
         source: Some(records()),
         at: None,
         transforms: Vec::new(),

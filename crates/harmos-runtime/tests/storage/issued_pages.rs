@@ -78,6 +78,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source_end: None,
     }));
     let selection = operations::ListRowsRequest {
+            merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
@@ -124,7 +125,8 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let mut current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest { at: None, ..selection.clone() })
+        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None, at: None, ..selection.clone() })
         .await
         .unwrap();
     assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
@@ -144,6 +146,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None,
                 at: None,
                 page: Some(v1::PageRequest {
                     page_token: current.next_page_token,
@@ -158,6 +161,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
 
     // Replay The Native Continuation Without Changing Its Page.
     let request = operations::ListRowsRequest {
+            merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
@@ -171,6 +175,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         .runtime
         .operations
         .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None,
             page: request.page.clone(),
             ..selection.clone()
         })
@@ -228,7 +233,8 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest { at: None, ..selection.clone() })
+        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None, at: None, ..selection.clone() })
         .await
         .unwrap();
     assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, latest.sequence);

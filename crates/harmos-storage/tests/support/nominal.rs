@@ -70,6 +70,7 @@ impl Nominal {
 
     pub(crate) fn query(&self, selection: StreamSelection, transforms: Vec<Transform>) -> Query {
         Query {
+            merge: None,
             at: self.durable.clone(),
             source: Source::Stream(selection),
             transforms,

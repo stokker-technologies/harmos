@@ -100,6 +100,7 @@ async fn labels(
 ) -> harmos_storage::Result<Vec<String>> {
     let mut reader = storage
         .query(Query {
+            merge: None,
             at: at.clone(),
             source: Source::Objects(ObjectSelection {
                 schema: Some(schema.clone()),

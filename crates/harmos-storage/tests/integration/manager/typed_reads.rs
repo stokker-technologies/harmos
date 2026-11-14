@@ -232,6 +232,7 @@ async fn unwritten_schema_empty() {
     // The Arrow Query Has No Schema To Answer, So It Still Refuses.
     let mut query = storage
         .query(Query {
+            merge: None,
             at: at.clone(),
             source: Source::Records(samples()),
             transforms: Vec::new(),

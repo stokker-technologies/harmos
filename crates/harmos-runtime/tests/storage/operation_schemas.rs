@@ -173,6 +173,7 @@ async fn schema_registry_roundtrip() {
     assert!(settled.receipt.unwrap().completed);
     let at = f.storage.flush().await.unwrap();
     let query = harmos_runtime::storage::Query {
+            merge: None,
         at: at.clone(),
         source: Source::Schemas(SchemaSelection {
             schema: Some(request.schema.as_ref().unwrap().key.clone().unwrap()),
@@ -182,6 +183,7 @@ async fn schema_registry_roundtrip() {
     };
 
     let mut listing = harmos_operations::storage::ListRowsRequest {
+            merge: None,
         source: Some(query.source),
         at: None,
         transforms: query.transforms,

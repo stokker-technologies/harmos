@@ -69,6 +69,7 @@ async fn delete_removes_file() {
     let mut query = f
         .storage
         .query(harmos_runtime::storage::Query {
+            merge: None,
             at: f.storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
                 scope: None,

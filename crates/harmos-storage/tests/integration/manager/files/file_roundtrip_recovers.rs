@@ -60,6 +60,7 @@ async fn file_roundtrip_recovers() {
         let mut durable = f
             .storage
             .query(harmos_domain::model::storage::query::Query {
+            merge: None,
                 at: f.storage.get_saved_position(),
                 source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
                 transforms: Vec::new(),

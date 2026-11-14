@@ -23,7 +23,7 @@ use super::snapshot::{SavedSnapshots, SnapshotRead};
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
-use harmos_domain::model::storage::query::Query;
+use harmos_domain::model::storage::query::{Query, TimeMerge};
 use harmos_storage::StorageManager;
 use harmos_storage::QueryReader;
 use harmos_query::QueryStep;
@@ -134,7 +134,7 @@ impl Queries {
 /* === Public Functions === */
 
 pub(super) async fn list(
-    context: &ExecutionContext, source: Option<Source>, at: Option<v1::ReadCut>, transforms: Vec<Transform>, page: Option<v1::PageRequest>,
+    context: &ExecutionContext, source: Option<Source>, at: Option<v1::ReadCut>, transforms: Vec<Transform>, merge: Option<TimeMerge>, page: Option<v1::PageRequest>,
 ) -> Result<Page, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
@@ -144,7 +144,7 @@ pub(super) async fn list(
         context,
         async {
             let mut plan = b"storage.rows:".to_vec();
-            plan.extend(super::admission::plan(&(source.clone(), transforms.clone()))?);
+            plan.extend(super::admission::plan(&(source.clone(), transforms.clone(), merge.clone()))?);
             let source: Source = required(source)?;
             source.validate()?;
 
@@ -167,6 +167,7 @@ pub(super) async fn list(
                 let read = snapshots.resolve(&storage, at.clone()).await?;
 
                 let query = Query {
+                    merge,
                     at: read.at().clone(),
                     source,
                     transforms,

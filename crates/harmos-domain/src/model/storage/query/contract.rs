@@ -21,7 +21,8 @@ use std::time::SystemTime;
 // Third Party Imports
 
 // Local Imports
-use super::transform::Transform;
+use super::transform::{FieldPath, Transform};
+use crate::model::storage::ReadLimits;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
 
@@ -33,10 +34,27 @@ use crate::{Identifier, MemorySize, Result};
 
 /* === Structs === */
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TimeMerge {
+    pub source: Source,
+    pub primary_time: FieldPath,
+    pub secondary_time: FieldPath,
+    pub mode: TimeMergeMode,
+    pub work: ReadLimits,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum TimeMergeMode {
+    Range { end: FieldPath },
+    AtOrBefore,
+    Intervals,
+}
+
 #[derive(Clone, Debug)]
 pub struct Query {
     pub at: StorageCursor,
     pub source: Source,
+    pub merge: Option<TimeMerge>,
     pub transforms: Vec<Transform>,
     pub slice: RowSlice,
 }
@@ -116,6 +134,14 @@ pub enum Source {
 impl Query {
     pub fn validate(&self) -> crate::Result<()> {
         self.source.validate()?;
+        if let Some(merge) = &self.merge {
+            merge.source.validate()?;
+            if !matches!(merge.source, Source::Stream(_))
+                || !matches!(self.source, Source::Records(_) | Source::Stream(_))
+                || (matches!(merge.mode, TimeMergeMode::Range { .. } | TimeMergeMode::Intervals) && !matches!(self.source, Source::Records(_))) {
+                return Err(super::transform::invalid("time merge requires records or a stream against one stream"));
+            }
+        }
         if self.transforms.len() > 64 {
             return Err(super::transform::invalid("too many query transforms"));
         }
@@ -128,6 +154,7 @@ impl MemorySize for Query {
         std::mem::size_of::<Self>()
             .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
             .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.merge.memory_size())
             .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
             .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
     }
@@ -212,3 +239,13 @@ fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
 }
 
 /* === Tests === */
+
+impl MemorySize for TimeMerge {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.source.memory_size())
+            .saturating_add(self.primary_time.memory_size())
+            .saturating_add(self.secondary_time.memory_size())
+            .saturating_add(match &self.mode { TimeMergeMode::Range { end } => end.memory_size(), _ => 0 })
+    }
+}

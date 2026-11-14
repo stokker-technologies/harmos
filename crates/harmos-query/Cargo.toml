@@ -157,6 +157,11 @@ path = "tests/integration/main.rs"
 
 # === Bench Targets === #
 
+[[bench]]
+name = "integration-time-merge"
+path = "benches/merge/main.rs"
+harness = false
+
 # === Example Targets === #
 
 # === Workspace Lints === #
