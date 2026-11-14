@@ -47,7 +47,7 @@ use tonic::{
 
 // Local Imports
 use codec::{Frame, Output, Wire};
-use harmos_protocol::v1::StorageTransferSettings;
+use harmos_protocol::model::StorageTransferSettings;
 
 /* === Constants === */
 

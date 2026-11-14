@@ -31,7 +31,14 @@ use tokio::{
 use tonic::{Streaming, transport::Channel};
 
 // Local Imports
-use harmos_protocol::v1::{self as v1, child_response};
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::Request;
+use harmos_protocol::plugin::Response;
+use harmos_protocol::plugin::SamplesSelection;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::response;
+
 use harmos_protocol::plugin::{instance_invoke_request, instance_client::InstanceClient, instance_invoke_response};
 
 /* === Constants === */
@@ -119,7 +126,7 @@ pub async fn invoke(
 ) -> Result<(mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, Streaming<harmos_protocol::plugin::InstanceInvokeResponse>), Box<dyn std::error::Error>> {
     let (send, receive) = mpsc::channel(1);
     send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Request(v1::Request {
+        frame: Some(instance_invoke_request::Frame::Request(Request {
             operation: operation.into(),
             invocation: "execution-story".into(),
             attempt: 1,
@@ -133,7 +140,7 @@ pub async fn invoke(
     Ok((send, output))
 }
 
-pub async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<v1::ChildRequest, Box<dyn std::error::Error>> {
+pub async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<ChildRequest, Box<dyn std::error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
         Some(instance_invoke_response::Frame::Child(child)) => Ok(child),
         _ => Err("Expected Host Child Call".into()),
@@ -142,7 +149,7 @@ pub async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvoke
 
 pub async fn reply<T: prost::Message>(send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn std::error::Error>> {
     send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
+        frame: Some(instance_invoke_request::Frame::Child(ChildResponse {
             call,
             result: Some(child_response::Result::Payload(reply.encode_to_vec())),
         })),
@@ -153,8 +160,8 @@ pub async fn reply<T: prost::Message>(send: &mpsc::Sender<harmos_protocol::plugi
 
 pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<T, Box<dyn std::error::Error>> {
     match input.message().await?.and_then(|frame| frame.frame) {
-        Some(instance_invoke_response::Frame::Response(v1::Response {
-            result: Some(v1::response::Result::Payload(payload)),
+        Some(instance_invoke_response::Frame::Response(Response {
+            result: Some(response::Result::Payload(payload)),
         })) => Ok(T::decode(payload.as_slice())?),
         _ => Err("Expected Successful Terminal Response".into()),
     }
@@ -167,7 +174,7 @@ pub async fn publish(
 ) -> Result<(mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, Streaming<harmos_protocol::plugin::InstanceSamplesResponse>), Box<dyn std::error::Error>> {
     let (send, receive) = mpsc::channel(1);
     send.send(harmos_protocol::plugin::InstanceSamplesRequest {
-        frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(v1::SamplesSelection { stream: id.into(), scope: "scope".into() })),
+        frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(SamplesSelection { stream: id.into(), scope: "scope".into() })),
     })
     .await?;
     let input = stream::unfold(receive, |mut receive| async { receive.recv().await.map(|frame| (frame, receive)) });

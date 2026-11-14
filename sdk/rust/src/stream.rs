@@ -29,7 +29,7 @@ use crate::{
     Context, Message, Result,
     operation::{Handler, LocalFuture},
 };
-use harmos_protocol::v1::StreamDeclaration;
+use harmos_protocol::model::StreamDeclaration;
 
 /* === Constants === */
 

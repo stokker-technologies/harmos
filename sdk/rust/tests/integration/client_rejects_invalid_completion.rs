@@ -27,8 +27,8 @@ use std::{
 use super::v1::{JobsStartRequest, JobsStartResponse};
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::v1::StorageTransferSettings;
-use harmos_protocol::{schema, v1 as host};
+use harmos_protocol::model::StorageTransferSettings;
+use harmos_protocol::schema;
 use prost_reflect::ReflectMessage;
 use tonic::{
     Request, Response, Status, Streaming,
@@ -37,6 +37,10 @@ use tonic::{
 };
 
 // Local Imports
+use harmos_protocol::model::DiscoveredContract;
+use harmos_protocol::model::Grpc;
+use harmos_protocol::model::Protobuf;
+use harmos_protocol::model::Visibility;
 
 /* === Constants === */
 
@@ -75,7 +79,7 @@ struct Frame {
 /* === Implementations === */
 
 impl tonic::server::NamedService for Peer {
-    const NAME: &'static str = "fault.client.v1.Operations";
+    const NAME: &'static str = "fault.host.v1.Operations";
 }
 
 impl<B> Service<http::Request<B>> for Peer
@@ -177,7 +181,7 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     };
     let client = Client::new(channel, settings).unwrap();
     let descriptors = JobsStartRequest::default().descriptor().parent_pool().encode_to_vec();
-    let protobuf = host::Protobuf {
+    let protobuf = Protobuf {
         descriptors,
         request: "application.v1.JobsStartRequest".into(),
         response: "application.v1.JobsStartResponse".into(),
@@ -185,13 +189,13 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
         output: None,
     };
     let fingerprint = schema::host_fingerprint("fault.read", &protobuf).unwrap();
-    let contract = host::DiscoveredContract {
+    let contract = DiscoveredContract {
         id: "fault.read".into(),
-        visibility: host::Visibility::Public as i32,
+        visibility: Visibility::Public as i32,
         fingerprint,
         protobuf: Some(protobuf),
-        grpc: Some(host::Grpc {
-            package: "fault.client.v1".into(),
+        grpc: Some(Grpc {
+            package: "fault.host.v1".into(),
             service: "Operations".into(),
             method: "Read".into(),
             managed: true,

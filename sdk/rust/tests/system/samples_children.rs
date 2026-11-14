@@ -22,9 +22,18 @@
 // Local Imports
 use super::support;
 use harmos::{InstanceState, Message};
-use harmos_protocol::plugin::host::{InvocationsWatchResponse, SettingsListResponse, TimeGetResponse};
+use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::host::{InvocationsWatchResponse, TimeGetResponse};
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::model::SettingValue;
+use harmos_protocol::model::SettingValues;
+use harmos_protocol::model::setting_value;
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::Tick;
+use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::{InstanceSamplesRequest, instance_samples_request, instance_samples_response};
-use harmos_protocol::v1;
+
 use prost::Message as _;
 use prost_types::Timestamp;
 use std::collections::HashMap;
@@ -69,14 +78,14 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
     let cleanup = scratch.path().join("cleanup");
     let mut process = support::Process::start(&cleanup).await.unwrap();
     let (send, mut output) = support::publish(&mut process.client, "execution.children").await.unwrap();
-    let expected_failure = v1::Failure {
-        classification: v1::Classification::Refused as i32,
+    let expected_failure = Failure {
+        classification: Classification::Refused as i32,
         code: "clock_refused".into(),
         operation: "clock".into(),
         plugin: "host".into(),
         diagnostics: "clock evidence".into(),
         details: HashMap::from([("key".into(), "value".into())]),
-        cause: Some(Box::new(v1::Failure {
+        cause: Some(Box::new(Failure {
             code: "source".into(),
             ..Default::default()
         })),
@@ -87,7 +96,7 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         // Reply Out of Order Without Advancing a Wall Clock.
         let at = Timestamp { seconds: sequence as i64, nanos: 250 };
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
+            frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(at) })),
         })
         .await
         .unwrap();
@@ -101,34 +110,34 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
             panic!("expected second child")
         };
         assert!(first.call > last_call && second.call > first.call);
-        assert_eq!(first.operation, "harmos.plugin.host.v1.Time/Get");
-        assert_eq!(second.operation, "harmos.plugin.host.v1.Settings/List");
+        assert_eq!(first.operation, "harmos.host.v1.Time/Get");
+        assert_eq!(second.operation, "harmos.host.v1.plugins.Settings/List");
         let settings = SettingsListResponse {
-            value: Some(v1::SettingValues {
+            value: Some(SettingValues {
                 values: HashMap::from([(
                     "threshold".into(),
-                    v1::SettingValue {
-                        value: Some(v1::setting_value::Value::Integer(sequence as i64)),
+                    SettingValue {
+                        value: Some(setting_value::Value::Integer(sequence as i64)),
                     },
                 )]),
             }),
             ..Default::default()
         };
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse {
+            frame: Some(instance_samples_request::Frame::Child(ChildResponse {
                 call: second.call,
-                result: Some(v1::child_response::Result::Payload(settings.encode_to_vec())),
+                result: Some(child_response::Result::Payload(settings.encode_to_vec())),
             })),
         })
         .await
         .unwrap();
         let result = if sequence == 1 {
-            v1::child_response::Result::Failure(expected_failure.clone())
+            child_response::Result::Failure(expected_failure.clone())
         } else {
-            v1::child_response::Result::Payload(TimeGetResponse { now: Some(at) }.encode_to_vec())
+            child_response::Result::Payload(TimeGetResponse { now: Some(at) }.encode_to_vec())
         };
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse { call: first.call, result: Some(result) })),
+            frame: Some(instance_samples_request::Frame::Child(ChildResponse { call: first.call, result: Some(result) })),
         })
         .await
         .unwrap();
@@ -142,9 +151,9 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         };
         assert_eq!(demand.call, watch.call);
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse {
+            frame: Some(instance_samples_request::Frame::Child(ChildResponse {
                 call: watch.call,
-                result: Some(v1::child_response::Result::Item(
+                result: Some(child_response::Result::Item(
                     InvocationsWatchResponse {
                         invocation: Some(InstanceState {
                             phase: "running".into(),
@@ -179,7 +188,7 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         );
         last_call = watch.call;
         if sequence == 1 {
-            assert_eq!(v1::Failure::decode(row.failure.as_slice()).unwrap(), expected_failure);
+            assert_eq!(Failure::decode(row.failure.as_slice()).unwrap(), expected_failure);
         } else {
             assert!(row.failure.is_empty());
         }
@@ -194,9 +203,9 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
     for name in ["execution.children", "execution.device"] {
         let (send, mut output) = support::publish(&mut process.client, name).await.unwrap();
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse {
+            frame: Some(instance_samples_request::Frame::Child(ChildResponse {
                 call: 1,
-                result: Some(v1::child_response::Result::Payload(Vec::new())),
+                result: Some(child_response::Result::Payload(Vec::new())),
             })),
         })
         .await

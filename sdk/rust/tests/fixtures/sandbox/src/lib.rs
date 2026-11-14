@@ -19,6 +19,8 @@ pub mod contract;
 
 /* === Imports === */
 
+use harmos_protocol::model::RetryPolicy;
+
 use contract::*;
 use harmos::plugin::{Context, Operation, Plugin, Stream};
 use harmos::wasm::Registration;
@@ -215,7 +217,7 @@ fn policy(attempts: u32, delay_millis: i32) -> OperationPolicy {
     OperationPolicy {
         timeout: deadline,
         attempt_timeout: deadline,
-        retries: Some(harmos_protocol::v1::RetryPolicy {
+        retries: Some(RetryPolicy {
             total_attempts: u64::from(attempts.max(1)),
             initial: (delay_millis > 0).then_some(harmos::encoding::Duration {
                 seconds: 0,

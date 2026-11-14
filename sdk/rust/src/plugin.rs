@@ -35,10 +35,16 @@ use std::{
 #[cfg(test)]
 use crate::setting_value::Value as SettingKind;
 use crate::{Error, Message, OperationRequest, Result, message::merge_types, stream::StreamDefinition};
-use harmos_protocol::v1::{Declarations, Protobuf, Requirement, Section, Visibility};
 #[cfg(test)]
-use harmos_protocol::v1::{SettingDeclaration, SettingValue};
-use harmos_protocol::v1::{SettingsDeclarations, StorageTransferSettings};
+use crate::{SettingDeclaration, SettingValue};
+use harmos_protocol::model::Declarations;
+use harmos_protocol::model::Protobuf;
+use harmos_protocol::model::Requirement;
+use harmos_protocol::model::Section;
+use harmos_protocol::model::SettingsDeclarations;
+use harmos_protocol::model::StorageTransferSettings;
+use harmos_protocol::model::Visibility;
+
 use prost_reflect::DescriptorPool;
 #[cfg(test)]
 use prost_types::Duration;

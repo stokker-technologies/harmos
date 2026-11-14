@@ -13,9 +13,7 @@
 
 /* === Re-Exports === */
 
-#[cfg(not(target_arch = "wasm32"))]
-pub(crate) use harmos_protocol::client;
-pub(crate) use harmos_protocol::{plugin::host, v1 as shared};
+pub(crate) use harmos_protocol::{host, model as shared};
 
 /* === Imports === */
 

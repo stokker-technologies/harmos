@@ -62,7 +62,7 @@ fn main() -> Result<()> {
     };
     Plugin::new("echo", "1.0.0")
         .settings(settings)
-        .requires_host(HostOperation::SettingsList)
+        .requires_host(HostOperation::PluginsSettingsList)
         .operation(Operation::new("example.echo", echo).visibility(Visibility::Public))
         .serve()
 }
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
 /* === Private Functions === */
 
 async fn echo(context: &Context, request: EchoRequest) -> Result<EchoResponse> {
-    let settings = context.host().settings.list().await?.value.ok_or_else(|| Error::Invalid("Echo: Settings Missing".into()))?;
+    let settings = context.settings().list().await?.value.ok_or_else(|| Error::Invalid("Echo: Settings Missing".into()))?;
     let prefix = match settings.values.get("prefix").and_then(|setting| setting.value.as_ref()) {
         Some(setting_value::Value::Text(prefix)) => prefix,
         _ => return Err(Error::Invalid("Echo: Text Prefix Required".into())),

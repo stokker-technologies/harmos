@@ -25,7 +25,8 @@ use tonic::transport::Error as ServerError;
 
 // Local Imports
 use crate::{Classification, Failure};
-use harmos_protocol::v1::response::Result as ResponseResult;
+use harmos_protocol::plugin::response;
+use response::Result as ResponseResult;
 
 /* === Constants === */
 

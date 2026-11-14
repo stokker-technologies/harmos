@@ -29,8 +29,8 @@ use super::{
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, SettingValues};
 use harmos_protocol::{
-    client::{self as host, status},
-    v1::StorageTransferSettings,
+    host::{self, status},
+    model::StorageTransferSettings,
 };
 use std::{num::NonZeroUsize, pin::Pin};
 use tonic::{Request, Response, Status};

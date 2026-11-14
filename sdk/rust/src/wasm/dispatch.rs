@@ -20,10 +20,6 @@ use super::{
     context::{Import, Transport},
 };
 use crate::{Context, Error, Result, operation::LocalFuture};
-use harmos_protocol::{
-    v1 as host,
-    v1::{self, guest_command, response},
-};
 use prost::Message as _;
 use std::{
     cell::{Cell, RefCell},
@@ -38,6 +34,17 @@ use tokio::sync::watch;
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::model::Visibility;
+use harmos_protocol::plugin::GuestInitialize;
+use harmos_protocol::plugin::GuestInvocation;
+use harmos_protocol::plugin::GuestPrepare;
+use harmos_protocol::plugin::GuestRegistration;
+use harmos_protocol::plugin::OperationAssignments;
+use harmos_protocol::plugin::Request;
+use harmos_protocol::plugin::Response;
+use harmos_protocol::plugin::{guest_command, response};
 
 /* === Constants === */
 
@@ -53,18 +60,18 @@ use tokio::sync::watch;
 pub struct Adapter(Rc<Session>);
 struct Session {
     registration: Registration,
-    metadata: v1::GuestRegistration,
+    metadata: GuestRegistration,
     import: Arc<Import>,
     owner: RefCell<Option<String>>,
     generations: RefCell<BTreeMap<String, u64>>,
     generation_context: RefCell<Vec<u8>>,
-    assignments: Arc<OnceLock<host::OperationAssignments>>,
+    assignments: Arc<OnceLock<OperationAssignments>>,
     slots: RefCell<BTreeMap<u64, Rc<Slot>>>,
     initialized: Cell<bool>,
     closed: Cell<bool>,
 }
 struct Slot {
-    prepare: v1::GuestPrepare,
+    prepare: GuestPrepare,
     context: RefCell<Option<Context>>,
     running: watch::Sender<bool>,
     cancellation: watch::Sender<Option<String>>,
@@ -97,7 +104,7 @@ impl Adapter {
             closed: Cell::new(false),
         })))
     }
-    pub fn metadata(&self) -> &v1::GuestRegistration {
+    pub fn metadata(&self) -> &GuestRegistration {
         &self.0.metadata
     }
     pub async fn operate(&self, owner: &str, command: &[u8]) -> Vec<u8> {
@@ -106,15 +113,15 @@ impl Adapter {
             Ok(payload) => response::Result::Payload(payload),
             Err(error) => match error.response("", &self.0.registration.plugin.id) {
                 Ok(result) => result,
-                Err(status) => response::Result::Failure(v1::Failure {
-                    classification: v1::Classification::Refused as i32,
+                Err(status) => response::Result::Failure(Failure {
+                    classification: Classification::Refused as i32,
                     code: "invalid_guest_command".into(),
                     message: status.to_string(),
                     ..Default::default()
                 }),
             },
         };
-        v1::Response { result: Some(result) }.encode_to_vec()
+        Response { result: Some(result) }.encode_to_vec()
     }
 }
 impl Session {
@@ -163,7 +170,7 @@ impl Session {
                         return Err(invalid("Guest Is Already Initialized"));
                     }
                     let initialize =
-                        v1::GuestInitialize::decode(slot.prepare.payload.as_slice()).map_err(|error| invalid(error.to_string()))?;
+                        GuestInitialize::decode(slot.prepare.payload.as_slice()).map_err(|error| invalid(error.to_string()))?;
                     if initialize.generation_context.len() != 32 {
                         return Err(invalid("Generation Capability Must Contain 32 Bytes"));
                     }
@@ -232,7 +239,7 @@ impl Session {
         let owner = owner.as_ref().ok_or_else(|| invalid("Component Owner Is Required"))?;
         operation.strip_prefix(owner).and_then(|local| local.strip_prefix('.')).ok_or_else(|| invalid("Operation Owner Differs"))
     }
-    fn prepare(&self, prepare: v1::GuestPrepare) -> Result<Vec<u8>> {
+    fn prepare(&self, prepare: GuestPrepare) -> Result<Vec<u8>> {
         if prepare.invocation == 0 || prepare.generation == 0 || prepare.fingerprint.len() != 32 {
             return Err(invalid("Invalid Guest Invocation Identity"));
         }
@@ -306,7 +313,7 @@ impl Session {
             assignments: Arc::clone(&self.assignments),
         })
     }
-    fn context(&self, slot: &Slot, invocation: v1::GuestInvocation) -> Result<Context> {
+    fn context(&self, slot: &Slot, invocation: GuestInvocation) -> Result<Context> {
         if invocation.context.len() != 32 {
             return Err(invalid("Attempt Capability Must Contain 32 Bytes"));
         }
@@ -314,7 +321,7 @@ impl Session {
         let attempt = slot.attempt.get().checked_add(1).ok_or_else(|| invalid("Guest Attempt Counter Exhausted"))?;
         let declarations = self.metadata.declarations.as_ref().expect("validated guest declarations");
         let mut context = Context::new(
-            v1::Request {
+            Request {
                 operation: slot.prepare.operation.clone(),
                 invocation: slot.prepare.invocation.to_string(),
                 attempt,
@@ -328,7 +335,7 @@ impl Session {
                 .plugin
                 .operations
                 .iter()
-                .filter(|operation| operation.contract.visibility == v1::Visibility::Private as i32)
+                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
                 .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
                 .collect(),
         );
@@ -351,7 +358,7 @@ impl Drop for Loan {
 fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }
-fn validate_assignments(assignments: &host::OperationAssignments) -> Result<()> {
+fn validate_assignments(assignments: &OperationAssignments) -> Result<()> {
     let mut locals = std::collections::BTreeSet::new();
     for entry in &assignments.operations {
         let local =

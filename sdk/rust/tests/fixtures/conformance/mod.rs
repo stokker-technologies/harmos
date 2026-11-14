@@ -254,7 +254,7 @@ pub fn plugin() -> Plugin {
         .requires::<Graph>()
         .requires_host(HostOperation::TimeSleep)
         .requires_host(HostOperation::TimeGet)
-        .requires_host(HostOperation::SettingsList)
+        .requires_host(HostOperation::PluginsSettingsList)
         .requires_host(HostOperation::OperationsList)
         .requires_host(HostOperation::OperationsGet)
         .stream(ticks)
@@ -484,7 +484,7 @@ async fn peer_call(context: &Context, request: Value) -> Result<Value> {
 
 async fn settings_read(context: &Context, _: Value) -> Result<Value> {
     let settings =
-        context.host().settings.list().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
+        context.settings().list().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
     Ok(Value { value: settings.encode_to_vec() })
 }
 
@@ -529,7 +529,7 @@ async fn tick_context(context: &Context) -> Result<Value> {
         now: Some(context.host().time.get().await?),
     }
     .encode_to_vec();
-    let settings = context.host().settings.list().await?.encode_to_vec();
+    let settings = context.settings().list().await?.encode_to_vec();
     let mut value = Vec::new();
     for payload in [echo, clock, settings] {
         let length = u32::try_from(payload.len()).map_err(|error| harmos::Error::Invalid(format!("Encode Tick Context: {error}")))?;

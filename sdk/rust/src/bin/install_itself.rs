@@ -90,7 +90,7 @@ pub fn run(arguments: &[String]) -> Result<()> {
         let mut data = b"hello".to_vec();
         data.resize(transfer.chunk_bytes() as usize, 0);
         let payload = Value { value: data.clone() }.encode_to_vec();
-        let response = client.invocations.invoke(contract.id, contract.fingerprint, payload).await?;
+        let response = client.invocations.create(contract.id, contract.fingerprint, payload).await?;
         let value = Value::decode(response.as_slice()).map_err(|error| Error::Invalid(error.to_string()))?;
         if value.value != data {
             return Err(Error::Invalid("Invoke example.echo: payload changed".into()));

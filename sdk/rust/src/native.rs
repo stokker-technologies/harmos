@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use crate::{Context, Plugin, Result, server};
-use harmos_protocol::v1::{self, child_response};
+
 use std::result::Result as StdResult;
 use tokio::{runtime::Builder, task::LocalSet};
 use tonic::Status;
@@ -26,6 +26,8 @@ use tonic::Status;
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::child_response;
 
 /* === Constants === */
 
@@ -50,7 +52,7 @@ impl Plugin {
 }
 
 impl Context {
-    pub(crate) async fn reply(&self, child: v1::ChildResponse) -> StdResult<(), Status> {
+    pub(crate) async fn reply(&self, child: ChildResponse) -> StdResult<(), Status> {
         let watch = {
             let mut calls = self.calls.lock().expect("Child Calls Poisoned");
             if matches!(&child.result, Some(child_response::Result::Item(_))) {
