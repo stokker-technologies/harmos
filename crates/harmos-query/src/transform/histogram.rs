@@ -17,16 +17,18 @@ pub use harmos_domain::model::storage::query::transform::histogram::Histogram;
 
 /* === Imports === */
 
-use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::{Float64Array, RecordBatch, UInt64Array};
 use arrow_schema::{DataType, Field, Schema};
+
 // Local Imports
 use super::downsample::number;
 use super::{invalid, numeric_type};
 use crate::Result;
+use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */

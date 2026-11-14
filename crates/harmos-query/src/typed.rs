@@ -13,6 +13,12 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::marker::PhantomData;
+
+// Third Party Imports
+
+// Local Imports
 use crate::batches::QueryFuture;
 use crate::{BackendFailure, Error, Result};
 use harmos_domain::model::storage::catalog::decode_admitted;
@@ -21,7 +27,6 @@ use harmos_domain::model::storage::{
     ObjectEntry, ObjectRevision, ReadBatch, ReadPages, SchemaKey, StorageCursor, StoredObject, StoredRecord, StoredRow,
 };
 use harmos_domain::{MemorySize, Message};
-use std::marker::PhantomData;
 
 /* === Constants === */
 

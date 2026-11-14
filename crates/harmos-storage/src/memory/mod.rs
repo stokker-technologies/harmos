@@ -20,8 +20,24 @@ mod read_backend;
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+
+// Third Party Imports
+use serde::Serialize;
+use tokio::sync::Notify;
+use tracing::Instrument;
+use tracing::subscriber::NoSubscriber;
+
+// Local Imports
 use crate::SchemaWrite;
 use crate::SchemaWriteReceipt;
+use crate::execution::Context;
 use crate::execution::Execution;
 use crate::query::columnar::StorageCapabilities;
 use crate::query::projection::ProjectionCatalog;
@@ -30,29 +46,12 @@ use crate::query::projection::ProjectionPage;
 use crate::query::projection::ProjectionPublication;
 use crate::query::projection::ProjectionRead;
 use crate::query::projection::ProjectionStatus;
-use harmos_query::columnar::Cancellation;
-use harmos_query::index::IndexDefinition;
-use serde::Serialize;
-use std::time::SystemTime;
-
-// Standard Library Imports
-use std::collections::{BTreeMap, BTreeSet};
-use std::future::Future;
-use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-
-// Third Party Imports
-use crate::execution::Context;
-use tokio::sync::Notify;
-use tracing::Instrument;
-use tracing::subscriber::NoSubscriber;
-
-// Local Imports
 use crate::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use crate::state::*;
 use crate::*;
 use crate::{BackendFailure, Error, Identifier, MemorySize, Result};
+use harmos_query::columnar::Cancellation;
+use harmos_query::index::IndexDefinition;
 use record_store::{RecordStore, RowStore};
 
 /* === Constants === */
@@ -1153,7 +1152,7 @@ impl StateBackend for RecoveryBackend {
                 self.control.read_release.notified().await;
             }
             let snapshot = self.snapshot.lock().unwrap().clone();
-            if snapshot.as_ref().is_some_and(|snapshot| snapshot.payload.len() > maximum.get()) {
+            if snapshot.as_ref().is_some_and(|snapshot| snapshot.payload.segment_bytes() > maximum.get()) {
                 return Err(Error::ResourceExhausted {
                     resource: "read in-memory recovery snapshot",
                 });

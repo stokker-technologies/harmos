@@ -194,12 +194,6 @@ impl<E: Entry> Pages<E> {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-/* === Tests === */
-
 impl<E: Entry + MemorySize> PageSource<E> for Pages<E> {
     fn next(&mut self) -> QueryFuture<'_, Option<ReadBatch<Vec<E>>>> {
         Box::pin(async move {
@@ -209,3 +203,9 @@ impl<E: Entry + MemorySize> PageSource<E> for Pages<E> {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

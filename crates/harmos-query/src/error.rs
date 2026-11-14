@@ -13,9 +13,9 @@
 
 /* === Imports === */
 
-use std::error::Error as StdError;
-
 // Standard Library Imports
+use std::error::Error as StdError;
+use std::result::Result as StdResult;
 
 // Third Party Imports
 
@@ -27,7 +27,7 @@ use std::error::Error as StdError;
 
 /* === Type Aliases === */
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, Error>;
 
 /* === Structs === */
 

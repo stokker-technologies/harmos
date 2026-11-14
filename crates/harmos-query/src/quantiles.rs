@@ -15,9 +15,8 @@
 
 /* === Imports === */
 
-use std::io::Error as IoError;
-
 // Standard Library Imports
+use std::io::Error as IoError;
 use std::{
     collections::BTreeMap,
     fs::File,

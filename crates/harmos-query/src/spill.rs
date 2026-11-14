@@ -15,10 +15,9 @@
 
 /* === Imports === */
 
-use std::io::Error as IoError;
-
 // Standard Library Imports
 use std::fs::File;
+use std::io::Error as IoError;
 use std::sync::Arc;
 
 // Third Party Imports

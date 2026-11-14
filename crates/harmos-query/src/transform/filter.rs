@@ -20,12 +20,12 @@ pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compar
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
-use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 // Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
 use crate::transform::FieldPathExecution;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 

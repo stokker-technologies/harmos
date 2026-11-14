@@ -14,10 +14,13 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error as StdError;
+use std::result::Result as StdResult;
 
 // Third Party Imports
 
 // Local Imports
+use harmos_query::{BackendFailure as QueryFailure, Error as QueryError};
 
 /* === Constants === */
 
@@ -25,7 +28,7 @@
 
 /* === Type Aliases === */
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, Error>;
 
 /* === Structs === */
 
@@ -103,7 +106,7 @@ impl Error {
         }
     }
 
-    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl StdError + Send + Sync + 'static) -> Self {
         Self::Backend {
             operation,
             kind,
@@ -112,15 +115,15 @@ impl Error {
     }
 }
 
-impl From<harmos_query::Error> for Error {
-    fn from(error: harmos_query::Error) -> Self {
+impl From<QueryError> for Error {
+    fn from(error: QueryError) -> Self {
         match error {
-            harmos_query::Error::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
-            harmos_query::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
-            harmos_query::Error::Closing { domain } => Self::Closing { domain },
-            harmos_query::Error::NotReady { domain } => Self::NotReady { domain },
-            harmos_query::Error::Domain(error) => Self::Domain(error),
-            harmos_query::Error::Backend { operation, kind, source } => {
+            QueryError::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            QueryError::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
+            QueryError::Closing { domain } => Self::Closing { domain },
+            QueryError::NotReady { domain } => Self::NotReady { domain },
+            QueryError::Domain(error) => Self::Domain(error),
+            QueryError::Backend { operation, kind, source } => {
                 let source = match source.downcast::<Self>() {
                     Ok(error) => return *error,
                     Err(source) => source,
@@ -129,11 +132,11 @@ impl From<harmos_query::Error> for Error {
                     operation,
                     source,
                     kind: match kind {
-                        harmos_query::BackendFailure::Transient => BackendFailure::Transient,
-                        harmos_query::BackendFailure::Permanent => BackendFailure::Permanent,
-                        harmos_query::BackendFailure::Corrupt => BackendFailure::Corrupt,
-                        harmos_query::BackendFailure::Conflict => BackendFailure::Conflict,
-                        harmos_query::BackendFailure::Unsupported => BackendFailure::Unsupported,
+                        QueryFailure::Transient => BackendFailure::Transient,
+                        QueryFailure::Permanent => BackendFailure::Permanent,
+                        QueryFailure::Corrupt => BackendFailure::Corrupt,
+                        QueryFailure::Conflict => BackendFailure::Conflict,
+                        QueryFailure::Unsupported => BackendFailure::Unsupported,
                     },
                 }
             }

@@ -16,9 +16,9 @@
 // Standard Library Imports
 
 // Third Party Imports
-use crate::statistics::Summary;
 
 // Local Imports
+use crate::statistics::Summary;
 use harmos_domain::Aggregate;
 
 /* === Constants === */

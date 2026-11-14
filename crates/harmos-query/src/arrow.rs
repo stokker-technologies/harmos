@@ -18,15 +18,16 @@ mod retention;
 
 /* === Imports === */
 
-use crate::ReadBatch;
-use std::result::Result as StdResult;
-
 // Standard Library Imports
+use std::result::Result as StdResult;
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
+
 // Local Imports
+use crate::ReadBatch;
 use crate::{Error, MemorySize, Result};
 
 /* === Constants === */

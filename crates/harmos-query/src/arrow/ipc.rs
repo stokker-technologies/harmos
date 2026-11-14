@@ -15,17 +15,18 @@
 
 /* === Imports === */
 
-use arrow_ipc::Field as IpcField;
-
 // Standard Library Imports
 use std::io::Cursor;
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
+use arrow_ipc::Field as IpcField;
 use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::{IpcWriteOptions, StreamWriter};
 use arrow_ipc::{MessageHeader, Type, root_as_message_with_opts};
 use arrow_schema::Schema;
+
 // Local Imports
 use super::{MAX_DEPTH, MAX_FIELDS, invalid, validate_schema};
 use crate::Result;

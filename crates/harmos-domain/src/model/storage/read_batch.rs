@@ -13,20 +13,19 @@
 
 /* === Imports === */
 
-use super::files::FileEvent;
+// Standard Library Imports
+use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::fmt::Result as FormatResult;
-use std::result::Result as StdResult;
-
-// Standard Library Imports
-use std::borrow::Borrow;
 use std::ops::Deref;
+use std::result::Result as StdResult;
 use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
+use super::files::FileEvent;
 use crate::MemorySize;
 
 /* === Constants === */
@@ -131,6 +130,26 @@ impl<T: MemorySize> MemorySize for ReadBatch<T> {
     }
 }
 
+impl ReadBatch<FileEvent> {
+    pub fn event(&self) -> &FileEvent {
+        self.as_ref()
+    }
+
+    pub fn data(&self) -> Option<&[u8]> {
+        match self.event() {
+            FileEvent::Data(batch) => Some(&batch.bytes),
+            _ => None,
+        }
+    }
+
+    pub fn offset(&self) -> Option<u64> {
+        match self.event() {
+            FileEvent::Data(batch) => Some(batch.offset),
+            _ => None,
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -152,25 +171,5 @@ mod tests {
         let projected = alias.try_map(|bytes| Ok::<_, crate::Error>(vec![bytes])).unwrap();
         assert_eq!(projected[0].as_ptr(), pointer);
         assert_eq!(projected[0], [1, 2, 3]);
-    }
-}
-
-impl ReadBatch<FileEvent> {
-    pub fn event(&self) -> &FileEvent {
-        self.as_ref()
-    }
-
-    pub fn data(&self) -> Option<&[u8]> {
-        match self.event() {
-            FileEvent::Data(batch) => Some(&batch.bytes),
-            _ => None,
-        }
-    }
-
-    pub fn offset(&self) -> Option<u64> {
-        match self.event() {
-            FileEvent::Data(batch) => Some(batch.offset),
-            _ => None,
-        }
     }
 }

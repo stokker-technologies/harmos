@@ -7,7 +7,7 @@
  * ***
  */
 
-// Bounded Batch Sources At An Immutable Cut
+// Admitted Query Readers and Schema Resolution
 
 /* === Modules === */
 
@@ -15,15 +15,20 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+
+// Third Party Imports
+use tokio::sync::OwnedSemaphorePermit;
+
+// Local Imports
 use crate::backend::ScanPage;
 use crate::execution::Context;
 use crate::manager::Inner;
 use crate::{Error, Result, SchemaKey, Snapshot, StorageSchema};
 use harmos_domain::model::storage::query::QueryCompletion;
 use harmos_query::{QueryArrow, QueryReader as EngineReader, QueryStep};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use tokio::sync::OwnedSemaphorePermit;
 
 /* === Constants === */
 

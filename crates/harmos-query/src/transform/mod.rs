@@ -37,10 +37,10 @@ use arrow_array::{
     RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
-use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
 
 // Local Imports
 use crate::{Error, Result};
+use harmos_domain::model::storage::query::scalar::{ExactNumber, ScalarValue};
 
 /* === Constants === */
 

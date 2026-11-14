@@ -1157,9 +1157,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "flatbuffers",
- "futures-util",
  "harmos-domain",
- "postcard",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -1225,13 +1223,10 @@ name = "harmos-storage"
 version = "0.1.14"
 dependencies = [
  "arrow-array",
- "arrow-buffer",
  "arrow-data",
- "arrow-ipc",
  "arrow-schema",
  "arrow-select",
  "base64 0.23.1",
- "flatbuffers",
  "futures-util",
  "getrandom 0.4.3",
  "globset",

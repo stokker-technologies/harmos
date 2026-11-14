@@ -13,24 +13,28 @@
 
 /* === Imports === */
 
-use crate::StorageCursor;
-use harmos_query::Error as QueryError;
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::Arc;
 
+// Third Party Imports
+use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
+
+// Local Imports
 use super::object_schemas::NormalizedObjects;
 use super::reader::{QueryReader, query_slot, schema_at};
+use crate::StorageCursor;
 use crate::backend::ScanPage;
 use crate::config::SCAN_ROWS;
 use crate::manager::Inner;
 use crate::selection::Entry;
 use crate::{Error, FileReference, ObjectEntry, Result, Snapshot, StorageManager, StorageSchema, StoredRecord, StoredRow};
-use arrow_array::RecordBatch;
-use arrow_schema::SchemaRef;
 use harmos_domain::model::storage::query::{Query, Source};
+use harmos_query::Error as QueryError;
 use harmos_query::QueryResponse;
 use harmos_query::batches::{BatchPage, BatchReader, BatchScan, BatchSource, QueryFuture};
 use harmos_query::transform::{ProjectExecution, Transform, project::Project};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 /* === Constants === */
 
@@ -39,6 +43,11 @@ use std::sync::Arc;
 /* === Type Aliases === */
 
 /* === Structs === */
+
+struct AdmittedBatches {
+    source: StoredBatches,
+    inner: Arc<Inner>,
+}
 
 pub(super) struct StoredBatches {
     inner: Arc<Inner>,
@@ -301,25 +310,6 @@ impl BatchReader for StoredBatches {
     }
 }
 
-/* === Public Functions === */
-
-/* === Private Functions === */
-
-async fn scan<T: Entry>(snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows) -> Result<(Rows, usize)> {
-    let (entries, bytes) = snapshot.scan::<T>(selection, page).await?;
-    Ok((wrap(entries), bytes))
-}
-
-fn source_error(error: Error) -> QueryError {
-    QueryError::backend("read batch source", harmos_query::BackendFailure::Permanent, error)
-}
-
-/* === Tests === */
-
-struct AdmittedBatches {
-    source: StoredBatches,
-    inner: Arc<Inner>,
-}
 impl BatchReader for AdmittedBatches {
     fn schema(&self) -> SchemaRef {
         self.source.schema()
@@ -334,3 +324,18 @@ impl BatchReader for AdmittedBatches {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+async fn scan<T: Entry>(snapshot: &Snapshot, selection: &T::Selection, page: ScanPage, wrap: fn(Vec<T>) -> Rows) -> Result<(Rows, usize)> {
+    let (entries, bytes) = snapshot.scan::<T>(selection, page).await?;
+    Ok((wrap(entries), bytes))
+}
+
+fn source_error(error: Error) -> QueryError {
+    QueryError::backend("read batch source", harmos_query::BackendFailure::Permanent, error)
+}
+
+/* === Tests === */

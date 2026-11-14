@@ -15,15 +15,17 @@ pub use harmos_domain::model::storage::query::transform::project::{Project, Proj
 
 /* === Imports === */
 
-use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
+
 // Local Imports
 use super::{FieldPath, invalid};
 use crate::Result;
+use crate::transform::FieldPathExecution;
 
 /* === Constants === */
 

@@ -228,6 +228,19 @@ impl MemorySize for Source {
             }
     }
 }
+impl MemorySize for TimeMerge {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.source.memory_size())
+            .saturating_add(self.primary_time.memory_size())
+            .saturating_add(self.secondary_time.memory_size())
+            .saturating_add(match &self.mode {
+                TimeMergeMode::Range { end } => end.memory_size(),
+                _ => 0,
+            })
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -241,16 +254,3 @@ fn window(start: Option<SystemTime>, end: Option<SystemTime>) -> Result<()> {
 }
 
 /* === Tests === */
-
-impl MemorySize for TimeMerge {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.source.memory_size())
-            .saturating_add(self.primary_time.memory_size())
-            .saturating_add(self.secondary_time.memory_size())
-            .saturating_add(match &self.mode {
-                TimeMergeMode::Range { end } => end.memory_size(),
-                _ => 0,
-            })
-    }
-}

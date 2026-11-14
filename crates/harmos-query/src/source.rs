@@ -19,8 +19,6 @@ pub mod testing;
 
 /* === Imports === */
 
-use crate::SchemaKey;
-
 // Standard Library Imports
 use std::{
     collections::HashMap,
@@ -35,6 +33,7 @@ use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 
 // Local Imports
 use super::transform::project::Project;
+use crate::SchemaKey;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::{Error, Result};
 use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};

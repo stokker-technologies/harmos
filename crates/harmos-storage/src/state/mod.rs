@@ -70,6 +70,7 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn get_history(&self) -> &StoreHistory;
     fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition>;
+    /// Bounds Each Snapshot Segment; A Snapshot May Contain Multiple Segments.
     fn get_recovery_snapshot(&self, max_bytes: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
     fn list_recovery_entries<'a>(

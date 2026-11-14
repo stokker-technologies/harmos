@@ -15,16 +15,18 @@ pub use harmos_domain::model::storage::query::transform::sort::{Sort, SortKey};
 
 /* === Imports === */
 
-use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
+
 // Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
 use crate::accumulate::sort_values;
+use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */

@@ -18,6 +18,8 @@ use std::convert::Infallible;
 // Third Party Imports
 
 // Local Imports
+use harmos_query::Error as QueryError;
+use harmos_storage::Error as StorageError;
 
 /* === Constants === */
 
@@ -332,6 +334,12 @@ impl<E> Error<E> {
     }
 }
 
+impl<E> From<QueryError> for Error<E> {
+    fn from(error: QueryError) -> Self {
+        Self::from(StorageError::from(error))
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -353,9 +361,3 @@ fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harm
 }
 
 /* === Tests === */
-
-impl<E> From<harmos_query::Error> for Error<E> {
-    fn from(error: harmos_query::Error) -> Self {
-        Self::from(harmos_storage::Error::from(error))
-    }
-}

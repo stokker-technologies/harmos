@@ -13,9 +13,8 @@
 
 /* === Imports === */
 
-use std::ops::Range;
-
 // Standard Library Imports
+use std::ops::Range;
 
 // Third Party Imports
 

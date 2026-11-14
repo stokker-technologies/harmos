@@ -47,7 +47,6 @@ arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
 arrow-select = { workspace = true }
 flatbuffers = { workspace = true }
-postcard = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
 
@@ -61,7 +60,6 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
-futures-util = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 
 # Networking

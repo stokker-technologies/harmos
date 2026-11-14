@@ -13,9 +13,8 @@
 
 /* === Imports === */
 
-use std::io::Result as IoResult;
-
 // Standard Library Imports
+use std::io::Result as IoResult;
 use std::io::{self, Cursor, Read, Write};
 use std::num::NonZeroUsize;
 use std::sync::Arc;

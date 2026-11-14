@@ -17,19 +17,20 @@ pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, 
 
 /* === Imports === */
 
-use std::result::Result as StdResult;
-
-use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
+use std::result::Result as StdResult;
 use std::sync::Arc;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Field, Schema};
+
 // Local Imports
 use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::Result;
 use crate::accumulate::Accumulator;
+use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
 /* === Constants === */

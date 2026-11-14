@@ -22,12 +22,12 @@ pub use harmos_domain::model::storage::query::transform::downsample::{Algorithm,
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::{DataType, Schema, TimeUnit};
-use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 // Local Imports
 use super::{invalid, numeric_type};
 use crate::Result;
 use crate::transform::FieldPathExecution;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 

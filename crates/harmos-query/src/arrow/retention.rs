@@ -17,9 +17,11 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
+
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_data::ArrayData;
+
 // Local Imports
 use super::invalid;
 use crate::Result;

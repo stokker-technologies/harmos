@@ -18,8 +18,6 @@ pub(super) mod testing;
 
 /* === Imports === */
 
-use super::transform::aggregate::Aggregate;
-
 // Standard Library Imports
 use std::cmp::Ordering;
 use std::fs::File;
@@ -32,6 +30,7 @@ use arrow_array::{Array, Float64Array, RecordBatch};
 // Local Imports
 use super::scalar::ScalarValue;
 use super::spill::{Builder, Spool, io};
+use super::transform::aggregate::Aggregate;
 use super::transform::downsample::{Algorithm, Downsample, number};
 use super::transform::{AggregateExecution, FieldPathExecution, HistogramExecution, Transform, TransformExecution, invalid};
 use super::transform::{

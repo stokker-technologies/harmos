@@ -13,21 +13,26 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::num::NonZeroUsize;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
+// Third Party Imports
+use arrow_array::RecordBatch;
+
+// Local Imports
 use crate::arrow::{ArrowBatch, ArrowSchema};
 use crate::batches::{BatchReader, BatchScan, BatchSource};
 use crate::execute::Plan;
 use crate::merge::TimeMergeReader;
 use crate::transform::Transform;
 use crate::{Error, Result};
-use arrow_array::RecordBatch;
 use harmos_domain::MemorySize;
 use harmos_domain::model::storage::ReadLimits;
 use harmos_domain::model::storage::query::{Query, QueryCompletion};
-use std::num::NonZeroUsize;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 
 /* === Constants === */
 
