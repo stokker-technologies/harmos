@@ -19,6 +19,129 @@ Library-history references keep their saved-storage path; no application bytes o
 metadata enter library persistence. Diagnostics and bundle installation use the
 same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
 
+## Storage and Query Ownership
+
+**Locked direction, 2026-11-14:** the dependency order is
+`harmos-domain <- harmos-query <- harmos-storage <- harmos-operations <- harmos-runtime`.
+The runtime's `storage` feature is off by default. Enabling it selects the public
+in-memory primary and recovery adapters unless the application registers its own
+`StorageBackends`. Disabling it must remove storage, query and Arrow from the
+runtime's production dependency graph. These changes are not yet landed.
+
+### Current Module Inventory
+
+Every path in this inventory is relative to `crates/harmos-storage/src/`.
+The categories describe responsibility, not the current module visibility.
+
+| Responsibility | Current Modules |
+| --- | --- |
+| Interface | `backend.rs`, `batch.rs`, `config.rs`, `content.rs`, `definitions.rs`, `error.rs`, `file_batch.rs`, `file_checkpoint.rs`, `persistence_work.rs`, `read_batch.rs`, `receipts.rs`, `record_view.rs`, `schema_sets.rs`, `writes.rs` |
+| Recovery Interface | `state/mod.rs`, `state/config.rs`, `state/reader.rs`, `state/segments.rs`; the snapshot payload currently requires a temporary file and must become memory-backed |
+| Manager Composition | `lib.rs`, `manager/**`, `local.rs`, `worker.rs` |
+| Manager Admission and Persistence | `admissions.rs`, `batching.rs`, `capacity.rs`, `deletion.rs`, `object_admissions.rs`, `objects.rs`, `queue.rs`, `state/admission.rs` |
+| Manager Files and Follows | `directory/**`, `file_capture.rs`, `file_follow.rs`, `file_hash.rs`, `file_production.rs`, `file_reads.rs`, `follow.rs`, `frozen_file.rs`, `opened_capture.rs`, `staging/**` |
+| Manager Encoding and Execution | `execution.rs`, `execution/**`, `schema_encoding.rs`, `selection.rs`, `snapshot.rs`, `writes/**` |
+| Manager Query Integration | `query/manager.rs`; snapshot retention, admission, schema resolution, source conversion and backend dispatch currently embedded in `query/{reader,typed,object_schemas,columnar,index,projection}.rs` |
+| Engine | `aggregate.rs`, `arrow.rs`, `arrow/**`, `statistics/**`, `query.rs`, `query/{accumulate,execute,order_stats,ordering,quantiles,reduction,source,spill,table,time_buckets}.rs`, their descendant modules and `query/transform/**`; engine parts of the six mixed modules above |
+| Backend | `sqlite/**`, `state/file/**`; both leave the library |
+| Benchmark Fixtures | `bench_support/**`; migrate workloads to the in-memory adapter |
+
+The in-memory implementation currently lives in `tests/support/{storage,read_backend,
+file_backend,record_store}.rs`. Promote its actual data and recovery behavior;
+fault injection, counters, gates and test settings remain test support.
+
+### Query Import Inventory
+
+The current 27 `use crate::storage...` declarations are listed below. Line numbers
+refer to the tree before the split. Self-imports are included so the count is
+reproducible; they are not all dependencies on manager state.
+
+| Query File | Lines and Imported Responsibility |
+| --- | --- |
+| `reader.rs` | 34 Arrow wrappers; 35 scan page; 36 scan policy; 37 manager `Inner`; 38 selection `Entry`; 39 retained `Snapshot`; 40 manager and stored values |
+| `typed.rs` | 29 scan page; 30 manager `Inner`; 31 selection `Entry`; 32 retained `Snapshot`; 33 manager and stored values |
+| `object_schemas.rs` | 18 project execution; 29 scan page; 30 scan policy; 31 manager `Inner`; 32 retained `Snapshot`; 33 object/schema values |
+| `source.rs` | 37 file/object/record/stream/schema values |
+| `transform/aggregate.rs` | 20 field execution; 30 accumulator |
+| `transform/filter.rs` | 28 field execution |
+| `transform/downsample.rs` | 30 field execution |
+| `transform/histogram.rs` | 20 field execution |
+| `transform/project.rs` | 18 field execution |
+| `transform/sort.rs` | 18 field execution; 27 scalar ordering |
+
+Other direct imports also need migration: `columnar.rs:38-39` imports schema,
+backend, snapshot, page and work-limit types; `index.rs:27` and `projection.rs:25`
+import backend/snapshot/work-limit contracts; `manager.rs:26` imports the manager.
+`reader.rs` and `typed.rs` additionally name execution context and response settings
+in fields. `accumulate.rs` and `order_stats.rs` import accumulator settings;
+`accumulate.rs` imports aggregate/statistics implementations. Shared domain values
+move to direct domain imports, engine self-imports become local imports, and the
+engine gets its own errors and work limits. None of those require a storage edge.
+
+### Manager and Backend Calls Into Query
+
+| Caller | Current Calls or State |
+| --- | --- |
+| `manager/arrow.rs` | `query::schema_at` resolves the admitted schema at a cut |
+| `snapshot.rs` | `columnar::list_column_rows`, `index::list_index_entries`, `projection::advance_projection` |
+| `query/manager.rs` | index/projection registration, definition/status lookup, publication reads and retention delegate to the primary backend |
+| `query/reader.rs` | `NormalizedObjects::resolve`, `source::{records,stream,projected,objects,files,schemas}`, project execution and `Plan::{new,page,finish,source_limit,is_inline,is_satisfied,output_schema}` |
+| `query/typed.rs` | schema lookup and typed decoding coupled to `Entry`, admission and retained snapshots |
+| `query/columnar.rs` | native capability dispatch, stored-row fallback, flattening, filtering, projection and page continuation validation |
+| `query/index.rs` | native capability dispatch, fallback columnar scans, index key encoding and bounded candidate sorting; `IndexCatalog` owns definition revisions |
+| `query/projection.rs` | native advancement dispatch, definition/status lookup, columnar scans, bucket accumulator and fingerprints, previous-output reads and atomic publication; `ProjectionCatalog` owns revisions and retained outputs |
+| `sqlite/rows.rs`, `sqlite/objects.rs` | columnar conversion of records, streams and object revisions |
+| `sqlite/columns.rs` | `columnar::{take,empty,finish_page,ScanEvidence}` and work exhaustion errors |
+| `sqlite/index.rs` | index `entry` and `finish`, definition validation and read identity/validation |
+| `sqlite/projection.rs` | projection `page` and `check_retired`, definition validation and transform selection |
+| `sqlite/buckets.rs` | bucket `Accumulator::{new,push,finish,from_samples,into_samples}`, private `Sample` state, `output_schema`, `output`, fingerprints and columnar conversion |
+| `tests/support/storage.rs` | `IndexCatalog` and `ProjectionCatalog` registration/read/publication; promote these catalogs with the in-memory backend, not into the engine |
+
+The catalog and publication orchestration belongs in storage. Its public engine
+calls operate on batches, transforms, bucket accumulators and fingerprints. The
+SQLite checkpoint code currently reaches into private engine state; it is a
+backend implementation to remove, not a requirement for the batch-source trait.
+No replacement engine API exposes `Sample` or storage catalog state.
+
+### Batch Source at a Cut
+
+The following is the proposed seam, not a compatibility export. `Source`,
+`StorageCursor`, filters and projections are domain contracts. `BatchScan`,
+`BatchPage`, `QueryFuture` and the two traits belong to `harmos-query`.
+
+```rust
+pub trait BatchSource: Send + Sync {
+    fn open<'a>(
+        &'a self, selection: &'a Source, at: &'a StorageCursor,
+        scan: &'a BatchScan,
+    ) -> QueryFuture<'a, Box<dyn BatchReader>>;
+}
+
+pub trait BatchReader: Send {
+    fn schema(&self) -> SchemaRef;
+    fn at(&self) -> &StorageCursor;
+    fn next(&mut self) -> QueryFuture<'_, BatchPage>;
+}
+```
+
+`BatchScan` carries bounded row/byte work limits, an optional payload projection
+and pruning filters/time bounds. Opening fixes the cut and output schema. Source
+implementations must honor selection and cut, may prune false rows, and must
+produce exactly the requested projected schema. Residual engine filters preserve
+correctness when pruning is declined. A page carries a batch and an explicit
+completion bit: an empty pruned page can make progress without completing.
+Dropping the reader releases its cut. The source owns seek positions and snapshot
+tokens; neither is interpreted by the engine.
+
+The storage implementation owns snapshot validation/retention, active query
+admission, object schema normalization, bounded backend calls and row-to-batch
+conversion. It reacquires admission per page, and cancellation releases owned work.
+A backend with native batches can implement the same source, including projection
+and pruning, without exposing its persistence model. Engine readers own plans,
+transforms, reductions, ordering, spill and typed batch decoding. The manager calls
+their public constructors and transforms; the engine never imports manager,
+session, receipt, staging, executor or recovery types. This admits the crate split.
+
 ## How to Use This Document
 
 Python client resources are committed generated classes derived from protocol
