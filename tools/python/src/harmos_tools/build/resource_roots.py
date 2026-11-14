@@ -1297,6 +1297,8 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
             lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"]]
             lines += ["    };"]
             value = f"response.{title(payload['name'])}" if payload else "response"
+            if payload and payload["kind"] == 11 and not payload["repeated"]:
+                value += f' ?? throw new InvalidOperationException("Read {name}: Missing Payload")'
             if stream:
                 lines += [
                     f"    await foreach (var response in context.WatchAsync(HostContracts.{name}, request, maxItemBytes, cancellationToken))",

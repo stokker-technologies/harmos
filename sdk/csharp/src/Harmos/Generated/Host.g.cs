@@ -61,7 +61,7 @@ public sealed class HostInvocationsResource(Context context)
       Instance = instance,
     };
     var response = await context.CallAsync(HostContracts.InvocationsGet, request, policy, cancellationToken);
-    return response.Invocation;
+    return response.Invocation ?? throw new InvalidOperationException("Read InvocationsGet: Missing Payload");
   }
   public async Task<InstanceState> Cancel(ulong instance, string reason, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
@@ -71,7 +71,7 @@ public sealed class HostInvocationsResource(Context context)
       Reason = reason,
     };
     var response = await context.CallAsync(HostContracts.InvocationsCancel, request, policy, cancellationToken);
-    return response.Invocation;
+    return response.Invocation ?? throw new InvalidOperationException("Read InvocationsCancel: Missing Payload");
   }
   public async IAsyncEnumerable<InstanceState> Watch(ulong instance, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
@@ -81,7 +81,7 @@ public sealed class HostInvocationsResource(Context context)
     };
     await foreach (var response in context.WatchAsync(HostContracts.InvocationsWatch, request, maxItemBytes, cancellationToken))
     {
-      yield return response.Invocation;
+      yield return response.Invocation ?? throw new InvalidOperationException("Read InvocationsWatch: Missing Payload");
     }
   }
 }
@@ -102,7 +102,7 @@ public sealed class HostOperationsResource(Context context)
       Id = id,
     };
     var response = await context.CallAsync(HostContracts.OperationsGet, request, policy, cancellationToken);
-    return response.Operation;
+    return response.Operation ?? throw new InvalidOperationException("Read OperationsGet: Missing Payload");
   }
 }
 public sealed class HostSettingsResource(Context context)
@@ -125,7 +125,7 @@ public sealed class HostTimeResource(Context context)
     {
     };
     var response = await context.CallAsync(HostContracts.TimeGet, request, policy, cancellationToken);
-    return response.Now;
+    return response.Now ?? throw new InvalidOperationException("Read TimeGet: Missing Payload");
   }
   public async Task<TimeSleepResponse> Sleep(Duration duration, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
