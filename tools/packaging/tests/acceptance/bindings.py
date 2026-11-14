@@ -254,7 +254,7 @@ def identities(target: Path, alpha: Path, beta: Path) -> None:
 def owners(target: Path, alpha: Path, beta: Path) -> None:
     """Use The Domain Owner Table In The Exported Validator And Projector."""
     package = _imported(alpha, beta)[0]
-    operation_module = importlib.import_module(f"{package.__name__}.operation")
+    operation_module = importlib.import_module(f"{package.__name__}._operation")
     projector = _projector(package)
     for owner, valid in json.load(sys.stdin):
         assert operation_module.owner_segment(owner) == valid, repr(owner)

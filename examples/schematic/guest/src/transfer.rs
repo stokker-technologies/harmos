@@ -15,7 +15,8 @@
 
 /* === Imports === */
 
-use harmos::{Context, Error, Operation, Plugin, Visibility};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Error, Visibility};
 use schematic_protocol::{Batch, FileHash, FilesHashRequest, Hash, Put, Receipt, Record, Sample, Take};
 use std::{
     collections::{BTreeMap, VecDeque},

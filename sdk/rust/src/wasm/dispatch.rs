@@ -298,7 +298,11 @@ impl Session {
         Arc::new(Transport {
             import: Arc::clone(&self.import),
             context,
-            generation_context: if retained { self.generation_context.borrow().clone() } else { Vec::new() },
+            generation_context: if retained {
+                self.generation_context.borrow().clone()
+            } else {
+                Vec::new()
+            },
             assignments: Arc::clone(&self.assignments),
         })
     }

@@ -22,7 +22,7 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import invocation_pb2 as harmos_dot_v1_dot_invocation__pb2
+from harmos._wire.v1 import invocation_pb2 as harmos_dot_v1_dot_invocation__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"harmos/client/v1/invocations.proto\x12\x10harmos.client.v1\x1a\x1aharmos/v1/invocation.proto\"S\n\x18InvocationsInvokeRequest\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x13\n\x0b\x66ingerprint\x18\x02 \x01(\x0c\x12\x0f\n\x07payload\x18\x03 \x01(\x0c\",\n\x19InvocationsInvokeResponse\x12\x0f\n\x07payload\x18\x01 \x01(\x0c\")\n\x15InvocationsGetRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"F\n\x16InvocationsGetResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"<\n\x18InvocationsCancelRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\x12\x0e\n\x06reason\x18\x02 \x01(\t\"I\n\x19InvocationsCancelResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState\"+\n\x17InvocationsWatchRequest\x12\x10\n\x08instance\x18\x01 \x01(\x04\"H\n\x18InvocationsWatchResponse\x12,\n\ninvocation\x18\x01 \x01(\x0b\x32\x18.harmos.v1.InstanceState2\x8f\x03\n\x0bInvocations\x12\x61\n\x06Invoke\x12*.harmos.client.v1.InvocationsInvokeRequest\x1a+.harmos.client.v1.InvocationsInvokeResponse\x12X\n\x03Get\x12\'.harmos.client.v1.InvocationsGetRequest\x1a(.harmos.client.v1.InvocationsGetResponse\x12\x61\n\x06\x43\x61ncel\x12*.harmos.client.v1.InvocationsCancelRequest\x1a+.harmos.client.v1.InvocationsCancelResponse\x12`\n\x05Watch\x12).harmos.client.v1.InvocationsWatchRequest\x1a*.harmos.client.v1.InvocationsWatchResponse0\x01\x62\x06proto3')

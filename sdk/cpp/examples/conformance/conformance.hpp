@@ -7,7 +7,6 @@
  * ***
  */
 
-
 #pragma once
 
 /* === Imports === */
@@ -17,9 +16,8 @@
 // Third Party Imports
 
 // Local Imports
+#include "generated/types.hpp"
 #include "harmos/harmos.hpp"
-#include "harmos/conformance/v1/fixture.pb.h"
-
 
 /* === Macros === */
 
@@ -34,5 +32,5 @@
 /* === Public Declarations === */
 
 namespace harmos::conformance {
-Plugin plugin();
+::harmos::plugin::Plugin plugin();
 }

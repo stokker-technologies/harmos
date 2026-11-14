@@ -1070,8 +1070,8 @@ pub struct PluginsListResponse {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginsWatchRequest {
     /// Empty watches all entries; otherwise selects this exact management entry name.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "1")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
     /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
     #[prost(message, optional, tag = "2")]
     pub at: ::core::option::Option<crate::v1::ReadCut>,

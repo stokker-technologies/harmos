@@ -10,12 +10,11 @@
 
 # === Imports === #
 
-import argparse
 import asyncio
+from argparse import ArgumentParser
 
-from harmos import Client
-from harmos._wire.client.v1.operations_pb2 import OperationsListRequest, OperationsListResponse
-from harmos._wire.client.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
+from harmos import Client, DiscoveredOperation
+from harmos.client import StatusGetResponse, StatusWatchResponse
 
 # === Public Exports === #
 
@@ -28,32 +27,32 @@ from harmos._wire.client.v1.status_pb2 import StatusGetRequest, StatusGetRespons
 # === Public Functions === #
 
 
-async def run(address: str) -> tuple[OperationsListResponse, StatusGetResponse, StatusWatchResponse]:
+async def run(address: str) -> tuple[list[DiscoveredOperation], StatusGetResponse, StatusWatchResponse]:
     client = Client.connect(address)
     try:
         # Discover Operations
-        declarations = await client.operations.list(OperationsListRequest())
+        declarations = await client.operations.list()
         print(declarations)
 
         # Read Typed Host Status
-        status = await client.status.get(StatusGetRequest())
+        status = await client.status.get()
         print(status)
 
         # Observe One Typed Update, Then Cancel Demand
-        updates = client.status.watch(StatusWatchRequest())
+        updates = client.status.watch()
         try:
             async for update in updates:
                 print(update)
                 return declarations, status, update
         finally:
-            updates.cancel()
+            await updates.aclose()
         raise RuntimeError("Watch Status: Host Closed Without an Update")
     finally:
         await client.close()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
     options = parser.parse_args()
     asyncio.run(run(options.address))

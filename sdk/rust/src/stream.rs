@@ -16,16 +16,20 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::result::Result as StdResult;
 use std::{marker::PhantomData, sync::Arc};
 
 // Third Party Imports
+use prost_types::{Duration, FileDescriptorSet, Timestamp};
+use tokio::sync::mpsc::Sender;
+use tonic::Status;
 
 // Local Imports
 use crate::{
     Context, Message, Result,
     operation::{Handler, LocalFuture},
 };
-use harmos_protocol::v1;
+use harmos_protocol::v1::StreamDeclaration;
 
 /* === Constants === */
 
@@ -43,18 +47,18 @@ pub struct Stream<T: Message> {
 pub struct Observer {
     pub(crate) stream: String,
     pub(crate) handler: Arc<dyn Handler>,
-    pub(crate) interval: Option<prost_types::Duration>,
+    pub(crate) interval: Option<Duration>,
     pub(crate) interval_setting: String,
 }
 
 pub struct Publisher<T: Message> {
-    output: tokio::sync::mpsc::Sender<(Vec<u8>, Option<prost_types::Timestamp>)>,
+    output: Sender<(Vec<u8>, Option<Timestamp>)>,
     marker: PhantomData<fn() -> T>,
 }
 
 pub(crate) struct StreamDefinition {
-    pub declaration: v1::StreamDeclaration,
-    pub types: prost_types::FileDescriptorSet,
+    pub declaration: StreamDeclaration,
+    pub types: FileDescriptorSet,
     pub producer: Option<Arc<dyn Handler>>,
 }
 
@@ -88,7 +92,7 @@ impl<T: Message> Stream<T> {
     pub fn new(id: impl Into<String>) -> Self {
         Self {
             definition: StreamDefinition {
-                declaration: v1::StreamDeclaration {
+                declaration: StreamDeclaration {
                     id: id.into(),
                     row: T::name(),
                     ..Default::default()
@@ -128,7 +132,7 @@ impl Observer {
         }
     }
 
-    pub fn every(mut self, interval: prost_types::Duration) -> Self {
+    pub fn every(mut self, interval: Duration) -> Self {
         self.interval = Some(interval);
         self
     }
@@ -144,11 +148,11 @@ impl<T: Message> Publisher<T> {
         self.publish_at(value, None).await
     }
 
-    pub async fn publish_at(&self, value: T, at: Option<prost_types::Timestamp>) -> Result<()> {
+    pub async fn publish_at(&self, value: T, at: Option<Timestamp>) -> Result<()> {
         if let Some(at) = at {
             validate_timestamp(at)?;
         }
-        self.output.send((value.encode_to_vec(), at)).await.map_err(|_| tonic::Status::cancelled("Demand Closed").into())
+        self.output.send((value.encode_to_vec(), at)).await.map_err(|_| Status::cancelled("Demand Closed").into())
     }
 }
 
@@ -157,7 +161,7 @@ where
     T: Message,
     H: for<'a> AsyncFn(&'a Context) -> Result<T> + Send + Sync + 'static,
 {
-    fn validate(&self, _: &[u8]) -> std::result::Result<(), tonic::Status> {
+    fn validate(&self, _: &[u8]) -> StdResult<(), Status> {
         Ok(())
     }
     fn execute<'a>(&'a self, context: &'a Context, _: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>> {
@@ -170,7 +174,7 @@ where
     T: Message,
     H: for<'a> AsyncFn(&'a Context, Publisher<T>) -> Result<()> + Send + Sync + 'static,
 {
-    fn validate(&self, _: &[u8]) -> std::result::Result<(), tonic::Status> {
+    fn validate(&self, _: &[u8]) -> StdResult<(), Status> {
         Ok(())
     }
     fn execute<'a>(&'a self, context: &'a Context, _: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>> {
@@ -187,9 +191,9 @@ where
 
 /* === Public Functions === */
 
-pub(crate) fn validate_timestamp(at: prost_types::Timestamp) -> std::result::Result<(), tonic::Status> {
+pub(crate) fn validate_timestamp(at: Timestamp) -> StdResult<(), Status> {
     if at.nanos < 0 || at.nanos >= 1_000_000_000 || !(-62_135_596_800..=253_402_300_799).contains(&at.seconds) {
-        return Err(tonic::Status::invalid_argument("Invalid Timestamp"));
+        return Err(Status::invalid_argument("Invalid Timestamp"));
     }
     Ok(())
 }

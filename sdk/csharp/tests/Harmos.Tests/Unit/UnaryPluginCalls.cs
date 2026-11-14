@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.Plugin.Host.V1;
-using Visibility = Harmos.V1.Visibility;
-using Harmos.Sdk;
-using SdkPlugin = Harmos.Sdk.Plugin;
+using System.Linq;
+using System.Threading.Tasks;
+using System;
+using Harmos.Plugins;
+using Harmos;
 using Xunit;
+using SdkPlugin = Harmos.Plugins.Plugin;
+using Visibility = Harmos.Visibility;
 
 namespace Harmos.Tests.Unit;
 

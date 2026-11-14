@@ -45,7 +45,8 @@ async fn host_restores_plugin_entries() {
     let managed_after = support::state(&mut watch, "enabled", harmos_protocol::client::PluginState::Ready, managed.activation + 1).await;
     let remote_after = host.manager.get(harmos_protocol::client::PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap();
     assert!(remote_after.entry.unwrap().placement.is_some());
-    let remote_watch = host.client.watch(harmos_protocol::client::PluginsWatchRequest { name: "remote".into(), at: None }).await.unwrap();
+    let remote_watch =
+        host.client.watch(harmos_protocol::client::PluginsWatchRequest { name: Some("remote".into()), at: None }).await.unwrap();
     let mut remote_watch = remote_watch.into_inner();
     let remote_after = support::state(&mut remote_watch, "remote", harmos_protocol::client::PluginState::Ready, 2).await;
     assert_eq!(managed_after.name, managed.name);

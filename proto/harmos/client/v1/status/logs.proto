@@ -33,9 +33,9 @@ service Logs {
 // Carries the read boundary and page selection and bounds for Logs.List.
 message LogsListRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-  harmos.v1.Position at = 1;
+  optional harmos.v1.Position at = 1;
   // Required positive item and encoded-byte bounds, plus an optional retained continuation.
-  harmos.v1.PageRequest page = 2;
+  optional harmos.v1.PageRequest page = 2;
 }
 
 // Returns bounded retained log events at a fixed boundary and any continuation token.
@@ -50,7 +50,7 @@ message LogsListResponse {
 // Carries the read boundary, byte bound and event bound for Logs.Watch.
 message LogsWatchRequest {
   // Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-  harmos.v1.Position at = 1;
+  optional harmos.v1.Position at = 1;
   // Positive encoded response byte limit, including boundary metadata; a single event that cannot fit refuses.
   uint64 max_bytes = 2;
   // Positive maximum events in each live response; zero refuses.

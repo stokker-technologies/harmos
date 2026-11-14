@@ -15,7 +15,9 @@ pub(crate) fn configuration(attributes: &[Attribute]) -> Result<Vec<Attribute>, 
         if meta.path().is_ident("cfg") {
             return Ok(Some(meta.clone()));
         }
-        let Meta::List(list) = meta else { return Ok(None) };
+        let Meta::List(list) = meta else {
+            return Ok(None);
+        };
         if !list.path.is_ident("cfg_attr") {
             return Ok(None);
         }

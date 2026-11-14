@@ -165,7 +165,7 @@ async fn guest_composition_walks() {
         .unwrap();
     runtime.plugin.initialize().await.unwrap();
     assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
-    let mut changes = entries.watch(PluginsWatchRequest { name: name.clone(), at: None }).await.unwrap();
+    let mut changes = entries.watch(PluginsWatchRequest { name: Some(name.clone()), at: None }).await.unwrap();
     entries
         .set(PluginsSetRequest {
             name: name.clone(),

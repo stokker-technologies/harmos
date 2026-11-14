@@ -1,7 +1,7 @@
 # C++ SDK
 
 `sdk/cpp` is a C++20 authoring and client library. Include `harmos/harmos.hpp`;
-it also includes the generated client at `harmos/generated/client.hpp`. The
+it includes the typed client, shared messages and plugin authoring boundary. The
 [conformance example](../sdk/cpp/examples/conformance/) supplies test support.
 The minimal [client](../sdk/cpp/examples/client/) connects and reads host status;
 the minimal [plugin](../sdk/cpp/examples/plugin/) serves one typed echo operation.
@@ -76,8 +76,8 @@ The fixture is `target/cpp/tests/harmos-cpp-conformance.exe` on Windows and
 ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
 `HARMOS_ADDRESS` overrides its bind address. `--address HOST:PORT` selects remote
 lifecycle: Stop completes cleanup and leaves the server running. Both modes use
-plain gRPC. Host clock waits require declaring `harmos::SLEEP`/`harmos::GET_TIME` with
-`requires_operation`. Observers may call declared host operations, the host clock,
+plain gRPC. Host clock waits require declaring `HostOperation::TimeSleep` and
+`HostOperation::TimeGet` from `harmos::plugin` with `requires_operation`. Observers may call declared host operations, the host clock,
 settings and demand-bounded Watch while answering a tick. Authors must not
 start untracked background work if they require virtual-time execution.
 
@@ -85,19 +85,33 @@ Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers case
 
 ## Boundary Types
 
-Shared messages use `harmos::v1` (also available as `harmos::wire`); client requests
-and services use `harmos::client::v1`, plugin services use `harmos::plugin::v1`,
-and host calls made by a plugin use `harmos::plugin::host::v1`.
-Headers follow those paths, with shared concepts in `harmos/v1/description.pb.h`,
-`setting.pb.h`, `invocation.pb.h` and the other explicit protocol inputs in
-`sdk/cpp/cmake/Protocol.cmake`. The SDK handler remains `harmos::Context`.
+Import `Client`, connection options, errors and shared messages from `harmos`.
+Client response and options types have their single public path in `harmos::client`;
+authoring and plugin-host types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
+Wire requests and transport adapters stay in private generated headers.
 
 ```cpp
-auto client = harmos::Client::connect("127.0.0.1:53124");
-grpc::ClientContext context;
-harmos::client::v1::OperationsListRequest request;
-const auto inventory = client.operations.list(context, request);
+using harmos::Client;
+
+auto client = Client::connect("127.0.0.1:53124");
+const auto inventory = client.operations.list();
+const auto response = client.status.get();
+std::cout << response.status().identity().application_name() << '\n';
 ```
+
+Typed calls take required request content in declaration order, followed by a defaulted
+per-call options value. For example, `client.plugins.get("example")` and
+`client.plugins.list(PluginsListOptions{.at = cut})` own their requests and contexts.
+Import `PluginsListOptions` from `harmos::client` when naming it. Mutations generate
+retry identity when `request_id` is absent. Options can retain a shared ClientContext
+for metadata, cancellation or deadline overrides. Operation policy owns the default
+deadline. Streaming calls return an owned `ClientStream`; `next()` pulls one item,
+and cancellation or destruction ends demand.
+
+Exactly one response field returns its payload, including a repeated collection;
+streams project each item likewise. Empty and multiple-field responses retain their
+message. Status retains its status and resolved read cut. See the full list in
+[SDK Call Contracts](architecture.md#sdk-call-contracts).
 
 `client.operations.get` selects one complete operation identity. Typed schema and
 stream inventories are `client.schemas.list` and `client.streams.list`.
@@ -118,26 +132,30 @@ Declare each library-stored setting with its typed default. False flags and empt
 text are selected values; an unset value discriminator is refused.
 
 ```cpp
-harmos::wire::SettingDeclaration setting;
+using harmos::SettingDeclaration;
+using harmos::plugin::HostOperation;
+using harmos::plugin::Plugin;
+
+SettingDeclaration setting;
 setting.set_name("enabled");
 setting.set_title("Enabled");
 setting.set_description("Enable Sampling");
 setting.mutable_default_()->set_flag(false);
 
-harmos::Plugin plugin("example", "1.0.0");
-plugin.setting(setting).requires_operation(harmos::LIST_SETTINGS);
+Plugin plugin("example", "1.0.0");
+plugin.setting(setting).requires_operation(HostOperation::SettingsList);
 ```
 
 `Plugin::setting` contributes one `SettingsDeclarations` section and its reachable
 types to `Declarations`. It refuses duplicate names and declarations without a name
 or selected default. Value variants are flag, integer, number, text and duration.
 Inside an operation or tick observer, `context.settings()` calls
-`harmos.plugin.host.v1.Settings/List` and returns the calling entry's complete typed
+`context.host().settings.list()` and returns the calling entry's complete typed
 values, settings revision and issued read cut. It takes no plugin selector.
 
 Clients read declarations and values through `client.plugins.settings.list` and
 replace the complete map through `client.plugins.settings.set`. Set takes the
-expected settings revision and a replay request ID. Settings revisions belong to
+expected settings revision and an optional replay request ID. Settings revisions belong to
 settings separately from plugin entry revisions; policies and declared settings
 own deadlines and retries.
 
@@ -155,7 +173,19 @@ after its answer, on device streams, or with unknown or duplicate terminal IDs r
 the Samples RPC. Separate Samples calls and Invoke calls keep independent identities.
 Device-driven publication remains on `Publisher::publish` under active stream demand.
 
-The reported message is `harmos.v1.Declarations`; the SDK builder is
+The reported message is `Declarations`; the SDK builder is
 `declarations()`. Regenerate client/plugin bindings when adopting this revision.
 Guest settings use the same library entry and settings services as other placements;
 see [WebAssembly Guests](plugin-manager.md#webassembly-guests).
+
+## Formatting and Composition
+
+The format task runs the pinned clang-format. LLVM defaults disallow short guards,
+loops and blocks; commented deviations retain the repository width, permit only empty
+short functions and expand lambdas. Source files import named types once at the top;
+headers retain qualified names and define no namespace imports.
+
+Product generators merge descriptors, put request and transport adapters in private
+headers, and export their response types from a client barrel. The shared fixture proves
+Annotations beneath library Plugins alongside the sibling Jobs.Progress root. Reuse the
+SDK's request flattening and response projection when generating a product client.

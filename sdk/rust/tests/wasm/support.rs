@@ -30,7 +30,11 @@ pub fn component(name: &str) -> Vec<u8> {
     let manifest = focused.clone().unwrap_or_else(|| directory.join("stamp.json"));
     let stamp: Value = serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
     let path = PathBuf::from(stamp["metadata"]["artifacts"][name].as_str().expect("the fixture stamp names the component"));
-    let path = if path.is_absolute() { path } else { directory.join(path) };
+    let path = if path.is_absolute() {
+        path
+    } else {
+        directory.join(path)
+    };
     let bytes = std::fs::read(&path).unwrap();
     if focused.is_some() {
         let expected = stamp["metadata"]["inspection_sha256"][name].as_str().expect("the focused stamp has a digest");

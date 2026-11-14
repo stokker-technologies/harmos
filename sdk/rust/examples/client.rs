@@ -19,10 +19,9 @@
 use std::{env, error::Error as StdError, num::NonZeroUsize, result::Result as StdResult};
 
 // Third Party Imports
-use harmos::prelude::*;
-use harmos_protocol::{client as host, v1::StorageTransferSettings};
+use harmos::client::Method;
+use harmos::{Client, ClientSettings, StorageTransferSettings};
 use schematic_protocol::{Connection, Snapshot, ValidateSchematic, Validation};
-use tonic::{Request, transport::Endpoint};
 
 // Local Imports
 
@@ -46,7 +45,6 @@ use tonic::{Request, transport::Endpoint};
 async fn main() -> StdResult<(), Box<dyn StdError>> {
     // Connect to the Application's gRPC Listener.
     let address = env::args().nth(1).ok_or("pass the application's gRPC URL")?;
-    let channel = Endpoint::from_shared(address)?.connect().await?;
     let retained_bytes = env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<NonZeroUsize>()?;
     let settings = ClientSettings {
         transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
@@ -55,13 +53,11 @@ async fn main() -> StdResult<(), Box<dyn StdError>> {
         input_items: NonZeroUsize::new(4).unwrap(),
         input_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
     };
-    let client = Client::new(channel, settings)?;
+    let client = Client::connect(address, settings).await?;
 
     // Find the Application's Generated Contract.
-    let request = host::OperationsListRequest {};
-    let declarations = client.operations.list(Request::new(request)).await?.into_inner();
+    let declarations = client.operations.list().await?;
     let contract = declarations
-        .operations
         .into_iter()
         .filter_map(|entry| entry.contract)
         .find(|contract| contract.id == "schematic.validate")
@@ -75,8 +71,8 @@ async fn main() -> StdResult<(), Box<dyn StdError>> {
             connections: vec![Connection { from: 1, to: 2 }],
         }),
     };
-    match client.call(&method, Request::new(request)).await {
-        Ok(response) => println!("{:?}", response.into_inner()),
+    match client.call(&method, request).await {
+        Ok(response) => println!("{:?}", response),
         Err(status) => println!("{}: {}", status.code(), status.message()),
     }
     Ok(())

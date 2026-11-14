@@ -20,7 +20,8 @@
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Message, Operation, Plugin, Result};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Message, Result, Visibility};
 
 /* === Constants === */
 
@@ -53,8 +54,8 @@ struct Output {
 fn main() -> Result<()> {
     let cleanup = std::env::args().nth(1).expect("Cleanup Evidence Path");
     let plugin = Plugin::new("placement", "1.0.0")
-        .operation(Operation::new("placement.echo", echo).visibility(harmos_protocol::v1::Visibility::Protected))
-        .operation(Operation::new("placement.environment", environment).visibility(harmos_protocol::v1::Visibility::Protected))
+        .operation(Operation::new("placement.echo", echo).visibility(Visibility::Protected))
+        .operation(Operation::new("placement.environment", environment).visibility(Visibility::Protected))
         .on_stop(move || {
             std::fs::write(&cleanup, b"stopped")?;
             Ok(())

@@ -10,15 +10,14 @@
 
 # === Imports === #
 
-import grpc
-
 # Standard Library Imports
 # Third Party Imports
 from google.protobuf.message import Message
+from grpc.aio import StreamStreamCall
 
-from harmos.plugin.v1 import instance_pb2 as carrier
-from harmos.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
+from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceInvokeResponse
+from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._wire.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 
 # Local Imports
 
@@ -36,24 +35,20 @@ from harmos.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 # === Public Functions === #
 
 
-async def invoke(
-    client: InstanceStub, operation: str, request: Message
-) -> grpc.aio.StreamStreamCall[carrier.InstanceInvokeRequest, carrier.InstanceInvokeResponse]:
+async def invoke(client: InstanceStub, operation: str, request: Message) -> StreamStreamCall[InstanceInvokeRequest, InstanceInvokeResponse]:
     call = client.Invoke()
     await call.write(
-        carrier.InstanceInvokeRequest(
-            request=Request(operation=operation, payload=request.SerializeToString(), invocation="story", attempt=1)
-        )
+        InstanceInvokeRequest(request=Request(operation=operation, payload=request.SerializeToString(), invocation="story", attempt=1))
     )
     return call
 
 
 async def reply(
-    call: grpc.aio.StreamStreamCall[carrier.InstanceInvokeRequest, carrier.InstanceInvokeResponse],
+    call: StreamStreamCall[InstanceInvokeRequest, InstanceInvokeResponse],
     child: ChildRequest,
     response: Message,
 ) -> None:
-    await call.write(carrier.InstanceInvokeRequest(child=ChildResponse(call=child.call, payload=response.SerializeToString())))
+    await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, payload=response.SerializeToString())))
 
 
 # === Private Functions === #

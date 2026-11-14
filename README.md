@@ -43,7 +43,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
-- **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
+- **gRPC Plugin Placement**: Invoke managed or remote gRPC plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
 - **[Plugin Management](docs/plugin-manager.md)**: Persist settings and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
@@ -83,7 +83,9 @@ to the application revision that produced them.
 
 ### Rust
 
-Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
+Plugin and client authors depend on `harmos`: import Client and shared messages from
+`harmos`, client response/options from `harmos::client`, and authoring types from
+`harmos::plugin`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
 Clients bind `client::Method` to generated application types, then use `Client::call`,
 `Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
@@ -91,7 +93,7 @@ The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed settin
 and reads its calling entry through `Context::settings`. Discover contracts through
 `client.operations.list`; client wrappers live in `harmos_protocol::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
-managed or remote `harmos.plugin.v1.Instance` placement and optional guest hosting.
+managed or remote gRPC placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
 Host operations, state catalogs and record registries are values; data shapes use
 field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
@@ -122,9 +124,14 @@ for the [performance suites](docs/product-guide.md#performance).
 
 ### C++
 
-The C++20 SDK serves `harmos.plugin.v1.Instance` with protobuf messages and builder values for
+The C++20 SDK serves gRPC plugins with protobuf messages and builder values for
 operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plugin-sdk)
 for toolchain setup and managed or remote serving.
+
+Clients take request content directly, own their transport context and project single-field
+responses. Import `Client` from the SDK root, response types from its client boundary,
+and authoring types from its plugin boundary; wire packages remain internal.
+See [SDK Call Contracts](docs/architecture.md#sdk-call-contracts).
 
 #### Examples
 

@@ -22,8 +22,8 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
-from harmos.v1 import schema_pb2 as harmos_dot_v1_dot_schema__pb2
+from harmos._wire.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
+from harmos._wire.v1 import schema_pb2 as harmos_dot_v1_dot_schema__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1eharmos/client/v1/streams.proto\x12\x10harmos.client.v1\x1a\x18harmos/v1/position.proto\x1a\x16harmos/v1/schema.proto\"4\n\x12StreamsListRequest\x12\x13\n\x06schema\x18\x01 \x01(\tH\x00\x88\x01\x01\x42\t\n\x07_schema\"H\n\x13StreamsListResponse\x12\x31\n\x07streams\x18\x01 \x03(\x0b\x32 .harmos.client.v1.StreamIdentity\"\x96\x01\n\x0eStreamIdentity\x12$\n\x06schema\x18\x01 \x01(\x0b\x32\x14.harmos.v1.SchemaKey\x12\x12\n\x05scope\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x0c\n\x04item\x18\x03 \x01(\t\x12\x0e\n\x06stream\x18\x04 \x01(\t\x12\"\n\x05\x66irst\x18\x05 \x01(\x0b\x32\x13.harmos.v1.PositionB\x08\n\x06_scope2^\n\x07Streams\x12S\n\x04List\x12$.harmos.client.v1.StreamsListRequest\x1a%.harmos.client.v1.StreamsListResponseb\x06proto3')

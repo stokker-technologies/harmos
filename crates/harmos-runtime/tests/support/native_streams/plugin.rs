@@ -13,7 +13,8 @@
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
-use harmos::{Context, Message, Operation, Plugin, Visibility};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Message, Visibility};
 use tokio::sync::Notify;
 
 // Local Imports

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Threading.Tasks;
 using Harmos.Tests.Support;
-using Xunit;
 using Xunit.Abstractions;
+using Xunit;
 
 namespace Harmos.Tests.Integration;
 

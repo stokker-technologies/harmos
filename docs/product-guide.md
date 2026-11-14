@@ -307,7 +307,8 @@ under `examples/schematic/` and is also the system fixture of the Harmos test su
 ## Cargo Features
 
 The public Rust SDK is `harmos`, located at `sdk/rust`. Plugin and client
-applications import `harmos::prelude::*`; no host code is compiled by that dependency.
+applications import shared types from `harmos` and authoring types from
+`harmos::plugin`; no host code is compiled by that dependency.
 Use `Plugin`, `Operation`, `Stream` and `Observer` builder values and finish a plugin
 with `serve()`. Messages derive protobuf descriptors with `#[derive(Message)]`.
 
@@ -1398,7 +1399,8 @@ their restoration catalog by value; see the
 A native plugin crate depends on `harmos`; its executable assembles builder values
 and calls `serve()`. Keep protobuf messages and operation contracts beside their
 handlers. A reusable contract crate can implement `Message` for generated types
-or use its derive. `use harmos::prelude::*;` supplies the authoring surface.
+or use its derive. Import authoring types from `harmos::plugin` and shared types
+from `harmos`.
 
 Guests live in separate `-guest` crates and depend on `harmos` with `wasm`. Shared
 operation implementations can live in a protocol-only crate;

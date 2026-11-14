@@ -21,8 +21,9 @@ mod transfer;
 
 /* === Imports === */
 
+use harmos::OperationPolicy;
+use harmos::plugin::Context;
 use harmos::wasm::Registration;
-use harmos::{Context, OperationPolicy};
 #[cfg(not(feature = "benchmark"))]
 use operations::plugin;
 #[cfg(feature = "benchmark")]

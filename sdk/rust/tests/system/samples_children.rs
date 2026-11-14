@@ -21,7 +21,7 @@
 
 // Local Imports
 use super::support;
-use harmos::Message;
+use harmos::{InstanceState, Message};
 use harmos_protocol::plugin::host::{InvocationsWatchResponse, SettingsListResponse, TimeGetResponse};
 use harmos_protocol::plugin::{InstanceSamplesRequest, instance_samples_request, instance_samples_response};
 use harmos_protocol::v1;
@@ -94,8 +94,12 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         let first = output.message().await.unwrap().unwrap();
         let second = output.message().await.unwrap().unwrap();
         assert!(first.samples.is_empty() && second.samples.is_empty());
-        let Some(instance_samples_response::Frame::Child(first)) = first.frame else { panic!("expected first child") };
-        let Some(instance_samples_response::Frame::Child(second)) = second.frame else { panic!("expected second child") };
+        let Some(instance_samples_response::Frame::Child(first)) = first.frame else {
+            panic!("expected first child")
+        };
+        let Some(instance_samples_response::Frame::Child(second)) = second.frame else {
+            panic!("expected second child")
+        };
         assert!(first.call > last_call && second.call > first.call);
         assert_eq!(first.operation, "harmos.plugin.host.v1.Time/Get");
         assert_eq!(second.operation, "harmos.plugin.host.v1.Settings/List");
@@ -140,7 +144,15 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         send.send(InstanceSamplesRequest {
             frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse {
                 call: watch.call,
-                result: Some(v1::child_response::Result::Item(InvocationsWatchResponse::default().encode_to_vec())),
+                result: Some(v1::child_response::Result::Item(
+                    InvocationsWatchResponse {
+                        invocation: Some(InstanceState {
+                            phase: "running".into(),
+                            ..Default::default()
+                        }),
+                    }
+                    .encode_to_vec(),
+                )),
             })),
         })
         .await
@@ -157,7 +169,14 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         let row = Reading::decode(answer.samples[0].row.as_slice()).unwrap();
         assert_eq!(row.sequence, sequence);
         assert_eq!(row.setting, sequence as i64);
-        assert_eq!(row.seconds, if sequence == 1 { -1 } else { sequence as i64 });
+        assert_eq!(
+            row.seconds,
+            if sequence == 1 {
+                -1
+            } else {
+                sequence as i64
+            }
+        );
         last_call = watch.call;
         if sequence == 1 {
             assert_eq!(v1::Failure::decode(row.failure.as_slice()).unwrap(), expected_failure);

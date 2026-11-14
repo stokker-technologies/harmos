@@ -33,7 +33,7 @@ service Settings {
 message SettingsListRequest {
   string name = 1;
   // Unset selects the latest durable settings; otherwise resend an issued cut unchanged.
-  harmos.v1.ReadCut at = 2;
+  optional harmos.v1.ReadCut at = 2;
 }
 
 // Returns the plugin's declarations and complete current setting values at one revision.

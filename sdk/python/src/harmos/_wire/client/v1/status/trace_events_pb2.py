@@ -23,11 +23,11 @@ _sym_db = _symbol_database.Default()
 
 
 from harmos._wire.client.v1.status import logs_pb2 as harmos_dot_client_dot_v1_dot_status_dot_logs__pb2
-from harmos.v1 import page_pb2 as harmos_dot_v1_dot_page__pb2
-from harmos.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
+from harmos._wire.v1 import page_pb2 as harmos_dot_v1_dot_page__pb2
+from harmos._wire.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n*harmos/client/v1/status/trace_events.proto\x12\x17harmos.client.v1.status\x1a\"harmos/client/v1/status/logs.proto\x1a\x14harmos/v1/page.proto\x1a\x18harmos/v1/position.proto\"_\n\x16TraceEventsListRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\x12$\n\x04page\x18\x02 \x01(\x0b\x32\x16.harmos.v1.PageRequest\"\x8c\x01\n\x17TraceEventsListResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x17\n\x0fnext_page_token\x18\x03 \x01(\t\"a\n\x17TraceEventsWatchRequest\x12\x1f\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\x12\x12\n\nmax_events\x18\x03 \x01(\r\"t\n\x18TraceEventsWatchResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position2\xe8\x01\n\x0bTraceEvents\x12i\n\x04List\x12/.harmos.client.v1.status.TraceEventsListRequest\x1a\x30.harmos.client.v1.status.TraceEventsListResponse\x12n\n\x05Watch\x12\x30.harmos.client.v1.status.TraceEventsWatchRequest\x1a\x31.harmos.client.v1.status.TraceEventsWatchResponse0\x01\x42#\xaa\x02 Harmos.Client.V1.StatusResourcesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n*harmos/client/v1/status/trace_events.proto\x12\x17harmos.client.v1.status\x1a\"harmos/client/v1/status/logs.proto\x1a\x14harmos/v1/page.proto\x1a\x18harmos/v1/position.proto\"y\n\x16TraceEventsListRequest\x12$\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.PositionH\x00\x88\x01\x01\x12)\n\x04page\x18\x02 \x01(\x0b\x32\x16.harmos.v1.PageRequestH\x01\x88\x01\x01\x42\x05\n\x03_atB\x07\n\x05_page\"\x8c\x01\n\x17TraceEventsListResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\x12\x17\n\x0fnext_page_token\x18\x03 \x01(\t\"m\n\x17TraceEventsWatchRequest\x12$\n\x02\x61t\x18\x01 \x01(\x0b\x32\x13.harmos.v1.PositionH\x00\x88\x01\x01\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\x12\x12\n\nmax_events\x18\x03 \x01(\rB\x05\n\x03_at\"t\n\x18TraceEventsWatchResponse\x12.\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x1e.harmos.client.v1.status.Event\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position2\xe8\x01\n\x0bTraceEvents\x12i\n\x04List\x12/.harmos.client.v1.status.TraceEventsListRequest\x1a\x30.harmos.client.v1.status.TraceEventsListResponse\x12n\n\x05Watch\x12\x30.harmos.client.v1.status.TraceEventsWatchRequest\x1a\x31.harmos.client.v1.status.TraceEventsWatchResponse0\x01\x42#\xaa\x02 Harmos.Client.V1.StatusResourcesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,13 +36,13 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\252\002 Harmos.Client.V1.StatusResources'
   _globals['_TRACEEVENTSLISTREQUEST']._serialized_start=155
-  _globals['_TRACEEVENTSLISTREQUEST']._serialized_end=250
-  _globals['_TRACEEVENTSLISTRESPONSE']._serialized_start=253
-  _globals['_TRACEEVENTSLISTRESPONSE']._serialized_end=393
-  _globals['_TRACEEVENTSWATCHREQUEST']._serialized_start=395
-  _globals['_TRACEEVENTSWATCHREQUEST']._serialized_end=492
-  _globals['_TRACEEVENTSWATCHRESPONSE']._serialized_start=494
-  _globals['_TRACEEVENTSWATCHRESPONSE']._serialized_end=610
-  _globals['_TRACEEVENTS']._serialized_start=613
-  _globals['_TRACEEVENTS']._serialized_end=845
+  _globals['_TRACEEVENTSLISTREQUEST']._serialized_end=276
+  _globals['_TRACEEVENTSLISTRESPONSE']._serialized_start=279
+  _globals['_TRACEEVENTSLISTRESPONSE']._serialized_end=419
+  _globals['_TRACEEVENTSWATCHREQUEST']._serialized_start=421
+  _globals['_TRACEEVENTSWATCHREQUEST']._serialized_end=530
+  _globals['_TRACEEVENTSWATCHRESPONSE']._serialized_start=532
+  _globals['_TRACEEVENTSWATCHRESPONSE']._serialized_end=648
+  _globals['_TRACEEVENTS']._serialized_start=651
+  _globals['_TRACEEVENTS']._serialized_end=883
 # @@protoc_insertion_point(module_scope)

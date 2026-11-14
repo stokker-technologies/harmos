@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Threading.Channels;
-using Google.Protobuf;
+using System.Threading.Tasks;
+using System.Threading;
 using Google.Protobuf.WellKnownTypes;
-using Harmos.V1;
+using Google.Protobuf;
+using Harmos;
 
-namespace Harmos.Sdk;
+namespace Harmos.Plugins;
 
 /// <summary>A typed device stream publisher. Demand closure cancels pending writes.</summary>
 public sealed class Publisher<TRow> where TRow : IMessage<TRow>

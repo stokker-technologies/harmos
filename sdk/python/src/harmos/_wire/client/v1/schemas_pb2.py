@@ -22,8 +22,8 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
-from harmos.v1 import schema_pb2 as harmos_dot_v1_dot_schema__pb2
+from harmos._wire.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
+from harmos._wire.v1 import schema_pb2 as harmos_dot_v1_dot_schema__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1eharmos/client/v1/schemas.proto\x12\x10harmos.client.v1\x1a\x18harmos/v1/position.proto\x1a\x16harmos/v1/schema.proto\"4\n\x12SchemasListRequest\x12\x13\n\x06schema\x18\x01 \x01(\tH\x00\x88\x01\x01\x42\t\n\x07_schema\"K\n\x13SchemasListResponse\x12\x34\n\x07schemas\x18\x01 \x03(\x0b\x32#.harmos.client.v1.SchemaDescription\"\x85\x01\n\x11SchemaDescription\x12%\n\x08position\x18\x01 \x01(\x0b\x32\x13.harmos.v1.Position\x12!\n\x03key\x18\x02 \x01(\x0b\x32\x14.harmos.v1.SchemaKey\x12&\n\x06schema\x18\x03 \x01(\x0b\x32\x16.harmos.v1.SchemaGraph2^\n\x07Schemas\x12S\n\x04List\x12$.harmos.client.v1.SchemasListRequest\x1a%.harmos.client.v1.SchemasListResponseb\x06proto3')

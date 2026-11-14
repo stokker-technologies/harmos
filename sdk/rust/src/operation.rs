@@ -16,13 +16,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, marker::PhantomData, pin::Pin, result::Result as StdResult, sync::Arc};
 
 // Third Party Imports
+use prost_types::FileDescriptorSet;
+use tonic::Status;
 
 // Local Imports
 use crate::{Context, Message, Result, Visibility};
-use harmos_protocol::v1;
+use harmos_protocol::v1::{OperationContract, OperationPolicy};
 
 /* === Constants === */
 
@@ -36,14 +38,14 @@ pub(crate) type LocalFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 #[derive(Clone)]
 pub struct Operation {
-    pub(crate) contract: v1::OperationContract,
-    pub(crate) types: prost_types::FileDescriptorSet,
+    pub(crate) contract: OperationContract,
+    pub(crate) types: FileDescriptorSet,
     pub(crate) handler: Arc<dyn Handler>,
 }
 
 struct TypedHandler<Q, R, H> {
     handler: H,
-    marker: std::marker::PhantomData<fn(Q) -> R>,
+    marker: PhantomData<fn(Q) -> R>,
 }
 
 /* === Enums === */
@@ -51,7 +53,7 @@ struct TypedHandler<Q, R, H> {
 /* === Traits === */
 
 pub(crate) trait Handler: Send + Sync {
-    fn validate(&self, payload: &[u8]) -> std::result::Result<(), tonic::Status>;
+    fn validate(&self, payload: &[u8]) -> StdResult<(), Status>;
     fn execute<'a>(&'a self, context: &'a Context, payload: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>>;
 }
 
@@ -68,7 +70,7 @@ impl Operation {
         let mut types = Q::types();
         crate::message::merge_descriptor_types(&mut types, R::types());
         Self {
-            contract: v1::OperationContract {
+            contract: OperationContract {
                 id,
                 request: Q::name(),
                 response: R::name(),
@@ -76,10 +78,7 @@ impl Operation {
                 ..Default::default()
             },
             types,
-            handler: Arc::new(TypedHandler {
-                handler,
-                marker: std::marker::PhantomData,
-            }),
+            handler: Arc::new(TypedHandler { handler, marker: PhantomData }),
         }
     }
 
@@ -87,7 +86,7 @@ impl Operation {
         self.contract.visibility = visibility as i32;
         self
     }
-    pub fn policy(mut self, policy: v1::OperationPolicy) -> Self {
+    pub fn policy(mut self, policy: OperationPolicy) -> Self {
         self.contract.policy = Some(policy);
         self
     }
@@ -107,13 +106,13 @@ where
     R: Message,
     H: for<'a> AsyncFn(&'a Context, Q) -> Result<R> + Send + Sync + 'static,
 {
-    fn validate(&self, payload: &[u8]) -> std::result::Result<(), tonic::Status> {
-        Q::decode(payload).map(|_| ()).map_err(|error| tonic::Status::invalid_argument(error.to_string()))
+    fn validate(&self, payload: &[u8]) -> StdResult<(), Status> {
+        Q::decode(payload).map(|_| ()).map_err(|error| Status::invalid_argument(error.to_string()))
     }
 
     fn execute<'a>(&'a self, context: &'a Context, payload: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>> {
         Box::pin(async move {
-            let request = Q::decode(payload.as_slice()).map_err(|error| tonic::Status::invalid_argument(error.to_string()))?;
+            let request = Q::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
             Ok((self.handler)(context, request).await?.encode_to_vec())
         })
     }

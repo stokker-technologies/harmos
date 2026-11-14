@@ -13,7 +13,7 @@ harmos_protocol(harmos_cpp_protocol "${CMAKE_CURRENT_SOURCE_DIR}/../../proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" ${HARMOS_PROTOCOLS})
 set_target_properties(harmos_cpp_protocol PROPERTIES EXPORT_NAME Protocol)
 
-add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp)
+add_library(harmos_cpp STATIC src/catalog.cpp src/context.cpp src/server.cpp src/generated/host.cpp)
 add_library(Harmos::Cpp ALIAS harmos_cpp)
 set_target_properties(harmos_cpp PROPERTIES EXPORT_NAME Cpp)
 target_compile_features(harmos_cpp PUBLIC cxx_std_20)
@@ -36,7 +36,7 @@ foreach(protocol IN LISTS HARMOS_PROTOCOLS)
     string(REPLACE ".proto" ".grpc.pb.h" service_header "${protocol}")
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/${message_header}"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/${service_header}"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${directory}")
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/harmos/_wire/${directory}")
 endforeach()
 configure_package_config_file(cmake/HarmosConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake"

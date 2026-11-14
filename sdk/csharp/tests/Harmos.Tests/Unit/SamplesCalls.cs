@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Channels;
-using Google.Protobuf;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Google.Protobuf.WellKnownTypes;
+using Google.Protobuf;
 using Grpc.Core;
-using Harmos.Plugin.V1;
-using Harmos.Plugin.Host.V1;
-using Harmos.Sdk;
-using Harmos.V1;
+using Harmos.Internal.Plugin;
+using Harmos.Plugins;
+using Harmos;
 using Microsoft.Extensions.Hosting;
 using Xunit;
-using SdkContext = Harmos.Sdk.Context;
-using SdkPlugin = Harmos.Sdk.Plugin;
+using SdkContext = Harmos.Plugins.Context;
+using SdkPlugin = Harmos.Plugins.Plugin;
 using Status = Grpc.Core.Status;
-using Settings = Harmos.Sdk.Settings;
 
 namespace Harmos.Tests.Unit;
 
@@ -73,8 +76,8 @@ public sealed class SamplesCalls
   {
     var service = Service(async context =>
     {
-      var now = await context.NowAsync();
-      var settings = await context.SettingsAsync();
+      var now = await context.Host.Time.Get();
+      var settings = await context.Host.Settings.List();
       var result = settings.Value.Values["prefix"].Text + now.Seconds;
       await foreach (var item in context.WatchAsync(Watch, new StringValue(), 4096))
       {
@@ -87,10 +90,10 @@ public sealed class SamplesCalls
     var serving = service.Samples(call, call, call.Context);
     await call.Tick(7);
     var clock = (await call.Read()).Child;
-    Assert.Equal(Clock.GetTime.Contract.Id, clock.Operation);
+    Assert.Equal(HostContracts.TimeGet.Contract.Id, clock.Operation);
     await call.Reply(clock.Call, new TimeGetResponse { Now = new Timestamp { Seconds = 7 } });
     var settings = (await call.Read()).Child;
-    Assert.Equal(Settings.List.Contract.Id, settings.Operation);
+    Assert.Equal(HostContracts.SettingsList.Contract.Id, settings.Operation);
     await call.Reply(settings.Call, new SettingsListResponse { Value = new SettingValues { Values = { ["prefix"] = new SettingValue { Text = "tick" } } } });
     var watch = (await call.Read()).Child;
     Assert.True(watch.Watch);
@@ -183,7 +186,7 @@ public sealed class SamplesCalls
 
   private static PluginService Service(Func<SdkContext, Task<StringValue>> observer, bool device = false)
   {
-    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(Clock.GetTime).Requires(Settings.List);
+    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.SettingsList);
     var publication = device
         ? new Publication(null, async (context, rows) => { await context.CancelledAsync(); })
         : new Publication(async context => (await observer(context)).ToByteString(), null);
@@ -198,10 +201,14 @@ public sealed class SamplesCalls
     public Call() => input.Writer.TryWrite(new InstanceSamplesRequest { Open = new SamplesSelection { Stream = "fixture", Scope = "opaque" } });
     public ServerCallContext Context { get; } = new ServerContext();
     public InstanceSamplesRequest Current { get; private set; } = new();
-    public WriteOptions? WriteOptions { get; set; }
+    public WriteOptions? WriteOptions
+    {
+      get; set;
+    }
     public async Task<bool> MoveNext(CancellationToken cancellationToken)
     {
-      if (!await input.Reader.WaitToReadAsync(cancellationToken)) return false;
+      if (!await input.Reader.WaitToReadAsync(cancellationToken))
+        return false;
       Current = await input.Reader.ReadAsync(cancellationToken);
       return true;
     }
@@ -222,8 +229,14 @@ public sealed class SamplesCalls
     protected override Metadata RequestHeadersCore { get; } = new();
     protected override CancellationToken CancellationTokenCore => CancellationToken.None;
     protected override Metadata ResponseTrailersCore { get; } = new();
-    protected override Status StatusCore { get; set; }
-    protected override WriteOptions? WriteOptionsCore { get; set; }
+    protected override Status StatusCore
+    {
+      get; set;
+    }
+    protected override WriteOptions? WriteOptionsCore
+    {
+      get; set;
+    }
     protected override AuthContext AuthContextCore { get; } = new("fixture", new Dictionary<string, List<AuthProperty>>());
     protected override ContextPropagationToken CreatePropagationTokenCore(ContextPropagationOptions? options) => throw new NotSupportedException();
     protected override Task WriteResponseHeadersAsyncCore(Metadata responseHeaders) => Task.CompletedTask;
@@ -234,6 +247,8 @@ public sealed class SamplesCalls
     public CancellationToken ApplicationStarted => CancellationToken.None;
     public CancellationToken ApplicationStopping => CancellationToken.None;
     public CancellationToken ApplicationStopped => CancellationToken.None;
-    public void StopApplication() { }
+    public void StopApplication()
+    {
+    }
   }
 }

@@ -15,12 +15,16 @@
 
 /* === Imports === */
 
-use crate::conformance::v1::Value;
-use harmos::{Client, ClientSettings, Context, Operation, Plugin, Result, Visibility};
-use harmos_protocol::client as host;
+use crate::conformance::Value;
+use harmos::client::plugin_change::Kind as ChangeKind;
+use harmos::client::plugin_placement::Kind as PlacementKind;
+use harmos::client::plugins_watch_response::Event;
+use harmos::client::{PluginChange, PluginPlacement, PluginRemote, PluginState, PluginValue, PluginsWatchOptions};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Client, ClientSettings, Error, Result, StorageTransferSettings, Visibility};
 use prost::Message;
 use std::num::NonZeroUsize;
-use tonic::Request;
+use tokio::runtime::Builder;
 
 /* === Constants === */
 
@@ -45,38 +49,31 @@ pub fn run(arguments: &[String]) -> Result<()> {
             .remote()
             .serve();
     }
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let runtime = Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(async {
-        let channel = tonic::transport::Endpoint::from_shared(arguments[0].clone())
-            .map_err(|error| harmos::Error::Invalid(error.to_string()))?
-            .connect()
-            .await?;
         let bytes = NonZeroUsize::new(16 * 1024 * 1024).unwrap();
-        let transfer = harmos::v1::StorageTransferSettings::default();
-        let client = Client::new(channel, ClientSettings::for_storage(transfer, bytes)?)?;
+        let transfer = StorageTransferSettings::default();
+        let client = Client::connect(arguments[0].clone(), ClientSettings::for_storage(transfer, bytes)?).await?;
         // Install and Start This Codebase's Running Instance
-        client
+        let placement = PluginPlacement {
+            kind: Some(PlacementKind::Remote(PluginRemote { url: arguments[1].clone() })),
+        };
+        client.plugins.create("example", placement, PluginValue { enabled: true }).await?;
+        let mut watch = client
             .plugins
-            .create(Request::new(host::PluginsCreateRequest {
-                request_id: "self-install".into(),
-                name: "example".into(),
-                placement: Some(host::PluginPlacement {
-                    kind: Some(host::plugin_placement::Kind::Remote(host::PluginRemote { url: arguments[1].clone() })),
-                }),
-                value: Some(host::PluginValue { enabled: true }),
-            }))
+            .watch_with(PluginsWatchOptions {
+                name: Some("example".into()),
+                ..Default::default()
+            })
             .await?;
-        let mut watch = client.plugins.watch(Request::new(host::PluginsWatchRequest { name: "example".into(), at: None })).await?;
         let ready = loop {
-            let event = watch.next().await?.ok_or_else(|| harmos::Error::Invalid("Watch Plugins: closed before Ready".into()))?;
+            let event = watch.next().await?.ok_or_else(|| Error::Invalid("Watch Plugins: closed before Ready".into()))?;
             let entries = match event.event {
-                Some(host::plugins_watch_response::Event::Snapshot(snapshot)) => snapshot.entries,
-                Some(host::plugins_watch_response::Event::Change(host::PluginChange {
-                    kind: Some(host::plugin_change::Kind::Entry(entry)),
-                })) => vec![entry],
+                Some(Event::Snapshot(snapshot)) => snapshot.entries,
+                Some(Event::Change(PluginChange { kind: Some(ChangeKind::Entry(entry)) })) => vec![entry],
                 _ => Vec::new(),
             };
-            if let Some(entry) = entries.into_iter().find(|entry| entry.state == host::PluginState::Ready as i32) {
+            if let Some(entry) = entries.into_iter().find(|entry| entry.state == PluginState::Ready as i32) {
                 break entry;
             }
         };
@@ -93,27 +90,13 @@ pub fn run(arguments: &[String]) -> Result<()> {
         let mut data = b"hello".to_vec();
         data.resize(transfer.chunk_bytes() as usize, 0);
         let payload = Value { value: data.clone() }.encode_to_vec();
-        let response = client
-            .invocations
-            .invoke(Request::new(host::InvocationsInvokeRequest {
-                operation: contract.id,
-                fingerprint: contract.fingerprint,
-                payload,
-            }))
-            .await?
-            .into_inner();
-        let value = Value::decode(response.payload.as_slice()).map_err(|error| harmos::Error::Invalid(error.to_string()))?;
+        let response = client.invocations.invoke(contract.id, contract.fingerprint, payload).await?;
+        let value = Value::decode(response.as_slice()).map_err(|error| Error::Invalid(error.to_string()))?;
         if value.value != data {
-            return Err(harmos::Error::Invalid("Invoke example.echo: payload changed".into()));
+            return Err(Error::Invalid("Invoke example.echo: payload changed".into()));
         }
         println!("hello");
-        client
-            .plugins
-            .delete(Request::new(host::PluginsDeleteRequest {
-                name: "example".into(),
-                expected_revision: ready.revision,
-            }))
-            .await?;
+        client.plugins.delete("example", ready.revision).await?;
         Ok(())
     })
 }

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.Plugin.Host.V1;
-using Google.Protobuf;
+using System.Linq;
+using System.Threading.Tasks;
+using System;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
-using Harmos.Sdk;
-using Harmos.V1;
-using SdkPlugin = Harmos.Sdk.Plugin;
+using Google.Protobuf;
+using Harmos.Plugins;
+using Harmos;
 using Xunit;
+using SdkPlugin = Harmos.Plugins.Plugin;
 
 namespace Harmos.Tests.Unit;
 
@@ -35,7 +37,7 @@ public sealed class TypedClockContracts
   [Fact]
   public void ClockRequirementsMergeReachableTypesWithoutWireServiceMessages()
   {
-    var plugin = new SdkPlugin("clock_client", "1.0.0").Requires(Clock.Sleep).Requires(Clock.GetTime);
+    var plugin = new SdkPlugin("clock_client", "1.0.0").Requires(HostOperation.TimeSleep).Requires(HostOperation.TimeGet);
     var declarations = plugin.Declarations();
     var clock = Assert.Single(declarations.Types_.File, file => file.Name == "harmos/plugin/host/v1/time.proto");
     Assert.Equal(["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"], clock.MessageType.Select(message => message.Name));

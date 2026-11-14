@@ -37,7 +37,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.b
 [tasks.check]
 description = "Check the C++ SDK Preset"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --check"
+run = ["mise -C sdk/cpp run format -- --check", "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --check"]
 
 [tasks.consumer]
 description = "Build the Installed C++ SDK Consumer"
@@ -50,7 +50,10 @@ dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --generate"
 
 [tasks.format]
-description = "Format the C++ SDK Python Stories"
+description = "Format the C++ SDK and Python Stories"
 dir = "../.."
 usage = 'flag "--check"'
-run = "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}"
+run = [
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --format{% if usage.check %} --check{% endif %}",
+  "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}",
+]

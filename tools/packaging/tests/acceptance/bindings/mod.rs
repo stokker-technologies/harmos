@@ -56,9 +56,6 @@ const POLICY: OperationPolicy = OperationPolicy {
     retries: RetryPolicy::Never,
 };
 
-// The Generated Python Surface of a Request Carrying Aggregates
-const AGGREGATE_SNAPSHOT: &str = include_str!("../fixtures/aggregate-bindings.pyi.snapshot");
-
 // A Wide Schema Shared with the Domain's Graph Stories
 const CHECKPOINT: &str = include_str!("../../../../../crates/harmos-domain/tests/fixtures/checkpoint-schema.json");
 

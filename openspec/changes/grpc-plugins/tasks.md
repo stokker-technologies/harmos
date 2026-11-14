@@ -307,6 +307,13 @@
 
 ## 8. Final Validation
 
+- [x] 8.6 Replace the SDK call style across the four languages in `refactor/sdk-call-style`; one writer owns `sdk/**`, client/plugin generators in `tools/**`, example client/plugin code and SDK guides. Storage, query and runtime storage stay with their separate owner. Retain local commits only.
+  - [x] 8.6.1 Add descriptor-derived required arguments, optional options, retry identity, owned context and payload projection in generators; mark optional selectors in `proto/**` and regenerate outputs through tasks.
+  - [x] 8.6.2 Replace public wire/version paths with root, client and plugin barrels; migrate authoring, examples, fixtures, composition consumers and guides; remove superseded request-object overloads.
+  - [x] 8.6.3 Apply import-at-top and one-statement-per-line conventions and minimal commented formatter deviations; account for README and architecture impact.
+  - [x] 8.6.4 Prove focused calls, options, retry identity, streaming projection and library/product composition before source closure.
+  - [x] 8.6.5 On the committed candidate run format, all language/repository checks, each SDK build/test, conformance (36 rules each), example and packaged consumer stories, and generation idempotence; report exact failures and counts. Windows proof passes on the committed source: Rust 20 SDK tests plus one WebAssembly system story, Python 8, C# 13, C++ 12 units plus 2 conformance stories; every SDK fixture and packaged consumer passes all 36 rules. All language/repository checks and builds pass, along with 68 tooling, 4 product-binding and 2 touched runtime stories. All four generation tasks reproduce a clean tree. Native Linux proof remains under 8.1 and 8.2.
+
 - [x] 8.5 Complete the additive SDK follow-ups in this worktree; ownership is SDK client, registration and fixtures, tools/conformance, runtime plugin dispatch and its stories, and this change's design/tasks. Storage and storage-facing contracts remain with their existing owners. README impact is reviewed with the public API notes.
   - [x] 8.5.1 Add descriptor-backed generated-client decoded-memory admission and focused real-host refusal, round-trip and cancellation proof.
     - [x] 8.5.1.1 Require caller-owned `ClientSettings.retained_bytes`, scan repeated/map/nested values before decoding, merge borrowed managed envelopes, retain claims in SDK-owned queues and release at handoff without changing public call shapes.

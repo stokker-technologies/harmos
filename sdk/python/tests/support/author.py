@@ -11,16 +11,18 @@
 # === Imports === #
 
 # Standard Library Imports
-import asyncio
 
 # Third Party Imports
+from asyncio import Event
+
 from google.protobuf.duration_pb2 import Duration
 
+from harmos import VISIBILITY_PROTECTED
+from harmos._wire.plugin.host.v1.time_pb2 import TimeGetResponse
+
 # Local Imports
-from harmos import Context, observer, on_stop, operation
-from harmos.plugin.host.v1 import time_pb2 as clock
-from harmos.v1.operation_pb2 import VISIBILITY_PROTECTED
-from tests.fixtures.conformance.v1.fixture_pb2 import Value
+from harmos.plugin import Context, observer, on_stop, operation
+from tests.fixtures.conformance import Value
 
 # Type Checking Imports
 
@@ -37,18 +39,18 @@ class Author:
     def __init__(self) -> None:
         self.calls = 0
         self.cleaned = 0
-        self.reading = asyncio.Event()
-        self.released = asyncio.Event()
+        self.reading = Event()
+        self.released = Event()
 
-    @operation("author.wait", request=Value, response=clock.TimeGetResponse, visibility=VISIBILITY_PROTECTED)
-    async def wait(self, ctx: Context, request: Value) -> clock.TimeGetResponse:
+    @operation("author.wait", request=Value, response=TimeGetResponse, visibility=VISIBILITY_PROTECTED)
+    async def wait(self, ctx: Context, request: Value) -> TimeGetResponse:
         self.calls += 1
         ctx.set(request)
-        await ctx.sleep(Duration(seconds=3600))
-        at = await ctx.now()
+        await ctx.host.time.sleep(Duration(seconds=3600))
+        at = await ctx.host.time.get()
         if ctx.get(Value) != request:
             raise ValueError("Execution Lost Its Resource")
-        return clock.TimeGetResponse(now=at)
+        return TimeGetResponse(now=at)
 
     @operation("author.state", request=Value, response=Value, visibility=VISIBILITY_PROTECTED)
     async def state(self, ctx: Context, request: Value) -> Value:
@@ -62,7 +64,7 @@ class Author:
     async def observe(self, ctx: Context) -> Value:
         self.reading.set()
         try:
-            await asyncio.Event().wait()
+            await Event().wait()
         finally:
             self.released.set()
         return Value()
