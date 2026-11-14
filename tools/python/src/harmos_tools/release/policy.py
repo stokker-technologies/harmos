@@ -134,7 +134,7 @@ def write_json(path: Path, value: object) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     if temporary.is_symlink():
         raise ToolError(f"refusing linked staging file: {temporary}")
-    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
     temporary.replace(path)
 
 

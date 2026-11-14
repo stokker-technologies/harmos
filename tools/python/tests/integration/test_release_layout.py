@@ -66,7 +66,11 @@ class ReleaseLayout(unittest.TestCase):
                 for name in ("NOTICE", "THIRD-PARTY-NOTICES", f"crates/{abi}/workspace.cdx.json", "python/any/sdk.cdx.json"):
                     output = packaged / "compliance" / name
                     output.parent.mkdir(parents=True, exist_ok=True)
-                    output.write_text("{}")
+                    if name.startswith("python/"):
+                        policy.write_json(output, {"components": [{"name": "fixture", "version": "1.0"}]})
+                        self.assertNotIn(b"\r", output.read_bytes())
+                    else:
+                        output.write_text("{}")
             shared = directory / run.ASSETS / "any"
             core = {layout.conformance_name(directory, settings, target, "1.2.3") for target in targets}
             core.update({"harmos-proto-1.2.3.zip", "harmos-compliance-1.2.3.zip", "release.json", "SHA256SUMS"})
@@ -112,6 +116,13 @@ class ReleaseLayout(unittest.TestCase):
                         )
                     with zipfile.ZipFile(shared / "harmos-compliance-1.2.3.zip") as archive:
                         self.assertEqual(len(archive.namelist()), 7)
+                # A Real Dependency Difference Still Refuses Shared Compliance.
+                inventory = directory / "target/package/release/windows-x86_64/compliance/python/any/sdk.cdx.json"
+                original = inventory.read_bytes()
+                policy.write_json(inventory, {"components": [{"name": "fixture", "version": "2.0"}]})
+                with self.assertRaisesRegex(policy.ToolError, "Stage Python Compliance:.*linux-x86_64.*windows-x86_64"):
+                    run.stage(directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes")
+                inventory.write_bytes(original)
                 # A File Occupying A Required Directory Fails Locally.
                 shutil.rmtree(shared)
                 shared.write_bytes(b"wrong shape")

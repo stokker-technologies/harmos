@@ -293,6 +293,17 @@ jobs:
       env:
         CI_OUTPUT_ARCHIVES: '[{"archive":"target/ci/build-product-${{ env.PROFILE }}-${{ matrix.platform }}.tar.zst","paths":["target/build/{profile}/{target}/bin","target/build/{profile}/{target}/lib","target/build/{profile}/{target}/product","target/generated/python/pyproject.toml","target/generated/python/src"],"profile":"${{
           env.PROFILE }}"}]'
+    - name: Build Python SDK
+      if: runner.os == 'Linux'
+      run: mise -C sdk/python run build -- --profile ${{ env.PROFILE }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      if: runner.os == 'Linux'
+      with:
+        name: build-python-${{ env.PROFILE }}
+        path: target/build/${{ env.PROFILE }}/any/python/
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build-product-${{ env.PROFILE }}-${{ matrix.platform }}
@@ -387,15 +398,12 @@ jobs:
     - name: Test C# SDK Units
       if: github.event_name != 'push'
       run: mise -C sdk/csharp run test:unit -- --profile ${{ env.PROFILE }}
-    - name: Build Python SDK
-      if: runner.os == 'Linux'
-      run: mise -C sdk/python run build -- --profile ${{ env.PROFILE }}
     - name: Test Python SDK Client Units
       if: github.event_name != 'push'
       run: mise -C sdk/python run test:unit
     - name: Test Typed Python SDK Examples
       if: github.event_name != 'push'
-      run: mise -C sdk/python run test:examples
+      run: mise -C sdk/python run test:examples -- --profile ${{ env.PROFILE }}
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
       with:
         name: build_rust_tests-fixtures-${{ env.PROFILE }}-${{ matrix.platform }}
@@ -623,6 +631,11 @@ jobs:
       with:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      if: matrix.suffix == '' && github.event_name != 'push'
+      with:
+        name: build-python-${{ env.PROFILE }}
+        path: target/build/${{ env.PROFILE }}/any/python/
     - name: Check Python on Dev
       if: github.event_name == 'push' && matrix.suffix == ''
       run: |

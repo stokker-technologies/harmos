@@ -133,7 +133,7 @@ def _execute(
 ) -> int:
     endpoint: queue.Queue[str] = queue.Queue(maxsize=1)
     print("Build: Compiler Cache Startup", flush=True)
-    write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "Unexpected", "Unknown"), 0)
+    write_errors = dict.fromkeys(("AlreadyExists", "PermissionDenied", "RateLimited", "ReadOnly", "Unexpected", "Unknown"), 0)
     server_environment = environment | {
         "SCCACHE_START_SERVER": "1",
         "SCCACHE_NO_DAEMON": "1",
@@ -287,7 +287,7 @@ def _execute(
                             )
                             measured = _statistics(json.loads(result.stdout))
                             if any(measured.get(key) for key in ("cache_errors", "cache_read_errors", "cache_write_errors")):
-                                _report("cache operation")
+                                _report("cache operation", warning=True)
                             if statistics is not None:
                                 statistics.update(measured)
                         except (
@@ -313,7 +313,7 @@ def _execute(
             reader.join(timeout=1)
             for category, count in write_errors.items():
                 if count:
-                    _report("cache write")
+                    _report("cache write", warning=True)
                     print(f"sccache write errors: {category} x{count}", file=sys.stderr, flush=True)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
@@ -323,6 +323,8 @@ def _report(
     phase: str,
     status: int | None = None,
     error: BaseException | None = None,
+    *,
+    warning: bool = False,
 ) -> None:
     """Emit Only Fixed Classifications And Validated Native Version And Error Codes."""
     try:
@@ -341,7 +343,8 @@ def _report(
     phase = phase if phase in PHASES else "unknown phase"
     tool = f"sccache {version[1]}" if version else "sccache (version unavailable)"
     code = status if type(status) is int else "unavailable"
-    lines = [f"{tool}: {phase} failed", f"native exit code: {code}"]
+    outcome = "warning; compiler exit status is preserved" if warning else "failed"
+    lines = [f"{tool}: {phase} {outcome}", f"native exit code: {code}"]
     for name in ("winerror", "errno"):
         code = getattr(error, name, None)
         if type(code) is int:
@@ -354,6 +357,8 @@ def _write_error(line: str) -> str | None:
     _, marker, reason = line.partition("Error executing cache write: ")
     if not marker:
         return None
+    if reason.startswith("Cannot write to a read-only cache"):
+        return "ReadOnly"
     category = re.match(r"(AlreadyExists|PermissionDenied|RateLimited|Unexpected)\b", reason)
     return category[1] if category else "Unknown"
 

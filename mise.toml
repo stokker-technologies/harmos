@@ -299,14 +299,15 @@ hide = true
 description = "Test Repository Tooling and Python SDK"
 usage = 'flag "--profile <profile>" default="dev"'
 run = [
-  "mise -C sdk/csharp run test:tooling",
+  "mise -C sdk/csharp run test:tooling -- --profile {{usage.profile}}",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks test --language python --package harmos-sdk --target integration --profile {{usage.profile}}",
 ]
 
 [tasks."test:python:examples"]
 hide = true
 description = "Test the Python SDK Examples Through gRPC"
-run = "mise -C sdk/python run test:examples"
+usage = 'flag "--profile <profile>" default="dev"'
+run = "mise -C sdk/python run test:examples -- --profile {{usage.profile}}"
 
 [tasks."check:python:sdk"]
 hide = true

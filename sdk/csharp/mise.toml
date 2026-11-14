@@ -86,9 +86,13 @@ run = "mise run test -- --layer unit --profile {{usage.profile}}"
 
 [tasks."test:tooling"]
 description = "Test Tooling and the C# Package Consumer"
+depends = ["restore"]
 dir = "../.."
-usage = 'flag "--exact <exact>"'
-run = "uv run --locked --no-sync --project tools/python python -m unittest {% if usage.exact %}{{usage.exact}}{% else %}discover -s tools/python/tests/integration{% endif %} -v"
+usage = '''
+flag "--exact <exact>"
+flag "--profile <profile>" default="dev"
+'''
+run = "uv run --locked --no-sync --project tools/python python -c \"import os, runpy; os.environ['TEST_PROFILE'] = '{{usage.profile}}'; runpy.run_module('unittest', run_name='__main__')\" {% if usage.exact %}{{usage.exact}}{% else %}discover -s tools/python/tests/integration{% endif %} -v"
 
 [tasks."build:rust-fixture"]
 hide = true

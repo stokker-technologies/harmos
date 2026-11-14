@@ -172,7 +172,7 @@ def stage(
                 if name.startswith("python/") and selected != targets[0]:
                     first = directory / "target/package" / profile / targets[0] / "compliance" / name
                     if original.read_bytes() != first.read_bytes():
-                        raise policy.ToolError("Python compliance inventories differ across targets")
+                        raise policy.ToolError(f"Stage Python Compliance: inventories differ between {targets[0]} and {selected}: {name}")
                     continue
                 member = f"notices/{selected}/{name}" if "/" not in name else name
                 archive.write(original, member)
