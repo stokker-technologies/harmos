@@ -188,20 +188,22 @@ TEST_CASE("A client composes services and their nested resources") {
     REQUIRE(client.plugins.annotations.get("example") == "example");
     REQUIRE(client.invocations.create("operation", string(32, '\0'), string("\0payload", 8)) ==
             "operation" + string(32, '\0') + string("\0payload", 8));
-    const auto current = client.plugins.settings.list({.name = "example"});
+    const auto current = client.plugins.settings.list({.name = "example", .at = {}, .context = {}});
     REQUIRE(current.value().values().at("label").text() == "example");
     auto values = current.value();
     (*values.mutable_values())["label"].set_text("replacement");
-    REQUIRE(client.plugins.settings.set("example", values, current.revision(), {.request_id = "settings-replacement"})
+    REQUIRE(client.plugins.settings.set("example", values, current.revision(), {.request_id = "settings-replacement", .context = {}})
                 .value()
                 .values()
                 .at("label")
                 .text() == "replacement");
     REQUIRE_FALSE(client.plugins.settings.set("example", values, current.revision()).revision().empty());
-    REQUIRE(client.plugins.settings.set("example", values, current.revision(), {.request_id = "replay"}).revision() == "replay");
+    REQUIRE(client.plugins.settings.set("example", values, current.revision(), {.request_id = "replay", .context = {}}).revision() ==
+            "replay");
     client_types::PluginPlacement placement;
     placement.mutable_managed()->set_sha256(string(32, 'x'));
-    const auto replaced = client.plugins.replace("example", placement, current.revision(), {.request_id = "bundle-replacement"});
+    const auto replaced =
+        client.plugins.replace("example", placement, current.revision(), {.request_id = "bundle-replacement", .context = {}});
     REQUIRE(replaced.entry().name() == "example");
     REQUIRE(replaced.entry().placement().managed().sha256() == string(32, 'x'));
     server->Shutdown();

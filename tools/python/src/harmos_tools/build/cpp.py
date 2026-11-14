@@ -306,6 +306,7 @@ def main() -> None:
                 [
                     str(clang),
                     "--checks=-*,clang-diagnostic-*,clang-analyzer-core.CallAndMessage",
+                    "--warnings-as-errors=*",
                     "--extra-arg=-Wshadow",
                     "--extra-arg=-Wshadow-all",
                     "--extra-arg=-Werror=shadow",

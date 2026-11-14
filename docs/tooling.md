@@ -403,7 +403,7 @@ as errors: MSVC `/W4 /permissive-`, GCC/Clang `-Wall -Wextra -Wshadow`, Clang
 `-Wshadow-all`, and GCC `-Wchanges-meaning` when supported. MSVC does not provide
 GCC's exact imported-type diagnostic. On Windows, the check also uses Visual
 Studio's C++ Clang tools (`clang-tidy`) against the native compile database, treating
-Clang shadow diagnostics as errors. Install that Visual Studio component alongside
+Clang diagnostics as errors. Install that Visual Studio component alongside
 the native tools. Native Linux compilation remains required.
 
 ## Focused Build Preparation
