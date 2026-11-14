@@ -304,6 +304,13 @@ fn execution_context(context: Context<'_>) -> Result<harmos_operations::executio
         operation: "host context".to_owned(),
         source: Arc::new(source),
     })?;
+    #[cfg(feature = "plugin-guest")]
+    if let Some(scope) = context.caller_scope() {
+        dependencies.insert(Arc::new(scope.clone())).map_err(|source| Error::OperationFailed {
+            operation: "calling plugin".into(),
+            source: Arc::new(source),
+        })?;
+    }
     let mut execution = harmos_operations::execution::ExecutionContext::new(dependencies, context.context().clone());
     execution.cancellation = context.scope().cancellation().clone();
     Ok(execution)

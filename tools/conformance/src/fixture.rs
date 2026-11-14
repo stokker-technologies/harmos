@@ -7,7 +7,7 @@
  * ***
  */
 
-// Fixed Cross-Language Catalog and Protobuf Fixture Values.
+// Fixed Cross-Language Declarations and Protobuf Fixture Values.
 
 /* === Modules === */
 
@@ -125,7 +125,7 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
         } else {
             ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse")
         };
-        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+        return harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::declarations_types(), request, response)
             .expect("clock contract");
     }
     harmos_protocol::schema::fingerprint(id, &types(), ROW, ROW).expect("the fixed fixture descriptor resolves Value")
@@ -191,7 +191,7 @@ pub fn settings_declarations() -> SettingsDeclarations {
     }
 }
 
-pub fn catalog() -> Catalog {
+pub fn declarations() -> Declarations {
     let mut operations: Vec<_> = OPERATIONS
         .iter()
         .map(|name| {
@@ -335,12 +335,12 @@ pub fn catalog() -> Catalog {
             types.file.push(file);
         }
     }
-    for file in harmos_protocol::clock::catalog_types().file {
+    for file in harmos_protocol::clock::declarations_types().file {
         if !types.file.iter().any(|existing| existing.name == file.name) {
             types.file.push(file);
         }
     }
-    let mut catalog = Catalog {
+    let mut declarations = Declarations {
         operations,
         requires,
         streams,
@@ -361,8 +361,8 @@ pub fn catalog() -> Catalog {
         ],
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
-    catalog
+    declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
+    declarations
 }
 
 pub fn failure(operation: &str) -> Failure {

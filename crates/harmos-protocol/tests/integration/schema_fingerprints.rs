@@ -101,10 +101,10 @@ fn fingerprints_follow_the_message_graph_instead_of_catalog_composition() {
     assert!(schema::message_types(&broken, "fixture.Value").is_err());
 
     // The Catalog Digest Covers Changes And Ignores Its Own Advertised Value
-    let mut catalog = v1::Catalog { types: Some(types), ..Default::default() };
-    let digest = schema::catalog_digest(&catalog);
+    let mut catalog = v1::Declarations { types: Some(types), ..Default::default() };
+    let digest = schema::declarations_digest(&catalog);
     catalog.digest = digest.clone();
-    assert_eq!(schema::catalog_digest(&catalog), digest);
+    assert_eq!(schema::declarations_digest(&catalog), digest);
     catalog.types = Some(merged);
-    assert_ne!(schema::catalog_digest(&catalog), digest);
+    assert_ne!(schema::declarations_digest(&catalog), digest);
 }

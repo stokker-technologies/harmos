@@ -66,7 +66,7 @@ int install_itself(int argc, char** argv) {
     watch->Finish();
     // Invoke Its Public Operation Through the Host
     harmos::client::v1::InvocationsInvokeRequest invoke;
-    for (const auto& contract : ready.description().catalog().operations()) if (contract.id() == "example.echo") {
+    for (const auto& contract : ready.description().declarations().operations()) if (contract.id() == "example.echo") {
         invoke.set_operation(contract.id()); invoke.set_fingerprint(contract.fingerprint());
     }
     std::string data(static_cast<std::size_t>(transfer.chunk_bytes()), '\0');

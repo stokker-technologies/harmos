@@ -45,7 +45,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.
 - **gRPC Plugin Placement**: Invoke managed or remote `harmos.plugin.v1.Instance` plugins, capture their streams and drive plugin waits and observers from the host clock.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
-- **[Plugin Management](docs/plugin-manager.md)**: Persist, install, enable, restart and remove managed or remote plugin entries.
+- **[Plugin Management](docs/plugin-manager.md)**: Persist settings and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
 - **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
@@ -66,8 +66,8 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
-The native walkthrough runs end to end. The guest walkthrough currently refuses
-settings reads pending entry-backed guest placement; see [Schematic](docs/schematic.md).
+The native and guest walkthroughs run end to end, including library-stored typed
+settings through their plugin entries; see [Schematic](docs/schematic.md).
 
 ### Python
 

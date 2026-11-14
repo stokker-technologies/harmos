@@ -15,6 +15,13 @@
 
 /* === Imports === */
 
+use harmos_runtime::plugin::{
+    grpc::PlacementSettings,
+    manager::{self, Manager, PluginManagerSettings},
+};
+use harmos_runtime::storage::{StorageBackends, StorageManager};
+use tempfile::TempDir;
+
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
     MessageError, Runtime,
@@ -199,9 +206,12 @@ impl harmos_runtime::operations::ContextValue for RetryChoice {
 
 pub async fn runtime(
     owner: Arc<ProviderOwner>, lane: harmos_runtime::operations::Lane, clock: harmos_runtime::clock::Clock,
-) -> Runtime<crate::support::Bank> {
+) -> Arc<Runtime<crate::support::Bank>> {
+    let (storage, entries, root) = entries();
     let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<ProviderOwner>(owner);
+        setup.resource(root);
+        setup.settings().storage(&storage).plugins(entries.clone());
         setup.settings().clock(clock);
         setup.settings().register(crate::support::catalog());
         setup.operation(harmos_runtime::operations::OperationFactory::protobuf::<Publisher>().unwrap(), lane);
@@ -212,6 +222,8 @@ pub async fn runtime(
     })
     .await
     .unwrap();
+    let runtime = Arc::new(runtime);
+    entries.start(&runtime).await.unwrap();
     runtime
         .operations
         .register_operation(harmos_runtime::operations::OperationFactory::protobuf::<Provider>().unwrap(), lane)
@@ -219,6 +231,42 @@ pub async fn runtime(
         .unwrap();
     runtime
 }
+pub fn entries() -> (StorageManager, Manager, TempDir) {
+    use std::time::Duration;
+    let root = tempfile::tempdir().unwrap();
+    let catalog = manager::catalog();
+    let storage = StorageManager::with_catalog(
+        catalog.clone(),
+        StorageBackends {
+            primary: Arc::new(crate::backend::Data::with_catalog(catalog, crate::backend::history())),
+            state: Arc::new(crate::backend::Recovery::new(crate::backend::history())),
+        },
+        crate::backend::storage_settings(),
+    )
+    .unwrap();
+    let settings = PluginManagerSettings {
+        namespace: "guest-entries".into(),
+        directory: root.path().join("plugins"),
+        target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
+        placement: PlacementSettings {
+            connect_timeout: Duration::from_secs(10),
+            reconnect_delay: Duration::from_millis(100),
+            stop_grace: Duration::from_secs(10),
+            stream_window: NonZeroUsize::new(4).unwrap(),
+        },
+        bundle: Default::default(),
+        entries: NonZeroUsize::new(16).unwrap(),
+        create_receipts: NonZeroUsize::new(64).unwrap(),
+        registry_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        command_capacity: NonZeroUsize::new(16).unwrap(),
+        retained_cuts: NonZeroUsize::new(64).unwrap(),
+        watch_capacity: NonZeroUsize::new(16).unwrap(),
+        response_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+    };
+    let manager = Manager::new(storage.clone(), settings).unwrap();
+    (storage, manager, root)
+}
+
 pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::Host<crate::support::Bank> {
     harmos_runtime::guest::Host::with_settings(
         runtime,

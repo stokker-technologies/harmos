@@ -50,12 +50,12 @@ fn executable(facility: Facility) -> Executable {
 }
 
 fn guest() -> Vec<u8> {
-    let mut catalog = harmos_protocol::v1::Catalog::default();
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    let mut catalog = harmos_protocol::v1::Declarations::default();
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
     let registration = harmos_protocol::v1::GuestRegistration {
         id: "guest_fixture".into(),
         version: "1.0.0".into(),
-        catalog: Some(catalog),
+        declarations: Some(catalog),
         ..Default::default()
     };
     let mut section = Vec::new();

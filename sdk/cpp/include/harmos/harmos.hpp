@@ -152,7 +152,7 @@ public:
     Plugin& transfer(const ::harmos::v1::StorageTransferSettings& settings) { transfer_ = settings; return *this; }
     Plugin& setting(wire::SettingDeclaration declaration);
     Plugin& on_stop(std::function<void()> cleanup);
-    wire::Catalog catalog() const;
+    wire::Declarations declarations() const;
     // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
     void serve(std::string address = {}) const;
 

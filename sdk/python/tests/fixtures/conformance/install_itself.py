@@ -65,7 +65,7 @@ async def run(arguments: list[str]) -> None:
     if ready is None:
         raise RuntimeError("Watch Plugins: closed before Ready")
     # Invoke Its Public Operation Through the Host
-    contract = next(operation for operation in ready.description.catalog.operations if operation.id == "example.echo")
+    contract = next(operation for operation in ready.description.declarations.operations if operation.id == "example.echo")
     data = b"hello" + bytes(transfer.chunk_bytes - len(b"hello"))
     reply = await client.invocations.invoke(
         invocations.InvocationsInvokeRequest(

@@ -56,7 +56,7 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     })
     .await?;
 
-    // Require Every Case, Including Catalog Identity and Cleanup, to Pass.
+    // Require Every Case, Including Declarations Identity and Cleanup, to Pass.
     assert!(passed, "SDK Plugin Failed Reference Conformance");
     Ok(())
 }

@@ -119,7 +119,7 @@ impl Manager {
                 let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
                     continue;
                 };
-                for required in &binding.caller.description.catalog.as_ref().expect("admitted description").requires {
+                for required in &binding.caller.description.declarations.as_ref().expect("admitted description").requires {
                     let target = entries
                         .iter()
                         .find(|entry| entry.id() == required.id)

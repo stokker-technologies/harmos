@@ -233,7 +233,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
         "harmos.plugin.host.v1.TimeSleepResponse",
     )
     .unwrap();
-    let mut catalog = v1::Catalog {
+    let mut catalog = v1::Declarations {
         types: Some(types),
         requires: vec![
             v1::Requirement {
@@ -263,9 +263,9 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
             .into(),
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
     let remote = Remote::start().await;
-    remote.catalog(catalog);
+    remote.declarations(catalog);
     let peer_signals = signals.clone();
     remote.samples(move |mut input| {
         let (output, receiver) = mpsc::channel(32);

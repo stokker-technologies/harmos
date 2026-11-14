@@ -59,8 +59,8 @@ async fn main() -> StdResult<(), Box<dyn StdError>> {
 
     // Find the Application's Generated Contract.
     let request = host::OperationsListRequest {};
-    let catalog = client.operations.list(Request::new(request)).await?.into_inner();
-    let contract = catalog
+    let declarations = client.operations.list(Request::new(request)).await?.into_inner();
+    let contract = declarations
         .operations
         .into_iter()
         .filter_map(|entry| entry.contract)

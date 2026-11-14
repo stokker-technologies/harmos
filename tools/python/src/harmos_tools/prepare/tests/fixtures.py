@@ -114,7 +114,7 @@ def prepare_focused(
             subprocess.run([str(componentizer.resolve())], input=json.dumps(request), text=True, check=True)
     metadata["inspections"] = {name: str(path) for name, path in inspection_paths.items()}
     metadata["inspection_sha256"] = {name: staging.digest(path) for name, path in inspection_paths.items()}
-    metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items() if path.suffix == ".wasm"}
+    metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items()}
     for name, library in libraries.items():
         library_path = Path(library["path"])
         digest = staging.digest(library_path)

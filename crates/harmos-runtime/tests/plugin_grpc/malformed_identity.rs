@@ -60,8 +60,8 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
         let operation = &mut catalog.operations[0];
         operation.id = id.into();
         operation.fingerprint = schema::fingerprint(id, catalog.types.as_ref().unwrap(), &operation.request, &operation.response).unwrap();
-        catalog.digest = schema::catalog_digest(&catalog);
-        remote.catalog(catalog);
+        catalog.digest = schema::declarations_digest(&catalog);
+        remote.declarations(catalog);
 
         // Refuse Even a Correct Descriptor, Fingerprint and Catalog Digest.
         let error = match runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await {
@@ -82,8 +82,8 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
     operation.visibility = v1::Visibility::Public as i32;
     operation.fingerprint =
         schema::fingerprint(&operation.id, catalog.types.as_ref().unwrap(), &operation.request, &operation.response).unwrap();
-    catalog.digest = schema::catalog_digest(&catalog);
-    remote.catalog(catalog);
+    catalog.digest = schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
     let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
     attached.stop("Identity Repaired").await.unwrap();
     runtime.shutdown().await.unwrap();

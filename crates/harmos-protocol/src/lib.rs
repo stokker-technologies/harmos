@@ -8,7 +8,7 @@
  */
 
 //! Audience-separated client, plugin-host and instance protocol contracts.
-//! [`schema`] owns descriptor fingerprints and catalog digests shared by peers.
+//! [`schema`] owns descriptor fingerprints and declaration digests shared by peers.
 
 /* === Modules === */
 

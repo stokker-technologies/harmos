@@ -245,9 +245,9 @@ impl Session {
             if !self.initialized.get() || self.closed.get() {
                 return Err(invalid("Guest Is Not Active"));
             }
-            let catalog = self.metadata.catalog.as_ref().expect("validated guest catalog");
+            let declarations = self.metadata.declarations.as_ref().expect("validated guest declarations");
             let contract =
-                catalog.operations.iter().find(|entry| entry.id == operation).ok_or_else(|| invalid("Unknown Guest Operation"))?;
+                declarations.operations.iter().find(|entry| entry.id == operation).ok_or_else(|| invalid("Unknown Guest Operation"))?;
             if contract.fingerprint != prepare.fingerprint {
                 return Err(invalid("Guest Operation Fingerprint Differs"));
             }
@@ -257,7 +257,7 @@ impl Session {
                 .operations
                 .iter()
                 .find(|entry| entry.contract.id == operation)
-                .expect("catalog and handlers share one builder");
+                .expect("declarations and handlers share one builder");
             handler.handler.validate(&prepare.payload)?;
             let occupied = self
                 .slots
@@ -308,7 +308,7 @@ impl Session {
         }
         harmos_protocol::guest::validate_values(&invocation.values).map_err(|error| invalid(error.to_string()))?;
         let attempt = slot.attempt.get().checked_add(1).ok_or_else(|| invalid("Guest Attempt Counter Exhausted"))?;
-        let catalog = self.metadata.catalog.as_ref().expect("validated guest catalog");
+        let declarations = self.metadata.declarations.as_ref().expect("validated guest declarations");
         let mut context = Context::new(
             v1::Request {
                 operation: slot.prepare.operation.clone(),
@@ -317,7 +317,7 @@ impl Session {
                 ..Default::default()
             },
             self.registration.plugin.id.clone(),
-            crate::Plugin::requirements(catalog),
+            crate::Plugin::requirements(declarations),
         );
         context.local = Arc::new(
             self.registration

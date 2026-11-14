@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Serve the Fixed Conformance Catalog at an Explicit Remote Address."""
+"""Serve the Fixed Conformance Declarations at an Explicit Remote Address."""
 
 # === Imports === #
 

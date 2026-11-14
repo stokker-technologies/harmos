@@ -25,13 +25,13 @@ message OperationContract {
   // Unique among the host and all connected plugins, for example
   // "example.set".
   string id = 1;
-  // Fully qualified message names found in Catalog.types.
+  // Fully qualified message names found in Declarations.types.
   string request = 2;
-  // Fully qualified response message name resolved in Catalog.types.
+  // Fully qualified response message name resolved in Declarations.types.
   string response = 3;
-  // Wire catalogs admit Public or Protected; Private remains process-local and Unspecified is invalid.
+  // Wire declarationss admit Public or Protected; Private remains process-local and Unspecified is invalid.
   Visibility visibility = 4;
-  // Callee-owned execution budgets; the admitted catalog must provide a valid policy.
+  // Callee-owned execution budgets; the admitted declarations must provide a valid policy.
   OperationPolicy policy = 5;
   // SHA-256 over the id and the request and response definitions.
   bytes fingerprint = 6;
@@ -128,7 +128,7 @@ message DiscoveredOperation {
 
 enum Visibility {
   VISIBILITY_UNSPECIFIED = 0;
-  // Process-local only; invalid in any wire catalog.
+  // Process-local only; invalid in any wire declarations.
   VISIBILITY_PRIVATE = 1;
   // Everyone connected: other plugins and the host's clients.
   VISIBILITY_PUBLIC = 2;

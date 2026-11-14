@@ -30,7 +30,7 @@ message GuestRegistration {
   string id = 1;
   // Guest plugin semantic version advertised during registration.
   string version = 2;
-  Catalog catalog = 3;
+  Declarations declarations = 3;
   // Execution policy for the guest initialization lifecycle operation.
   OperationPolicy initialization = 4;
   // Execution policy for the guest shutdown lifecycle operation.

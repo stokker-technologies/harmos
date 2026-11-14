@@ -39,8 +39,8 @@ async fn client_manages_remote_plugins() {
     let description = ready.description.as_ref().unwrap();
     assert_eq!(description.id, peer.description.id);
     assert_eq!(description.version, peer.description.version);
-    assert_eq!(description.catalog, peer.description.catalog);
-    assert!(!ready.catalog_digest.is_empty());
+    assert_eq!(description.declarations, peer.description.declarations);
+    assert!(!ready.declarations_digest.is_empty());
     assert!(ready.process.is_none());
     assert_eq!(host.client.create(request.clone()).await.unwrap().into_inner(), created);
     let mut changed = request;

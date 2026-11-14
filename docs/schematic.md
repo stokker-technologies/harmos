@@ -17,16 +17,16 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 Read [walkthrough.rs](../examples/schematic/cli/src/walkthrough.rs) alongside the output. It creates a
 fresh temporary document, places and connects two symbols, moves one, validates
 the schematic, applies a proposed right-angle route, undoes/redoes it, then saves
-and reopens it. The native walkthrough's final line is:
+and reopens it. Both walkthroughs end with:
 
 ```text
 Reopened: 2 symbols, 1 net, 3 route points
 ```
 
-The guest compiles, but its walkthrough currently refuses `Settings.List`: the
-frozen library `PluginPlacement` supports native bundles and remote endpoints,
-with no entry-backed guest placement. It cannot obtain another plugin's settings
-or replace the library store with an application fallback.
+Both backends read typed settings from their library-owned plugin entries. The
+guest is registered in-process with `PluginPlacement.guest`; it reads only its own
+values through plugin-host `Settings.List`. The host supplies its module again
+after restart, while its entry retains settings. See [Guest Entries](plugin-manager.md#webassembly-guests).
 
 Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
 stderr for both backends. Guest component compilation finishes before
@@ -108,7 +108,7 @@ at storage encode and decode boundaries.
 
 Only the sidecar exposes `ListDirectories`. Its empty request returns sorted
 names of immediate subdirectories in the caller's current working directory,
-which the host explicitly supplies to the child. The guest catalog omits this
+which the host explicitly supplies to the child. The guest declarations omits this
 operation because this guest has no filesystem grant. WebAssembly can support
 filesystem access when a host provides it; this example does not.
 
@@ -128,13 +128,13 @@ Windows executables have the `.exe` suffix.
 The CLI build script derives its schema bundle from the
 native operations crate without launching handlers. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
-`ListDirectories`; the guest catalog includes only portable operations. The
+`ListDirectories`; the guest declarations includes only portable operations. The
 `schematic.v1.Schematic` schema describes known methods. Exporting it does not
 start a gRPC server. Client generation consumes the CLI host's captured schema;
 native plugin discovery uses `Instance.Get` instead of an embedded inventory or an export flag.
 Native packages obtain identity through `Instance.Get`, call `Stop`, and contain the
 executable without framed-sidecar registrations. Bundle inspection and extraction
-remain inert; inspecting a standalone native executable starts it to read its catalog.
+remain inert; inspecting a standalone native executable starts it to read its declarations.
 
 CI packages retain the schematic CLI and its native and guest plugins.
 Examples and test reports remain GitHub Actions artifacts; Rust crates publish to crates.io.

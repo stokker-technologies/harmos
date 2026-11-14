@@ -107,12 +107,12 @@ impl Registration {
         if !self.plugin.observers.is_empty() || self.plugin.streams.iter().any(|stream| stream.producer.is_some()) {
             return Err(Error::Invalid("Guest Streams Publish Through Their Invocation Context".into()));
         }
-        let catalog = self.plugin.catalog()?;
+        let declarations = self.plugin.declarations()?;
         let requirements = self
             .plugin
             .requirements
             .iter()
-            .zip(&catalog.requires)
+            .zip(&declarations.requires)
             .map(|(required, contract)| v1::GuestRequirement {
                 id: required.id.clone(),
                 request: required.request.clone(),
@@ -123,7 +123,7 @@ impl Registration {
         Ok(v1::GuestRegistration {
             id: self.plugin.id.clone(),
             version: self.plugin.version.clone(),
-            catalog: Some(catalog),
+            declarations: Some(declarations),
             initialization: self.initialization_policy,
             shutdown: self.shutdown_policy,
             requirements,

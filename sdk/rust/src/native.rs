@@ -43,9 +43,9 @@ use tonic::Status;
 
 impl Plugin {
     pub fn serve(self) -> Result<()> {
-        let catalog = self.catalog()?;
+        let declarations = self.declarations()?;
         let runtime = Builder::new_current_thread().enable_all().build()?;
-        runtime.block_on(LocalSet::new().run_until(server::serve(self, catalog)))
+        runtime.block_on(LocalSet::new().run_until(server::serve(self, declarations)))
     }
 }
 

@@ -21,7 +21,7 @@ import "harmos/v1/stream.proto";
 
 // Serves one running plugin to its host over the plugin face; each connection receives its own host activation.
 service Instance {
-  // Identity, start time and catalog. Called once per connection, first.
+  // Identity, start time and declarations. Called once per connection, first.
   rpc Get(InstanceGetRequest) returns (InstanceGetResponse);
 
   // One invocation of one operation. The host opens the call with a harmos.v1.Request.
@@ -64,7 +64,7 @@ message InstanceGetRequest {
   string host_version = 3;
 }
 
-// Supplies process identity, startup time, complete catalog and carrier limits for connection admission.
+// Supplies process identity, startup time, complete declarations and carrier limits for connection admission.
 message InstanceGetResponse {
   // Stable plugin identifier, lowercase with dots or underscores.
   string id = 1;
@@ -73,7 +73,7 @@ message InstanceGetResponse {
   // Captured once when the process started. A changed value on reconnect
   // means the process restarted.
   google.protobuf.Timestamp started_at = 3;
-  harmos.v1.Catalog catalog = 4;
+  harmos.v1.Declarations declarations = 4;
   // Highest revision of harmos.v1 the plugin implements.
   uint32 revision = 5;
   // Name and version of the SDK that built the plugin, for logs.

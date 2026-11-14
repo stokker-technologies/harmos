@@ -1030,7 +1030,7 @@ pub mod operations_server {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginsGetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    /// Persisted management entry identity, distinct from an advertised plugin/declarations ID.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
@@ -1110,7 +1110,7 @@ pub struct PluginsCreateRequest {
     /// Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
     #[prost(string, tag = "1")]
     pub request_id: ::prost::alloc::string::String,
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    /// Persisted management entry identity, distinct from an advertised plugin/declarations ID.
     #[prost(string, tag = "2")]
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]
@@ -1131,7 +1131,7 @@ pub struct PluginsCreateResponse {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PluginsSetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    /// Persisted management entry identity, distinct from an advertised plugin/declarations ID.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
@@ -1153,7 +1153,7 @@ pub struct PluginsSetResponse {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PluginsDeleteRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    /// Persisted management entry identity, distinct from an advertised plugin/declarations ID.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
@@ -1171,7 +1171,7 @@ pub struct PluginsDeleteResponse {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PluginsRestartRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+    /// Persisted management entry identity, distinct from an advertised plugin/declarations ID.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
@@ -1217,7 +1217,7 @@ pub struct PluginValue {
     #[prost(bool, tag = "1")]
     pub enabled: bool,
 }
-/// Captures the running plugin's advertised identity, process start, negotiated revision and catalog.
+/// Captures the running plugin's advertised identity, process start, negotiated revision and declarations.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginDescription {
@@ -1231,7 +1231,7 @@ pub struct PluginDescription {
     #[prost(message, optional, tag = "3")]
     pub started_at: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(message, optional, tag = "4")]
-    pub catalog: ::core::option::Option<crate::v1::Catalog>,
+    pub declarations: ::core::option::Option<crate::v1::Declarations>,
     /// Negotiated protocol revision, not a conditional management revision.
     #[prost(uint32, tag = "5")]
     pub revision: u32,
@@ -1257,12 +1257,16 @@ pub struct PluginManaged {
     #[prost(bytes = "vec", tag = "2")]
     pub sha256: ::prost::alloc::vec::Vec<u8>,
 }
-/// Chooses managed uploaded content or a remote process; exactly one placement is required for creation.
+/// Marks a WebAssembly module registered in-process by the host. The host owns module loading and re-registration after restart.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PluginGuest {}
+/// Chooses managed uploaded content, a remote process or a host-registered WebAssembly guest.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct PluginPlacement {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "plugin_placement::Kind", tags = "1, 2")]
+    #[prost(oneof = "plugin_placement::Kind", tags = "1, 2, 3")]
     pub kind: ::core::option::Option<plugin_placement::Kind>,
 }
 /// Nested message and enum types in `PluginPlacement`.
@@ -1275,6 +1279,8 @@ pub mod plugin_placement {
         Managed(super::PluginManaged),
         #[prost(message, tag = "2")]
         Remote(super::PluginRemote),
+        #[prost(message, tag = "3")]
+        Guest(super::PluginGuest),
     }
 }
 /// Reports the managed child process identity, executable digest and process start time.
@@ -1295,7 +1301,7 @@ pub struct PluginProcess {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PluginEntry {
-    /// Persisted management entry identity, distinct from the plugin's advertised catalog ID.
+    /// Persisted management entry identity, distinct from the plugin's advertised declarations ID.
     #[prost(string, tag = "1")]
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "2")]
@@ -1313,9 +1319,9 @@ pub struct PluginEntry {
     /// Advertised description when an activation has supplied it; absent before discovery is available.
     #[prost(message, optional, tag = "7")]
     pub description: ::core::option::Option<PluginDescription>,
-    /// Digest of the catalog observed for this entry's activation.
+    /// Digest of the declarations observed for this entry's activation.
     #[prost(bytes = "vec", tag = "8")]
-    pub catalog_digest: ::prost::alloc::vec::Vec<u8>,
+    pub declarations_digest: ::prost::alloc::vec::Vec<u8>,
     /// Managed process metadata when available; remote placement does not supply managed process metadata.
     #[prost(message, optional, tag = "9")]
     pub process: ::core::option::Option<PluginProcess>,

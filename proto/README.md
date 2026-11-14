@@ -17,11 +17,11 @@ frames, stream declarations/samples, settings, files/uploads, schema description
 transfer defaults and guest frames. There is no aggregate `types.proto` or
 `harmos.storage.v1` package. Proto2 transfer defaults preserve their existing values.
 
-`Instance.Get` still reports `harmos.v1.Catalog`: operations, requirements, streams,
+`Instance.Get` still reports `harmos.v1.Declarations`: operations, requirements, streams,
 product contribution sections, digest and reachable types. Typed setting declarations
 use its `SettingsDeclarations` section. This activation description is separate from
 registry APIs: clients use typed Operations, Schemas and Streams; plugins use
-Operations. No opaque catalog registry switch remains.
+Operations. No opaque declarations registry switch remains.
 
 Plugin entries own library-stored typed settings. Clients use Plugins.Settings
 List/Set; plugins read only their own values through plugin-host Settings.List.

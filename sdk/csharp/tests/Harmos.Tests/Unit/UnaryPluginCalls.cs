@@ -19,6 +19,6 @@ public sealed class UnaryPluginCalls
     Assert.Contains("unary.read", refusal.Message);
     var unary = new Operation<TimeGetRequest, TimeGetResponse>("unary.read", Visibility.Public);
     plugin.Operation(unary, (_, _) => Task.FromResult(new TimeGetResponse()));
-    Assert.Equal("unary.read", Assert.Single(plugin.Catalog().Operations).Id);
+    Assert.Equal("unary.read", Assert.Single(plugin.Declarations().Operations).Id);
   }
 }

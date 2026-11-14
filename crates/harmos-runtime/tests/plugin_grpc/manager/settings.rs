@@ -48,7 +48,7 @@ use prost_reflect::ReflectMessage;
 
 /* === Private Functions === */
 
-fn catalog() -> v1::Catalog {
+fn catalog() -> v1::Declarations {
     let declarations = v1::SettingsDeclarations {
         values: vec![
             v1::SettingDeclaration {
@@ -69,7 +69,7 @@ fn catalog() -> v1::Catalog {
     let types = prost_types::FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
-    let mut catalog = v1::Catalog {
+    let mut catalog = v1::Declarations {
         types: Some(types),
         sections: vec![v1::Section {
             r#type: descriptor.full_name().into(),
@@ -77,7 +77,7 @@ fn catalog() -> v1::Catalog {
         }],
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
     catalog
 }
 
@@ -89,7 +89,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     let root = tempfile::tempdir().unwrap();
     let backends = Backends::new();
     let remote = Remote::start().await;
-    remote.catalog(catalog());
+    remote.declarations(catalog());
     let mut host = Host::start(root.path(), &backends).await;
     let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
     host.client.create(support::remote("first", &remote.address)).await.unwrap();
@@ -234,7 +234,7 @@ async fn unmanaged_reported_identity_cannot_select_a_stored_entry() {
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let mut host = Host::with_clock(root.path(), &backends, clock).await;
     let victim = Remote::start().await;
-    victim.catalog(catalog());
+    victim.declarations(catalog());
     let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
     host.client.create(support::remote("remote", &victim.address)).await.unwrap();
     support::state(&mut watch, "remote", client::PluginState::Ready, 1).await;
@@ -252,7 +252,7 @@ async fn unmanaged_reported_identity_cannot_select_a_stored_entry() {
         "harmos.plugin.host.v1.SettingsListResponse",
     )
     .unwrap();
-    let mut description = v1::Catalog {
+    let mut description = v1::Declarations {
         types: Some(types),
         requires: vec![v1::Requirement {
             id: id.into(),
@@ -266,10 +266,10 @@ async fn unmanaged_reported_identity_cannot_select_a_stored_entry() {
         }],
         ..Default::default()
     };
-    description.digest = harmos_protocol::schema::catalog_digest(&description);
+    description.digest = harmos_protocol::schema::declarations_digest(&description);
     let attacker = Remote::start().await;
     // Both Instances Report "remote"; Only The Manager Selects The Entry Identity.
-    attacker.catalog(description);
+    attacker.declarations(description);
     let refused = Arc::new(AtomicBool::new(false));
     let observed = refused.clone();
     attacker.samples(move |mut input| {

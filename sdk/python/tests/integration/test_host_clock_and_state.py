@@ -49,15 +49,15 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
         description = await client.Get(carrier.InstanceGetRequest(revision=1))
-        self.assertEqual(description.catalog.streams[0].interval_setting, "author.interval")
-        self.assertEqual(Value.FromString(description.catalog.sections[0].payload).value, b"settings")
+        self.assertEqual(description.declarations.streams[0].interval_setting, "author.interval")
+        self.assertEqual(Value.FromString(description.declarations.sections[0].payload).value, b"settings")
 
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
         self.assertEqual(sleep.operation, "harmos.plugin.host.v1.Time/Sleep")
         self.assertEqual(clock.TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
-        self.assertEqual(sleep.fingerprint, description.catalog.requires[0].fingerprint)
+        self.assertEqual(sleep.fingerprint, description.declarations.requires[0].fingerprint)
         await calls.reply(call, sleep, clock.TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
@@ -96,9 +96,9 @@ class HostClockAndState(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(author.cleaned, 1)
         self.assertEqual(await client.Get(carrier.InstanceGetRequest(revision=1)), description)
 
-        # Duplicate Declarations Fail When the Author Builds the Catalog.
+        # Duplicate Declarations Fail When the Author Builds the Declarations.
         with self.assertRaises(ValueError):
-            Plugin(author, id="author", version="1.0.0", requires=[SLEEP, SLEEP]).catalog()
+            Plugin(author, id="author", version="1.0.0", requires=[SLEEP, SLEEP]).declarations()
 
 
 # === Public Functions === #
