@@ -10,18 +10,13 @@
 /* === Modules === */
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod registration;
+mod native;
 
 /* === Re-Exports === */
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use catalog::List;
 pub use harmos_protocol::v1::DiscoveredOperation;
-pub use harmos_protocol::v1::{CatalogEntriesListResponse, CatalogKind};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use registration::host_catalog;
+pub use native::*;
 
 /* === Imports === */
 

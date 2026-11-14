@@ -18,7 +18,8 @@ use std::sync::Arc;
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::v1::{History, Position, access as wire};
+use harmos_protocol::client::access as wire;
+use harmos_protocol::v1::{History, Position};
 use sha2::{Digest, Sha256};
 
 // Local Imports

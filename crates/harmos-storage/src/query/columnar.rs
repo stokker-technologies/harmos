@@ -112,6 +112,7 @@ pub(crate) struct ScanEvidence {
     pub payload_rows: usize,
 }
 
+#[derive(Debug)]
 pub struct ArrowPage {
     pub batch: RecordBatch,
     pub next: Option<ArrowSeek>,
@@ -602,5 +603,37 @@ mod tests {
         ] {
             assert_eq!(compare_bound(&value, bound).unwrap(), expected);
         }
+    }
+}
+
+impl crate::MemorySize for ColumnSource {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.schema))
+    }
+}
+
+impl crate::MemorySize for ColumnPredicate {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.column))
+    }
+}
+
+impl crate::MemorySize for TimeBounds {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.column))
+    }
+}
+
+impl crate::MemorySize for StorageCapabilities {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl crate::MemorySize for ArrowPage {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.batch.get_array_memory_size())
+            .saturating_add(crate::MemorySize::memory_size(&self.columns_read))
     }
 }

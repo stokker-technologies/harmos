@@ -46,10 +46,12 @@ mod protobuf;
 #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
 mod sdk;
 #[cfg(feature = "grpc")]
-pub mod values;
 mod wire;
 
 /* === Re-Exports === */
+
+pub use harmos_operations::execution::operations::{NativeHost, NativeOperation, NativeOutput, native_stream};
+pub use invocation::NativeInvocation;
 
 #[cfg(feature = "plugin-guest")]
 pub(crate) use crate::guest::host::envelope::{

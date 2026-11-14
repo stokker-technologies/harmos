@@ -17,6 +17,8 @@ mod connection;
 pub(crate) mod invoke;
 mod managed;
 mod publish;
+pub(crate) mod samples;
+pub(crate) mod settings;
 
 /* === Re-Exports === */
 
@@ -49,7 +51,15 @@ type Outcome = Result<(), Arc<Error>>;
 /* === Structs === */
 
 #[derive(Clone)]
+pub struct CallingPlugin {
+    pub name: String,
+    pub description: harmos_protocol::plugin::InstanceGetResponse,
+}
+
+#[derive(Clone)]
 pub struct Activation {
+    pub entry_name: String,
+    pub settings: v1::SettingValues,
     pub number: u64,
     pub description: harmos_protocol::plugin::InstanceGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
@@ -70,6 +80,14 @@ pub struct Attached {
     status: watch::Receiver<Status>,
     stop: watch::Sender<Option<String>>,
     stopped: watch::Receiver<Option<Outcome>>,
+}
+
+pub(crate) struct PreparedPlugin {
+    process: Option<Process>,
+    address: String,
+    pub(crate) activation: Activation,
+    admission: crate::operations::GrpcAdmission,
+    publications: publish::PreparedPublications,
 }
 
 struct Session<A: Application> {
@@ -120,6 +138,88 @@ pub enum Error {
 /* === Implementations === */
 
 impl<A: Application> Runtime<A> {
+    pub(crate) async fn prepare_grpc_entry(
+        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<v1::SettingValues>,
+    ) -> Result<PreparedPlugin, Error> {
+        let operations = self.operations.execution();
+        let clock = operations.clock();
+        let stage = async {
+            let (process, address) = match placement {
+                Placement::Managed(managed) => {
+                    let (process, address) = Process::start(&managed).await?;
+                    (Some(process), address)
+                }
+                Placement::Remote(_) => return Err(Error::Invalid("Replace Plugin: managed placement required".into())),
+            };
+            let mut activation = connect(
+                clock,
+                &address,
+                1,
+                None,
+                process.as_ref().map(|process| process.digest),
+                operations.transfer_message_bytes().get(),
+            )
+            .await?;
+            activation.entry_name = name;
+            activation.settings =
+                crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            activation.process_id = process.as_ref().and_then(|process| process.child.id());
+            let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
+            let publications = publish::Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
+            Ok(PreparedPlugin {
+                process,
+                address,
+                activation,
+                admission,
+                publications,
+            })
+        };
+        clock.timeout(settings.connect_timeout, stage).await.map_err(|_| Error::Timeout("Replace startup"))?
+    }
+    pub(crate) fn activate_grpc_entry(&self, prepared: PreparedPlugin, settings: PlacementSettings) -> Result<Attached, Error> {
+        let PreparedPlugin {
+            process,
+            address,
+            mut activation,
+            mut admission,
+            publications,
+        } = prepared;
+        let operations = self.operations.execution();
+        let clock = operations.clock().clone();
+        admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
+        let publications = publish::Publications::activate(publications, &self.streams, &activation, &clock, &operations, true)?;
+        admission.seal();
+        activation.admission = Some(Arc::new(admission));
+        Ok(Attached::launch(
+            operations,
+            self.streams.clone(),
+            crate::operations::Lane::default().name(),
+            settings,
+            self.stop_participant(),
+            process,
+            address,
+            activation,
+            publications,
+        ))
+    }
+
+    pub(crate) async fn attach_grpc_entry(
+        &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<v1::SettingValues>,
+    ) -> Result<Attached, Error> {
+        Attached::start(
+            self.operations.execution(),
+            self.streams.clone(),
+            crate::operations::Lane::default().name(),
+            placement,
+            settings,
+            self.stop_participant(),
+            Some(name),
+            values,
+        )
+        .await
+    }
+
     pub async fn attach_grpc(&self, placement: Placement, settings: PlacementSettings) -> Result<Attached, Error> {
         let participant = self.stop_participant();
         if participant.is_stopping() {
@@ -132,6 +232,8 @@ impl<A: Application> Runtime<A> {
             placement,
             settings,
             participant,
+            None,
+            None,
         )
         .await
     }
@@ -161,7 +263,8 @@ impl Activation {
 impl Attached {
     async fn start<A: Application>(
         operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
-        settings: PlacementSettings, participant: crate::runtime::StopParticipant,
+        settings: PlacementSettings, participant: crate::runtime::StopParticipant, entry_name: Option<String>,
+        values: Option<v1::SettingValues>,
     ) -> Result<Self, Error> {
         let clock = operations.clock().clone();
         if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
@@ -185,16 +288,31 @@ impl Attached {
                 operations.transfer_message_bytes().get(),
             )
             .await?;
+            if let Some(name) = entry_name {
+                activation.entry_name = name;
+            }
+            activation.settings =
+                crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
+                    .map_err(|error| Error::Invalid(error.to_string()))?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
             })?;
             activation.admission = Some(Arc::new(admission));
-            let publications = publish::Publications::open(&streams, &activation, &clock, &settings).await?;
+            let publications = publish::Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
             Ok::<_, Error>((process, address, activation, publications))
         };
         let (process, address, activation, publications) =
             clock.timeout(settings.connect_timeout, setup).await.map_err(|_| Error::Timeout("startup"))??;
+        Ok(Self::launch(operations, streams, lane, settings, participant, process, address, activation, publications))
+    }
+
+    fn launch<A: Application>(
+        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, settings: PlacementSettings,
+        participant: crate::runtime::StopParticipant, process: Option<Process>, address: String, activation: Activation,
+        publications: publish::Publications,
+    ) -> Self {
+        let clock = operations.clock().clone();
         let (status, receiver) = watch::channel(Status {
             activation: Some(activation.clone()),
             failure: None,
@@ -224,11 +342,11 @@ impl Attached {
             });
             stopped.send_replace(Some(result));
         });
-        Ok(Self {
+        Self {
             status: receiver,
             stop,
             stopped: completed,
-        })
+        }
     }
 
     pub fn status(&self) -> watch::Receiver<Status> {
@@ -303,6 +421,9 @@ async fn connect(
     catalog::verify(description.catalog.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
         number,
+        settings: crate::plugin::manager::settings::select(description.catalog.as_ref().expect("admitted description"), None)
+            .map_err(|error| Error::Invalid(error.to_string()))?,
+        entry_name: description.id.clone(),
         description,
         previous_started_at,
         executable_digest,
@@ -438,6 +559,12 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                         });
                         continue;
                     }
+                    next.entry_name = activation.entry_name.clone();
+                    next.settings = crate::plugin::manager::settings::select(
+                        next.description.catalog.as_ref().expect("admitted description"),
+                        Some(activation.settings.clone()),
+                    )
+                    .map_err(|error| Arc::new(Error::Invalid(error.to_string())))?;
                     match operations.admit_grpc(&next, lane) {
                         Ok(admission) => next.admission = Some(Arc::new(admission)),
                         Err(error) => {
@@ -446,7 +573,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                             continue;
                         }
                     }
-                    match publish::Publications::open(&streams, &next, &clock, &settings).await {
+                    match publish::Publications::open(&streams, &next, &clock, &settings, &operations).await {
                         Ok(opened) => publications = opened,
                         Err(error) => {
                             next.connection.closed.send_replace(true);

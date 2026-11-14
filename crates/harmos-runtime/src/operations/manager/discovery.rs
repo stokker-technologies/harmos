@@ -27,7 +27,6 @@ use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Result};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::v1::CatalogEntriesListResponse;
 
 /* === Constants === */
 
@@ -46,9 +45,9 @@ type ProviderEntry = (String, String, Arc<Entry>);
 /* === Implementations === */
 
 impl Manager {
-    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<CatalogEntriesListResponse> {
+    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<Vec<host::DiscoveredOperation>> {
         let origin = source.check()?;
-        let mut output = CatalogEntriesListResponse::default();
+        let mut output = Vec::new();
         let mut position = None;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
@@ -132,7 +131,7 @@ impl Manager {
                 conditional_access: true,
                 grpc_available,
             };
-            output.operations.push(metadata);
+            output.push(metadata);
         }
         Ok(output)
     }

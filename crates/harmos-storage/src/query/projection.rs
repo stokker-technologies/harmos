@@ -50,6 +50,7 @@ pub struct ProjectionRead {
     pub work: ReadLimits,
 }
 
+#[derive(Debug)]
 pub struct ProjectionPage {
     pub batch: RecordBatch,
     pub frontier: StorageCursor,
@@ -526,3 +527,39 @@ fn conflict(reason: &'static str) -> Error {
 }
 
 /* === Tests === */
+
+impl crate::MemorySize for ProjectionDefinition {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(crate::MemorySize::memory_size(&self.name))
+            .saturating_add(crate::MemorySize::memory_size(&self.source))
+            .saturating_add(crate::MemorySize::memory_size(&self.transform))
+    }
+}
+
+impl crate::MemorySize for ProjectionStatus {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.frontier))
+    }
+}
+
+impl crate::MemorySize for ProjectionPage {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.batch.get_array_memory_size())
+            .saturating_add(crate::MemorySize::memory_size(&self.changed_keys))
+    }
+}
+
+impl crate::MemorySize for ProjectionTransform {
+    fn memory_size(&self) -> usize {
+        match self {
+            Self::Select(value) => crate::MemorySize::memory_size(value),
+            Self::TimeBuckets(value) => std::mem::size_of_val(value)
+                .saturating_add(value.time.capacity())
+                .saturating_add(value.value.capacity())
+                .saturating_add(value.identity.capacity())
+                .saturating_add(crate::MemorySize::memory_size(&value.group)),
+        }
+    }
+}

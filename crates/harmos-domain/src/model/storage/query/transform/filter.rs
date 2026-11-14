@@ -30,15 +30,15 @@ use crate::model::storage::query::scalar::ScalarValue;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Filter {
     pub clauses: Vec<Clause>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Clause {
     pub terms: Vec<Term>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Term {
     pub field: FieldPath,
     pub condition: Condition,
@@ -47,7 +47,7 @@ pub struct Term {
 
 /* === Enums === */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Compare {
     Eq,
     Ne,
@@ -56,7 +56,7 @@ pub enum Compare {
     Gt,
     Ge,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Condition {
     Compare { op: Compare, value: ScalarValue },
     In { values: Vec<ScalarValue> },

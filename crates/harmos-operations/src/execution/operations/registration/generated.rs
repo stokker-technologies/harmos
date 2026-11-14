@@ -116,6 +116,7 @@ impl super::super::Target {
     pub fn protobuf<O: ProtobufOperation>() -> Result<Self, ServingError> {
         OperationFactory::protobuf::<O>()?;
         Ok(Self {
+            in_process: false,
             id: O::ID,
             protobuf_native: true,
             definition: OperationFactory::protobuf::<O>()?.definition,
@@ -148,12 +149,6 @@ impl ExecutionContext {
         child.join().await?.restore().ok_or(ServingError::EndpointTypes)
     }
 }
-impl From<super::super::InvocationError> for ServingError {
-    fn from(error: super::super::InvocationError) -> Self {
-        Self::Native(std::sync::Arc::new(error))
-    }
-}
-
 impl ProtobufDependency {
     pub const fn of<O: ProtobufOperation>() -> Self {
         Self {
@@ -506,8 +501,8 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
-    if matches!(O::ID, "harmos.v1.Time/Sleep" | "harmos.v1.Time/Get") {
-        let clock = Contract::clock(O::ID == "harmos.v1.Time/Sleep", O::POLICY, settings)?;
+    if matches!(O::ID, "harmos.client.v1.Time/Sleep" | "harmos.client.v1.Time/Get") {
+        let clock = Contract::clock(O::ID == "harmos.client.v1.Time/Sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
         let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {

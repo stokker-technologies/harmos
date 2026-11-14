@@ -64,6 +64,11 @@ native_payload!(Answer);
 
 /* === Structs === */
 
+pub struct NativeInvocation<O: harmos_operations::execution::operations::NativeOperation> {
+    future: std::pin::Pin<Box<dyn std::future::Future<Output = crate::Result<super::Response<O::Response>>> + Send>>,
+    control: Arc<crate::supervision::instance::Instance>,
+}
+
 struct Request {
     payload: Mutex<Option<Box<dyn Any + Send>>>,
     memory: usize,
@@ -87,6 +92,80 @@ struct EncodedChild {
 
 /* === Implementations === */
 
+impl<O: harmos_operations::execution::operations::NativeOperation> std::future::Future for NativeInvocation<O> {
+    type Output = crate::Result<super::Response<O::Response>>;
+    fn poll(mut self: std::pin::Pin<&mut Self>, context: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+        self.future.as_mut().poll(context)
+    }
+}
+impl<O: harmos_operations::execution::operations::NativeOperation> NativeInvocation<O> {
+    pub fn request_cancel(&self) {
+        self.control.request_cancel();
+    }
+}
+impl super::Manager {
+    pub fn submit_native<O: harmos_operations::execution::operations::NativeOperation>(
+        &self, request: O::Request, endpoints: O::Endpoints,
+    ) -> crate::Result<NativeInvocation<O>> {
+        self.submit_native_as::<O>(request, endpoints, super::caller::Source::Host)
+    }
+    pub(super) fn submit_native_as<O: harmos_operations::execution::operations::NativeOperation>(
+        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source,
+    ) -> crate::Result<NativeInvocation<O>> {
+        let target = Target::native::<O>().map_err(|source| crate::Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })?;
+        let entry = self.entry_as(O::ID, &source.check()?)?;
+        let factory = entry.binding.downcast_ref::<harmos_operations::execution::operations::OperationFactory>().cloned().ok_or(
+            crate::Error::InvalidInput {
+                field: "Call Native Operation",
+                reason: "native factory required",
+            },
+        )?;
+        if !factory.accepts_target(&target, std::any::TypeId::of::<O::Endpoints>()) {
+            return Err(crate::Error::InvalidInput {
+                field: "Call Native Operation",
+                reason: "request or endpoints differ from the registered operation",
+            });
+        }
+        let running = admit_native_as(
+            self,
+            &target,
+            Box::new(request),
+            None,
+            endpoints,
+            factory,
+            |endpoints| Box::new(endpoints),
+            &source,
+            None,
+            &[],
+        )?;
+        let control = running.control.clone();
+        let child = Box::new(NativeChild(running, target));
+        let future = Box::pin(async move {
+            let response = child.join().await.map_err(|source| crate::Error::OperationFailed {
+                operation: O::ID.into(),
+                source: Arc::new(source),
+            })?;
+            response.restore().ok_or(crate::Error::InvalidInput {
+                field: "Call Native Operation",
+                reason: "native response type differs",
+            })
+        });
+        Ok(NativeInvocation { future, control })
+    }
+    pub async fn call_native<O: harmos_operations::execution::operations::NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> crate::Result<O::Response> {
+        let response = self.submit_native::<O>(request, ())?.await?;
+        response.try_unwrap().map_err(|_| crate::Error::InvalidInput {
+            field: "Call Native Operation",
+            reason: "native response is shared",
+        })
+    }
+}
+
 impl Caller for HostContext {
     fn start(
         &self, target: Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: Box<dyn Any + Send>,
@@ -97,6 +176,10 @@ impl Caller for HostContext {
             let result = async {
                 let mut context = self.borrow();
                 context.operations = context.operations.with_context(call);
+                // The Admitted Product Handler Calls Its Private In-Process Callee As Host.
+                if target.in_process {
+                    context.source = super::caller::Source::Host;
+                }
                 let origin = context.source.check()?;
                 let entry = context.operations.entry_as(target.id, &origin)?;
                 if entry.declared().fingerprint != target.definition.fingerprint {
@@ -241,19 +324,99 @@ impl MemorySize for Answer {
 
 /* === Public Functions === */
 
+impl harmos_operations::execution::operations::NativeHost for super::Manager {
+    type Error = crate::Error;
+    async fn call_native<O: harmos_operations::execution::operations::NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> crate::Result<O::Response> {
+        super::Manager::call_native::<O>(self, request).await
+    }
+}
+impl harmos_operations::execution::operations::NativeHost for super::OperationManager {
+    type Error = crate::Error;
+    async fn call_native<O: harmos_operations::execution::operations::NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> crate::Result<O::Response> {
+        super::Manager::call_native::<O>(self, request).await
+    }
+}
+impl harmos_operations::execution::operations::NativeHost for HostContext {
+    type Error = crate::Error;
+    async fn call_native<O: harmos_operations::execution::operations::NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> crate::Result<O::Response> {
+        let target = Target::native::<O>().map_err(|source| crate::Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })?;
+        let child = harmos_operations::execution::operations::Caller::start(
+            self,
+            target,
+            Box::new(request),
+            None,
+            Box::new(()),
+            self.borrow().context().clone(),
+        )
+        .await
+        .map_err(|source| crate::Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })?;
+        let response = child.join().await.map_err(|source| crate::Error::OperationFailed {
+            operation: O::ID.into(),
+            source: Arc::new(source),
+        })?;
+        let response = response.restore::<O::Response>().ok_or(crate::Error::InvalidInput {
+            field: "Call Native Operation",
+            reason: "response type differs",
+        })?;
+        response.try_unwrap().map_err(|_| crate::Error::InvalidInput {
+            field: "Call Native Operation",
+            reason: "response is shared",
+        })
+    }
+}
+impl harmos_operations::execution::operations::NativeHost for super::Context<'_> {
+    type Error = crate::Error;
+    async fn call_native<O: harmos_operations::execution::operations::NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request,
+    ) -> crate::Result<O::Response> {
+        harmos_operations::execution::operations::NativeHost::call_native::<O>(&self.owned(), request).await
+    }
+}
+
 /* === Private Functions === */
 
 fn admit_native<P: Send + 'static>(
     context: &super::Context<'_>, target: &Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: P,
     factory: harmos_operations::execution::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
 ) -> crate::Result<super::Running<NativeCall>> {
+    admit_native_as(
+        &context.operations,
+        target,
+        request,
+        retry,
+        endpoints,
+        factory,
+        erase,
+        &context.source,
+        Some(&context.scope),
+        context.admission.held(),
+    )
+}
+
+fn admit_native_as<P: Send + 'static>(
+    manager: &super::Manager, target: &Target, request: Box<dyn Any + Send>, retry: Option<super::RetryPolicy>, endpoints: P,
+    factory: harmos_operations::execution::operations::OperationFactory, erase: fn(P) -> Box<dyn Any + Send>,
+    source: &super::caller::Source, scope: Option<&super::Scope<'_>>, ancestors: &[&'static str],
+) -> crate::Result<super::Running<NativeCall>> {
     let grant =
         factory.request_grant(request.as_ref()).map_err(|source| crate::Error::OperationPayload { operation: target.id.into(), source })?;
     let memory = (target.memory)(request.as_ref());
-    let entry = context.operations.entry_as(target.id, &context.source.check()?)?;
-    let resources = context.operations.resources_for(&entry);
+    let entry = manager.entry_as(target.id, &source.check()?)?;
+    let resources = manager.resources_for(&entry);
     let binding = super::authored::factory_projected::<NativeCall, P>(
-        &context.operations,
+        &manager,
         move |request, endpoints| {
             let payload = request
                 .payload
@@ -271,14 +434,7 @@ fn admit_native<P: Send + 'static>(
     input.retry = retry;
     input.binding = Some(Arc::new(binding));
     input.grant = grant;
-    let running = context.operations.admit_at::<NativeCall, P>(
-        target.id,
-        (input, endpoints),
-        Some(&context.scope),
-        context.admission.held(),
-        &context.source,
-        None,
-    )?;
+    let running = manager.admit_at::<NativeCall, P>(target.id, (input, endpoints), scope, ancestors, source, None)?;
     Ok(running)
 }
 

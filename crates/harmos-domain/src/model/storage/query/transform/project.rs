@@ -29,11 +29,11 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Project {
     pub fields: Vec<Projection>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Projection {
     pub field: FieldPath,
     pub name: String,

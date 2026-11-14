@@ -302,10 +302,10 @@ impl Contract {
         operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         harmos_protocol::schema::operation_identity(operation.id.as_str()).map_err(|error| ContractError::Protobuf(error.to_string()))?;
-        if operation.id.as_str().starts_with("harmos.context.v1.") {
+        if operation.id.as_str().starts_with("harmos.plugin.host.v1.") {
             use prost::Message;
             use prost_reflect::ReflectMessage;
-            let root = harmos_protocol::context::TimeGetRequest::default().descriptor();
+            let root = harmos_protocol::plugin::host::TimeGetRequest::default().descriptor();
             let pool = root.parent_pool();
             let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
             let service = pool.get_service_by_name(service).ok_or(ContractError::Grpc)?;
@@ -333,10 +333,10 @@ impl Contract {
         if crate::reserved(operation.id.as_str()) {
             use prost::Message;
             use prost_reflect::ReflectMessage;
-            let root = harmos_protocol::v1::CatalogEntriesListRequest::default().descriptor();
+            let root = harmos_protocol::client::OperationsListRequest::default().descriptor();
             let pool = root.parent_pool();
             let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
-            if !service.starts_with("harmos.v1.") {
+            if !service.starts_with("harmos.client.v1.") {
                 return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into());
             }
             let service = pool.get_service_by_name(service).ok_or(ContractError::Grpc)?;
@@ -376,9 +376,9 @@ impl Contract {
         use prost::Message;
         policy.validate().map_err(crate::operations::Error::from)?;
         let (id, request, response, method) = if sleep {
-            ("harmos.v1.Time/Sleep", "harmos.v1.TimeSleepRequest", "harmos.v1.TimeSleepResponse", "Sleep")
+            ("harmos.client.v1.Time/Sleep", "harmos.client.v1.TimeSleepRequest", "harmos.client.v1.TimeSleepResponse", "Sleep")
         } else {
-            ("harmos.v1.Time/Get", "harmos.v1.TimeGetRequest", "harmos.v1.TimeGetResponse", "Get")
+            ("harmos.client.v1.Time/Get", "harmos.client.v1.TimeGetRequest", "harmos.client.v1.TimeGetResponse", "Get")
         };
         let operation = OperationDefinition {
             id: harmos_domain::Identifier::new(id).map_err(crate::operations::Error::from)?,
@@ -395,7 +395,7 @@ impl Contract {
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.v1", "Time", method)), settings)
+        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.client.v1", "Time", method)), settings)
     }
 
     pub(crate) fn generated(
@@ -518,12 +518,12 @@ impl Contract {
         let Some(binding) = self.grpc() else {
             return Ok(None);
         };
-        if binding.package != "harmos.v1" {
+        if binding.package != "harmos.client.v1" {
             return Ok(None);
         }
-        let root = harmos_protocol::context::TimeGetRequest::default().descriptor();
+        let root = harmos_protocol::plugin::host::TimeGetRequest::default().descriptor();
         let pool = root.parent_pool();
-        let service_name = format!("harmos.context.v1.{}", binding.service);
+        let service_name = format!("harmos.plugin.host.v1.{}", binding.service);
         let Some(service) = pool.get_service_by_name(&service_name) else {
             return Ok(None);
         };
@@ -675,9 +675,9 @@ impl TryFrom<DecodedContract> for Contract {
             return Ok(expected);
         }
         if let Some(protobuf) = decoded.protobuf {
-            let expected = if matches!(decoded.operation.id.as_str(), "harmos.v1.Time/Sleep" | "harmos.v1.Time/Get") {
+            let expected = if matches!(decoded.operation.id.as_str(), "harmos.client.v1.Time/Sleep" | "harmos.client.v1.Time/Get") {
                 let clock = Self::clock(
-                    decoded.operation.id.as_str() == "harmos.v1.Time/Sleep",
+                    decoded.operation.id.as_str() == "harmos.client.v1.Time/Sleep",
                     decoded.operation.policy,
                     &SchemaSettings::default(),
                 )?;

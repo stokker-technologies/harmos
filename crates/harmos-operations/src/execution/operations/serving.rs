@@ -156,6 +156,12 @@ impl ServingError {
     }
 }
 
+impl From<super::InvocationError> for ServingError {
+    fn from(error: super::InvocationError) -> Self {
+        Self::Native(std::sync::Arc::new(error))
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

@@ -16,7 +16,7 @@
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
-use harmos_protocol::v1::FollowingRow;
+use crate::streams::PublishedRow;
 // Local Imports
 use super::access::AccessError;
 
@@ -39,7 +39,7 @@ pub struct Publication<'a> {
     pub published_unix_micros: Option<i64>,
     pub context: &'a mut Option<String>,
     pub payload: &'a mut Vec<u8>,
-    pub following: &'a mut Vec<FollowingRow>,
+    pub following: &'a mut Vec<PublishedRow>,
 }
 
 /* === Enums === */

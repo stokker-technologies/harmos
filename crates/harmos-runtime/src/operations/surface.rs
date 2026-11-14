@@ -629,3 +629,14 @@ mod tests {
         runtime.shutdown().await.unwrap();
     }
 }
+
+impl harmos_operations::execution::operations::NativeHost for RuntimeOperationHost {
+    type Error = Error;
+    async fn call_native<O: super::NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        let response = self.manager()?.submit_native_as::<O>(request, (), self.source.clone())?.await?;
+        response.try_unwrap().map_err(|_| Error::InvalidInput {
+            field: "Call Native Operation",
+            reason: "response is shared",
+        })
+    }
+}

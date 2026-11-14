@@ -36,7 +36,7 @@ use super::{
     persistence::{Registry, SavedCreate, SavedEntry, Store, problem},
 };
 use crate::plugin::grpc::{Attached, Managed, Placement, Status};
-use harmos_protocol::{v1 as wire, v1};
+use harmos_protocol::{client as wire, v1};
 
 /* === Constants === */
 
@@ -49,30 +49,43 @@ pub(super) const GAP_ACTION: &str = "Watch Plugins: event history expired; open 
 
 type Reply<T> = oneshot::Sender<Result<T, Error>>;
 type Attachment = Pin<Box<dyn Future<Output = Result<Attached, crate::plugin::grpc::Error>> + Send>>;
-pub(super) type Attach = Arc<dyn Fn(Placement) -> Attachment + Send + Sync>;
+pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<v1::SettingValues>) -> Attachment + Send + Sync>;
+pub(super) type Stage = Arc<
+    dyn Fn(
+            String,
+            Placement,
+            Option<v1::SettingValues>,
+        ) -> Pin<Box<dyn Future<Output = Result<crate::plugin::grpc::PreparedPlugin, crate::plugin::grpc::Error>> + Send>>
+        + Send
+        + Sync,
+>;
+pub(super) type Activate = Arc<dyn Fn(crate::plugin::grpc::PreparedPlugin) -> Result<Attached, crate::plugin::grpc::Error> + Send + Sync>;
 
 /* === Structs === */
 
 pub(super) struct Actor {
-    store: Store,
-    registry: Registry,
-    settings: PluginManagerSettings,
+    pub(super) store: Store,
+    pub(super) registry: Registry,
+    pub(super) settings: PluginManagerSettings,
     attach: Attach,
+    pub(super) stage: Stage,
+    pub(super) activate: Activate,
     commands: mpsc::Sender<Command>,
     participant: crate::runtime::StopParticipant,
     history: v1::History,
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
-    issued: BTreeSet<u64>,
+    pub(super) issued: BTreeSet<u64>,
     changes: broadcast::Sender<wire::PluginsWatchResponse>,
     workers: BTreeMap<String, Worker>,
 }
 
 #[derive(Clone)]
-struct Snapshot {
-    cut: v1::ReadCut,
+pub(super) struct Snapshot {
+    pub(super) cut: v1::ReadCut,
     entries: BTreeMap<String, wire::PluginEntry>,
     event: Option<wire::PluginChange>,
+    pub(super) settings: BTreeMap<String, super::settings::Snapshot>,
 }
 
 struct Worker {
@@ -83,6 +96,9 @@ struct Worker {
 /* === Enums === */
 
 pub(super) enum Command {
+    Replace(wire::PluginsReplaceRequest, Reply<wire::PluginsReplaceResponse>),
+    SettingsList(wire::plugins::SettingsListRequest, Reply<wire::plugins::SettingsListResponse>),
+    SettingsSet(wire::plugins::SettingsSetRequest, Reply<wire::plugins::SettingsSetResponse>),
     Get(wire::PluginsGetRequest, Reply<wire::PluginsGetResponse>),
     List(wire::PluginsListRequest, Reply<wire::PluginsListResponse>),
     Watch(wire::PluginsWatchRequest, Reply<mpsc::Receiver<wire::PluginsWatchResponse>>),
@@ -100,10 +116,14 @@ pub(super) enum Command {
 impl Actor {
     pub async fn open(
         storage: harmos_storage::StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>,
-        participant: crate::runtime::StopParticipant,
+        stage: Stage, activate: Activate, participant: crate::runtime::StopParticipant,
     ) -> Result<Self, Error> {
         let (store, mut registry) = Store::open(storage, &settings).await?;
-        if registry.entries.len() > settings.entries.get() || registry.creates.len() > settings.create_receipts.get() {
+        if registry.entries.len() > settings.entries.get()
+            || (registry.creates.len()
+                + registry.entries.values().map(|entry| entry.settings_receipts.len() + entry.replacements.len()).sum::<usize>())
+                > settings.create_receipts.get()
+        {
             return Err(Error::new(
                 "registry_capacity",
                 "Restore Plugin Registry",
@@ -136,6 +156,8 @@ impl Actor {
             registry,
             settings,
             attach,
+            stage,
+            activate,
             commands,
             participant,
             history,
@@ -163,6 +185,15 @@ impl Actor {
                 command = receiver.recv() => match command { Some(command) => command, None => break },
             };
             match command {
+                Command::Replace(request, reply) => {
+                    let _ = reply.send(self.replace(request).await);
+                }
+                Command::SettingsList(request, reply) => {
+                    let _ = reply.send(self.settings_list(request));
+                }
+                Command::SettingsSet(request, reply) => {
+                    let _ = reply.send(self.settings_set(request).await);
+                }
                 Command::Get(request, reply) => {
                     let _ = reply.send(self.get(request));
                 }
@@ -208,7 +239,7 @@ impl Actor {
         }
     }
 
-    fn cut(&self) -> v1::ReadCut {
+    pub(super) fn cut(&self) -> v1::ReadCut {
         v1::ReadCut {
             positions: vec![v1::Position {
                 history: Some(self.history.clone()),
@@ -218,7 +249,7 @@ impl Actor {
         }
     }
 
-    fn publish(&mut self, event: Option<wire::PluginChange>) -> Result<(), Error> {
+    pub(super) fn publish(&mut self, event: Option<wire::PluginChange>) -> Result<(), Error> {
         self.sequence =
             self.sequence.checked_add(1).ok_or_else(|| Error::new("history_exhausted", "Publish Plugin State", "restart the host"))?;
         let cut = self.cut();
@@ -226,6 +257,7 @@ impl Actor {
             cut: cut.clone(),
             entries: self.registry.values()?,
             event: event.clone(),
+            settings: super::settings::snapshots(&self.registry)?,
         };
         self.snapshots.push_back(snapshot);
         while self.snapshots.len() > self.settings.retained_cuts.get() {
@@ -245,7 +277,7 @@ impl Actor {
         Ok(())
     }
 
-    fn snapshot(&self, at: Option<&v1::ReadCut>) -> Result<&Snapshot, Error> {
+    pub(super) fn snapshot(&self, at: Option<&v1::ReadCut>) -> Result<&Snapshot, Error> {
         match at {
             Some(at) => self
                 .snapshots
@@ -353,13 +385,14 @@ impl Actor {
         Ok(receiver)
     }
 
-    async fn commit(&mut self, registry: Registry, change: wire::PluginChange) -> Result<(), Error> {
+    pub(super) async fn commit(&mut self, mut registry: Registry, change: wire::PluginChange) -> Result<(), Error> {
+        super::settings::materialize(&mut registry)?;
         self.store.save(&registry).await?;
         self.registry = registry;
         self.publish(Some(change))
     }
 
-    fn receipt(&mut self, request_id: String) -> v1::Receipt {
+    pub(super) fn receipt(&mut self, request_id: String) -> v1::Receipt {
         let position = v1::Position {
             history: Some(self.history.clone()),
             sequence: self.sequence + 1,
@@ -388,9 +421,10 @@ impl Actor {
         if self.registry.entries.contains_key(&request.name) {
             return Err(Error::new("entry_exists", "Create Plugin", "choose an unused entry name"));
         }
-        if self.registry.entries.len() == self.settings.entries.get() || self.registry.creates.len() == self.settings.create_receipts.get()
-        {
-            return Err(Error::new("manager_capacity", "Create Plugin", "configure capacity for entries and retained Create receipts"));
+        let receipts = self.registry.creates.len()
+            + self.registry.entries.values().map(|entry| entry.settings_receipts.len() + entry.replacements.len()).sum::<usize>();
+        if self.registry.entries.len() >= self.settings.entries.get() || receipts >= self.settings.create_receipts.get() {
+            return Err(Error::new("manager_capacity", "Create Plugin", "configure capacity for entries and retained mutation receipts"));
         }
         let placement = request
             .placement
@@ -439,6 +473,10 @@ impl Actor {
                 executable: installation.as_ref().map(|installation| installation.executable().to_owned()),
                 executable_digest: installation.as_ref().map(Installation::digest),
                 generation: entry.activation,
+                settings: Vec::new(),
+                settings_revision: Vec::new(),
+                settings_receipts: BTreeMap::new(),
+                replacements: BTreeMap::new(),
             },
         );
         registry.creates.insert(
@@ -456,7 +494,7 @@ impl Actor {
         Ok(response)
     }
 
-    fn entry(&self, name: &str, revision: &[u8], action: &str) -> Result<wire::PluginEntry, Error> {
+    pub(super) fn entry(&self, name: &str, revision: &[u8], action: &str) -> Result<wire::PluginEntry, Error> {
         let entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(|| {
             Error::new("entry_missing", format!("{action}: Entry Does Not Exist"), "list plugins and select an existing entry")
         })?;
@@ -559,18 +597,7 @@ impl Actor {
         .await?;
         let stopped = self.stop(&entry.name).await;
         if let Some(executable) = saved.executable {
-            crate::bundle::validate_path(&executable).map_err(|error| problem("Delete Plugin Installation", error))?;
-            let parent = executable.split('/').next().expect("installation path has a parent");
-            let root = self.settings.directory.canonicalize().map_err(|error| problem("Resolve Plugin Directory", error))?;
-            let directory = root.join(parent).canonicalize().map_err(|error| problem("Resolve Plugin Installation", error))?;
-            if directory.parent() != Some(root.as_path()) {
-                return Err(Error::new(
-                    "installation_path",
-                    "Delete Plugin Installation",
-                    "restore an installation directly beneath the manager directory",
-                ));
-            }
-            std::fs::remove_dir_all(directory).map_err(|error| problem("Delete Plugin Installation", error))?;
+            super::content::remove(&executable, &self.settings)?;
         }
         stopped?;
         Ok(response)
@@ -587,10 +614,16 @@ impl Actor {
             Some(wire::plugin_placement::Kind::Managed(_)) => managed(saved, &self.settings),
             None => Err(Error::new("placement_required", "Start Plugin", "restore a valid placement")),
         };
-        let attachment = placement.map(|placement| (self.attach)(placement));
+        let values = (!saved.settings.is_empty())
+            .then(|| v1::SettingValues::decode(saved.settings.as_slice()))
+            .transpose()
+            .map_err(|error| problem("Restore Plugin Settings", error));
+        let attachment = placement.and_then(|placement| values.map(|values| (self.attach)(name.to_owned(), placement, values)));
+        self.monitor(name, saved.generation, attachment);
+    }
+    pub(super) fn monitor(&mut self, name: &str, activation: u64, attachment: Result<Attachment, Error>) {
         let commands = self.commands.clone();
         let name = name.to_owned();
-        let activation = saved.generation;
         let (stop, mut stopping) = oneshot::channel();
         let worker_name = name.clone();
         let task = tokio::spawn(async move {
@@ -649,7 +682,7 @@ impl Actor {
         self.workers.insert(name, Worker { stop, task });
     }
 
-    async fn stop(&mut self, name: &str) -> Result<(), Error> {
+    pub(super) async fn stop(&mut self, name: &str) -> Result<(), Error> {
         if let Some(worker) = self.workers.remove(name) {
             let _ = worker.stop.send(());
             worker.task.await.map_err(|error| problem("Join Plugin Activation", error))??;
@@ -657,7 +690,7 @@ impl Actor {
         Ok(())
     }
 
-    async fn cleanup_failure(&mut self, name: &str, error: Error) -> Result<wire::PluginEntry, Error> {
+    pub(super) async fn cleanup_failure(&mut self, name: &str, error: Error) -> Result<wire::PluginEntry, Error> {
         let mut entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(missing)?;
         entry.failure = Some(*error.0);
         let mut registry = self.registry.clone();
@@ -726,10 +759,10 @@ impl Actor {
 fn missing() -> Error {
     Error::new("entry_missing", "Get Plugin Entry", "list plugins and select an existing entry")
 }
-fn next_activation(value: u64) -> Result<u64, Error> {
+pub(super) fn next_activation(value: u64) -> Result<u64, Error> {
     value.checked_add(1).ok_or_else(|| Error::new("activation_exhausted", "Restart Plugin", "create a new entry"))
 }
-fn changed(entry: wire::PluginEntry) -> wire::PluginChange {
+pub(super) fn changed(entry: wire::PluginEntry) -> wire::PluginChange {
     wire::PluginChange {
         kind: Some(wire::plugin_change::Kind::Entry(entry)),
     }
@@ -777,7 +810,7 @@ fn selected(event: &wire::PluginsWatchResponse, name: &str) -> bool {
         _ => true,
     }
 }
-fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> Result<Placement, Error> {
+pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> Result<Placement, Error> {
     let executable = saved
         .executable
         .as_ref()

@@ -22,7 +22,7 @@ use prost::Message;
 // Local Imports
 use super::Error;
 use crate::{bundle::Limits, plugin::grpc::PlacementSettings};
-use harmos_protocol::{v1 as wire, v1};
+use harmos_protocol::{client as wire, v1};
 
 /* === Constants === */
 

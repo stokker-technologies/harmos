@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod function;
+mod native;
 
 #[cfg(all(feature = "grpc", feature = "streaming"))]
 pub mod generated;
@@ -17,6 +18,9 @@ pub mod generated;
 /* === Re-Exports === */
 
 pub use function::{FunctionContext, FunctionHandle, FunctionInvocation};
+pub use native::{NativeHost, NativeOperation};
+#[cfg(feature = "streaming")]
+pub use native::{NativeOutput, native_stream};
 
 /* === Imports === */
 
@@ -121,7 +125,7 @@ struct InitializedService<S: Service> {
     service: S,
 }
 
-struct NativeOperation<O: Carrier> {
+struct CarrierOperation<O: Carrier> {
     dependencies: ResourceSet,
     operation: Option<O>,
     request: <O::Declaration as super::RequestShape>::Request,
@@ -313,7 +317,7 @@ impl Catalog {
                 }
                 let request = request.downcast::<<O::Declaration as super::RequestShape>::Request>().map_err(|_| ServingError::Catalog)?;
                 let endpoints = endpoints.downcast::<O::StreamEndpoints>().map_err(|_| ServingError::Catalog)?;
-                Ok(Box::new(NativeOperation::<O> {
+                Ok(Box::new(CarrierOperation::<O> {
                     dependencies,
                     operation: None,
                     request: *request,
@@ -364,7 +368,7 @@ impl Catalog {
                     (streams, _) => streams,
                 };
                 let grant = grant(&request);
-                let instance = NativeOperation::<O> {
+                let instance = CarrierOperation::<O> {
                     dependencies,
                     operation: None,
                     request,
@@ -417,7 +421,7 @@ impl OperationFactory {
     pub fn prepare_carrier<C: Carrier>(
         dependencies: ResourceSet, request: <C::Declaration as RequestShape>::Request, endpoints: C::StreamEndpoints,
     ) -> Box<dyn NativeInstance> {
-        Box::new(NativeOperation::<C> {
+        Box::new(CarrierOperation::<C> {
             dependencies,
             operation: None,
             request,
@@ -570,7 +574,7 @@ impl OperationFactory {
     }
 }
 
-impl<O: Carrier> NativeInstance for NativeOperation<O> {
+impl<O: Carrier> NativeInstance for CarrierOperation<O> {
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::execution::operations::FailureKind {
         error.downcast_ref::<O::Error>().map_or(crate::execution::operations::FailureKind::Permanent, O::classify)
     }

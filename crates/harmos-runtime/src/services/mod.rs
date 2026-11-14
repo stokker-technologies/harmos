@@ -628,3 +628,10 @@ mod tests {
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
     }
 }
+
+impl<A: Application> harmos_operations::execution::operations::NativeHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_native<O: crate::operations::NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        harmos_operations::execution::operations::NativeHost::call_native::<O>(&self.operations, request).await
+    }
+}

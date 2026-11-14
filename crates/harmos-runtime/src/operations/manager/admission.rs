@@ -53,6 +53,12 @@ impl Manager {
     }
 
     pub(in crate::operations) fn reserve(&self, entries: &[Arc<Entry>]) -> Result<()> {
+        self.reserve_inner(entries, None, true).map(|_| ())
+    }
+    pub(in crate::operations) fn reserve_inner(
+        &self, entries: &[Arc<Entry>], replacing: Option<&str>, apply: bool,
+    ) -> Result<Vec<Arc<Entry>>> {
+        let mut replaced = Vec::new();
         let mut identities = std::collections::BTreeSet::new();
         for entry in entries {
             if !identities.insert((entry.id(), entry.owner.as_str())) {
@@ -82,7 +88,7 @@ impl Manager {
             let retired = state.retired();
             for entry in entries {
                 if let Some(previous) = state.entries.get(entry.id()).and_then(|providers| {
-                    providers.values().find(|previous| {
+                    providers.values().filter(|previous| Some(previous.owner.as_str()) != replacing).find(|previous| {
                         entry.binding.is::<crate::plugin::grpc::invoke::Binding>()
                             || previous.binding.is::<crate::plugin::grpc::invoke::Binding>()
                     })
@@ -93,11 +99,17 @@ impl Manager {
                     });
                 }
             }
-            for caller in state.entries.values().flat_map(|providers| providers.values()).chain(entries) {
+            for caller in state
+                .entries
+                .values()
+                .flat_map(|providers| providers.values())
+                .filter(|entry| Some(entry.owner.as_str()) != replacing)
+                .chain(entries)
+            {
                 let Some(binding) = caller.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() else {
                     continue;
                 };
-                for required in &binding.requires {
+                for required in &binding.caller.description.catalog.as_ref().expect("admitted description").requires {
                     let target = entries
                         .iter()
                         .find(|entry| entry.id() == required.id)
@@ -151,7 +163,7 @@ impl Manager {
             let result = if state.closing || !self.instances.is_accepting() {
                 Err(Error::Closing { domain: "operations" })
             } else if let Some(entry) = entries.iter().find(|entry| {
-                state.owned(entry.id(), entry.owner.as_str()).is_some()
+                (Some(entry.owner.as_str()) != replacing && state.owned(entry.id(), entry.owner.as_str()).is_some())
                     || self.resident.contains(&format!("{}.{}", entry.owner, entry.id()))
             }) {
                 Err(Error::AlreadyRegistered {
@@ -182,10 +194,27 @@ impl Manager {
                             return Err(Error::AlreadyRegistered { domain: "gRPC method", name: path });
                         }
                     }
-                    state.grpc.extend(staged);
+                    if apply {
+                        state.grpc.extend(staged);
+                    }
                     Ok(())
                 });
-                if gate.is_ok() {
+                if gate.is_ok() && apply {
+                    if let Some(owner) = replacing {
+                        let ids = state
+                            .entries
+                            .iter()
+                            .filter(|(_, providers)| {
+                                providers.get(owner).is_some_and(|entry| entry.binding.is::<crate::plugin::grpc::invoke::Binding>())
+                            })
+                            .map(|(id, _)| id.clone())
+                            .collect::<Vec<_>>();
+                        for id in ids {
+                            if let Some(entry) = state.remove_owned(&id, owner) {
+                                replaced.push(entry);
+                            }
+                        }
+                    }
                     for entry in entries {
                         state.entries.entry(entry.id().to_owned()).or_default().insert(entry.owner.to_string(), Arc::clone(entry));
                     }
@@ -196,7 +225,7 @@ impl Manager {
         };
         // Resource owners removed by opportunistic retirement never drop under a registry guard.
         drop(retired);
-        result
+        result.map(|()| replaced)
     }
 }
 

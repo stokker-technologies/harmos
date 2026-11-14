@@ -15,6 +15,8 @@ mod actor;
 mod config;
 mod content;
 mod persistence;
+mod replacement;
+pub(crate) mod settings;
 
 /* === Re-Exports === */
 
@@ -32,7 +34,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
-use harmos_protocol::v1 as wire;
+use harmos_protocol::client as wire;
 
 /* === Constants === */
 
@@ -80,19 +82,42 @@ impl Manager {
             .map_err(|_| Error::new("already_started", "Start Plugin Manager", "start this manager only once"))?;
         let host = Arc::downgrade(runtime);
         let settings = self.inner.settings.placement.clone();
-        let attach: actor::Attach = Arc::new(move |placement| {
+        let attach: actor::Attach = Arc::new(move |name, placement, values| {
             let activity = clock.activity("plugin manager activation");
             let host = host.clone();
             let settings = settings.clone();
             Box::pin(async move {
                 let _activity = activity;
                 let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
-                runtime.attach_grpc(placement, settings).await
+                runtime.attach_grpc_entry(name, placement, settings, values).await
             })
         });
-        let actor =
-            actor::Actor::open(self.inner.storage.engine(), self.inner.settings.clone(), attach, sender, runtime.stop_participant())
-                .await?;
+        let host = Arc::downgrade(runtime);
+        let placement_settings = self.inner.settings.placement.clone();
+        let stage: actor::Stage = Arc::new(move |name, placement, values| {
+            let host = host.clone();
+            let settings = placement_settings.clone();
+            Box::pin(async move {
+                let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
+                runtime.prepare_grpc_entry(name, placement, settings, values).await
+            })
+        });
+        let host = Arc::downgrade(runtime);
+        let placement_settings = self.inner.settings.placement.clone();
+        let activate: actor::Activate = Arc::new(move |prepared| {
+            let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
+            runtime.activate_grpc_entry(prepared, placement_settings.clone())
+        });
+        let actor = actor::Actor::open(
+            self.inner.storage.engine(),
+            self.inner.settings.clone(),
+            attach,
+            sender,
+            stage,
+            activate,
+            runtime.stop_participant(),
+        )
+        .await?;
         tokio::spawn(actor.run(receiver, startup));
         Ok(())
     }
@@ -117,6 +142,16 @@ impl<A: Application> crate::runtime::Builder<A> {
 }
 
 impl Management for Manager {
+    fn replace(&self, request: wire::PluginsReplaceRequest) -> Pending<'_, wire::PluginsReplaceResponse> {
+        Box::pin(self.call(move |reply| actor::Command::Replace(request, reply)))
+    }
+    fn settings_list(&self, request: wire::plugins::SettingsListRequest) -> Pending<'_, wire::plugins::SettingsListResponse> {
+        Box::pin(self.call(move |reply| actor::Command::SettingsList(request, reply)))
+    }
+    fn settings_set(&self, request: wire::plugins::SettingsSetRequest) -> Pending<'_, wire::plugins::SettingsSetResponse> {
+        Box::pin(self.call(move |reply| actor::Command::SettingsSet(request, reply)))
+    }
+
     fn get(&self, request: wire::PluginsGetRequest) -> Pending<'_, wire::PluginsGetResponse> {
         Box::pin(self.call(move |reply| actor::Command::Get(request, reply)))
     }

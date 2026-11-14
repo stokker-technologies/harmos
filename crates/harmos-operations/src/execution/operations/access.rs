@@ -39,7 +39,7 @@ pub struct GrantAccess(pub Arc<dyn GrantAuthority>);
 /* === Traits === */
 
 pub trait Discovery: Send + Sync {
-    fn discover(&self) -> Result<harmos_protocol::v1::CatalogEntriesListResponse, AccessError>;
+    fn discover(&self) -> Result<Vec<harmos_protocol::v1::DiscoveredOperation>, AccessError>;
 }
 pub trait GrantAuthority: Send + Sync {
     fn admit(&self, grant: &harmos_operations::plugin::Grant) -> Result<(), AccessError>;

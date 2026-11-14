@@ -241,17 +241,10 @@ impl<A: Application> Host<A> {
                 interface.func_wrap_concurrent("child", |accessor, (payload,): (Vec<u8>,)| {
                     Box::pin(async move {
                         let submitted = crate::supervision::executor::now();
-                        let child = crate::operations::WireChild::decode(&payload).and_then(|mut child| {
-                            let preparation = if let crate::operations::WireChild::Call(call) = &mut child {
-                                accessor.with(|mut access| access.get().publication_payload(call))?
-                            } else {
-                                None
-                            };
-                            Ok((child, preparation))
-                        });
+                        let child = crate::operations::WireChild::decode(&payload);
                         let result = match child {
                             Err(error) => Err(Bridge::<A>::refusal("-32602", error.to_string())),
-                            Ok((child, _preparation)) => {
+                            Ok(child) => {
                                 let scope = accessor.with(|mut access| {
                                     access.get().children.lock().expect("guest child context lock").get(child.context()).cloned()
                                 });
@@ -463,33 +456,6 @@ impl<A: Application> Bridge<A> {
             self.declaration.streams.iter().zip(leases).map(|(declaration, lease)| (declaration.id.clone(), lease)).collect();
         self.active = true;
         Ok(())
-    }
-
-    fn publication_payload(
-        &self, call: &mut crate::operations::WireChildCall,
-    ) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, crate::operations::WireCodecError> {
-        if call.operation != "harmos.context.v1.Samples/Append" && !call.operation.ends_with(".harmos.context.v1.Samples/Append") {
-            return Ok(None);
-        }
-        let factory = harmos_operations::execution::operations::OperationFactory::protobuf::<harmos_operations::streams::Append>()
-            .map_err(|_| crate::operations::WireCodecError::Shape)?;
-        let bytes = factory.grpc_decoding_memory(&call.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
-        let preparation = self.operations.claim_preparation(std::num::NonZeroUsize::new(bytes.max(1)).unwrap())?;
-        let mut request = harmos_protocol::context::SamplesAppendRequest::decode(call.payload.as_slice())?;
-        let catalog = self.declaration.registration.catalog.as_ref().ok_or(crate::operations::WireCodecError::Shape)?;
-        let stream = catalog.streams.iter().find(|stream| stream.id == request.stream).ok_or(crate::operations::WireCodecError::Shape)?;
-        let pool =
-            prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().ok_or(crate::operations::WireCodecError::Shape)?)
-                .map_err(|_| crate::operations::WireCodecError::Shape)?;
-        let row =
-            crate::streams::protobuf::Row::new(pool.get_message_by_name(&stream.row).ok_or(crate::operations::WireCodecError::Shape)?)
-                .map_err(|_| crate::operations::WireCodecError::Shape)?;
-        request.payload = row.decode(&request.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
-        for following in &mut request.following {
-            following.payload = row.decode(&following.payload).map_err(|_| crate::operations::WireCodecError::Shape)?;
-        }
-        call.payload = request.encode_to_vec();
-        Ok(Some(preparation))
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> Vec<u8> {

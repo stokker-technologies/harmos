@@ -18,7 +18,7 @@ use std::io::Write;
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::v1::status::{DiagnosticsGetRequest, DiagnosticsGetResponse};
+use harmos_protocol::client::status::{DiagnosticsGetRequest, DiagnosticsGetResponse};
 use sha2::{Digest, Sha256};
 
 // Local Imports

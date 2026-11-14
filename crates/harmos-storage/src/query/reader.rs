@@ -154,7 +154,7 @@ impl QueryArrow {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum QueryOutput {
     Schema(Vec<u8>),
     Batch(Vec<u8>),

@@ -10,39 +10,34 @@
 /* === Modules === */
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub mod access;
+mod native;
+
 mod answer;
 pub mod catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub mod clock;
 pub mod config;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-mod error;
 pub mod execution;
 pub mod failure;
 pub mod host;
 pub mod inventory;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub mod lifecycle;
 pub mod listeners;
 pub mod model;
 pub mod observers;
 pub mod operations;
 pub mod plugin;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub mod plugins;
 mod refusal;
 mod registration;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub mod status;
 pub mod storage;
 pub mod streams;
 
 /* === Re-Exports === */
 
-pub use config::{ConfigError, decode_config, encode_config, validate_config};
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use error::Error;
+pub use native::{
+    Error, Result, access, builtins_catalog, builtins_catalog_batch, clock, host_catalog, lifecycle, lifecycle_catalog, plugins, status,
+    storage_catalog, streams_catalog,
+};
+
+pub use config::{ConfigError, decode_config, encode_config, validate_config};
 pub use failure::Failure;
 pub use harmos_domain::*;
 pub use harmos_protocol::policy::{Backoff, Jitter, OperationPolicy, RetryPolicy};
@@ -56,14 +51,6 @@ pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, Registratio
 
 #[cfg(feature = "lifecycle")]
 pub use crate::execution::{Context, ExecutionContext, Operation, Resource, ResourceError, Response};
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use host::host_catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use lifecycle::lifecycle_catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use storage::storage_catalog;
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub use streams::streams_catalog;
 
 /* === Imports === */
 
@@ -74,17 +61,12 @@ extern crate self as harmos;
 extern crate self as harmos_operations;
 
 // Local Imports
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-use crate::execution::__private::Catalog;
 
 /* === Constants === */
 
 /* === Macros === */
 
 /* === Type Aliases === */
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub type Result<T> = std::result::Result<T, Error>;
 
 /* === Structs === */
 
@@ -93,20 +75,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 /* === Traits === */
 
 /* === Implementations === */
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub fn builtins_catalog() -> crate::execution::operations::Catalog {
-    builtins_catalog_batch().named("harmos.builtins")
-}
-
-#[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
-pub fn builtins_catalog_batch() -> Catalog {
-    let mut batch = host_catalog();
-    batch.operations.extend(lifecycle_catalog().operations);
-    batch.operations.extend(storage_catalog().operations);
-    batch.operations.extend(streams_catalog().operations);
-    batch
-}
 
 /* === Public Functions === */
 

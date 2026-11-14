@@ -99,8 +99,6 @@ pub(crate) struct Registry {
     pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,
     pub(crate) status_started: prost_types::Timestamp,
     pub(crate) service_runner: crate::services::ServiceRunner,
-    #[cfg(feature = "grpc")]
-    pub(crate) values: std::sync::RwLock<Option<Arc<dyn super::values::Resolver>>>,
     middleware: super::middleware::Configuration,
     state: Mutex<State>,
 }

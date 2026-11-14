@@ -340,111 +340,57 @@ from Capabilities. Conditional updates use the separate
 schema graph, payload and object key before one atomic admission. Independent calls do not
 form a cross-method transaction. File sessions, recovery and receipt retention remain intact.
 
-## Generated Storage Clients
+## Private Native Operations
 
-Shared storage payloads live under `harmos.storage.v1`. The Rust client wrappers are
-in `harmos_protocol::v1`, and context wrappers in `harmos_protocol::context`. Each face's
-generated methods use its own descriptors and fingerprints. Python's client service is
-`harmos.v1.storage_pb2_grpc.StorageStub`; the context declarations are under
-`harmos.context.v1`. SDK roots and complete language packages follow the protocol
-owner's descriptor table.
+Storage has one in-process operation set in `harmos_operations::storage`. Register
+`storage_catalog()` with the runtime alongside the product's registered backend.
+Every declaration has Private visibility and no gRPC projection. The library
+exposes no storage service or storage object-definition listing on either boundary.
 
-Client storage uses `harmos.v1.Storage`; invocation context uses
-`harmos.context.v1.Storage`. Each face owns its service-qualified method wrappers
-and grant identity. Both faces delegate to the same storage handlers.
+Products declare their own client and plugin-host operations with their own scope,
+attribution, authorization, typed results and policy. An admitted host handler calls
+the private native operation through `ExecutionContext::call_native`; the call keeps
+its context, parent cancellation and scope. Native host code uses
+`runtime.operations.call_native` or `submit_native` with typed endpoints. This helper
+performs ordinary operation admission and applies the callee's policy.
 
-| gRPC Method | Result |
-| --- | --- |
-| Capabilities | Native acceleration and correctness capabilities |
-| CreateSnapshot / DeleteSnapshot | Explicit retained durable lease and release |
-| ListRows | Bounded unary query page, issued cut and continuation token |
-| WatchRows | Durable boundary, exclusive changes, filtered progress and explicit resynchronization |
-| ListColumnRows | Arrow IPC and source-position continuation |
-| ListIndexEntries | Ordered key/position seek page |
-| GetIndexDefinition / SetIndexDefinition | Complete definition and atomic revision guard |
-| GetProjectionDefinition / SetProjectionDefinition | Complete definition and atomic revision guard |
-| AdvanceProjection | Checked materialization at a retained cut |
-| GetProjectionStatus | Selected revision and newest readable or issued exact frontier |
-| ListProjectionRows | Bounded exact-frontier page and composite cut |
-| GetObject / SetObject | Complete object, opaque revision and atomic applied/conflict outcome |
-| AppendRecords / AppendSamples / AppendObjectRevisions | Bounded immutable ingestion and accepted/durable receipts |
+```rust
+use harmos_operations::storage::{GetFileBytes, GetFileBytesRequest};
 
-A missing `at` selects the current durable position immediately. Projection status
-without `at` selects its newest readable materialization; an explicit `at`
-must match a retained issued cut and the selected revision. Reads never flush
-or wait for accepted writes. A supplied cut must equal a retained cut this owner
-has returned; arbitrary older positions, changed composites and foreign histories
-refuse. Automatic cuts use the existing saved-read capacity and evict the oldest
-idle cut when needed. `CreateSnapshot` pins its lease until `DeleteSnapshot` or
-storage retirement. Active reads retain their image through completion. A failed
-or cancelled page does not release an explicit lease.
+let result = context.call_native::<GetFileBytes>(GetFileBytesRequest {
+    file: Some(reference),
+    offset,
+    max_bytes,
+    at,
+}).await?;
+```
 
-Return the whole `SavedSnapshot` unchanged for explicit lease release or projection
-advancement. Native list methods take a selector, optional issued `at`, and the common
-`PageRequest` (`page_size`, `max_bytes`, `page_token`). Their replies carry `resolved_at`
-and `next_page_token`. Keep the returned cut or omit `at` when continuing the signed token.
-Column/index/projection selectors contain source/ordering/work selection; response sizing
-and continuation belong to PageRequest. Index cuts bind the selected definition revision,
-which the provider checks within its scan; a rebuild refuses old revision reads explicitly.
-Projection cuts bind the exact retained revision/frontier. Definition getters also honor
-issued participating revisions; unavailable index revisions refuse rather than substituting
-current metadata. The native page mechanisms retain their own seek/materialization behavior.
+Requests and results are native Rust values; schema graphs, mutations, positions,
+file sessions, queries, conditional outcomes and Arrow pages retain their native
+owners. Shared `harmos.v1.File`, `Upload`, `FileReference`, positions, cuts and
+receipts are vocabulary a product can reuse at its serialization boundary.
+`Plugins.Create` and `Plugins.Replace` still accept an immutable bundle reference.
 
-The complete encoded reply respects both `max_bytes` and the configured response ceiling.
-Column/projection packing counts IPC metadata as well as native buffers; an indivisible
-row or response metadata that cannot fit refuses explicitly. A short provider page is
-progress, so a filtered empty column page can still return a continuation.
+ListRows and native column/index/projection operations retain bounded pages and
+issued cuts. Return `resolved_at` unchanged and continue with `next_page_token`.
+Tokens bind the retained image, selector, transforms, ordering and progress; foreign,
+changed, released or expired selections refuse. The current page remains replayable
+with the same bounds until its next continuation is consumed. An empty page with a
+continuation represents progress. Paused queries release execution slots.
 
+Snapshots pin durable images. Lease issuance and continuation signing keys are
+process-local and expire across restart. Durable mutation receipts can reissue a
+position once its saved frontier is available, without forcing a flush. Accepted
+work is never substituted for a durable image. Index and projection cuts retain the
+exact definition revision and frontier rather than silently selecting current data.
 
-Signed native-list tokens bind the retained image, selector and native continuation. ListRows tokens
-bind the retained image, selector, transforms, ordering and query progress with an
-owner-local HMAC; page size may change within consumer bounds. The most recent continuation request/result remains replayable with the same bounds;
-consuming its next token expires older requests. Each call advances one bounded source
-or output step, so an empty page can carry a continuation without claiming end-of-source.
-Idle query plans share the existing retained-read capacity and can expire when another
-read needs it. Paused plans release active execution slots and reacquire them per call. Row-window skipping and stopping belong to the
-caller across bounded pages. Responses include their complete encoded envelope in
-the byte bound. An indivisible row or metadata that cannot fit refuses explicitly.
-
-Read-lease issuance and page-token keys are not persisted. A retained mutation receipt
-can reissue its exact position after the saved frontier proves it durable, including
-a recovered durable receipt. Pending receipt positions refuse without flushing;
-expired receipts or unavailable provider images refuse explicitly. Released, evicted, foreign and
-restarted leases/tokens refuse explicitly; restart the read with no `at`. A durable
-position may be returned again as a newly issued cut if it is still the current
-readable image, but that does not restore an old page token. Composite cuts retain
-the exact returned storage position and provider revisions; callers cannot invent
-or combine a different tuple. These leases pin existing durable backend snapshots;
-no accepted-data snapshot is constructed.
-
-Both output `limits` and source `work` are required, nonzero row/byte bounds.
-Wire page bounds include IPC schema metadata, changed-key buffers and continuation metadata. Column and index
-requests name a schema source; named index/projection requests also carry that source so the
-host can check it against the registered definition. Grants use `objects:schema:<id>`,
-`records:schema:<id>` or `streams:schema:<id>` with the corresponding operation ID. Reading
-an old projection revision checks that revision's source even after a source-changing rebuild.
-Time-bucket transforms now map in both ordinary queries and durable projections; grouping,
-nonzero widths and sample/byte bounds preserve the native contract.
-
-Failures use the existing structured operation failure with `details["storage.kind"]`:
-`STORAGE_FAILURE_UNSUPPORTED`, `CONFLICT`, `EXPIRED`, `NOT_READY`, `GAP`, `EXHAUSTED`,
-`INVALID` or `MISSING_INDEX` (each has the `STORAGE_FAILURE_` prefix). Rust consumers can use
-`StorageFailure::from_operation`. An expected version mismatch is a successful
-`CompareExchangeOutcome.conflict`, including the optional current token. Replaying an admitted
-mutation returns the original durable applied/conflict result. Cancellation after admission
-can leave committed work; retry the same mutation ID, never a new read-then-write sequence.
-
-The Schematic [query composition](../examples/schematic/app/src/services/queries.rs) builds
-SQLite query storage alongside its application-owned JSONL adapter. Its
-[saved preview journey](../examples/schematic/app/tests/storage/main.rs) retains a cut, applies
-an atomic update, refuses a stale writer and reads the unchanged saved preview. It does not
-replace the document journal, checkpoints or JSONL stream adapter.
-
-The focused Windows workload contains 2,000,000 samples across three days and 24
-plots. Run `mise run bench -- --storage --filter baseline` or `--filter native`;
-raw output and Criterion artifacts remain under `target/benchmarks/storage/`.
-Correctness checks stay outside timing. Local measurements and proposed budgets
-are recorded in the change; Linux and consumer performance proof remain open.
+Consumer response and work limits still bound native allocations, IPC metadata,
+changed-key buffers and continuation metadata. A product owns its separate wire
+message and authorization limits. Storage failures retain structured operation
+classification and `details["storage.kind"]`. Conditional object conflicts are native
+outcomes with the current version token. Schema revision bytes preserve the existing
+position encoding. Retrying an admitted mutation reuses its original identity and
+original outcome, including after cancellation or restart.
 
 ## Shared Benchmark Workload
 
@@ -577,72 +523,39 @@ the identical request and returns its original receipt.
 
 ## Unary File Transfers
 
-Clients call `harmos.v1.Storage`; plugins make child calls to
-`harmos.context.v1.Storage`. Each face owns its request and response wrappers;
-`harmos_operations::storage` and its `context` module declare them, sharing the
-StorageManager production owner and handlers. Every action requires its own
-operation/file grant. Providers without `file_sessions` and `mutation_receipts`
-refuse creation explicitly.
+The private native operations own resumable productions, writer generations,
+ordered appends, publication, abandonment and bounded content reads. Mutation
+identities come from `StorageManager::mutation_window()`. Keep the same identity
+and payload when retrying a lost response. Resuming a writer fences its previous
+generation. Publishing verifies length and SHA-256, and acknowledges the immutable
+reference with its durable receipt.
 
 ```rust
-use harmos_operations::storage::{CreateFileProduction, AppendFileBytes,
-    GetFileProduction, CreateFileWriter, PublishFileProduction,
-    DeleteFileProduction, GetFileBytes};
-use harmos_protocol::{v1, storage};
+use harmos_operations::storage::{CreateFileProduction, CreateFileProductionRequest};
 
-let production = operations.call_protobuf::<CreateFileProduction>(
-    v1::StorageCreateFileProductionRequest {
+let created = operations.call_native::<CreateFileProduction>(
+    CreateFileProductionRequest {
         metadata: Some(metadata),
         mutation: Some(mutation),
-    },
-).await?.production.unwrap();
-let appended = operations.call_protobuf::<AppendFileBytes>(
-    v1::StorageAppendFileBytesRequest {
-        session: production.session,
-        offset: 0,
-        data: bytes,
-        mutation: Some(next_mutation),
     },
 ).await?;
 ```
 
-Obtain mutation identities from `StorageManager::mutation_window()`; retain the
-window and key when retrying a lost reply. An identical normalized request
-returns its original outcome; changing it conflicts, and expired windows refuse.
-Chunks are bounded by the configured response batch byte limit and pending write
-budget. Appends require contiguous offsets. Replaying an identical retained
-prefix under a new key succeeds; different bytes conflict without modifying it.
-`GetFileProduction` observes retained length, phase and current writer generation
-without acquiring a writer. `accepted_length` includes an admitted in-flight
-append; the production length includes completed backend appends.
-`durable_length` advances only after the existing production recovery checkpoint
-acknowledges its prefix, and is restored from that checkpoint after reopening. `CreateFileWriter` advances the generation and fences the
-previous writer. Terminal productions have no live writer (generation zero).
+A product chooses its wire resources. The recommended shape is `File` and `Upload`
+with Create, Get, Resume, Append, Publish, Delete, Read and Watch where needed. Each
+handler delegates to the corresponding native operation. A plugin that publishes
+stored rows or records calls a product-defined operation; interval samples answer
+host ticks on `Instance.Samples`.
 
-`PublishFileProduction` supplies the exact length and SHA-256. It validates both
-and awaits persistence of the immutable reference and its receipt before returning
-`file` and `receipt.durable_at`. Prefix/session completion does not invent a global
-history position: its receipt has `completed`, while its status carries the retained
-prefix length. Delete abandons unpublished production; losing an observer does
-neither. Published-file deletion retains its separate contract.
-
-`GetFileBytes` takes the immutable reference, offset, optional `max_bytes` (zero selects the storage chunk setting) and
-optional `at`; it returns `data`, `total_length`, SHA-256 and `resolved_at`.
-Absent `at` selects saved progress without requesting a flush. Repeat with the
-returned cut and the next offset; verify the complete reconstructed digest.
-An offset at the end returns an empty range, an offset beyond it refuses, and
-configuration bounds oversized ranges. Native embedders can call
-`StorageManager::get_file_bytes(&file, offset, maximum, at)` directly. Transfers remain unary, as amended by the owner on 2026-11-13.
-`StorageSettings.transfer` owns generated `StorageTransferSettings.chunk_bytes`,
-defaulting to 4 MiB for both appends and ranged reads. SDK-created connections,
-listeners, plugin carriers and Wasm guests use the separate generated
-`MessageSettings.message_bytes` default of 8 MiB. They validate that the ceiling
-carries the chunk plus protocol framing. Incompatible ceilings refuse startup naming the setting.
+`StorageSettings.transfer.chunk_bytes` supplies the shared 4 MiB transfer default.
+Carriers use the separate 8 MiB message default, validate framing and refuse ceilings
+that cannot carry a chunk. Consumers can override their transfer and message settings.
+Each bounded append or read retains ordinary cancellation, replay and receipt rules.
 
 ## Application-Owned Content
 
-A host can serve immutable bytes it already owns through both Storage.GetFileBytes
-faces. Register one `harmos_storage::ContentSource` on the StorageManager. The
+A host can serve immutable bytes it already owns through a product operation over
+the private native GetFileBytes operation. Register one `harmos_storage::ContentSource` on the StorageManager. The
 application supplies references with a distinct history and an immutable metadata
 identifier; the library calls `resolve(reference.metadata.id.as_str(), caller_scope)`.
 The scope comes from trusted invocation context, including inherited plugin calls.
@@ -672,7 +585,7 @@ reference and enforces both the lease and transfer bounds. Short provider reads
 are accumulated in order; empty/oversized reads refuse. A complete single-range
 read verifies SHA-256, and callers verify the digest after assembling multiple ranges.
 
-Wire callers retain `resolved_at` for every subsequent range. The existing bounded
+Product wrappers and their callers retain `resolved_at` for every subsequent range. The existing bounded
 read-cut owner retains the lease and binds it to the reference and caller scope.
 Expired/evicted/foreign continuations fail with GetFileBytes named; start a new
 read explicitly rather than silently renewing a lease. No application content is
