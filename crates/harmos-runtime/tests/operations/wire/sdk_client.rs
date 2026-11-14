@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
 use harmos::{Client, ClientSettings, client::Method};
-use tonic::{Request as RpcRequest, transport::Endpoint};
+use tonic::transport::Endpoint;
 
 // Local Imports
 use super::{
