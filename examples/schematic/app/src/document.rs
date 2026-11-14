@@ -43,7 +43,7 @@ struct Artifact {
     schematic: Schematic,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct Document {
     origin: Schematic,
     position: Position,
@@ -57,10 +57,7 @@ pub struct Document {
 
 impl Document {
     pub fn new() -> Self {
-        Self {
-            origin: Schematic::default(),
-            position: Position::ORIGIN,
-        }
+        Self::default()
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(path = %path.as_ref().display()))]

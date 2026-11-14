@@ -65,18 +65,18 @@ impl Lifecycle for SchematicEditor {
     type Context = harmos_runtime::Startup<Self>;
 
     async fn prepare(config: Self::Config, setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
-        if let Some(config) = config {
-            if config.plugins {
-                std::fs::create_dir_all(config.settings.recordings())?;
-                let root = std::fs::canonicalize(config.settings.recordings())?;
-                let storage = crate::services::queries::attach(setup, manager::catalog(), config.settings.storage())
-                    .map_err(std::io::Error::other)?;
-                let settings = config.settings.plugins(root.join("plugins"));
-                setup.resource(settings.clone());
-                let manager = Manager::new(storage, settings).map_err(std::io::Error::other)?;
-                setup.settings().plugins(manager.clone());
-                setup.resource::<Manager>(manager);
-            }
+        if let Some(config) = config
+            && config.plugins
+        {
+            std::fs::create_dir_all(config.settings.recordings())?;
+            let root = std::fs::canonicalize(config.settings.recordings())?;
+            let storage =
+                crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(std::io::Error::other)?;
+            let settings = config.settings.plugins(root.join("plugins"));
+            setup.resource(settings.clone());
+            let manager = Manager::new(storage, settings).map_err(std::io::Error::other)?;
+            setup.settings().plugins(manager.clone());
+            setup.resource::<Manager>(manager);
         }
 
         let settings = harmos_runtime::operations::Settings {

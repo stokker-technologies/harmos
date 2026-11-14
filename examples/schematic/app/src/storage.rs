@@ -57,7 +57,7 @@ impl StreamConsumer<SchematicEditor> for Recordings {
             let value = SavedVoltage {
                 position: row.position.0,
                 gap_missed: (index == 0 && self.pending_gap > 0).then_some(self.pending_gap),
-                net: u64::from(row.value.net.0),
+                net: row.value.net.0,
                 sampled_at_us: row.value.sampled_at_us,
                 voltage_mv: row.value.voltage_mv,
             };
