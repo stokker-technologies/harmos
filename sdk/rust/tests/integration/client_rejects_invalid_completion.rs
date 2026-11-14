@@ -141,10 +141,7 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 5 => vec![Ok(Frame {
                     unknown: None,
                     item: None,
-                    response: Some(JobsStartResponse {
-                        value: "x".repeat(2048),
-                        ..Default::default()
-                    }),
+                    response: Some(JobsStartResponse { value: "x".repeat(2048) }),
                 })],
                 _ => vec![Err(Status::with_details(tonic::Code::PermissionDenied, "denied", bytes::Bytes::from_static(b"evidence")))],
             };

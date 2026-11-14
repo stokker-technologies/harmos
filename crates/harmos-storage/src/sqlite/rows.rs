@@ -508,7 +508,7 @@ pub(super) fn list_identities(
             }
             IdentityKind::Objects => StoredIdentity::Object {
                 schema,
-                key: ObjectKey::from_owned(item).map_err(harmos_domain::Error::from)?,
+                key: ObjectKey::from_owned(item)?,
                 first,
             },
         };
