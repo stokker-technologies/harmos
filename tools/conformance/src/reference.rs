@@ -16,7 +16,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::result::Result as StdResult;
+use prost_types::{Duration, Timestamp};
+use std::{collections::BTreeMap, result::Result as StdResult};
 use std::{io::Write, pin::Pin, sync::Arc, time::SystemTime};
 
 // Third Party Imports
@@ -62,7 +63,7 @@ type Output<T> = Pin<Box<dyn Stream<Item = StdResult<T, Status>> + Send>>;
 /* === Structs === */
 
 struct Reference {
-    started_at: prost_types::Timestamp,
+    started_at: Timestamp,
     shutdown: Arc<Mutex<Option<oneshot::Sender<()>>>>,
 }
 
@@ -164,7 +165,7 @@ pub async fn serve(remote: bool) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| crate::Error::Invalid(error.to_string()))?;
     let (shutdown, stopped) = oneshot::channel();
     let reference = Reference {
-        started_at: prost_types::Timestamp {
+        started_at: Timestamp {
             seconds: started_at.as_secs() as i64,
             nanos: started_at.subsec_nanos() as i32,
         },
@@ -322,7 +323,7 @@ async fn invoke(
                                 call,
                                 operation: "harmos.plugin.host.v1.Time/Sleep".into(),
                                 payload: TimeSleepRequest {
-                                    duration: Some(prost_types::Duration { seconds, nanos: 0 }),
+                                    duration: Some(Duration { seconds, nanos: 0 }),
                                 }
                                 .encode_to_vec(),
                                 fingerprint: fixture::fingerprint("harmos.plugin.host.v1.Time/Sleep"),
@@ -361,7 +362,7 @@ async fn invoke(
                     2,
                     "harmos.plugin.host.v1.Time/Sleep",
                     TimeSleepRequest {
-                        duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                        duration: Some(Duration { seconds: 1, nanos: 0 }),
                     }
                     .encode_to_vec(),
                 )
@@ -379,7 +380,7 @@ async fn invoke(
                     1,
                     "harmos.plugin.host.v1.Time/Sleep",
                     TimeSleepRequest {
-                        duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
+                        duration: Some(Duration { seconds: 1, nanos: 11 }),
                     }
                     .encode_to_vec(),
                 )
@@ -398,7 +399,7 @@ async fn invoke(
                     2,
                     "harmos.plugin.host.v1.Time/Sleep",
                     TimeSleepRequest {
-                        duration: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
+                        duration: Some(Duration { seconds: 3600, nanos: 0 }),
                     }
                     .encode_to_vec(),
                 ),
@@ -440,8 +441,8 @@ async fn invoke(
                 policy: Some(OperationPolicy {
                     retries: Some(RetryPolicy {
                         total_attempts: 3,
-                        initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                        maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                        initial: Some(Duration { seconds: 1, nanos: 0 }),
+                        maximum: Some(Duration { seconds: 4, nanos: 0 }),
                         deterministic_jitter: true,
                     }),
                     ..Default::default()
@@ -528,7 +529,7 @@ async fn invoke(
             for call in [1, 2] {
                 send_child(output, call, "conformance.host.echo", fixture::payload(&[call as u8])).await?;
             }
-            let mut replies = std::collections::BTreeMap::new();
+            let mut replies = BTreeMap::new();
             while replies.len() < 2 {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
                 let Some(instance_invoke_request::Frame::Child(child)) = frame else {
@@ -650,7 +651,11 @@ async fn samples(
         }
         sequence += 1;
         let row = if fixture::TICK_STREAMS.contains(&open.stream.as_str()) {
-            samples_children(&open, input, output, &mut next_call).await?
+            match samples_children(&open, input, output, &mut next_call).await {
+                Ok(row) => row,
+                Err(error) if error.code() == tonic::Code::Cancelled => return Ok(()),
+                Err(error) => return Err(error),
+            }
         } else {
             fixture::payload(&sequence.to_le_bytes())
         };
@@ -693,7 +698,10 @@ async fn samples_reply(
         _ = output.closed() => return Err(Status::cancelled("Samples: Demand Closed")),
         frame = input.message() => frame?,
     };
-    let Some(instance_samples_request::Frame::Child(child)) = frame.and_then(|frame| frame.frame) else {
+    let Some(frame) = frame else {
+        return Err(Status::cancelled("Samples: Demand Closed"));
+    };
+    let Some(instance_samples_request::Frame::Child(child)) = frame.frame else {
         return Err(Status::invalid_argument("Samples: Expected Tick Child Reply"));
     };
     Ok(child)
@@ -711,7 +719,7 @@ async fn samples_children(
             let second = *next_call;
             samples_child(output, first, "conformance.host.echo", fixture::payload(&[1]), false).await?;
             samples_child(output, second, "conformance.host.echo", fixture::payload(&[2]), false).await?;
-            let mut replies = std::collections::BTreeMap::new();
+            let mut replies = BTreeMap::new();
             for _ in 0..2 {
                 let reply = samples_reply(input, output).await?;
                 if ![first, second].contains(&reply.call) || replies.contains_key(&reply.call) {

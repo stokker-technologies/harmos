@@ -21,9 +21,10 @@ use std::collections::HashMap;
 // Third Party Imports
 use prost::Message;
 use prost_reflect::ReflectMessage;
-use prost_types::{DescriptorProto, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
+use prost_types::{DescriptorProto, Duration, FieldDescriptorProto, FileDescriptorProto, FileDescriptorSet, Timestamp};
 
 // Local Imports
+use crate::conformance::Graph;
 use harmos_protocol::plugin::host::SettingsListRequest;
 use harmos_protocol::v1::*;
 
@@ -163,7 +164,7 @@ pub fn settings_values(stored: bool) -> SettingValues {
             (
                 "interval".into(),
                 SettingValue {
-                    value: Some(Value::Duration(prost_types::Duration {
+                    value: Some(Value::Duration(Duration {
                         seconds: if stored { 4 } else { 2 },
                         nanos: 0,
                     })),
@@ -180,7 +181,7 @@ pub fn settings_declarations() -> SettingsDeclarations {
         values: defaults
             .into_iter()
             .map(|(name, value)| SettingDeclaration {
-                title: name.clone(),
+                title: format!("{}{}", name[..1].to_uppercase(), &name[1..]),
                 description: format!("Conformance {name}"),
                 name,
                 default: Some(value),
@@ -225,7 +226,7 @@ pub fn catalog() -> Catalog {
         .map(|name| StreamDeclaration {
             id: format!("conformance.{name}"),
             row: ROW.into(),
-            interval: (name == "ticks").then_some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            interval: (name == "ticks").then_some(Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         })
         .collect();
@@ -247,7 +248,7 @@ pub fn catalog() -> Catalog {
     streams.push(StreamDeclaration {
         id: "conformance.settings".into(),
         row: ROW.into(),
-        interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+        interval: Some(Duration { seconds: 1, nanos: 0 }),
         interval_setting: "interval".into(),
         ..Default::default()
     });
@@ -303,29 +304,23 @@ pub fn catalog() -> Catalog {
             fingerprint: fingerprint(id),
         });
     }
-    for (index, id) in ["conformance.settings_read", "conformance.discover"].into_iter().enumerate() {
-        operations.insert(
-            index,
-            OperationContract {
-                id: id.into(),
-                request: ROW.into(),
-                response: ROW.into(),
-                visibility: Visibility::Public as i32,
-                fingerprint: fingerprint(id),
-                ..Default::default()
-            },
-        );
+    for id in ["conformance.settings_read", "conformance.discover"] {
+        operations.push(OperationContract {
+            id: id.into(),
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            fingerprint: fingerprint(id),
+            ..Default::default()
+        });
     }
-    for (index, name) in TICK_STREAMS.iter().enumerate() {
-        streams.insert(
-            index,
-            StreamDeclaration {
-                id: (*name).into(),
-                row: ROW.into(),
-                interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                ..Default::default()
-            },
-        );
+    for name in TICK_STREAMS {
+        streams.push(StreamDeclaration {
+            id: (*name).into(),
+            row: ROW.into(),
+            interval: Some(Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        });
     }
     for (id, _, _) in HOST_OPERATIONS {
         requires.push(Requirement {
@@ -352,8 +347,8 @@ pub fn catalog() -> Catalog {
         sections: vec![
             Section {
                 r#type: "harmos.conformance.v1.Graph".into(),
-                payload: crate::conformance::Graph {
-                    interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+                payload: Graph {
+                    interval: Some(Duration { seconds: 2, nanos: 0 }),
                     ..Default::default()
                 }
                 .encode_to_vec(),

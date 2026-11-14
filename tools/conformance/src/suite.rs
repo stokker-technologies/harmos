@@ -16,7 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::result::Result as StdResult;
+use prost_types::{Duration as ProtoDuration, Timestamp};
+use std::{
+    collections::{BTreeSet, HashMap},
+    result::Result as StdResult,
+};
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -306,7 +310,7 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
     match rule {
         30 => {
             let (send, mut input) = open(client, "conformance.tick_children").await?;
-            let mut used = std::collections::BTreeSet::new();
+            let mut used = BTreeSet::new();
             for (sequence, seconds) in [(1, 100), (2, 101)] {
                 samples_tick(&send, seconds).await?;
                 let first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
@@ -327,6 +331,15 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
                 samples_reply(&send, first.call, child_response::Result::Payload(fixture::payload(&[1]))).await?;
                 require(samples_answer(&mut input, sequence, seconds).await? == [1, 2], "Samples: Reverse Reply Correlation Differs")?;
             }
+            samples_tick(&send, 102).await?;
+            let _first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
+            let _second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
+            samples_reply(&send, *used.first().expect("earlier tick child"), child_response::Result::Payload(fixture::payload(&[9])))
+                .await?;
+            require(
+                input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
+                "Samples: Earlier Tick Reply Assigned to Later Tick",
+            )?;
             for duplicate in [false, true] {
                 let (send, mut input) = open(client, "conformance.tick_children").await?;
                 samples_tick(&send, 300).await?;
@@ -439,6 +452,17 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             samples_tick(&send, 501).await?;
             let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
             let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
+            drop(send);
+            while let Some(frame) = input.message().await? {
+                require(
+                    frame.samples.is_empty() && matches!(frame.frame, Some(instance_samples_response::Frame::ChildCancel(_))),
+                    "Samples: Row or New Child After Demand End",
+                )?;
+            }
+            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
+            samples_tick(&send, 501).await?;
+            let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
+            let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
             drop(input);
             drop(send);
             let (send, mut input) = open(client, "conformance.ticks").await?;
@@ -464,9 +488,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
                 .ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let declarations = SettingsDeclarations::decode(section.payload.as_slice())?;
-            let declared: std::collections::HashMap<_, _> =
-                declarations.values.into_iter().map(|value| (value.name, value.default)).collect();
-            let expected: std::collections::HashMap<_, _> =
+            require(declarations.values.len() == fixture::settings_values(false).values.len(), "List Settings: Declaration Count Differs")?;
+            let declared: HashMap<_, _> = declarations.values.into_iter().map(|value| (value.name, value.default)).collect();
+            let expected: HashMap<_, _> =
                 fixture::settings_values(false).values.into_iter().map(|(name, value)| (name, Some(value))).collect();
             require(declared == expected, "List Settings: Typed Defaults Differ")?;
             for stored in [false, true] {
@@ -654,8 +678,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         == Some(OperationPolicy {
                             retries: Some(RetryPolicy {
                                 total_attempts: 3,
-                                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+                                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
                                 deterministic_jitter: true,
                             }),
                             ..Default::default()
@@ -798,9 +822,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Rule 14 / Reject Missing and Out-of-Range Tick Timestamps.
             for at in [
                 None,
-                Some(prost_types::Timestamp { seconds: 253_402_300_800, nanos: 0 }),
-                Some(prost_types::Timestamp { seconds: 0, nanos: -1 }),
-                Some(prost_types::Timestamp { seconds: 0, nanos: 1_000_000_000 }),
+                Some(Timestamp { seconds: 253_402_300_800, nanos: 0 }),
+                Some(Timestamp { seconds: 0, nanos: -1 }),
+                Some(Timestamp { seconds: 0, nanos: 1_000_000_000 }),
             ] {
                 let tick = InstanceSamplesRequest {
                     frame: Some(instance_samples_request::Frame::Tick(Tick { at })),
@@ -1059,7 +1083,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         call,
                         child_response::Result::Payload(
                             TimeGetResponse {
-                                now: Some(prost_types::Timestamp { seconds: 0, nanos: 0 }),
+                                now: Some(Timestamp { seconds: 0, nanos: 0 }),
                             }
                             .encode_to_vec(),
                         ),
@@ -1076,10 +1100,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
                     let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
                     if child.background {
-                        require(duration == prost_types::Duration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
+                        require(duration == ProtoDuration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
                         deadline = Some(child.call);
                     } else {
-                        require(duration == prost_types::Duration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
+                        require(duration == ProtoDuration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
                         sleeping = Some(child.call);
                     }
                 }
@@ -1123,7 +1147,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             })
             .await
             .map_err(|_| Error::Invalid("Private Cancel: Carrier Closed".into()))?;
-            let mut guards = std::collections::BTreeSet::new();
+            let mut guards = BTreeSet::new();
             loop {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
                 match frame {
@@ -1154,7 +1178,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         26 => {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry")).await?;
             let delay = TimeSleepRequest {
-                duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
+                duration: Some(ProtoDuration { seconds: 1, nanos: 11 }),
             }
             .encode_to_vec();
             child(&mut input, 1, "harmos.plugin.host.v1.Time/Sleep", &delay).await?;
@@ -1167,7 +1191,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry-bound")).await?;
             let mut now = 0;
             let mut slept = false;
-            let mut guards = std::collections::BTreeSet::new();
+            let mut guards = BTreeSet::new();
             loop {
                 let frame = input.message().await?.and_then(|frame| frame.frame);
                 match frame {
@@ -1179,7 +1203,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                                 child.call,
                                 child_response::Result::Payload(
                                     TimeGetResponse {
-                                        now: Some(prost_types::Timestamp { seconds: now, nanos: 0 }),
+                                        now: Some(Timestamp { seconds: now, nanos: 0 }),
                                     }
                                     .encode_to_vec(),
                                 ),
@@ -1188,7 +1212,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         } else {
                             require(child.operation == "harmos.plugin.host.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
                             let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
-                            require(duration == prost_types::Duration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
+                            require(duration == ProtoDuration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
                             if child.background {
                                 guards.insert(child.call);
                             } else {

@@ -33,6 +33,11 @@ use harmos_protocol::plugin::{
     instance_server::{Instance, InstanceServer},
 };
 
+use harmos_protocol::plugin::{
+    InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
+    InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
+};
+
 /* === Constants === */
 
 /* === Macros === */
@@ -67,7 +72,11 @@ pub enum Fault {
 
 impl CatalogFault {
     pub async fn start(address: &str, fault: Fault) -> Result<Self, Box<dyn Error>> {
-        let client = InstanceClient::connect(format!("http://{address}")).await?;
+        let maximum = harmos_protocol::transfer::default_message_bytes().get();
+        let client = InstanceClient::connect(format!("http://{address}"))
+            .await?
+            .max_decoding_message_size(maximum)
+            .max_encoding_message_size(maximum);
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let address = listener.local_addr()?.to_string();
         let incoming = stream::unfold(listener, |listener| async {
@@ -77,7 +86,9 @@ impl CatalogFault {
         let (stop, stopped) = oneshot::channel();
         let task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(InstanceServer::new(Forward { client, fault }))
+                .add_service(
+                    InstanceServer::new(Forward { client, fault }).max_decoding_message_size(maximum).max_encoding_message_size(maximum),
+                )
                 .serve_with_incoming_shutdown(incoming, async {
                     let _ = stopped.await;
                 })
@@ -95,9 +106,7 @@ impl CatalogFault {
 
 #[tonic::async_trait]
 impl Instance for Forward {
-    async fn get(
-        &self, request: Request<harmos_protocol::plugin::InstanceGetRequest>,
-    ) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(&self, request: Request<InstanceGetRequest>) -> Result<Response<InstanceGetResponse>, Status> {
         let mut response = self.client.clone().get(request).await?;
         let description = response.get_mut();
         match self.fault {
@@ -125,29 +134,23 @@ impl Instance for Forward {
         Ok(response)
     }
 
-    type InvokeStream = Streaming<harmos_protocol::plugin::InstanceInvokeResponse>;
+    type InvokeStream = Streaming<InstanceInvokeResponse>;
 
-    async fn invoke(
-        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
-    ) -> Result<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.invoke(frames).await
     }
 
-    type SamplesStream = Streaming<harmos_protocol::plugin::InstanceSamplesResponse>;
+    type SamplesStream = Streaming<InstanceSamplesResponse>;
 
-    async fn samples(
-        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
-    ) -> Result<Response<Self::SamplesStream>, Status> {
+    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         let mut client = self.client.clone();
         let frames = relay(request.into_inner());
         client.samples(frames).await
     }
 
-    async fn stop(
-        &self, request: Request<harmos_protocol::plugin::InstanceStopRequest>,
-    ) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(&self, request: Request<InstanceStopRequest>) -> Result<Response<InstanceStopResponse>, Status> {
         self.client.clone().stop(request).await
     }
 }
