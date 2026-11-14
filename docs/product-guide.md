@@ -60,7 +60,7 @@ Original refusal codes, detail maps and diagnostics remain in the report. Displa
 renders readable root prose rather than Rust Debug output.
 
 Native and plugin stream revisions are derived automatically in the Rust core when a declaration
-becomes a runtime definition. The input is the stream identity domain separator, the window as a
+becomes a runtime definition. The input is the [stream identity domain separator](architecture.md#native-type-ownership), the window as a
 little-endian `u64`, and the canonical row-schema encoding in
 `crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
 as a little-endian `u32`, with zero mapped to one. Field order, names, wire tags,
@@ -142,7 +142,7 @@ value; `Application` and operation managers carry no lane type parameter.
 
 Typed record and transaction entries compute schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
-the record identity domain separator followed by the same canonical graph encoding; SHA-256's
+the [record identity domain separator](architecture.md#native-type-ownership) followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
 Rust module paths and graph indices do not participate. Entry values own stored identities and revisions; use `entry.definition()`.
 Record rows select an entry value, which owns their stable identity:
@@ -951,8 +951,9 @@ Ok(summary.into())
 Host applications can register Prost-generated request, response and stream messages directly
 with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
 Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
-Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
-use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
+Storage remains private and in-process. Product operations own generated payloads over
+native storage calls. Use `Manager::call_protobuf` for unary host operations or
+`Manager::submit_protobuf` for their declared streams.
 `Manager::download_protobuf` provides typed generated output items through `next` and a generated
 completion through `join`. Plugin-scoped callers use the same helper with their original scope.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
@@ -967,7 +968,7 @@ The storage schema validator checks the graph before mutation admission.
 
 
 The declaration's `GRPC` is optional; Protected and Private native operations leave it `None`.
-See [Protocol Mapping](architecture.md#protocol-ownership) for executor identities.
+See [Protocol Mapping](architecture.md#protocol-boundary-definition-and-consumer-migration) for executor identities.
 Declare typed callees in `OPERATIONS` and invoke them through the execution context:
 
 ```rust

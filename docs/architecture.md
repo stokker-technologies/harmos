@@ -1130,7 +1130,16 @@ it never inherits the unrestricted SDK host root. C++ products compile the gener
 implementation with their SDK. The shared SDK fixture proves exclusions in both
 directions, including a Rust compile refusal and C++ constrained lookup.
 
+Python products place generated protocol modules below `application._wire.<original package>`
+for a public package named `application`. Rewrite Python imports and message module metadata
+to that private prefix while retaining canonical descriptor packages and gRPC method paths.
+Expose payloads through the product's public barrels, without exporting the wire modules.
+
 ### Native Type Ownership
+
+Native revision hashing retains the protocol domain separators `harmos.stream.v1\0`
+for streams and `harmos.record.v1\0` for records. Their remaining inputs and byte
+encoding are described in the product guide; public SDK symbols do not carry these versions.
 
 Storage remains Private and in-process. Products own typed file, upload, query,
 record and object wire operations over those native calls. Model FileReference,

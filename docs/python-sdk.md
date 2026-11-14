@@ -108,8 +108,8 @@ answering. Device publishers have no tick and cannot make child calls.
 
 ## Product Roots
 
-Generate product protobuf modules and typed stubs into the product's private protocol directory
-package, with imports rewritten to that prefix. Then generate its composed root:
+Generate product messages and typed stubs into a private protocol package using the
+[import mapping](architecture.md#product-composition-and-narrowing). Then generate its composed roots:
 
 ```sh
 mise run generate -- --sdk python --descriptors path/to/descriptors.bin --composition path/to/composition.toml --output path/to/application/_generated/client.py --namespace application
@@ -117,7 +117,8 @@ mise run generate -- --sdk python --descriptors path/to/descriptors.bin --compos
 
 The generator emits a client and a sibling plugin context from the same effective callers.
 Bind `PluginContext(context)` from the generated plugin module in product handlers;
-its `host` root omits calls narrowed to clients. The generator merges the composition's library descriptors with product descriptors,
+its `host` root omits calls narrowed to clients. The generator merges the composition's
+library descriptors with product descriptors,
 refuses conflicts, widening and resource collisions, and writes the root and public
 response barrel. The composition file may narrow ALL to CLIENTS or PLUGINS. Excluded
 methods are absent from the generated audience, including inherited library resources.

@@ -170,8 +170,8 @@ mise run generate -- --sdk cpp
 handlers register their generated request and response contracts directly.
 
 Client roots follow package parents, service names and method names mechanically:
-`client.plugins.settings.get(request)`, `client.jobs.progress.watch(request)` and
-`client.invocations.cancel(request)` (normal PascalCase in C#). A descriptor table
+`client.plugins.settings.list(name)`, `client.jobs.progress.watch(value)` and
+`client.invocations.cancel(invocation)` (normal PascalCase in C#). A descriptor table
 drives all four languages; no per-operation client layer is maintained. Compose
 library and product descriptors with:
 
