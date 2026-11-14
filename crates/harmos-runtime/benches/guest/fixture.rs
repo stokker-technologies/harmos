@@ -24,6 +24,7 @@ mod backend;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // Third Party Imports
@@ -47,7 +48,7 @@ use schematic_operations::protocol::{Point, Snapshot};
 pub struct Model;
 
 pub struct Fixture {
-    pub runtime: Runtime<Model>,
+    pub runtime: Arc<Runtime<Model>>,
     pub startup_elapsed: Duration,
     _directory: tempfile::TempDir,
 }
@@ -152,7 +153,7 @@ pub fn artifact(name: &str) -> PathBuf {
 
 /* === Private Functions === */
 
-async fn runtime() -> (Runtime<Model>, Duration, tempfile::TempDir) {
+async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
     let started = Instant::now();
     let preparation_bytes = nz(64 * 1024 * 1024);
     let directory = tempfile::tempdir().unwrap();
@@ -160,8 +161,8 @@ async fn runtime() -> (Runtime<Model>, Duration, tempfile::TempDir) {
     let storage = harmos_runtime::storage::StorageManager::with_catalog(
         catalog.clone(),
         harmos_runtime::storage::StorageBackends {
-            primary: std::sync::Arc::new(backend::Backend::with_catalog(catalog, backend::history())),
-            state: std::sync::Arc::new(backend::RecoveryBackend::new(backend::history())),
+            primary: Arc::new(backend::Backend::with_catalog(catalog, backend::history())),
+            state: Arc::new(backend::RecoveryBackend::new(backend::history())),
         },
         backend::storage_settings(),
     )
@@ -190,7 +191,7 @@ async fn runtime() -> (Runtime<Model>, Duration, tempfile::TempDir) {
     )
     .unwrap();
     let runtime = Runtime::<Model>::launch_with((), (), |setup| {
-        setup.settings().storage(&storage).plugins(entries);
+        setup.settings().storage(&storage).plugins(entries.clone());
         setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
         setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
@@ -201,6 +202,8 @@ async fn runtime() -> (Runtime<Model>, Duration, tempfile::TempDir) {
     })
     .await
     .unwrap();
+    let runtime = Arc::new(runtime);
+    entries.start(&runtime).await.unwrap();
     let host_elapsed = started.elapsed();
     (runtime, host_elapsed, directory)
 }
