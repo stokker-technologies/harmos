@@ -165,6 +165,9 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         obsolete = root / "sdk/cpp/include/harmos/generated" / name
         if obsolete.is_file():
             obsolete.unlink()
+    obsolete = root / "sdk/rust/src/connection/types.rs"
+    if obsolete.is_file():
+        obsolete.unlink()
     methods = table(descriptors)
     cpp_exports(root, descriptors)
     rust_exports(root, descriptors)
