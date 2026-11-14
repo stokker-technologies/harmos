@@ -161,13 +161,13 @@ impl StorageManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_backend::{Backend, Recovery, history, storage_settings};
+    use crate::test_backend::{Backend, RecoveryBackend, history, storage_settings};
 
     fn storage() -> StorageManager {
         StorageManager::new(
             crate::StorageBackends {
                 primary: Arc::new(Backend::new(history())),
-                state: Arc::new(Recovery::new(history())),
+                state: Arc::new(RecoveryBackend::new(history())),
             },
             storage_settings(),
         )

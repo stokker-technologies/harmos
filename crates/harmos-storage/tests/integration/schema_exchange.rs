@@ -24,13 +24,11 @@ struct Value {
 
 #[tokio::test]
 async fn schema_exchange_records_original_outcomes_and_revisions_across_restart() {
-    let root = tempfile::tempdir().unwrap();
     let history = backend::history();
     let settings = backend::storage_settings();
-    let sql = sqlite::SqliteSettings {
-        chunk_rows: settings.response.batch_rows,
-        chunk_bytes: settings.response.batch_bytes,
-    };
+    let (clock, driver) = execution::Execution::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+    let story = async {
+    let primary = Arc::new(memory::Backend::with_execution(ObjectCatalog::new(), history.clone(), clock.clone()));
     let graph = schema::graph::Schema::from_declaration(
         <Value as schema::Described>::DEFINITION,
         &harmos_domain::config::SchemaSettings::default(),
@@ -43,13 +41,13 @@ async fn schema_exchange_records_original_outcomes_and_revisions_across_restart(
     };
     let mut original = None;
     for restart in [false, true] {
-        let primary = Arc::new(sqlite::SqliteBackend::new(root.path().join("data.sqlite"), history.clone(), sql).unwrap());
-        let storage = StorageManager::new(
+        let storage = StorageManager::with_execution(
             StorageBackends {
                 primary: primary.clone(),
-                state: Arc::new(backend::Recovery::new(history.clone())),
+                state: Arc::new(backend::RecoveryBackend::new(history.clone())),
             },
             settings.clone(),
+            clock.clone(),
         )
         .unwrap();
         fixture::start(&storage).await;
@@ -99,5 +97,14 @@ async fn schema_exchange_records_original_outcomes_and_revisions_across_restart(
         assert_eq!(read.get_schema(&key).await.unwrap().unwrap().position, *next);
         drop(read);
         storage.close().await.unwrap();
+    }
+    };
+    tokio::pin!(story);
+    loop {
+        tokio::select! {
+            biased;
+            () = &mut story => break,
+            () = driver.advance_next() => {}
+        }
     }
 }

@@ -136,7 +136,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
         for row in &current.rows {
             if let QueryOutput::Batch(bytes) = row {
-                durable_rows += harmos_storage::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
+                durable_rows += harmos_query::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
             }
         }
         if current.next_page_token.is_empty() {
@@ -216,7 +216,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         assert_eq!(response.resolved_at, Some(cut.clone()));
         for row in response.rows {
             if let QueryOutput::Batch(bytes) = row {
-                count += harmos_storage::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
+                count += harmos_query::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
             }
         }
         if response.next_page_token.is_empty() {

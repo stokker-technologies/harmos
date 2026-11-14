@@ -9,12 +9,9 @@
 
 /* === Modules === */
 
-mod benchmark_boundary;
-mod bounded_native_chunks;
 mod cached_and_disk_coordinates_preserve_timestamps_and_bucket_selection;
 mod columnar_snapshot;
 mod conditional_objects;
-mod corrections_and_tied_seeks_do_not_revisit_unaffected_history;
 mod directory;
 mod file_sessions;
 mod index_seek;
@@ -23,7 +20,7 @@ mod projection_replay;
 mod record_pages_seek_without_copying_history;
 mod replayed_file_bytes_preserve_the_accepted_prefix;
 mod schema_exchange;
-mod sqlite_files;
+mod identities;
 mod state;
 mod time_bucket_replacement;
 mod time_merge;

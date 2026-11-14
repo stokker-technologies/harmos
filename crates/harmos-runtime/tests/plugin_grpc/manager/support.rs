@@ -34,7 +34,10 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, BufReader};
 // Local Imports
 use super::super::support as placement;
-use crate::storage::fixture::{Data, Recovery, history, storage_settings};
+use crate::storage::fixture::Backend;
+use crate::storage::fixture::RecoveryBackend;
+use crate::storage::fixture::history;
+use crate::storage::fixture::storage_settings;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -65,8 +68,8 @@ pub struct Host {
 pub struct Policy(pub AtomicBool);
 
 pub struct Backends {
-    pub data: Arc<Data>,
-    pub recovery: Arc<Recovery>,
+    pub data: Arc<Backend>,
+    pub recovery: Arc<RecoveryBackend>,
 }
 
 pub struct Peer {
@@ -85,8 +88,8 @@ pub struct Peer {
 impl Backends {
     pub fn new() -> Self {
         Self {
-            data: Arc::new(Data::with_catalog(manager::catalog(), history())),
-            recovery: Arc::new(Recovery::new(history())),
+            data: Arc::new(Backend::with_catalog(manager::catalog(), history())),
+            recovery: Arc::new(RecoveryBackend::new(history())),
         }
     }
 }

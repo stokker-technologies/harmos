@@ -24,14 +24,15 @@ simulation = ["harmos-runtime/simulation"]
 # transaction it is decoded as.
 [dependencies]
 # Local
+harmos-domain = { workspace = true }
 harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
 harmos = { workspace = true }
 harmos-protocol = { workspace = true }
-harmos-storage = { workspace = true, features = ["sqlite"] }
+harmos-storage = { workspace = true }
+harmos-query = { workspace = true }
 schematic-domain = { path = "../domain" }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
 schematic-operations = { path = "../operations" }
-schematic-storage = { path = "../storage" }
 
 # Git
 

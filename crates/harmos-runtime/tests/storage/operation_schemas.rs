@@ -22,7 +22,10 @@ use harmos_operations::storage::{ListRows, SchemaInput, SetSchemaRequest};
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::schema::wire::{Omission, Representation};
-use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
+use harmos_query::QueryArrow;
+use harmos_runtime::storage::query::RowSlice;
+use harmos_runtime::storage::query::SchemaSelection;
+use harmos_runtime::storage::query::Source;
 use harmos_runtime::storage::{MutationId, PayloadEncoding, SchemaKey};
 use harmos_runtime::{Error, Identifier};
 
@@ -172,7 +175,7 @@ async fn schema_registry_roundtrip() {
     let settled = f.runtime.operations.call_native::<harmos_operations::storage::SetSchema>(lost.clone()).await.unwrap();
     assert!(settled.receipt.unwrap().completed);
     let at = f.storage.flush().await.unwrap();
-    let query = harmos_runtime::storage::Query {
+    let query = harmos_domain::model::storage::query::Query {
             merge: None,
         at: at.clone(),
         source: Source::Schemas(SchemaSelection {

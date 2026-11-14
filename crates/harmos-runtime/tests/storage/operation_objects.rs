@@ -18,7 +18,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
+use super::super::{Bank, Backend, Ledger, RecoveryBackend, catalog, config, history};
 use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, StorageBackends, StorageManager, StoredObject};
 use harmos_runtime::{Identified, Identifier};
 
@@ -61,8 +61,8 @@ async fn object_batch_atomic() {
     let storage = StorageManager::with_catalog(
         objects_catalog(),
         StorageBackends {
-            primary: Arc::new(Data::with_catalog(objects_catalog(), history())),
-            state: Arc::new(Recovery::new(history())),
+            primary: Arc::new(Backend::with_catalog(objects_catalog(), history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         config(),
     )
@@ -104,8 +104,8 @@ async fn native_object_exchange_preserves_conflicts_replay_and_retained_reads() 
     let storage = StorageManager::with_catalog(
         objects_catalog(),
         StorageBackends {
-            primary: Arc::new(Data::with_catalog(objects_catalog(), history())),
-            state: Arc::new(Recovery::new(history())),
+            primary: Arc::new(Backend::with_catalog(objects_catalog(), history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         config(),
     )

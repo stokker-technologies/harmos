@@ -88,7 +88,7 @@ pub struct ScanResult {
 /* === Public Functions === */
 
 /// Run every case, including owner disposal and restart, with a backend-owned opener.
-pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> Box<dyn StorageBackend>) {
+pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> std::sync::Arc<dyn StorageBackend>) {
     let mut owner = Some(open());
     let completed = run(runtime, owner.as_deref().unwrap(), workload);
     measure("storage.stop.2m", 1, || drop(owner.take()));
@@ -97,7 +97,7 @@ pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, m
 }
 
 /// A full, isolated run on an initially empty backend. Setup and result checks are untimed.
-/// The reference fixture uses WAL/FULL; consumers must disclose their durability mode.
+/// The reference adapter retains committed state for its in-process lifetime.
 pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, workload: &Workload) -> Completed {
     // Populate Identical Source Batches.
     assert_eq!(workload.rows, workload::ROWS, "published case names require the locked two-million-row workload");

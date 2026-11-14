@@ -140,7 +140,7 @@ fn main() {
     group.finish();
 
     let mut group = criterion.benchmark_group("integration/journal_recovery");
-    group.bench_function("seven_days", |b| b.iter(journal_recovery));
+    group.bench_function("seven_days", |b| b.iter(|| runtime.block_on(journal_recovery())));
     group.finish();
     let mut group = criterion.benchmark_group("integration/mutation_receipts");
     group.bench_function("2048_files", |b| b.iter(|| runtime.block_on(mutation_receipts())));
@@ -150,84 +150,40 @@ fn main() {
 
 /* === Tests === */
 
-fn journal_recovery() {
-    use harmos_storage::state::{RecoveryEntry, StorageStateSettings, file::Journal};
-    use harmos_storage::{ReadLimits, RecoveryPosition, StorageCursor};
-    use std::{fs::OpenOptions, num::NonZeroUsize, sync::Arc};
-    let root = tempfile::tempdir().unwrap();
+async fn journal_recovery() {
+    use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, SnapshotPayload};
+    use harmos_storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageCursor};
+    use std::num::NonZeroUsize;
     let history = backend::history();
-    let open = || {
-        Journal::open(
-            root.path(),
-            history.clone(),
-            StorageStateSettings {
-                max_entry_bytes: NonZeroUsize::new(4096).unwrap(),
-                max_checkpoint_bytes: NonZeroUsize::new(4096).unwrap(),
-            },
-            Arc::new(|path| OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)),
-            &mut || Ok(()),
-        )
-        .unwrap()
-    };
-    let mut journal = open();
+    let journal = harmos_storage::memory::RecoveryBackend::new(history.clone());
+    journal.create_recovery_session().await.unwrap();
     for day in 0..7 {
-        let entries: Vec<_> = (0..1440)
-            .map(|minute| {
-                let sequence = day * 1440 + minute + 1;
-                RecoveryEntry {
-                    position: RecoveryPosition { history: history.clone(), sequence },
-                    required_data: StorageCursor { history: history.clone(), sequence: 0 },
-                    payload: sequence.to_le_bytes().to_vec(),
-                }
-            })
-            .collect();
-        journal.append(&entries).unwrap();
+        let entries = (0..1440).map(|minute| {
+            let sequence = day * 1440 + minute + 1;
+            RecoveryEntry {
+                position: RecoveryPosition { history: history.clone(), sequence },
+                required_data: StorageCursor { history: history.clone(), sequence: 0 }, payload: sequence.to_le_bytes().to_vec(),
+            }
+        }).collect();
+        journal.append_recovery_entries(StorageBatch::new(entries)).await.unwrap();
     }
-    let through = journal.position();
-    drop(journal);
-    let mut journal = open();
+    let through = RecoveryPosition { history: history.clone(), sequence: 7 * 1440 };
+    journal.flush(&through).await.unwrap();
     let mut after = RecoveryPosition { history: history.clone(), sequence: 0 };
+    let limits = ReadLimits { rows: NonZeroUsize::new(31).unwrap(), bytes: NonZeroUsize::new(16384).unwrap() };
     while after.sequence < through.sequence {
-        let page = journal
-            .page(
-                &after,
-                &through,
-                ReadLimits {
-                    rows: NonZeroUsize::new(31).unwrap(),
-                    bytes: NonZeroUsize::new(16384).unwrap(),
-                },
-            )
-            .unwrap();
+        let page = journal.list_recovery_entries(&after, &through, limits).await.unwrap();
         after = page.entries.last().unwrap().position.clone();
         black_box(page);
     }
-    let checkpoint = RecoveryPosition {
-        history: history.clone(),
-        sequence: through.sequence - 10,
+    let checkpoint = RecoveryPosition { history: history.clone(), sequence: through.sequence - 10 };
+    let snapshot = RecoverySnapshot {
+        through: checkpoint.clone(), required_data: StorageCursor { history, sequence: 0 },
+        payload: SnapshotPayload::from_bytes(&[7], NonZeroUsize::new(65536).unwrap(), harmos_domain::state::Position::ORIGIN).unwrap(),
     };
-    let snapshot = harmos_storage::state::RecoverySnapshot {
-        through: checkpoint.clone(),
-        required_data: StorageCursor { history, sequence: 0 },
-        payload: harmos_storage::state::SnapshotPayload::from_bytes(
-            &[7],
-            NonZeroUsize::new(65536).unwrap(),
-            harmos_domain::state::Position::ORIGIN,
-        )
-        .unwrap(),
-    };
-    journal.checkpoint(&snapshot).unwrap();
-    black_box(
-        journal
-            .page(
-                &checkpoint,
-                &through,
-                ReadLimits {
-                    rows: NonZeroUsize::new(31).unwrap(),
-                    bytes: NonZeroUsize::new(16384).unwrap(),
-                },
-            )
-            .unwrap(),
-    );
+    journal.set_recovery_snapshot(StorageBatch::new(vec![snapshot])).await.unwrap();
+    journal.flush(&through).await.unwrap();
+    black_box(journal.list_recovery_entries(&checkpoint, &through, limits).await.unwrap());
 }
 
 async fn mutation_receipts() {

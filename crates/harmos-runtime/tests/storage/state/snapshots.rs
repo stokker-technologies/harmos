@@ -55,7 +55,15 @@ use tracing_subscriber::prelude::*;
 // Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::storage::{Bank, Data, Ledger, Recovery, StorageManager, catalog, config, history, schema};
+use crate::storage::Bank;
+use crate::storage::Backend;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::StorageManager;
+use crate::storage::catalog;
+use crate::storage::config;
+use crate::storage::history;
+use crate::storage::schema;
 use harmos_runtime::state::SnapshotPolicy;
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::storage::state::SnapshotPayload;

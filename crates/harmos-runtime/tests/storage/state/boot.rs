@@ -17,7 +17,16 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::{CleanupCapture, closed, incompatible};
-use crate::storage::{Bank, Data, Ledger, Recovery as Backend, StorageBackends, StorageManager, catalog, config, history, write};
+use crate::storage::Bank;
+use crate::storage::Backend;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::StorageBackends;
+use crate::storage::StorageManager;
+use crate::storage::catalog;
+use crate::storage::config;
+use crate::storage::history;
+use crate::storage::write;
 use harmos_runtime::{
     runtime::Incompatible, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer,
     storage::Recovery, storage::Source,
@@ -33,8 +42,8 @@ struct Gate {
 
 struct Probe {
     storage: StorageManager,
-    data: Arc<Data>,
-    recovery: Arc<Backend>,
+    data: Arc<Backend>,
+    recovery: Arc<RecoveryBackend>,
     load_gate: Option<Arc<Gate>>,
     drain_gate: Option<Arc<Gate>>,
     fail_load: bool,
@@ -47,8 +56,8 @@ struct Probe {
 
 impl Probe {
     fn new() -> Self {
-        let data = Arc::new(Data::new(history()));
-        let recovery = Arc::new(Backend::new(history()));
+        let data = Arc::new(Backend::new(history()));
+        let recovery = Arc::new(RecoveryBackend::new(history()));
         Self {
             storage: StorageManager::new(
                 StorageBackends {
@@ -289,8 +298,8 @@ async fn second_boot_refused() {
 async fn reserved_service_refused() {
     {
         let name = "harmos-storage";
-        let data = Arc::new(Data::new(history()));
-        let recovery = Arc::new(Backend::new(history()));
+        let data = Arc::new(Backend::new(history()));
+        let recovery = Arc::new(RecoveryBackend::new(history()));
         let policy = config();
         let storage: StorageManager = StorageManager::new(
             StorageBackends {

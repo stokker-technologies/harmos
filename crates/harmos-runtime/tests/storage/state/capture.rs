@@ -18,7 +18,12 @@ use std::sync::{
 // Third Party Imports
 
 // Local Imports
-use crate::storage::{Backend, Recovery, config, history, record, schema};
+use crate::storage::Backend;
+use crate::storage::RecoveryBackend;
+use crate::storage::config;
+use crate::storage::history;
+use crate::storage::record;
+use crate::storage::schema;
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
 
@@ -58,7 +63,7 @@ struct IncrementalProjection {
 
 struct Store {
     data: Arc<Backend>,
-    recovery: Arc<Recovery>,
+    recovery: Arc<RecoveryBackend>,
     calls: Arc<AtomicUsize>,
 }
 
@@ -226,7 +231,7 @@ impl Store {
     fn new() -> Self {
         Self {
             data: Arc::new(Backend::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
+            recovery: Arc::new(RecoveryBackend::new(history())),
             calls: Arc::new(AtomicUsize::new(0)),
         }
     }
@@ -716,7 +721,7 @@ async fn registration_stores_schema() {
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     storage.flush().await.unwrap();
     let mut reader = storage
-        .query(harmos_runtime::storage::Query {
+        .query(harmos_domain::model::storage::query::Query {
             merge: None,
             at: storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Schemas(harmos_runtime::storage::query::SchemaSelection {
@@ -729,7 +734,7 @@ async fn registration_stores_schema() {
         .unwrap();
     let mut stored = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
-        if let harmos_runtime::storage::query::QueryArrow::Batch(batch) = output {
+        if let harmos_query::QueryArrow::Batch(batch) = output {
             let batch = batch.as_record_batch();
             let definitions = batch.column_by_name("definition").unwrap().as_any().downcast_ref::<arrow_array::BinaryArray>().unwrap();
             for row in 0..batch.num_rows() {

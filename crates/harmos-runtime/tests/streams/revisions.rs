@@ -24,7 +24,10 @@ use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_runtime::storage::query::{QueryArrow, RowSlice, Source, StreamSelection};
+use harmos_query::QueryArrow;
+use harmos_runtime::storage::query::RowSlice;
+use harmos_runtime::storage::query::Source;
+use harmos_runtime::storage::query::StreamSelection;
 use harmos_runtime::storage::{Cursor, PayloadEncoding, RecordInput, SchemaKey, StorageManager, StreamInput};
 use harmos_runtime::streams::{PublicationRow, PublishedStream, StreamManager, StreamRegistration, StreamWriter};
 use harmos_runtime::{Error, Message, Result, Runtime};
@@ -260,13 +263,13 @@ async fn label_only_reload_preserves_revision() {
 
 #[tokio::test]
 async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
-    let data = Arc::new(crate::storage::fixture::Data::new(crate::storage::fixture::history()));
+    let data = Arc::new(crate::storage::fixture::Backend::new(crate::storage::fixture::history()));
     let mut keys = Vec::new();
     for text in [false, true] {
         let (runtime, mut manager, mut host) = setup(text).await;
         let backends = harmos_storage::StorageBackends {
             primary: data.clone(),
-            state: Arc::new(crate::storage::fixture::Recovery::new(crate::storage::fixture::history())),
+            state: Arc::new(crate::storage::fixture::RecoveryBackend::new(crate::storage::fixture::history())),
         };
         let storage = StorageManager::new(backends, crate::storage::fixture::config()).unwrap();
         storage.start(&runtime).await.unwrap();
@@ -276,7 +279,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         assert_eq!(keys.last().unwrap().version.get(), current(&host).definition().version());
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
-                .query(harmos_runtime::storage::Query {
+                .query(harmos_domain::model::storage::query::Query {
             merge: None,
                     at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {

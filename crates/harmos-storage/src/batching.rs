@@ -346,7 +346,7 @@ fn invalid(reason: &'static str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_backend::{Backend, Recovery, history, storage_settings};
+    use crate::test_backend::{Backend, RecoveryBackend, history, storage_settings};
     use crate::{PayloadEncoding, SchemaKey, StorageBackend, StorageBackends, StorageManager, StoredRecord};
     use std::{
         num::{NonZeroU32, NonZeroUsize},
@@ -363,7 +363,7 @@ mod tests {
         let storage = StorageManager::new(
             StorageBackends {
                 primary: primary.clone(),
-                state: Arc::new(Recovery::new(history())),
+                state: Arc::new(RecoveryBackend::new(history())),
             },
             settings,
         )

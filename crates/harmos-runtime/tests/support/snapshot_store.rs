@@ -9,7 +9,9 @@
 
 /* === Imports === */
 
-use super::{Data, Recovery, history};
+use super::Backend;
+use super::RecoveryBackend;
+use super::history;
 use harmos_runtime::storage::state::RecoverySnapshot;
 use harmos_runtime::storage::{StorageBackends, StorageManager, StorageSettings};
 use std::sync::Arc;
@@ -17,8 +19,8 @@ use std::sync::Arc;
 /* === Structs === */
 
 pub(crate) struct Store {
-    pub(crate) data: Arc<Data>,
-    pub(crate) recovery: Arc<Recovery>,
+    pub(crate) data: Arc<Backend>,
+    pub(crate) recovery: Arc<RecoveryBackend>,
 }
 
 /* === Implementations === */
@@ -26,8 +28,8 @@ pub(crate) struct Store {
 impl Store {
     pub(crate) fn new() -> Self {
         Self {
-            data: Arc::new(Data::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
+            data: Arc::new(Backend::new(history())),
+            recovery: Arc::new(RecoveryBackend::new(history())),
         }
     }
     pub(crate) fn manager(&self, config: StorageSettings) -> StorageManager {

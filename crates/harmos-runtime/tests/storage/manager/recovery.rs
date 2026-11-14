@@ -16,14 +16,20 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, catalog, config};
+use crate::storage::Bank;
+use crate::storage::Backend;
+use crate::storage::Fixture;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::catalog;
+use crate::storage::config;
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
 
 /* === Private Functions === */
 
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
-fn crash_image(source: &Fixture) -> Arc<Data> {
-    let data = Data::new(source.data.history.clone());
+fn crash_image(source: &Fixture) -> Arc<Backend> {
+    let data = Backend::new(source.data.history.clone());
     let data = Arc::new(data);
     *data.saved_productions.lock().unwrap() = source.data.saved_productions.lock().unwrap().clone();
     *data.file_generations.lock().unwrap() = source.data.file_generations.lock().unwrap().clone();
@@ -59,7 +65,7 @@ fn crash_image(source: &Fixture) -> Arc<Data> {
 
 pub(super) async fn restart(source: &Fixture) -> Fixture {
     let data = crash_image(source);
-    let recovery = Arc::new(Recovery::new(source.data.history.clone()));
+    let recovery = Arc::new(RecoveryBackend::new(source.data.history.clone()));
     let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
     })
@@ -219,7 +225,7 @@ async fn failed_recovery_releases() {
     source.storage.flush().await.unwrap();
     for failure in 1..3 {
         let data = crash_image(&source);
-        let recovery = Arc::new(Recovery::new(data.history.clone()));
+        let recovery = Arc::new(RecoveryBackend::new(data.history.clone()));
         let settings = config();
         match failure {
             1 => data.saved_productions.lock().unwrap().get_mut("first").unwrap().0.length += 1,

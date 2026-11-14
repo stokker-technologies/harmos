@@ -65,6 +65,12 @@ impl std::ops::Deref for StorageManager {
 
 impl StorageManager {
     #[tracing::instrument(target = "harmos::storage", name = "storage.new", level = "debug", skip_all)]
+    pub fn in_memory(catalog: super::ObjectCatalog, settings: StorageSettings) -> Result<Self> {
+        let execution = crate::clock::current();
+        let backends = StorageBackends::in_memory(catalog.clone(), execution.clone())?;
+        Ok(Self { engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)? })
+    }
+
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         Self::with_catalog(super::ObjectCatalog::new(), backends, settings)
     }

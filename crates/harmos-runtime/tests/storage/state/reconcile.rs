@@ -20,7 +20,17 @@ use tokio::sync::Notify;
 // Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{HOUSE, Noted, deposit};
-use crate::storage::{Bank, Data, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, record, schema};
+use crate::storage::Bank;
+use crate::storage::Backend;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::StorageBackends;
+use crate::storage::StorageManager;
+use crate::storage::catalog;
+use crate::storage::config;
+use crate::storage::history;
+use crate::storage::record;
+use crate::storage::schema;
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::{Error, Identifier, services::ServiceContext, state::Position};
 
@@ -32,8 +42,8 @@ struct Balance {
 }
 
 struct Store {
-    data: Arc<Data>,
-    recovery: Arc<Recovery>,
+    data: Arc<Backend>,
+    recovery: Arc<RecoveryBackend>,
 }
 
 #[derive(Default)]
@@ -47,8 +57,8 @@ struct Gate {
 impl Store {
     fn new() -> Self {
         Self {
-            data: Arc::new(Data::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
+            data: Arc::new(Backend::new(history())),
+            recovery: Arc::new(RecoveryBackend::new(history())),
         }
     }
     fn manager(&self) -> StorageManager {
@@ -108,13 +118,14 @@ fn failure() -> Error {
 }
 
 async fn restore(journal: harmos_runtime::state::StateManager<Bank>, storage: StorageManager) -> harmos_runtime::Result<()> {
-    use harmos_runtime::storage::query::transform::{
+    use harmos_query::transform::{
         Transform,
         project::{Project, Projection},
     };
-    use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+    use harmos_query::QueryArrow;
+    use harmos_runtime::storage::query::{ RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(harmos_runtime::storage::Query {
+        .query(harmos_domain::model::storage::query::Query {
             merge: None,
             at: storage.get_saved_position(),
             source: Source::Records(RecordSelection {

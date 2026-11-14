@@ -36,7 +36,7 @@ async fn corrupt_snapshot_blocks() {
             snapshot.payload = SnapshotPayload::from_bytes(
                 &serde_json::to_vec(&value).unwrap(),
                 policy(100).max_bytes,
-                snapshot.payload.manifest().position.unwrap(),
+                snapshot.payload.manifest().position,
             )
             .unwrap();
         }

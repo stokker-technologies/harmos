@@ -43,7 +43,11 @@ def run(directory: Path, selected: str | None) -> int:
     output = directory / "target/benchmarks/storage"
     output.mkdir(parents=True, exist_ok=True)
     target = (
-        "integration-file-transfer"
+        "integration-time-merge"
+        if selected == "time_merge"
+        else "integration-query"
+        if selected == "query"
+        else "integration-file-transfer"
         if selected == "file_transfer"
         else "integration-durable-lag"
         if selected == "durable_lag"
@@ -64,9 +68,9 @@ def run(directory: Path, selected: str | None) -> int:
             "--profile",
             "bench",
             "-p",
-            "harmos-runtime" if selected == "file_transfer" else "harmos-storage",
+            "harmos-runtime" if selected == "file_transfer" else "harmos-query" if selected == "time_merge" else "harmos-storage",
             "--features",
-            "storage-benchmarks" if selected == "file_transfer" else "testing,sqlite",
+            "storage-benchmarks" if selected == "file_transfer" else "testing",
             "--bench",
             target,
         ],
@@ -87,14 +91,14 @@ def run(directory: Path, selected: str | None) -> int:
     environment.pop("STKR_TEST_REPORT_DIR", None)
     if selected == "baseline":
         environment["HARMOS_STORAGE_BASELINE_ONCE"] = "1"
-    if selected == "native":
-        environment["HARMOS_STORAGE_NATIVE"] = "1"
+    if selected == "interface":
+        environment["HARMOS_STORAGE_INTERFACE"] = "1"
     command = [executables[-1], "--bench", "--sample-size", "10", "--warm-up-time", "1", "--measurement-time", "1"]
-    if selected:
+    if selected and selected != "query":
         command.append(selected)
     suite = "storage-file-transfer" if selected == "file_transfer" else "storage-durable-lag" if selected == "durable_lag" else "storage"
     destination = directory / "target/benchmarks" / f"benchmarks-{suite}-{platform.system().lower()}.json"
-    if selected in {"native", "durable_lag", "file_transfer"}:
+    if selected in {"interface", "durable_lag", "file_transfer"}:
         policy.write_json(destination, {"benchmarks": []})
     lines = []
     peak = 0
@@ -126,7 +130,7 @@ def run(directory: Path, selected: str | None) -> int:
                 lines.append(line)
                 peak = max(peak, _peak_memory(child))
             status = child.wait()
-    if selected not in {"native", "durable_lag", "file_transfer"}:
+    if selected not in {"interface", "durable_lag", "file_transfer"}:
         return status
     revision = os.environ.get("GITHUB_SHA") or archive.revision(directory) or "unknown"
     document = measurements(lines, revision, platform.system().lower())
@@ -150,7 +154,7 @@ def run(directory: Path, selected: str | None) -> int:
     return status
 
 
-def measurements(lines: list[str], revision: str, system: str, backend: str = "sqlite") -> dict:
+def measurements(lines: list[str], revision: str, system: str, backend: str = "memory") -> dict:
     """Translate The Shared Workload's Native Events Without Backend-Dependent Case Names."""
     cases: dict[str, list[dict]] = {}
     counters = []
@@ -277,7 +281,7 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "s
 # === Private Functions === #
 
 
-def _row(name: str, value: float, unit: str, revision: str, system: str, backend: str = "sqlite") -> dict:
+def _row(name: str, value: float, unit: str, revision: str, system: str, backend: str = "memory") -> dict:
     if not math.isfinite(value) or value < 0:
         raise policy.ToolError(f"invalid storage measurement: {name}")
     return {

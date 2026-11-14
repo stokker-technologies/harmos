@@ -353,3 +353,7 @@ fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harm
 }
 
 /* === Tests === */
+
+impl<E> From<harmos_query::Error> for Error<E> {
+    fn from(error: harmos_query::Error) -> Self { Self::from(harmos_storage::Error::from(error)) }
+}

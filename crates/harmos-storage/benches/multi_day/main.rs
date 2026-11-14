@@ -18,7 +18,7 @@ mod fixture;
 #[path = "../../tests/support/mapping.rs"]
 mod mapping_fixture;
 
-mod native;
+mod interface;
 use harmos_storage::bench_support::workload;
 
 /* === Re-Exports === */
@@ -67,8 +67,8 @@ static ALLOCATOR: harmos_storage::bench_support::TrackingAllocator = harmos_stor
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let mut criterion = Criterion::default().configure_from_args();
-    if std::env::var_os("HARMOS_STORAGE_NATIVE").is_some() {
-        native::run(&runtime);
+    if std::env::var_os("HARMOS_STORAGE_INTERFACE").is_some() {
+        interface::run(&runtime);
         criterion.final_summary();
         return;
     }

@@ -154,8 +154,8 @@ async fn partial_open_remains() {
     })
     .await
     .unwrap();
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     recovery.control.fail_open.store(true, Ordering::SeqCst);
     let storage: StorageManager = StorageManager::new(
         StorageBackends {

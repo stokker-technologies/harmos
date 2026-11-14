@@ -15,7 +15,17 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::{Bank, Data, Fixture, Ledger, Recovery, StorageBackends, StorageManager, catalog, config, history, write};
+use super::Bank;
+use super::Backend;
+use super::Fixture;
+use super::Ledger;
+use super::RecoveryBackend;
+use super::StorageBackends;
+use super::StorageManager;
+use super::catalog;
+use super::config;
+use super::history;
+use super::write;
 use harmos_runtime::{Error, services::ServiceContext, state::Entry, state::Position, state::Recorded, storage::JournalConsumer};
 
 /* === Structs === */
@@ -47,8 +57,8 @@ async fn dormant() -> Fixture {
     })
     .await
     .unwrap();
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let settings = config();
     let storage = StorageManager::new(
         StorageBackends {
@@ -263,8 +273,8 @@ async fn cancelled_acquisition_retried() {
 
 #[tokio::test]
 async fn final_drain_saved() {
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, config()).unwrap();
     let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog()).attach(FinalDrain(storage.clone()));

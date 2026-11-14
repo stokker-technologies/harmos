@@ -107,6 +107,12 @@ impl StorageManager {
         } else { None };
         let mut source = StoredBatches::open(Arc::clone(&self.inner), Arc::clone(&snapshot), query.source.clone(), &scan).await?;
         if let Some(after) = skipped { source.after = after; query.slice.offset = 0; }
+        if query.merge.is_none() && query.transforms.iter().all(|transform| matches!(transform, Transform::Project(_))) {
+            if let Some(limit) = query.slice.limit {
+                let rows = query.slice.offset.saturating_add(limit).min(source.rows.get() as u64) as usize;
+                if let Some(rows) = NonZeroUsize::new(rows) { source.rows = rows; } else { source.done = true; }
+            }
+        }
         let output = QueryResponse {
             batch_rows: self.inner.settings.response.batch_rows,
             batch_bytes: self.inner.settings.response.batch_bytes,
@@ -126,7 +132,8 @@ impl BatchSource for StorageManager {
             let active = query_slot(&self.inner).await.map_err(source_error)?;
             let snapshot = Arc::new(self.snapshot(at).await.map_err(source_error)?);
             let source = StoredBatches::open(Arc::clone(&self.inner), snapshot, selection.clone(), scan).await.map_err(source_error)?;
-            Ok(Box::new(AdmittedBatches { source, _active: active }) as Box<dyn BatchReader>)
+            drop(active);
+            Ok(Box::new(AdmittedBatches { source, inner: Arc::clone(&self.inner) }) as Box<dyn BatchReader>)
         })
     }
 }
@@ -267,10 +274,15 @@ fn source_error(error: Error) -> harmos_query::Error {
 
 struct AdmittedBatches {
     source: StoredBatches,
-    _active: tokio::sync::OwnedSemaphorePermit,
+    inner: Arc<Inner>,
 }
 impl BatchReader for AdmittedBatches {
     fn schema(&self) -> SchemaRef { self.source.schema() }
     fn at(&self) -> &crate::StorageCursor { self.source.at() }
-    fn next(&mut self) -> QueryFuture<'_, BatchPage> { self.source.next() }
+    fn next(&mut self) -> QueryFuture<'_, BatchPage> {
+        Box::pin(async move {
+            let _active = query_slot(&self.inner).await.map_err(source_error)?;
+            self.source.next().await
+        })
+    }
 }

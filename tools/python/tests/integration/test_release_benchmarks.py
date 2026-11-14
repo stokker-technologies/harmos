@@ -162,7 +162,7 @@ class BenchmarkRelease(unittest.TestCase):
             reports.stage(directory, shared, "nightly")
             rows = json.loads((shared / "benchmarks.json").read_text())["benchmarks"]
             for system in ("windows", "linux"):
-                cases = {row["name"]: row for row in rows if row["suite"] == f"storage-sqlite-{system}"}
+                cases = {row["name"]: row for row in rows if row["suite"] == f"storage-memory-{system}"}
                 self.assertEqual(cases["storage.object.contend.8"]["value"], 0.004)
                 self.assertEqual(cases["storage.object.contend.8"]["unit"], "s")
                 self.assertEqual(cases["storage.object.contend.8.allocations"]["value"], 30)

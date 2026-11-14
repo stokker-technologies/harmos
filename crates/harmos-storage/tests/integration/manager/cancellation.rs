@@ -18,7 +18,10 @@ use harmos_domain::Identifier;
 use harmos_storage::*;
 
 // Local Imports
-use super::backend::{Backend, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms;
 
 /* === Private Functions === */
@@ -32,7 +35,7 @@ async fn start() -> (Arc<Backend>, StorageManager) {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         settings,
     )
@@ -92,7 +95,7 @@ async fn cancelled_query_releases() {
     let data = std::sync::Arc::new(super::backend::Backend::new(history()));
     let backends = StorageBackends {
         primary: data,
-        state: std::sync::Arc::new(Recovery::new(history())),
+        state: std::sync::Arc::new(RecoveryBackend::new(history())),
     };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     super::fixture::start(&storage).await;

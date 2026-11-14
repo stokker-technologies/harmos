@@ -42,7 +42,7 @@ pub struct Segment {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SnapshotManifest {
-    pub position: Option<Position>,
+    pub position: Position,
     pub count: usize,
     pub total_bytes: usize,
     pub segments: Vec<Segment>,
@@ -97,7 +97,7 @@ impl SnapshotWriter {
         Ok(SnapshotPayload {
             data: self.data.into(),
             manifest: SnapshotManifest {
-                position: Some(position),
+                position,
                 count: self.segments.len(),
                 total_bytes: self.total_bytes,
                 segments: self.segments,
@@ -135,12 +135,6 @@ impl SnapshotPayload {
         let mut writer = SnapshotWriter::new(limit)?;
         writer.write_all(bytes)?;
         writer.finish(position)
-    }
-
-    pub(crate) fn legacy(bytes: &[u8], limit: NonZeroUsize) -> io::Result<Self> {
-        let mut payload = Self::from_bytes(bytes, limit, Position::ORIGIN)?;
-        payload.manifest.position = None;
-        Ok(payload)
     }
 
     pub fn manifest(&self) -> &SnapshotManifest {

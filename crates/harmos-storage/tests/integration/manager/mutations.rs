@@ -21,7 +21,9 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 // Local Imports
-use super::backend::{Backend, Recovery, history};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
 use harmos_storage::memory::Control;
 use super::fixture::{Fixture, config, start};
 use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, MutationValue, StagedFile, StorageBackends, StorageManager};
@@ -80,7 +82,7 @@ async fn fixture() -> Fixture {
     set_elapsed(0);
     let store_history = history();
     let data = Backend::new(store_history.clone());
-    let recovery = Recovery::new(store_history);
+    let recovery = RecoveryBackend::new(store_history);
     let data = Arc::new(data);
     let recovery = Arc::new(recovery);
 

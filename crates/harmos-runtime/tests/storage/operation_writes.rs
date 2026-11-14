@@ -21,7 +21,7 @@ use arrow_schema::{DataType, Field, Fields, Schema};
 // Local Imports
 use super::Fixture;
 use harmos_runtime::Identifier;
-use harmos_runtime::storage::arrow::ArrowBatch;
+use harmos_query::arrow::ArrowBatch;
 use harmos_storage::writes::DataBatch;
 
 /* === Public Functions === */

@@ -1,22 +1,54 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+
+// Bounded Batch Sources At An Immutable Cut
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::OwnedSemaphorePermit;
 use crate::manager::Inner;
 use crate::{Error, Result, Snapshot, SchemaKey, StorageSchema};
 use crate::backend::ScanPage;
-use harmos_query::{QueryArrow, QueryStep};
+use harmos_query::{QueryArrow, QueryStep, QueryReader as EngineReader};
 use harmos_domain::model::storage::query::QueryCompletion;
 use crate::execution::Context;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
 pub struct QueryReader {
     inner: Arc<Inner>,
-    reader: harmos_query::QueryReader,
+    reader: EngineReader,
     active: Option<OwnedSemaphorePermit>,
     context: Context,
 }
 
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
 impl QueryReader {
-    pub(super) fn new(inner: Arc<Inner>, reader: harmos_query::QueryReader, active: OwnedSemaphorePermit) -> Self {
+    pub(super) fn new(inner: Arc<Inner>, reader: EngineReader, active: OwnedSemaphorePermit) -> Self {
         Self { inner, reader, active: Some(active), context: Context::current() }
     }
 
@@ -48,6 +80,10 @@ impl QueryReader {
 }
 
 
+/* === Public Functions === */
+
+/* === Private Functions === */
+
 pub(crate) async fn schema_at(inner: &Arc<Inner>, snapshot: &Snapshot, key: &SchemaKey) -> Result<StorageSchema> {
     find_schema(inner, snapshot, key).await?.ok_or(Error::InvalidInput {
         field: "storage schema",
@@ -73,3 +109,4 @@ pub(crate) async fn query_slot(inner: &Arc<Inner>) -> Result<OwnedSemaphorePermi
         .map_err(|_| Error::ResourceExhausted { resource: "pending storage queries" })?;
     Arc::clone(&inner.query_active).acquire_owned().await.map_err(|_| Error::Closing { domain: "storage queries" })
 }
+/* === Tests === */

@@ -1,6 +1,6 @@
 /* ***
  *
- * storage
+ * Harmos
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -65,6 +65,7 @@ async fn setup(records: &[Reading], primary: &[Reading], samples: &[Reading]) ->
     let clock = clock::Controlled::new();
     let mut settings = fixture::config();
     settings.response.batch_rows = NonZeroUsize::MIN;
+    settings.request.max_active_queries = NonZeroUsize::MIN;
     let fixture = Fixture::build_with(settings, |backends, settings| {
         StorageManager::with_execution(backends, settings, clock.source()).unwrap()
     });
@@ -128,12 +129,27 @@ async fn read(fixture: &Fixture, source: Source, mode: TimeMergeMode, transforms
         }),
         transforms, slice: RowSlice::default(),
     };
-    let mut reader = fixture.storage.query(query).await.unwrap();
+    let mut reader = fixture.storage.query(query.clone()).await.unwrap();
     let mut batches = Vec::new();
     while let Some(output) = reader.next().await.unwrap() {
         if let QueryArrow::Batch(batch) = output { batches.push(batch.as_record_batch().clone()); }
     }
     assert_eq!(reader.completion().unwrap().rows as usize, batches.iter().map(RecordBatch::num_rows).sum::<usize>());
+    drop(reader);
+    let mut engine = harmos_query::QueryReader::open(
+        &fixture.storage, query,
+        harmos_query::batches::BatchScan {
+            limits: ReadLimits { rows: NonZeroUsize::new(2).unwrap(), bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap() },
+            projection: None, pruning: None,
+        },
+        harmos_query::QueryResponse { batch_rows: NonZeroUsize::MIN, batch_bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap() },
+    ).await.unwrap();
+    let mut direct = Vec::new();
+    while let Some(output) = engine.next().await.unwrap() {
+        if let QueryArrow::Batch(batch) = output { direct.push(batch.as_record_batch().clone()); }
+    }
+    assert_eq!(direct, batches);
+    drop(engine);
     batches
 }
 

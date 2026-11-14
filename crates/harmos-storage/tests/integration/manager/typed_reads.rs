@@ -19,7 +19,10 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::backend::{Backend, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms::{self, Experiment, Sample, objects_catalog};
 use harmos_storage::Error;
 use harmos_domain::model::storage::query::Query;
@@ -40,7 +43,7 @@ async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Backend>) {
         objects_catalog(),
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         settings,
     )
@@ -230,7 +233,7 @@ async fn unwritten_schema_empty() {
     drop(reader);
 
     // The Arrow Query Has No Schema To Answer, So It Still Refuses.
-    let mut query = storage
+    assert!(storage
         .query(Query {
             merge: None,
             at: at.clone(),
@@ -238,10 +241,7 @@ async fn unwritten_schema_empty() {
             transforms: Vec::new(),
             slice: RowSlice::default(),
         })
-        .await
-        .unwrap();
-    assert!(query.next().await.is_err());
-    drop(query);
+        .await.is_err());
 
     let (storage, _) = manager(paged()).await;
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();

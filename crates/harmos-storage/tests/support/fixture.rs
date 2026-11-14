@@ -20,7 +20,10 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 // Local Imports
-pub(crate) use super::backend::{Backend, Recovery, history, storage_settings};
+pub(crate) use super::backend::Backend;
+pub(crate) use super::backend::RecoveryBackend;
+pub(crate) use super::backend::history;
+pub(crate) use super::backend::storage_settings;
 pub(crate) use harmos_storage::*;
 
 /* === Structs === */
@@ -28,7 +31,7 @@ pub(crate) use harmos_storage::*;
 pub(crate) struct Fixture<M = StorageManager> {
     pub(crate) storage: M,
     pub(crate) data: Arc<Backend>,
-    pub(crate) recovery: Arc<Recovery>,
+    pub(crate) recovery: Arc<RecoveryBackend>,
 }
 
 struct Task(Mutex<Option<JoinHandle<Result<()>>>>);
@@ -64,7 +67,7 @@ impl Fixture {
 impl<M> Fixture<M> {
     pub(crate) fn build_with(config: StorageSettings, create: impl FnOnce(StorageBackends, StorageSettings) -> M) -> Self {
         let data = Arc::new(Backend::new(history()));
-        let recovery = Arc::new(Recovery::new(history()));
+        let recovery = Arc::new(RecoveryBackend::new(history()));
         let storage = create(
             StorageBackends {
                 primary: data.clone(),
@@ -89,13 +92,6 @@ pub(crate) async fn start(storage: &StorageManager) {
         })
         .await
         .unwrap();
-}
-
-pub(crate) fn state_settings() -> harmos_storage::state::StorageStateSettings {
-    harmos_storage::state::StorageStateSettings {
-        max_entry_bytes: std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-        max_checkpoint_bytes: std::num::NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
-    }
 }
 
 /* === Private Functions === */

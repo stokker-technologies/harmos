@@ -29,7 +29,7 @@ use harmos_runtime::operations::NativeHost;
 use harmos_runtime::{
     Identified, Message,
     storage::{
-        ObjectCatalog, ObjectDefinition, ObjectRetention, StoreHistory, StoredObject,
+        ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject,
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
     },
 };
@@ -82,10 +82,6 @@ async fn saved_preview_survives_atomic_replacement() {
     // Compose the Query Backend Beside the Document Adapter.
     let directory = tempfile::tempdir().unwrap();
     let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Preview>());
-    let history = StoreHistory {
-        store: Identifier::new("schematic-example").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
-    };
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
@@ -108,12 +104,8 @@ async fn saved_preview_survives_atomic_replacement() {
             event_capacity: NonZeroUsize::new(64).unwrap(),
         },
     };
-    let recovery = harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
-        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
-    };
     let mut manager = None;
-    let document = Document::new(directory.path().join("document.json"));
+    let document = Document::new();
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
@@ -127,7 +119,7 @@ async fn saved_preview_survives_atomic_replacement() {
             ..Default::default()
         });
         manager = Some(
-            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
+            services::queries::attach(setup, catalog.clone(), settings).unwrap(),
         );
     })
     .await
@@ -222,10 +214,6 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     // Compose the Query Backend Beside the Document Adapter.
     let directory = tempfile::tempdir().unwrap();
     let catalog = ObjectCatalog::new();
-    let history = StoreHistory {
-        store: Identifier::new("schematic-example").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
-    };
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
@@ -248,12 +236,8 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
             event_capacity: NonZeroUsize::new(64).unwrap(),
         },
     };
-    let recovery = harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
-        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
-    };
     let mut manager = None;
-    let document = Document::new(directory.path().join("document.json"));
+    let document = Document::new();
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
@@ -267,7 +251,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
             ..Default::default()
         });
         manager = Some(
-            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
+            services::queries::attach(setup, catalog.clone(), settings).unwrap(),
         );
     })
     .await

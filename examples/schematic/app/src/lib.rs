@@ -21,7 +21,6 @@ pub mod state;
 pub mod storage;
 pub mod streams;
 pub mod transactions;
-mod wire;
 
 /* === Re-Exports === */
 

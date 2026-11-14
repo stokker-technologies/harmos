@@ -16,16 +16,16 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 
 // Third Party Imports
 
 // Local Imports
 use harmos_storage::bench_support::{
     self,
-    workload::{ROWS, Workload},
+    workload::{ROWS, Workload, Sample},
 };
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
+use harmos_storage::memory::Backend;
+use std::sync::Arc;
 
 /* === Constants === */
 
@@ -44,14 +44,10 @@ use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 /* === Public Functions === */
 
 pub(super) fn run(runtime: &tokio::runtime::Runtime) {
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("storage.sqlite");
     let workload = Workload::new(ROWS);
-    let settings = SqliteSettings {
-        chunk_rows: NonZeroUsize::new(16384).unwrap(),
-        chunk_bytes: NonZeroUsize::new(8 * 1024 * 1024).unwrap(),
-    };
-    bench_support::run_with_reopen(runtime, &workload, || Box::new(SqliteBackend::new(&path, workload.history.clone(), settings).unwrap()));
+    let catalog = harmos_storage::ObjectCatalog::new().entry(harmos_storage::ObjectDefinition::of::<Sample>());
+    let owner = Arc::new(Backend::with_catalog(catalog, workload.history.clone()));
+    bench_support::run_with_reopen(runtime, &workload, || owner.clone());
 }
 
 /* === Private Functions === */

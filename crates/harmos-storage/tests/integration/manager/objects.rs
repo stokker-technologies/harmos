@@ -17,7 +17,9 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::backend::{Backend, Recovery, history};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
 use harmos_domain::{Identified, Identifier, Message};
 use harmos_storage::{ObjectRetention, StorageBackends, StorageManager, StoredObject};
 
@@ -140,7 +142,7 @@ async fn numeric_keys_roundtrip() {
         numeric_objects_catalog(),
         StorageBackends {
             primary,
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         storage_settings(),
     )
@@ -162,7 +164,7 @@ mod object_codec_preserves_identity_and_refuses_forged_values;
 #[test]
 fn ambiguous_catalog_refused() {
     let primary = Arc::new(Backend::with_catalog(ambiguous_catalog(), history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let result = StorageManager::with_catalog(
         ambiguous_catalog(),
         StorageBackends {

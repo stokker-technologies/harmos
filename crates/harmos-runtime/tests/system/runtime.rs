@@ -18,15 +18,18 @@ use arrow_array::{Array, Int64Array, StringArray, StructArray};
 
 // Local Imports
 use super::fixture::{
-    Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
+    Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema,
 };
-use super::fixture::{Data, StorageBackends};
+use super::fixture::{Backend, RecoveryBackend, StorageBackends};
 use harmos_operations::storage::{AppendRecords, GetFileBytes, ListRows};
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::operations::NativeOperation;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
-use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+use harmos_query::QueryArrow;
+use harmos_runtime::storage::query::RecordSelection;
+use harmos_runtime::storage::query::RowSlice;
+use harmos_runtime::storage::query::Source;
 use std::sync::Arc;
 
 /* === Structs === */
@@ -40,7 +43,7 @@ struct Reading {
 
 // Every Saved Record of One Schema as (Item, Value), Through the Query Path
 async fn saved(storage: &StorageManager, schema: &SchemaKey) -> Vec<(String, i64)> {
-    let query = harmos_runtime::storage::Query {
+    let query = harmos_domain::model::storage::query::Query {
             merge: None,
         at: storage.get_saved_position(),
         source: Source::Records(RecordSelection {
@@ -86,12 +89,12 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 #[tokio::test]
 async fn runtime_baseline_walks() {
     let _report = crate::report::system();
-    // Boot the Host over a Journal on Disk
-    let root = tempfile::tempdir().unwrap();
-    let data = Arc::new(Data::new(history()));
+    // Boot the Host over Shared In-Memory Owners
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let backends = StorageBackends {
         primary: data.clone(),
-        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
+        state: recovery.clone(),
     };
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
@@ -139,7 +142,7 @@ async fn runtime_baseline_walks() {
     // Reopening The Backends Proves Shutdown Released Their Ownership.
     let backends = StorageBackends {
         primary: data,
-        state: Arc::new(harmos_runtime::storage::state::file::FileBackend::new(root.path().join("state"), history(), state_settings())),
+        state: recovery.clone(),
     };
     let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
     let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {

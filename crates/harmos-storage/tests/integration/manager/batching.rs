@@ -196,8 +196,7 @@ async fn storage_trace_handoffs() {
     let history = f.storage.get_saved_position().history;
     f.finish().await;
 
-    let directory = tempfile::tempdir().unwrap();
-    let backend = harmos_storage::state::file::FileBackend::new(directory.path().to_owned(), history, super::fixture::state_settings());
+    let backend = harmos_storage::memory::RecoveryBackend::new(history);
     let position = backend.create_recovery_session().with_subscriber(dispatch.clone()).await.unwrap();
     backend.get_recovery_snapshot(NonZeroUsize::new(4096).unwrap()).with_subscriber(dispatch.clone()).await.unwrap();
     backend.flush(&position).with_subscriber(dispatch.clone()).await.unwrap();
@@ -239,9 +238,8 @@ async fn storage_trace_handoffs() {
         .unwrap();
     assert_eq!(backend.fields["outcome"], "\"completed\"");
     let direct: Vec<_> = captured.spans.values().filter(|span| span.name == "storage.state.backend").collect();
-    assert_eq!(direct.len(), 4);
+    assert_eq!(direct.len(), 4, "{direct:#?}");
     assert!(direct.iter().all(|span| span.closed.is_some() && span.fields["outcome"] == "\"completed\""));
-    assert!(captured.spans.values().any(|span| span.name == "storage.backend.blocking" && span.closed.is_some()));
     assert!(captured.spans.values().all(|span| !span.fields.contains_key("payload") && !span.fields.contains_key("item")));
     assert!(captured.spans.values().flat_map(|span| span.fields.values()).all(|value| !value.contains("private-")));
 }
@@ -269,9 +267,8 @@ async fn filtered_backend_preserves_caller_outcome() {
     let subscriber = Registry::default().with(capture.clone()).with(tracing_subscriber::filter::LevelFilter::INFO);
     let dispatch = tracing::Dispatch::new(subscriber);
     async {
-        let root = tempfile::tempdir().unwrap();
         let state =
-            harmos_storage::state::file::FileBackend::new(root.path().join("state"), super::history(), super::fixture::state_settings());
+            harmos_storage::memory::RecoveryBackend::new(super::history());
         let caller = tracing::info_span!("backend_caller", outcome = "pending");
         async {
             assert!(state.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
@@ -807,16 +804,14 @@ async fn raw_reads_retained() {
 #[tokio::test]
 async fn snapshot_payload_limit_survives_reopen() {
     use harmos_domain::state::Position;
-    use harmos_storage::state::file::FileBackend;
     use harmos_storage::{ReadLimits, StorageBackends, StorageManager};
 
     let maximum = NonZeroUsize::new(4096).unwrap();
     let limits = ReadLimits { rows: NonZeroUsize::MIN, bytes: maximum };
     for length in [maximum.get() - 2, maximum.get() - 1, maximum.get()] {
-        let directory = tempfile::tempdir().unwrap();
-        let data = super::backend::Backend::new(super::backend::history());
+            let data = super::backend::Backend::new(super::backend::history());
         let data = Arc::new(data);
-        let recovery = FileBackend::new(directory.path().to_owned(), super::backend::history(), super::fixture::state_settings());
+        let recovery = super::backend::RecoveryBackend::new(super::backend::history());
         let recovery = Arc::new(recovery);
         let backends = || StorageBackends {
             primary: data.clone(),
@@ -1098,9 +1093,10 @@ async fn filesystem_trace_lifetimes() {
         .await
         .unwrap();
     assert_eq!(digest.bytes_read, 15);
-    let backend_root = tempfile::tempdir().unwrap();
+    assert!(f.storage.read_file(FileRead { source: FileSource::Local(root.path().join("missing.bin")), range })
+        .instrument(request.clone()).with_subscriber(dispatch.clone()).await.is_err());
     let backend =
-        harmos_storage::state::file::FileBackend::new(backend_root.path().to_owned(), super::history(), super::fixture::state_settings());
+        harmos_storage::memory::RecoveryBackend::new(super::history());
     async {
         assert!(backend.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
         backend.create_recovery_session().await.unwrap();
@@ -1136,7 +1132,7 @@ async fn filesystem_trace_lifetimes() {
         "storage.directory.watch.page",
         "storage.directory.subscription",
         "storage.backend.blocking",
-        "storage.state.file.mod.call",
+        "storage.state.memory",
     ] {
         assert!(captured.spans.values().any(|span| span.name == name && span.parent.is_some()), "missing {name}");
     }

@@ -32,7 +32,8 @@ use super::{
 use crate::{Error, Result};
 pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 use crate::execution::Execution;
-use crate::memory::{Backend, Recovery};
+use crate::memory::Backend;
+use crate::memory::RecoveryBackend;
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
@@ -299,7 +300,7 @@ impl StorageBackends {
         let history = StoreHistory { store: crate::Identifier::new(store).map_err(harmos_domain::Error::from)?, epoch: crate::Identifier::new(epoch).map_err(harmos_domain::Error::from)? };
         Ok(Self {
             primary: Arc::new(Backend::with_execution(catalog, history.clone(), clock)),
-            state: Arc::new(Recovery::new(history)),
+            state: Arc::new(RecoveryBackend::new(history)),
         })
     }
 }

@@ -32,7 +32,6 @@ use harmos_query::columnar::ColumnPredicate;
 use harmos_query::columnar::ColumnSource;
 use harmos_query::columnar::TimeBounds;
 use harmos_storage::query::columnar::list_column_rows;
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 
 /* === Constants === */
@@ -69,20 +68,11 @@ fn nz(value: usize) -> NonZeroUsize {
 #[tokio::test]
 async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance() {
     // Open Both Backends And Declare One Stored Shape.
-    let root = tempfile::tempdir().unwrap();
     let history = backend::history();
     let policy = backend::storage_settings();
-    let native = SqliteBackend::new(
-        root.path().join("storage.sqlite"),
-        history.clone(),
-        SqliteSettings {
-            chunk_rows: nz(4),
-            chunk_bytes: policy.response.batch_bytes,
-        },
-    )
-    .unwrap();
+    let primary = backend::Backend::new(history.clone());
     let fallback = Arc::new(backend::Backend::new(history.clone()));
-    native.create_session().await.unwrap();
+    primary.create_session().await.unwrap();
     fallback.create_session().await.unwrap();
     let key = SchemaKey {
         id: Identifier::new("sample").unwrap(),
@@ -93,7 +83,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         harmos_domain::schema::graph::Schema::from_declaration(Sample::DEFINITION, &harmos_domain::config::SchemaSettings::default())
             .unwrap();
     let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
-    native.append_schemas(StorageBatch::new(vec![schema.clone()]).into()).await.unwrap();
+    primary.append_schemas(StorageBatch::new(vec![schema.clone()]).into()).await.unwrap();
     fallback.append_schemas(StorageBatch::new(vec![schema]).into()).await.unwrap();
     let records = (0..8)
         .map(|index| StoredRecord {
@@ -114,16 +104,16 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             .encode(),
         })
         .collect::<Vec<_>>();
-    native.append_records(StorageBatch::new(records.clone())).await.unwrap();
+    primary.append_records(StorageBatch::new(records.clone())).await.unwrap();
     fallback.append_records(StorageBatch::new(records.clone())).await.unwrap();
     let cut = StorageCursor { history: history.clone(), sequence: 9 };
-    let saved = native.create_snapshot(&cut).await.unwrap();
+    let saved = primary.create_snapshot(&cut).await.unwrap();
     let saved_fallback = fallback.create_snapshot(&cut).await.unwrap();
 
     // Save A Later Sample Without Changing Either Retained Cut.
     let mut late = records[4].clone();
     late.position.sequence = 10;
-    native.append_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
+    primary.append_records(StorageBatch::new(vec![late.clone()])).await.unwrap();
     fallback.append_records(StorageBatch::new(vec![late])).await.unwrap();
     let read = ArrowScan {
         source: ColumnSource { kind: ColumnKind::Records, schema: key },
@@ -146,8 +136,8 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             bytes: policy.response.batch_bytes,
         },
     };
-    for (backend, snapshot, native_path) in
-        [(&native as &dyn StorageBackend, &saved, true), (fallback.as_ref() as &dyn StorageBackend, &saved_fallback, false)]
+    for (backend, snapshot) in
+        [(&primary as &dyn StorageBackend, &saved), (fallback.as_ref() as &dyn StorageBackend, &saved_fallback)]
     {
         let mut read = read.clone();
         let mut values = Vec::new();
@@ -156,10 +146,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             let page = list_column_rows(backend, snapshot, &read, &Cancellation::default()).await.unwrap();
             values.extend_from_slice(page.batch.column(1).as_any().downcast_ref::<Float64Array>().unwrap().values());
             positions.extend_from_slice(page.batch.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().values());
-            if native_path {
-                assert_eq!(page.payload_rows, 0);
-                assert!(!page.columns_read.iter().any(|name| name == "payload.unused"));
-            }
+
             if page.complete {
                 break;
             }
@@ -171,30 +158,12 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         assert_eq!(positions, vec![5, 6, 7]);
     }
 
-    // Prune Whole Time Chunks Before Reading Any Column Bytes.
-    let mut pruned = read.clone();
-    pruned.predicate = None;
-    pruned.time = Some(TimeBounds {
-        column: "payload.time_ns".into(),
-        lower_ns: 100,
-        upper_ns: 101,
-    });
-    loop {
-        let page = list_column_rows(&native, &saved, &pruned, &Cancellation::default()).await.unwrap();
-        assert_eq!(page.batch.num_rows(), 0);
-        assert_eq!(page.bytes_read, 0);
-        if page.complete {
-            break;
-        }
-        pruned.after = page.next;
-    }
-
     // Reject A Changed Plan And Cancel An Already Entered Fallback Read.
-    let page = list_column_rows(&native, &saved, &read, &Cancellation::default()).await.unwrap();
+    let page = list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.unwrap();
     let mut changed = read.clone();
     changed.after = page.next;
     changed.columns.reverse();
-    assert!(list_column_rows(&native, &saved, &changed, &Cancellation::default()).await.is_err());
+    assert!(list_column_rows(&primary, &saved, &changed, &Cancellation::default()).await.is_err());
     fallback.control.block_read.store(true, Ordering::SeqCst);
     let cancelled = Cancellation::default();
     let pending = {
@@ -211,25 +180,17 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     fallback.control.block_read.store(false, Ordering::SeqCst);
 
     // Refuse Released And Restarted Snapshot Tokens.
-    native.delete_snapshot(&saved).await.unwrap();
-    assert!(list_column_rows(&native, &saved, &read, &Cancellation::default()).await.is_err());
-    native.delete_session().await.unwrap();
-    drop(native);
-    let reopened = SqliteBackend::new(
-        root.path().join("storage.sqlite"),
-        history,
-        SqliteSettings {
-            chunk_rows: nz(4),
-            chunk_bytes: policy.response.batch_bytes,
-        },
-    )
-    .unwrap();
-    reopened.create_session().await.unwrap();
-    assert!(list_column_rows(&reopened, &saved, &read, &Cancellation::default()).await.is_err());
-    let current = reopened.create_snapshot(&cut).await.unwrap();
+    primary.delete_snapshot(&saved).await.unwrap();
+    assert!(list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.is_err());
+    primary.delete_session().await.unwrap();
+    
+
+    primary.create_session().await.unwrap();
+    assert!(list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.is_err());
+    let current = primary.create_snapshot(&cut).await.unwrap();
     assert_ne!(current.token, saved.token);
-    reopened.delete_snapshot(&current).await.unwrap();
-    reopened.delete_session().await.unwrap();
+    primary.delete_snapshot(&current).await.unwrap();
+    primary.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved_fallback).await.unwrap();
     fallback.delete_session().await.unwrap();
 }

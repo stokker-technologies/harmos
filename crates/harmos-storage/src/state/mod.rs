@@ -10,15 +10,12 @@
 /* === Modules === */
 
 mod admission;
-pub mod config;
-pub mod file;
 mod reader;
 mod segments;
 
 /* === Re-Exports === */
 
 pub use admission::Permit;
-pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
 pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 

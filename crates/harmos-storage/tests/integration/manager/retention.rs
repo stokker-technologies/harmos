@@ -9,7 +9,10 @@
 
 /* === Imports === */
 
-use super::backend::{Backend, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms::{Experiment, objects_catalog};
 use harmos_storage::Identifier;
 use harmos_domain::model::storage::query::Query;
@@ -54,7 +57,7 @@ impl Revisions {
             objects_catalog(),
             StorageBackends {
                 primary: data,
-                state: std::sync::Arc::new(Recovery::new(history())),
+                state: std::sync::Arc::new(RecoveryBackend::new(history())),
             },
             storage_settings(),
         )
@@ -135,7 +138,7 @@ async fn snapshots_progress_during_persistence() {
     let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;
@@ -241,7 +244,7 @@ async fn release_reclaims_history() {
     let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;

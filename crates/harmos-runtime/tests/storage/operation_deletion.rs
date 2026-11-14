@@ -68,7 +68,7 @@ async fn delete_removes_file() {
     assert_eq!(f.storage.delete_file_once(&request.mutation, &request.file).await.unwrap(), deleted);
     let mut query = f
         .storage
-        .query(harmos_runtime::storage::Query {
+        .query(harmos_domain::model::storage::query::Query {
             merge: None,
             at: f.storage.get_saved_position(),
             source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection {
@@ -80,7 +80,7 @@ async fn delete_removes_file() {
         })
         .await
         .unwrap();
-    assert!(matches!(query.next().await.unwrap(), Some(harmos_runtime::storage::query::QueryArrow::Schema(_))));
+    assert!(matches!(query.next().await.unwrap(), Some(harmos_query::QueryArrow::Schema(_))));
     assert!(query.next().await.unwrap().is_none());
     drop(query);
     assert!(f.data.files.lock().unwrap().is_empty());

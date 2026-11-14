@@ -51,8 +51,6 @@ mod record_view;
 mod schema_sets;
 mod selection;
 mod snapshot;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
 mod staging;
 pub mod state;
 

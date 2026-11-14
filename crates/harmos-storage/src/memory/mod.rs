@@ -22,12 +22,16 @@ mod read_backend;
 
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 use tokio::sync::Notify;
+use tracing::Instrument;
+use tracing::subscriber::NoSubscriber;
+use crate::execution::Context;
 
 // Local Imports
 use crate::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
@@ -230,7 +234,7 @@ pub struct Backend {
     pub saved: AtomicUsize,
 }
 
-pub struct Recovery {
+pub struct RecoveryBackend {
     pub history: StoreHistory,
     pub control: Control,
     pub entries: Mutex<BTreeMap<u64, RecoveryEntry>>,
@@ -762,7 +766,9 @@ impl StorageBackend for Backend {
     ) -> StorageFuture<'a, bool> {
         Box::pin(async move {
             self.history.check(&through.history)?;
-            assert!(through.sequence <= self.saved.load(Ordering::SeqCst) as u64);
+            if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(Error::InvalidInput { field: "prune in-memory object revisions", reason: "frontier exceeds saved position" });
+            }
             self.control.prune_calls.lock().unwrap().push((through.sequence, max_entries.get()));
             if self.control.block_prune.load(Ordering::SeqCst) {
                 self.control.prune_entered.notify_one();
@@ -772,7 +778,7 @@ impl StorageBackend for Backend {
                 let mut objects = self.objects.lock().unwrap();
                 let mut remove = Vec::new();
                 let mut done = true;
-                // Controlled test storage uses a scan; real adapters use their key index.
+                // Scan The In-Memory Store With A Bounded Removal List.
                 // Only a bounded removal list is allocated, independent of key count.
                 for (&position, object) in objects.range(..=through.sequence) {
                     let retention = retention.retention(&object.value.schema)?;
@@ -1029,7 +1035,7 @@ impl Backend {
     }
 }
 
-impl Recovery {
+impl RecoveryBackend {
     pub fn new(history: StoreHistory) -> Self {
         Self {
             history,
@@ -1045,12 +1051,12 @@ impl Recovery {
     }
 }
 
-impl StateBackend for Recovery {
+impl StateBackend for RecoveryBackend {
     fn get_history(&self) -> &StoreHistory {
         &self.history
     }
     fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition> {
-        Box::pin(async {
+        Box::pin(recovery_call("open", async move {
             self.control.open.store(true, Ordering::SeqCst);
             if self.control.block_open.load(Ordering::SeqCst) {
                 self.control.open_entered.notify_one();
@@ -1060,10 +1066,13 @@ impl StateBackend for Recovery {
                 return Err(failure(BackendFailure::Permanent));
             }
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
-        })
+        
+            }))
     }
     fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
-        Box::pin(async move {
+        Box::pin(recovery_call("write_entries", async move {
+            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "write_entries in-memory recovery" }); }
+
             if self.control.retain_recovery.load(Ordering::SeqCst) {
                 *self.control.retained_recovery.lock().unwrap() = Some(entries.clone());
             }
@@ -1077,10 +1086,13 @@ impl StateBackend for Recovery {
             }
             for entry in entries.as_slice() { stored.insert(entry.position.sequence, entry.clone()); }
             Ok(())
-        })
+        
+            }))
     }
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
-        Box::pin(async move {
+        Box::pin(recovery_call("write_snapshot", async move {
+            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "write_snapshot in-memory recovery" }); }
+
             if self.control.retain_snapshot.load(Ordering::SeqCst) {
                 *self.control.retained_snapshot.lock().unwrap() = Some(snapshot.clone());
             }
@@ -1096,10 +1108,13 @@ impl StateBackend for Recovery {
             *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
             self.control.snapshot_written.notify_one();
             Ok(())
-        })
+        
+            }))
     }
     fn get_recovery_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
-        Box::pin(async move {
+        Box::pin(recovery_call("read_snapshot", async move {
+            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "read_snapshot in-memory recovery" }); }
+
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
@@ -1109,12 +1124,15 @@ impl StateBackend for Recovery {
                 return Err(Error::ResourceExhausted { resource: "read in-memory recovery snapshot" });
             }
             Ok(snapshot)
-        })
+        
+            }))
     }
     fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
-        Box::pin(async move {
+        Box::pin(recovery_call("read_entries", async move {
+            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "read_entries in-memory recovery" }); }
+
             self.history.check(&after.history)?;
             self.history.check(&through.history)?;
             if after.sequence > through.sequence { return Err(Error::InvalidInput { field: "read in-memory recovery entries", reason: "start exceeds frontier" }); }
@@ -1140,13 +1158,16 @@ impl StateBackend for Recovery {
                 entries,
                 next: (last < through.sequence).then(|| self.at(last)),
             })
-        })
+        
+            }))
     }
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
-        Box::pin(async move {
+        Box::pin(recovery_call("flush", async move {
+            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "flush in-memory recovery" }); }
+
             self.history.check(&through.history)?;
             self.control.flush(through.sequence).await?;
-            self.saved.store(through.sequence as usize, Ordering::SeqCst);
+            self.saved.fetch_max(through.sequence as usize, Ordering::SeqCst);
             let mut pending = self.pending_snapshot.lock().unwrap();
             if pending.as_ref().is_some_and(|snapshot| snapshot.through.sequence <= through.sequence) {
                 *self.snapshot.lock().unwrap() = pending.take();
@@ -1154,17 +1175,30 @@ impl StateBackend for Recovery {
             if self.control.flush_failures.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1)).is_ok() {
                 return Err(failure(BackendFailure::Transient));
             }
-            Ok(through.clone())
-        })
+            Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
+        
+            }))
     }
     fn delete_recovery_session(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async { self.control.close() })
+        Box::pin(recovery_call("close", async move { self.control.close() 
+            }))
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+async fn recovery_call<T>(method: &'static str, work: impl Future<Output = Result<T>>) -> Result<T> {
+    // Avoid Registering An Unobserved Site Against Another Scoped Collector.
+    if tracing::dispatcher::get_default(|dispatch| dispatch.is::<NoSubscriber>()) {
+        return work.await;
+    }
+    let context = Context::current();
+    let span = context.sync(|| tracing::debug_span!("storage.state.backend", method, outcome = "cancelled"));
+    let memory = context.sync(|| span.in_scope(|| tracing::trace_span!("storage.state.memory")));
+    context.result(span, work.instrument(memory)).await
+}
 
 fn failure(kind: BackendFailure) -> Error {
     Error::backend("in-memory storage", kind, std::io::Error::new(std::io::ErrorKind::PermissionDenied, "injected failure"))

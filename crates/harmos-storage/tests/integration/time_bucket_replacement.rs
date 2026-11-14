@@ -36,7 +36,6 @@ use harmos_storage::query::projection::advance_projection;
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_query::time_buckets::TimeBucketPlan;
 use harmos_query::transform::Transform;
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 
 /* === Constants === */
@@ -158,18 +157,8 @@ fn record(history: &StoreHistory, schema: &SchemaKey, position: u64, identity: &
 #[tokio::test]
 async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     // Capture Half-Open Boundaries, Ties And Two Independent Groups.
-    let root = tempfile::tempdir().unwrap();
     let history = backend::history();
-    let policy = backend::storage_settings();
-    let native = SqliteBackend::new(
-        root.path().join("buckets.sqlite"),
-        history.clone(),
-        SqliteSettings {
-            chunk_rows: nz(3),
-            chunk_bytes: policy.response.batch_bytes,
-        },
-    )
-    .unwrap();
+    let primary = backend::Backend::new(history.clone());
     let fallback = backend::Backend::new(history.clone());
     let schema = SchemaKey {
         id: Identifier::new("sample").unwrap(),
@@ -211,7 +200,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     let cancel = Cancellation::default();
     let cut = StorageCursor { history: history.clone(), sequence: 7 };
     let mut saved = Vec::new();
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()]).into()).await.unwrap();
         backend.append_records(StorageBatch::new(records.clone())).await.unwrap();
@@ -232,7 +221,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         limits: ReadLimits { rows: nz(1), bytes: nz(16384) },
         work,
     };
-    let (initial, initial_keys) = read_all(&native, read.clone()).await;
+    let (initial, initial_keys) = read_all(&primary, read.clone()).await;
     assert_eq!(initial, read_all(&fallback, read.clone()).await.0);
     assert_eq!(initial_keys, vec![key(0, -1), key(0, 0), key(0, 1), key(1, 0)]);
     let middle = &initial[1];
@@ -248,18 +237,11 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     // Add A Late Sample And Move One Logical Identity Across A Bucket Boundary.
     let additions = vec![record(&history, &schema, 8, "late", 5, 0, -2.0), record(&history, &schema, 9, "c", 11, 0, 2.0)];
     let next = StorageCursor { history: history.clone(), sequence: 9 };
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.append_records(StorageBatch::new(additions.clone())).await.unwrap();
         let snapshot = backend.create_snapshot(&next).await.unwrap();
-        let before = backend.get_work().await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
-        let after = backend.get_work().await.unwrap();
-        if backend.capabilities().native_arrow {
-            assert_eq!(after.source_rows - before.source_rows, additions.len() as u64);
-            assert_eq!(after.buckets - before.buckets, 2);
-            assert!(after.bucket_rows - before.bucket_rows < records.len() as u64);
-            assert!(after.bucket_steps - before.bucket_steps < (after.bucket_rows - before.bucket_rows) * 40 + 60);
-        }
+
         backend.delete_snapshot(&snapshot).await.unwrap();
         assert_eq!(read_all(backend, read.clone()).await.0, initial);
         let (current, changed) = read_all(backend, ProjectionRead { frontier: next.clone(), ..read.clone() }).await;
@@ -288,7 +270,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     ];
     let moved_cut = StorageCursor { history: history.clone(), sequence: 10 };
     let final_cut = StorageCursor { history: history.clone(), sequence: 14 };
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.append_records(StorageBatch::new(moved[..1].to_vec())).await.unwrap();
         let snapshot = backend.create_snapshot(&moved_cut).await.unwrap();
         advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.unwrap();
@@ -322,7 +304,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     }
 
     // Apply The Native Transform To Replayed Paged Arrow Input.
-    let snapshot = native.create_snapshot(&final_cut).await.unwrap();
+    let snapshot = primary.create_snapshot(&final_cut).await.unwrap();
     let mut scan = ArrowScan {
         source: definition.source.clone(),
         columns: vec![
@@ -341,7 +323,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     };
     let mut writer = None;
     loop {
-        let page = list_column_rows(&native, &snapshot, &scan, &cancel).await.unwrap();
+        let page = list_column_rows(&primary, &snapshot, &scan, &cancel).await.unwrap();
         let writer = writer.get_or_insert_with(|| TableWriter::new(page.batch.schema()).unwrap());
         writer.push(&page.batch, &mut || Ok(())).unwrap();
         writer.push(&page.batch, &mut || Ok(())).unwrap();
@@ -360,7 +342,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     assert_eq!(
         buckets,
         read_all(
-            &native,
+            &primary,
             ProjectionRead {
                 frontier: final_cut.clone(),
                 ..read.clone()
@@ -376,7 +358,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
     // Refuse Non-Finite Input Without Advancing The Readable Frontier.
     let invalid = record(&history, &schema, 15, "invalid", 1, 0, f64::NAN);
     let invalid_cut = StorageCursor { history: history.clone(), sequence: 15 };
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.append_records(StorageBatch::new(vec![invalid.clone()])).await.unwrap();
         let snapshot = backend.create_snapshot(&invalid_cut).await.unwrap();
         assert!(advance_projection(backend, &snapshot, &definition.name, None, work, &cancel).await.is_err());
@@ -386,11 +368,11 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         );
         backend.delete_snapshot(&snapshot).await.unwrap();
     }
-    native.delete_snapshot(&snapshot).await.unwrap();
+    primary.delete_snapshot(&snapshot).await.unwrap();
     // Refuse A Rebuilt Projection Before Native Or Fallback Advancement.
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         let revision = backend
             .set_projection_definition(&rebuilt, Some(1), true, None)
             .await
@@ -409,8 +391,8 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         );
         backend.delete_snapshot(&snapshot).await.unwrap();
     }
-    native.delete_snapshot(&saved[0]).await.unwrap();
-    native.delete_session().await.unwrap();
+    primary.delete_snapshot(&saved[0]).await.unwrap();
+    primary.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved[1]).await.unwrap();
     fallback.delete_session().await.unwrap();
 }

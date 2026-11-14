@@ -19,7 +19,9 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::Mutex, task::JoinHandle};
 
 // Local Imports
-use super::manager::backend::{Backend, Recovery, history};
+use super::manager::backend::Backend;
+use super::manager::backend::RecoveryBackend;
+use super::manager::backend::history;
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
 use harmos_storage::*;
 
@@ -74,7 +76,7 @@ pub(super) async fn storage(primary: &Arc<Backend>) -> StorageManager {
 
     let backends = StorageBackends {
         primary: primary.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::new(backends, settings).unwrap();
     storage

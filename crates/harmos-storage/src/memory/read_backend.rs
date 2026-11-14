@@ -247,6 +247,13 @@ impl Backend {
         Box::pin(async move {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
+            if let ObjectVersion::Exact(version) = &query.version {
+                self.history.check(version.history())?;
+                let sequence = version.revision().get();
+                if image.pruned_objects.get(&sequence).is_some_and(|(schema, item)| schema.id == query.schema && item == &query.item) {
+                    return Err(Error::Gap { requested: sequence, available: image.lost_objects_through.saturating_add(1) });
+                }
+            }
             let object = image.objects.values().rev().find(|object| {
                 object.position.sequence <= snapshot.at.sequence
                     && object.value.schema.id == query.schema

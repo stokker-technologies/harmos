@@ -54,6 +54,8 @@ impl<T> ReadBatch<T> {
     where
         E: From<crate::Error>,
     {
+        let span = tracing::trace_span!("storage.read_batch.try_map", outcome = "cancelled");
+        let _entered = span.enter();
         let owner = Arc::try_unwrap(self.inner).map_err(|_| {
             E::from(crate::Error::InvalidInput {
                 field: "read projection",
@@ -61,6 +63,7 @@ impl<T> ReadBatch<T> {
             })
         })?;
         let value = map(owner)?;
+        span.record("outcome", "completed");
         Ok(ReadBatch::new(value))
     }
 

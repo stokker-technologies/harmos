@@ -18,7 +18,16 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::{CleanupCapture, closed};
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::storage::{Bank, Data, Ledger, Recovery, Runtime, StorageBackends, StorageManager, catalog, config, history};
+use crate::storage::Bank;
+use crate::storage::Backend;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::Runtime;
+use crate::storage::StorageBackends;
+use crate::storage::StorageManager;
+use crate::storage::catalog;
+use crate::storage::config;
+use crate::storage::history;
 use harmos_runtime::storage::{ReadLimits, StorageSettings};
 use harmos_runtime::{state::Focus, state::Position, state::PrincipalId, state::RequestKey};
 
@@ -45,8 +54,8 @@ struct Seen {
 }
 
 struct Store {
-    data: Arc<Data>,
-    recovery: Arc<Recovery>,
+    data: Arc<Backend>,
+    recovery: Arc<RecoveryBackend>,
 }
 
 /* === Enums === */
@@ -169,8 +178,8 @@ impl harmos_runtime::state::Transaction<i64> for Add {
 impl Store {
     fn new() -> Self {
         Self {
-            data: Arc::new(Data::new(history())),
-            recovery: Arc::new(Recovery::new(history())),
+            data: Arc::new(Backend::new(history())),
+            recovery: Arc::new(RecoveryBackend::new(history())),
         }
     }
     fn manager(&self, config: StorageSettings) -> StorageManager {

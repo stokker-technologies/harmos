@@ -74,7 +74,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         transforms: vec![],
         page: None,
     };
-    let local_query = harmos_storage::Query {
+    let local_query = harmos_domain::model::storage::query::Query {
             merge: None,
         at: fixture.storage.get_saved_position(),
         source: harmos_storage::query::Source::Records(harmos_storage::query::RecordSelection {

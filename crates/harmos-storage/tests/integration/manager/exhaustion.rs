@@ -32,7 +32,7 @@ async fn oversized_batch_refused() {
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(super::backend::Recovery::new(history())),
+            state: Arc::new(super::backend::RecoveryBackend::new(history())),
         },
         settings,
     )
