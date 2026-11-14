@@ -575,6 +575,8 @@ budget without loading unrelated Protobuf meta-schema definitions.
 
 The descriptor census is client 12 services/59 calls → 14/33, plugin-host 6/40 →
 4/8, and plugin 1/4 → 1/4. Shared `harmos.v1` has zero services.
+The final library descriptor set contains 19 services, 45 methods and 167
+top-level messages; application wrappers and Private native operations are separate.
 
 ### Call Mapping
 
