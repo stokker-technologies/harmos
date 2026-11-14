@@ -33,7 +33,7 @@ impl ProtobufOperation for AnalyzeExchange {
         harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>,
         harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>,
     );
-    const ID: &'static str = "schematic.analyze.exchange";
+    const ID: &'static str = "schematic.host.v1.Schematic/AnalyzeExchange";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =

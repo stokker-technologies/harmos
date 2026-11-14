@@ -30,7 +30,7 @@ impl ProtobufOperation for ProposeRoute {
     type Request = crate::protocol::SchematicProposeRouteRequest;
     type Response = crate::protocol::SchematicProposeRouteResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.route";
+    const ID: &'static str = "schematic.host.v1.Schematic/ProposeRoute";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =

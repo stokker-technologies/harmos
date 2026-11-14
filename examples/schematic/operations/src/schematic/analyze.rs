@@ -30,7 +30,7 @@ impl ProtobufOperation for AnalyzeSchematic {
     type Request = crate::protocol::SchematicAnalyzeRequest;
     type Response = crate::protocol::AnalysisResult;
     type Endpoints = harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>;
-    const ID: &'static str = "schematic.analyze";
+    const ID: &'static str = "schematic.host.v1.Schematic/Analyze";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =

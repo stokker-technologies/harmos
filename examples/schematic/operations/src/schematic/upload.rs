@@ -30,7 +30,7 @@ impl ProtobufOperation for AnalyzeUpload {
     type Request = crate::protocol::SchematicAnalyzeUploadHeader;
     type Response = crate::protocol::SchematicAnalyzeUploadResponse;
     type Endpoints = harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>;
-    const ID: &'static str = "schematic.analyze.upload";
+    const ID: &'static str = "schematic.host.v1.Schematic/AnalyzeUpload";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =

@@ -30,7 +30,7 @@ impl ProtobufOperation for ValidateSchematic {
     type Request = crate::protocol::SchematicValidateRequest;
     type Response = crate::protocol::SchematicValidateResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.validate";
+    const ID: &'static str = "schematic.host.v1.Schematic/Validate";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =

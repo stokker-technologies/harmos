@@ -234,7 +234,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert_eq!(example.metadata.id, "schematic_tools");
     let declarations = example.metadata.declarations.as_ref().unwrap();
     let operations = declarations.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
-    assert_eq!(operations, BTreeSet::from(["schematic.route", "schematic.validate"]));
+    assert_eq!(operations, BTreeSet::from(["schematic.plugin.v1.Schematic/ProposeRoute", "schematic.plugin.v1.Schematic/Validate"]));
     assert!(declarations.types.as_ref().is_some_and(|types| !types.file.is_empty()));
     assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.host.v1.plugins.Settings/List"));
 
