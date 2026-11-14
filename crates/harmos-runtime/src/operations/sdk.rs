@@ -218,6 +218,7 @@ impl PluginSdkRegistration {
             Source::Host,
             None,
             EncodedInput {
+                protobuf: true,
                 retry: None,
                 policy: None,
                 payload,

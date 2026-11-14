@@ -727,6 +727,8 @@ backend values remain in `harmos-storage`. Native mutation, cursor and revision
 encodings preserve persisted data and original outcomes. Neither boundary exposes
 storage methods or an object registry. Product handlers call the native operation
 through `ExecutionContext::call_native` with their own policy and typed wire values.
+Native record and stream callbacks retain their declared message codec; public
+encoded calls and SDK lifecycle envelopes use protobuf independently of that codec.
 
 ### Application Operations in Discovery
 
