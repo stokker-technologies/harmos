@@ -12,7 +12,7 @@
 /* === Imports === */
 
 use super::{
-    invoke_support::{Host, Reply, payload},
+    invoke_support::{Host, Reply},
     manager::support::{self as manager, Backends, Host as ManagedHost},
     support::Remote,
 };
@@ -115,6 +115,11 @@ impl Signals {
 
 /* === Private Functions === */
 
+fn payload(value: &[u8]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    harmos_operations::execution::grpc::encode(&Host { value: value.into() }, &mut bytes).unwrap();
+    bytes
+}
 fn expected_failure() -> v1::Failure {
     v1::Failure {
         classification: v1::Classification::Transient as i32,
@@ -414,8 +419,9 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
     let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
-    host.client.create(manager::remote("tick-owner", &remote.address)).await.unwrap();
-    manager::state(&mut watch, "tick-owner", client::PluginState::Ready, 1).await;
+    host.client.create(manager::remote("tick_owner", &remote.address)).await.unwrap();
+    manager::state(&mut watch, "tick_owner", client::PluginState::Ready, 1).await;
+    drop(watch);
     signals.rejected.notified().await;
     let mut feed = host.runtime.streams.follow(harmos_runtime::storage::Cursor::ORIGIN);
     let collect = async {
@@ -431,6 +437,6 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     });
     let ((), result) = tokio::join!(collect, drive);
     result.unwrap();
-    assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick-owner") && reported == "remote"));
+    assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick_owner") && reported == "remote"));
     host.close().await;
 }
