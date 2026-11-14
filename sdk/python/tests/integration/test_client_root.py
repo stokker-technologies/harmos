@@ -140,24 +140,23 @@ class ClientRoot(unittest.IsolatedAsyncioTestCase):
         port = server.add_insecure_port("127.0.0.1:0")
         await server.start()
         try:
-            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as channel:
-                client = Client(channel)
-                product = ApplicationClient.connect(f"127.0.0.1:{port}")
-                self.addAsyncCleanup(product.close)
-                assert_type(product, ApplicationClient)
-                reply = await product.jobs.start(jobs.JobsStartRequest(value="product"))
-                assert_type(reply, jobs.JobsStartResponse)
-                self.assertEqual(reply.value, "product")
-                self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
-                self.assertEqual(
-                    (await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection"
-                )
-                self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
-                self.assertEqual((await client.plugins.annotations.get(annotations.AnnotationsGetRequest(name="example"))).value, "example")
-                self.assertEqual(
-                    [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
-                    ["opened:selection", "finished:selection"],
-                )
+            channel = grpc.aio.insecure_channel(f"127.0.0.1:{port}")
+            self.addAsyncCleanup(channel.close)
+            client = Client(channel)
+            product = ApplicationClient.connect(f"127.0.0.1:{port}")
+            self.addAsyncCleanup(product.close)
+            assert_type(product, ApplicationClient)
+            reply = await product.jobs.start(jobs.JobsStartRequest(value="product"))
+            assert_type(reply, jobs.JobsStartResponse)
+            self.assertEqual(reply.value, "product")
+            self.assertEqual((await client.status.get(status.StatusGetRequest())).status.identity.application_name, "selection")
+            self.assertEqual((await client.status.diagnostics.get(diagnostics.DiagnosticsGetRequest(name="selection"))).name, "selection")
+            self.assertEqual((await client.jobs.start(jobs.JobsStartRequest(value="selection"))).value, "selection")
+            self.assertEqual((await client.plugins.annotations.get(annotations.AnnotationsGetRequest(name="example"))).value, "example")
+            self.assertEqual(
+                [item.value async for item in client.jobs.progress.watch(progress.ProgressWatchRequest(value="selection"))],
+                ["opened:selection", "finished:selection"],
+            )
         finally:
             await server.stop(None)
 

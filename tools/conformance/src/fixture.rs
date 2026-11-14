@@ -134,7 +134,8 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
 pub fn host_types() -> FileDescriptorSet {
     let pool = SettingsListRequest::default().descriptor().parent_pool().clone();
     let types = FileDescriptorSet::decode(pool.encode_to_vec().as_slice()).expect("generated host descriptors");
-    let names: Vec<_> = HOST_OPERATIONS.iter().flat_map(|(_, request, response)| [*request, *response]).collect();
+    let names: Vec<_> =
+        HOST_OPERATIONS.iter().flat_map(|(_, request, response)| [*request, *response]).chain(["harmos.v1.SettingsDeclarations"]).collect();
     harmos_protocol::schema::operation_types(&types, &names).expect("typed host projections")
 }
 

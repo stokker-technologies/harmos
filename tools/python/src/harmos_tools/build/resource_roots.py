@@ -145,7 +145,12 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         merged = FileDescriptorSet()
         merged.file.extend(descriptors.file)
         merged.file.extend(FileDescriptorSet.FromString(fixture.read_bytes()).file)
-        python(root / "sdk/python/tests/fixtures/client/client.py", fixture_methods, merged)
+        python(
+            root / "sdk/python/tests/fixtures/client/client.py",
+            fixture_methods,
+            merged,
+            module_prefixes={"application": "tests.fixtures.client.application"},
+        )
         for folder in ["sdk/csharp/tests/Harmos.Tests/Generated"]:
             (root / folder).mkdir(parents=True, exist_ok=True)
         rust(root, fixture_methods, target=fixture.parent / "resources.rs")

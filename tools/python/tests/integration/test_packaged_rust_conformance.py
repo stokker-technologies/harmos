@@ -76,7 +76,7 @@ class PackagedRustConformance(unittest.TestCase):
             consumer = scratch / "consumer"
             (consumer / "src").mkdir(parents=True)
             shutil.copytree(root / "sdk/rust/tests/fixtures/conformance", consumer / "src/conformance")
-            manifest = f'[package]\nname = "packaged-conformance"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nharmos = "={version}"\nprost = "0.14"\nprost-types = "0.14"\nfutures-util = "0.3"\n[patch.crates-io]\n'
+            manifest = f'[package]\nname = "packaged-conformance"\nversion = "0.0.0"\nedition = "2024"\n[dependencies]\nharmos = "={version}"\nharmos-protocol = "={version}"\ntokio = {{ version = "1", features = ["macros", "rt", "sync"] }}\nprost = "0.14"\nprost-types = "0.14"\nfutures-util = "0.3"\n[patch.crates-io]\n'
             for package in packages:
                 manifest += f'{package} = {{ path = "../{package}-{version}" }}\n'
             manifest += '[profile.dev]\ndebug = "line-tables-only"\n[profile.dev.package."*"]\ndebug = false\n'
