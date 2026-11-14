@@ -199,10 +199,12 @@ public sealed class OperationsResource
 public sealed class PluginsResource
 {
   private readonly CallInvoker invoker;
+  public PluginsAnnotationsResource Annotations { get; }
   public PluginsSettingsResource Settings { get; }
   public PluginsResource(CallInvoker invoker)
   {
     this.invoker = invoker;
+    Annotations = new PluginsAnnotationsResource(invoker);
     Settings = new PluginsSettingsResource(invoker);
   }
   public AsyncUnaryCall<global::Harmos.Client.V1.PluginsGetResponse> Get(global::Harmos.Client.V1.PluginsGetRequest request, CallOptions options = default)
@@ -259,6 +261,21 @@ public sealed class PluginsResource
     var method = new Method<global::Harmos.Client.V1.PluginsReplaceRequest, global::Harmos.Client.V1.PluginsReplaceResponse>(MethodType.Unary, "harmos.client.v1.Plugins", "Replace",
         Marshallers.Create<global::Harmos.Client.V1.PluginsReplaceRequest>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsReplaceRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<global::Harmos.Client.V1.PluginsReplaceResponse>(value => value.ToByteArray(), bytes => global::Harmos.Client.V1.PluginsReplaceResponse.Parser.ParseFrom(bytes)));
+    return invoker.AsyncUnaryCall(method, null, options, request);
+  }
+}
+public sealed class PluginsAnnotationsResource
+{
+  private readonly CallInvoker invoker;
+  public PluginsAnnotationsResource(CallInvoker invoker)
+  {
+    this.invoker = invoker;
+  }
+  public AsyncUnaryCall<global::Application.V1.Plugins.AnnotationsGetResponse> Get(global::Application.V1.Plugins.AnnotationsGetRequest request, CallOptions options = default)
+  {
+    var method = new Method<global::Application.V1.Plugins.AnnotationsGetRequest, global::Application.V1.Plugins.AnnotationsGetResponse>(MethodType.Unary, "application.v1.plugins.Annotations", "Get",
+        Marshallers.Create<global::Application.V1.Plugins.AnnotationsGetRequest>(value => value.ToByteArray(), bytes => global::Application.V1.Plugins.AnnotationsGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<global::Application.V1.Plugins.AnnotationsGetResponse>(value => value.ToByteArray(), bytes => global::Application.V1.Plugins.AnnotationsGetResponse.Parser.ParseFrom(bytes)));
     return invoker.AsyncUnaryCall(method, null, options, request);
   }
 }

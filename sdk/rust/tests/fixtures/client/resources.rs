@@ -167,11 +167,13 @@ impl Operations {
 #[derive(Clone)]
 pub struct Plugins {
     client: ClientTransport,
+    pub annotations: PluginsAnnotations,
     pub settings: PluginsSettings,
 }
 impl Plugins {
     pub fn new(client: ClientTransport) -> Self {
         Self {
+            annotations: PluginsAnnotations::new(client.clone()),
             settings: PluginsSettings::new(client.clone()),
             client,
         }
@@ -199,6 +201,20 @@ impl Plugins {
     }
     pub async fn replace(&self, request: tonic::Request<harmos_protocol::client::PluginsReplaceRequest>) -> Result<tonic::Response<harmos_protocol::client::PluginsReplaceResponse>, tonic::Status> {
         self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.client.v1.Plugins/Replace"), request, harmos_protocol::client::PluginsReplaceResponse::default().descriptor()).await
+    }
+}
+#[derive(Clone)]
+pub struct PluginsAnnotations {
+    client: ClientTransport,
+}
+impl PluginsAnnotations {
+    pub fn new(client: ClientTransport) -> Self {
+        Self {
+            client,
+        }
+    }
+    pub async fn get(&self, request: tonic::Request<application_protocol::v1::plugins::AnnotationsGetRequest>) -> Result<tonic::Response<application_protocol::v1::plugins::AnnotationsGetResponse>, tonic::Status> {
+        self.client.unary(tonic::codegen::http::uri::PathAndQuery::from_static("/application.v1.plugins.Annotations/Get"), request, application_protocol::v1::plugins::AnnotationsGetResponse::default().descriptor()).await
     }
 }
 #[derive(Clone)]

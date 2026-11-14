@@ -26,7 +26,7 @@ public sealed class Client : global::System.IDisposable
     Streams = new StreamsResource(invoker);
     Time = new TimeResource(invoker);
   }
-  public static Client Connect(string address, global::Harmos.Storage.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)
+  public static Client Connect(string address, global::Harmos.V1.StorageTransferSettings? transfer = null, int? messageBytes = null)
   {
     var maximum = Transfer.MessageBytes(transfer, messageBytes);
     var channel = global::Grpc.Net.Client.GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });

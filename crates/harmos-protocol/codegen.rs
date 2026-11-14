@@ -16,6 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 // Third Party Imports
 
@@ -37,10 +42,8 @@
 
 /* === Public Functions === */
 
-pub fn generate_conformance(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/conformance/proto");
+pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/conformance/proto");
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);
@@ -55,10 +58,8 @@ pub fn generate_conformance(
     Ok(())
 }
 
-pub fn generate(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut inputs = Vec::new();
     let mut folders = vec![proto.join("harmos")];
     while let Some(folder) = folders.pop() {
@@ -84,7 +85,7 @@ pub fn generate(
     }
     let mut descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("descriptors.bin"))?.as_slice())?;
-    let mut packages = std::collections::BTreeMap::<String, Vec<std::path::PathBuf>>::new();
+    let mut packages = BTreeMap::<String, Vec<PathBuf>>::new();
     for file in &descriptors.file {
         let package = file.package.as_deref().unwrap_or_default();
         if package.starts_with("harmos.") {
@@ -187,7 +188,7 @@ pub fn generate(
 
 /* === Private Functions === */
 
-pub fn module_path(package: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
     for (prefix, root) in
         [("harmos.plugin.host.v1", "plugin::host"), ("harmos.client.v1", "client"), ("harmos.plugin.v1", "plugin"), ("harmos.v1", "v1")]
     {
@@ -204,11 +205,10 @@ pub fn module_path(package: &str) -> Result<String, Box<dyn std::error::Error>> 
 /* === Tests === */
 
 /// Generate Independent Library and Product Contracts for SDK Composition Stories.
-pub fn generate_client_fixture(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto"].map(|file| proto.join(file));
+pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
+    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto", "application/v1/plugins/annotations.proto"]
+        .map(|file| proto.join(file));
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));

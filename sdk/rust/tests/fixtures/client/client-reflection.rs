@@ -8,3 +8,5 @@ impl ReflectMessage for crate::v1::JobsStartRequest { fn descriptor(&self) -> Me
 impl ReflectMessage for crate::v1::JobsStartResponse { fn descriptor(&self) -> MessageDescriptor { pool().get_message_by_name("application.v1.JobsStartResponse").expect("generated fixture message") } }
 impl ReflectMessage for crate::v1::jobs::ProgressWatchRequest { fn descriptor(&self) -> MessageDescriptor { pool().get_message_by_name("application.v1.jobs.ProgressWatchRequest").expect("generated fixture message") } }
 impl ReflectMessage for crate::v1::jobs::ProgressWatchResponse { fn descriptor(&self) -> MessageDescriptor { pool().get_message_by_name("application.v1.jobs.ProgressWatchResponse").expect("generated fixture message") } }
+impl ReflectMessage for crate::v1::plugins::AnnotationsGetRequest { fn descriptor(&self) -> MessageDescriptor { pool().get_message_by_name("application.v1.plugins.AnnotationsGetRequest").expect("generated fixture message") } }
+impl ReflectMessage for crate::v1::plugins::AnnotationsGetResponse { fn descriptor(&self) -> MessageDescriptor { pool().get_message_by_name("application.v1.plugins.AnnotationsGetResponse").expect("generated fixture message") } }

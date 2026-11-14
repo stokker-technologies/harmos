@@ -48,7 +48,12 @@ use std::{error::Error, fs, path::Path};
 #[test]
 fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     let output = tempfile::tempdir()?;
-    codegen::generate(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
+    codegen::generate(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join(".."),
+        &protoc_bin_vendored::protoc_bin_path()?,
+        &protoc_bin_vendored::include_path()?,
+        output.path(),
+    )?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     for (source, target) in
         [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]

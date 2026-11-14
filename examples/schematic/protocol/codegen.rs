@@ -42,9 +42,9 @@ use prost_types::FileDescriptorSet;
 /* === Public Functions === */
 
 /// Generate the Example's Authoritative Contracts.
-pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
-    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../proto");
-    let core = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../proto");
+pub fn generate(root: &Path, compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = root.join("proto");
+    let core = root.join("../../proto");
     let mut config = Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);

@@ -416,6 +416,9 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.sdk == "cpp":
             return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":
+            result = cargo.focused(root, "build", ["--locked", "-p", "harmos-protocol", "--example", "generate"])
+            if result:
+                return result
             binary = (
                 root
                 / "target"

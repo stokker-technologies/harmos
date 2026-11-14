@@ -2475,6 +2475,7 @@ name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
  "harmos-operations",
+ "harmos-protocol",
  "schematic-domain",
  "schematic-protocol",
  "thiserror",

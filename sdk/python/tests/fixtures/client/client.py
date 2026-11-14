@@ -19,6 +19,7 @@ import harmos._wire.client.v1.streams_pb2 as messages_12
 import harmos._wire.client.v1.time_pb2 as messages_13
 import tests.fixtures.client.application.v1.jobs.progress_pb2 as messages_14
 import tests.fixtures.client.application.v1.jobs_pb2 as messages_15
+import tests.fixtures.client.application.v1.plugins.annotations_pb2 as messages_16
 from harmos.client_transport import Metadata, stream, unary
 
 
@@ -162,6 +163,29 @@ class JobsProgressResource:
             "/application.v1.jobs.Progress/Watch",
             request,
             messages_14.ProgressWatchResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+        )
+
+
+class PluginsAnnotationsResource:
+    def __init__(self, channel: grpc.aio.Channel) -> None:
+        self._channel = channel
+
+    def get(
+        self,
+        request: messages_16.AnnotationsGetRequest,
+        *,
+        metadata: Metadata | None = None,
+        timeout: float | None = None,
+        credentials: grpc.CallCredentials | None = None,
+    ) -> grpc.aio.UnaryUnaryCall[messages_16.AnnotationsGetRequest, messages_16.AnnotationsGetResponse]:
+        return unary(
+            self._channel,
+            "/application.v1.plugins.Annotations/Get",
+            request,
+            messages_16.AnnotationsGetResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
@@ -467,6 +491,7 @@ class OperationsResource:
 class PluginsResource:
     def __init__(self, channel: grpc.aio.Channel) -> None:
         self._channel = channel
+        self.annotations: PluginsAnnotationsResource = PluginsAnnotationsResource(channel)
         self.settings: PluginsSettingsResource = PluginsSettingsResource(channel)
 
     def get(

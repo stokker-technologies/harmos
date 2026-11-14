@@ -26,6 +26,9 @@ pub mod v1 {
     pub mod jobs {
         include!("../fixtures/client/application.v1.jobs.rs");
     }
+    pub mod plugins {
+        include!("../fixtures/client/application.v1.plugins.rs");
+    }
 }
 mod client_reflection {
     include!("../fixtures/client/client-reflection.rs");
