@@ -5,7 +5,7 @@ the examples.
 
 ## 0. Decisions Before Implementation
 
-- [ ] 0.1 Confirm whether an entry is a release line showing its latest patch or a single tag.
+- [x] 0.1 Decided by the owner on 2026-11-14: an entry is a release line showing its latest patch; `latest` points at the newest stable line and `dev` at the development branch.
 - [ ] 0.2 Try the present guides in Starlight and in Docusaurus; choose the generator.
 - [ ] 0.3 Verify the reference generator for each language is current and handles the SDK as built.
 
