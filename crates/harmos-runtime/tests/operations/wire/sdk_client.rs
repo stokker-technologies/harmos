@@ -26,6 +26,7 @@ use super::{
         messages::{Reply, Request},
     },
 };
+use harmos_protocol::client::OperationsListRequest;
 use harmos_runtime::operations::{
     ExecutionContext, Grpc, OperationPolicy, ProtobufInput, ProtobufOperation, ProtobufOutput, Registration, RetryPolicy, ServingError,
     Visibility,
@@ -159,12 +160,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let client = Client::new(channel.clone(), settings).unwrap();
 
     // Discover And Bind The Exact Generated Application Types.
-    let page = client
-        .operations
-        .list(RpcRequest::new(harmos_protocol::client::OperationsListRequest { ..Default::default() }))
-        .await
-        .unwrap()
-        .into_inner();
+    let page = client.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap().into_inner();
     let contract = |id: &str| {
         page.operations.iter().filter_map(|operation| operation.contract.as_ref()).find(|operation| operation.id == id).unwrap().clone()
     };
@@ -300,11 +296,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
-    let error = bounded
-        .operations
-        .list(RpcRequest::new(harmos_protocol::client::OperationsListRequest { ..Default::default() }))
-        .await
-        .unwrap_err();
+    let error = bounded.operations.list(RpcRequest::new(OperationsListRequest::default())).await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
 
     assert!(error.message().contains("harmos.client.v1.Operations/List"));

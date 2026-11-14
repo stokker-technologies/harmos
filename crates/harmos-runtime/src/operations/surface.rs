@@ -22,10 +22,12 @@ use std::future::Future;
 // Third Party Imports
 
 // Local Imports
+use super::NativeOperation;
 use super::caller::Source;
 use super::{CallContext, Context, ContextError, ContextValue, Manager, RequestShape, Running};
 use super::{EndpointSet, Lane, RetryPolicy};
 use crate::{Error, Result};
+use harmos_operations::execution::operations::NativeHost;
 
 /* === Constants === */
 
@@ -52,6 +54,17 @@ pub trait InvocationExt: Sized {
 }
 
 /* === Implementations === */
+
+impl NativeHost for RuntimeOperationHost {
+    type Error = Error;
+    async fn call_native<O: NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        let response = self.manager()?.submit_native_as::<O>(request, (), self.source.clone())?.await?;
+        response.try_unwrap().map_err(|_| Error::InvalidInput {
+            field: "Call Native Operation",
+            reason: "response is shared",
+        })
+    }
+}
 
 impl<O: RequestShape, E: EndpointSet> InvocationExt for harmos_operations::execution::operations::Invocation<RuntimeOperationHost, O, E> {
     fn lane(mut self, lane: Lane) -> Self {
@@ -627,16 +640,5 @@ mod tests {
         runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
         runtime.shutdown().await.unwrap();
-    }
-}
-
-impl harmos_operations::execution::operations::NativeHost for RuntimeOperationHost {
-    type Error = Error;
-    async fn call_native<O: super::NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
-        let response = self.manager()?.submit_native_as::<O>(request, (), self.source.clone())?.await?;
-        response.try_unwrap().map_err(|_| Error::InvalidInput {
-            field: "Call Native Operation",
-            reason: "response is shared",
-        })
     }
 }

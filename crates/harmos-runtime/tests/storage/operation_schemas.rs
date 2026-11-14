@@ -11,86 +11,79 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 // Third Party Imports
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::ListRows;
-use harmos_runtime::Identifier;
+use harmos_operations::storage::{ListRows, SchemaInput, SetSchemaRequest};
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
+use harmos_runtime::schema::wire::{Omission, Representation};
 use harmos_runtime::storage::query::{QueryArrow, RowSlice, SchemaSelection, Source};
-use harmos_runtime::storage::{MutationId, SchemaKey};
+use harmos_runtime::storage::{MutationId, PayloadEncoding, SchemaKey};
+use harmos_runtime::{Error, Identifier};
 
 /* === Private Functions === */
 
-fn schema(name: &str) -> harmos_operations::storage::SchemaInput {
-    harmos_operations::storage::SchemaInput {
-        key: Some(
-            SchemaKey {
-                payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
-                id: Identifier::new(name).unwrap(),
-                version: NonZeroU32::MIN,
-            }
-            .into(),
-        ),
-        graph: Some(
-            Schema {
-                representations: ::std::collections::BTreeMap::from([(
-                    0,
-                    harmos_runtime::schema::wire::Representation {
-                        omissions: ::std::collections::BTreeMap::from([("rows".into(), harmos_runtime::schema::wire::Omission::Empty)]),
-                        ..Default::default()
-                    },
-                )]),
-                root: 0,
-                definitions: vec![
-                    vec![Field {
-                        name: Cow::Borrowed("rows"),
+fn schema(name: &str) -> SchemaInput {
+    SchemaInput {
+        key: Some(SchemaKey {
+            payload_encoding: PayloadEncoding::PostcardV1,
+            id: Identifier::new(name).unwrap(),
+            version: NonZeroU32::MIN,
+        }),
+        graph: Some(Schema {
+            representations: BTreeMap::from([(
+                0,
+                Representation {
+                    omissions: BTreeMap::from([("rows".into(), Omission::Empty)]),
+                    ..Default::default()
+                },
+            )]),
+            root: 0,
+            definitions: vec![
+                vec![Field {
+                    name: Cow::Borrowed("rows"),
+                    tag: 1,
+                    cardinality: Cardinality::Repeated,
+                    kind: Kind::Message { definition: 1 },
+                }],
+                vec![
+                    Field {
+                        name: Cow::Borrowed("value"),
                         tag: 1,
-                        cardinality: Cardinality::Repeated,
+                        cardinality: Cardinality::Required,
+                        kind: Kind::F64,
+                    },
+                    Field {
+                        name: Cow::Borrowed("next"),
+                        tag: 2,
+                        cardinality: Cardinality::Optional,
                         kind: Kind::Message { definition: 1 },
-                    }],
-                    vec![
-                        Field {
-                            name: Cow::Borrowed("value"),
-                            tag: 1,
-                            cardinality: Cardinality::Required,
-                            kind: Kind::F64,
-                        },
-                        Field {
-                            name: Cow::Borrowed("next"),
-                            tag: 2,
-                            cardinality: Cardinality::Optional,
-                            kind: Kind::Message { definition: 1 },
-                        },
-                    ],
+                    },
                 ],
-            }
-            .into(),
-        ),
+            ],
+        }),
     }
 }
 
-fn schema_request(f: &Fixture, name: &str) -> harmos_operations::storage::SetSchemaRequest {
-    harmos_operations::storage::SetSchemaRequest {
-        mutation: Some(
-            MutationId {
-                window: f.storage.mutation_window().unwrap().id,
-                key: Identifier::new(name).unwrap(),
-            }
-            .into(),
-        ),
+fn schema_request(f: &Fixture, name: &str) -> SetSchemaRequest {
+    SetSchemaRequest {
+        mutation: Some(MutationId {
+            window: f.storage.mutation_window().unwrap().id,
+            key: Identifier::new(name).unwrap(),
+        }),
         schema: Some(schema(name)),
         expected_revision: Vec::new(),
         create_if_absent: true,
     }
 }
 
-fn assert_conflict(error: harmos_runtime::Error) {
-    let harmos_runtime::Error::OperationFailed { operation, source } = error else { panic!("unexpected failure: {error:?}") };
+fn assert_conflict(error: Error) {
+    let Error::OperationFailed { operation, source } = error else { panic!("unexpected failure: {error:?}") };
     assert_eq!(operation, "storage.set_schema");
     let Some(harmos_operations::execution::ServingError::Handler(failure)) = source.downcast_ref() else {
         panic!("missing typed failure: {source:?}");
