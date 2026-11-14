@@ -153,8 +153,10 @@ JSONL recovery or recording sidecar. Unsaved state is process-lifetime state.
 
 The [storage composition](../examples/schematic/app/src/services/queries.rs)
 constructs the public in-memory adapter with the application catalog and caller
-budgets. Managed state, plugin registry, file operations and the stream recording
-consumer share that manager. [Storage stories](../examples/schematic/app/tests/storage/main.rs)
+budgets. The plugin registry, file operations and stream recording consumer share
+that manager. Document Save/Open supplies the saved state and position; it does not
+attach managed recovery to a fresh memory journal. Undo and unsaved history remain
+owned by the running runtime. [Storage stories](../examples/schematic/app/tests/storage/main.rs)
 cover retained scans, conditional outcomes and resumable application uploads.
 A product needing process-restart durability supplies its own primary and recovery
 backends through `StorageBackends`; the example carries no disk backend.

@@ -12,30 +12,21 @@
 /* === Imports === */
 
 use crate::app::SchematicEditor;
+use harmos_runtime::builtins;
+use harmos_runtime::operations::Lane;
 use harmos_runtime::{
-    Setup,
-    config::ManagedStorageSettings,
-    storage::{ObjectCatalog, ReadLimits, StorageManager, StorageSettings},
+    Result, Setup,
+    storage::{ObjectCatalog, StorageManager, StorageSettings},
 };
+use schematic_operations::transfer;
 
 /* === Public Functions === */
 
-pub fn attach(
-    setup: &mut Setup<SchematicEditor>, catalog: ObjectCatalog, settings: StorageSettings,
-) -> harmos_runtime::Result<StorageManager> {
-    let limits = ReadLimits {
-        rows: settings.response.batch_rows,
-        bytes: settings.response.batch_bytes,
-    };
+pub fn attach(setup: &mut Setup<SchematicEditor>, catalog: ObjectCatalog, settings: StorageSettings) -> Result<StorageManager> {
     let storage = StorageManager::in_memory(catalog, settings)?;
-    setup.settings().storage(&storage).managed_storage(ManagedStorageSettings {
-        replay: limits,
-        capture: limits,
-        snapshots: None,
-        journal_tail: 128,
-    });
+    setup.settings().storage(&storage);
     crate::storage::recordings(setup, storage.clone());
-    setup.catalog(harmos_runtime::builtins::storage_catalog(), harmos_runtime::operations::Lane::default());
-    setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
+    setup.catalog(builtins::storage_catalog(), Lane::default());
+    setup.catalog(transfer::files_catalog(), Lane::default());
     Ok(storage)
 }
