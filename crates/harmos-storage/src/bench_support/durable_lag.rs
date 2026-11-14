@@ -47,7 +47,7 @@ pub struct Measurement {
     pub p50_ms: f64,
     pub p95_ms: f64,
     pub maximum_ms: f64,
-    pub maximum_backlog_bytes: usize,
+    pub maximum_backlog_batches: usize,
     pub maximum_backlog_positions: u64,
     pub admission_wait_ms: f64,
     pub stages: crate::PersistenceWork,
@@ -87,7 +87,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
     let batches = if matches!(load, Load::MultiMegabyte) { 128 } else { 1000 };
     let (accepted, mut admitted) = tokio::sync::mpsc::unbounded_channel();
     let producer = async {
-        let mut maximum_backlog_bytes = 0;
+        let mut maximum_backlog_batches = 0;
         let mut maximum_backlog_positions = 0;
         let mut bytes = 0;
         let mut admission_wait = Duration::ZERO;
@@ -126,7 +126,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
             }
             bytes += (rows * payload_bytes) as u64;
             let status = storage.status();
-            maximum_backlog_bytes = maximum_backlog_bytes.max(status.pending_bytes);
+            maximum_backlog_batches = maximum_backlog_batches.max(status.pending_batches);
             maximum_backlog_positions = maximum_backlog_positions.max(status.accepted.sequence - status.saved.sequence);
 
             // A 1 kHz Offered Small-Sample Rate; Large Batches Are Offered Continuously.
@@ -137,7 +137,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
             }
         }
         drop(accepted);
-        Ok::<_, crate::Error>((bytes, maximum_backlog_bytes, maximum_backlog_positions, admission_wait))
+        Ok::<_, crate::Error>((bytes, maximum_backlog_batches, maximum_backlog_positions, admission_wait))
     };
     let observer_storage = storage.clone();
     let observer = tokio::spawn(async move {
@@ -162,7 +162,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
         }
         Ok::<_, crate::Error>(lags)
     });
-    let (bytes, maximum_backlog_bytes, maximum_backlog_positions, admission_wait) = match producer.await {
+    let (bytes, maximum_backlog_batches, maximum_backlog_positions, admission_wait) = match producer.await {
         Ok(measurement) => measurement,
         Err(error) => {
             observer.abort();
@@ -182,7 +182,7 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
         p50_ms: percentile(&lags, 50),
         p95_ms: percentile(&lags, 95),
         maximum_ms: lags.last().copied().unwrap_or(0.0),
-        maximum_backlog_bytes,
+        maximum_backlog_batches,
         maximum_backlog_positions,
         admission_wait_ms: admission_wait.as_secs_f64() * 1000.0,
         stages: storage.inner.state.lock().unwrap().persistence,

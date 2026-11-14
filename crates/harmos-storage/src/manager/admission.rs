@@ -36,22 +36,20 @@ use super::*;
 
 impl StorageManager {
     #[tracing::instrument(name = "storage.manager.admission.admit", level = "debug", skip_all)]
-    pub(crate) async fn admit(
-        &self, domain: Domain, bytes: usize, count: usize, build: impl FnOnce(u64) -> Result<Operation>,
-    ) -> Result<u64> {
-        self.admit_mutation(domain, bytes, count, None, false, build).await
+    pub(crate) async fn admit(&self, domain: Domain, count: usize, build: impl FnOnce(u64) -> Result<Operation>) -> Result<u64> {
+        self.admit_mutation(domain, count, None, false, build).await
     }
 
-    #[tracing::instrument(name = "storage.manager.admission.admit_mutation", level = "debug", skip_all, fields(outcome = "cancelled", bytes = bytes, sequence = tracing::field::Empty, index = tracing::field::Empty))]
+    #[tracing::instrument(name = "storage.manager.admission.admit_mutation", level = "debug", skip_all, fields(outcome = "cancelled", sequence = tracing::field::Empty, index = tracing::field::Empty))]
     pub(crate) async fn admit_mutation(
-        &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
+        &self, domain: Domain, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
         build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<u64> {
-        self.admit_mutation_owned(domain, bytes, count, mutation, measurement, build).await.map(|(sequence, _)| sequence)
+        self.admit_mutation_owned(domain, count, mutation, measurement, build).await.map(|(sequence, _)| sequence)
     }
 
     pub(crate) async fn admit_mutation_owned(
-        &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
+        &self, domain: Domain, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
         build: impl FnOnce(u64) -> Result<Operation>,
     ) -> Result<(u64, Option<crate::receipts::Completion>)> {
         let result = async {
@@ -70,8 +68,6 @@ impl StorageManager {
             let counter = if measurement { &self.inner.measurement_waiting } else { &self.inner.control_waiting };
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             let _waiting = WriteWaiter { inner: self.inner.clone(), measurement };
-            let bytes = bytes.max(1);
-            let byte_capacity = self.inner.settings.request.max_pending_write_bytes.get();
             let batch_capacity = self.inner.settings.request.max_pending_write_batches.get();
             let admitted = self
                 .inner
@@ -107,21 +103,14 @@ impl StorageManager {
                             Err(error) => return Attempt::Refuse(Refusal::Failed(error)),
                         }
                     }
-                    if bytes > byte_capacity {
-                        return Attempt::Refuse(Refusal::Exceeded("pending storage writes"));
-                    }
                     state.collect();
 
                     // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
                     let opposite = if measurement { &self.inner.control_waiting } else { &self.inner.measurement_waiting };
                     let turn = state.prefer_measurement == measurement || opposite.load(std::sync::atomic::Ordering::SeqCst) == 0;
-                    if !(turn
-                        && state.reserved_batches == 0
-                        && state.finishing.is_none()
-                        && state.status.pending_bytes <= byte_capacity - bytes
-                        && state.status.pending_batches < batch_capacity)
+                    if !(turn && state.reserved_batches == 0 && state.finishing.is_none() && state.status.pending_batches < batch_capacity)
                     {
-                        self.inner.relieve_pressure(state, bytes, 1);
+                        self.inner.relieve_pressure(state, 1);
                         return Attempt::Wait;
                     }
                     let sequence = match domain {
@@ -134,7 +123,6 @@ impl StorageManager {
                             reason: "position overflow",
                         }));
                     };
-                    state.reserved = bytes;
                     state.reserved_batches = 1;
                     state.collect();
                     Attempt::Ready(Admitted::Reserved(sequence, last, index))
@@ -160,14 +148,9 @@ impl StorageManager {
                     reason: "snapshot is ahead of admitted transitions",
                 });
             }
-            let bytes = match &operation {
-                Operation::ObjectGroup { bytes: retained, .. } => *retained,
-                Operation::Conditional(_) => encoded_bound,
-                _ => bytes,
-            };
             tracing::Span::current().record("sequence", last);
             tracing::Span::current().record("index", index);
-            let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, encoded_bound, operation));
+            let pending = Arc::new(Pending::new(&self.inner, None, index, encoded_bound, operation));
             let completion;
             {
                 let _publication = tracing::debug_span!("storage.admission.publish").entered();
@@ -206,7 +189,6 @@ impl StorageManager {
                 }
                 state.next = index;
                 state.prefer_measurement = !measurement;
-                state.reserved = 0;
                 state.reserved_batches = 0;
                 state.queue.push_back(pending);
                 state.collect();

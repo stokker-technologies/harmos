@@ -197,10 +197,7 @@ impl<A: Application> Attachments<A> {
     pub(crate) fn require_capture(
         &mut self, limits: crate::state::CaptureLimits, consumer: impl crate::state::JournalCapture<A>,
     ) -> Result<(), crate::state::CaptureError> {
-        if limits.pending_bytes == 0
-            || limits.max_group_bytes == 0
-            || limits.max_group_bytes > limits.pending_bytes
-            || limits.pending_bytes as usize > tokio::sync::Semaphore::MAX_PERMITS
+        if limits.pending_groups == 0 || limits.pending_groups as usize > tokio::sync::Semaphore::MAX_PERMITS || limits.max_group_bytes == 0
         {
             return Err(crate::state::CaptureError::InvalidLimits);
         }

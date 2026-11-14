@@ -20,9 +20,9 @@ async fn snapshot_failure_retryable() {
     assert!(crate::support::app::shutdown(&runtime).await.is_err());
     assert_eq!(storage.status().recovery_saved.sequence, 1);
     assert!(store.recovery.snapshot.lock().unwrap().is_none());
-    assert!(storage.status().pending_bytes > 0);
+    assert!(storage.status().pending_batches > 0);
     store.recovery.control.permanent.store(false, Ordering::SeqCst);
     crate::support::app::shutdown(&runtime).await.unwrap();
     assert_eq!(store.snapshot().through.sequence, 1);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
 }

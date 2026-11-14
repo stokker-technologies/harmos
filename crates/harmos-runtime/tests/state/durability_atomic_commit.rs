@@ -485,10 +485,7 @@ async fn contract_refuses_apply() {
     let runtime = crate::support::app::launch::<Model>(State::default(), (), |setup| {
         setup.settings().register(changes_state_catalog());
         setup.settings().require_capture(
-            harmos_runtime::state::CaptureLimits {
-                pending_bytes: 4096,
-                max_group_bytes: 4096,
-            },
+            harmos_runtime::state::CaptureLimits { pending_groups: 4, max_group_bytes: 4096 },
             Capture(Arc::clone(&captures)),
         );
     })

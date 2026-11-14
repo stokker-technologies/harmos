@@ -38,7 +38,7 @@ use crate::{Application, state::Entry, state::Position, state::PreparationError,
 
 #[derive(Clone, Copy, Debug)]
 pub struct CaptureLimits {
-    pub pending_bytes: u32,
+    pub pending_groups: u32,
     pub max_group_bytes: u32,
 }
 
@@ -108,7 +108,7 @@ pub enum CaptureError {
     #[error("required journal capture failed")]
     Failed,
 
-    #[error("capture limits must be positive and group bytes must fit pending bytes")]
+    #[error("capture limits must be positive")]
     InvalidLimits,
 }
 
@@ -162,7 +162,7 @@ impl<A: Application> CallbackDeclaration<A> {
             failed,
             signal,
             progress,
-            capacity: Arc::new(Semaphore::new(self.limits.pending_bytes as usize)),
+            capacity: Arc::new(Semaphore::new(self.limits.pending_groups as usize)),
         });
         let mut guard = Failure { shared: shared.clone(), clean: false };
         let mut consumer = self.consumer;
@@ -202,7 +202,7 @@ impl<A: Application> Callback<A> {
         if bytes > self.limits.max_group_bytes as usize {
             return Err(PreparationError::Limit);
         }
-        self.shared.capacity.clone().acquire_many_owned(bytes as u32).await.map_err(|_| PreparationError::CaptureFailed)
+        self.shared.capacity.clone().acquire_owned().await.map_err(|_| PreparationError::CaptureFailed)
     }
 
     pub fn check(&self) -> Result<(), PreparationError> {

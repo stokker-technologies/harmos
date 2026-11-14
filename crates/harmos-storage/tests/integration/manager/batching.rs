@@ -572,7 +572,7 @@ async fn failure_retains_work() {
 #[tokio::test(start_paused = true)]
 async fn reservation_never_flush() {
     let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
+    policy.request.max_write_batch_bytes = NonZeroUsize::new(8192).unwrap();
     let f = Fixture::new(policy).await;
     write(&f.storage, "one").await;
     let snapshot = f.storage.get_recovery_snapshot(NonZeroUsize::new(7000).unwrap()).await.unwrap();
@@ -649,7 +649,7 @@ async fn progress_preserves_cursor() {
     f.storage.flush_recovery().await.unwrap();
     assert_eq!(*f.recovery.snapshot.lock().unwrap(), Some(snapshot));
     assert_eq!(*f.recovery.control.flushes.lock().unwrap(), [0]);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     f.finish().await;
 }
 
@@ -682,14 +682,14 @@ async fn typed_batch_retries() {
     assert_eq!(f.data.records.lock().unwrap().len(), 8);
     assert_eq!(f.data.control.write_sizes.lock().unwrap().as_slice(), &[8, 8]);
     assert!(f.data.control.write_sizes.lock().unwrap().iter().all(|size| *size == 8));
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     f.finish().await;
 }
 
 #[tokio::test]
 async fn item_refuses_whole() {
     let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(4096).unwrap();
+    policy.request.max_write_batch_bytes = NonZeroUsize::new(4096).unwrap();
     let f = Fixture::new(policy).await;
     let key = schema();
     let item = Identifier::new("oversized").unwrap();
@@ -697,7 +697,7 @@ async fn item_refuses_whole() {
     let inputs = [record(&key, &item, b"small"), record(&key, &item, &large)];
     assert!(matches!(f.storage.append_records((inputs).to_vec()).await, Err(harmos_storage::Error::ResourceExhausted { .. })));
     assert_eq!(f.storage.cursor_accepted().sequence, 0);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     assert!(f.data.control.writes.lock().unwrap().is_empty());
     f.finish().await;
 }
@@ -718,12 +718,11 @@ async fn schema_decoding_bounded() {
         definitions: vec![fields],
     });
     let mut policy = config();
-    policy.request.max_pending_write_bytes = NonZeroUsize::new(16 * 1024).unwrap();
+    policy.request.max_write_batch_bytes = NonZeroUsize::new(16 * 1024).unwrap();
     let f = Fixture::new(policy.clone()).await;
     let key = schema();
     let position = f.storage.write_schema(key.clone(), graph.clone()).await.unwrap();
     assert_eq!(position.sequence, 1);
-    assert!(f.storage.status().pending_bytes < policy.request.max_pending_write_bytes.get());
     f.storage.flush().await.unwrap();
     {
         let saved = f.data.schemas.lock().unwrap();
@@ -848,7 +847,7 @@ async fn snapshot_payload_limit_survives_reopen() {
             }
         ));
         drop(permit);
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
         assert!(storage.get_recovery_snapshot(NonZeroUsize::new(8192).unwrap()).await.unwrap().is_none());
 
         let payload = harmos_storage::state::SnapshotPayload::from_bytes(&vec![7; length], maximum, Position::ORIGIN).unwrap();
@@ -929,7 +928,7 @@ async fn recovery_owner_retained() {
     let empty = detached.slice(1..1);
     drop(detached);
     drop(empty);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
 
     let mut payload = Vec::with_capacity(2048);
     payload.extend_from_slice(b"snapshot");
@@ -952,7 +951,7 @@ async fn recovery_owner_retained() {
     assert_eq!(detached.as_slice()[0].payload, expected);
     detached.as_slice()[0].payload.verify(2048).unwrap();
     drop(detached);
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     f.finish().await;
 }
 

@@ -42,16 +42,8 @@ impl StorageManager {
             return Ok(self.status().recovery_accepted);
         }
         let required_data = self.get_saved_position();
-        let bytes = payloads.iter().try_fold(0usize, |bytes, payload| {
-            bytes
-                .checked_add(recovery_encoded_bound(payload.len(), self.inner.recovery.get_history(), self.inner.primary.get_history())?)
-                .ok_or(Error::InvalidInput {
-                    field: "storage admission",
-                    reason: "size overflow",
-                })
-        })?;
         let sequence = self
-            .admit(Domain::Recovery, bytes, payloads.len(), |first| {
+            .admit(Domain::Recovery, payloads.len(), |first| {
                 Ok(Operation::Recovery(crate::StorageBatch::new(
                     payloads
                         .into_iter()
@@ -73,8 +65,7 @@ impl StorageManager {
         self.check_raw_recovery()?;
         self.inner.recovery.get_history().check(&snapshot.through.history)?;
         self.check_state_dependency(&snapshot.required_data)?;
-        let bytes = recovery_encoded_bound(snapshot.payload.segment_bytes(), &snapshot.through.history, &snapshot.required_data.history)?;
-        self.admit(Domain::Recovery, bytes, 0, |_| Ok(Operation::Snapshot(StorageBatch::new(vec![snapshot])))).await?;
+        self.admit(Domain::Recovery, 0, |_| Ok(Operation::Snapshot(StorageBatch::new(vec![snapshot])))).await?;
         Ok(())
     }
 

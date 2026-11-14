@@ -73,10 +73,8 @@ impl StorageManager {
                         });
                     }
                     state.collect();
-                    // Leave at least one byte for batch progress even with tiny policies.
                     if state.files.len() < self.inner.settings.request.max_file_productions.get()
                         && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
-                        && state.status.pending_bytes < self.inner.settings.request.max_pending_write_bytes.get()
                     {
                         let id =
                             NEXT_FILE.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1)).map_err(|_| size_error())?;
@@ -111,7 +109,7 @@ impl StorageManager {
                         state.collect();
                         return Ok(Some(id));
                     }
-                    self.inner.relieve_pressure(state, 1, 1);
+                    self.inner.relieve_pressure(state, 1);
                     Ok(None)
                 })
                 .await?;

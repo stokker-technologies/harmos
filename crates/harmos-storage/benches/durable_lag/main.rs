@@ -111,7 +111,7 @@ fn main() {
                 max_active_queries: nz(4),
                 max_pending_write_batches: nz(256),
                 max_active_file_operations: nz(1),
-                max_pending_write_bytes: nz(16 * 1024 * 1024),
+                max_write_batch_bytes: nz(16 * 1024 * 1024),
             },
             response: StorageResponseSettings {
                 batch_rows: nz(64),

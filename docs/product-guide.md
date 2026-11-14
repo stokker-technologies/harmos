@@ -499,7 +499,7 @@ let settings = StorageSettings {
         max_active_queries,
         max_active_file_operations,
         max_pending_write_batches,
-        max_pending_write_bytes,
+        max_write_batch_bytes,
     },
     response: StorageResponseSettings { batch_rows, batch_bytes },
     filesystem: StorageFilesystemSettings { poll_interval, max_entries, event_capacity },
@@ -592,7 +592,7 @@ original handle and `StorageFile`. Its asynchronous `finish` retains setup,
 copy progress and exact pending bytes across errors and caller cancellation.
 Existing producer prefixes are compared before a suffix is appended;
 `acknowledged()` reports completed copy progress. `StorageFile::write_retained_at`
-refreshes pending-write accounting and awaits capacity using the same admission
+awaits a queue slot using the same admission
 path as `write_all`. It retains the original chunk across failures and caller
 cancellation; `retry_append` resends its original offset and bytes without
 cancelling production. Stable capture detects source
@@ -641,8 +641,12 @@ Direct storage APIs take resource-owned inputs: `Query`, `FileRead`,
 construct these inputs from their wire requests; the storage engine does not
 depend on operation declarations.
 
-Storage bounds active and pending query counts, pending write bytes/batches and
-serialized response pages through consumer-supplied settings. Readers wait for
+Storage bounds active and pending query counts, queued write batches, the encoded
+size of each admitted write and serialized response pages through consumer-supplied
+settings. Admission counts queue slots, not queued bytes: `max_pending_write_batches`
+times `max_write_batch_bytes` is the worst-case queued payload.
+Callback journal capture likewise bounds `CaptureLimits.pending_groups` unacknowledged
+groups of at most `max_group_bytes` each. Readers wait for
 an active query slot within the pending-query limit. Dropping a reader or an
 in-progress `next` cancels its work and releases its query slot; returned batches
 remain valid until their owners are dropped. Storage does not reserve a shared

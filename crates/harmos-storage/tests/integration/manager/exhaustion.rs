@@ -27,7 +27,7 @@ use super::waveforms;
 #[tokio::test]
 async fn oversized_batch_refused() {
     let mut settings = storage_settings();
-    settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
+    settings.request.max_write_batch_bytes = NonZeroUsize::new(8192).unwrap();
     let data = Arc::new(super::backend::Data::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
@@ -55,7 +55,7 @@ async fn oversized_batch_refused() {
         .await;
     assert!(matches!(result, Err(Error::ResourceExhausted { .. }) | Err(Error::InvalidInput { .. })));
     assert_eq!(storage.cursor_accepted().sequence, 0);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     assert_eq!(data.get_saved_position().await.unwrap().sequence, 0);
 
     // Refusal Does Not Poison The Writer; A Following Small Batch Completes.

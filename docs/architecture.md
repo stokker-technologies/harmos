@@ -386,6 +386,8 @@ and caller-face authorization remain independent checks.
     override expires only its call. Existing operation policy stories preserve
     replay-safety admission. `StorageSettings.policy` owns operational defaults;
     request settings own production/receipt capacities and existing budgets.
+    Write admission is coarse: queue slots (`max_pending_write_batches`) and a
+    per-entry encoded ceiling (`max_write_batch_bytes`), with no aggregate byte budget.
     **Status:** landed for storage and invocation policy (task A.8).
 
 16. **Crate Dependency Direction.** Runtime composes operations, storage, domain and
@@ -553,6 +555,7 @@ and caller-face authorization remain independent checks.
 
 | Decision | Reason | Recording Change |
 | --- | --- | --- |
+| Coarse write admission by queue slots and per-entry ceiling (draft, 2026-11-13) | Aggregate byte accounting through reservations, clones and cancellation cost more code than the bound it bought. | `docs/architecture.md` |
 | Three visibility levels; explicit choice; decided built-in mapping (2026-11-12) | Local privacy, host-only control and exposed peer calls need separate admission meanings. | `openspec/changes/operation-grammar/` |
 | Audience faces and face-local contracts (2026-11-12) | Separate who serves/calls a wire API without removing operation visibility. | `openspec/changes/operation-grammar/` |
 | Runtime composition, manager inventory and product-owned settings/secrets (2026-11-12) | Reuse generic machinery under one lifecycle authority while retaining application policy. | `openspec/changes/operation-grammar/` |

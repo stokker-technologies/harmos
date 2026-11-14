@@ -80,7 +80,7 @@ async fn dropped_write_retained() {
     assert_eq!(flushing.await.unwrap().unwrap(), accepted);
     assert_eq!(data.records.lock().unwrap().len(), 1);
     assert_eq!(data.records.lock().unwrap().values().next().unwrap().item, first);
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     storage.close().await.unwrap();
 }
 

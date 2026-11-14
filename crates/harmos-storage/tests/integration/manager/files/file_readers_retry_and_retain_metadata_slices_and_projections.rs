@@ -20,7 +20,7 @@ async fn file_readers_retry_and_retain_metadata_slices_and_projections() {
     assert_eq!(reader.offset(), 0);
     f.data.control.corrupt_file.store(false, Ordering::SeqCst);
     f.storage.flush().await.unwrap();
-    assert_eq!(f.storage.status().pending_bytes, 0);
+    assert_eq!(f.storage.status().pending_batches, 0);
     assert_eq!(reader.next().await.unwrap().unwrap().bytes(), b"abc");
 
     // Completion Survives A Pending Backend Snapshot Release.

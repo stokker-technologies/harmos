@@ -36,10 +36,10 @@ async fn cancelled_snapshot_releases() {
         }
         assert!(store.recovery.control.open.load(Ordering::SeqCst));
         assert!(store.data.control.open.load(Ordering::SeqCst));
-        assert_eq!(storage.status().pending_bytes, 0);
+        assert_eq!(storage.status().pending_batches, 0);
     }
     closed(&storage, cleanup.get()).await;
-    assert_eq!(storage.status().pending_bytes, 0);
+    assert_eq!(storage.status().pending_batches, 0);
     assert!(!store.data.control.open.load(Ordering::SeqCst));
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
 }

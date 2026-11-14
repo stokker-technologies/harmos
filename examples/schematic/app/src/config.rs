@@ -77,7 +77,7 @@ impl Settings {
                 max_active_queries: NonZeroUsize::new(4).unwrap(),
                 max_pending_write_batches: NonZeroUsize::new(8).unwrap(),
                 max_active_file_operations: NonZeroUsize::new(4).unwrap(),
-                max_pending_write_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
+                max_write_batch_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
             },
             response: StorageResponseSettings {
                 batch_rows: NonZeroUsize::new(64).unwrap(),

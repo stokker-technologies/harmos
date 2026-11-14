@@ -62,7 +62,7 @@ impl StorageManager {
             let replay = offset < file.length;
             if file.metadata.expected_length.is_some_and(|expected| length > expected) { return Err(invalid("append exceeds expected file length")); }
             let ticket = file.ticket.checked_add(1).ok_or_else(size_error)?;
-            reserve(state, mutation, fingerprint, payload.len(), &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.ticket = ticket;
             file.context = crate::execution::Context::current();

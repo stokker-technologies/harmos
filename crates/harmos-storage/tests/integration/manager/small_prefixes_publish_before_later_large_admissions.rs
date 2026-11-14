@@ -21,7 +21,7 @@ use std::{num::NonZeroUsize, sync::atomic::Ordering};
 #[tokio::test(start_paused = true)]
 async fn small_prefixes_publish_before_later_large_admissions() {
     let mut settings = config();
-    settings.request.max_pending_write_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
+    settings.request.max_write_batch_bytes = NonZeroUsize::new(4 * 1024 * 1024).unwrap();
     let trigger = settings.flush_trigger_bytes();
     let fixture = Fixture::new(settings).await;
     let key = schema();

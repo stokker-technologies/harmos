@@ -36,7 +36,6 @@ pub(super) struct DefinitionWork {
     pub(super) header: MutationHeader,
     input: DefinitionInput,
     target: Target,
-    bytes: usize,
 }
 
 /* === Enums === */
@@ -183,10 +182,8 @@ impl StorageManager {
                 std::io::Error::other("provider must retain mutation receipts"),
             ));
         }
-        let encoded = input.encoded()?;
         let fingerprint = input.fingerprint()?;
-        let bytes = encoded.len().saturating_add(std::mem::size_of::<DefinitionWork>()).saturating_add(2 * input.name().as_str().len());
-        if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
+        if input.encoded()?.len() > self.inner.settings.max_batch_bytes().get() {
             return Err(exhausted());
         }
         let mut changed = self.inner.changed.subscribe();
@@ -235,9 +232,7 @@ impl StorageManager {
                             return Err(Error::Persistence { source: source.clone() });
                         }
                         state.collect();
-                        if state.status.pending_bytes.saturating_add(bytes) <= self.inner.settings.request.max_pending_write_bytes.get()
-                            && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
-                        {
+                        if state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get() {
                             state.receipts.insert(mutation, fingerprint)?;
                             completion = Some(state.receipts.completion(mutation));
                             let header = state.receipts.header(mutation);
@@ -251,19 +246,17 @@ impl StorageManager {
                                         header,
                                         input: input.clone(),
                                         target,
-                                        bytes,
                                     }),
                                     failure: None,
                                     retrying: false,
                                 },
                             );
                             retry = false;
-                            state.reserved += bytes;
                             state.reserved_batches += 1;
                             state.collect();
                             notify = true;
                         } else {
-                            self.inner.relieve_pressure(&mut state, bytes, 1);
+                            self.inner.relieve_pressure(&mut state, 1);
                         }
                     }
                 }
@@ -334,7 +327,6 @@ impl State {
         self.receipts.complete(&receipt.mutation, receipt.value.clone());
         self.receipts.saved(std::slice::from_ref(&receipt));
         self.definition_mutations.remove(&receipt.mutation);
-        self.reserved -= work.bytes;
         self.reserved_batches -= 1;
         Ok(())
     }

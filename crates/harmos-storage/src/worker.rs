@@ -618,10 +618,7 @@ impl Operation {
     pub(super) fn check_entry_bytes(&self, maximum: std::num::NonZeroUsize) -> Result<usize> {
         let bytes = self.encoded_batch_bytes()?;
         if bytes > maximum.get() {
-            return Err(Error::InvalidInput {
-                field: "storage admission",
-                reason: "admitted batch exceeds max_batch_bytes; split before submission",
-            });
+            return Err(Error::ResourceExhausted { resource: "storage write batch" });
         }
         Ok(bytes)
     }

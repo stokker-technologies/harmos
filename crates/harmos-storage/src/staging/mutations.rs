@@ -69,7 +69,7 @@ impl StorageManager {
             if file.command.is_some() || file.in_flight {
                 return Ok(false);
             }
-            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
+            reserve(state, mutation, fingerprint, &self.inner.settings)?;
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Resume });
             file.command = Some(Command::Resume { expected: token.generation, next });
@@ -195,13 +195,8 @@ fn active<'a>(state: &'a State, token: &FileSession) -> Result<(u64, &'a FileSta
     Ok((*id, file))
 }
 
-fn reserve(
-    state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], command_bytes: usize, settings: &StorageSettings,
-) -> Result<()> {
-    let bytes = command_bytes;
-    if bytes > settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes)
-        || state.status.pending_batches >= settings.request.max_pending_write_batches.get()
-    {
+fn reserve(state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], settings: &StorageSettings) -> Result<()> {
+    if state.status.pending_batches >= settings.request.max_pending_write_batches.get() {
         return Err(Error::ResourceExhausted { resource: "file mutation command" });
     }
     state.receipts.insert(mutation, fingerprint)

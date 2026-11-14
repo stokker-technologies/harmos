@@ -361,7 +361,7 @@ async fn receipt_frontier_preserves() {
     let session = storage.clone();
     let count = NonZeroUsize::new(2).unwrap();
     let mut receipts = storage
-        .write_object_group(storage.settings().request.max_pending_write_bytes, count, |group| {
+        .write_object_group(storage.settings().request.max_write_batch_bytes, count, |group| {
             group.write(&Experiment { id: "a".into(), label: "one".into() })?;
             group.write(&Experiment { id: "b".into(), label: "two".into() })
         })

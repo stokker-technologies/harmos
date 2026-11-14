@@ -175,7 +175,7 @@ impl StorageManager {
         let mut prepared = Some((value, graph));
         let mut request = None;
         let sequence = self
-            .admit_mutation(Domain::Data, self.object_admission_bytes().get(), 2, mutation, false, |first| {
+            .admit_mutation(Domain::Data, 2, mutation, false, |first| {
                 let (value, graph) = prepared.take().expect("one admission build");
                 let position = self.position(first + 1);
                 let exchange = Arc::new(ObjectExchange {
@@ -329,10 +329,7 @@ impl StorageManager {
 
 impl StorageManager {
     pub(super) fn object_admission_bytes(&self) -> NonZeroUsize {
-        NonZeroUsize::new(
-            self.inner.settings.max_batch_bytes().get().saturating_mul(4).min(self.inner.settings.request.max_pending_write_bytes.get()),
-        )
-        .unwrap()
+        self.inner.settings.max_batch_bytes()
     }
 
     #[tracing::instrument(name = "storage.objects.admit_object_group", level = "debug", skip_all)]
@@ -352,7 +349,7 @@ impl StorageManager {
         let positions = count.get().checked_mul(2).ok_or_else(|| invalid("object group count overflow"))?;
         let mut receipts = None;
         let last = self
-            .admit_mutation(Domain::Data, max_bytes.get(), positions, mutation, false, |first| {
+            .admit_mutation(Domain::Data, positions, mutation, false, |first| {
                 let mut group = ObjectGroup {
                     manager: self,
                     first,
@@ -371,7 +368,6 @@ impl StorageManager {
                 Ok(Operation::ObjectGroup {
                     schemas: super::StorageBatch::new(group.schemas),
                     objects: super::StorageBatch::new(group.objects),
-                    bytes: group.used,
                 })
             })
             .await?;

@@ -67,7 +67,6 @@ impl State {
         self.receipts.purge(now);
         self.status.pending_batches =
             self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
-        self.status.pending_bytes = self.reserved + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {
@@ -105,10 +104,8 @@ impl Inner {
         self.changed.send_modify(|revision| *revision = revision.wrapping_add(1));
     }
 
-    pub(crate) fn relieve_pressure(&self, state: &mut State, bytes: usize, batches: usize) {
-        let full = state.status.pending_bytes.saturating_add(bytes) > self.settings.request.max_pending_write_bytes.get()
-            || state.status.pending_batches.saturating_add(batches) > self.settings.request.max_pending_write_batches.get();
-        if full {
+    pub(crate) fn relieve_pressure(&self, state: &mut State, batches: usize) {
+        if state.status.pending_batches.saturating_add(batches) > self.settings.request.max_pending_write_batches.get() {
             let lagged = state.lag_followers();
             let requested = state.request_flush();
             if lagged || requested {

@@ -472,7 +472,7 @@ record their own backend/durability mode while retaining these names, units and 
 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
 `integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
-acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
+acceptance-to-durability p50, p95 and maximum, pending batches/positions, admission wait,
 and synchronous SQLite commit count/time. Five runs per load retain median and
 spread, compiler-activity samples and stage counters for cadence/ordered waits,
 batch construction, provider writing, synchronous commit and frontier publication.
