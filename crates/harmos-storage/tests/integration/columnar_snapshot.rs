@@ -81,7 +81,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         },
     )
     .unwrap();
-    let fallback = Arc::new(backend::Data::new(history.clone()));
+    let fallback = Arc::new(backend::Backend::new(history.clone()));
     native.create_session().await.unwrap();
     fallback.create_session().await.unwrap();
     let key = SchemaKey {

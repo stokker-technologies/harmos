@@ -74,7 +74,7 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     };
     let native = SqliteBackend::new(&path, history.clone(), settings).unwrap();
     assert!(SqliteBackend::new(&path, history.clone(), settings).is_err());
-    let fallback = backend::Data::new(history.clone());
+    let fallback = backend::Backend::new(history.clone());
     let key = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,

@@ -9,6 +9,10 @@
 
 // Serve Staged File And Mutation Persistence.
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -19,12 +23,22 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
 /* === Structs === */
 
 struct Chunk<'a> {
     control: &'a Control,
     id: String,
 }
+
+/* === Enums === */
+
+/* === Traits === */
 
 /* === Implementations === */
 
@@ -38,15 +52,15 @@ impl Drop for Chunk<'_> {
     }
 }
 
-impl Data {
-    pub(super) fn fixture_save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
+impl Backend {
+    pub(super) fn save_mutations<'a>(&'a self, receipts: &'a [MutationReceipt]) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.control.block_receipt.load(Ordering::Acquire) {
                 self.control.receipt_entered.notify_one();
                 self.control.receipt_release.notified().await;
             }
             let mut saved = self.mutation_receipts.lock().unwrap();
-            let now = self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let now = self.date();
             saved.retain(|_, receipt| receipt.expires_at > now);
             for receipt in receipts {
                 if receipt.expires_at <= now {
@@ -64,10 +78,10 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
+    pub(super) fn recover_mutations(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         Box::pin(async move {
             let mut saved = self.mutation_receipts.lock().unwrap();
-            saved.retain(|_, receipt| receipt.expires_at > self.control.date.lock().unwrap().unwrap_or(std::time::SystemTime::UNIX_EPOCH));
+            saved.retain(|_, receipt| receipt.expires_at > self.date());
             let mut newest: Vec<_> = saved.values().collect();
             newest.sort_by_key(|receipt| std::cmp::Reverse(receipt.expires_at));
             let mut bytes = std::mem::size_of::<Vec<MutationReceipt>>();
@@ -83,7 +97,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    pub(super) fn create_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move {
             if self.staged.lock().unwrap().contains_key(metadata.id.as_str())
                 && !self.resumable_files.lock().unwrap().contains(metadata.id.as_str())
@@ -95,11 +109,11 @@ impl Data {
             }
             self.resumable_files.lock().unwrap().insert(metadata.id.to_string());
             self.file_generations.lock().unwrap().entry(metadata.id.to_string()).or_insert(1);
-            self.fixture_create_file(metadata).await
+            self.create_file(metadata).await
         })
     }
 
-    pub(super) fn fixture_fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
+    pub(super) fn fence_production<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.control.block_fence.load(Ordering::SeqCst) {
                 self.control.fence_entered.notify_one();
@@ -124,7 +138,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
+    pub(super) fn save_production<'a>(&'a self, checkpoint: &'a FileCheckpoint) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.control.block_checkpoint.load(Ordering::SeqCst) {
                 self.control.checkpoint_entered.notify_one();
@@ -166,7 +180,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+    pub(super) fn recover_productions(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
         Box::pin(async move {
             let _io = self.file_io.lock().unwrap();
             let saved = self.saved_productions.lock().unwrap();
@@ -196,7 +210,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+    pub(super) fn file_progress<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
         Box::pin(async move {
             let _io = self.file_io.lock().unwrap();
             self.history.check(&file.history)?;
@@ -217,7 +231,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_production<'a>(
+    pub(super) fn read_production<'a>(
         &'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
@@ -247,7 +261,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
+    pub(super) fn delete_file<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.history.check(&file.history)?;
             if self.control.block_delete.load(Ordering::SeqCst) {
@@ -278,7 +292,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    pub(super) fn abandon_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let _settled = IoAttempt(&self.control.abort_settled);
             if self.control.block_abort.load(Ordering::SeqCst) {
@@ -303,7 +317,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+    pub(super) fn create_file<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move {
             if self.abandoned_files.lock().unwrap().contains(metadata.id.as_str()) {
                 return Err(failure(BackendFailure::Conflict));
@@ -336,7 +350,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
+    pub(super) fn write_file<'a>(&'a self, staging: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             if self.abandoned_files.lock().unwrap().contains(staging.id.as_str()) {
                 return Err(failure(BackendFailure::Conflict));
@@ -384,7 +398,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_finish_file<'a>(
+    pub(super) fn finish_file<'a>(
         &'a self, staging: &'a StagedFile, position: &'a StorageCursor, length: u64, sha256: [u8; 32],
     ) -> StorageFuture<'a, FileReference> {
         Box::pin(async move {
@@ -428,7 +442,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
+    pub(super) fn abort_file<'a>(&'a self, staging: &'a StagedFile) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             let _settled = IoAttempt(&self.control.abort_settled);
             self.control.aborts.fetch_add(1, Ordering::SeqCst);
@@ -444,7 +458,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_file<'a>(
+    pub(super) fn read_file<'a>(
         &'a self, snapshot: &'a BackendSnapshot, file: &'a FileReference, offset: u64, max_bytes: NonZeroUsize,
     ) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
@@ -475,3 +489,9 @@ impl Data {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

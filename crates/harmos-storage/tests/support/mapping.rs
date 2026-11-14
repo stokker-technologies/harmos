@@ -43,7 +43,7 @@ pub(crate) struct Expansion {
 // Fixture Storage Holding Saved Records Of One Declared Schema.
 pub(crate) struct Mapped {
     pub(crate) storage: StorageManager,
-    pub(crate) data: std::sync::Arc<super::backend::Data>,
+    pub(crate) data: std::sync::Arc<super::backend::Backend>,
     schema: SchemaKey,
     at: StorageCursor,
 }

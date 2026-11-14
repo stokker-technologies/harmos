@@ -14,15 +14,13 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::fs::{File, OpenOptions};
-use std::io::{self, BufWriter, Read, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tempfile::NamedTempFile;
 
 // Local Imports
 use harmos_domain::state::Position;
@@ -52,12 +50,12 @@ pub struct SnapshotManifest {
 
 #[derive(Clone, Debug)]
 pub struct SnapshotPayload {
-    file: Arc<NamedTempFile>,
+    data: Arc<[u8]>,
     manifest: SnapshotManifest,
 }
 
 pub struct SnapshotWriter {
-    file: BufWriter<NamedTempFile>,
+    data: Vec<u8>,
     limit: usize,
     bytes: usize,
     total_bytes: usize,
@@ -74,7 +72,7 @@ pub struct SnapshotWriter {
 impl SnapshotWriter {
     pub fn new(limit: NonZeroUsize) -> io::Result<Self> {
         Ok(Self {
-            file: BufWriter::new(NamedTempFile::new()?),
+            data: Vec::new(),
             limit: limit.get(),
             bytes: 0,
             total_bytes: 0,
@@ -96,9 +94,8 @@ impl SnapshotWriter {
     pub fn finish(mut self, position: Position) -> io::Result<SnapshotPayload> {
         self.flush()?;
         self.finish_segment();
-        let file = self.file.into_inner().map_err(|error| error.into_error())?;
         Ok(SnapshotPayload {
-            file: Arc::new(file),
+            data: self.data.into(),
             manifest: SnapshotManifest {
                 position: Some(position),
                 count: self.segments.len(),
@@ -113,9 +110,10 @@ impl Write for SnapshotWriter {
     fn write(&mut self, mut bytes: &[u8]) -> io::Result<usize> {
         let length = bytes.len();
         let total = self.total_bytes.checked_add(length).ok_or_else(|| io::Error::other("snapshot size overflow"))?;
+        self.data.try_reserve(length).map_err(|_| io::Error::other("write snapshot: capacity exhausted"))?;
         while !bytes.is_empty() {
             let count = bytes.len().min(self.limit - self.bytes);
-            self.file.write_all(&bytes[..count])?;
+            self.data.extend_from_slice(&bytes[..count]);
             self.digest.update(&bytes[..count]);
             self.bytes += count;
             bytes = &bytes[count..];
@@ -128,7 +126,7 @@ impl Write for SnapshotWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
+        Ok(())
     }
 }
 
@@ -171,11 +169,11 @@ impl SnapshotPayload {
     }
 
     pub fn retained_bytes(&self) -> usize {
-        self.manifest.segments.capacity().saturating_mul(std::mem::size_of::<Segment>())
+        self.manifest.segments.capacity().saturating_mul(std::mem::size_of::<Segment>()).saturating_add(self.data.len())
     }
 
-    pub fn reader(&self) -> io::Result<File> {
-        OpenOptions::new().read(true).open(self.file.path())
+    pub fn reader(&self) -> io::Result<Cursor<Arc<[u8]>>> {
+        Ok(Cursor::new(Arc::clone(&self.data)))
     }
 
     pub fn verify(&self, maximum: usize) -> io::Result<()> {

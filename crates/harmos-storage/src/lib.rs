@@ -37,6 +37,7 @@ pub mod follow;
 mod frozen_file;
 mod local;
 mod manager;
+pub mod memory;
 mod object_admissions;
 mod objects;
 mod opened_capture;

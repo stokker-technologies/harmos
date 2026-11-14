@@ -20,14 +20,14 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 // Local Imports
-pub(crate) use super::backend::{Data, Recovery, history, storage_settings};
+pub(crate) use super::backend::{Backend, Recovery, history, storage_settings};
 pub(crate) use harmos_storage::*;
 
 /* === Structs === */
 
 pub(crate) struct Fixture<M = StorageManager> {
     pub(crate) storage: M,
-    pub(crate) data: Arc<Data>,
+    pub(crate) data: Arc<Backend>,
     pub(crate) recovery: Arc<Recovery>,
 }
 
@@ -63,7 +63,7 @@ impl Fixture {
 
 impl<M> Fixture<M> {
     pub(crate) fn build_with(config: StorageSettings, create: impl FnOnce(StorageBackends, StorageSettings) -> M) -> Self {
-        let data = Arc::new(Data::new(history()));
+        let data = Arc::new(Backend::new(history()));
         let recovery = Arc::new(Recovery::new(history()));
         let storage = create(
             StorageBackends {

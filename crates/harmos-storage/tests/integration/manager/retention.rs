@@ -9,7 +9,7 @@
 
 /* === Imports === */
 
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{Backend, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, objects_catalog};
 use harmos_storage::Identifier;
 use harmos_domain::model::storage::query::Query;
@@ -49,7 +49,7 @@ struct Revisions {
 
 impl Revisions {
     async fn new() -> Self {
-        let data = std::sync::Arc::new(super::backend::Data::with_catalog(objects_catalog(), history()));
+        let data = std::sync::Arc::new(super::backend::Backend::with_catalog(objects_catalog(), history()));
         let storage = StorageManager::with_catalog(
             objects_catalog(),
             StorageBackends {
@@ -132,7 +132,7 @@ async fn labels(
 #[tokio::test]
 async fn snapshots_progress_during_persistence() {
     // Save the Revision Whose Reads Must Remain Independent of a Later Write.
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
         state: Arc::new(Recovery::new(history())),
@@ -217,7 +217,7 @@ async fn snapshots_progress_during_persistence() {
 async fn reads_pin_cursor() {
     let r = Revisions::new().await;
 
-    // Queries Read Exactly The Requested Cursor, Never Newer Data.
+    // Queries Read Exactly The Requested Cursor, Never Newer Backend.
     let latest = |at| labels(&r.storage, at, &r.schema, ObjectVersions::Latest);
     assert_eq!(latest(&r.earlier).await.unwrap(), ["first"]);
     assert_eq!(latest(&r.durable).await.unwrap(), ["second"]);
@@ -238,7 +238,7 @@ async fn reads_pin_cursor() {
 #[tokio::test]
 async fn release_reclaims_history() {
     // A Controlled Result Gate Separates Reclamation From Its Acknowledgement.
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
         state: Arc::new(Recovery::new(history())),

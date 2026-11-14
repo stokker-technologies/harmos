@@ -98,7 +98,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         chunk_bytes: policy.response.batch_bytes,
     };
     let native = Arc::new(SqliteBackend::new(&path, history.clone(), settings).unwrap());
-    let deterministic = Arc::new(backend::Data::with_catalog(catalog(), history.clone()));
+    let deterministic = Arc::new(backend::Backend::with_catalog(catalog(), history.clone()));
     let (clock, _driver) = harmos_storage::execution::Execution::virtual_at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
     let work = ReadLimits { rows: nz(64), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();

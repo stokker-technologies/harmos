@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{Backend, Recovery, history, storage_settings};
 use super::waveforms::{self, Experiment, Sample, objects_catalog};
 use harmos_storage::Error;
 use harmos_domain::model::storage::query::Query;
@@ -34,8 +34,8 @@ use harmos_storage::StorageSettings;
 
 /* === Private Functions === */
 
-async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Data>) {
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Backend>) {
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let storage = StorageManager::with_catalog(
         objects_catalog(),
         StorageBackends {

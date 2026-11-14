@@ -18,17 +18,17 @@ use harmos_domain::Identifier;
 use harmos_storage::*;
 
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::{Backend, Recovery, history, storage_settings};
 use super::waveforms;
 
 /* === Private Functions === */
 
 // Start Controlled Storage With One Active Query And One Pending Write Batch.
-async fn start() -> (Arc<Data>, StorageManager) {
+async fn start() -> (Arc<Backend>, StorageManager) {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
@@ -89,7 +89,7 @@ async fn cancelled_query_releases() {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::MIN;
     settings.request.max_pending_write_batches = NonZeroUsize::MIN;
-    let data = std::sync::Arc::new(super::backend::Data::new(history()));
+    let data = std::sync::Arc::new(super::backend::Backend::new(history()));
     let backends = StorageBackends {
         primary: data,
         state: std::sync::Arc::new(Recovery::new(history())),

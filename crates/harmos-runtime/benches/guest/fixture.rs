@@ -150,7 +150,7 @@ async fn runtime() -> (Runtime<Model>, Duration) {
     let preparation_bytes = nz(64 * 1024 * 1024);
     let storage = harmos_runtime::storage::StorageManager::new(
         harmos_runtime::storage::StorageBackends {
-            primary: std::sync::Arc::new(backend::Data::new(backend::history())),
+            primary: std::sync::Arc::new(backend::Backend::new(backend::history())),
             state: std::sync::Arc::new(backend::Recovery::new(backend::history())),
         },
         backend::storage_settings(),

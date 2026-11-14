@@ -604,7 +604,7 @@ async fn queued_writes_wait() {
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     f.recovery.control.block_flush.store(true, Ordering::SeqCst);
     tokio::time::advance(Duration::from_millis(1)).await;
-    // Independent State Work May Reach Its Flush Before Data.
+    // Independent State Work May Reach Its Flush Before Backend.
     tokio::join!(
         async {
             f.data.control.flush_entered.notified().await;
@@ -664,7 +664,7 @@ async fn typed_batch_retries() {
     f.data.control.failures.store(1, Ordering::SeqCst);
     let accepted = f.storage.append_records((records).to_vec()).await.unwrap();
 
-    // A Typed Batch Keeps Its Original Data While The Backend Is Blocked.
+    // A Typed Batch Keeps Its Original Backend While The Backend Is Blocked.
     let flushing = {
         let storage = f.storage.clone();
         tokio::spawn(async move { storage.flush().await })
@@ -814,7 +814,7 @@ async fn snapshot_payload_limit_survives_reopen() {
     let limits = ReadLimits { rows: NonZeroUsize::MIN, bytes: maximum };
     for length in [maximum.get() - 2, maximum.get() - 1, maximum.get()] {
         let directory = tempfile::tempdir().unwrap();
-        let data = super::backend::Data::new(super::backend::history());
+        let data = super::backend::Backend::new(super::backend::history());
         let data = Arc::new(data);
         let recovery = FileBackend::new(directory.path().to_owned(), super::backend::history(), super::fixture::state_settings());
         let recovery = Arc::new(recovery);

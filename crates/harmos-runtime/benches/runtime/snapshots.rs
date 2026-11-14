@@ -14,7 +14,7 @@ mod store_fixture;
 
 /* === Imports === */
 
-use super::backend::{Data, Recovery, history, storage_settings as config};
+use super::backend::{Backend, Recovery, history, storage_settings as config};
 use super::support::{Bank, Change, Fact, Ledger, Noted, catalog, deposit};
 use harmos_runtime::state::{Focus, Position, PrincipalId, RequestKey, SnapshotPolicy};
 use harmos_runtime::storage::{PayloadEncoding, ReadLimits, SchemaKey};

@@ -9,6 +9,9 @@
 
 /* === Imports === */
 
+use harmos_storage::memory::Control;
+
+
 // Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -289,7 +292,7 @@ async fn forged_reference_refused() {
     f.finish().await;
 }
 
-async fn wait_chunks(control: &super::backend::Control, count: usize) {
+async fn wait_chunks(control: &Control, count: usize) {
     loop {
         let changed = control.chunk_changed.notified();
         if control.chunk_active.lock().unwrap().values().sum::<usize>() >= count {
@@ -1011,6 +1014,7 @@ mod windows {
     /* === Re-Exports === */
 
     /* === Imports === */
+
 
     // Standard Library Imports
 

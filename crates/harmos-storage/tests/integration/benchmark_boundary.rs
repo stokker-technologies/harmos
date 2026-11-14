@@ -63,7 +63,7 @@ async fn shared_workload_keeps_boundary_pages_and_replayed_projection_identical(
         },
     )
     .unwrap();
-    let fallback = backend::Data::new(workload.history.clone());
+    let fallback = backend::Backend::new(workload.history.clone());
     for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![workload.schema(1)]).into()).await.unwrap();

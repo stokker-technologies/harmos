@@ -346,7 +346,7 @@ fn invalid(reason: &'static str) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_backend::{Data, Recovery, history, storage_settings};
+    use crate::test_backend::{Backend, Recovery, history, storage_settings};
     use crate::{PayloadEncoding, SchemaKey, StorageBackend, StorageBackends, StorageManager, StoredRecord};
     use std::{
         num::{NonZeroU32, NonZeroUsize},
@@ -355,7 +355,7 @@ mod tests {
 
     #[tokio::test]
     async fn oversized_state_capture_resumes_after_each_bounded_committed_piece() {
-        let primary = Arc::new(Data::new(history()));
+        let primary = Arc::new(Backend::new(history()));
         primary.create_session().await.unwrap();
         let mut settings = storage_settings();
         settings.request.max_pending_write_bytes = NonZeroUsize::new(64 * 1024 * 1024).unwrap();

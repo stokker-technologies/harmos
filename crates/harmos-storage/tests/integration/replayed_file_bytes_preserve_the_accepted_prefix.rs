@@ -12,7 +12,7 @@
 /* === Imports === */
 
 use super::file_sessions::{metadata, mutation, storage};
-use super::manager::backend::{Data, history};
+use super::manager::backend::{Backend, history};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 #[tokio::test(start_paused = true)]
 async fn replayed_file_bytes_preserve_the_accepted_prefix() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let first = storage(&data).await;
     let created = first.create_file_once(&mutation(&first, "create"), &metadata("prefix")).await.unwrap();
     let initial = mutation(&first, "initial");

@@ -9,6 +9,10 @@
 
 // Serve Retained Snapshot Reads.
 
+/* === Modules === */
+
+/* === Re-Exports === */
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -18,9 +22,21 @@
 // Local Imports
 use super::*;
 
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
 /* === Implementations === */
 
-impl Data {
+impl Backend {
     #[allow(dead_code, reason = "Shared fixture also compiles in runtime stories without native snapshot reads.")]
     pub async fn snapshots_released(&self) {
         loop {
@@ -32,7 +48,7 @@ impl Data {
         }
     }
 
-    pub(super) fn fixture_open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
+    pub(super) fn open_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         Box::pin(async move {
             if self.control.block_view.load(Ordering::SeqCst) {
                 self.control.view_entered.notify_one();
@@ -74,7 +90,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+    pub(super) fn release_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
         Box::pin(async move {
             self.control.releases.fetch_add(1, Ordering::SeqCst);
             if self.control.block_release.load(Ordering::SeqCst) {
@@ -91,7 +107,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_schemas<'a>(
+    pub(super) fn read_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>> {
         Box::pin(async move {
@@ -106,7 +122,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_objects<'a>(
+    pub(super) fn read_objects<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a ObjectSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<ObjectEntry>> {
         Box::pin(async move {
@@ -158,7 +174,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_records<'a>(
+    pub(super) fn read_records<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a RecordSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRecord>> {
         Box::pin(async move {
@@ -187,7 +203,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_stream<'a>(
+    pub(super) fn read_stream<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a StreamSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StoredRow>> {
         Box::pin(async move {
@@ -207,7 +223,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_files<'a>(
+    pub(super) fn read_files<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a FileSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<FileReference>> {
         Box::pin(async move {
@@ -225,7 +241,7 @@ impl Data {
         })
     }
 
-    pub(super) fn fixture_read_object<'a>(
+    pub(super) fn read_object<'a>(
         &'a self, snapshot: &'a BackendSnapshot, query: &'a ObjectPoint,
     ) -> StorageFuture<'a, Option<ObjectEntry>> {
         Box::pin(async move {
@@ -250,3 +266,9 @@ impl Data {
         })
     }
 }
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+/* === Tests === */

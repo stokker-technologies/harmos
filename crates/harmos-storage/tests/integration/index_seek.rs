@@ -72,7 +72,7 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
         chunk_bytes: policy.response.batch_bytes,
     };
     let native = SqliteBackend::new(root.path().join("index.sqlite"), history.clone(), settings).unwrap();
-    let fallback = backend::Data::new(history.clone());
+    let fallback = backend::Backend::new(history.clone());
     let schema = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,

@@ -170,7 +170,7 @@ async fn late_samples_and_corrections_replace_grouped_buckets_at_saved_cuts() {
         },
     )
     .unwrap();
-    let fallback = backend::Data::new(history.clone());
+    let fallback = backend::Backend::new(history.clone());
     let schema = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,

@@ -18,7 +18,7 @@ use std::sync::{
 // Third Party Imports
 
 // Local Imports
-use crate::storage::{Data, Recovery, config, history, record, schema};
+use crate::storage::{Backend, Recovery, config, history, record, schema};
 use harmos_runtime::storage::*;
 use harmos_runtime::{Identifier, Runtime, state::Envelope, state::Position};
 
@@ -51,13 +51,13 @@ struct Projection {
 
 struct IncrementalProjection {
     calls: Arc<AtomicUsize>,
-    data: Arc<Data>,
+    data: Arc<Backend>,
     cancelled: Arc<AtomicBool>,
     cancel: bool,
 }
 
 struct Store {
-    data: Arc<Data>,
+    data: Arc<Backend>,
     recovery: Arc<Recovery>,
     calls: Arc<AtomicUsize>,
 }
@@ -225,7 +225,7 @@ impl RecordProjection for IncrementalProjection {
 impl Store {
     fn new() -> Self {
         Self {
-            data: Arc::new(Data::new(history())),
+            data: Arc::new(Backend::new(history())),
             recovery: Arc::new(Recovery::new(history())),
             calls: Arc::new(AtomicUsize::new(0)),
         }
