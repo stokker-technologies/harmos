@@ -218,7 +218,7 @@ mod tests {
     fn protobuf_assignments_validate_and_freeze_the_catalog() {
         use prost::Message;
         let entry = AssignedOperation {
-            operation: "host.harmos.v1.CatalogEntries/List".into(),
+            operation: "host.harmos.client.v1.Operations/List".into(),
             fingerprint: vec![7; 32],
             generation: 1,
         };

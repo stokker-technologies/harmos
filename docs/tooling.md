@@ -411,8 +411,9 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 
 The C# SDK pins .NET 10 in both `sdk/csharp/mise.toml` and `global.json`.
 Install it with `mise -C sdk/csharp install --locked`. `Harmos.slnx` is the entry
-point for the library in `src/Harmos`, xUnit stories in `tests/Harmos.Tests` and
-fixture executable in `tests/Harmos.Conformance`. All test namespaces start with
+point for the library in `src/Harmos`, xUnit stories in `tests/Harmos.Tests`, the
+fixture executable in `tests/Harmos.Conformance`, and runnable `examples/Client`
+and `examples/Plugin` projects. All test namespaces start with
 `Harmos.Tests`; public SDK namespaces and NuGet package id `Harmos` are unchanged.
 
 ```sh
@@ -425,10 +426,31 @@ mise -C sdk/csharp run package
 
 Root `build`, `test`, `check` and `package` selections with `--language csharp`
 delegate to those tasks; `--profile release` selects Release. Test and package
-consume the built solution without recompiling. The test story runs all 31 host
+consume the built solution without recompiling. The conformance story runs the shared host
 rules with managed and remote lifecycles. `--layer unit|integration` narrows the
 C# test selection. `mise run build:rust:csharp-fixture` builds and stages only the
 C# portion of the Rust Tests producer for focused diagnostics.
+
+Client request types live in `Harmos.Client.V1`, plugin-host request types in
+`Harmos.Plugin.Host.V1`, and shared vocabulary in `Harmos.V1`. Generated roots
+include `client.Operations.List/Get`, `client.Schemas.List`, `client.Streams.List`,
+`client.Plugins.Replace` and `client.Plugins.Settings.List/Set`.
+`examples/Client` connects and lists typed operation contracts;
+`examples/Plugin` serves one typed public echo operation.
+
+Declare library-stored settings and their typed defaults with
+`plugin.Setting("interval", new SettingValue { Duration = new Duration { Seconds = 2 } })`.
+Declare `.Requires(Settings.List)` before calling `context.SettingsAsync()`;
+the result contains only the calling plugin entry's complete settings and revision.
+`Transfer.MessageBytes` retains shared carrier sizing for product wrappers.
+Products declare their own wire operations over native storage and any pushed publication.
+
+An observer's `context` can call declared host operations, clock, settings and
+Watch during its unanswered tick. Child IDs remain unique across ticks on one
+Samples call; separate calls have independent scopes. Answering a tick cancels
+its outstanding children, and ending demand cancels the active observer context.
+Device streams cannot issue child calls. Direct carrier stories exercise correlation,
+structured failures, Watch demand, cleanup and outside-tick refusal without a Rust host.
 
 `Directory.Build.props` owns framework, nullable checking, warnings as errors,
 latest .NET analysis, build code style, package metadata and the version read from
@@ -468,7 +490,7 @@ SDK. Add the package output folder as a local source alongside NuGet.org in its
 Target .NET 10, retain the application's own protobuf generation and its build
 dependencies, and refresh the consumer's lock file once before locked restore.
 Keep existing `Harmos.*` using directives. An isolated tooling story compiles the
-test-owned conformance fixture using only this local-feed package and runs all 31
+test-owned conformance fixture using only this local-feed package and runs the shared
 rules; no conformance messages or implementation ship in `Harmos`.
 
 Validation adds `Check / C#` and `Test / C#` on Linux and Windows. Check builds
@@ -715,9 +737,10 @@ mise run generate -- --sdk csharp
 mise run generate -- --sdk cpp
 ```
 
-Storage protobuf generation refreshes messages, service stubs and reflection together. Rust
-contracts are exposed as `harmos::storage`; the other SDKs generate storage clients from the
-same `proto/harmos/v1/storage.proto`. See [Generated Storage Clients](storage.md#generated-storage-clients).
+Protocol generation refreshes messages, service stubs and reflection together.
+Storage stays in-process; products declare their own wire operations and use shared
+File/Upload vocabulary from `proto/harmos/v1/`. See
+[Private Native Operations](storage.md#private-native-operations).
 
 Shared SDK client inputs live in `sdk/tests/fixtures/client/proto/application/v1/`.
 Each SDK composes those roots with the real library Status and nested Diagnostics

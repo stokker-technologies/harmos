@@ -18,6 +18,7 @@ version = { workspace = true }
 
 [dependencies]
 # Local
+harmos-protocol = { workspace = true }
 harmos-operations = { workspace = true, default-features = false, features = ["grpc", "lifecycle", "streaming"] }
 schematic-protocol = { path = "../protocol" }
 schematic-domain = { path = "../domain" }

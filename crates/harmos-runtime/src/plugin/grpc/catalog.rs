@@ -75,19 +75,9 @@ pub(super) fn verify(catalog: &v1::Catalog) -> Result<(), Error> {
             return Err(Error::Invalid(format!("Duplicate Section: {}", section.r#type)));
         }
         schema::message_types(&types, &section.r#type).map_err(|error| Error::Invalid(error.to_string()))?;
-        if section.r#type == "harmos.v1.SettingsDeclarations" {
-            let values = <v1::SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
-                .map_err(|error| Error::Invalid(format!("Declare HostValues: {error}")))?;
-            let mut names = BTreeSet::new();
-            for value in values.values {
-                if value.name.is_empty() || !names.insert(value.name.clone()) {
-                    return Err(Error::Invalid(format!("Declare HostValues: Duplicate or Empty Name {}", value.name)));
-                }
-                schema::message_types(&types, &value.r#type)
-                    .map_err(|error| Error::Invalid(format!("Declare HostValues {}: {error}", value.name)))?;
-            }
-        }
     }
+    crate::plugin::manager::settings::declarations(catalog).map_err(|error| Error::Invalid(error.to_string()))?;
+
     let mut requires = BTreeSet::new();
     for requirement in &catalog.requires {
         schema::operation_identity(&requirement.id).map_err(|error| Error::Invalid(error.to_string()))?;

@@ -208,7 +208,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((receipt.records, receipt.samples, receipt.bytes), (1, 1, 3));
 
     // Stop Withdraws Plugin Advice While Host Analysis Remains Available
-    plugin.stop("Story Complete").await.unwrap();
+    plugin.stop().await.unwrap();
     assert!(call(&runtime, ListDirectories {}).await.is_err());
     let request = AnalyzeSchematic {
         schematic: Some(support::snapshot().into()),

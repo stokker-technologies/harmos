@@ -20,7 +20,7 @@ use std::{env, error::Error as StdError, num::NonZeroUsize, result::Result as St
 
 // Third Party Imports
 use harmos::prelude::*;
-use harmos_protocol::{storage::StorageTransferSettings, v1 as host};
+use harmos_protocol::{client as host, v1::StorageTransferSettings};
 use schematic_protocol::{Connection, Snapshot, ValidateSchematic, Validation};
 use tonic::{Request, transport::Endpoint};
 
@@ -58,11 +58,8 @@ async fn main() -> StdResult<(), Box<dyn StdError>> {
     let client = Client::new(channel, settings)?;
 
     // Find the Application's Generated Contract.
-    let request = host::CatalogEntriesListRequest {
-        kind: host::CatalogKind::Operations as i32,
-        ..Default::default()
-    };
-    let catalog = client.catalog_entries.list(Request::new(request)).await?.into_inner();
+    let request = host::OperationsListRequest {};
+    let catalog = client.operations.list(Request::new(request)).await?.into_inner();
     let contract = catalog
         .operations
         .into_iter()

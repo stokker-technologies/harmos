@@ -40,6 +40,7 @@ tracing-subscriber = { workspace = true }
 # Utilities
 
 # Serialization
+serde_json = { workspace = true }
 
 # Configuration
 clap = { workspace = true, features = ["derive", "std", "help", "usage", "error-context"] }

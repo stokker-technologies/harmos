@@ -35,7 +35,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 // Local Imports
 use super::super::support as placement;
 use crate::storage::fixture::{Data, Recovery, history, storage_settings};
-use harmos_protocol::v1 as wire;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -49,7 +48,7 @@ use harmos_runtime::{
 
 /* === Type Aliases === */
 
-pub type Client = wire::plugins_client::PluginsClient<tonic::transport::Channel>;
+pub type Client = harmos_protocol::client::plugins_client::PluginsClient<tonic::transport::Channel>;
 
 /* === Structs === */
 
@@ -93,6 +92,10 @@ impl Backends {
 }
 impl Host {
     pub async fn start(root: &Path, backends: &Backends) -> Self {
+        let (clock, _) = Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+        Self::with_clock(root, backends, clock).await
+    }
+    pub async fn with_clock(root: &Path, backends: &Backends, clock: Clock) -> Self {
         let storage = StorageManager::with_catalog(
             manager::catalog(),
             StorageBackends {
@@ -103,7 +106,6 @@ impl Host {
         )
         .unwrap();
         let manager = Manager::new(storage.clone(), settings(root)).unwrap();
-        let (clock, _) = Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
         let runtime = crate::support::booted(Default::default(), |setup| {
             setup.settings().clock(clock).storage(&storage).plugins(manager.clone());
         })
@@ -142,77 +144,26 @@ impl Host {
     pub async fn close(self) {
         self.runtime.shutdown().await.unwrap();
     }
-    pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> wire::PluginManaged {
+    pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> harmos_protocol::client::PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();
-        let maximum = self.storage.settings().transfer_message_bytes().get();
-        let mut client = wire::storage_client::StorageClient::new(self.channel.clone())
-            .max_decoding_message_size(maximum)
-            .max_encoding_message_size(maximum);
-        let window = self.storage.mutation_window().unwrap().id.to_string();
-        let mutation = |action: &str| {
-            Some(harmos_protocol::storage::MutationId {
-                window: window.clone(),
-                key: format!("{name}-{action}"),
-            })
-        };
-        // Create the Upload and Append Ordered Offsets Through the Client Face.
-        let production = client
-            .create_file_production(wire::StorageCreateFileProductionRequest {
-                metadata: Some(harmos_protocol::storage::FileMetadata {
-                    id: name.into(),
-                    scope: None,
-                    media_type: "application/x-tar".into(),
-                    expected_length: Some(bytes.len() as u64),
-                    expected_sha256: Some(digest.clone()),
-                }),
-                mutation: mutation("create"),
+        let mut production = self
+            .storage
+            .produce_file(harmos_storage::FileMetadata {
+                id: harmos_runtime::Identifier::new(name).unwrap(),
+                scope: None,
+                media_type: "application/x-tar".into(),
+                expected_length: Some(bytes.len() as u64),
+                expected_sha256: Some(Sha256::digest(&bytes).into()),
             })
             .await
-            .unwrap()
-            .into_inner()
-            .production
             .unwrap();
-        let session = production.session;
-        let mut offset = 0;
-        for chunk in bytes.chunks(self.storage.settings().transfer_chunk_bytes().get()) {
-            client
-                .append_file_bytes(wire::StorageAppendFileBytesRequest {
-                    session: session.clone(),
-                    offset,
-                    data: chunk.to_vec(),
-                    mutation: mutation(&format!("append-{offset}")),
-                })
-                .await
-                .unwrap();
-            offset += chunk.len() as u64;
+        production.write_all(bytes).await.unwrap();
+        let file = production.finish().await.unwrap();
+        self.storage.flush_until(&file.position).await.unwrap();
+        harmos_protocol::client::PluginManaged {
+            content: Some(file.into()),
+            sha256: digest,
         }
-        // Get Confirms Resume Progress Before Publication.
-        let progress = client
-            .get_file_production(wire::StorageGetFileProductionRequest {
-                file: Some(harmos_protocol::storage::StagedFile {
-                    id: name.into(),
-                    history: session.as_ref().unwrap().history.clone(),
-                }),
-                at: None,
-            })
-            .await
-            .unwrap()
-            .into_inner();
-        assert_eq!(progress.accepted_length, bytes.len() as u64);
-        let content = client
-            .publish_file_production(wire::StoragePublishFileProductionRequest {
-                session,
-                length: bytes.len() as u64,
-                sha256: digest.clone(),
-                mutation: mutation("publish"),
-            })
-            .await
-            .unwrap()
-            .into_inner()
-            .file
-            .unwrap();
-
-        wire::PluginManaged { content: Some(content), sha256: digest }
     }
 }
 
@@ -323,40 +274,45 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
         response_bytes: nz(1024 * 1024),
     }
 }
-pub fn remote(name: &str, url: &str) -> wire::PluginsCreateRequest {
-    wire::PluginsCreateRequest {
+pub fn remote(name: &str, url: &str) -> harmos_protocol::client::PluginsCreateRequest {
+    harmos_protocol::client::PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
-        placement: Some(wire::PluginPlacement {
-            kind: Some(wire::plugin_placement::Kind::Remote(wire::PluginRemote { url: url.into() })),
+        placement: Some(harmos_protocol::client::PluginPlacement {
+            kind: Some(harmos_protocol::client::plugin_placement::Kind::Remote(harmos_protocol::client::PluginRemote { url: url.into() })),
         }),
-        value: Some(wire::PluginValue { enabled: true }),
+        value: Some(harmos_protocol::client::PluginValue { enabled: true }),
     }
 }
-pub fn managed(name: &str, content: wire::PluginManaged, enabled: bool) -> wire::PluginsCreateRequest {
-    wire::PluginsCreateRequest {
+pub fn managed(
+    name: &str, content: harmos_protocol::client::PluginManaged, enabled: bool,
+) -> harmos_protocol::client::PluginsCreateRequest {
+    harmos_protocol::client::PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
-        placement: Some(wire::PluginPlacement {
-            kind: Some(wire::plugin_placement::Kind::Managed(content)),
+        placement: Some(harmos_protocol::client::PluginPlacement {
+            kind: Some(harmos_protocol::client::plugin_placement::Kind::Managed(content)),
         }),
-        value: Some(wire::PluginValue { enabled }),
+        value: Some(harmos_protocol::client::PluginValue { enabled }),
     }
 }
-pub fn list() -> wire::PluginsListRequest {
-    wire::PluginsListRequest { at: None }
+pub fn list() -> harmos_protocol::client::PluginsListRequest {
+    harmos_protocol::client::PluginsListRequest { at: None }
 }
 pub async fn state(
-    watch: &mut tonic::Streaming<wire::PluginsWatchResponse>, name: &str, state: wire::PluginState, activation: u64,
-) -> wire::PluginEntry {
+    watch: &mut tonic::Streaming<harmos_protocol::client::PluginsWatchResponse>, name: &str, state: harmos_protocol::client::PluginState,
+    activation: u64,
+) -> harmos_protocol::client::PluginEntry {
     loop {
         let response = watch.message().await.unwrap().expect("plugin state event");
         let entry = match response.event {
-            Some(wire::plugins_watch_response::Event::Snapshot(snapshot)) => snapshot.entries.into_iter().find(|entry| entry.name == name),
-            Some(wire::plugins_watch_response::Event::Change(wire::PluginChange {
-                kind: Some(wire::plugin_change::Kind::Entry(entry)),
+            Some(harmos_protocol::client::plugins_watch_response::Event::Snapshot(snapshot)) => {
+                snapshot.entries.into_iter().find(|entry| entry.name == name)
+            }
+            Some(harmos_protocol::client::plugins_watch_response::Event::Change(harmos_protocol::client::PluginChange {
+                kind: Some(harmos_protocol::client::plugin_change::Kind::Entry(entry)),
             })) => Some(entry),
-            Some(wire::plugins_watch_response::Event::ResyncRequired(error)) => panic!("{error}"),
+            Some(harmos_protocol::client::plugins_watch_response::Event::ResyncRequired(error)) => panic!("{error}"),
             _ => None,
         };
         if let Some(entry) = entry

@@ -17,11 +17,16 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 Read [walkthrough.rs](../examples/schematic/cli/src/walkthrough.rs) alongside the output. It creates a
 fresh temporary document, places and connects two symbols, moves one, validates
 the schematic, applies a proposed right-angle route, undoes/redoes it, then saves
-and reopens it. Both backends produce the same shared results. The final line is:
+and reopens it. The native walkthrough's final line is:
 
 ```text
 Reopened: 2 symbols, 1 net, 3 route points
 ```
+
+The guest compiles, but its walkthrough currently refuses `Settings.List`: the
+frozen library `PluginPlacement` supports native bundles and remote endpoints,
+with no entry-backed guest placement. It cannot obtain another plugin's settings
+or replace the library store with an application fallback.
 
 Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
 stderr for both backends. Guest component compilation finishes before
@@ -42,6 +47,18 @@ initialization starts; the readiness interval covers plugin initialization.
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The protocol crate exposes generated contracts without the host stack.
+The library's shared messages live in `harmos.v1`, client calls in
+`harmos.client.v1`, plugin implementations in `harmos.plugin.v1`, and calls from a
+plugin to its host in `harmos.plugin.host.v1`. The SDK handler remains `context`.
+Both plugins declare the typed `horizontal_first` flag, defaulting to true, and
+read its effective library-stored value through plugin-host `Settings.List` when
+routing. A client updates complete plugin settings through
+`client.plugins.settings.{list,set}`; the plugin's caller identity scopes its read.
+The native host launches its own sidecar process and creates a remote entry through
+the library manager. The manager stores typed settings in the example's SQLite
+registry beside its recovery files. Entry deletion settles the activation before
+the application reaps its process. `LaunchConfig.plugins` selects this management
+assembly; focused storage hosts can supply their own storage assembly instead.
 Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
 and its `generated_code_matches_proto` test checks source and descriptor drift.
 Buf formats and lints the example contracts alongside `proto/harmos/`. The operations
@@ -136,15 +153,36 @@ settlement and publishes the document through an atomic file replacement.
 The optional [query service composition](../examples/schematic/app/src/services/queries.rs)
 constructs a SQLite/Arrow backend beside the JSONL adapter using caller-supplied history,
 catalog and storage budgets. The [saved preview journey](../examples/schematic/app/tests/storage/main.rs)
-uses generated Rust SDK requests for saved scans and conditional update/conflict outcomes.
+covers saved scans and conditional update/conflict outcomes through the library's
+in-process storage operations.
 It leaves the document's recovery and stream persistence with their existing adapters.
+
+## Application File Contracts
+
+[files.proto](../examples/schematic/proto/schematic/v1/files.proto) declares
+`schematic.v1.Files.Read` and `Hash`;
+[uploads.proto](../examples/schematic/proto/schematic/v1/uploads.proto) declares
+`schematic.v1.Uploads.Create`, `Get`, `Resume`, `Append`, `Publish` and `Delete`.
+These are application contracts over private native storage operations. Shared
+`harmos.v1.File` and `Upload` carry content references and fenced production
+progress; the application owns request shaping, access decisions and policy.
+`Uploads.Get` without an upload selects the replay window and storage chunk size.
+Mutations carry that issued window plus a request key. `Resume` fences the old
+writer, and `Publish` checks length and SHA-256 before returning an immutable file.
+`Append` and `Resume` report their accepted prefix without claiming it is durable;
+`Get` reads the upload's current accepted and durable lengths.
+The application uploads a managed bundle through this resource and passes its
+file reference to client `Plugins.Create`. The library has no storage wire service.
+The existing transfer `Put`/`Take` and streaming `Upload`/`Download` operations
+carry the example's benchmark batches and retain their separate application meaning.
 
 ## Transfer Benchmarks
 
 The guest's `benchmark` feature enables unary record, sample and file-byte
 `Put`/`Take` operations in [guest transfer handlers](../examples/schematic/guest/src/transfer.rs).
-Transfer IDs isolate concurrent datasets. Its `Hash` bridge calls the authoritative
-host `storage.hash_file` contract and verifies a local-file range and digest before timing.
+Transfer IDs isolate concurrent datasets. Its `Hash` bridge calls the application's `schematic.v1.Files/Hash` contract and
+verifies a local-file range and digest before timing. The application owns the wire
+request and delegates execution to the library's private in-process hash operation.
 
 `mise run build -- --artifact bench` builds and stamps the guest with `benchmark`.
 The native gRPC plugin is a Product artifact; its framed transport benchmarks are removed.
@@ -152,3 +190,7 @@ The host benchmarks transfer 10,000 records, 30 MiB of file bytes and 1,000,000
 samples in both directions, running the datasets concurrently on one reused
 host/guest instance. Setup and verification are outside timing.
 The transfer store is in memory; storage benchmarks separately measure disk I/O.
+
+The CLI writes a structured `schematic-walkthrough-<pid>.json` document and analysis result
+when `STKR_TEST_REPORT_DIR` is set. System and packaged journeys inspect this data alongside
+the existing traces. Normal CLI output remains readable walkthrough prose.

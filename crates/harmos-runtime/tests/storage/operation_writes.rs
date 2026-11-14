@@ -9,11 +9,6 @@
 
 /* === Modules === */
 
-#[path = "generated_exchange_cancellation.rs"]
-mod cancellation;
-#[path = "generated_record_exchange.rs"]
-mod records;
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -24,8 +19,7 @@ use arrow_array::{Array, ArrayRef, RecordBatch, StringArray, StructArray, UInt64
 use arrow_schema::{DataType, Field, Fields, Schema};
 
 // Local Imports
-use super::{Fixture, config};
-use harmos_operations::storage::{AppendRecords, AppendSamples};
+use super::Fixture;
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::arrow::ArrowBatch;
 use harmos_storage::writes::DataBatch;

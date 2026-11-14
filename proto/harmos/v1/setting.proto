@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Plugin Settings
+//
+// Shared setting declarations and values for the client and plugin-host boundaries.
+
+syntax = "proto3";
+
+package harmos.v1;
+
+// === Imports === //
+
+import "google/protobuf/duration.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Declares the plugin's settings in one typed contribution section of its reported description.
+message SettingsDeclarations {
+  repeated SettingDeclaration values = 1;
+}
+
+// Declares one library-stored setting and the value used when the plugin entry has no override.
+message SettingDeclaration {
+  string name = 1;
+  string title = 2;
+  string description = 3;
+  // Required typed default; the value discriminator must be selected.
+  SettingValue default = 4;
+}
+
+// Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.
+message SettingValue {
+  oneof value {
+    bool flag = 1;
+    int64 integer = 2;
+    double number = 3;
+    string text = 4;
+    google.protobuf.Duration duration = 5;
+  }
+}
+
+// Contains the complete named setting values for one plugin entry, without secret values.
+message SettingValues {
+  // Keys are declaration names; values must select the same variant as their declared defaults.
+  map<string, SettingValue> values = 1;
+}
+
+// === Enums === //

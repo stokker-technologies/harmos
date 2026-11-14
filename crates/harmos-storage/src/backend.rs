@@ -322,3 +322,9 @@ fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
 }
 
 /* === Tests === */
+
+impl crate::MemorySize for ReadLimits {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}

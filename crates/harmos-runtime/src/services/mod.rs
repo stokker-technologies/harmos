@@ -31,12 +31,8 @@ use tokio::sync::watch;
 // Local Imports
 use crate::ServicePolicy;
 use crate::operations::{Backoff, CallContext, ContextError, ContextValue, Jitter, Manager, RequestShape, RestartPolicy, Running};
-impl<A: Application> harmos_operations::execution::operations::ProtobufHost for ServiceContext<A> {
-    type Error = Error;
-    async fn call_protobuf<O: crate::operations::ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
-        harmos_operations::execution::operations::ProtobufHost::call_protobuf::<O>(&self.operations, request).await
-    }
-}
+use crate::operations::{NativeOperation, ProtobufOperation};
+use harmos_operations::execution::operations::{NativeHost, ProtobufHost};
 
 #[cfg(test)]
 use crate::supervision::executor;
@@ -167,6 +163,20 @@ pub trait Resident<A: Application>: Send + 'static {
 }
 
 /* === Implementations === */
+
+impl<A: Application> ProtobufHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_protobuf<O: ProtobufOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        ProtobufHost::call_protobuf::<O>(&self.operations, request).await
+    }
+}
+
+impl<A: Application> NativeHost for ServiceContext<A> {
+    type Error = Error;
+    async fn call_native<O: NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
+        NativeHost::call_native::<O>(&self.operations, request).await
+    }
+}
 
 impl ServiceManager {
     pub(crate) fn new(operations: Manager) -> Self {

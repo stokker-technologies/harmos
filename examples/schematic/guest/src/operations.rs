@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use harmos::{Context, Operation, OperationRequest, Plugin, Result, Visibility};
+use harmos::{Context, Error, Operation, OperationRequest, Plugin, Result, Visibility};
 use schematic_protocol::{Point, ProposeRoute, Route, ValidateSchematic, Validation};
 
 // Standard Library Imports
@@ -23,6 +23,8 @@ use schematic_protocol::{Point, ProposeRoute, Route, ValidateSchematic, Validati
 // Third Party Imports
 
 // Local Imports
+
+use harmos_protocol::{plugin::host::SettingsListRequest, v1::setting_value::Value};
 
 /* === Constants === */
 
@@ -42,6 +44,8 @@ use schematic_protocol::{Point, ProposeRoute, Route, ValidateSchematic, Validati
 
 pub fn plugin() -> Plugin {
     Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
+        .settings(schematic_protocol::settings_declarations())
+        .requires::<SettingsListRequest>()
         .operation(Operation::new(ValidateSchematic::ID, validate).visibility(Visibility::Public).policy(super::POLICY))
         .operation(Operation::new(ProposeRoute::ID, route).visibility(Visibility::Public).policy(super::POLICY))
 }
@@ -50,13 +54,17 @@ pub fn plugin() -> Plugin {
 
 async fn validate(_: &Context, request: ValidateSchematic) -> Result<Validation> {
     let schematic: schematic_domain::model::Snapshot =
-        request.schematic.ok_or_else(|| std::io::Error::other("schematic is required"))?.into();
+        request.schematic.ok_or_else(|| Error::Invalid("Validate Schematic: Missing Snapshot".into()))?.into();
     Ok(Validation { diagnostics: schematic.diagnostics() })
 }
-async fn route(_: &Context, request: ProposeRoute) -> Result<Route> {
-    let from = request.from.ok_or_else(|| std::io::Error::other("from is required"))?;
-    let to = request.to.ok_or_else(|| std::io::Error::other("to is required"))?;
-    let corner = Point { x: to.x, y: from.y };
+async fn route(context: &Context, request: ProposeRoute) -> Result<Route> {
+    let from = request.from.ok_or_else(|| Error::Invalid("Propose Route: Missing From Point".into()))?;
+    let to = request.to.ok_or_else(|| Error::Invalid("Propose Route: Missing To Point".into()))?;
+    let settings = context.settings().await?.value.ok_or_else(|| Error::Invalid("Route: Missing Settings".into()))?;
+    let Some(Value::Flag(horizontal_first)) = settings.values.get("horizontal_first").and_then(|value| value.value.as_ref()) else {
+        return Err(Error::Invalid("Route: Missing Horizontal First Flag".into()));
+    };
+    let corner = if *horizontal_first { Point { x: to.x, y: from.y } } else { Point { x: from.x, y: to.y } };
     let mut points = vec![from, corner, to];
     points.dedup();
     Ok(Route { points })

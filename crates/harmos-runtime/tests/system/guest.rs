@@ -13,7 +13,7 @@
 
 /* === Imports === */
 
-use harmos_runtime::{Runtime, guest::PluginState};
+use harmos_runtime::{Identifier, Runtime, guest::PluginState};
 use prost::Message as _;
 use schematic_operations::protocol::{Connection, Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
 use std::{num::NonZeroUsize, time::SystemTime};
@@ -71,6 +71,7 @@ async fn guest_composition_walks() {
         .register_guest(
             loaded,
             harmos_runtime::config::PluginSettings {
+                host_operations: [Identifier::new("harmos.plugin.host.v1.Settings/List").unwrap()].into_iter().collect(),
                 configuration: b"null".to_vec(),
                 ..Default::default()
             },

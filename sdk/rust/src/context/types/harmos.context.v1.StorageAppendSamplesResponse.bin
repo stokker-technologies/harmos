@@ -1,20 +1,0 @@
-
-˜
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/types.proto"C
-StorageAppendSamplesResponse#
-receipt (2.harmos.v1.Receiptbproto3
-œ
-harmos/v1/types.proto	harmos.v1"'
-History
-store (	
-epoch (	"A
-Position#
-history (2.harmos.v1.History
-sequence ("ƒ
-Receipt
-
-request_id (	(
-accepted_at (2.harmos.v1.Position'
-
-durable_at (2.harmos.v1.Position
-	completed (bproto3

@@ -18,6 +18,8 @@
 // Standard Library Imports
 
 // Third Party Imports
+use prost::Message;
+use prost_types::FileDescriptorSet;
 
 // Local Imports
 
@@ -38,27 +40,12 @@
 /* === Public Functions === */
 
 /// Complete descriptor inventory for the two built-in clock operations.
-pub fn catalog_types() -> prost_types::FileDescriptorSet {
-    types("harmos.context.v1")
+pub fn catalog_types() -> FileDescriptorSet {
+    FileDescriptorSet::decode(include_bytes!("clock-descriptors.bin").as_slice()).expect("generated plugin-host clock descriptors")
 }
 
-pub fn client_types() -> prost_types::FileDescriptorSet {
-    types("harmos.v1")
-}
-
-fn types(package: &str) -> prost_types::FileDescriptorSet {
-    use prost::Message;
-    let types = prost_types::FileDescriptorSet::decode(include_bytes!("descriptors.bin").as_slice()).expect("generated clock descriptors");
-    crate::schema::operation_types(
-        &types,
-        &[
-            &format!("{package}.TimeSleepRequest"),
-            &format!("{package}.TimeSleepResponse"),
-            &format!("{package}.TimeGetRequest"),
-            &format!("{package}.TimeGetResponse"),
-        ],
-    )
-    .expect("generated clock roots")
+pub fn client_types() -> FileDescriptorSet {
+    FileDescriptorSet::decode(include_bytes!("client-clock-descriptors.bin").as_slice()).expect("generated client clock descriptors")
 }
 
 /* === Private Functions === */

@@ -18,8 +18,10 @@
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::{env, fs, io};
 
 // Third Party Imports
+use serde_json::json;
 
 // Local Imports
 use crate::Result;
@@ -174,10 +176,8 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         state.redo(principal, selection).await?;
         println!("Undid and redid the route");
 
-        if advanced {
-            crate::advanced::run(&runtime, schematic, guest.is_none()).await?;
-        }
-        Ok::<_, crate::Error>(())
+        let analysis = if advanced { Some(crate::advanced::run(&runtime, schematic, guest.is_none()).await?) } else { None };
+        Ok::<_, crate::Error>(analysis)
     }
     .await;
 
@@ -185,7 +185,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let stopped = plugin.stop().await;
     let snapshot = runtime.state.state().read(Clone::clone).await;
     let settled = runtime.shutdown().await;
-    result?;
+    let analysis = result?;
     stopped?;
     settled?;
 
@@ -193,10 +193,18 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let snapshot = snapshot?;
     Document::save(&path, snapshot, &checkpoint)?;
     let document = Document::open(&path)?;
+    drop(runtime);
     let reopened = app::launch(document, &config).await?;
     let saved = reopened.state.state().read(Clone::clone).await;
     reopened.shutdown().await?;
     let saved = saved?;
+    if let Some(directory) = env::var_os("STKR_TEST_REPORT_DIR") {
+        let directory = Path::new(&directory);
+        fs::create_dir_all(directory)?;
+        let report = json!({"document": &saved.value, "analysis": analysis});
+        let bytes = serde_json::to_vec(&report).map_err(|source| io::Error::other(format!("Encode Walkthrough Result: {source}")))?;
+        fs::write(directory.join(format!("schematic-walkthrough-{}.json", std::process::id())), bytes)?;
+    }
     println!(
         "Reopened: {} symbols, {} net, {} route points",
         saved.value.symbols.len(),

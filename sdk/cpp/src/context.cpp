@@ -91,8 +91,11 @@ std::shared_ptr<detail::Watch> Context::open_watch(wire::ChildRequest request) {
     {
         std::lock_guard lock(root->mutex);
         auto found = state_->requirements.find(request.operation());
+        if (root->closed || (root->tick_scoped && (!root->tick_active || !root->accepting_children)) || state_->cancelled)
+            throw TransportError(3, "Watch " + request.operation() + ": Child Scope Is Closed");
         if (!root->emit || !request.max_response_bytes() || found == state_->requirements.end() || found->second != request.fingerprint())
             throw std::invalid_argument("Watch " + request.operation() + ": Declared Requirement and Positive Item Limit Required");
+        if (root->next == UINT64_MAX) throw TransportError(8, "Watch " + request.operation() + ": Child Identity Exhausted");
         result->call = ++root->next;
         request.set_call(result->call);
         root->watches.emplace(result->call, result->watch);
@@ -127,7 +130,7 @@ std::shared_ptr<detail::Invocation> transport(const std::shared_ptr<detail::Invo
 std::optional<std::string> cancellation(std::shared_ptr<detail::Invocation> state) {
     while (state) {
         if (state->cancelled) return state->cancelled;
-        auto caller = state->caller.lock();
+        auto caller = state->caller;
         if (!caller && state->transport && state->transport != state) caller = state->transport;
         if (caller == state) break;
         state = std::move(caller);
@@ -191,9 +194,9 @@ google::protobuf::Duration retry_delay(const wire::RetryPolicy& retry, std::uint
 }
 
 std::optional<std::shared_future<std::string>> Context::local(const detail::OperationDefinition& requested,
-    const std::string& payload, std::optional<wire::OperationPolicy> override_policy) {
+    const std::string& payload, std::optional<wire::OperationPolicy> override_policy, std::function<void()>* cancel) {
     auto root = transport(state_);
-    if (!root->emit) throw std::logic_error("Observers Cannot Call Operations or Wait");
+    if (!root->emit || (root->tick_scoped && (!root->tick_active || !root->accepting_children))) throw TransportError(3, "Invoke " + requested.contract.id() + ": Child Scope Is Closed");
     auto found = state_->local.find(requested.contract.id());
     if (found == state_->local.end()) return {};
     auto operation = found->second;
@@ -211,7 +214,14 @@ std::optional<std::shared_future<std::string>> Context::local(const detail::Oper
     }
     auto completion = std::make_shared<std::promise<std::string>>();
     auto result = completion->get_future().share();
-    auto caller = state_;
+    auto caller = std::make_shared<detail::Invocation>();
+    caller->transport = root;
+    caller->caller = state_;
+    caller->request = state_->request;
+    caller->requirements = state_->requirements;
+    caller->local = state_->local;
+    caller->plugin = state_->plugin;
+    *cancel = [caller] { cancel_owned(caller, "Local Call Cancelled", wire::CLASSIFICATION_CANCELLED); };
     root->start_worker([root, caller, completion, operation, policy, attempts, payload] {
         try {
             Context parent(caller);
@@ -228,7 +238,7 @@ std::optional<std::shared_future<std::string>> Context::local(const detail::Oper
                 Context timer(guard);
                 auto alarm = [&](const google::protobuf::Duration& duration) {
                     wire::ChildRequest request; request.set_operation(SLEEP.definition.contract.id()); request.set_fingerprint(SLEEP.definition.contract.fingerprint());
-                    context::v1::TimeSleepRequest sleep; *sleep.mutable_duration() = duration; request.set_payload(detail::encode(sleep));
+                    plugin::host::v1::TimeSleepRequest sleep; *sleep.mutable_duration() = duration; request.set_payload(detail::encode(sleep));
                     return timer.send(std::move(request));
                 };
                 try {
@@ -297,19 +307,35 @@ std::optional<std::shared_future<std::string>> Context::local(const detail::Oper
     return result;
 }
 
-std::shared_future<std::string> Context::send(wire::ChildRequest request) {
+std::shared_future<std::string> Context::send(wire::ChildRequest request, std::function<void()>* cancel) {
     auto root = transport(state_);
     std::shared_future<std::string> result;
     {
         std::lock_guard lock(root->mutex);
-        if (!root->emit) throw std::logic_error("Observers and Publishers Cannot Call Operations");
+        if (!root->emit || (root->tick_scoped && (!root->tick_active || !root->accepting_children))) throw TransportError(3, "Invoke " + request.operation() + ": Child Scope Is Closed");
         if (root->closed) throw TransportError(14, "Invoke: Invocation Closed");
         if (!state_->background) if (auto reason = cancellation(state_)) throw Failure(interrupted(state_, wire::CLASSIFICATION_CANCELLED, *reason));
         auto found = state_->requirements.find(request.operation());
         if (found == state_->requirements.end() || found->second != request.fingerprint()) throw std::invalid_argument("Invoke " + request.operation() + ": Undeclared Requirement");
+        if (root->next == UINT64_MAX) throw TransportError(8, "Invoke " + request.operation() + ": Child Identity Exhausted");
         request.set_call(++root->next); request.set_background(state_->background);
         auto& promise = root->pending[request.call()]; result = promise.get_future().share();
         state_->owned.insert(request.call()); if (state_->background) root->guards.insert(request.call());
+        if (cancel) *cancel = [root, owner = state_, id = request.call()] {
+            {
+                std::lock_guard child_lock(root->mutex);
+                auto found = root->pending.find(id);
+                if (found == root->pending.end()) return;
+                found->second.set_exception(std::make_exception_ptr(Failure(interrupted(owner, wire::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
+                root->pending.erase(found);
+                root->guards.erase(id);
+                root->retired.insert(id);
+                root->changed.notify_all();
+            }
+            plugin::v1::InstanceInvokeResponse frame;
+            frame.mutable_child_cancel()->set_call(id);
+            root->emit(std::move(frame));
+        };
     }
     plugin::v1::InstanceInvokeResponse frame; *frame.mutable_child() = std::move(request);
     root->emit(std::move(frame)); root->start_reading();
@@ -324,12 +350,47 @@ std::string Context::cancelled() {
 }
 
 void Context::sleep(const google::protobuf::Duration& duration) {
-    context::v1::TimeSleepRequest request;
+    plugin::host::v1::TimeSleepRequest request;
     *request.mutable_duration() = duration;
     call(SLEEP, request).get();
 }
 
-google::protobuf::Timestamp Context::now() { return call(GET_TIME, context::v1::TimeGetRequest{}).get().now(); }
+google::protobuf::Timestamp Context::now() { return call(GET_TIME, plugin::host::v1::TimeGetRequest{}).get().now(); }
+
+plugin::host::v1::SettingsListResponse Context::settings() { return call(LIST_SETTINGS, plugin::host::v1::SettingsListRequest{}).get(); }
+}
+
+namespace harmos::detail {
+void cancel_children(const std::shared_ptr<Invocation>& state, const std::string& reason) {
+    cancel_owned(state, reason, wire::CLASSIFICATION_CANCELLED);
+    auto root = transport(state);
+    std::vector<std::uint64_t> cancelled;
+    {
+        std::lock_guard lock(root->mutex);
+        for (auto& [id, promise] : root->pending) {
+            promise.set_exception(std::make_exception_ptr(Failure(interrupted(state, wire::CLASSIFICATION_CANCELLED, reason))));
+            root->retired.insert(id);
+            cancelled.push_back(id);
+        }
+        root->pending.clear();
+        root->guards.clear();
+        for (auto& [id, watch] : root->watches) {
+            wire::ChildResponse terminal;
+            terminal.set_call(id);
+            *terminal.mutable_failure() = interrupted(state, wire::CLASSIFICATION_CANCELLED, reason);
+            watch->terminal = std::move(terminal);
+            root->retired.insert(id);
+            cancelled.push_back(id);
+        }
+        root->watches.clear();
+        root->changed.notify_all();
+    }
+    for (auto id : cancelled) {
+        plugin::v1::InstanceInvokeResponse frame;
+        frame.mutable_child_cancel()->set_call(id);
+        try { root->emit(std::move(frame)); } catch (const TransportError&) {}
+    }
+}
 }
 
 /* === Private Functions === */

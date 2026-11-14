@@ -21,6 +21,9 @@ pub use streams::{WireEndpoints, WireStreams};
 
 /* === Imports === */
 
+use super::InvocationError;
+use std::sync::Arc;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -153,6 +156,12 @@ impl ServingError {
             }
             _ => FailureKind::Permanent,
         }
+    }
+}
+
+impl From<InvocationError> for ServingError {
+    fn from(error: InvocationError) -> Self {
+        Self::Native(Arc::new(error))
     }
 }
 

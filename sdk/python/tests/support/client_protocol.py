@@ -12,10 +12,11 @@
 # === Imports === #
 
 # Standard Library Imports
-from harmos.v1 import status_pb2 as status
-from harmos.v1.status import diagnostics_pb2 as diagnostics
+from harmos._wire.client.v1 import status_pb2 as status
+from harmos._wire.client.v1.status import diagnostics_pb2 as diagnostics
 from tests.fixtures.client.application.v1 import jobs_pb2 as jobs
 from tests.fixtures.client.application.v1.jobs import progress_pb2 as progress
+from tests.fixtures.client.application.v1.plugins import annotations_pb2 as annotations
 
 # Third Party Imports
 
@@ -28,7 +29,7 @@ from tests.fixtures.client.application.v1.jobs import progress_pb2 as progress
 
 # === Constants === #
 
-__all__ = ["diagnostics", "jobs", "progress", "status"]
+__all__ = ["annotations", "diagnostics", "jobs", "progress", "status"]
 
 
 # === Types === #

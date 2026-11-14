@@ -16,7 +16,7 @@
 # Third Party Imports
 
 # Local Imports
-from .v1.storage_settings_pb2 import TRANSFER_FRAMING_BYTES, MessageSettings, StorageTransferSettings
+from .v1.transfer_pb2 import TRANSFER_FRAMING_BYTES, MessageSettings, StorageTransferSettings
 
 # Type Checking Imports
 

@@ -115,7 +115,7 @@ pub(crate) static SLOW_DESCRIPTION: harmos_runtime::operations::WireDeclaration 
             timeout: Duration::from_millis(50),
             attempt_timeout: Duration::from_millis(10),
             cancellation_timeout: std::time::Duration::ZERO,
-            retries: COMPUTE_OPERATION.entry().policy.retries,
+            retries: RetryPolicy::Never,
         },
     );
 
@@ -130,6 +130,7 @@ pub(crate) struct Parent(pub(crate) Compute);
 
 pub(crate) static PARENT_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<Parent>("test.parent", COMPUTE_OPERATION.entry().policy)
+        .replay(harmos_runtime::operations::ReplaySafety::Idempotent)
         .visibility(harmos_runtime::operations::Visibility::Public);
 
 static PARENT_CALLEES: [harmos_runtime::operations::WireDeclaration; 1] = [COMPUTE_DESCRIPTION.copied()];

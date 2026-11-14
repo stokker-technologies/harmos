@@ -91,7 +91,7 @@ impl RecoveryPosition {
     }
 }
 
-impl From<StoreHistory> for harmos_protocol::storage::StoreHistory {
+impl From<StoreHistory> for harmos_protocol::v1::History {
     fn from(value: StoreHistory) -> Self {
         Self {
             store: value.store.to_string(),
@@ -100,7 +100,7 @@ impl From<StoreHistory> for harmos_protocol::storage::StoreHistory {
     }
 }
 
-impl From<StorageCursor> for harmos_protocol::storage::StorageCursor {
+impl From<StorageCursor> for harmos_protocol::v1::Position {
     fn from(value: StorageCursor) -> Self {
         Self {
             history: Some(value.history.into()),
@@ -109,9 +109,9 @@ impl From<StorageCursor> for harmos_protocol::storage::StorageCursor {
     }
 }
 
-impl TryFrom<harmos_protocol::storage::StoreHistory> for StoreHistory {
+impl TryFrom<harmos_protocol::v1::History> for StoreHistory {
     type Error = Error;
-    fn try_from(value: harmos_protocol::storage::StoreHistory) -> Result<Self> {
+    fn try_from(value: harmos_protocol::v1::History) -> Result<Self> {
         Ok(Self {
             store: Identifier::new(value.store)?,
             epoch: Identifier::new(value.epoch)?,
@@ -119,9 +119,9 @@ impl TryFrom<harmos_protocol::storage::StoreHistory> for StoreHistory {
     }
 }
 
-impl TryFrom<harmos_protocol::storage::StorageCursor> for StorageCursor {
+impl TryFrom<harmos_protocol::v1::Position> for StorageCursor {
     type Error = Error;
-    fn try_from(value: harmos_protocol::storage::StorageCursor) -> Result<Self> {
+    fn try_from(value: harmos_protocol::v1::Position) -> Result<Self> {
         Ok(Self {
             history: value.history.ok_or(Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
             sequence: value.sequence,

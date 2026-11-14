@@ -18,7 +18,8 @@ use std::collections::{BTreeSet, VecDeque};
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::v1::{History as WireHistory, PageRequest, Position, status::Event};
+use harmos_protocol::client::status::Event;
+use harmos_protocol::v1::{History as WireHistory, PageRequest, Position};
 use prost::Message;
 
 // Local Imports
@@ -124,7 +125,7 @@ impl History {
             let last = events.last().map_or(after, |event| event.sequence);
             let more = self.events.iter().any(|event| event.sequence > last && event.sequence <= boundary.sequence);
             let token = if more { format!("{}/{}:{last}", self.identity.store, boundary.sequence) } else { String::new() };
-            let response = harmos_protocol::v1::status::LogsListResponse {
+            let response = harmos_protocol::client::status::LogsListResponse {
                 events: events.clone(),
                 resolved_at: Some(boundary.clone()),
                 next_page_token: token.clone(),
@@ -154,7 +155,7 @@ impl History {
         if maximum_items == 0 || maximum_bytes == 0 {
             return Err(failure(action, "positive event and byte bounds are required"));
         }
-        let mut bytes = harmos_protocol::v1::status::LogsWatchResponse {
+        let mut bytes = harmos_protocol::client::status::LogsWatchResponse {
             events: Vec::new(),
             resolved_at: Some(Position {
                 history: Some(self.identity.clone()),
@@ -167,7 +168,7 @@ impl History {
         }
         let mut events = Vec::new();
         for event in self.events.iter().filter(|event| event.sequence > after && event.sequence <= boundary) {
-            let size = harmos_protocol::v1::status::LogsWatchResponse {
+            let size = harmos_protocol::client::status::LogsWatchResponse {
                 events: vec![event.clone()],
                 resolved_at: None,
             }

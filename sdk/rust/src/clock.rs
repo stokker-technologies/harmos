@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::context::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
+pub use harmos_protocol::plugin::host::{TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
 
 /* === Imports === */
 

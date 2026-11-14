@@ -1,15 +1,0 @@
-
-Ö
-harmos/context/v1/storage.protoharmos.context.v1harmos/v1/storage_types.proto"y
-#StorageWatchDirectoryEntriesRequest8
-	selection (2%.harmos.storage.v1.DirectorySelection
-include_existing (bproto3
-Õ
-harmos/v1/storage_types.protoharmos.storage.v1"1
-DirectoryRule
-pattern (	
-include ("f
-DirectorySelection
-root (	
-	recursive (/
-rules (2 .harmos.storage.v1.DirectoryRulebproto3

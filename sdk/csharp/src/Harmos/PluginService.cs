@@ -1,8 +1,7 @@
-using Status = Grpc.Core.Status;
-using Harmos.Context.V1;
-using Harmos.Plugin.V1;
 // SPDX-License-Identifier: Apache-2.0
 
+using Status = Grpc.Core.Status;
+using Harmos.Plugin.V1;
 using System.Threading.Channels;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
@@ -102,12 +101,12 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         reading = null;
       }
 
-      V1.Response response;
-      try { response = new V1.Response { Payload = await executing }; }
-      catch (PluginFailureException error) { response = new V1.Response { Failure = error.Failure }; }
+      Response response;
+      try { response = new Response { Payload = await executing }; }
+      catch (PluginFailureException error) { response = new Response { Failure = error.Failure }; }
       catch (OperationCanceledException) when (!transport.IsCancellationRequested)
       {
-        response = new V1.Response { Failure = context.CancellationFailure().Failure };
+        response = new Response { Failure = context.CancellationFailure().Failure };
       }
       await context.FlushCancellations();
       await output.WriteAsync(new InstanceInvokeResponse { Response = response }, transport);
@@ -170,24 +169,54 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     Task<bool>? reading = null;
     Task? producing = null;
     Task<ByteString>? observing = null;
+    Context? tickContext = null;
+    CancellationTokenSource? tickStopped = null;
     try
     {
       if (publication.Observer is not null)
       {
+        ulong sequence = 0;
+        ulong lastCall = 0;
         reading = input.MoveNext(readingStopped.Token);
         while (await reading)
         {
           var at = TickTime(input.Current);
-          context.Sequence++;
-          context.At = at.Clone();
-          observing = publication.Observer(context);
+          tickStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
+          var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
+          tickContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
+              description.Id, requires, tickStopped, frames.Writer, operations)
+          { Sequence = ++sequence, At = at.Clone(), LastCall = lastCall };
+          observing = publication.Observer(tickContext);
           reading = input.MoveNext(readingStopped.Token);
-          await Task.WhenAny(observing, reading);
-          if (reading.IsCompleted && !await reading)
-            return;
+          Task<bool>? available = null;
+          while (true)
+          {
+            if (reading.IsCompleted)
+            {
+              if (!await reading) return;
+              if (input.Current.FrameCase != InstanceSamplesRequest.FrameOneofCase.Child)
+                throw Invalid("Read Samples: Expected a Child Reply While a Tick Is Unanswered");
+              await tickContext.Reply(input.Current.Child);
+              reading = input.MoveNext(readingStopped.Token);
+            }
+            while (frames.Reader.TryRead(out var frame))
+              await output.WriteAsync(SampleChild(frame), call.CancellationToken);
+            if (observing.IsCompleted) break;
+            if (available is null || available.IsCompleted)
+              available = frames.Reader.WaitToReadAsync(tickStopped.Token).AsTask();
+            await Task.WhenAny(observing, reading, available);
+          }
           var row = await observing;
-          var sample = new Sample { At = at, Row = row, Sequence = context.Sequence };
+          await tickContext.Cancel("Tick Answered");
+          await tickContext.FlushCancellations();
+          while (frames.Reader.TryRead(out var frame))
+            await output.WriteAsync(SampleChild(frame), call.CancellationToken);
+          lastCall = tickContext.LastCall;
+          var sample = new Sample { At = at, Row = row, Sequence = sequence };
           await output.WriteAsync(new InstanceSamplesResponse { Samples = { sample } }, call.CancellationToken);
+          tickContext = null;
+          tickStopped.Dispose();
+          tickStopped = null;
         }
         return;
       }
@@ -204,13 +233,13 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
           if (!await reading)
             break;
           TickTime(input.Current);
-          throw Invalid("Device Streams Do Not Accept Ticks");
+          throw Invalid("Read Samples: Device Streams Do Not Accept Ticks");
         }
         if (!await sampling)
         {
           await producing;
           if (await reading)
-            throw Invalid("Device Streams Do Not Accept Frames");
+            throw Invalid("Read Samples: Device Streams Do Not Accept Frames");
           break;
         }
         while (rows.Reader.TryRead(out var sample))
@@ -231,6 +260,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
       }
       context.Disconnected();
+      tickContext?.Disconnected();
       if (producing is not null)
         await producing;
       if (observing is not null)
@@ -239,8 +269,17 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         try { await observing; }
         catch (Exception) when (stopped.IsCancellationRequested) { }
       }
+      tickStopped?.Dispose();
     }
   }
+
+  private static InstanceSamplesResponse SampleChild(InstanceInvokeResponse frame) => frame.FrameCase switch
+  {
+    InstanceInvokeResponse.FrameOneofCase.Child => new InstanceSamplesResponse { Child = frame.Child },
+    InstanceInvokeResponse.FrameOneofCase.ChildCancel => new InstanceSamplesResponse { ChildCancel = frame.ChildCancel },
+    InstanceInvokeResponse.FrameOneofCase.ChildDemand => new InstanceSamplesResponse { ChildDemand = frame.ChildDemand },
+    _ => throw Invalid("Write Samples: Expected Child Traffic")
+  };
 
   private static async Task Produce(Publication publication, Context context, ChannelWriter<Sample> rows)
   {
@@ -255,7 +294,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
   private static Timestamp TickTime(InstanceSamplesRequest frame)
   {
     if (frame.FrameCase != InstanceSamplesRequest.FrameOneofCase.Tick || frame.Tick.At is null)
-      throw Invalid("Tick TimeGetResponse Is Required");
+      throw Invalid("Read Samples: Tick Timestamp Is Required");
     ValidateTimestamp(frame.Tick.At);
     return frame.Tick.At.Clone();
   }

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Buffers.Binary;
 using Google.Protobuf;
+using System.Buffers.Binary;
 using Google.Protobuf.WellKnownTypes;
 using Harmos.Sdk;
 using Harmos.V1;
+using Harmos.Plugin.Host.V1;
 using Graph = Harmos.Conformance.V1.Graph;
 using Value = Harmos.Conformance.V1.Value;
 using SdkPlugin = global::Harmos.Sdk.Plugin;
 using SdkContext = global::Harmos.Sdk.Context;
+using Settings = Harmos.Sdk.Settings;
 
 namespace Harmos.Conformance;
 
@@ -23,6 +25,8 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
   private readonly Operation<Value, Value> hostPending = new("conformance.host.pending", Visibility.Public);
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
+  private readonly Operation<OperationsListRequest, OperationsListResponse> listOperations = new("harmos.plugin.host.v1.Operations/List", Visibility.Public);
+  private readonly Operation<OperationsGetRequest, OperationsGetResponse> getOperation = new("harmos.plugin.host.v1.Operations/Get", Visibility.Public);
 
   public SdkPlugin Build() => new SdkPlugin("conformance", "1.0.0")
       .Message<Harmos.Conformance.V1.PayloadOnly>()
@@ -47,6 +51,8 @@ public sealed class Fixture
       .Operation(new Operation<Value, Value>("conformance.cancel_reason", Visibility.Public), CancelReason)
       .Operation(new Operation<Value, Value>("conformance.watch", Visibility.Public), Watch)
       .Operation(new Operation<Value, Value>("conformance.peer_call", Visibility.Public), PeerCall)
+      .Operation(new Operation<Value, Value>("conformance.settings_read", Visibility.Public), ReadSettings)
+      .Operation(new Operation<Value, Value>("conformance.discover", Visibility.Public), Discover)
       .Requires(peerPublic).Requires(peerProtected).Requires(peerLocal).Requires(ownProtected)
       .Requires(hostWatch)
       .Requires(hostEcho)
@@ -55,10 +61,74 @@ public sealed class Fixture
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
       .Requires(Clock.Sleep)
       .Requires(Clock.GetTime)
+      .Requires(Settings.List)
+      .Requires(listOperations)
+      .Requires(getOperation)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
       .Stream<Value>("conformance.device", Device)
-      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "harmos.conformance.v1.Graph.interval")
-      .Section(new Graph { Interval = new Duration { Seconds = 2 } });
+      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "interval")
+      .Observer("conformance.tick_children", new Duration { Seconds = 1 }, context => Children(context, new Value()))
+      .Observer("conformance.tick_context", new Duration { Seconds = 1 }, TickContext)
+      .Observer("conformance.tick_failure", new Duration { Seconds = 1 }, TickFailure)
+      .Observer("conformance.tick_watch", new Duration { Seconds = 1 }, context => Watch(context, new Value { Value_ = ByteString.CopyFromUtf8("fixture") }))
+      .Observer("conformance.tick_cancel", new Duration { Seconds = 1 }, TickCancel)
+      .Section(new Graph { Interval = new Duration { Seconds = 2 } })
+      .Setting("count", new SettingValue { Integer = 3 }, "count", "Conformance count")
+      .Setting("enabled", new SettingValue { Flag = false }, "enabled", "Conformance enabled")
+      .Setting("gain", new SettingValue { Number = 1.5 }, "gain", "Conformance gain")
+      .Setting("interval", new SettingValue { Duration = new Duration { Seconds = 2 } }, "interval", "Conformance interval")
+      .Setting("label", new SettingValue { Text = "default" }, "label", "Conformance label");
+
+  private static async Task<Value> ReadSettings(SdkContext context, Value request)
+  {
+    var settings = await context.SettingsAsync();
+    return new Value { Value_ = settings.Value.ToByteString() };
+  }
+
+  private async Task<Value> Discover(SdkContext context, Value request)
+  {
+    var operations = await context.CallAsync(listOperations, new OperationsListRequest());
+    var id = operations.Operations[0].Contract.Id;
+    var operation = await context.CallAsync(getOperation, new OperationsGetRequest { Id = id });
+    return new Value { Value_ = ByteString.CopyFromUtf8(operation.Operation.Contract.Id) };
+  }
+
+  private async Task<Value> TickContext(SdkContext context)
+  {
+    var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
+    var clock = await context.CallAsync(Clock.GetTime, new TimeGetRequest());
+    var settings = await context.SettingsAsync();
+    using var value = new MemoryStream();
+    foreach (var reply in new IMessage[] { echo, clock, settings })
+    {
+      var payload = reply.ToByteArray();
+      var length = new byte[4];
+      BinaryPrimitives.WriteUInt32LittleEndian(length, (uint)payload.Length);
+      value.Write(length);
+      value.Write(payload);
+    }
+    return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
+  }
+
+  private async Task<Value> TickFailure(SdkContext context)
+  {
+    try { return await context.CallAsync(hostFail, new Value()); }
+    catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
+  }
+
+  private async Task<Value> TickCancel(SdkContext context)
+  {
+    using var cancelled = new CancellationTokenSource();
+    var pending = context.CallAsync(hostPending, new Value(), cancellationToken: cancelled.Token);
+    _ = pending.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+    await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
+    await cancelled.CancelAsync();
+    try { await pending; }
+    catch (OperationCanceledException) { }
+    var automatic = context.CallAsync(hostPending, new Value());
+    _ = automatic.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
+    return new Value { Value_ = ByteString.CopyFromUtf8("cancelled") };
+  }
 
   private Task<Value> PeerCall(SdkContext context, Value request) => request.Value_.ToStringUtf8() switch
   {
@@ -73,7 +143,7 @@ public sealed class Fixture
     if (request.Value_.ToStringUtf8() is "deadline" or "overall") { await context.SleepAsync(new Duration { Seconds = 3600 }); return request; }
     if (request.Value_ == ByteString.CopyFromUtf8("cancel")) { await context.CallAsync(hostEcho, request); return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) }; }
     if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound")) return request;
-    if (context.Attempt == 1) throw new PluginFailureException(new Harmos.V1.Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
+    if (context.Attempt == 1) throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
     return new Value { Value_ = ByteString.CopyFromUtf8(context.Attempt.ToString()) };
   }
   private Task<Value> LocalCall(SdkContext context, Value request)

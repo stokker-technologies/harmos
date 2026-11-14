@@ -14,9 +14,8 @@ import argparse
 import asyncio
 
 from harmos import Client
-from harmos.v1.catalog_entries_pb2 import CatalogEntriesListRequest, CatalogEntriesListResponse
-from harmos.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
-from harmos.v1.types_pb2 import CATALOG_KIND_OPERATIONS
+from harmos._wire.client.v1.operations_pb2 import OperationsListRequest, OperationsListResponse
+from harmos._wire.client.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
 
 # === Public Exports === #
 
@@ -29,11 +28,11 @@ from harmos.v1.types_pb2 import CATALOG_KIND_OPERATIONS
 # === Public Functions === #
 
 
-async def run(address: str) -> tuple[CatalogEntriesListResponse, StatusGetResponse, StatusWatchResponse]:
+async def run(address: str) -> tuple[OperationsListResponse, StatusGetResponse, StatusWatchResponse]:
     client = Client.connect(address)
     try:
         # Discover Operations
-        catalog = await client.catalog_entries.list(CatalogEntriesListRequest(kind=CATALOG_KIND_OPERATIONS))
+        catalog = await client.operations.list(OperationsListRequest())
         print(catalog)
 
         # Read Typed Host Status

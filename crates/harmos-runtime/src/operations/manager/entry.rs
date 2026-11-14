@@ -35,6 +35,12 @@ use super::*;
 /* === Implementations === */
 
 impl Entry {
+    pub(in crate::operations) fn managed_by(&self, name: &str) -> bool {
+        self.binding
+            .downcast_ref::<crate::plugin::grpc::invoke::Binding>()
+            .is_some_and(|binding| binding.caller.name.as_deref() == Some(name))
+    }
+
     pub(super) fn client_visible(&self) -> bool {
         use harmos_protocol::schema::{OperationFace, operation_identity};
         let face = operation_identity(self.id());
@@ -52,7 +58,7 @@ impl Entry {
                 .contract
                 .as_ref()
                 .and_then(|contract| contract.grpc())
-                .is_some_and(|grpc| grpc.package == "harmos.v1" || grpc.package.starts_with("harmos.v1."))
+                .is_some_and(|grpc| grpc.package == "harmos.client.v1" || grpc.package.starts_with("harmos.client.v1."))
     }
 
     // Move a resident control onto the unbounded resident lane.

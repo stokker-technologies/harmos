@@ -26,6 +26,9 @@ publish.workspace = true
 [[example]]
 name = "client"
 
+[[example]]
+name = "plugin"
+
 # === Features === #
 
 [features]
@@ -109,6 +112,10 @@ required-features = ["wasm"]
 [[test]]
 name = "integration"
 path = "tests/integration/main.rs"
+
+[[test]]
+name = "samples"
+path = "tests/system/main.rs"
 
 # === Bench Targets === #
 

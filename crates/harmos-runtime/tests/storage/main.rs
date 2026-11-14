@@ -9,36 +9,18 @@
 
 /* === Modules === */
 
-mod application_content;
-mod callee_policy;
-mod definition_receipts;
-mod generated_example_hash;
-mod generated_native_journey;
-
-mod durable_row_watch;
-mod file_observation;
-mod filesystem_metadata;
-mod filtered_pages;
-#[path = "generated_capture.rs"]
-mod generated_capture;
-#[path = "generated_directory.rs"]
-mod generated_directory;
-#[path = "generated_status.rs"]
-mod generated_status;
-mod issued_cut_lifetime;
-mod issued_pages;
-mod native_pages;
-mod transfer_plugin;
-mod unary_transfers;
-
 #[path = "../../../harmos-storage/tests/support/storage.rs"]
 mod backend;
 #[path = "../storage/coordinator.rs"]
 mod coordinator;
+mod filtered_pages;
 #[path = "../support/storage_fixture.rs"]
 pub(crate) mod fixture;
+mod issued_cut_lifetime;
+mod issued_pages;
 #[path = "../storage/manager.rs"]
 mod manager;
+mod native_pages;
 #[path = "../storage/operations.rs"]
 mod operations;
 #[path = "../storage/runtime.rs"]

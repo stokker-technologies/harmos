@@ -20,14 +20,12 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
 use harmos_protocol::v1 as host;
-use prost::Message;
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
 use crate::operations::caller::Source;
 use crate::{Error, Result};
 use harmos_operations::plugin::Grant;
-use harmos_protocol::v1::CatalogEntriesListResponse;
 
 /* === Constants === */
 
@@ -46,9 +44,9 @@ type ProviderEntry = (String, String, Arc<Entry>);
 /* === Implementations === */
 
 impl Manager {
-    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<CatalogEntriesListResponse> {
+    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<Vec<host::DiscoveredOperation>> {
         let origin = source.check()?;
-        let mut output = CatalogEntriesListResponse::default();
+        let mut output = Vec::new();
         let mut position = None;
         while let Some((id, owner, entry)) = self.next_discovery(position.as_ref())? {
             position = Some((id.clone(), owner.clone()));
@@ -132,7 +130,7 @@ impl Manager {
                 conditional_access: true,
                 grpc_available,
             };
-            output.operations.push(metadata);
+            output.push(metadata);
         }
         Ok(output)
     }
@@ -219,6 +217,7 @@ fn descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
 }
 #[cfg(feature = "grpc")]
 fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+    use prost::Message;
     let Some(binding) = contract.grpc() else { return Ok(None) };
     let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
         Error::OperationFailed {

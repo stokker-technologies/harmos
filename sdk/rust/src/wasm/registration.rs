@@ -131,7 +131,7 @@ impl Registration {
                 .filter(|bytes| bytes.get() <= u32::MAX as usize)
                 .ok_or_else(|| {
                     Error::Invalid(
-                        "Register Guest: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing"
+                        "Register Guest: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing"
                             .into(),
                     )
                 })?

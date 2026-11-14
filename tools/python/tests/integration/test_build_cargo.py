@@ -12,6 +12,7 @@
 
 # Standard Library Imports
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -23,8 +24,9 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.build import cargo
+from harmos_tools.build import cargo, paths
 from harmos_tools.ci import artifacts, tasks
+from harmos_tools.prepare.tests import fixtures as fixture_join
 from harmos_tools.release import review
 from harmos_tools.test import archive as archives
 
@@ -205,6 +207,72 @@ class FocusedCargoTests(unittest.TestCase):
 
 
 class WorkflowTaskTests(unittest.TestCase):
+    def test_fixture_join_replaces_retired_product_files(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        directory = Path(scratch.name)
+        export = paths.output(directory, "build", "dev")
+        fixtures = export / "fixtures"
+        fixtures.mkdir(parents=True)
+        retained = fixtures / "retained.bin"
+        retained.write_bytes(b"test fixture")
+        archives.stamp(
+            directory,
+            "dev",
+            [retained.relative_to(directory).as_posix()],
+            {
+                "artifacts": {},
+                "builds": {},
+                "libraries": {},
+                "build_roots": {},
+                "executables": [],
+                "inspections": {},
+            },
+        )
+        product = export / "product/examples"
+        product.mkdir(parents=True)
+        binaries = {}
+        files = {}
+        for name in ("schematic-cli", "schematic-sidecar", "schematic-guest"):
+            binary = export / "bin" / name
+            binary.parent.mkdir(exist_ok=True)
+            binary.write_bytes(name.encode())
+            binaries[name] = binary.relative_to(export).as_posix()
+            files[binary.relative_to(directory).as_posix()] = hashlib.sha256(binary.read_bytes()).hexdigest()
+        old = product / "old.rmeta"
+        old.write_bytes(b"old library")
+        old_name = old.relative_to(directory).as_posix()
+        files[old_name] = hashlib.sha256(old.read_bytes()).hexdigest()
+        catalog = {
+            "artifacts": binaries,
+            "builds": {},
+            "libraries": {"runtime": old.relative_to(export).as_posix()},
+            "build_roots": {},
+            "files": files,
+        }
+        manifest = product / "catalog.json"
+        manifest.write_text(json.dumps(catalog), encoding="utf-8")
+        override = patch.object(fixture_join, "ROOT", directory)
+        override.start()
+        self.addCleanup(override.stop)
+        staging_override = patch.object(fixture_join.staging, "ROOT", directory)
+        staging_override.start()
+        self.addCleanup(staging_override.stop)
+        fixture_join.prepare("dev")
+
+        old.unlink()
+        replacement = product / "new.rmeta"
+        replacement.write_bytes(b"new library")
+        del files[old_name]
+        files[replacement.relative_to(directory).as_posix()] = hashlib.sha256(replacement.read_bytes()).hexdigest()
+        catalog["libraries"] = {"runtime": replacement.relative_to(export).as_posix()}
+        manifest.write_text(json.dumps(catalog), encoding="utf-8")
+        fixture_join.prepare("dev")
+        updated: dict[str, str] = json.loads((fixtures / "stamp.json").read_text(encoding="utf-8"))["files"]
+        self.assertNotIn(old_name, updated)
+        self.assertIn(retained.relative_to(directory).as_posix(), updated)
+        self.assertIn(replacement.relative_to(directory).as_posix(), updated)
+
     def test_fixture_join_selects_existing_inputs_without_compiling(self) -> None:
         for profile in ("dev", "release"):
             with (

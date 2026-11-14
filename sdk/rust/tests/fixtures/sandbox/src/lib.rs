@@ -159,7 +159,7 @@ pub fn harmos_register() -> Registration {
         )
         .requires::<ProviderEchoOperation>()
         .requires::<ReadOperation>()
-        .requires::<harmos_protocol::context::SamplesAppendRequest>()
+        .requires::<PublishProgress>()
         .stream(Stream::<Echoed>::new("progress"));
     Registration::new(plugin)
         .capacity(2)
@@ -226,7 +226,13 @@ fn policy(attempts: u32, delay_millis: i32) -> OperationPolicy {
     }
 }
 async fn progress(context: &Context, value: &str) -> Result<()> {
-    context.publish(&Stream::new("progress"), Echoed { said: value.into() }).await
+    use harmos::encoding::Message as _;
+    context
+        .call(PublishProgress {
+            stream: "progress".into(),
+            payload: Echoed { said: value.into() }.encode_to_vec(),
+        })
+        .await
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
     if let Some(say) = request.say.strip_prefix("local:") {

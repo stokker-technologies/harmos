@@ -364,6 +364,10 @@ impl StreamWriter {
         Ok((publication, evicted))
     }
 
+    pub(crate) fn is_active(&self) -> bool {
+        *self.active.lock().expect("stream lease poisoned") && !self.stream.closed.load(Ordering::Acquire)
+    }
+
     pub fn revoke(&self) {
         #[cfg(feature = "plugin-guest")]
         if let Some(staged) = &self.stream.wired.staged {

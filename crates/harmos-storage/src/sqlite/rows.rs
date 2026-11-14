@@ -466,6 +466,61 @@ pub(super) fn list_records(
     )
 }
 
+pub(super) fn list_identities(
+    state: &State, snapshot: &BackendSnapshot, selection: &IdentitySelection, page: ScanPage,
+) -> Result<Vec<StoredIdentity>> {
+    state.snapshot(snapshot)?;
+    let kind = match selection.kind {
+        IdentityKind::Streams => 3,
+        IdentityKind::Objects => 1,
+    };
+    let mut query = state.connection.prepare("SELECT schema_key,scope,item,stream,position FROM storage_rows WHERE position IN (SELECT MIN(position) FROM storage_rows WHERE kind=?1 AND position<=?2 GROUP BY schema_key,scope,item,stream) AND position>?3 AND (?4 IS NULL OR schema_id=?4) ORDER BY position LIMIT ?5").map_err(db)?;
+    let mut rows = query
+        .query(params![
+            kind,
+            integer(snapshot.at.sequence)?,
+            integer(page.after)?,
+            selection.schema.as_ref().map(Identifier::as_str),
+            integer(page.rows.get() as u64)?
+        ])
+        .map_err(db)?;
+    let mut output = Vec::new();
+    let mut retained = 0;
+    while let Some(row) = rows.next().map_err(db)? {
+        let schema: String = row.get(0).map_err(db)?;
+        let schema = decode(schema.as_bytes())?;
+        let item: String = row.get(2).map_err(db)?;
+        let first = StorageCursor {
+            history: state.history.clone(),
+            sequence: unsigned(row, 4).map_err(db)?,
+        };
+        let identity = match selection.kind {
+            IdentityKind::Streams => {
+                let scope: Option<String> = row.get(1).map_err(db)?;
+                let stream: String = row.get(3).map_err(db)?;
+                StoredIdentity::Stream {
+                    schema,
+                    scope: scope.map(Identifier::new).transpose().map_err(harmos_domain::Error::from)?,
+                    item: Identifier::new(item).map_err(harmos_domain::Error::from)?,
+                    stream: Identifier::new(stream).map_err(harmos_domain::Error::from)?,
+                    first,
+                }
+            }
+            IdentityKind::Objects => StoredIdentity::Object {
+                schema,
+                key: ObjectKey::from_owned(item)?,
+                first,
+            },
+        };
+        retained += identity.memory_size();
+        if retained > page.bytes.get() {
+            return Err(invalid("list identities: response exceeds byte budget"));
+        }
+        output.push(identity);
+    }
+    Ok(output)
+}
+
 pub(super) fn list_samples(
     state: &State, snapshot: &BackendSnapshot, selection: &StreamSelection, page: ScanPage,
 ) -> Result<Vec<StoredRow>> {

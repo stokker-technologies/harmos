@@ -16,6 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{
+    collections::BTreeMap,
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 // Third Party Imports
 
@@ -37,10 +42,8 @@
 
 /* === Public Functions === */
 
-pub fn generate_conformance(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/conformance/proto");
+pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/conformance/proto");
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);
@@ -55,12 +58,10 @@ pub fn generate_conformance(
     Ok(())
 }
 
-pub fn generate(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     let mut inputs = Vec::new();
-    let mut folders = vec![proto.join("harmos/v1"), proto.join("harmos/context/v1"), proto.join("harmos/plugin/v1")];
+    let mut folders = vec![proto.join("harmos")];
     while let Some(folder) = folders.pop() {
         for entry in std::fs::read_dir(folder)? {
             let path = entry?.path();
@@ -84,7 +85,7 @@ pub fn generate(
     }
     let mut descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("descriptors.bin"))?.as_slice())?;
-    let mut packages = std::collections::BTreeMap::<String, Vec<std::path::PathBuf>>::new();
+    let mut packages = BTreeMap::<String, Vec<PathBuf>>::new();
     for file in &descriptors.file {
         let package = file.package.as_deref().unwrap_or_default();
         if package.starts_with("harmos.") {
@@ -96,7 +97,7 @@ pub fn generate(
         let mut config = prost_build::Config::new();
         config.protoc_executable(compiler);
         config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
-        config.type_attribute(".harmos.storage.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
             let module = module_path(external)?;
             if package.starts_with(&format!("{external}.")) {
@@ -115,7 +116,7 @@ pub fn generate(
                 config.extern_path(format!(".{external}"), format!("crate::{module}"));
             }
         }
-        let services = !package.starts_with("harmos.context.");
+        let services = !package.starts_with("harmos.plugin.host.");
         let package_output = output.join(package);
         std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
@@ -138,6 +139,9 @@ pub fn generate(
             let parent = module.rsplit("::").next().ok_or("missing parent module")?;
             source.push_str(&format!("\npub mod {name} {{ include!(\"{parent}/{name}.rs\"); }}\n"));
         }
+        if package == "harmos.plugin.v1" {
+            source.push_str("\npub mod host { include!(\"plugin/host.rs\"); }\n");
+        }
         std::fs::write(path, source)?;
     }
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.
@@ -146,18 +150,42 @@ pub fn generate(
     }
     std::fs::write(output.join("descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
     // Preproject Guest Graphs During Generation, Before Fuel-Bounded Registration.
-    let guest_types = harmos_protocol::schema::operation_types(
-        &descriptors,
-        &[
-            "harmos.v1.GuestInitialize",
-            "harmos.v1.GuestShutdown",
-            "harmos.context.v1.SamplesAppendRequest",
-            "harmos.context.v1.SamplesAppendResponse",
-            "harmos.context.v1.StorageGetFileHashRequest",
-            "harmos.context.v1.StorageGetFileHashResponse",
-        ],
-    )?;
+    let guest_types = harmos_protocol::schema::operation_types(&descriptors, &["harmos.v1.GuestInitialize", "harmos.v1.GuestShutdown"])?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
+    let options = prost_types::FileDescriptorSet {
+        file: prost_reflect::DescriptorPool::global().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
+    let mut options = harmos_protocol::schema::message_types(&options, "google.protobuf.MessageOptions")?;
+    for file in &mut options.file {
+        let mut pending: Vec<_> = file.message_type.iter_mut().collect();
+        while let Some(message) = pending.pop() {
+            message.options = None;
+            for field in &mut message.field {
+                field.options = None;
+            }
+            for enumeration in &mut message.enum_type {
+                enumeration.options = None;
+                for value in &mut enumeration.value {
+                    value.options = None;
+                }
+            }
+            pending.extend(message.nested_type.iter_mut());
+        }
+        for enumeration in &mut file.enum_type {
+            enumeration.options = None;
+            for value in &mut enumeration.value {
+                value.options = None;
+            }
+        }
+    }
+    std::fs::write(output.join("message-options-descriptors.bin"), prost::Message::encode_to_vec(&options))?;
+    for (package, name) in [("harmos.plugin.host.v1", "clock-descriptors.bin"), ("harmos.client.v1", "client-clock-descriptors.bin")] {
+        let roots: Vec<_> =
+            ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("{package}.{name}")).into();
+        let names: Vec<_> = roots.iter().map(String::as_str).collect();
+        let types = harmos_protocol::schema::operation_types(&descriptors, &names)?;
+        std::fs::write(output.join(name), prost::Message::encode_to_vec(&types))?;
+    }
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
     std::fs::create_dir_all(&sdk_types)?;
@@ -165,7 +193,8 @@ pub fn generate(
         let package = file.package.as_deref().unwrap_or_default();
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("missing message name")?;
-            if package != "harmos.context.v1" && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
+            if package != "harmos.plugin.host.v1"
+                && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
             {
                 continue;
             }
@@ -193,9 +222,9 @@ pub fn generate(
 
 /* === Private Functions === */
 
-pub fn module_path(package: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
     for (prefix, root) in
-        [("harmos.context.v1", "context"), ("harmos.plugin.v1", "plugin"), ("harmos.storage.v1", "storage"), ("harmos.v1", "v1")]
+        [("harmos.plugin.host.v1", "plugin::host"), ("harmos.client.v1", "client"), ("harmos.plugin.v1", "plugin"), ("harmos.v1", "v1")]
     {
         if package == prefix {
             return Ok(root.into());
@@ -210,11 +239,10 @@ pub fn module_path(package: &str) -> Result<String, Box<dyn std::error::Error>> 
 /* === Tests === */
 
 /// Generate Independent Library and Product Contracts for SDK Composition Stories.
-pub fn generate_client_fixture(
-    compiler: &std::path::Path, includes: &std::path::Path, output: &std::path::Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let proto = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto"].map(|file| proto.join(file));
+pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
+    let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
+    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto", "application/v1/plugins/annotations.proto"]
+        .map(|file| proto.join(file));
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));

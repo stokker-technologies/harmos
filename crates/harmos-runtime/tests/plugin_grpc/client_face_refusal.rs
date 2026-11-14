@@ -51,6 +51,6 @@ async fn plugin_cannot_call_a_client_face_even_with_its_declared_contract() {
     let _caller = host.runtime.attach_grpc(Placement::Remote(caller.address.clone()), support::settings()).await.unwrap();
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"client-only")).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
-    assert!(call_error(&error).to_string().contains("harmos.v1.Time/Get"));
+    assert!(call_error(&error).to_string().contains("harmos.client.v1.Time/Get"));
     host.runtime.shutdown().await.unwrap();
 }

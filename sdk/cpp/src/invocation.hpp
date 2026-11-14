@@ -12,6 +12,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <atomic>
 #include <condition_variable>
 #include <map>
 #include <mutex>
@@ -43,7 +44,7 @@ struct WatchState {
 };
 struct Invocation {
     std::shared_ptr<Invocation> transport;
-    std::weak_ptr<Invocation> caller;
+    std::shared_ptr<Invocation> caller;
     std::set<std::uint64_t> owned;
     std::set<std::uint64_t> retired;
     std::set<std::uint64_t> guards;
@@ -63,6 +64,37 @@ struct Invocation {
     std::optional<std::string> cancelled;
     std::uint64_t next = 0;
     bool closed = false;
+    bool tick_scoped = false;
+    std::atomic<bool> tick_active = false;
+    std::atomic<bool> accepting_children = true;
+
+    bool receive(const wire::ChildResponse& child, bool allow_retired = true) {
+        std::lock_guard lock(mutex);
+        if (tick_scoped && !tick_active) return false;
+        if (allow_retired && retired.contains(child.call())) return true;
+        auto watching = watches.find(child.call());
+        if (watching != watches.end()) {
+            auto& watch = *watching->second;
+            if (child.result_case() == wire::ChildResponse::RESULT_NOT_SET || child.item().size() > watch.max_item_bytes || child.payload().size() > watch.max_item_bytes) return false;
+            if (child.has_item()) {
+                if (!watch.demanded || watch.item || watch.terminal) return false;
+                watch.item = child;
+            } else {
+                if (watch.terminal) return false;
+                watch.terminal = child;
+            }
+            changed.notify_all();
+            return true;
+        }
+        auto found = pending.find(child.call());
+        if (child.has_item() || found == pending.end() || child.result_case() == wire::ChildResponse::RESULT_NOT_SET) return false;
+        if (child.has_failure()) found->second.set_exception(std::make_exception_ptr(Failure(child.failure())));
+        else found->second.set_value(child.payload());
+        guards.erase(child.call());
+        pending.erase(found);
+        changed.notify_all();
+        return true;
+    }
 
     void start_worker(std::function<void()> work) {
         std::lock_guard lock(mutex);
@@ -87,6 +119,7 @@ struct Invocation {
         changed.notify_all();
     }
 };
+void cancel_children(const std::shared_ptr<Invocation>& state, const std::string& reason);
 }
 
 /* === Templates === */

@@ -2,7 +2,7 @@
 
 // WebAssembly Guest Carrier
 //
-// Guest carrier payloads used alongside calls an application or tool makes to the host.
+// Shared guest carrier vocabulary for the host and plugin boundary.
 // These messages carry host-to-guest commands and guest-to-host child traffic.
 
 syntax = "proto3";
@@ -11,7 +11,10 @@ package harmos.v1;
 
 // === Imports === //
 
-import "harmos/v1/types.proto";
+import "harmos/v1/description.proto";
+import "harmos/v1/invocation.proto";
+import "harmos/v1/operation.proto";
+import "harmos/v1/policy.proto";
 
 // === Options === //
 

@@ -41,8 +41,8 @@ pub(super) struct Control;
 /* === Implementations === */
 
 impl ProtobufOperation for Control {
-    type Request = harmos_protocol::context::TimeGetRequest;
-    type Response = harmos_protocol::context::TimeGetResponse;
+    type Request = harmos_protocol::plugin::host::TimeGetRequest;
+    type Response = harmos_protocol::plugin::host::TimeGetResponse;
     type Endpoints = ();
     const ID: &'static str = "fixture.control";
     const POLICY: harmos_operations::OperationPolicy = harmos_operations::lifecycle::POLICY;

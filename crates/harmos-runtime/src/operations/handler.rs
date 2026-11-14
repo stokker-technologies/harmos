@@ -486,7 +486,7 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 
 impl harmos_operations::execution::operations::instances::Instances for HostContext {
     fn invoke(
-        &self, request: harmos_protocol::v1::InvocationsInvokeRequest,
+        &self, request: harmos_protocol::client::InvocationsInvokeRequest,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = std::result::Result<Vec<u8>, harmos_operations::execution::ServingError>> + Send + '_>,
     > {
@@ -559,7 +559,7 @@ impl harmos_operations::execution::operations::instances::InstanceChanges for In
 impl harmos_operations::execution::operations::access::Discovery for HostContext {
     fn discover(
         &self,
-    ) -> std::result::Result<harmos_protocol::v1::CatalogEntriesListResponse, harmos_operations::execution::operations::access::AccessError>
+    ) -> std::result::Result<Vec<harmos_protocol::v1::DiscoveredOperation>, harmos_operations::execution::operations::access::AccessError>
     {
         let context = self.borrow();
         Ok(context.operations.discover(&context.source)?)

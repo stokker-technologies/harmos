@@ -14,6 +14,9 @@
 #[path = "../codegen.rs"]
 mod codegen;
 
+#[path = "../../../examples/schematic/protocol/codegen.rs"]
+mod schematic;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -57,7 +60,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             fs::copy(path, target)?;
         }
     }
-    for name in ["reflection.rs", "descriptors.bin", "guest-descriptors.bin"] {
+    for name in [
+        "reflection.rs",
+        "descriptors.bin",
+        "guest-descriptors.bin",
+        "clock-descriptors.bin",
+        "client-clock-descriptors.bin",
+        "message-options-descriptors.bin",
+    ] {
         fs::copy(output.path().join(name), destination.join(name))?;
     }
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/src/context/types");
@@ -75,7 +85,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate_client_fixture(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/client");
     fs::create_dir_all(&destination)?;
-    for name in ["application.v1.rs", "application.v1.jobs.rs", "client-descriptors.bin", "client-reflection.rs"] {
+    for name in
+        ["application.v1.rs", "application.v1.jobs.rs", "application.v1.plugins.rs", "client-descriptors.bin", "client-reflection.rs"]
+    {
         fs::copy(output.path().join(name), destination.join(name))?;
     }
     codegen::generate_conformance(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
@@ -83,6 +95,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     fs::create_dir_all(&destination)?;
     for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
         fs::copy(output.path().join(source), destination.join(target))?;
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/schematic");
+    schematic::generate(&root, &protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
+    for (source, target) in
+        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
+    {
+        fs::copy(output.path().join(source), root.join("protocol/src").join(target))?;
     }
     Ok(())
 }

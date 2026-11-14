@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/Client/Harmos.Example.Client.csproj" />
+    <Project Path="examples/Plugin/Harmos.Example.Plugin.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Harmos/Harmos.csproj" />
   </Folder>

@@ -16,11 +16,16 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    error::Error as StdError,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 // Third Party Imports
 use futures_util::stream;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, v1};
@@ -45,6 +50,18 @@ pub(super) struct Publications {
     registration: ConnectionStreams,
 }
 
+pub(super) struct PreparedPublications {
+    declarations: Vec<harmos_operations::StreamDeclaration>,
+    demands: Vec<PreparedDemand>,
+}
+struct PreparedDemand {
+    id: String,
+    output: mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
+    input: tonic::Streaming<harmos_protocol::plugin::InstanceSamplesResponse>,
+    row: Row,
+    interval: Option<Duration>,
+}
+
 struct Demand {
     output: mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
     input: tonic::Streaming<harmos_protocol::plugin::InstanceSamplesResponse>,
@@ -53,6 +70,8 @@ struct Demand {
     lease: Arc<StreamWriter>,
     close: watch::Receiver<bool>,
     closed: watch::Receiver<bool>,
+    operations: crate::operations::Manager,
+    caller: Arc<super::CallingPlugin>,
 }
 
 /* === Enums === */
@@ -64,15 +83,25 @@ struct Demand {
 impl Publications {
     pub(super) async fn open<A: Application>(
         streams: &StreamManager<A>, activation: &Activation, clock: &Clock, settings: &PlacementSettings,
+        operations: &crate::operations::Manager,
     ) -> Result<Self, Error> {
-        let catalog = activation.description.catalog.as_ref().unwrap();
+        let prepared = Self::prepare(streams, activation, settings, operations, false).await?;
+        Self::activate(prepared, streams, activation, clock, operations, false)
+    }
+    pub(super) async fn prepare<A: Application>(
+        streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &crate::operations::Manager,
+        replace: bool,
+    ) -> Result<PreparedPublications, Error> {
+        let catalog = activation.description.catalog.as_ref().expect("admitted description");
         let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().unwrap_or_default()).map_err(invalid)?;
         let mut declarations = Vec::new();
         let mut rows = Vec::new();
         for stream in &catalog.streams {
-            let descriptor = pool.get_message_by_name(stream.row.trim_start_matches('.')).ok_or_else(|| invalid("Missing Stream Row"))?;
+            let descriptor = pool
+                .get_message_by_name(stream.row.trim_start_matches('.'))
+                .ok_or_else(|| invalid("Prepare Samples: missing stream row"))?;
             let row = Row::new(descriptor)?;
-            let interval = interval(stream, catalog, &pool)?;
+            let interval = interval(stream, &activation.settings)?;
             declarations.push(harmos_operations::StreamDeclaration {
                 id: stream.id.clone(),
                 window: settings.stream_window.get(),
@@ -80,49 +109,75 @@ impl Publications {
                 metadata: crate::Metadata::new(crate::Identifier::new(&stream.id).map_err(invalid)?, stream.id.clone(), None),
                 row_metadata: Vec::new(),
             });
-            rows.push((stream, row, interval));
+            rows.push((stream.id.clone(), row, interval));
         }
-        let registration = streams.connect_publications(&activation.description.id, declarations).map_err(invalid)?;
+        streams.validate_connection(activation.owner(), &declarations, replace).map_err(invalid)?;
+        let mut demands = Vec::new();
+        for (id, row, interval) in rows {
+            let (output, input) = mpsc::channel(1);
+            output
+                .send(harmos_protocol::plugin::InstanceSamplesRequest {
+                    frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(v1::SamplesSelection {
+                        stream: id.clone(),
+                        scope: operations.call_context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
+                    })),
+                })
+                .await
+                .map_err(invalid)?;
+            let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
+            let input =
+                activation.connection.client().samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
+            demands.push(PreparedDemand { id, output, input, row, interval });
+        }
+        Ok(PreparedPublications { declarations, demands })
+    }
+    pub(super) fn activate<A: Application>(
+        prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
+        operations: &crate::operations::Manager, replace: bool,
+    ) -> Result<Self, Error> {
+        let registration = streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?;
         let close = watch::channel(false).0;
         let mut publications = Self {
             close,
             jobs: tokio::task::JoinSet::new(),
             registration,
         };
-        for (stream, row, interval) in rows {
-            let activity = clock.activity(format!("Publish {}", stream.id));
-            let (output, input) = mpsc::channel(1);
-            output
-                .send(harmos_protocol::plugin::InstanceSamplesRequest {
-                    frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(v1::SamplesSelection {
-                        stream: stream.id.clone(),
-                        scope: String::new(),
-                    })),
-                })
-                .await
-                .unwrap();
-            let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
-            let mut client = activation.connection.client();
-            let input = client.samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
-            let lease =
-                publications.registration.leases().iter().find(|lease| lease.stream().definition().id() == stream.id).unwrap().clone();
+        for prepared in prepared.demands {
+            let activity = clock.activity(format!("Publish {}", prepared.id));
+            let lease = publications
+                .registration
+                .leases()
+                .iter()
+                .find(|lease| lease.stream().definition().id() == prepared.id)
+                .expect("staged stream lease")
+                .clone();
             let close = publications.close.subscribe();
             let connection = activation.connection.clone();
             let clock = clock.clone();
+            let operations = operations.clone();
+            let caller = Arc::new(super::CallingPlugin {
+                name: activation.entry_name.clone(),
+                connection: activation.connection.clone(),
+                provider: activation.provider.clone(),
+                description: activation.description.clone(),
+            });
             publications.jobs.spawn(async move {
                 let demand = Demand {
-                    output,
-                    input,
-                    row,
-                    interval,
+                    output: prepared.output,
+                    input: prepared.input,
+                    row: prepared.row,
+                    interval: prepared.interval,
                     lease,
                     close,
                     closed: connection.closed.subscribe(),
+                    operations,
+                    caller,
                 };
-                let result = run(&clock, activity, demand).await;
-                if let Err(error) = result {
-                    tracing::warn!(%error, "plugin publication failed; closing its connection");
-                    connection.closed.send_replace(true);
+                if let Err(error) = run(&clock, activity, demand).await {
+                    tracing::warn!(%error, "plugin publication ended");
+                    if !matches!(error, Error::Invalid(_)) {
+                        connection.closed.send_replace(true);
+                    }
                 }
             });
         }
@@ -153,31 +208,18 @@ fn invalid(error: impl std::fmt::Display) -> Error {
     Error::Invalid(error.to_string())
 }
 
-fn interval(
-    stream: &v1::StreamDeclaration, catalog: &v1::Catalog, pool: &prost_reflect::DescriptorPool,
-) -> Result<Option<Duration>, Error> {
-    use prost::Message;
+fn interval(stream: &v1::StreamDeclaration, settings: &v1::SettingValues) -> Result<Option<Duration>, Error> {
     let mut interval = stream.interval;
     if !stream.interval_setting.is_empty() {
-        let (section_type, name) =
-            stream.interval_setting.rsplit_once('.').ok_or_else(|| invalid("Interval Setting Must Name a Section Field"))?;
-        let section = catalog
-            .sections
-            .iter()
-            .find(|section| section.r#type.trim_start_matches('.') == section_type.trim_start_matches('.'))
-            .ok_or_else(|| invalid("Missing Interval Setting Section"))?;
-        let descriptor =
-            pool.get_message_by_name(section_type.trim_start_matches('.')).ok_or_else(|| invalid("Missing Interval Setting Type"))?;
-        let message = prost_reflect::DynamicMessage::decode(descriptor.clone(), section.payload.as_slice()).map_err(invalid)?;
-        let field = descriptor.get_field_by_name(name).ok_or_else(|| invalid("Missing Interval Setting Field"))?;
-        let value = message.get_field(&field);
-        let prost_reflect::Value::Message(value) = value.as_ref() else {
-            return Err(invalid("Interval Setting Must Be a Duration"));
+        let value = settings
+            .values
+            .get(&stream.interval_setting)
+            .and_then(|value| value.value.as_ref())
+            .ok_or_else(|| invalid("Read Stream Interval: setting is not declared"))?;
+        let v1::setting_value::Value::Duration(value) = value else {
+            return Err(invalid("Read Stream Interval: setting must be a duration"));
         };
-        if !matches!(field.kind(), prost_reflect::Kind::Message(kind) if kind.full_name() == "google.protobuf.Duration") {
-            return Err(invalid("Interval Setting Must Be a Duration"));
-        }
-        interval = Some(prost_types::Duration::decode(value.encode_to_vec().as_slice()).map_err(invalid)?);
+        interval = Some(*value);
     }
     interval
         .map(|value| {
@@ -193,16 +235,31 @@ fn interval(
         .transpose()
 }
 
+fn sample_error(error: crate::Error) -> Error {
+    let mut source: Option<&(dyn StdError + 'static)> = Some(&error);
+    while let Some(current) = source {
+        if let Some(Error::Transport(message)) = current.downcast_ref::<Error>() {
+            return Error::Transport(message.clone());
+        }
+        source = current.source();
+    }
+    invalid(error)
+}
+
 async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
-        mut input,
+        input,
         row,
         interval,
         lease,
         mut close,
         closed,
+        operations,
+        caller,
     } = demand;
+    let input = Arc::new(AsyncMutex::new(input));
+    let seen = Arc::new(Mutex::new(BTreeSet::new()));
     {
         let work = async {
             let mut sequence = 0;
@@ -213,7 +270,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     let wait = async {
                         tokio::select! {
                             biased;
-                            frame = input.message() => Err(invalid(format!("Unexpected Interval InstanceSamplesResponse: {frame:?}"))),
+                            frame = async { input.lock().await.message().await } => Err(invalid(format!("Read Interval Samples Outside Tick: {frame:?}"))),
                             () = next => Ok(()),
                         }
                     };
@@ -221,17 +278,35 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     let reading = clock.read();
                     next_tick = Some(reading.instant + period);
                     let at = reading.date.into();
-                    output
-                        .send(harmos_protocol::plugin::InstanceSamplesRequest {
-                            frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Tick(v1::Tick { at: Some(at) })),
-                        })
-                        .await
-                        .map_err(invalid)?;
                     Some(at)
                 } else {
                     None
                 };
-                let samples = input.message().await.map_err(invalid)?.ok_or_else(|| invalid("Publish Ended Before Demand Closed"))?;
+                let samples = if let Some(at) = tick {
+                    activity
+                        .wait(operations.call_native::<super::samples::Tick>(super::samples::Request {
+                            input: input.clone(),
+                            output: output.clone(),
+                            caller: caller.clone(),
+                            seen: seen.clone(),
+                            lease: lease.clone(),
+                            at,
+                        }))
+                        .await
+                        .map_err(sample_error)?
+                } else {
+                    let response = input
+                        .lock()
+                        .await
+                        .message()
+                        .await
+                        .map_err(|error| Error::Transport(error.to_string()))?
+                        .ok_or_else(|| invalid("Read Device Samples: demand ended"))?;
+                    if response.frame.is_some() {
+                        return Err(invalid("Read Device Samples: child calls require an unanswered tick"));
+                    }
+                    response
+                };
                 if samples.samples.len() != 1 {
                     return Err(invalid("Expected One Sample per Message"));
                 }
@@ -281,7 +356,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
     }
     drop(output);
     // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup.
-    while input.message().await.map_err(invalid)?.is_some() {}
+    while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}
     Ok(())
 }
 

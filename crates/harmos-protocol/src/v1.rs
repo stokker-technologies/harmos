@@ -43,88 +43,80 @@ pub struct ReadCut {
     #[prost(message, repeated, tag = "2")]
     pub revisions: ::prost::alloc::vec::Vec<ResourceRevision>,
 }
-/// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PageRequest {
-    /// Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
-    #[prost(uint32, tag = "1")]
-    pub page_size: u32,
-    /// Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
-    #[prost(uint64, tag = "2")]
-    pub max_bytes: u64,
-    /// Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
-    #[prost(string, tag = "3")]
-    pub page_token: ::prost::alloc::string::String,
-}
-/// Reports a mutation's accepted and durable positions separately; acceptance alone does not promise persisted bytes.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Receipt {
-    /// Caller request identity, or the mutation window/key correlation used by storage; some conditional operations leave it empty.
-    #[prost(string, tag = "1")]
-    pub request_id: ::prost::alloc::string::String,
-    /// Position accepted by the owner, when one exists; it is not by itself a durability acknowledgement.
-    #[prost(message, optional, tag = "2")]
-    pub accepted_at: ::core::option::Option<Position>,
-    /// Position acknowledged durable, when supplied; staging receipts may omit both positions.
-    #[prost(message, optional, tag = "3")]
-    pub durable_at: ::core::option::Option<Position>,
-    /// Whether the reported mutation outcome has completed, independently of whether a durable position is present.
-    #[prost(bool, tag = "4")]
-    pub completed: bool,
-}
-/// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
+/// Preserves machine classification, refusal code, causal context and support diagnostics across operation carriers.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Catalog {
-    /// Operations the plugin serves.
-    #[prost(message, repeated, tag = "1")]
-    pub operations: ::prost::alloc::vec::Vec<OperationContract>,
-    /// Operations it calls on the host or on other plugins.
-    #[prost(message, repeated, tag = "2")]
-    pub requires: ::prost::alloc::vec::Vec<Requirement>,
-    /// Streams it can publish.
-    #[prost(message, repeated, tag = "3")]
-    pub streams: ::prost::alloc::vec::Vec<StreamDeclaration>,
-    /// Product contributions, opaque to Harmos.
-    #[prost(message, repeated, tag = "4")]
-    pub sections: ::prost::alloc::vec::Vec<Section>,
-    /// SHA-256 over the serialized fields 1 to 4 and 6, in field order.
-    #[prost(bytes = "vec", tag = "5")]
-    pub digest: ::prost::alloc::vec::Vec<u8>,
-    /// Definitions of every message named in this catalog.
-    #[prost(message, optional, tag = "6")]
-    pub types: ::core::option::Option<::prost_types::FileDescriptorSet>,
-}
-/// Declares an operation's routing identity, payload shapes, visibility and execution policy before activation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct OperationContract {
-    /// Unique among the host and all connected plugins, for example
-    /// "thermal.set".
-    #[prost(string, tag = "1")]
-    pub id: ::prost::alloc::string::String,
-    /// Fully qualified message names found in Catalog.types.
+pub struct Failure {
+    #[prost(enumeration = "Classification", tag = "1")]
+    pub classification: i32,
+    /// Stable machine-readable code, for example "provider_absent".
     #[prost(string, tag = "2")]
-    pub request: ::prost::alloc::string::String,
-    /// Fully qualified response message name resolved in Catalog.types.
+    pub code: ::prost::alloc::string::String,
+    /// What happened.
     #[prost(string, tag = "3")]
-    pub response: ::prost::alloc::string::String,
-    /// Wire catalogs admit Public or Protected; Private remains process-local and Unspecified is invalid.
-    #[prost(enumeration = "Visibility", tag = "4")]
-    pub visibility: i32,
-    /// Callee-owned execution budgets; the admitted catalog must provide a valid policy.
-    #[prost(message, optional, tag = "5")]
-    pub policy: ::core::option::Option<OperationPolicy>,
-    /// SHA-256 over the id and the request and response definitions.
-    #[prost(bytes = "vec", tag = "6")]
-    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
-    #[prost(string, tag = "7")]
-    pub description: ::prost::alloc::string::String,
-    /// Only explicitly replay-safe operations may retry transient failures.
-    #[prost(bool, tag = "8")]
-    pub replay_safe: bool,
+    pub message: ::prost::alloc::string::String,
+    /// What the user can do about it.
+    #[prost(string, tag = "4")]
+    pub action: ::prost::alloc::string::String,
+    /// Operation and plugin where it happened.
+    #[prost(string, tag = "5")]
+    pub operation: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub plugin: ::prost::alloc::string::String,
+    /// Failure of a child call that led to this one.
+    #[prost(message, optional, boxed, tag = "7")]
+    pub cause: ::core::option::Option<::prost::alloc::boxed::Box<Failure>>,
+    /// Extra named facts.
+    #[prost(map = "string, string", tag = "8")]
+    pub details: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        ::prost::alloc::string::String,
+    >,
+    /// Stack or source chain for support. Never shown as the message.
+    #[prost(string, tag = "9")]
+    pub diagnostics: ::prost::alloc::string::String,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum Classification {
+    Unspecified = 0,
+    /// Retrying will not help.
+    Permanent = 1,
+    /// Another attempt may succeed.
+    Transient = 2,
+    Cancelled = 3,
+    TimedOut = 4,
+    /// Not admitted: visibility, fingerprint mismatch or absent provider.
+    Refused = 5,
+}
+impl Classification {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "CLASSIFICATION_UNSPECIFIED",
+            Self::Permanent => "CLASSIFICATION_PERMANENT",
+            Self::Transient => "CLASSIFICATION_TRANSIENT",
+            Self::Cancelled => "CLASSIFICATION_CANCELLED",
+            Self::TimedOut => "CLASSIFICATION_TIMED_OUT",
+            Self::Refused => "CLASSIFICATION_REFUSED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "CLASSIFICATION_UNSPECIFIED" => Some(Self::Unspecified),
+            "CLASSIFICATION_PERMANENT" => Some(Self::Permanent),
+            "CLASSIFICATION_TRANSIENT" => Some(Self::Transient),
+            "CLASSIFICATION_CANCELLED" => Some(Self::Cancelled),
+            "CLASSIFICATION_TIMED_OUT" => Some(Self::TimedOut),
+            "CLASSIFICATION_REFUSED" => Some(Self::Refused),
+            _ => None,
+        }
+    }
 }
 /// Owns invocation, attempt and cancellation budgets; a child override applies only to that call.
 #[allow(clippy::all)]
@@ -159,49 +151,6 @@ pub struct RetryPolicy {
     /// Enables reproducible jitter in the retry backoff.
     #[prost(bool, tag = "4")]
     pub deterministic_jitter: bool,
-}
-/// Binds a declared dependency to the contract fingerprint against which the caller was built.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Requirement {
-    /// Identifier of the operation the plugin calls.
-    #[prost(string, tag = "1")]
-    pub id: ::prost::alloc::string::String,
-    /// Fingerprint the plugin was built against.
-    #[prost(bytes = "vec", tag = "2")]
-    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
-}
-/// Declares a row type and either host-driven interval sampling or device-driven publication.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StreamDeclaration {
-    /// Stream identity unique within its admitted provider inventory.
-    #[prost(string, tag = "1")]
-    pub id: ::prost::alloc::string::String,
-    /// Fully qualified message name of one row, found in Catalog.types.
-    #[prost(string, tag = "2")]
-    pub row: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub description: ::prost::alloc::string::String,
-    /// Set for a stream sampled on the host's clock. Unset means the plugin
-    /// sends samples when its device produces them.
-    #[prost(message, optional, tag = "4")]
-    pub interval: ::core::option::Option<::prost_types::Duration>,
-    /// Identifier of a plugin setting that gives the interval instead, if any.
-    #[prost(string, tag = "5")]
-    pub interval_setting: ::prost::alloc::string::String,
-}
-/// Carries a typed product contribution whose payload is opaque to the library.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Section {
-    /// Fully qualified message name of the payload, for example
-    /// "application.v1.Contributions". At most one section per name.
-    #[prost(string, tag = "1")]
-    pub r#type: ::prost::alloc::string::String,
-    /// Encoded message named by type; interpretation belongs to the product contribution owner.
-    #[prost(bytes = "vec", tag = "2")]
-    pub payload: ::prost::alloc::vec::Vec<u8>,
 }
 /// Opens exactly one plugin operation attempt; subsequent Request frames on that Invoke are invalid.
 #[allow(clippy::all)]
@@ -251,11 +200,11 @@ pub mod response {
         Failure(super::Failure),
     }
 }
-/// Submits a dependency call from the current attempt under its inherited caller context and checked grants.
+/// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildRequest {
-    /// Chosen by the plugin, unique within this Invoke call.
+    /// Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Complete admitted operation routing identity; no provider prefix or provider selection is added.
@@ -284,15 +233,15 @@ pub struct ChildRequest {
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildDemand {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
 }
-/// Cancels the outstanding child identified within this Invoke carrier.
+/// Cancels the outstanding child identified within this Invoke or Samples carrier.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildCancel {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
 }
@@ -300,7 +249,7 @@ pub struct ChildCancel {
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ChildResponse {
-    /// Child correlation ID unique within this Invoke carrier; reuse does not refer to a child on another call.
+    /// Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Selects one variant; an unset discriminator carries no selected value.
@@ -322,73 +271,58 @@ pub mod child_response {
         Item(::prost::alloc::vec::Vec<u8>),
     }
 }
-/// Preserves machine classification, refusal code, causal context and support diagnostics across operation carriers.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Failure {
-    #[prost(enumeration = "Classification", tag = "1")]
-    pub classification: i32,
-    /// Stable machine-readable code, for example "provider_absent".
-    #[prost(string, tag = "2")]
-    pub code: ::prost::alloc::string::String,
-    /// What happened.
-    #[prost(string, tag = "3")]
-    pub message: ::prost::alloc::string::String,
-    /// What the user can do about it.
-    #[prost(string, tag = "4")]
-    pub action: ::prost::alloc::string::String,
-    /// Operation and plugin where it happened.
-    #[prost(string, tag = "5")]
-    pub operation: ::prost::alloc::string::String,
-    #[prost(string, tag = "6")]
-    pub plugin: ::prost::alloc::string::String,
-    /// Failure of a child call that led to this one.
-    #[prost(message, optional, boxed, tag = "7")]
-    pub cause: ::core::option::Option<::prost::alloc::boxed::Box<Failure>>,
-    /// Extra named facts.
-    #[prost(map = "string, string", tag = "8")]
-    pub details: ::std::collections::HashMap<
-        ::prost::alloc::string::String,
-        ::prost::alloc::string::String,
-    >,
-    /// Stack or source chain for support. Never shown as the message.
-    #[prost(string, tag = "9")]
-    pub diagnostics: ::prost::alloc::string::String,
-}
-/// Requests one interval sample at the authoritative host timestamp.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Tick {
-    /// Host time of the tick. The answering sample carries it.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<::prost_types::Timestamp>,
-}
-/// Opens demand for one declared plugin stream under an opaque invocation scope.
+/// Reports an invocation's phase, terminal outcome, cancellation request and current attempt without exposing its payload.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct SamplesSelection {
-    /// Identity of the declared stream, resolved under the current caller/activation.
+pub struct InstanceState {
     #[prost(string, tag = "1")]
-    pub stream: ::prost::alloc::string::String,
-    /// Opaque to Harmos. The product names what the stream belongs to.
+    pub phase: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
-    pub scope: ::prost::alloc::string::String,
+    pub outcome: ::prost::alloc::string::String,
+    #[prost(bool, tag = "3")]
+    pub cancellation_requested: bool,
+    #[prost(uint32, tag = "4")]
+    pub attempt: u32,
 }
-/// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+/// Declares an operation's routing identity, payload shapes, visibility and execution policy before activation.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Sample {
-    /// For an interval stream, the time of the Tick this sample answers. For
-    /// other streams, the device's own time if it supplies one; when unset
-    /// the host stamps the sample on arrival.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<::prost_types::Timestamp>,
-    /// Serialized row message of the stream.
+pub struct OperationContract {
+    /// Unique among the host and all connected plugins, for example
+    /// "example.set".
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Fully qualified message names found in Catalog.types.
+    #[prost(string, tag = "2")]
+    pub request: ::prost::alloc::string::String,
+    /// Fully qualified response message name resolved in Catalog.types.
+    #[prost(string, tag = "3")]
+    pub response: ::prost::alloc::string::String,
+    /// Wire catalogs admit Public or Protected; Private remains process-local and Unspecified is invalid.
+    #[prost(enumeration = "Visibility", tag = "4")]
+    pub visibility: i32,
+    /// Callee-owned execution budgets; the admitted catalog must provide a valid policy.
+    #[prost(message, optional, tag = "5")]
+    pub policy: ::core::option::Option<OperationPolicy>,
+    /// SHA-256 over the id and the request and response definitions.
+    #[prost(bytes = "vec", tag = "6")]
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
+    #[prost(string, tag = "7")]
+    pub description: ::prost::alloc::string::String,
+    /// Only explicitly replay-safe operations may retry transient failures.
+    #[prost(bool, tag = "8")]
+    pub replay_safe: bool,
+}
+/// Binds a declared dependency to the contract fingerprint against which the caller was built.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Requirement {
+    /// Identifier of the operation the plugin calls.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Fingerprint the plugin was built against.
     #[prost(bytes = "vec", tag = "2")]
-    pub row: ::prost::alloc::vec::Vec<u8>,
-    /// Counts samples on this call from 1, so the host can see a gap.
-    #[prost(uint64, tag = "3")]
-    pub sequence: u64,
+    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
 }
 /// Freezes one dependency's routing identity, fingerprint and activation generation for a plugin.
 #[allow(clippy::all)]
@@ -410,19 +344,6 @@ pub struct AssignedOperation {
 pub struct OperationAssignments {
     #[prost(message, repeated, tag = "1")]
     pub operations: ::prost::alloc::vec::Vec<AssignedOperation>,
-}
-/// Reports an invocation's phase, terminal outcome, cancellation request and current attempt without exposing its payload.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InstanceState {
-    #[prost(string, tag = "1")]
-    pub phase: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub outcome: ::prost::alloc::string::String,
-    #[prost(bool, tag = "3")]
-    pub cancellation_requested: bool,
-    #[prost(uint32, tag = "4")]
-    pub attempt: u32,
 }
 /// Describes reachable protobuf types and root message names for unary and optional streaming directions.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -516,35 +437,6 @@ pub struct DiscoveredOperation {
     #[prost(bool, tag = "6")]
     pub grpc_available: bool,
 }
-/// Carries further encoded row bytes and optional duration metadata forwarded to the publication owner.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct FollowingRow {
-    /// Encoded row bytes forwarded to the registered publication owner.
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: ::prost::alloc::vec::Vec<u8>,
-    /// Optional duration metadata forwarded unchanged to the publication owner; unset remains absent at that boundary.
-    #[prost(message, optional, tag = "2")]
-    pub published_delta: ::core::option::Option<::prost_types::Duration>,
-}
-/// A Catalog Section Declares Values, Never Their Contents or Their Storage.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SettingsDeclarations {
-    #[prost(message, repeated, tag = "1")]
-    pub values: ::prost::alloc::vec::Vec<SettingDeclaration>,
-}
-/// Names a value and protobuf type that a plugin may request from the product's HostValues resolver.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct SettingDeclaration {
-    /// Value identity matched exactly by HostValues.Get against the calling plugin's declarations.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Protobuf message type expected from the product resolver; a mismatched returned type refuses.
-    #[prost(string, tag = "2")]
-    pub r#type: ::prost::alloc::string::String,
-}
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -581,408 +473,542 @@ impl Visibility {
         }
     }
 }
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum Classification {
-    Unspecified = 0,
-    /// Retrying will not help.
-    Permanent = 1,
-    /// Another attempt may succeed.
-    Transient = 2,
-    Cancelled = 3,
-    TimedOut = 4,
-    /// Not admitted: visibility, fingerprint mismatch or absent provider.
-    Refused = 5,
-}
-impl Classification {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "CLASSIFICATION_UNSPECIFIED",
-            Self::Permanent => "CLASSIFICATION_PERMANENT",
-            Self::Transient => "CLASSIFICATION_TRANSIENT",
-            Self::Cancelled => "CLASSIFICATION_CANCELLED",
-            Self::TimedOut => "CLASSIFICATION_TIMED_OUT",
-            Self::Refused => "CLASSIFICATION_REFUSED",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "CLASSIFICATION_UNSPECIFIED" => Some(Self::Unspecified),
-            "CLASSIFICATION_PERMANENT" => Some(Self::Permanent),
-            "CLASSIFICATION_TRANSIENT" => Some(Self::Transient),
-            "CLASSIFICATION_CANCELLED" => Some(Self::Cancelled),
-            "CLASSIFICATION_TIMED_OUT" => Some(Self::TimedOut),
-            "CLASSIFICATION_REFUSED" => Some(Self::Refused),
-            _ => None,
-        }
-    }
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum CatalogKind {
-    Operations = 0,
-    Schemas = 1,
-    Streams = 2,
-    Objects = 3,
-}
-impl CatalogKind {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Operations => "CATALOG_KIND_OPERATIONS",
-            Self::Schemas => "CATALOG_KIND_SCHEMAS",
-            Self::Streams => "CATALOG_KIND_STREAMS",
-            Self::Objects => "CATALOG_KIND_OBJECTS",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "CATALOG_KIND_OPERATIONS" => Some(Self::Operations),
-            "CATALOG_KIND_SCHEMAS" => Some(Self::Schemas),
-            "CATALOG_KIND_STREAMS" => Some(Self::Streams),
-            "CATALOG_KIND_OBJECTS" => Some(Self::Objects),
-            _ => None,
-        }
-    }
-}
-/// Carries the kind and schema for CatalogEntries.List.
+/// Reports a mutation's accepted and durable positions separately; acceptance alone does not promise persisted bytes.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct CatalogEntriesListRequest {
-    #[prost(enumeration = "CatalogKind", tag = "1")]
-    pub kind: i32,
-    /// Unset leaves schema unfiltered; a present schema identifier is validated before catalog selection.
-    #[prost(string, optional, tag = "2")]
-    pub schema: ::core::option::Option<::prost::alloc::string::String>,
+pub struct Receipt {
+    /// Caller request identity, or the mutation window/key correlation used by storage; some conditional operations leave it empty.
+    #[prost(string, tag = "1")]
+    pub request_id: ::prost::alloc::string::String,
+    /// Position accepted by the owner, when one exists; it is not by itself a durability acknowledgement.
+    #[prost(message, optional, tag = "2")]
+    pub accepted_at: ::core::option::Option<Position>,
+    /// Position acknowledged durable, when supplied; staging receipts may omit both positions.
+    #[prost(message, optional, tag = "3")]
+    pub durable_at: ::core::option::Option<Position>,
+    /// Whether the reported mutation outcome has completed, independently of whether a durable position is present.
+    #[prost(bool, tag = "4")]
+    pub completed: bool,
 }
-/// Separates typed operation discovery from JSON persisted-resource entries; current handlers do not issue a resolved cut.
+/// Declares the plugin's settings in one typed contribution section of its reported description.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct CatalogEntriesListResponse {
-    /// JSON array of persisted catalog entries; operation discovery uses the typed operations field.
-    #[prost(bytes = "vec", tag = "1")]
-    pub entries: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, repeated, tag = "3")]
-    pub operations: ::prost::alloc::vec::Vec<DiscoveredOperation>,
-    /// Current handlers leave this unset; its presence does not follow from catalog listing.
+pub struct SettingsDeclarations {
+    #[prost(message, repeated, tag = "1")]
+    pub values: ::prost::alloc::vec::Vec<SettingDeclaration>,
+}
+/// Declares one library-stored setting and the value used when the plugin entry has no override.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SettingDeclaration {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub description: ::prost::alloc::string::String,
+    /// Required typed default; the value discriminator must be selected.
     #[prost(message, optional, tag = "4")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
+    pub default: ::core::option::Option<SettingValue>,
 }
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod catalog_entries_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
-    #[derive(Debug, Clone)]
-    pub struct CatalogEntriesClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl CatalogEntriesClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> CatalogEntriesClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> CatalogEntriesClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            CatalogEntriesClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
-        pub async fn list(
-            &mut self,
-            request: impl tonic::IntoRequest<super::CatalogEntriesListRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::CatalogEntriesListResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.CatalogEntries/List",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.CatalogEntries", "List"));
-            self.inner.unary(req, path, codec).await
-        }
+/// Carries a complete setting value; an unset discriminator is invalid, including when setting a false flag or an empty text.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SettingValue {
+    #[prost(oneof = "setting_value::Value", tags = "1, 2, 3, 4, 5")]
+    pub value: ::core::option::Option<setting_value::Value>,
+}
+/// Nested message and enum types in `SettingValue`.
+pub mod setting_value {
+    #[allow(clippy::all)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Value {
+        #[prost(bool, tag = "1")]
+        Flag(bool),
+        #[prost(int64, tag = "2")]
+        Integer(i64),
+        #[prost(double, tag = "3")]
+        Number(f64),
+        #[prost(string, tag = "4")]
+        Text(::prost::alloc::string::String),
+        #[prost(message, tag = "5")]
+        Duration(::prost_types::Duration),
     }
 }
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod catalog_entries_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with CatalogEntriesServer.
-    #[async_trait]
-    pub trait CatalogEntries: std::marker::Send + std::marker::Sync + 'static {
-        /// Discover admitted operations or persisted schema/stream/object catalog entries, applying the caller's grants and optional schema filter.
-        async fn list(
-            &self,
-            request: tonic::Request<super::CatalogEntriesListRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::CatalogEntriesListResponse>,
-            tonic::Status,
-        >;
+/// Contains the complete named setting values for one plugin entry, without secret values.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SettingValues {
+    /// Keys are declaration names; values must select the same variant as their declared defaults.
+    #[prost(map = "string, message", tag = "1")]
+    pub values: ::std::collections::HashMap<
+        ::prost::alloc::string::String,
+        SettingValue,
+    >,
+}
+/// Declares a row type and either host-driven interval sampling or device-driven publication.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct StreamDeclaration {
+    /// Stream identity unique within its admitted provider inventory.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Fully qualified message name of one row, found in Catalog.types.
+    #[prost(string, tag = "2")]
+    pub row: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub description: ::prost::alloc::string::String,
+    /// Set for a stream sampled on the host's clock. Unset means the plugin
+    /// sends samples when its device produces them.
+    #[prost(message, optional, tag = "4")]
+    pub interval: ::core::option::Option<::prost_types::Duration>,
+    /// Identifier of a plugin setting that gives the interval instead, if any.
+    #[prost(string, tag = "5")]
+    pub interval_setting: ::prost::alloc::string::String,
+}
+/// Requests one interval sample at the authoritative host timestamp.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Tick {
+    /// Host time of the tick. The answering sample carries it.
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Opens demand for one declared plugin stream under an opaque invocation scope.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SamplesSelection {
+    /// Identity of the declared stream, resolved under the current caller/activation.
+    #[prost(string, tag = "1")]
+    pub stream: ::prost::alloc::string::String,
+    /// Opaque to Harmos. The product names what the stream belongs to.
+    #[prost(string, tag = "2")]
+    pub scope: ::prost::alloc::string::String,
+}
+/// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Sample {
+    /// For an interval stream, the time of the Tick this sample answers. For
+    /// other streams, the device's own time if it supplies one; when unset
+    /// the host stamps the sample on arrival.
+    #[prost(message, optional, tag = "1")]
+    pub at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Serialized row message of the stream.
+    #[prost(bytes = "vec", tag = "2")]
+    pub row: ::prost::alloc::vec::Vec<u8>,
+    /// Counts samples on this call from 1, so the host can see a gap.
+    #[prost(uint64, tag = "3")]
+    pub sequence: u64,
+}
+/// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Catalog {
+    /// Operations the plugin serves.
+    #[prost(message, repeated, tag = "1")]
+    pub operations: ::prost::alloc::vec::Vec<OperationContract>,
+    /// Operations it calls on the host or on other plugins.
+    #[prost(message, repeated, tag = "2")]
+    pub requires: ::prost::alloc::vec::Vec<Requirement>,
+    /// Streams it can publish.
+    #[prost(message, repeated, tag = "3")]
+    pub streams: ::prost::alloc::vec::Vec<StreamDeclaration>,
+    /// Product contributions, opaque to Harmos.
+    #[prost(message, repeated, tag = "4")]
+    pub sections: ::prost::alloc::vec::Vec<Section>,
+    /// SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+    #[prost(bytes = "vec", tag = "5")]
+    pub digest: ::prost::alloc::vec::Vec<u8>,
+    /// Definitions of every message named in this catalog.
+    #[prost(message, optional, tag = "6")]
+    pub types: ::core::option::Option<::prost_types::FileDescriptorSet>,
+}
+/// Carries a typed product contribution whose payload is opaque to the library.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Section {
+    /// Fully qualified message name of the payload, for example
+    /// "application.v1.Contributions". At most one section per name.
+    #[prost(string, tag = "1")]
+    pub r#type: ::prost::alloc::string::String,
+    /// Encoded message named by type; interpretation belongs to the product contribution owner.
+    #[prost(bytes = "vec", tag = "2")]
+    pub payload: ::prost::alloc::vec::Vec<u8>,
+}
+/// Declares a file's identity, optional scope and optional publication expectations before producing its bytes.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileMetadata {
+    /// File identity used for storage and resource-grant admission.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Optional stored scope metadata; unset records no scope.
+    #[prost(string, optional, tag = "2")]
+    pub scope: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, tag = "3")]
+    pub media_type: ::prost::alloc::string::String,
+    /// If present, publication must match this byte length; unset imposes no declared length expectation.
+    #[prost(uint64, optional, tag = "4")]
+    pub expected_length: ::core::option::Option<u64>,
+    /// If present, publication must match this 32-byte digest; unset imposes no declared digest expectation.
+    #[prost(bytes = "vec", optional, tag = "5")]
+    pub expected_sha256: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
+}
+/// Addresses published immutable content with its storage position, metadata, length and SHA-256 digest.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct FileReference {
+    /// Storage position of published content; application-owned content uses its provider's reference identity.
+    #[prost(message, optional, tag = "1")]
+    pub position: ::core::option::Option<Position>,
+    #[prost(message, optional, tag = "2")]
+    pub metadata: ::core::option::Option<FileMetadata>,
+    #[prost(uint64, tag = "3")]
+    pub length: u64,
+    /// SHA-256 of the complete immutable file, encoded as 32 bytes.
+    #[prost(bytes = "vec", tag = "4")]
+    pub sha256: ::prost::alloc::vec::Vec<u8>,
+}
+/// Describes one published immutable file for a product-owned file resource.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct File {
+    #[prost(message, optional, tag = "1")]
+    pub reference: ::core::option::Option<FileReference>,
+}
+/// Describes resumable upload progress for a product-owned upload resource, without declaring storage calls.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct Upload {
+    /// Production identity, independent of the current writer generation.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Store incarnation owning the upload; foreign histories cannot resume it.
+    #[prost(message, optional, tag = "2")]
+    pub history: ::core::option::Option<History>,
+    /// Current writer fence; resuming invalidates an older writer. Terminal uploads have no writer.
+    #[prost(uint64, tag = "3")]
+    pub writer_generation: u64,
+    /// Accepted bytes may still be lost on a crash.
+    #[prost(uint64, tag = "4")]
+    pub accepted_length: u64,
+    /// Byte prefix acknowledged persisted by the storage owner.
+    #[prost(uint64, tag = "5")]
+    pub durable_length: u64,
+    #[prost(enumeration = "UploadState", tag = "6")]
+    pub state: i32,
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum UploadState {
+    Unspecified = 0,
+    Producing = 1,
+    Finished = 2,
+    Abandoned = 3,
+}
+impl UploadState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "UPLOAD_STATE_UNSPECIFIED",
+            Self::Producing => "UPLOAD_STATE_PRODUCING",
+            Self::Finished => "UPLOAD_STATE_FINISHED",
+            Self::Abandoned => "UPLOAD_STATE_ABANDONED",
+        }
     }
-    /// Exposes operation discovery and persisted resource catalogs under the admitted caller's visibility and grants.
-    #[derive(Debug)]
-    pub struct CatalogEntriesServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> CatalogEntriesServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "UPLOAD_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "UPLOAD_STATE_PRODUCING" => Some(Self::Producing),
+            "UPLOAD_STATE_FINISHED" => Some(Self::Finished),
+            "UPLOAD_STATE_ABANDONED" => Some(Self::Abandoned),
+            _ => None,
         }
     }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for CatalogEntriesServer<T>
-    where
-        T: CatalogEntries,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.CatalogEntries/List" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListSvc<T: CatalogEntries>(pub Arc<T>);
-                    impl<
-                        T: CatalogEntries,
-                    > tonic::server::UnaryService<super::CatalogEntriesListRequest>
-                    for ListSvc<T> {
-                        type Response = super::CatalogEntriesListResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::CatalogEntriesListRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as CatalogEntries>::list(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
+}
+/// Identifies a persisted schema revision and its payload encoding; version numbers are identity, not a conversion request.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchemaKey {
+    /// Persistent schema identity; a type change does not silently reinterpret previously stored payloads.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Opaque schema revision identity, including derived stream revisions; numeric ordering does not select current.
+    #[prost(uint32, tag = "2")]
+    pub version: u32,
+    #[prost(enumeration = "PayloadEncoding", tag = "3")]
+    pub payload_encoding: i32,
+}
+/// Describes a persisted field's name, tag, scalar kind, cardinality and optional referenced definition.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchemaField {
+    /// Persisted field name used by schema traversal and query field paths.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Field/variant tag retained by the persisted schema.
+    #[prost(uint32, tag = "2")]
+    pub tag: u32,
+    #[prost(enumeration = "SchemaKind", tag = "3")]
+    pub kind: i32,
+    #[prost(enumeration = "SchemaCardinality", tag = "4")]
+    pub cardinality: i32,
+    /// Index into SchemaGraph.definitions for MESSAGE fields; required for messages and refused on scalar fields.
+    #[prost(uint64, optional, tag = "5")]
+    pub definition: ::core::option::Option<u64>,
+}
+/// Keeps a definition's fields in payload order; reordering can change Postcard decoding.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaDefinition {
+    #[prost(message, repeated, tag = "1")]
+    pub fields: ::prost::alloc::vec::Vec<SchemaField>,
+}
+/// Retains serialization form, tagging and omission metadata for one schema definition.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaRepresentation {
+    /// Index of the definition described by this representation.
+    #[prost(uint64, tag = "1")]
+    pub definition: u64,
+    #[prost(enumeration = "SchemaForm", tag = "2")]
+    pub form: i32,
+    /// Serialization tag name when present; unset supplies no explicit tag.
+    #[prost(string, optional, tag = "3")]
+    pub tag: ::core::option::Option<::prost::alloc::string::String>,
+    /// Serialization content-field name when present; unset supplies no explicit content field.
+    #[prost(string, optional, tag = "4")]
+    pub content: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(map = "string, enumeration(SchemaOmission)", tag = "5")]
+    pub omissions: ::std::collections::HashMap<::prost::alloc::string::String, i32>,
+    #[prost(string, repeated, tag = "6")]
+    pub maps: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Owns a finite, indexed schema graph with an explicit root and serialization representations.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaGraph {
+    /// Index into definitions of the graph's root definition.
+    #[prost(uint64, tag = "1")]
+    pub root: u64,
+    #[prost(message, repeated, tag = "2")]
+    pub definitions: ::prost::alloc::vec::Vec<SchemaDefinition>,
+    #[prost(message, repeated, tag = "3")]
+    pub representations: ::prost::alloc::vec::Vec<SchemaRepresentation>,
+}
+/// Binds a persisted schema identity to its complete definition graph.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchemaInput {
+    /// Required persisted schema identity, revision and payload encoding for this definition graph.
+    #[prost(message, optional, tag = "1")]
+    pub key: ::core::option::Option<SchemaKey>,
+    #[prost(message, optional, tag = "2")]
+    pub graph: ::core::option::Option<SchemaGraph>,
+}
+/// Storage schema graphs describe persisted payloads; they do not change their encoding.
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum PayloadEncoding {
+    Unspecified = 0,
+    PostcardV1 = 1,
+}
+impl PayloadEncoding {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "PAYLOAD_ENCODING_UNSPECIFIED",
+            Self::PostcardV1 => "POSTCARD_V1",
         }
     }
-    impl<T> Clone for CatalogEntriesServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "PAYLOAD_ENCODING_UNSPECIFIED" => Some(Self::Unspecified),
+            "POSTCARD_V1" => Some(Self::PostcardV1),
+            _ => None,
         }
     }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.CatalogEntries";
-    impl<T> tonic::server::NamedService for CatalogEntriesServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaCardinality {
+    Required = 0,
+    Optional = 1,
+    Repeated = 2,
+    Variant = 3,
+}
+impl SchemaCardinality {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Required => "REQUIRED",
+            Self::Optional => "OPTIONAL",
+            Self::Repeated => "REPEATED",
+            Self::Variant => "VARIANT",
+        }
     }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "REQUIRED" => Some(Self::Required),
+            "OPTIONAL" => Some(Self::Optional),
+            "REPEATED" => Some(Self::Repeated),
+            "VARIANT" => Some(Self::Variant),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaKind {
+    Bool = 0,
+    Uint32 = 1,
+    Uint64 = 2,
+    Int32 = 3,
+    Int64 = 4,
+    Float32 = 5,
+    Float64 = 6,
+    String = 7,
+    Bytes = 8,
+    Message = 9,
+}
+impl SchemaKind {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Bool => "BOOL",
+            Self::Uint32 => "UINT32",
+            Self::Uint64 => "UINT64",
+            Self::Int32 => "INT32",
+            Self::Int64 => "INT64",
+            Self::Float32 => "FLOAT32",
+            Self::Float64 => "FLOAT64",
+            Self::String => "STRING",
+            Self::Bytes => "BYTES",
+            Self::Message => "MESSAGE",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "BOOL" => Some(Self::Bool),
+            "UINT32" => Some(Self::Uint32),
+            "UINT64" => Some(Self::Uint64),
+            "INT32" => Some(Self::Int32),
+            "INT64" => Some(Self::Int64),
+            "FLOAT32" => Some(Self::Float32),
+            "FLOAT64" => Some(Self::Float64),
+            "STRING" => Some(Self::String),
+            "BYTES" => Some(Self::Bytes),
+            "MESSAGE" => Some(Self::Message),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaForm {
+    Object = 0,
+    Unit = 1,
+    Value = 2,
+    Tuple = 3,
+    External = 4,
+    Internal = 5,
+    Adjacent = 6,
+    Untagged = 7,
+}
+impl SchemaForm {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Object => "OBJECT",
+            Self::Unit => "UNIT",
+            Self::Value => "VALUE",
+            Self::Tuple => "TUPLE",
+            Self::External => "EXTERNAL",
+            Self::Internal => "INTERNAL",
+            Self::Adjacent => "ADJACENT",
+            Self::Untagged => "UNTAGGED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "OBJECT" => Some(Self::Object),
+            "UNIT" => Some(Self::Unit),
+            "VALUE" => Some(Self::Value),
+            "TUPLE" => Some(Self::Tuple),
+            "EXTERNAL" => Some(Self::External),
+            "INTERNAL" => Some(Self::Internal),
+            "ADJACENT" => Some(Self::Adjacent),
+            "UNTAGGED" => Some(Self::Untagged),
+            _ => None,
+        }
+    }
+}
+#[allow(clippy::all)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SchemaOmission {
+    OmitNone = 0,
+    OmitEmpty = 1,
+}
+impl SchemaOmission {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::OmitNone => "OMIT_NONE",
+            Self::OmitEmpty => "OMIT_EMPTY",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "OMIT_NONE" => Some(Self::OmitNone),
+            "OMIT_EMPTY" => Some(Self::OmitEmpty),
+            _ => None,
+        }
+    }
+}
+/// Bounds one response and carries an opaque continuation; each resource defines whether zero bounds select defaults or refuse.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct PageRequest {
+    /// Maximum rows/items in a page. Storage uses configured defaults at zero; status histories require a positive value.
+    #[prost(uint32, tag = "1")]
+    pub page_size: u32,
+    /// Maximum encoded response bytes, including metadata and continuation. Storage clamps to configured capacity; status histories reject zero.
+    #[prost(uint64, tag = "2")]
+    pub max_bytes: u64,
+    /// Empty opens a read; otherwise resend the opaque token with the same selection and cut. Expired or mismatched continuations refuse.
+    #[prost(string, tag = "3")]
+    pub page_token: ::prost::alloc::string::String,
 }
 /// Metadata only: registration must not initialize authored resources.
 #[allow(clippy::all)]
@@ -1217,6260 +1243,48 @@ impl GuestChildAction {
         }
     }
 }
-/// Carries the operation identity, expected contract fingerprint and encoded payload for Invocations.Invoke.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsInvokeRequest {
-    /// Complete admitted operation routing identity; no provider prefix or provider selection is added.
-    #[prost(string, tag = "1")]
-    pub operation: ::prost::alloc::string::String,
-    /// Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
-    #[prost(bytes = "vec", tag = "2")]
-    pub fingerprint: ::prost::alloc::vec::Vec<u8>,
-    /// Encoded request of operation under the supplied contract fingerprint.
-    #[prost(bytes = "vec", tag = "3")]
-    pub payload: ::prost::alloc::vec::Vec<u8>,
-}
-/// Carries the declared operation's encoded unary result after admission and execution.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsInvokeResponse {
-    /// Encoded unary response of the invoked operation, including empty bytes for an empty success message.
-    #[prost(bytes = "vec", tag = "1")]
-    pub payload: ::prost::alloc::vec::Vec<u8>,
-}
-/// Carries the invocation handle for Invocations.Get.
+/// One Storage Setting Shared by Host and SDK Defaults.
+#[derive(serde::Serialize, serde::Deserialize)]
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsGetRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
+pub struct StorageTransferSettings {
+    /// Maximum bytes per default transfer chunk; unset uses the declared 4 MiB proto2 default.
+    #[prost(uint64, optional, tag = "1", default = "4194304")]
+    pub chunk_bytes: ::core::option::Option<u64>,
 }
-/// Reports the caller-owned invocation's current lifecycle state without returning its operation payload.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsGetResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Carries the invocation handle and reason text for Invocations.Cancel.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsCancelRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
-    #[prost(string, tag = "2")]
-    pub reason: ::prost::alloc::string::String,
-}
-/// Reports lifecycle state after requesting cancellation; a cooperative handler may still produce its final result.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsCancelResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Carries the invocation handle for Invocations.Watch.
+/// One Declared Transport Default for All Generated SDKs and Host Carriers.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsWatchRequest {
-    /// Host-issued invocation handle; lifecycle access is restricted to the caller that owns the instance.
-    #[prost(uint64, tag = "1")]
-    pub instance: u64,
+pub struct MessageSettings {
+    /// Carrier message ceiling; unset uses the declared 8 MiB proto2 default. Startup refuses a ceiling smaller than configured chunks plus framing.
+    #[prost(uint64, optional, tag = "1", default = "8388608")]
+    pub message_bytes: ::core::option::Option<u64>,
 }
-/// Reports a lifecycle state observed while following the caller-owned invocation through settlement.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct InvocationsWatchResponse {
-    /// Current lifecycle state of the caller-owned instance; this does not carry its operation response payload.
-    #[prost(message, optional, tag = "1")]
-    pub invocation: ::core::option::Option<InstanceState>,
-}
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod invocations_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Exposes lifecycle controls only for invocation instances owned by the caller.
-    #[derive(Debug, Clone)]
-    pub struct InvocationsClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl InvocationsClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> InvocationsClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InvocationsClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            InvocationsClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Invoke an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
-        pub async fn invoke(
-            &mut self,
-            request: impl tonic::IntoRequest<super::InvocationsInvokeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsInvokeResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Invocations/Invoke",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Invocations", "Invoke"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
-        pub async fn get(
-            &mut self,
-            request: impl tonic::IntoRequest<super::InvocationsGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsGetResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Invocations/Get",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Invocations", "Get"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
-        pub async fn cancel(
-            &mut self,
-            request: impl tonic::IntoRequest<super::InvocationsCancelRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsCancelResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Invocations/Cancel",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Invocations", "Cancel"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
-        pub async fn watch(
-            &mut self,
-            request: impl tonic::IntoRequest<super::InvocationsWatchRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::InvocationsWatchResponse>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Invocations/Watch",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Invocations", "Watch"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-    }
-}
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod invocations_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with InvocationsServer.
-    #[async_trait]
-    pub trait Invocations: std::marker::Send + std::marker::Sync + 'static {
-        /// Invoke an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
-        async fn invoke(
-            &self,
-            request: tonic::Request<super::InvocationsInvokeRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsInvokeResponse>,
-            tonic::Status,
-        >;
-        /// Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
-        async fn get(
-            &self,
-            request: tonic::Request<super::InvocationsGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsGetResponse>,
-            tonic::Status,
-        >;
-        /// Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
-        async fn cancel(
-            &self,
-            request: tonic::Request<super::InvocationsCancelRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::InvocationsCancelResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the Watch method.
-        type WatchStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    super::InvocationsWatchResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
-        async fn watch(
-            &self,
-            request: tonic::Request<super::InvocationsWatchRequest>,
-        ) -> std::result::Result<tonic::Response<Self::WatchStream>, tonic::Status>;
-    }
-    /// Exposes lifecycle controls only for invocation instances owned by the caller.
-    #[derive(Debug)]
-    pub struct InvocationsServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> InvocationsServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
-        }
-    }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for InvocationsServer<T>
-    where
-        T: Invocations,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.Invocations/Invoke" => {
-                    #[allow(non_camel_case_types)]
-                    struct InvokeSvc<T: Invocations>(pub Arc<T>);
-                    impl<
-                        T: Invocations,
-                    > tonic::server::UnaryService<super::InvocationsInvokeRequest>
-                    for InvokeSvc<T> {
-                        type Response = super::InvocationsInvokeResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::InvocationsInvokeRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Invocations>::invoke(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = InvokeSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Invocations/Get" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetSvc<T: Invocations>(pub Arc<T>);
-                    impl<
-                        T: Invocations,
-                    > tonic::server::UnaryService<super::InvocationsGetRequest>
-                    for GetSvc<T> {
-                        type Response = super::InvocationsGetResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::InvocationsGetRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Invocations>::get(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Invocations/Cancel" => {
-                    #[allow(non_camel_case_types)]
-                    struct CancelSvc<T: Invocations>(pub Arc<T>);
-                    impl<
-                        T: Invocations,
-                    > tonic::server::UnaryService<super::InvocationsCancelRequest>
-                    for CancelSvc<T> {
-                        type Response = super::InvocationsCancelResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::InvocationsCancelRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Invocations>::cancel(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CancelSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Invocations/Watch" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchSvc<T: Invocations>(pub Arc<T>);
-                    impl<
-                        T: Invocations,
-                    > tonic::server::ServerStreamingService<
-                        super::InvocationsWatchRequest,
-                    > for WatchSvc<T> {
-                        type Response = super::InvocationsWatchResponse;
-                        type ResponseStream = T::WatchStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::InvocationsWatchRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Invocations>::watch(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
-        }
-    }
-    impl<T> Clone for InvocationsServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
-        }
-    }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.Invocations";
-    impl<T> tonic::server::NamedService for InvocationsServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
-    }
-}
-/// Carries the resource name and read boundary for Plugins.Get.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsGetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns one entry from the selected retained manager snapshot with its cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsGetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries the read boundary for Plugins.List.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsListRequest {
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns the complete selected manager inventory with its cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsListResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries the resource name and read boundary for Plugins.Watch.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsWatchRequest {
-    /// Empty watches all entries; otherwise selects this exact management entry name.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Distinguishes an opening snapshot, entry changes and a requirement to restart the read.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsWatchResponse {
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "1")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "plugins_watch_response::Event", tags = "2, 3, 4")]
-    pub event: ::core::option::Option<plugins_watch_response::Event>,
-}
-/// Nested message and enum types in `PluginsWatchResponse`.
-pub mod plugins_watch_response {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Event {
-        /// Required retained snapshot handle issued by this owner; preserve its token and original position.
-        #[prost(message, tag = "2")]
-        Snapshot(super::PluginSnapshot),
-        #[prost(message, tag = "3")]
-        Change(super::PluginChange),
-        /// Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
-        #[prost(string, tag = "4")]
-        ResyncRequired(::prost::alloc::string::String),
-    }
-}
-/// Carries the request id, resource name, placement and replacement value for Plugins.Create.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsCreateRequest {
-    /// Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
-    #[prost(string, tag = "1")]
-    pub request_id: ::prost::alloc::string::String,
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "3")]
-    pub placement: ::core::option::Option<PluginPlacement>,
-    #[prost(message, optional, tag = "4")]
-    pub value: ::core::option::Option<PluginValue>,
-}
-/// Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsCreateResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the resource name, replacement value and expected revision for Plugins.Set.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsSetRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub value: ::core::option::Option<PluginValue>,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "3")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the resulting entry and mutation receipt after applying its complete writable value.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsSetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the resource name and expected revision for Plugins.Delete.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsDeleteRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the durable management deletion receipt without exposing retired installation content.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsDeleteResponse {
-    #[prost(message, optional, tag = "1")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the resource name and expected revision for Plugins.Restart.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginsRestartRequest {
-    /// Persisted management entry identity, distinct from an advertised plugin/catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-}
-/// Returns the entry with its replacement activation initiated; connection readiness is observed separately.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginsRestartResponse {
-    #[prost(message, optional, tag = "1")]
-    pub entry: ::core::option::Option<PluginEntry>,
-}
-/// Contains the writable enablement state of a managed plugin entry.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginValue {
-    #[prost(bool, tag = "1")]
-    pub enabled: bool,
-}
-/// Captures the running plugin's advertised identity, process start, negotiated revision and catalog.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginDescription {
-    /// Plugin-advertised identity, distinct from the persisted management entry name.
-    #[prost(string, tag = "1")]
-    pub id: ::prost::alloc::string::String,
-    /// Plugin-advertised semantic version, distinct from the negotiated protocol revision.
-    #[prost(string, tag = "2")]
-    pub version: ::prost::alloc::string::String,
-    /// Plugin process startup timestamp, stable across connections to that process.
-    #[prost(message, optional, tag = "3")]
-    pub started_at: ::core::option::Option<::prost_types::Timestamp>,
-    #[prost(message, optional, tag = "4")]
-    pub catalog: ::core::option::Option<Catalog>,
-    /// Negotiated protocol revision, not a conditional management revision.
-    #[prost(uint32, tag = "5")]
-    pub revision: u32,
-    #[prost(string, tag = "6")]
-    pub sdk: ::prost::alloc::string::String,
-    #[prost(string, tag = "7")]
-    pub sdk_version: ::prost::alloc::string::String,
-}
-/// Connects the host to a remote plain HTTP plugin endpoint; the manager validates endpoint syntax.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginRemote {
-    #[prost(string, tag = "1")]
-    pub url: ::prost::alloc::string::String,
-}
-/// Content names refer exclusively to published library upload content.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginManaged {
-    #[prost(message, optional, tag = "1")]
-    pub content: ::core::option::Option<crate::storage::FileReference>,
-    /// Expected 32-byte digest of the uploaded executable content.
-    #[prost(bytes = "vec", tag = "2")]
-    pub sha256: ::prost::alloc::vec::Vec<u8>,
-}
-/// Chooses managed uploaded content or a remote process; exactly one placement is required for creation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginPlacement {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "plugin_placement::Kind", tags = "1, 2")]
-    pub kind: ::core::option::Option<plugin_placement::Kind>,
-}
-/// Nested message and enum types in `PluginPlacement`.
-pub mod plugin_placement {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Kind {
-        #[prost(message, tag = "1")]
-        Managed(super::PluginManaged),
-        #[prost(message, tag = "2")]
-        Remote(super::PluginRemote),
-    }
-}
-/// Reports the managed child process identity, executable digest and process start time.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct PluginProcess {
-    /// Native managed child process ID; absent process metadata does not imply a remote process ID.
-    #[prost(uint32, tag = "1")]
-    pub id: u32,
-    /// Digest of the managed executable selected for this process.
-    #[prost(bytes = "vec", tag = "2")]
-    pub executable_digest: ::prost::alloc::vec::Vec<u8>,
-    /// Managed process start timestamp, distinct from activation/reconnect identity.
-    #[prost(message, optional, tag = "3")]
-    pub started_at: ::core::option::Option<::prost_types::Timestamp>,
-}
-/// Combines persisted management state with observed activation, process and failure information.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginEntry {
-    /// Persisted management entry identity, distinct from the plugin's advertised catalog ID.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(message, optional, tag = "2")]
-    pub placement: ::core::option::Option<PluginPlacement>,
-    #[prost(message, optional, tag = "3")]
-    pub value: ::core::option::Option<PluginValue>,
-    /// Opaque conditional revision of the management value; resend it unchanged to Set/Delete/Restart.
-    #[prost(bytes = "vec", tag = "4")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    #[prost(enumeration = "PluginState", tag = "5")]
-    pub state: i32,
-    /// Absent when the entry has no reported failure; failures retain machine classification and diagnostics.
-    #[prost(message, optional, tag = "6")]
-    pub failure: ::core::option::Option<Failure>,
-    /// Advertised description when an activation has supplied it; absent before discovery is available.
-    #[prost(message, optional, tag = "7")]
-    pub description: ::core::option::Option<PluginDescription>,
-    /// Digest of the catalog observed for this entry's activation.
-    #[prost(bytes = "vec", tag = "8")]
-    pub catalog_digest: ::prost::alloc::vec::Vec<u8>,
-    /// Managed process metadata when available; remote placement does not supply managed process metadata.
-    #[prost(message, optional, tag = "9")]
-    pub process: ::core::option::Option<PluginProcess>,
-    /// Generation of the entry's activation; old calls and handles do not follow its replacement.
-    #[prost(uint64, tag = "10")]
-    pub activation: u64,
-}
-/// Carries the entries selected at the opening boundary of a plugin watch.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginSnapshot {
-    #[prost(message, repeated, tag = "1")]
-    pub entries: ::prost::alloc::vec::Vec<PluginEntry>,
-}
-/// Replaces one entry or identifies an entry removed from the manager.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct PluginChange {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "plugin_change::Kind", tags = "1, 2")]
-    pub kind: ::core::option::Option<plugin_change::Kind>,
-}
-/// Nested message and enum types in `PluginChange`.
-pub mod plugin_change {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Kind {
-        #[prost(message, tag = "1")]
-        Entry(super::PluginEntry),
-        #[prost(string, tag = "2")]
-        Deleted(::prost::alloc::string::String),
-    }
-}
+/// Space for Default Session, Receipt, Cut and Carrier Framing.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum PluginState {
+pub enum TransferFraming {
     Unspecified = 0,
-    Connecting = 1,
-    Ready = 2,
-    Unavailable = 3,
-    Stopped = 4,
-    Stopping = 5,
+    Bytes = 512,
 }
-impl PluginState {
+impl TransferFraming {
     /// String value of the enum field names used in the ProtoBuf definition.
     ///
     /// The values are not transformed in any way and thus are considered stable
     /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
-            Self::Unspecified => "PLUGIN_STATE_UNSPECIFIED",
-            Self::Connecting => "PLUGIN_STATE_CONNECTING",
-            Self::Ready => "PLUGIN_STATE_READY",
-            Self::Unavailable => "PLUGIN_STATE_UNAVAILABLE",
-            Self::Stopped => "PLUGIN_STATE_STOPPED",
-            Self::Stopping => "PLUGIN_STATE_STOPPING",
+            Self::Unspecified => "TRANSFER_FRAMING_UNSPECIFIED",
+            Self::Bytes => "TRANSFER_FRAMING_BYTES",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
-            "PLUGIN_STATE_UNSPECIFIED" => Some(Self::Unspecified),
-            "PLUGIN_STATE_CONNECTING" => Some(Self::Connecting),
-            "PLUGIN_STATE_READY" => Some(Self::Ready),
-            "PLUGIN_STATE_UNAVAILABLE" => Some(Self::Unavailable),
-            "PLUGIN_STATE_STOPPED" => Some(Self::Stopped),
-            "PLUGIN_STATE_STOPPING" => Some(Self::Stopping),
+            "TRANSFER_FRAMING_UNSPECIFIED" => Some(Self::Unspecified),
+            "TRANSFER_FRAMING_BYTES" => Some(Self::Bytes),
             _ => None,
         }
     }
 }
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod plugins_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Client-facing management of hosted entries, distinct from Instance.
-    #[derive(Debug, Clone)]
-    pub struct PluginsClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl PluginsClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> PluginsClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> PluginsClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            PluginsClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
-        pub async fn get(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsGetResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Get");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Get"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
-        pub async fn list(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsListRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsListResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/List");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "List"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
-        pub async fn watch(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsWatchRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::PluginsWatchResponse>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Watch");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Watch"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        /// Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
-        pub async fn create(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsCreateRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsCreateResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Create");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Create"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
-        pub async fn set(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsSetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsSetResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Set");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Set"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
-        pub async fn delete(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsDeleteRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsDeleteResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Plugins/Delete");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Delete"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
-        pub async fn restart(
-            &mut self,
-            request: impl tonic::IntoRequest<super::PluginsRestartRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsRestartResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Plugins/Restart",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Plugins", "Restart"));
-            self.inner.unary(req, path, codec).await
-        }
-    }
-}
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod plugins_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with PluginsServer.
-    #[async_trait]
-    pub trait Plugins: std::marker::Send + std::marker::Sync + 'static {
-        /// Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
-        async fn get(
-            &self,
-            request: tonic::Request<super::PluginsGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsGetResponse>,
-            tonic::Status,
-        >;
-        /// Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
-        async fn list(
-            &self,
-            request: tonic::Request<super::PluginsListRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsListResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the Watch method.
-        type WatchStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::PluginsWatchResponse, tonic::Status>,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
-        async fn watch(
-            &self,
-            request: tonic::Request<super::PluginsWatchRequest>,
-        ) -> std::result::Result<tonic::Response<Self::WatchStream>, tonic::Status>;
-        /// Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
-        async fn create(
-            &self,
-            request: tonic::Request<super::PluginsCreateRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsCreateResponse>,
-            tonic::Status,
-        >;
-        /// Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
-        async fn set(
-            &self,
-            request: tonic::Request<super::PluginsSetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsSetResponse>,
-            tonic::Status,
-        >;
-        /// Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
-        async fn delete(
-            &self,
-            request: tonic::Request<super::PluginsDeleteRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsDeleteResponse>,
-            tonic::Status,
-        >;
-        /// Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
-        async fn restart(
-            &self,
-            request: tonic::Request<super::PluginsRestartRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::PluginsRestartResponse>,
-            tonic::Status,
-        >;
-    }
-    /// Client-facing management of hosted entries, distinct from Instance.
-    #[derive(Debug)]
-    pub struct PluginsServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> PluginsServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
-        }
-    }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for PluginsServer<T>
-    where
-        T: Plugins,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.Plugins/Get" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsGetRequest>
-                    for GetSvc<T> {
-                        type Response = super::PluginsGetResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsGetRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::get(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/List" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsListRequest>
-                    for ListSvc<T> {
-                        type Response = super::PluginsListResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsListRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::list(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/Watch" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::ServerStreamingService<super::PluginsWatchRequest>
-                    for WatchSvc<T> {
-                        type Response = super::PluginsWatchResponse;
-                        type ResponseStream = T::WatchStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsWatchRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::watch(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/Create" => {
-                    #[allow(non_camel_case_types)]
-                    struct CreateSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsCreateRequest>
-                    for CreateSvc<T> {
-                        type Response = super::PluginsCreateResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsCreateRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::create(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CreateSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/Set" => {
-                    #[allow(non_camel_case_types)]
-                    struct SetSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsSetRequest>
-                    for SetSvc<T> {
-                        type Response = super::PluginsSetResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsSetRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::set(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SetSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/Delete" => {
-                    #[allow(non_camel_case_types)]
-                    struct DeleteSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsDeleteRequest>
-                    for DeleteSvc<T> {
-                        type Response = super::PluginsDeleteResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsDeleteRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::delete(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = DeleteSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Plugins/Restart" => {
-                    #[allow(non_camel_case_types)]
-                    struct RestartSvc<T: Plugins>(pub Arc<T>);
-                    impl<
-                        T: Plugins,
-                    > tonic::server::UnaryService<super::PluginsRestartRequest>
-                    for RestartSvc<T> {
-                        type Response = super::PluginsRestartResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::PluginsRestartRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Plugins>::restart(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = RestartSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
-        }
-    }
-    impl<T> Clone for PluginsServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
-        }
-    }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.Plugins";
-    impl<T> tonic::server::NamedService for PluginsServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
-    }
-}
-/// Request for Status.Get.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StatusGetRequest {}
-/// Returns current host health and its issued status boundary.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StatusGetResponse {
-    #[prost(message, optional, tag = "1")]
-    pub status: ::core::option::Option<HostStatus>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<Position>,
-}
-/// Carries the read boundary for Status.Watch.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StatusWatchRequest {
-    /// Unset selects the current history boundary; otherwise resend an issued position for this owner. Foreign, expired and unissued positions refuse.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<Position>,
-}
-/// Returns a current host health observation and its issued status boundary.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StatusWatchResponse {
-    #[prost(message, optional, tag = "1")]
-    pub status: ::core::option::Option<HostStatus>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<Position>,
-}
-/// Identifies this host process and the application/library versions it is running.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HostIdentity {
-    #[prost(string, tag = "1")]
-    pub application_name: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub application_version: ::prost::alloc::string::String,
-    #[prost(string, tag = "3")]
-    pub library_version: ::prost::alloc::string::String,
-    /// Timestamp captured for this host process, rather than a status revision.
-    #[prost(message, optional, tag = "4")]
-    pub process_started_at: ::core::option::Option<::prost_types::Timestamp>,
-    /// Host identity supplied by the composing application.
-    #[prost(string, tag = "5")]
-    pub host_id: ::prost::alloc::string::String,
-}
-/// Reports one contributed component's availability and explanation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct HealthComponent {
-    /// Identity of the contributed component within this host's status inventory.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(enumeration = "ComponentState", tag = "2")]
-    pub state: i32,
-    #[prost(string, tag = "3")]
-    pub reason: ::prost::alloc::string::String,
-}
-/// Combines host identity and contributed health; an unavailable component makes the host unavailable.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct HostStatus {
-    #[prost(message, optional, tag = "1")]
-    pub identity: ::core::option::Option<HostIdentity>,
-    #[prost(bool, tag = "2")]
-    pub available: bool,
-    #[prost(message, repeated, tag = "3")]
-    pub components: ::prost::alloc::vec::Vec<HealthComponent>,
-}
-#[allow(clippy::all)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum ComponentState {
-    Unspecified = 0,
-    Healthy = 1,
-    Degraded = 2,
-    Unavailable = 3,
-}
-impl ComponentState {
-    /// String value of the enum field names used in the ProtoBuf definition.
-    ///
-    /// The values are not transformed in any way and thus are considered stable
-    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
-    pub fn as_str_name(&self) -> &'static str {
-        match self {
-            Self::Unspecified => "COMPONENT_STATE_UNSPECIFIED",
-            Self::Healthy => "COMPONENT_STATE_HEALTHY",
-            Self::Degraded => "COMPONENT_STATE_DEGRADED",
-            Self::Unavailable => "COMPONENT_STATE_UNAVAILABLE",
-        }
-    }
-    /// Creates an enum from field names used in the ProtoBuf definition.
-    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
-        match value {
-            "COMPONENT_STATE_UNSPECIFIED" => Some(Self::Unspecified),
-            "COMPONENT_STATE_HEALTHY" => Some(Self::Healthy),
-            "COMPONENT_STATE_DEGRADED" => Some(Self::Degraded),
-            "COMPONENT_STATE_UNAVAILABLE" => Some(Self::Unavailable),
-            _ => None,
-        }
-    }
-}
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod status_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Exposes current host health and a live stream of contributed status changes.
-    #[derive(Debug, Clone)]
-    pub struct StatusClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl StatusClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> StatusClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> StatusClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            StatusClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Read the current host identity and contributed health with the status history boundary.
-        pub async fn get(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StatusGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StatusGetResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Status/Get");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Status", "Get"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
-        pub async fn watch(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StatusWatchRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::StatusWatchResponse>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Status/Watch");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Status", "Watch"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-    }
-}
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod status_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with StatusServer.
-    #[async_trait]
-    pub trait Status: std::marker::Send + std::marker::Sync + 'static {
-        /// Read the current host identity and contributed health with the status history boundary.
-        async fn get(
-            &self,
-            request: tonic::Request<super::StatusGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StatusGetResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the Watch method.
-        type WatchStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<super::StatusWatchResponse, tonic::Status>,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
-        async fn watch(
-            &self,
-            request: tonic::Request<super::StatusWatchRequest>,
-        ) -> std::result::Result<tonic::Response<Self::WatchStream>, tonic::Status>;
-    }
-    /// Exposes current host health and a live stream of contributed status changes.
-    #[derive(Debug)]
-    pub struct StatusServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> StatusServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
-        }
-    }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for StatusServer<T>
-    where
-        T: Status,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.Status/Get" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetSvc<T: Status>(pub Arc<T>);
-                    impl<T: Status> tonic::server::UnaryService<super::StatusGetRequest>
-                    for GetSvc<T> {
-                        type Response = super::StatusGetResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StatusGetRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Status>::get(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Status/Watch" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchSvc<T: Status>(pub Arc<T>);
-                    impl<
-                        T: Status,
-                    > tonic::server::ServerStreamingService<super::StatusWatchRequest>
-                    for WatchSvc<T> {
-                        type Response = super::StatusWatchResponse;
-                        type ResponseStream = T::WatchStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StatusWatchRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Status>::watch(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
-        }
-    }
-    impl<T> Clone for StatusServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
-        }
-    }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.Status";
-    impl<T> tonic::server::NamedService for StatusServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
-    }
-}
-/// Carries file metadata and a mutation identity for Storage.CreateFileProduction.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCreateFileProductionRequest {
-    #[prost(message, optional, tag = "1")]
-    pub metadata: ::core::option::Option<crate::storage::FileMetadata>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "2")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the writer session, accepted byte length and replay receipt for the new production.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCreateFileProductionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub production: ::core::option::Option<crate::storage::FileProducer>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Selects a file production and read boundary for Storage.GetFileProduction.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileProductionRequest {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<crate::storage::StagedFile>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Separates observed production phase, writer fence, accepted/durable byte lengths and the retained read cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileProductionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub production: ::core::option::Option<crate::storage::FileProgress>,
-    /// Current production writer fence, observed without granting writer authority.
-    #[prost(uint64, tag = "2")]
-    pub writer_generation: u64,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "3")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Bytes accepted into production; this is not a crash-safe byte acknowledgement.
-    #[prost(uint64, tag = "4")]
-    pub accepted_length: u64,
-    /// Production byte length acknowledged persisted by the storage owner.
-    #[prost(uint64, tag = "5")]
-    pub durable_length: u64,
-}
-/// Carries bytes, their expected offset, the writer session and mutation identity for Storage.AppendFileBytes.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendFileBytesRequest {
-    /// Required current writer capability; an older generation is fenced after another writer resumes production.
-    #[prost(message, optional, tag = "1")]
-    pub session: ::core::option::Option<crate::storage::FileSession>,
-    /// Zero-based byte offset in the selected file/production; append must match the current writer length.
-    #[prost(uint64, tag = "2")]
-    pub offset: u64,
-    #[prost(bytes = "vec", tag = "3")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "4")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the writer session and acknowledged length associated with the original append mutation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendFileBytesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub production: ::core::option::Option<crate::storage::FileProducer>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the writer session and mutation identity for Storage.CreateFileWriter.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCreateFileWriterRequest {
-    /// Writer session used to identify the production and expected generation for resumption; replay retains the originally issued replacement writer.
-    #[prost(message, optional, tag = "1")]
-    pub session: ::core::option::Option<crate::storage::FileSession>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "2")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the resumed writer and length; replaying the same mutation retains this original writer generation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCreateFileWriterResponse {
-    #[prost(message, optional, tag = "1")]
-    pub production: ::core::option::Option<crate::storage::FileProducer>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the writer session, completed length, digest and mutation identity for Storage.PublishFileProduction.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StoragePublishFileProductionRequest {
-    /// Required current writer capability; an older generation is fenced after another writer resumes production.
-    #[prost(message, optional, tag = "1")]
-    pub session: ::core::option::Option<crate::storage::FileSession>,
-    /// Exact completed byte length to verify before publication.
-    #[prost(uint64, tag = "2")]
-    pub length: u64,
-    /// SHA-256 digest of the complete selected file, encoded as 32 bytes.
-    #[prost(bytes = "vec", tag = "3")]
-    pub sha256: ::prost::alloc::vec::Vec<u8>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "4")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the immutable file reference and receipt after publication has been flushed to the file position.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StoragePublishFileProductionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<crate::storage::FileReference>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the writer session and mutation identity for Storage.DeleteFileProduction.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageDeleteFileProductionRequest {
-    /// Required current writer capability; an older generation is fenced after another writer resumes production.
-    #[prost(message, optional, tag = "1")]
-    pub session: ::core::option::Option<crate::storage::FileSession>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "2")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the abandoned production's progress and the original mutation receipt.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageDeleteFileProductionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub production: ::core::option::Option<crate::storage::FileProgress>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Selects a file, byte range and read boundary for Storage.GetFileBytes.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileBytesRequest {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<crate::storage::FileReference>,
-    /// Zero-based byte offset in the selected file or production.
-    #[prost(uint64, tag = "2")]
-    pub offset: u64,
-    /// Maximum data bytes requested; zero uses the configured transfer chunk budget. Carrier framing and content-lease bounds can reduce returned data.
-    #[prost(uint64, tag = "3")]
-    pub max_bytes: u64,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "4")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Carries a bounded contiguous byte range, complete file metadata and the cut that retains its read image.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileBytesResponse {
-    #[prost(bytes = "vec", tag = "1")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
-    #[prost(uint64, tag = "2")]
-    pub total_length: u64,
-    /// SHA-256 digest of the complete selected file, encoded as 32 bytes.
-    #[prost(bytes = "vec", tag = "3")]
-    pub sha256: ::prost::alloc::vec::Vec<u8>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "4")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Request for Storage.Capabilities.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCapabilitiesRequest {}
-/// Advertises backend facilities, any current mutation replay window and the configured file chunk budget.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCapabilitiesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub capabilities: ::core::option::Option<crate::storage::StorageCapabilities>,
-    /// Current mutation replay window when supported; absent means no window is advertised.
-    #[prost(message, optional, tag = "2")]
-    pub mutations: ::core::option::Option<crate::storage::MutationWindow>,
-    /// Owner-configured default/maximum transfer chunk budget in bytes.
-    #[prost(uint64, tag = "3")]
-    pub file_batch_bytes: u64,
-}
-/// Selects the read boundary for Storage.CreateSnapshot.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageCreateSnapshotRequest {
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns an explicitly retained snapshot handle and the cut it pins until release.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageCreateSnapshotResponse {
-    /// Required retained snapshot handle issued by this owner; preserve its token and original position.
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries the snapshot handle for Storage.DeleteSnapshot.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageDeleteSnapshotRequest {
-    /// Required retained snapshot handle issued by this owner; preserve its token and original position.
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
-}
-/// Acknowledges release without adding response payload fields.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageDeleteSnapshotResponse {}
-/// Carries a column selection, read boundary and page bounds for Storage.ListColumnRows.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListColumnRowsRequest {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<crate::storage::ColumnSelection>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-    /// Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
-    #[prost(message, optional, tag = "3")]
-    pub page: ::core::option::Option<PageRequest>,
-}
-/// Returns a bounded Arrow page, its selected read cut and any opaque continuation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListColumnRowsResponse {
-    #[prost(message, optional, tag = "1")]
-    pub page: ::core::option::Option<crate::storage::ArrowPage>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
-}
-/// Carries an index selection, source, read boundary and page bounds for Storage.ListIndexEntries.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListIndexEntriesRequest {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<crate::storage::IndexSelection>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-    /// Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
-    #[prost(message, optional, tag = "3")]
-    pub page: ::core::option::Option<PageRequest>,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-}
-/// Returns bounded index entries with their selected definition/read cut and continuation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListIndexEntriesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub page: ::core::option::Option<crate::storage::IndexPage>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
-}
-/// Carries an index definition, expected revision, creation/rebuild controls, work bounds and mutation identity.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageSetIndexDefinitionRequest {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::IndexDefinition>,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-    /// True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
-    #[prost(bool, tag = "3")]
-    pub create_if_absent: bool,
-    /// Requests rebuilding the definition rather than silently reusing incompatible derived data.
-    #[prost(bool, tag = "4")]
-    pub rebuild: bool,
-    /// Required positive source row and byte work limits; these do not replace output page limits.
-    #[prost(message, optional, tag = "5")]
-    pub work: ::core::option::Option<crate::storage::ReadLimits>,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "6")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the stored index definition, conditional revision and replay receipt.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageSetIndexDefinitionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::IndexDefinition>,
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "3")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries a projection definition, expected revision, creation/rebuild controls and mutation identity.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageSetProjectionDefinitionRequest {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::ProjectionDefinition>,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-    /// True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
-    #[prost(bool, tag = "3")]
-    pub create_if_absent: bool,
-    /// Requests rebuilding the definition rather than silently reusing incompatible derived data.
-    #[prost(bool, tag = "4")]
-    pub rebuild: bool,
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "5")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-}
-/// Returns the stored projection definition, conditional revision and replay receipt.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageSetProjectionDefinitionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::ProjectionDefinition>,
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    #[prost(message, optional, tag = "3")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries the snapshot, projection name, source and work bounds for Storage.AdvanceProjection.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAdvanceProjectionRequest {
-    /// Required retained snapshot handle issued by this owner; preserve its token and original position.
-    #[prost(message, optional, tag = "1")]
-    pub snapshot: ::core::option::Option<crate::storage::SavedSnapshot>,
-    /// Registered index or projection identity, resolved together with the checked source.
-    #[prost(string, tag = "2")]
-    pub name: ::prost::alloc::string::String,
-    /// Required positive source row and byte work limits; these do not replace output page limits.
-    #[prost(message, optional, tag = "3")]
-    pub work: ::core::option::Option<crate::storage::ReadLimits>,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-}
-/// Returns the advanced projection revision and the source/projection cut selected together.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageAdvanceProjectionResponse {
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "1")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries a projection selection, source, read boundary and page bounds for Storage.ListProjectionRows.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListProjectionRowsRequest {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<crate::storage::ProjectionSelection>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-    /// Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
-    #[prost(message, optional, tag = "3")]
-    pub page: ::core::option::Option<PageRequest>,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-}
-/// Returns bounded projection IPC output, its retained cut and any continuation.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListProjectionRowsResponse {
-    #[prost(message, optional, tag = "1")]
-    pub page: ::core::option::Option<crate::storage::ProjectionPage>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
-}
-/// Selects a projection name, revision, source and read boundary for Storage.GetProjectionStatus.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetProjectionStatusRequest {
-    /// Registered index or projection identity, resolved together with the checked source.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Empty selects the backend's default projection revision; a supplied revision must agree with any issued cut.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "4")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-}
-/// Returns available projection progress and its selected cut; absence of progress is distinct from an error.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetProjectionStatusResponse {
-    #[prost(message, optional, tag = "1")]
-    pub status: ::core::option::Option<crate::storage::ProjectionStatus>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries an object value, schema, expected revision, creation control and mutation identity for Storage.SetObject.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageSetObjectRequest {
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-    /// Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input. Empty is valid only with explicit create_if_absent.
-    #[prost(bytes = "vec", tag = "2")]
-    pub expected_revision: ::prost::alloc::vec::Vec<u8>,
-    /// True requires an empty expected_revision and refuses replacement of an existing value; false requires its issued revision.
-    #[prost(bool, tag = "3")]
-    pub create_if_absent: bool,
-    #[prost(message, optional, tag = "4")]
-    pub schema: ::core::option::Option<crate::storage::SchemaInput>,
-    #[prost(message, optional, tag = "5")]
-    pub value: ::core::option::Option<crate::storage::ObjectValue>,
-}
-/// Distinguishes an applied compare-and-exchange with receipt from a conflict requiring a fresh read.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageSetObjectResponse {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "storage_set_object_response::Outcome", tags = "1, 2")]
-    pub outcome: ::core::option::Option<storage_set_object_response::Outcome>,
-}
-/// Nested message and enum types in `StorageSetObjectResponse`.
-pub mod storage_set_object_response {
-    /// Returns the conditional object's written value, new revision and mutation receipt.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-    pub struct Applied {
-        #[prost(message, optional, tag = "1")]
-        pub value: ::core::option::Option<crate::storage::ObjectValue>,
-        /// Opaque new object compare-and-exchange revision; preserve its bytes for a later conditional write.
-        #[prost(bytes = "vec", tag = "2")]
-        pub revision: ::prost::alloc::vec::Vec<u8>,
-        #[prost(message, optional, tag = "3")]
-        pub receipt: ::core::option::Option<super::Receipt>,
-    }
-    /// Reports the current conditional object revision so the caller can read again before a new attempt.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-    pub struct Conflict {
-        /// Current object revision on conflict, or empty when no current value exists; read again before submitting changed input.
-        #[prost(bytes = "vec", tag = "1")]
-        pub current_revision: ::prost::alloc::vec::Vec<u8>,
-        #[prost(string, tag = "2")]
-        pub action: ::prost::alloc::string::String,
-    }
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Outcome {
-        #[prost(message, tag = "1")]
-        Applied(Applied),
-        #[prost(message, tag = "2")]
-        Conflict(Conflict),
-    }
-}
-/// Carries the source, read boundary, transforms and page bounds for Storage.ListRows.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListRowsRequest {
-    /// Required query resource family and selection; determines the resource grant checked before reading.
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<crate::storage::QuerySource>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-    #[prost(message, repeated, tag = "3")]
-    pub transforms: ::prost::alloc::vec::Vec<crate::storage::Transform>,
-    /// Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
-    #[prost(message, optional, tag = "4")]
-    pub page: ::core::option::Option<PageRequest>,
-}
-/// Returns encoded query output, its retained cut and continuation; an empty output batch can still have more work.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListRowsResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub rows: ::prost::alloc::vec::Vec<crate::storage::QueryOutput>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
-    #[prost(string, tag = "3")]
-    pub next_page_token: ::prost::alloc::string::String,
-}
-/// Selects a source and read boundary for Storage.WatchRows.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageWatchRowsRequest {
-    /// Required query resource family and selection; determines the resource grant checked before reading.
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<crate::storage::QuerySource>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "2")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Separates opening boundary, durable row changes/progress and a resynchronization requirement.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageWatchRowsResponse {
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "1")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "storage_watch_rows_response::Event", tags = "2, 3, 4, 5, 6, 7")]
-    pub event: ::core::option::Option<storage_watch_rows_response::Event>,
-}
-/// Nested message and enum types in `StorageWatchRowsResponse`.
-pub mod storage_watch_rows_response {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Event {
-        #[prost(message, tag = "2")]
-        Boundary(crate::storage::Empty),
-        #[prost(message, tag = "3")]
-        Record(crate::storage::StoredRecord),
-        #[prost(message, tag = "4")]
-        Sample(crate::storage::StoredRow),
-        #[prost(message, tag = "5")]
-        Object(crate::storage::ObjectEntry),
-        #[prost(message, tag = "6")]
-        DurableProgress(crate::storage::Empty),
-        /// Continuity is unavailable; open a fresh read instead of treating this event as a successful continuation.
-        #[prost(message, tag = "7")]
-        ResyncRequired(crate::storage::StorageFailure),
-    }
-}
-/// Carries an encoded record batch, scope and mutation identity for Storage.AppendRecords.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendRecordsRequest {
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-    /// Optional persisted scope metadata; unset records no scope.
-    #[prost(string, optional, tag = "2")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub batch: ::core::option::Option<crate::storage::DataBatch>,
-}
-/// Returns the receipt of the original deduplicated record append.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendRecordsResponse {
-    #[prost(message, optional, tag = "1")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries an encoded sample batch, scope and mutation identity for Storage.AppendSamples.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendSamplesRequest {
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-    /// Optional persisted scope metadata; unset records no scope.
-    #[prost(string, optional, tag = "2")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub batch: ::core::option::Option<crate::storage::DataBatch>,
-}
-/// Returns the receipt of the original deduplicated sample append.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendSamplesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Carries an encoded object-revision batch, scope and mutation identity for Storage.AppendObjectRevisions.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendObjectRevisionsRequest {
-    /// Required replay identity. Resend the same window, key and complete input after a lost response; expired windows or changed input refuse.
-    #[prost(message, optional, tag = "1")]
-    pub mutation: ::core::option::Option<crate::storage::MutationId>,
-    /// Optional persisted scope metadata; unset records no scope.
-    #[prost(string, optional, tag = "2")]
-    pub scope: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(message, optional, tag = "3")]
-    pub batch: ::core::option::Option<crate::storage::DataBatch>,
-}
-/// Returns the receipt of the original deduplicated object-revision append.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageAppendObjectRevisionsResponse {
-    #[prost(message, optional, tag = "1")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Selects a source, byte range and read boundary for Storage.GetFileHash.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileHashRequest {
-    /// Required stored-reference or local-path variant checked under the caller's file grant.
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<crate::storage::FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<crate::storage::ByteRange>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns the selected range's byte count and SHA-256 with the cut retaining the observed read.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetFileHashResponse {
-    #[prost(message, optional, tag = "1")]
-    pub hash: ::core::option::Option<crate::storage::FileHash>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "2")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries the source range, file metadata and consistency selection for Storage.CaptureFile.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCaptureFileRequest {
-    /// Required stored-reference or local-path variant checked under the caller's file grant.
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<crate::storage::FileSource>,
-    #[prost(message, optional, tag = "2")]
-    pub range: ::core::option::Option<crate::storage::ByteRange>,
-    #[prost(message, optional, tag = "3")]
-    pub metadata: ::core::option::Option<crate::storage::FileMetadata>,
-    #[prost(enumeration = "crate::storage::CaptureConsistency", tag = "4")]
-    pub consistency: i32,
-}
-/// Returns the published captured file reference and its mutation receipt.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageCaptureFileResponse {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<crate::storage::FileReference>,
-    #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<Receipt>,
-}
-/// Selects a source and starting position for Storage.WatchFileBytes.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageWatchFileBytesRequest {
-    /// Required stored-reference or local-path variant checked under the caller's file grant.
-    #[prost(message, optional, tag = "1")]
-    pub source: ::core::option::Option<crate::storage::FileSource>,
-    /// Required beginning, current-end or explicit byte-offset variant; an unset variant refuses conversion.
-    #[prost(message, optional, tag = "2")]
-    pub start: ::core::option::Option<crate::storage::FollowStart>,
-}
-/// Carries a local file-follow event and any completion reported by the native reader.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageWatchFileBytesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub event: ::core::option::Option<crate::storage::FileEvent>,
-    #[prost(message, optional, tag = "2")]
-    pub completion: ::core::option::Option<crate::storage::FileCompletion>,
-}
-/// Selects a file production and byte offset for Storage.WatchFileProduction.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageWatchFileProductionRequest {
-    #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<crate::storage::StagedFile>,
-    /// Zero-based byte offset in the selected file or production.
-    #[prost(uint64, tag = "2")]
-    pub offset: u64,
-}
-/// Distinguishes available production bytes from production phase/length progress.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageWatchFileProductionResponse {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "storage_watch_file_production_response::Event", tags = "1, 2")]
-    pub event: ::core::option::Option<storage_watch_file_production_response::Event>,
-}
-/// Nested message and enum types in `StorageWatchFileProductionResponse`.
-pub mod storage_watch_file_production_response {
-    /// Selects one variant; an unset discriminator carries no selected value.
-    #[allow(clippy::all)]
-    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
-    pub enum Event {
-        #[prost(message, tag = "1")]
-        Data(crate::storage::FileBatch),
-        #[prost(message, tag = "2")]
-        Progress(crate::storage::FileProgress),
-    }
-}
-/// Carries a directory selection, page bounds and read boundary for Storage.ListDirectoryEntries.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListDirectoryEntriesRequest {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<crate::storage::DirectorySelection>,
-    /// Output row/byte bounds and continuation. Zero bounds select configured storage defaults; encoded response metadata counts toward the byte budget.
-    #[prost(message, optional, tag = "2")]
-    pub page: ::core::option::Option<PageRequest>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns bounded observed directory entries with the cut and continuation retaining that selection.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageListDirectoryEntriesResponse {
-    #[prost(message, repeated, tag = "1")]
-    pub entries: ::prost::alloc::vec::Vec<crate::storage::DirectoryEntry>,
-    /// Empty means no continuation remains; otherwise resend this opaque token with the unchanged selection and read boundary.
-    #[prost(string, tag = "2")]
-    pub next_page_token: ::prost::alloc::string::String,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "3")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Carries a directory selection and initial-scan choice for Storage.WatchDirectoryEntries.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageWatchDirectoryEntriesRequest {
-    #[prost(message, optional, tag = "1")]
-    pub selection: ::core::option::Option<crate::storage::DirectorySelection>,
-    #[prost(bool, tag = "2")]
-    pub include_existing: bool,
-}
-/// Carries one directory observation, including scan completion or a rescan requirement.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct StorageWatchDirectoryEntriesResponse {
-    #[prost(message, optional, tag = "1")]
-    pub event: ::core::option::Option<crate::storage::DirectoryEvent>,
-}
-/// Selects an index name, source and read boundary for Storage.GetIndexDefinition.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetIndexDefinitionRequest {
-    /// Registered index or projection identity, resolved together with the checked source.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "2")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns the checked-source index definition and revision included in the selected cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetIndexDefinitionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::IndexDefinition>,
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "3")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Selects a projection name, source and read boundary for Storage.GetProjectionDefinition.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetProjectionDefinitionRequest {
-    /// Registered index or projection identity, resolved together with the checked source.
-    #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    /// Required source kind/schema; must match the registered definition and the caller's resource grant.
-    #[prost(message, optional, tag = "2")]
-    pub source: ::core::option::Option<crate::storage::ColumnSource>,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Returns the checked-source projection definition and revision included in the selected cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetProjectionDefinitionResponse {
-    #[prost(message, optional, tag = "1")]
-    pub definition: ::core::option::Option<crate::storage::ProjectionDefinition>,
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "3")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Selects a schema, item and read boundary for Storage.GetObject.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetObjectRequest {
-    #[prost(message, optional, tag = "1")]
-    pub schema: ::core::option::Option<crate::storage::SchemaKey>,
-    #[prost(string, tag = "2")]
-    pub item: ::prost::alloc::string::String,
-    /// Unset selects the current durable read boundary; otherwise use a cut issued by this owner. Foreign, expired or mismatched cuts refuse.
-    #[prost(message, optional, tag = "3")]
-    pub at: ::core::option::Option<ReadCut>,
-}
-/// Distinguishes an absent object from an encoded value and conditional revision at the selected cut.
-#[allow(clippy::all)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct StorageGetObjectResponse {
-    #[prost(message, optional, tag = "1")]
-    pub value: ::core::option::Option<crate::storage::ObjectValue>,
-    /// Opaque conditional revision issued by the owner; empty can denote an absent value. Preserve its encoding when comparing or resending.
-    #[prost(bytes = "vec", tag = "2")]
-    pub revision: ::prost::alloc::vec::Vec<u8>,
-    /// False denotes an absent value; the corresponding value and revision are then empty.
-    #[prost(bool, tag = "3")]
-    pub exists: bool,
-    /// Issued boundary actually selected for this response; retain and resend it unchanged to continue the same read.
-    #[prost(message, optional, tag = "4")]
-    pub resolved_at: ::core::option::Option<ReadCut>,
-}
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod storage_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
-    #[derive(Debug, Clone)]
-    pub struct StorageClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl StorageClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> StorageClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> StorageClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            StorageClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Begin resumable file production. Replaying the same mutation and input returns its original outcome; changed input is refused.
-        pub async fn create_file_production(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageCreateFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateFileProductionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/CreateFileProduction",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "CreateFileProduction"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Observe production progress and writer generation at a retained cut, separating accepted from durable byte lengths.
-        pub async fn get_file_production(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileProductionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetFileProduction",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetFileProduction"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Append at the expected byte offset using the current writer. Replays preserve the original result; stale writers and mismatched input refuse.
-        pub async fn append_file_bytes(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageAppendFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendFileBytesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/AppendFileBytes",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "AppendFileBytes"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Resume a production with a new writer generation, fencing the previous writer. Replaying the mutation returns the same resumed writer.
-        pub async fn create_file_writer(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageCreateFileWriterRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateFileWriterResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/CreateFileWriter",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "CreateFileWriter"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Validate the current writer, complete length and 32-byte SHA-256, then publish and flush the reference before acknowledging; replay returns the original publication.
-        pub async fn publish_file_production(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StoragePublishFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StoragePublishFileProductionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/PublishFileProduction",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "PublishFileProduction"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Abandon unfinished production using the current writer; replaying its mutation retains the original abandonment outcome.
-        pub async fn delete_file_production(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageDeleteFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageDeleteFileProductionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/DeleteFileProduction",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "DeleteFileProduction"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read a bounded range of immutable published content; resend the returned cut to retain the same selected content.
-        pub async fn get_file_bytes(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileBytesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetFileBytes",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetFileBytes"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Inspect backend facilities, the current mutation window and the file chunk budget before choosing storage operations.
-        pub async fn capabilities(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageCapabilitiesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCapabilitiesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/Capabilities",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "Capabilities"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Pin a retained read image at an issued cut, or the current durable position when unset; capacity exhaustion refuses creation.
-        pub async fn create_snapshot(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageCreateSnapshotRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateSnapshotResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/CreateSnapshot",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "CreateSnapshot"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Release an explicit snapshot handle; repeating release is harmless unless the supplied position mismatches an existing handle.
-        pub async fn delete_snapshot(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageDeleteSnapshotRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageDeleteSnapshotResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/DeleteSnapshot",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "DeleteSnapshot"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read Arrow columns at a retained cut within output and source-work bounds; the storage owner uses native access or its schema-aware fallback.
-        pub async fn list_column_rows(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageListColumnRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListColumnRowsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/ListColumnRows",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "ListColumnRows"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read a bounded index page for the checked source; continuation retains the original selection and cut.
-        pub async fn list_index_entries(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageListIndexEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListIndexEntriesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/ListIndexEntries",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "ListIndexEntries"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Conditionally create or replace a source-bound index. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
-        pub async fn set_index_definition(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageSetIndexDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetIndexDefinitionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/SetIndexDefinition",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "SetIndexDefinition"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Conditionally create or replace a durable projection. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
-        pub async fn set_projection_definition(
-            &mut self,
-            request: impl tonic::IntoRequest<
-                super::StorageSetProjectionDefinitionRequest,
-            >,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetProjectionDefinitionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/SetProjectionDefinition",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "SetProjectionDefinition"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Advance a durable projection using a retained snapshot and positive caller-owned work bounds; mismatched sources refuse.
-        pub async fn advance_projection(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageAdvanceProjectionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAdvanceProjectionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/AdvanceProjection",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "AdvanceProjection"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read a bounded durable projection page with its selected revision and source checked against the definition.
-        pub async fn list_projection_rows(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageListProjectionRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListProjectionRowsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/ListProjectionRows",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "ListProjectionRows"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Observe durable projection progress, optionally selecting a revision and issued read cut; incompatible revision selections refuse.
-        pub async fn get_projection_status(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetProjectionStatusRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetProjectionStatusResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetProjectionStatus",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetProjectionStatus"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Compare and exchange an object using an issued revision or explicit create-if-absent. Replay retains the original applied/conflict result.
-        pub async fn set_object(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageSetObjectRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetObjectResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/SetObject",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "SetObject"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read a retained query with ordered transforms and bounded pages. An identical continuation can replay its cached page; changed or expired continuation refuses.
-        pub async fn list_rows(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageListRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListRowsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/ListRows",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "ListRows"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Follow durable source changes after an opening boundary; gaps require resynchronization rather than silently skipping rows.
-        pub async fn watch_rows(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageWatchRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<tonic::codec::Streaming<super::StorageWatchRowsResponse>>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/WatchRows",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "WatchRows"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        /// Append one encoded record batch under a mutation identity; resending identical input replays its receipt rather than appending again.
-        pub async fn append_records(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageAppendRecordsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendRecordsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/AppendRecords",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "AppendRecords"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Append one encoded stream batch under a mutation identity; resending identical input replays its receipt rather than appending again.
-        pub async fn append_samples(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageAppendSamplesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendSamplesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/AppendSamples",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "AppendSamples"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Append one encoded object-revision batch under a mutation identity; identical replay preserves its original receipt.
-        pub async fn append_object_revisions(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageAppendObjectRevisionsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendObjectRevisionsResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/AppendObjectRevisions",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "AppendObjectRevisions"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Hash a selected byte range, returning the byte count and selected cut; local source reads retain their observed image through the issued cut.
-        pub async fn get_file_hash(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetFileHashRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileHashResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetFileHash",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetFileHash"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Capture a selected source range as published storage content under the requested consistency mode.
-        pub async fn capture_file(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageCaptureFileRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCaptureFileResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/CaptureFile",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "CaptureFile"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Follow local file bytes from a selected starting offset, reporting truncation and replacement explicitly.
-        pub async fn watch_file_bytes(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageWatchFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<
-                tonic::codec::Streaming<super::StorageWatchFileBytesResponse>,
-            >,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/WatchFileBytes",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "WatchFileBytes"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        /// Follow the bytes and phase of an identified production from a byte offset without creating a new writer.
-        pub async fn watch_file_production(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageWatchFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<
-                tonic::codec::Streaming<super::StorageWatchFileProductionResponse>,
-            >,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/WatchFileProduction",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "WatchFileProduction"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        /// List bounded local directory entries, retaining the observed selection through its cut and continuation.
-        pub async fn list_directory_entries(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageListDirectoryEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListDirectoryEntriesResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/ListDirectoryEntries",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "ListDirectoryEntries"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Observe local directory changes, optionally including an initial scan; rescan signals require the caller to rebuild its view.
-        pub async fn watch_directory_entries(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageWatchDirectoryEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<
-                tonic::codec::Streaming<super::StorageWatchDirectoryEntriesResponse>,
-            >,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/WatchDirectoryEntries",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "WatchDirectoryEntries"));
-            self.inner.server_streaming(req, path, codec).await
-        }
-        /// Read an index definition and revision for its checked source, adding that revision to the returned cut.
-        pub async fn get_index_definition(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetIndexDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetIndexDefinitionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetIndexDefinition",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetIndexDefinition"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read a projection definition and revision for its checked source, retaining the selected revision in the returned cut.
-        pub async fn get_projection_definition(
-            &mut self,
-            request: impl tonic::IntoRequest<
-                super::StorageGetProjectionDefinitionRequest,
-            >,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetProjectionDefinitionResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetProjectionDefinition",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetProjectionDefinition"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Read one object at an issued cut or the current durable position; absence is explicit and does not create a value.
-        pub async fn get_object(
-            &mut self,
-            request: impl tonic::IntoRequest<super::StorageGetObjectRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetObjectResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/harmos.v1.Storage/GetObject",
-            );
-            let mut req = request.into_request();
-            req.extensions_mut()
-                .insert(GrpcMethod::new("harmos.v1.Storage", "GetObject"));
-            self.inner.unary(req, path, codec).await
-        }
-    }
-}
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod storage_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with StorageServer.
-    #[async_trait]
-    pub trait Storage: std::marker::Send + std::marker::Sync + 'static {
-        /// Begin resumable file production. Replaying the same mutation and input returns its original outcome; changed input is refused.
-        async fn create_file_production(
-            &self,
-            request: tonic::Request<super::StorageCreateFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateFileProductionResponse>,
-            tonic::Status,
-        >;
-        /// Observe production progress and writer generation at a retained cut, separating accepted from durable byte lengths.
-        async fn get_file_production(
-            &self,
-            request: tonic::Request<super::StorageGetFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileProductionResponse>,
-            tonic::Status,
-        >;
-        /// Append at the expected byte offset using the current writer. Replays preserve the original result; stale writers and mismatched input refuse.
-        async fn append_file_bytes(
-            &self,
-            request: tonic::Request<super::StorageAppendFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendFileBytesResponse>,
-            tonic::Status,
-        >;
-        /// Resume a production with a new writer generation, fencing the previous writer. Replaying the mutation returns the same resumed writer.
-        async fn create_file_writer(
-            &self,
-            request: tonic::Request<super::StorageCreateFileWriterRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateFileWriterResponse>,
-            tonic::Status,
-        >;
-        /// Validate the current writer, complete length and 32-byte SHA-256, then publish and flush the reference before acknowledging; replay returns the original publication.
-        async fn publish_file_production(
-            &self,
-            request: tonic::Request<super::StoragePublishFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StoragePublishFileProductionResponse>,
-            tonic::Status,
-        >;
-        /// Abandon unfinished production using the current writer; replaying its mutation retains the original abandonment outcome.
-        async fn delete_file_production(
-            &self,
-            request: tonic::Request<super::StorageDeleteFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageDeleteFileProductionResponse>,
-            tonic::Status,
-        >;
-        /// Read a bounded range of immutable published content; resend the returned cut to retain the same selected content.
-        async fn get_file_bytes(
-            &self,
-            request: tonic::Request<super::StorageGetFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileBytesResponse>,
-            tonic::Status,
-        >;
-        /// Inspect backend facilities, the current mutation window and the file chunk budget before choosing storage operations.
-        async fn capabilities(
-            &self,
-            request: tonic::Request<super::StorageCapabilitiesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCapabilitiesResponse>,
-            tonic::Status,
-        >;
-        /// Pin a retained read image at an issued cut, or the current durable position when unset; capacity exhaustion refuses creation.
-        async fn create_snapshot(
-            &self,
-            request: tonic::Request<super::StorageCreateSnapshotRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCreateSnapshotResponse>,
-            tonic::Status,
-        >;
-        /// Release an explicit snapshot handle; repeating release is harmless unless the supplied position mismatches an existing handle.
-        async fn delete_snapshot(
-            &self,
-            request: tonic::Request<super::StorageDeleteSnapshotRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageDeleteSnapshotResponse>,
-            tonic::Status,
-        >;
-        /// Read Arrow columns at a retained cut within output and source-work bounds; the storage owner uses native access or its schema-aware fallback.
-        async fn list_column_rows(
-            &self,
-            request: tonic::Request<super::StorageListColumnRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListColumnRowsResponse>,
-            tonic::Status,
-        >;
-        /// Read a bounded index page for the checked source; continuation retains the original selection and cut.
-        async fn list_index_entries(
-            &self,
-            request: tonic::Request<super::StorageListIndexEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListIndexEntriesResponse>,
-            tonic::Status,
-        >;
-        /// Conditionally create or replace a source-bound index. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
-        async fn set_index_definition(
-            &self,
-            request: tonic::Request<super::StorageSetIndexDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetIndexDefinitionResponse>,
-            tonic::Status,
-        >;
-        /// Conditionally create or replace a durable projection. Mutation replay preserves the original outcome; revision conflicts require a fresh read.
-        async fn set_projection_definition(
-            &self,
-            request: tonic::Request<super::StorageSetProjectionDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetProjectionDefinitionResponse>,
-            tonic::Status,
-        >;
-        /// Advance a durable projection using a retained snapshot and positive caller-owned work bounds; mismatched sources refuse.
-        async fn advance_projection(
-            &self,
-            request: tonic::Request<super::StorageAdvanceProjectionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAdvanceProjectionResponse>,
-            tonic::Status,
-        >;
-        /// Read a bounded durable projection page with its selected revision and source checked against the definition.
-        async fn list_projection_rows(
-            &self,
-            request: tonic::Request<super::StorageListProjectionRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListProjectionRowsResponse>,
-            tonic::Status,
-        >;
-        /// Observe durable projection progress, optionally selecting a revision and issued read cut; incompatible revision selections refuse.
-        async fn get_projection_status(
-            &self,
-            request: tonic::Request<super::StorageGetProjectionStatusRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetProjectionStatusResponse>,
-            tonic::Status,
-        >;
-        /// Compare and exchange an object using an issued revision or explicit create-if-absent. Replay retains the original applied/conflict result.
-        async fn set_object(
-            &self,
-            request: tonic::Request<super::StorageSetObjectRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageSetObjectResponse>,
-            tonic::Status,
-        >;
-        /// Read a retained query with ordered transforms and bounded pages. An identical continuation can replay its cached page; changed or expired continuation refuses.
-        async fn list_rows(
-            &self,
-            request: tonic::Request<super::StorageListRowsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListRowsResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the WatchRows method.
-        type WatchRowsStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    super::StorageWatchRowsResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Follow durable source changes after an opening boundary; gaps require resynchronization rather than silently skipping rows.
-        async fn watch_rows(
-            &self,
-            request: tonic::Request<super::StorageWatchRowsRequest>,
-        ) -> std::result::Result<tonic::Response<Self::WatchRowsStream>, tonic::Status>;
-        /// Append one encoded record batch under a mutation identity; resending identical input replays its receipt rather than appending again.
-        async fn append_records(
-            &self,
-            request: tonic::Request<super::StorageAppendRecordsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendRecordsResponse>,
-            tonic::Status,
-        >;
-        /// Append one encoded stream batch under a mutation identity; resending identical input replays its receipt rather than appending again.
-        async fn append_samples(
-            &self,
-            request: tonic::Request<super::StorageAppendSamplesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendSamplesResponse>,
-            tonic::Status,
-        >;
-        /// Append one encoded object-revision batch under a mutation identity; identical replay preserves its original receipt.
-        async fn append_object_revisions(
-            &self,
-            request: tonic::Request<super::StorageAppendObjectRevisionsRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageAppendObjectRevisionsResponse>,
-            tonic::Status,
-        >;
-        /// Hash a selected byte range, returning the byte count and selected cut; local source reads retain their observed image through the issued cut.
-        async fn get_file_hash(
-            &self,
-            request: tonic::Request<super::StorageGetFileHashRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetFileHashResponse>,
-            tonic::Status,
-        >;
-        /// Capture a selected source range as published storage content under the requested consistency mode.
-        async fn capture_file(
-            &self,
-            request: tonic::Request<super::StorageCaptureFileRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageCaptureFileResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the WatchFileBytes method.
-        type WatchFileBytesStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    super::StorageWatchFileBytesResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Follow local file bytes from a selected starting offset, reporting truncation and replacement explicitly.
-        async fn watch_file_bytes(
-            &self,
-            request: tonic::Request<super::StorageWatchFileBytesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<Self::WatchFileBytesStream>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the WatchFileProduction method.
-        type WatchFileProductionStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    super::StorageWatchFileProductionResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Follow the bytes and phase of an identified production from a byte offset without creating a new writer.
-        async fn watch_file_production(
-            &self,
-            request: tonic::Request<super::StorageWatchFileProductionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<Self::WatchFileProductionStream>,
-            tonic::Status,
-        >;
-        /// List bounded local directory entries, retaining the observed selection through its cut and continuation.
-        async fn list_directory_entries(
-            &self,
-            request: tonic::Request<super::StorageListDirectoryEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageListDirectoryEntriesResponse>,
-            tonic::Status,
-        >;
-        /// Server streaming response type for the WatchDirectoryEntries method.
-        type WatchDirectoryEntriesStream: tonic::codegen::tokio_stream::Stream<
-                Item = std::result::Result<
-                    super::StorageWatchDirectoryEntriesResponse,
-                    tonic::Status,
-                >,
-            >
-            + std::marker::Send
-            + 'static;
-        /// Observe local directory changes, optionally including an initial scan; rescan signals require the caller to rebuild its view.
-        async fn watch_directory_entries(
-            &self,
-            request: tonic::Request<super::StorageWatchDirectoryEntriesRequest>,
-        ) -> std::result::Result<
-            tonic::Response<Self::WatchDirectoryEntriesStream>,
-            tonic::Status,
-        >;
-        /// Read an index definition and revision for its checked source, adding that revision to the returned cut.
-        async fn get_index_definition(
-            &self,
-            request: tonic::Request<super::StorageGetIndexDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetIndexDefinitionResponse>,
-            tonic::Status,
-        >;
-        /// Read a projection definition and revision for its checked source, retaining the selected revision in the returned cut.
-        async fn get_projection_definition(
-            &self,
-            request: tonic::Request<super::StorageGetProjectionDefinitionRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetProjectionDefinitionResponse>,
-            tonic::Status,
-        >;
-        /// Read one object at an issued cut or the current durable position; absence is explicit and does not create a value.
-        async fn get_object(
-            &self,
-            request: tonic::Request<super::StorageGetObjectRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::StorageGetObjectResponse>,
-            tonic::Status,
-        >;
-    }
-    /// Exposes bounded storage reads, conditional mutations and fenced file production under the caller's checked grants.
-    #[derive(Debug)]
-    pub struct StorageServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> StorageServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
-        }
-    }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for StorageServer<T>
-    where
-        T: Storage,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.Storage/CreateFileProduction" => {
-                    #[allow(non_camel_case_types)]
-                    struct CreateFileProductionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageCreateFileProductionRequest,
-                    > for CreateFileProductionSvc<T> {
-                        type Response = super::StorageCreateFileProductionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageCreateFileProductionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::create_file_production(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CreateFileProductionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetFileProduction" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetFileProductionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageGetFileProductionRequest>
-                    for GetFileProductionSvc<T> {
-                        type Response = super::StorageGetFileProductionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageGetFileProductionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_file_production(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetFileProductionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/AppendFileBytes" => {
-                    #[allow(non_camel_case_types)]
-                    struct AppendFileBytesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageAppendFileBytesRequest>
-                    for AppendFileBytesSvc<T> {
-                        type Response = super::StorageAppendFileBytesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageAppendFileBytesRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::append_file_bytes(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = AppendFileBytesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/CreateFileWriter" => {
-                    #[allow(non_camel_case_types)]
-                    struct CreateFileWriterSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageCreateFileWriterRequest>
-                    for CreateFileWriterSvc<T> {
-                        type Response = super::StorageCreateFileWriterResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageCreateFileWriterRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::create_file_writer(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CreateFileWriterSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/PublishFileProduction" => {
-                    #[allow(non_camel_case_types)]
-                    struct PublishFileProductionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StoragePublishFileProductionRequest,
-                    > for PublishFileProductionSvc<T> {
-                        type Response = super::StoragePublishFileProductionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StoragePublishFileProductionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::publish_file_production(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = PublishFileProductionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/DeleteFileProduction" => {
-                    #[allow(non_camel_case_types)]
-                    struct DeleteFileProductionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageDeleteFileProductionRequest,
-                    > for DeleteFileProductionSvc<T> {
-                        type Response = super::StorageDeleteFileProductionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageDeleteFileProductionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::delete_file_production(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = DeleteFileProductionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetFileBytes" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetFileBytesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageGetFileBytesRequest>
-                    for GetFileBytesSvc<T> {
-                        type Response = super::StorageGetFileBytesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageGetFileBytesRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_file_bytes(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetFileBytesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/Capabilities" => {
-                    #[allow(non_camel_case_types)]
-                    struct CapabilitiesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageCapabilitiesRequest>
-                    for CapabilitiesSvc<T> {
-                        type Response = super::StorageCapabilitiesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageCapabilitiesRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::capabilities(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CapabilitiesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/CreateSnapshot" => {
-                    #[allow(non_camel_case_types)]
-                    struct CreateSnapshotSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageCreateSnapshotRequest>
-                    for CreateSnapshotSvc<T> {
-                        type Response = super::StorageCreateSnapshotResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageCreateSnapshotRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::create_snapshot(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CreateSnapshotSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/DeleteSnapshot" => {
-                    #[allow(non_camel_case_types)]
-                    struct DeleteSnapshotSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageDeleteSnapshotRequest>
-                    for DeleteSnapshotSvc<T> {
-                        type Response = super::StorageDeleteSnapshotResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageDeleteSnapshotRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::delete_snapshot(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = DeleteSnapshotSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/ListColumnRows" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListColumnRowsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageListColumnRowsRequest>
-                    for ListColumnRowsSvc<T> {
-                        type Response = super::StorageListColumnRowsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageListColumnRowsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::list_column_rows(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListColumnRowsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/ListIndexEntries" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListIndexEntriesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageListIndexEntriesRequest>
-                    for ListIndexEntriesSvc<T> {
-                        type Response = super::StorageListIndexEntriesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageListIndexEntriesRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::list_index_entries(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListIndexEntriesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/SetIndexDefinition" => {
-                    #[allow(non_camel_case_types)]
-                    struct SetIndexDefinitionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageSetIndexDefinitionRequest,
-                    > for SetIndexDefinitionSvc<T> {
-                        type Response = super::StorageSetIndexDefinitionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageSetIndexDefinitionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::set_index_definition(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SetIndexDefinitionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/SetProjectionDefinition" => {
-                    #[allow(non_camel_case_types)]
-                    struct SetProjectionDefinitionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageSetProjectionDefinitionRequest,
-                    > for SetProjectionDefinitionSvc<T> {
-                        type Response = super::StorageSetProjectionDefinitionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageSetProjectionDefinitionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::set_projection_definition(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SetProjectionDefinitionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/AdvanceProjection" => {
-                    #[allow(non_camel_case_types)]
-                    struct AdvanceProjectionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageAdvanceProjectionRequest>
-                    for AdvanceProjectionSvc<T> {
-                        type Response = super::StorageAdvanceProjectionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageAdvanceProjectionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::advance_projection(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = AdvanceProjectionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/ListProjectionRows" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListProjectionRowsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageListProjectionRowsRequest,
-                    > for ListProjectionRowsSvc<T> {
-                        type Response = super::StorageListProjectionRowsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageListProjectionRowsRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::list_projection_rows(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListProjectionRowsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetProjectionStatus" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetProjectionStatusSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageGetProjectionStatusRequest,
-                    > for GetProjectionStatusSvc<T> {
-                        type Response = super::StorageGetProjectionStatusResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageGetProjectionStatusRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_projection_status(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetProjectionStatusSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/SetObject" => {
-                    #[allow(non_camel_case_types)]
-                    struct SetObjectSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageSetObjectRequest>
-                    for SetObjectSvc<T> {
-                        type Response = super::StorageSetObjectResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageSetObjectRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::set_object(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SetObjectSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/ListRows" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListRowsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageListRowsRequest>
-                    for ListRowsSvc<T> {
-                        type Response = super::StorageListRowsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageListRowsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::list_rows(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListRowsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/WatchRows" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchRowsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::ServerStreamingService<
-                        super::StorageWatchRowsRequest,
-                    > for WatchRowsSvc<T> {
-                        type Response = super::StorageWatchRowsResponse;
-                        type ResponseStream = T::WatchRowsStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageWatchRowsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::watch_rows(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchRowsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/AppendRecords" => {
-                    #[allow(non_camel_case_types)]
-                    struct AppendRecordsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageAppendRecordsRequest>
-                    for AppendRecordsSvc<T> {
-                        type Response = super::StorageAppendRecordsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageAppendRecordsRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::append_records(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = AppendRecordsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/AppendSamples" => {
-                    #[allow(non_camel_case_types)]
-                    struct AppendSamplesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageAppendSamplesRequest>
-                    for AppendSamplesSvc<T> {
-                        type Response = super::StorageAppendSamplesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageAppendSamplesRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::append_samples(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = AppendSamplesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/AppendObjectRevisions" => {
-                    #[allow(non_camel_case_types)]
-                    struct AppendObjectRevisionsSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageAppendObjectRevisionsRequest,
-                    > for AppendObjectRevisionsSvc<T> {
-                        type Response = super::StorageAppendObjectRevisionsResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageAppendObjectRevisionsRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::append_object_revisions(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = AppendObjectRevisionsSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetFileHash" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetFileHashSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageGetFileHashRequest>
-                    for GetFileHashSvc<T> {
-                        type Response = super::StorageGetFileHashResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageGetFileHashRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_file_hash(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetFileHashSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/CaptureFile" => {
-                    #[allow(non_camel_case_types)]
-                    struct CaptureFileSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageCaptureFileRequest>
-                    for CaptureFileSvc<T> {
-                        type Response = super::StorageCaptureFileResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageCaptureFileRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::capture_file(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = CaptureFileSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/WatchFileBytes" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchFileBytesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::ServerStreamingService<
-                        super::StorageWatchFileBytesRequest,
-                    > for WatchFileBytesSvc<T> {
-                        type Response = super::StorageWatchFileBytesResponse;
-                        type ResponseStream = T::WatchFileBytesStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageWatchFileBytesRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::watch_file_bytes(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchFileBytesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/WatchFileProduction" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchFileProductionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::ServerStreamingService<
-                        super::StorageWatchFileProductionRequest,
-                    > for WatchFileProductionSvc<T> {
-                        type Response = super::StorageWatchFileProductionResponse;
-                        type ResponseStream = T::WatchFileProductionStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageWatchFileProductionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::watch_file_production(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchFileProductionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/ListDirectoryEntries" => {
-                    #[allow(non_camel_case_types)]
-                    struct ListDirectoryEntriesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageListDirectoryEntriesRequest,
-                    > for ListDirectoryEntriesSvc<T> {
-                        type Response = super::StorageListDirectoryEntriesResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageListDirectoryEntriesRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::list_directory_entries(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = ListDirectoryEntriesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/WatchDirectoryEntries" => {
-                    #[allow(non_camel_case_types)]
-                    struct WatchDirectoryEntriesSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::ServerStreamingService<
-                        super::StorageWatchDirectoryEntriesRequest,
-                    > for WatchDirectoryEntriesSvc<T> {
-                        type Response = super::StorageWatchDirectoryEntriesResponse;
-                        type ResponseStream = T::WatchDirectoryEntriesStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageWatchDirectoryEntriesRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::watch_directory_entries(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = WatchDirectoryEntriesSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.server_streaming(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetIndexDefinition" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetIndexDefinitionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageGetIndexDefinitionRequest,
-                    > for GetIndexDefinitionSvc<T> {
-                        type Response = super::StorageGetIndexDefinitionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageGetIndexDefinitionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_index_definition(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetIndexDefinitionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetProjectionDefinition" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetProjectionDefinitionSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<
-                        super::StorageGetProjectionDefinitionRequest,
-                    > for GetProjectionDefinitionSvc<T> {
-                        type Response = super::StorageGetProjectionDefinitionResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<
-                                super::StorageGetProjectionDefinitionRequest,
-                            >,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_projection_definition(&inner, request)
-                                    .await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetProjectionDefinitionSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Storage/GetObject" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetObjectSvc<T: Storage>(pub Arc<T>);
-                    impl<
-                        T: Storage,
-                    > tonic::server::UnaryService<super::StorageGetObjectRequest>
-                    for GetObjectSvc<T> {
-                        type Response = super::StorageGetObjectResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::StorageGetObjectRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Storage>::get_object(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetObjectSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
-        }
-    }
-    impl<T> Clone for StorageServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
-        }
-    }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.Storage";
-    impl<T> tonic::server::NamedService for StorageServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
-    }
-}
-/// Request for Time.Get.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeGetRequest {}
-/// Returns the authoritative host time, including virtual time when configured.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeGetResponse {
-    /// Authoritative host time, including virtual time when the host uses it.
-    #[prost(message, optional, tag = "1")]
-    pub now: ::core::option::Option<::prost_types::Timestamp>,
-}
-/// Carries the wait duration for Time.Sleep.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeSleepRequest {
-    /// Unset means a zero-duration wait. Seconds must be in 0..315576000000 and nanos in 0..999999999.
-    #[prost(message, optional, tag = "1")]
-    pub duration: ::core::option::Option<::prost_types::Duration>,
-}
-/// Acknowledges completion of the host-clock wait.
-#[allow(clippy::all)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct TimeSleepResponse {}
-/// Generated client implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod time_client {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    use tonic::codegen::http::Uri;
-    /// Exposes the authoritative host clock, including virtual time, to operation callers.
-    #[derive(Debug, Clone)]
-    pub struct TimeClient<T> {
-        inner: tonic::client::Grpc<T>,
-    }
-    impl TimeClient<tonic::transport::Channel> {
-        /// Attempt to create a new client by connecting to a given endpoint.
-        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
-        where
-            D: TryInto<tonic::transport::Endpoint>,
-            D::Error: Into<StdError>,
-        {
-            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
-            Ok(Self::new(conn))
-        }
-    }
-    impl<T> TimeClient<T>
-    where
-        T: tonic::client::GrpcService<tonic::body::Body>,
-        T::Error: Into<StdError>,
-        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
-        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
-    {
-        pub fn new(inner: T) -> Self {
-            let inner = tonic::client::Grpc::new(inner);
-            Self { inner }
-        }
-        pub fn with_origin(inner: T, origin: Uri) -> Self {
-            let inner = tonic::client::Grpc::with_origin(inner, origin);
-            Self { inner }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> TimeClient<InterceptedService<T, F>>
-        where
-            F: tonic::service::Interceptor,
-            T::ResponseBody: Default,
-            T: tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-                Response = http::Response<
-                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                >,
-            >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::Body>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
-        {
-            TimeClient::new(InterceptedService::new(inner, interceptor))
-        }
-        /// Compress requests with the given encoding.
-        ///
-        /// This requires the server to support it otherwise it might respond with an
-        /// error.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.send_compressed(encoding);
-            self
-        }
-        /// Enable decompressing responses.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.inner = self.inner.accept_compressed(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_decoding_message_size(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.inner = self.inner.max_encoding_message_size(limit);
-            self
-        }
-        /// Read the authoritative host clock used by operation deadlines, retries and plugin waits.
-        pub async fn get(
-            &mut self,
-            request: impl tonic::IntoRequest<super::TimeGetRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::TimeGetResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Time/Get");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Time", "Get"));
-            self.inner.unary(req, path, codec).await
-        }
-        /// Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
-        pub async fn sleep(
-            &mut self,
-            request: impl tonic::IntoRequest<super::TimeSleepRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::TimeSleepResponse>,
-            tonic::Status,
-        > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
-            let codec = tonic_prost::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static("/harmos.v1.Time/Sleep");
-            let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new("harmos.v1.Time", "Sleep"));
-            self.inner.unary(req, path, codec).await
-        }
-    }
-}
-/// Generated server implementations.
-#[cfg(not(target_arch = "wasm32"))]
-pub mod time_server {
-    #![allow(
-        unused_variables,
-        dead_code,
-        missing_docs,
-        clippy::wildcard_imports,
-        clippy::let_unit_value,
-    )]
-    use tonic::codegen::*;
-    /// Generated trait containing gRPC methods that should be implemented for use with TimeServer.
-    #[async_trait]
-    pub trait Time: std::marker::Send + std::marker::Sync + 'static {
-        /// Read the authoritative host clock used by operation deadlines, retries and plugin waits.
-        async fn get(
-            &self,
-            request: tonic::Request<super::TimeGetRequest>,
-        ) -> std::result::Result<tonic::Response<super::TimeGetResponse>, tonic::Status>;
-        /// Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
-        async fn sleep(
-            &self,
-            request: tonic::Request<super::TimeSleepRequest>,
-        ) -> std::result::Result<
-            tonic::Response<super::TimeSleepResponse>,
-            tonic::Status,
-        >;
-    }
-    /// Exposes the authoritative host clock, including virtual time, to operation callers.
-    #[derive(Debug)]
-    pub struct TimeServer<T> {
-        inner: Arc<T>,
-        accept_compression_encodings: EnabledCompressionEncodings,
-        send_compression_encodings: EnabledCompressionEncodings,
-        max_decoding_message_size: Option<usize>,
-        max_encoding_message_size: Option<usize>,
-    }
-    impl<T> TimeServer<T> {
-        pub fn new(inner: T) -> Self {
-            Self::from_arc(Arc::new(inner))
-        }
-        pub fn from_arc(inner: Arc<T>) -> Self {
-            Self {
-                inner,
-                accept_compression_encodings: Default::default(),
-                send_compression_encodings: Default::default(),
-                max_decoding_message_size: None,
-                max_encoding_message_size: None,
-            }
-        }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
-        where
-            F: tonic::service::Interceptor,
-        {
-            InterceptedService::new(Self::new(inner), interceptor)
-        }
-        /// Enable decompressing requests with the given encoding.
-        #[must_use]
-        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.accept_compression_encodings.enable(encoding);
-            self
-        }
-        /// Compress responses with the given encoding, if the client supports it.
-        #[must_use]
-        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
-            self.send_compression_encodings.enable(encoding);
-            self
-        }
-        /// Limits the maximum size of a decoded message.
-        ///
-        /// Default: `4MB`
-        #[must_use]
-        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
-            self.max_decoding_message_size = Some(limit);
-            self
-        }
-        /// Limits the maximum size of an encoded message.
-        ///
-        /// Default: `usize::MAX`
-        #[must_use]
-        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
-            self.max_encoding_message_size = Some(limit);
-            self
-        }
-    }
-    impl<T, B> tonic::codegen::Service<http::Request<B>> for TimeServer<T>
-    where
-        T: Time,
-        B: Body + std::marker::Send + 'static,
-        B::Error: Into<StdError> + std::marker::Send + 'static,
-    {
-        type Response = http::Response<tonic::body::Body>;
-        type Error = std::convert::Infallible;
-        type Future = BoxFuture<Self::Response, Self::Error>;
-        fn poll_ready(
-            &mut self,
-            _cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            Poll::Ready(Ok(()))
-        }
-        fn call(&mut self, req: http::Request<B>) -> Self::Future {
-            match req.uri().path() {
-                "/harmos.v1.Time/Get" => {
-                    #[allow(non_camel_case_types)]
-                    struct GetSvc<T: Time>(pub Arc<T>);
-                    impl<T: Time> tonic::server::UnaryService<super::TimeGetRequest>
-                    for GetSvc<T> {
-                        type Response = super::TimeGetResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::TimeGetRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Time>::get(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = GetSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                "/harmos.v1.Time/Sleep" => {
-                    #[allow(non_camel_case_types)]
-                    struct SleepSvc<T: Time>(pub Arc<T>);
-                    impl<T: Time> tonic::server::UnaryService<super::TimeSleepRequest>
-                    for SleepSvc<T> {
-                        type Response = super::TimeSleepResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
-                        fn call(
-                            &mut self,
-                            request: tonic::Request<super::TimeSleepRequest>,
-                        ) -> Self::Future {
-                            let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as Time>::sleep(&inner, request).await
-                            };
-                            Box::pin(fut)
-                        }
-                    }
-                    let accept_compression_encodings = self.accept_compression_encodings;
-                    let send_compression_encodings = self.send_compression_encodings;
-                    let max_decoding_message_size = self.max_decoding_message_size;
-                    let max_encoding_message_size = self.max_encoding_message_size;
-                    let inner = self.inner.clone();
-                    let fut = async move {
-                        let method = SleepSvc(inner);
-                        let codec = tonic_prost::ProstCodec::default();
-                        let mut grpc = tonic::server::Grpc::new(codec)
-                            .apply_compression_config(
-                                accept_compression_encodings,
-                                send_compression_encodings,
-                            )
-                            .apply_max_message_size_config(
-                                max_decoding_message_size,
-                                max_encoding_message_size,
-                            );
-                        let res = grpc.unary(method, req).await;
-                        Ok(res)
-                    };
-                    Box::pin(fut)
-                }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(
-                            tonic::body::Body::default(),
-                        );
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
-            }
-        }
-    }
-    impl<T> Clone for TimeServer<T> {
-        fn clone(&self) -> Self {
-            let inner = self.inner.clone();
-            Self {
-                inner,
-                accept_compression_encodings: self.accept_compression_encodings,
-                send_compression_encodings: self.send_compression_encodings,
-                max_decoding_message_size: self.max_decoding_message_size,
-                max_encoding_message_size: self.max_encoding_message_size,
-            }
-        }
-    }
-    /// Generated gRPC service name
-    pub const SERVICE_NAME: &str = "harmos.v1.Time";
-    impl<T> tonic::server::NamedService for TimeServer<T> {
-        const NAME: &'static str = SERVICE_NAME;
-    }
-}
-
-pub mod access { include!("v1/access.rs"); }
-
-pub mod status { include!("v1/status.rs"); }

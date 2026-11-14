@@ -10,7 +10,7 @@ package schematic.v1;
 
 // === Imports === //
 
-import "harmos/context/v1/storage.proto";
+import "schematic/v1/files.proto";
 
 // === Options === //
 
@@ -98,7 +98,7 @@ message Take {
 
 // Requests the host file-hash operation through the plugin.
 message Hash {
-  harmos.context.v1.StorageGetFileHashRequest request = 1;
+  FilesHashRequest request = 1;
 }
 
 // Returns the number of bytes read and their SHA-256 digest.

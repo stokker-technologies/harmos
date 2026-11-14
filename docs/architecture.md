@@ -2,7 +2,7 @@
 
 Transfers remain unary, amended by the owner on 2026-11-13. The generated
 `StorageTransferSettings.chunk_bytes` under `StorageSettings.transfer` owns the
-single 4 MiB default for append and ranged-read sizes on both faces. Generated
+single 4 MiB default for native append and ranged-read sizes and product wrappers. Generated
 `MessageSettings.message_bytes` declares the separate 8 MiB message default once.
 Client SDKs, listeners, plugin carriers and Wasm guests use it and refuse ceilings
 that cannot carry the configured chunk plus framing at startup, naming the action and
@@ -11,7 +11,7 @@ stories and benchmark cases are deleted; Watch and native readers remain.
 
 Application-owned immutable content registers through StorageManager's single
 `ContentSource`. Resolution receives the inherited caller scope and returns length,
-SHA-256 and a bounded lease with explicit expiry. Client/plugin GetFileBytes retain
+SHA-256 and a bounded lease with explicit expiry. Native GetFileBytes and product wrappers retain
 that lease in the existing bounded read-cut registry, bound to the reference and
 scope. Expiry refuses rather than renewing a continuation. Native hosts use
 `open_content(&reference, scope, at)` and `ContentRead::get_bytes(offset, maximum)`.
@@ -43,7 +43,7 @@ do not prove a future contract. All missing guards have unchecked tasks in
 both directions of plugin/host invocation. A face is never a substitute for visibility.
 
 Paging was amended by the owner on 2026-11-13: only data rows that can grow
-without bound are paged. CatalogEntries on both faces, Plugins and Access.Pairings
+without bound are paged. Operations, Schemas, Streams, Plugins and Access.Pairings
 return the complete set without page requests, tokens or application byte bounds.
 The carrier message ceiling is their sole response guard; overflow names the action.
 Records, samples, log lines, trace events, files and rows retain position-resolved paging.
@@ -100,14 +100,13 @@ does not establish that behavior has landed. When a handler only forwards metada
 describe that boundary rather than inventing the downstream owner's defaults.
 Request and response comments describe their payloads rather than repeating the
 call's instructions; an empty payload needs only the call name. File purposes name
-the audience: applications or tools call the host through `harmos/v1`, the host
+the audience: applications or tools call the host through `harmos/client/v1`, the host
 calls a plugin through `harmos/plugin/v1`, and a running plugin calls back to the
-host from inside an invocation through `harmos/context/v1`, answered for that plugin.
-For example, `Samples.Append` forwards absent sequence/context/timestamp metadata;
-its handler does not assign defaults or interpret following-row duration metadata.
+host from inside an invocation through `harmos/plugin/host/v1`, answered for that plugin.
+Storage remains in-process; products declare their own wire operations over it.
 
-The root `buf.yaml` selects only maintained Harmos inputs, excluding application
-and third-party sources. `mise run format` formats them and honors `--check`;
+The root `buf.yaml` selects maintained Harmos inputs and the independent Schematic
+application module, excluding third-party sources. `mise run format` formats them and honors `--check`;
 `mise run check -- --repository` checks formatting and runs Buf lint. Standard
 lint plus required service/call/message comments keeps the locked request/response
 grammar; each exception in `buf.yaml` names the incompatible existing declaration
@@ -247,11 +246,11 @@ and caller-face authorization remain independent checks.
    **Where:** Boundary and Manager Ownership in
    `openspec/changes/operation-grammar/design.md`; Manager Ownership and Thin Service
    Methods in `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   OperationManager owns catalog/invocations/context HostValues; StreamManager owns
+   OperationManager owns operation discovery and invocations; StreamManager owns
    publication/demand; StorageManager owns persistence/production; GrpcManager owns
    listeners/access; ServiceManager owns resident services/status and host clock;
    StateManager owns state/replay; RecordManager owns record registration/lifecycle;
-   plugin management owns entries, placement, activation and shutdown.
+   plugin management owns entries, typed settings, placement, activation and shutdown.
    Existing owners live in `crates/harmos-runtime/src/operations/manager/mod.rs`,
    `crates/harmos-runtime/src/streams/manager.rs`,
    `crates/harmos-runtime/src/storage/manager.rs`,
@@ -264,26 +263,21 @@ and caller-face authorization remain independent checks.
    and `credential_store_unavailable` guard listener/credential atomicity.
    `client_reads_status`, `client_pages_and_watches_events` and
    `client_reads_diagnostics_ranges` guard contributions, histories and archives.
-   HostValues resolver registration/removal and failures have plugin_grpc stories.
    **Status:** landed; native proof is tracked separately from source.
 
-9. **Library and Product Composition.** The library owns generic hosting, access,
-   transfers, status, invocations, time, storage, streams, protocol and SDKs; products
-   compose those services directly without redeclaring/wrapping them or rebuilding
-   generic machinery on the protocol crate alone. Products own their schemas,
-   indexes/projections, objects, operations, authorization, latest selection and
-   settings/secrets stores, UI, archives and credential integration.
-   **Why:** avoid duplicate dispatch, connection, launch and storage authorities;
-   settings and secrets are product policy. Generic HostValues delivery and catalog
-   settings declarations do not make a library settings store.
-   **Where:** Generic Machinery and Product Composition and Product Definitions,
-   Policy and Plugin Values in
-   `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   **Proof:** `declared_values_use_the_product_resolver_and_registration_lifetime`
-   and `resolver_failure_and_a_mismatched_value_type_are_propagated` guard resolver
-   composition without a library store. The manager, access and status client journeys
-   compose runtime services with host-supplied persistence, credentials and facts.
-   **Status:** landed for native host composition.
+9. **Library and Product Composition.** The library owns hosting, access, status,
+   invocations, time, plugin management and typed plugin settings. Products compose
+   these complete wire services directly. Storage and publication remain Private
+   in-process capabilities; products declare their own typed wire operations and
+   policy over them. Products own schemas, indexes/projections, objects, operations,
+   authorization, secrets, UI, archives and credential integration.
+   **Why:** one owner per atomic operation and no duplicate wire twins. The library
+   stores plugin settings beside entries; product secrets remain outside that store.
+   **Where:** Owner Amendments of 2026-11-13 and the boundary mapping below.
+   **Proof:** settings, replacement and trusted caller journeys under
+   `crates/harmos-runtime/tests/plugin_grpc/manager`; application upload and discovery
+   under `examples/schematic/app/tests/storage`.
+   **Status:** landed source; candidate validation is separate.
 
 10. **Resource Operation Grammar.** Services name resources, methods use the closed
     ordinary verb set Get/List/Watch/Set/Create/Delete/Append; only declared domain
@@ -569,3 +563,244 @@ and caller-face authorization remain independent checks.
 | Retained plugin history and derived revisions (2026-11-07) | Written schema identity must outlive plugin replacement or removal. | `openspec/changes/archive/2026-11-07-plugin-state-survives-shape-changes/`, `openspec/changes/archive/2026-11-07-stream-schema-revisions/` |
 | Segmented recovery snapshots (2026-11-08) | Bounded checkpoint pieces must preserve complete recovery and atomic publication. | `openspec/changes/archive/2026-11-08-snapshot-payload-limit/` |
 | Deterministic stories (agreed 2026-11-10) | Correctness must not depend on workstation speed or measurement noise. | `openspec/changes/test-stories/` |
+
+## Protocol Boundary Definition and Consumer Migration
+
+The boundary declarations, generated bindings and hand-written consumers implement
+the owner amendments of 2026-11-13. The mapping below records the clean replacement;
+former identities are migration references, never compatibility aliases. Candidate
+validation is separate from source implementation. Guest descriptor validation uses
+generated clock and message-option graphs; it retains the same validation and fuel
+budget without loading unrelated Protobuf meta-schema definitions.
+
+The descriptor census is client 12 services/59 calls → 14/33, plugin-host 6/40 →
+4/8, and plugin 1/4 → 1/4. Shared `harmos.v1` has zero services.
+The final library descriptor set contains 19 services, 45 methods and 167
+top-level messages; application wrappers and Private native operations are separate.
+
+### Call Mapping
+
+The former and final request/response columns contain fully qualified message names.
+`—` means no library wire wrapper survives. Nested package segments compose resource
+parents (`access`, `status`, `plugins`) rather than adding root Access RPCs.
+
+| Former Identity | Former Request / Response | Final Identity | Final Request / Response | Boundary |
+| --- | --- | --- | --- | --- |
+| `harmos.context.v1.CatalogEntries/List` (`operations`) | `harmos.context.v1.CatalogEntriesListRequest` / `harmos.context.v1.CatalogEntriesListResponse` | `harmos.plugin.host.v1.Operations/List` | `harmos.plugin.host.v1.OperationsListRequest` / `harmos.plugin.host.v1.OperationsListResponse` | Plugin-Host |
+| `harmos.context.v1.CatalogEntries/List` (`schemas`) | `harmos.context.v1.CatalogEntriesListRequest` / `harmos.context.v1.CatalogEntriesListResponse` | removed | — | Plugin-Host |
+| `harmos.context.v1.CatalogEntries/List` (`streams`) | `harmos.context.v1.CatalogEntriesListRequest` / `harmos.context.v1.CatalogEntriesListResponse` | removed | — | Plugin-Host |
+| `harmos.context.v1.CatalogEntries/List` (`objects`) | `harmos.context.v1.CatalogEntriesListRequest` / `harmos.context.v1.CatalogEntriesListResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.HostValues/Get` | `harmos.context.v1.HostValuesGetRequest` / `harmos.context.v1.HostValuesGetResponse` | removed | — | Plugin-Host |
+| `harmos.context.v1.Invocations/Get` | `harmos.context.v1.InvocationsGetRequest` / `harmos.context.v1.InvocationsGetResponse` | `harmos.plugin.host.v1.Invocations/Get` | `harmos.plugin.host.v1.InvocationsGetRequest` / `harmos.plugin.host.v1.InvocationsGetResponse` | Plugin-Host |
+| `harmos.context.v1.Invocations/Cancel` | `harmos.context.v1.InvocationsCancelRequest` / `harmos.context.v1.InvocationsCancelResponse` | `harmos.plugin.host.v1.Invocations/Cancel` | `harmos.plugin.host.v1.InvocationsCancelRequest` / `harmos.plugin.host.v1.InvocationsCancelResponse` | Plugin-Host |
+| `harmos.context.v1.Invocations/Watch` | `harmos.context.v1.InvocationsWatchRequest` / `harmos.context.v1.InvocationsWatchResponse` | `harmos.plugin.host.v1.Invocations/Watch` | `harmos.plugin.host.v1.InvocationsWatchRequest` / `harmos.plugin.host.v1.InvocationsWatchResponse` | Plugin-Host |
+| `harmos.context.v1.Samples/Append` | `harmos.context.v1.SamplesAppendRequest` / `harmos.context.v1.SamplesAppendResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/CreateFileProduction` | `harmos.context.v1.StorageCreateFileProductionRequest` / `harmos.context.v1.StorageCreateFileProductionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetFileProduction` | `harmos.context.v1.StorageGetFileProductionRequest` / `harmos.context.v1.StorageGetFileProductionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/AppendFileBytes` | `harmos.context.v1.StorageAppendFileBytesRequest` / `harmos.context.v1.StorageAppendFileBytesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/CreateFileWriter` | `harmos.context.v1.StorageCreateFileWriterRequest` / `harmos.context.v1.StorageCreateFileWriterResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/PublishFileProduction` | `harmos.context.v1.StoragePublishFileProductionRequest` / `harmos.context.v1.StoragePublishFileProductionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/DeleteFileProduction` | `harmos.context.v1.StorageDeleteFileProductionRequest` / `harmos.context.v1.StorageDeleteFileProductionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetFileBytes` | `harmos.context.v1.StorageGetFileBytesRequest` / `harmos.context.v1.StorageGetFileBytesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/Capabilities` | `harmos.context.v1.StorageCapabilitiesRequest` / `harmos.context.v1.StorageCapabilitiesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/CreateSnapshot` | `harmos.context.v1.StorageCreateSnapshotRequest` / `harmos.context.v1.StorageCreateSnapshotResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/DeleteSnapshot` | `harmos.context.v1.StorageDeleteSnapshotRequest` / `harmos.context.v1.StorageDeleteSnapshotResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/ListColumnRows` | `harmos.context.v1.StorageListColumnRowsRequest` / `harmos.context.v1.StorageListColumnRowsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/ListIndexEntries` | `harmos.context.v1.StorageListIndexEntriesRequest` / `harmos.context.v1.StorageListIndexEntriesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/SetIndexDefinition` | `harmos.context.v1.StorageSetIndexDefinitionRequest` / `harmos.context.v1.StorageSetIndexDefinitionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/SetProjectionDefinition` | `harmos.context.v1.StorageSetProjectionDefinitionRequest` / `harmos.context.v1.StorageSetProjectionDefinitionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/AdvanceProjection` | `harmos.context.v1.StorageAdvanceProjectionRequest` / `harmos.context.v1.StorageAdvanceProjectionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/ListProjectionRows` | `harmos.context.v1.StorageListProjectionRowsRequest` / `harmos.context.v1.StorageListProjectionRowsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetProjectionStatus` | `harmos.context.v1.StorageGetProjectionStatusRequest` / `harmos.context.v1.StorageGetProjectionStatusResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/SetObject` | `harmos.context.v1.StorageSetObjectRequest` / `harmos.context.v1.StorageSetObjectResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/ListRows` | `harmos.context.v1.StorageListRowsRequest` / `harmos.context.v1.StorageListRowsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/WatchRows` | `harmos.context.v1.StorageWatchRowsRequest` / `harmos.context.v1.StorageWatchRowsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/AppendRecords` | `harmos.context.v1.StorageAppendRecordsRequest` / `harmos.context.v1.StorageAppendRecordsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/AppendSamples` | `harmos.context.v1.StorageAppendSamplesRequest` / `harmos.context.v1.StorageAppendSamplesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/AppendObjectRevisions` | `harmos.context.v1.StorageAppendObjectRevisionsRequest` / `harmos.context.v1.StorageAppendObjectRevisionsResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetFileHash` | `harmos.context.v1.StorageGetFileHashRequest` / `harmos.context.v1.StorageGetFileHashResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/CaptureFile` | `harmos.context.v1.StorageCaptureFileRequest` / `harmos.context.v1.StorageCaptureFileResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/WatchFileBytes` | `harmos.context.v1.StorageWatchFileBytesRequest` / `harmos.context.v1.StorageWatchFileBytesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/WatchFileProduction` | `harmos.context.v1.StorageWatchFileProductionRequest` / `harmos.context.v1.StorageWatchFileProductionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/ListDirectoryEntries` | `harmos.context.v1.StorageListDirectoryEntriesRequest` / `harmos.context.v1.StorageListDirectoryEntriesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/WatchDirectoryEntries` | `harmos.context.v1.StorageWatchDirectoryEntriesRequest` / `harmos.context.v1.StorageWatchDirectoryEntriesResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetIndexDefinition` | `harmos.context.v1.StorageGetIndexDefinitionRequest` / `harmos.context.v1.StorageGetIndexDefinitionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetProjectionDefinition` | `harmos.context.v1.StorageGetProjectionDefinitionRequest` / `harmos.context.v1.StorageGetProjectionDefinitionResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Storage/GetObject` | `harmos.context.v1.StorageGetObjectRequest` / `harmos.context.v1.StorageGetObjectResponse` | removed from the wire (in-process only) | — | Plugin-Host |
+| `harmos.context.v1.Time/Get` | `harmos.context.v1.TimeGetRequest` / `harmos.context.v1.TimeGetResponse` | `harmos.plugin.host.v1.Time/Get` | `harmos.plugin.host.v1.TimeGetRequest` / `harmos.plugin.host.v1.TimeGetResponse` | Plugin-Host |
+| `harmos.context.v1.Time/Sleep` | `harmos.context.v1.TimeSleepRequest` / `harmos.context.v1.TimeSleepResponse` | `harmos.plugin.host.v1.Time/Sleep` | `harmos.plugin.host.v1.TimeSleepRequest` / `harmos.plugin.host.v1.TimeSleepResponse` | Plugin-Host |
+| `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | Plugin |
+| `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | Plugin |
+| `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | Plugin; additive tick-scoped children: request `child = 3`; response `child = 2`, `child_cancel = 3`, `child_demand = 4`; existing fields preserved |
+| `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | Plugin |
+| `harmos.v1.access.Certificates/Create` | `harmos.v1.access.CertificatesCreateRequest` / `harmos.v1.access.CertificatesCreateResponse` | `harmos.client.v1.access.Certificates/Create` | `harmos.client.v1.access.CertificatesCreateRequest` / `harmos.client.v1.access.CertificatesCreateResponse` | Client |
+| `harmos.v1.access.Listener/Get` | `harmos.v1.access.ListenerGetRequest` / `harmos.v1.access.ListenerGetResponse` | `harmos.client.v1.access.Listener/Get` | `harmos.client.v1.access.ListenerGetRequest` / `harmos.client.v1.access.ListenerGetResponse` | Client |
+| `harmos.v1.access.Listener/Set` | `harmos.v1.access.ListenerSetRequest` / `harmos.v1.access.ListenerSetResponse` | `harmos.client.v1.access.Listener/Set` | `harmos.client.v1.access.ListenerSetRequest` / `harmos.client.v1.access.ListenerSetResponse` | Client |
+| `harmos.v1.access.Pairings/Create` | `harmos.v1.access.PairingsCreateRequest` / `harmos.v1.access.PairingsCreateResponse` | `harmos.client.v1.access.Pairings/Create` | `harmos.client.v1.access.PairingsCreateRequest` / `harmos.client.v1.access.PairingsCreateResponse` | Client |
+| `harmos.v1.access.Pairings/List` | `harmos.v1.access.PairingsListRequest` / `harmos.v1.access.PairingsListResponse` | `harmos.client.v1.access.Pairings/List` | `harmos.client.v1.access.PairingsListRequest` / `harmos.client.v1.access.PairingsListResponse` | Client |
+| `harmos.v1.access.Pairings/Delete` | `harmos.v1.access.PairingsDeleteRequest` / `harmos.v1.access.PairingsDeleteResponse` | `harmos.client.v1.access.Pairings/Delete` | `harmos.client.v1.access.PairingsDeleteRequest` / `harmos.client.v1.access.PairingsDeleteResponse` | Client |
+| `harmos.v1.CatalogEntries/List` (`operations`) | `harmos.v1.CatalogEntriesListRequest` / `harmos.v1.CatalogEntriesListResponse` | `harmos.client.v1.Operations/List` | `harmos.client.v1.OperationsListRequest` / `harmos.client.v1.OperationsListResponse` | Client |
+| `harmos.v1.CatalogEntries/List` (`schemas`) | `harmos.v1.CatalogEntriesListRequest` / `harmos.v1.CatalogEntriesListResponse` | `harmos.client.v1.Schemas/List` | `harmos.client.v1.SchemasListRequest` / `harmos.client.v1.SchemasListResponse` | Client |
+| `harmos.v1.CatalogEntries/List` (`streams`) | `harmos.v1.CatalogEntriesListRequest` / `harmos.v1.CatalogEntriesListResponse` | `harmos.client.v1.Streams/List` | `harmos.client.v1.StreamsListRequest` / `harmos.client.v1.StreamsListResponse` | Client |
+| `harmos.v1.CatalogEntries/List` (`objects`) | `harmos.v1.CatalogEntriesListRequest` / `harmos.v1.CatalogEntriesListResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Invocations/Invoke` | `harmos.v1.InvocationsInvokeRequest` / `harmos.v1.InvocationsInvokeResponse` | `harmos.client.v1.Invocations/Invoke` | `harmos.client.v1.InvocationsInvokeRequest` / `harmos.client.v1.InvocationsInvokeResponse` | Client |
+| `harmos.v1.Invocations/Get` | `harmos.v1.InvocationsGetRequest` / `harmos.v1.InvocationsGetResponse` | `harmos.client.v1.Invocations/Get` | `harmos.client.v1.InvocationsGetRequest` / `harmos.client.v1.InvocationsGetResponse` | Client |
+| `harmos.v1.Invocations/Cancel` | `harmos.v1.InvocationsCancelRequest` / `harmos.v1.InvocationsCancelResponse` | `harmos.client.v1.Invocations/Cancel` | `harmos.client.v1.InvocationsCancelRequest` / `harmos.client.v1.InvocationsCancelResponse` | Client |
+| `harmos.v1.Invocations/Watch` | `harmos.v1.InvocationsWatchRequest` / `harmos.v1.InvocationsWatchResponse` | `harmos.client.v1.Invocations/Watch` | `harmos.client.v1.InvocationsWatchRequest` / `harmos.client.v1.InvocationsWatchResponse` | Client |
+| `harmos.v1.Plugins/Get` | `harmos.v1.PluginsGetRequest` / `harmos.v1.PluginsGetResponse` | `harmos.client.v1.Plugins/Get` | `harmos.client.v1.PluginsGetRequest` / `harmos.client.v1.PluginsGetResponse` | Client |
+| `harmos.v1.Plugins/List` | `harmos.v1.PluginsListRequest` / `harmos.v1.PluginsListResponse` | `harmos.client.v1.Plugins/List` | `harmos.client.v1.PluginsListRequest` / `harmos.client.v1.PluginsListResponse` | Client |
+| `harmos.v1.Plugins/Watch` | `harmos.v1.PluginsWatchRequest` / `harmos.v1.PluginsWatchResponse` | `harmos.client.v1.Plugins/Watch` | `harmos.client.v1.PluginsWatchRequest` / `harmos.client.v1.PluginsWatchResponse` | Client |
+| `harmos.v1.Plugins/Create` | `harmos.v1.PluginsCreateRequest` / `harmos.v1.PluginsCreateResponse` | `harmos.client.v1.Plugins/Create` | `harmos.client.v1.PluginsCreateRequest` / `harmos.client.v1.PluginsCreateResponse` | Client |
+| `harmos.v1.Plugins/Set` | `harmos.v1.PluginsSetRequest` / `harmos.v1.PluginsSetResponse` | `harmos.client.v1.Plugins/Set` | `harmos.client.v1.PluginsSetRequest` / `harmos.client.v1.PluginsSetResponse` | Client |
+| `harmos.v1.Plugins/Delete` | `harmos.v1.PluginsDeleteRequest` / `harmos.v1.PluginsDeleteResponse` | `harmos.client.v1.Plugins/Delete` | `harmos.client.v1.PluginsDeleteRequest` / `harmos.client.v1.PluginsDeleteResponse` | Client |
+| `harmos.v1.Plugins/Restart` | `harmos.v1.PluginsRestartRequest` / `harmos.v1.PluginsRestartResponse` | `harmos.client.v1.Plugins/Restart` | `harmos.client.v1.PluginsRestartRequest` / `harmos.client.v1.PluginsRestartResponse` | Client |
+| `harmos.v1.Status/Get` | `harmos.v1.StatusGetRequest` / `harmos.v1.StatusGetResponse` | `harmos.client.v1.Status/Get` | `harmos.client.v1.StatusGetRequest` / `harmos.client.v1.StatusGetResponse` | Client |
+| `harmos.v1.Status/Watch` | `harmos.v1.StatusWatchRequest` / `harmos.v1.StatusWatchResponse` | `harmos.client.v1.Status/Watch` | `harmos.client.v1.StatusWatchRequest` / `harmos.client.v1.StatusWatchResponse` | Client |
+| `harmos.v1.status.Diagnostics/Get` | `harmos.v1.status.DiagnosticsGetRequest` / `harmos.v1.status.DiagnosticsGetResponse` | `harmos.client.v1.status.Diagnostics/Get` | `harmos.client.v1.status.DiagnosticsGetRequest` / `harmos.client.v1.status.DiagnosticsGetResponse` | Client |
+| `harmos.v1.status.Logs/List` | `harmos.v1.status.LogsListRequest` / `harmos.v1.status.LogsListResponse` | `harmos.client.v1.status.Logs/List` | `harmos.client.v1.status.LogsListRequest` / `harmos.client.v1.status.LogsListResponse` | Client |
+| `harmos.v1.status.Logs/Watch` | `harmos.v1.status.LogsWatchRequest` / `harmos.v1.status.LogsWatchResponse` | `harmos.client.v1.status.Logs/Watch` | `harmos.client.v1.status.LogsWatchRequest` / `harmos.client.v1.status.LogsWatchResponse` | Client |
+| `harmos.v1.status.TraceEvents/List` | `harmos.v1.status.TraceEventsListRequest` / `harmos.v1.status.TraceEventsListResponse` | `harmos.client.v1.status.TraceEvents/List` | `harmos.client.v1.status.TraceEventsListRequest` / `harmos.client.v1.status.TraceEventsListResponse` | Client |
+| `harmos.v1.status.TraceEvents/Watch` | `harmos.v1.status.TraceEventsWatchRequest` / `harmos.v1.status.TraceEventsWatchResponse` | `harmos.client.v1.status.TraceEvents/Watch` | `harmos.client.v1.status.TraceEventsWatchRequest` / `harmos.client.v1.status.TraceEventsWatchResponse` | Client |
+| `harmos.v1.Storage/CreateFileProduction` | `harmos.v1.StorageCreateFileProductionRequest` / `harmos.v1.StorageCreateFileProductionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetFileProduction` | `harmos.v1.StorageGetFileProductionRequest` / `harmos.v1.StorageGetFileProductionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/AppendFileBytes` | `harmos.v1.StorageAppendFileBytesRequest` / `harmos.v1.StorageAppendFileBytesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/CreateFileWriter` | `harmos.v1.StorageCreateFileWriterRequest` / `harmos.v1.StorageCreateFileWriterResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/PublishFileProduction` | `harmos.v1.StoragePublishFileProductionRequest` / `harmos.v1.StoragePublishFileProductionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/DeleteFileProduction` | `harmos.v1.StorageDeleteFileProductionRequest` / `harmos.v1.StorageDeleteFileProductionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetFileBytes` | `harmos.v1.StorageGetFileBytesRequest` / `harmos.v1.StorageGetFileBytesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/Capabilities` | `harmos.v1.StorageCapabilitiesRequest` / `harmos.v1.StorageCapabilitiesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/CreateSnapshot` | `harmos.v1.StorageCreateSnapshotRequest` / `harmos.v1.StorageCreateSnapshotResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/DeleteSnapshot` | `harmos.v1.StorageDeleteSnapshotRequest` / `harmos.v1.StorageDeleteSnapshotResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/ListColumnRows` | `harmos.v1.StorageListColumnRowsRequest` / `harmos.v1.StorageListColumnRowsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/ListIndexEntries` | `harmos.v1.StorageListIndexEntriesRequest` / `harmos.v1.StorageListIndexEntriesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/SetIndexDefinition` | `harmos.v1.StorageSetIndexDefinitionRequest` / `harmos.v1.StorageSetIndexDefinitionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/SetProjectionDefinition` | `harmos.v1.StorageSetProjectionDefinitionRequest` / `harmos.v1.StorageSetProjectionDefinitionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/AdvanceProjection` | `harmos.v1.StorageAdvanceProjectionRequest` / `harmos.v1.StorageAdvanceProjectionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/ListProjectionRows` | `harmos.v1.StorageListProjectionRowsRequest` / `harmos.v1.StorageListProjectionRowsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetProjectionStatus` | `harmos.v1.StorageGetProjectionStatusRequest` / `harmos.v1.StorageGetProjectionStatusResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/SetObject` | `harmos.v1.StorageSetObjectRequest` / `harmos.v1.StorageSetObjectResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/ListRows` | `harmos.v1.StorageListRowsRequest` / `harmos.v1.StorageListRowsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/WatchRows` | `harmos.v1.StorageWatchRowsRequest` / `harmos.v1.StorageWatchRowsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/AppendRecords` | `harmos.v1.StorageAppendRecordsRequest` / `harmos.v1.StorageAppendRecordsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/AppendSamples` | `harmos.v1.StorageAppendSamplesRequest` / `harmos.v1.StorageAppendSamplesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/AppendObjectRevisions` | `harmos.v1.StorageAppendObjectRevisionsRequest` / `harmos.v1.StorageAppendObjectRevisionsResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetFileHash` | `harmos.v1.StorageGetFileHashRequest` / `harmos.v1.StorageGetFileHashResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/CaptureFile` | `harmos.v1.StorageCaptureFileRequest` / `harmos.v1.StorageCaptureFileResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/WatchFileBytes` | `harmos.v1.StorageWatchFileBytesRequest` / `harmos.v1.StorageWatchFileBytesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/WatchFileProduction` | `harmos.v1.StorageWatchFileProductionRequest` / `harmos.v1.StorageWatchFileProductionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/ListDirectoryEntries` | `harmos.v1.StorageListDirectoryEntriesRequest` / `harmos.v1.StorageListDirectoryEntriesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/WatchDirectoryEntries` | `harmos.v1.StorageWatchDirectoryEntriesRequest` / `harmos.v1.StorageWatchDirectoryEntriesResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetIndexDefinition` | `harmos.v1.StorageGetIndexDefinitionRequest` / `harmos.v1.StorageGetIndexDefinitionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetProjectionDefinition` | `harmos.v1.StorageGetProjectionDefinitionRequest` / `harmos.v1.StorageGetProjectionDefinitionResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Storage/GetObject` | `harmos.v1.StorageGetObjectRequest` / `harmos.v1.StorageGetObjectResponse` | removed from the wire (in-process only) | — | Client |
+| `harmos.v1.Time/Get` | `harmos.v1.TimeGetRequest` / `harmos.v1.TimeGetResponse` | `harmos.client.v1.Time/Get` | `harmos.client.v1.TimeGetRequest` / `harmos.client.v1.TimeGetResponse` | Client |
+| `harmos.v1.Time/Sleep` | `harmos.v1.TimeSleepRequest` / `harmos.v1.TimeSleepResponse` | `harmos.client.v1.Time/Sleep` | `harmos.client.v1.TimeSleepRequest` / `harmos.client.v1.TimeSleepResponse` | Client |
+
+New calls have no former identity:
+
+| Former Identity | Final Identity | Request / Response | Boundary |
+| --- | --- | --- | --- |
+| — | `harmos.client.v1.Operations/Get` | `harmos.client.v1.OperationsGetRequest` / `harmos.client.v1.OperationsGetResponse` | Client |
+| — | `harmos.plugin.host.v1.Operations/Get` | `harmos.plugin.host.v1.OperationsGetRequest` / `harmos.plugin.host.v1.OperationsGetResponse` | Plugin-Host |
+| — | `harmos.client.v1.Plugins/Replace` | `harmos.client.v1.PluginsReplaceRequest` / `harmos.client.v1.PluginsReplaceResponse` | Client |
+| — | `harmos.client.v1.plugins.Settings/List` | `harmos.client.v1.plugins.SettingsListRequest` / `harmos.client.v1.plugins.SettingsListResponse` | Client |
+| — | `harmos.client.v1.plugins.Settings/Set` | `harmos.client.v1.plugins.SettingsSetRequest` / `harmos.client.v1.plugins.SettingsSetResponse` | Client |
+| — | `harmos.plugin.host.v1.Settings/List` | `harmos.plugin.host.v1.SettingsListRequest` / `harmos.plugin.host.v1.SettingsListResponse` | Plugin-Host |
+
+### Definition Decisions
+
+- Keep `harmos.v1.Catalog` and the `catalog` fields as the plugin-reported description. `Instance.Get`, guest registration and managed-entry `PluginDescription` still report operations, requirements, streams, opaque product sections, digest and reachable types (fields 1–6 unchanged). The removed resource was registry browsing, not this activation admission payload. Handlers in `plugin/grpc`, SDK authoring and `schema::catalog_digest` consume all these fields.
+- Keep `SettingsDeclarations` as the typed contribution section in `Catalog.sections`; its declarations now contain name, title, description and typed default. No second direct settings inventory is added to Catalog or its digest. Settings are library-owned; secrets remain product sections and product operations.
+- `Settings.Set` replaces one complete `SettingValues` map for the named plugin entry. List returns the complete map, with defaults materialized; all declared names and their value variants must match. Settings have their own opaque revision and issued read cut. Plugin-host List has no plugin selector and no change notification. Replay lifetime and persistence use the existing manager receipt policy.
+- Replace takes `PluginPlacement`, constrained to managed-to-managed replacement. It preserves entry name, settings and product data; failed staging preserves the previous serving bundle. `PluginChange.deleted` remains the sole wire deletion signal. Deleting an entry removes its settings atomically; product cleanup follows the in-process watch and startup reconciliation and is eventual.
+- Operations.Get selects one operation by its complete ID and returns the same `DiscoveredOperation` metadata used in List. Discovery has no invented read cut: the current handler issues none.
+- Schemas.List preserves the actual `StorageSchema` position/key/graph; Streams.List preserves `StoredIdentity::Stream` schema/scope/item/stream/first. The shared schema graph is registry vocabulary, not storage operations. Object identities have no library wire listing. No SDK reads persisted schemas or streams today, so neither service is added to the plugin-host boundary.
+- `FileReference.position` now uses shared `Position`/`History`, preserving the position fields and encoding. `File` wraps the immutable reference. `Upload` carries production ID/history, writer generation, accepted/durable lengths and state; product wrappers supply operations and policy. Shared proto2 transfer defaults remain in `transfer.proto` because all SDK carriers use the previously locked chunk, message and framing declarations.
+- Python client wire modules use `harmos._wire.client.v1` to avoid the authored `harmos.client` module. Wire identities remain `harmos.client.v1`; shared and plugin module paths follow the proto folders. The SDK handler keeps the name context.
+- Access remains a generated parent node of Listener, Pairings and Certificates, with no new empty root service. Nested C# namespaces use `AccessResources`, `StatusResources` and `PluginsResources`.
+- Root Buf checks the library and Schematic as independent modules. Schematic owns its file/upload wrappers and imports only shared vocabulary. Library lint rules remain unchanged. The only remaining exceptions are service suffixes, persisted schema enum prefixes/zero names, and version suffixes on nested resource packages.
+
+### Native Type Ownership
+
+`harmos-operations/src/storage` owns one Private in-process declaration and native
+request/result pair per storage capability. Domain storage values remain in
+`harmos-domain/src/model/storage`; query, column, index, projection and storage
+backend values remain in `harmos-storage`. Native mutation, cursor and revision
+encodings preserve persisted data and original outcomes. Neither boundary exposes
+storage methods or an object registry. Product handlers call the native operation
+through `ExecutionContext::call_native` with their own policy and typed wire values.
+Native record and stream callbacks retain their declared message codec; public
+encoded calls and SDK lifecycle envelopes use protobuf independently of that codec.
+
+### Application Operations in Discovery
+
+The existing assembly surface registers application operations in the same registry
+as library operations. No separate service inventory or discovery adapter is needed:
+
+```rust
+setup.catalog(schematic_operations::transfer::files_catalog(), lane);
+setup.catalog(harmos_runtime::builtins::host_catalog(), lane);
+```
+
+`Operations.List/Get` returns admitted application contracts with request/response
+descriptors, policy and gRPC binding. Generic encoded calls resolve the same entry.
+`examples/schematic/app/tests/storage/main.rs` discovers `schematic.v1.Files/Read`
+and invokes it through the generic client `Invocations.Invoke` gRPC path.
+Decision: retain the existing assembly registration; application and library operations share discovery.
+
+### Consumer Work Lists
+
+- **Core:** Boundary admission, typed registries, trusted `CallingPlugin`, stored
+  settings, managed replacement and atomic settings deletion use their existing
+  runtime owners. Product cleanup follows the entry watch and startup reconciliation
+  and remains eventual. Private storage has no wire projection.
+- **Rust SDK:** Client wrappers use `harmos_protocol::client`; shared vocabulary uses
+  `v1`; plugin-host wrappers use `plugin::host`. The handler remains `Context`.
+  Composition includes application `plugins.Annotations` beneath library Plugins.
+- **Python SDK:** Client wire modules use `harmos._wire.client.v1`; shared and
+  plugin-host modules follow proto folders. The handler remains `Context`; generated
+  composition includes application Plugins children.
+- **C# SDK:** Client wrappers use `Harmos.Client.V1`, shared vocabulary `Harmos.V1`,
+  and plugin-host wrappers `Harmos.Plugin.Host.V1`. Generated client composition
+  includes application Plugins children.
+- **C++ SDK:** Client headers use `harmos/client/v1`, plugin-host headers
+  `harmos/plugin/host/v1`, and shared concept headers `harmos/v1`. Generated resource
+  composition includes application Plugins children.
+- **All SDKs:** Observer contexts carry tick-scoped child calls on Instance.Samples,
+  correlate replies across ticks, preserve failures, support demand-bounded Watch,
+  cancel open work at tick/stream end and refuse outside-tick traffic (rules 30–32).
+  The `interval_setting` value is the typed declaration name `interval`, not a field
+  path into an opaque product section (rule 18).
+- **Schematic:** Application Files/Uploads wrap Private native storage operations.
+  Native and wasm plugins share regenerated concept messages and typed settings.
+  Root Buf checks its independent product module.
+  The native example launches its process and creates a remote library entry;
+  the library persists that entry and its typed settings. Guest registration has
+  explicit host-operation grants but no entry-backed settings owner.
+  The frozen `PluginPlacement` declares only managed native bundles and remote gRPC
+  endpoints; it has no guest placement. Preserve the refusal rather than inventing
+  guest settings or allowing a plugin to select another entry.
+- **Conformance and Fixtures:** All numbered cases remain, including tick children
+  and typed settings/registry discovery. Product publication uses
+  `example.plugin.host.v1.Progress/Publish` with `{stream, payload} -> ()`; no library
+  publication wire service is recreated. Generation rebuilds the Rust producer and
+  emits the Schematic bindings and nested Plugins composition for every language.
+  Guest assignments route canonical product service/method identities as well as
+  library identities. The product publication handler converts its protobuf row
+  into the native stream codec before staging it under the caller's generation.
+
+### Next Pin for Products That Vendor the Protocol
+
+Replace the vendored `proto/harmos` tree as a whole, regenerate all language bindings
+and update explicit file lists/imports, boundary admission and operation requirements
+using the boundary namespaces in the consumer work lists above. Do not retain deleted aggregate proto files or
+compatibility copies of Storage requests. Products wrapping storage must declare their
+own typed client/plugin-host operations and policy and call the library’s Private
+in-process storage operation through the native helper. File uploads/ranges, queries,
+records and objects all need product wrappers; schema and stream registry listing can
+use the library’s typed client resources. A managed Plugins.Create/Replace bundle uses
+a shared FileReference resolved in-process; the product upload publishes that reference.
+Compose Plugins, settings, access, status, invocations, operations and time directly;
+do not wrap the complete library services. Keep product secrets in product resources
+and publish declared needs in product sections. Native storage encodings and persisted
+data must remain compatible even though the library wire storage surface is removed.

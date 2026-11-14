@@ -249,10 +249,6 @@ name = "integration"
 path = "tests/integration/main.rs"
 
 [[test]]
-name = "acceptance"
-path = "tests/acceptance/main.rs"
-
-[[test]]
 name = "system"
 path = "tests/system/main.rs"
 

@@ -16,6 +16,7 @@
 // Local Imports
 #include "conformance.hpp"
 #include "harmos/conformance/v1/fixture.pb.h"
+#include "harmos/plugin/host/v1/operations.pb.h"
 
 /* === Macros === */
 
@@ -132,6 +133,12 @@ harmos::Plugin harmos::conformance::plugin() {
     }).visibility(harmos::wire::VISIBILITY_PUBLIC));
 
     plugin.requires_operation(harmos::SLEEP).requires_operation(harmos::GET_TIME);
+    plugin.requires_operation(harmos::LIST_SETTINGS);
+    const harmos::Operation<harmos::plugin::host::v1::OperationsListRequest, harmos::plugin::host::v1::OperationsListResponse>
+        list_operations("harmos.plugin.host.v1.Operations/List", harmos::wire::VISIBILITY_PUBLIC);
+    const harmos::Operation<harmos::plugin::host::v1::OperationsGetRequest, harmos::plugin::host::v1::OperationsGetResponse>
+        get_operation("harmos.plugin.host.v1.Operations/Get", harmos::wire::VISIBILITY_PUBLIC);
+    plugin.requires_operation(list_operations).requires_operation(get_operation);
     plugin.operation(ValueOperation("conformance.clock", harmos::wire::VISIBILITY_PUBLIC, [](Context& ctx, Value) {
         const auto before = ctx.now();
         google::protobuf::Duration duration;
@@ -184,6 +191,21 @@ harmos::Plugin harmos::conformance::plugin() {
             if (request.value() == "public") return context.call(peer_public, value(context.scope())).get();
             return context.call(request.value() == "protected" ? peer_protected : peer_local, request).get();
         })).requires_operation(peer_public).requires_operation(peer_protected).requires_operation(peer_local).requires_operation(own_protected);
+    plugin.operation(ValueOperation("conformance.settings_read", harmos::wire::VISIBILITY_PUBLIC, [](Context& context, Value) {
+        return value(harmos::detail::encode(context.settings().value()));
+    }));
+    plugin.operation(ValueOperation("conformance.discover", harmos::wire::VISIBILITY_PUBLIC, [list_operations, get_operation](Context& context, Value) {
+        const auto listed = context.call(list_operations, harmos::plugin::host::v1::OperationsListRequest{}).get();
+        if (listed.operations().empty()) throw std::runtime_error("List Operations: Missing Contract");
+        const auto& operation = listed.operations(0);
+        harmos::plugin::host::v1::OperationsGetRequest request;
+        request.set_id(operation.contract().id());
+        const auto found = context.call(get_operation, request).get();
+        if (harmos::detail::encode(found.operation()) != harmos::detail::encode(operation))
+            throw std::runtime_error("Get Operation: Contract Differs");
+        return value(operation.contract().id());
+    }));
+
     google::protobuf::Duration interval;
     interval.set_seconds(1);
     observer.every(interval);
@@ -198,11 +220,75 @@ harmos::Plugin harmos::conformance::plugin() {
         for (unsigned index = 0; index < 8; ++index) bytes[index] = static_cast<char>(ctx.sequence >> (8 * index));
         return value(bytes);
     });
-    configured.every(interval).interval_setting("harmos.conformance.v1.Graph.interval");
+    configured.every(interval).interval_setting("interval");
     Graph section;
     section.mutable_interval()->set_seconds(2);
     plugin.message<harmos::conformance::v1::PayloadOnly>().message<harmos::conformance::v1::PayloadOnly>();
     plugin.stream(ticks).stream(device).stream(settings).observer(observer).observer(configured).section(section);
+
+    for (const auto* name : {"count", "enabled", "gain", "interval", "label"}) {
+        harmos::wire::SettingDeclaration setting;
+        setting.set_name(name);
+        setting.set_title(name);
+        setting.set_description(std::string("Conformance ") + name);
+        const std::string key(name);
+        if (key == "count") setting.mutable_default_()->set_integer(3);
+        if (key == "enabled") setting.mutable_default_()->set_flag(false);
+        if (key == "gain") setting.mutable_default_()->set_number(1.5);
+        if (key == "interval") setting.mutable_default_()->mutable_duration()->set_seconds(2);
+        if (key == "label") setting.mutable_default_()->set_text("default");
+        plugin.setting(std::move(setting));
+    }
+
+    harmos::Stream<Value> children("conformance.tick_children");
+    harmos::Observer<Value> child_observer(children, [echo](Context& context) {
+        auto first = context.call(echo, value(std::string(1, '\1')));
+        auto second = context.call(echo, value(std::string(1, '\2')));
+        return value(first.get().value() + second.get().value());
+    });
+    plugin.stream(children).observer(child_observer.every(interval));
+
+    harmos::Stream<Value> calls("conformance.tick_context");
+    harmos::Observer<Value> call_observer(calls, [echo](Context& context) {
+        const auto echoed = context.call(echo, value(context.scope())).get();
+        const auto time = context.call(harmos::GET_TIME, harmos::plugin::host::v1::TimeGetRequest{}).get();
+        const auto settings = context.settings();
+        std::string bytes;
+        for (const auto& reply : {harmos::detail::encode(echoed), harmos::detail::encode(time), harmos::detail::encode(settings)}) {
+            const auto length = static_cast<std::uint32_t>(reply.size());
+            for (unsigned index = 0; index < 4; ++index) bytes += static_cast<char>(length >> (8 * index));
+            bytes += reply;
+        }
+        return value(bytes);
+    });
+    plugin.stream(calls).observer(call_observer.every(interval));
+
+    harmos::Stream<Value> failures("conformance.tick_failure");
+    harmos::Observer<Value> failure_observer(failures, [fail](Context& context) {
+        try { context.call(fail, Value{}).get(); }
+        catch (const harmos::Failure& failure) { return value(harmos::detail::encode(failure.value)); }
+        throw std::runtime_error("Sample Failure: Expected Child Failure");
+    });
+    plugin.stream(failures).observer(failure_observer.every(interval));
+
+    harmos::Stream<Value> watches("conformance.tick_watch");
+    harmos::Observer<Value> watch_observer(watches, [host_watch](Context& context) {
+        auto watching = context.watch(host_watch, value(context.scope()), 4096);
+        std::string result;
+        while (auto item = watching.next()) result += item->value();
+        return value(result);
+    });
+    plugin.stream(watches).observer(watch_observer.every(interval));
+
+    harmos::Stream<Value> cancellations("conformance.tick_cancel");
+    harmos::Observer<Value> cancel_observer(cancellations, [pending, echo](Context& context) {
+        auto child = context.call(pending, Value{});
+        context.call(echo, value("release")).get();
+        child.cancel();
+        context.call(pending, Value{});
+        return value("cancelled");
+    });
+    plugin.stream(cancellations).observer(cancel_observer.every(interval));
 
     return plugin;
 }

@@ -146,9 +146,9 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
         .await
         .unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
-    let mut client = harmos_protocol::v1::invocations_client::InvocationsClient::new(channel);
+    let mut client = harmos_protocol::client::invocations_client::InvocationsClient::new(channel);
     let error = client
-        .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
+        .invoke(harmos_protocol::client::InvocationsInvokeRequest {
             operation: Cancel::ID.into(),
             fingerprint: cancel_contract.fingerprint().0.to_vec(),
             payload: Request::default().encode_to_vec(),
@@ -164,7 +164,7 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
 
     let stopped = tokio::spawn(async move {
         client
-            .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
+            .invoke(harmos_protocol::client::InvocationsInvokeRequest {
                 operation: Stop::ID.into(),
                 fingerprint: stop_contract.fingerprint().0.to_vec(),
                 payload: Request::default().encode_to_vec(),

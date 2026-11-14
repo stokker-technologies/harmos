@@ -26,6 +26,9 @@ use std::{
 // Local Imports
 use crate::{Error, Message, Observer, Operation, OperationRequest, Result, Stream, message::merge_types, stream::StreamDefinition};
 use harmos_protocol::v1;
+use harmos_protocol::v1::{SettingsDeclarations, StorageTransferSettings};
+use prost_reflect::DescriptorPool;
+use prost_types::FileDescriptorSet;
 
 /* === Constants === */
 
@@ -42,11 +45,11 @@ pub struct Plugin {
     pub(crate) streams: Vec<StreamDefinition>,
     pub(crate) observers: Vec<Observer>,
     pub(crate) requirements: Vec<Required>,
-    sections: Vec<(v1::Section, prost_types::FileDescriptorSet)>,
-    messages: Vec<(String, prost_types::FileDescriptorSet)>,
+    sections: Vec<(v1::Section, FileDescriptorSet)>,
+    messages: Vec<(String, FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
-    pub(crate) transfer: harmos_protocol::storage::StorageTransferSettings,
+    pub(crate) transfer: StorageTransferSettings,
 }
 
 pub(crate) struct Required {
@@ -54,7 +57,7 @@ pub(crate) struct Required {
     pub(crate) watch: bool,
     pub(crate) request: String,
     pub(crate) response: String,
-    pub(crate) types: prost_types::FileDescriptorSet,
+    pub(crate) types: FileDescriptorSet,
 }
 
 /* === Enums === */
@@ -80,7 +83,7 @@ impl Plugin {
         }
     }
 
-    pub fn transfer(mut self, settings: harmos_protocol::storage::StorageTransferSettings) -> Self {
+    pub fn transfer(mut self, settings: StorageTransferSettings) -> Self {
         self.transfer = settings;
         self
     }
@@ -112,6 +115,11 @@ impl Plugin {
             T::types(),
         ));
         self
+    }
+
+    /// Declare the library-stored settings and their typed defaults.
+    pub fn settings(self, declarations: SettingsDeclarations) -> Self {
+        self.section(declarations)
     }
 
     pub fn requires<Q: OperationRequest>(mut self) -> Self {
@@ -147,7 +155,7 @@ impl Plugin {
         }
         semver::Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
         let mut catalog = v1::Catalog::default();
-        let mut types = prost_types::FileDescriptorSet::default();
+        let mut types = FileDescriptorSet::default();
         for (_, definitions) in &self.messages {
             merge_types(&mut types, definitions.clone())?;
         }
@@ -233,10 +241,34 @@ impl Plugin {
             if !sections.insert(&section.r#type) {
                 return Err(Error::Invalid(format!("Duplicate Section: {}", section.r#type)));
             }
+            if section.r#type == SettingsDeclarations::name() {
+                let declarations = <SettingsDeclarations as prost::Message>::decode(section.payload.as_slice())
+                    .map_err(|error| Error::Invalid(format!("Declare Settings: {error}")))?;
+                let mut names = HashSet::new();
+                for declaration in declarations.values {
+                    if declaration.name.is_empty() || !names.insert(declaration.name.clone()) {
+                        return Err(Error::Invalid(format!("Declare Setting {}: Duplicate or Empty Name", declaration.name)));
+                    }
+                    declaration
+                        .default
+                        .and_then(|value| value.value)
+                        .ok_or_else(|| Error::Invalid(format!("Declare Setting {}: Typed Default Required", declaration.name)))?;
+                }
+            }
             catalog.sections.push(section.clone());
             merge_types(&mut types, definitions.clone())?;
         }
-        let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types.clone())
+        let mut validation = types.clone();
+        let mut messages: Vec<_> = types.file.iter().flat_map(|file| &file.message_type).collect();
+        let mut message_options = false;
+        while let Some(message) = messages.pop() {
+            message_options |= message.options.is_some();
+            messages.extend(&message.nested_type);
+        }
+        if message_options && !validation.file.iter().any(|file| file.name.as_deref() == Some("google/protobuf/descriptor.proto")) {
+            merge_types(&mut validation, harmos_protocol::schema::descriptor_options())?;
+        }
+        let pool = DescriptorPool::from_file_descriptor_set(validation)
             .map_err(|error| Error::Invalid(format!("Invalid Protobuf Definitions: {error}")))?;
         let names = catalog
             .operations
@@ -290,7 +322,7 @@ mod tests {
     #[test]
     fn catalog_describes_values_without_running_handlers_or_cleanup() {
         let plugin = Plugin::new("catalog_fixture", "1.0.0")
-            .operation(Operation::new("catalog.read", not_called).visibility(harmos_protocol::v1::Visibility::Protected))
+            .operation(Operation::new("catalog.read", not_called).visibility(v1::Visibility::Protected))
             .section(Settings { interval_ms: 250 })
             .on_stop(|| panic!("Catalog Inspection Entered Cleanup"));
         let catalog = plugin.catalog().unwrap();
@@ -302,10 +334,49 @@ mod tests {
     }
 
     #[test]
+    fn typed_settings_preserve_presence_and_reject_invalid_declarations() {
+        let declarations = SettingsDeclarations {
+            values: vec![
+                v1::SettingDeclaration {
+                    name: "flag".into(),
+                    default: Some(v1::SettingValue {
+                        value: Some(v1::setting_value::Value::Flag(false)),
+                    }),
+                    ..Default::default()
+                },
+                v1::SettingDeclaration {
+                    name: "text".into(),
+                    default: Some(v1::SettingValue {
+                        value: Some(v1::setting_value::Value::Text(String::new())),
+                    }),
+                    ..Default::default()
+                },
+            ],
+        };
+        let catalog = Plugin::new("settings", "1.0.0").settings(declarations.clone()).catalog().unwrap();
+        let decoded = <SettingsDeclarations as prost::Message>::decode(catalog.sections[0].payload.as_slice()).unwrap();
+        assert_eq!(decoded, declarations);
+        let mut duplicate = declarations.clone();
+        duplicate.values.push(duplicate.values[0].clone());
+        assert!(Plugin::new("settings", "1.0.0").settings(duplicate).catalog().is_err());
+        let mut missing = declarations;
+        missing.values[0].default = None;
+        assert!(Plugin::new("settings", "1.0.0").settings(missing).catalog().is_err());
+        let unset = SettingsDeclarations {
+            values: vec![v1::SettingDeclaration {
+                name: "unset".into(),
+                default: Some(v1::SettingValue { value: None }),
+                ..Default::default()
+            }],
+        };
+        assert!(Plugin::new("settings", "1.0.0").settings(unset).catalog().is_err());
+    }
+
+    #[test]
     fn duplicate_operations_are_rejected_at_catalog_construction() {
         let plugin = Plugin::new("test", "1.0.0")
-            .operation(Operation::new("test.duplicate", empty).visibility(harmos_protocol::v1::Visibility::Protected))
-            .operation(Operation::new("test.duplicate", empty).visibility(harmos_protocol::v1::Visibility::Protected));
+            .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected))
+            .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected));
         assert!(plugin.catalog().is_err());
     }
 

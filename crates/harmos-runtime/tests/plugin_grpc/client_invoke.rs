@@ -70,7 +70,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .await
         .unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
-    let mut client = harmos_protocol::v1::invocations_client::InvocationsClient::new(channel.clone());
+    let mut client = harmos_protocol::client::invocations_client::InvocationsClient::new(channel.clone());
 
     let activation = plugin.activation().unwrap();
 
@@ -86,7 +86,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .unwrap();
     let input = payload(b"client request");
     let response = client
-        .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
+        .invoke(harmos_protocol::client::InvocationsInvokeRequest {
             operation: operation.id.clone(),
             fingerprint: operation.fingerprint.clone(),
             payload: input.clone(),
@@ -107,7 +107,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .find(|operation| operation.id == "example.plugin.v1.Lifecycle/Initialize")
         .unwrap();
     let error = client
-        .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
+        .invoke(harmos_protocol::client::InvocationsInvokeRequest {
             operation: operation.id.clone(),
             fingerprint: operation.fingerprint.clone(),
             payload: payload(b"refused"),
@@ -117,7 +117,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     assert!(error.to_string().contains("example.plugin.v1.Lifecycle/Initialize"));
     // The Same Client Cannot Reach a Protected Host Built-In.
     let error = client
-        .invoke(harmos_protocol::v1::InvocationsInvokeRequest {
+        .invoke(harmos_protocol::client::InvocationsInvokeRequest {
             operation: "fixture.control".into(),
             fingerprint: control_contract.fingerprint().0.to_vec(),
             payload: Vec::new(),
@@ -132,10 +132,10 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
     assert_eq!(error.code(), tonic::Code::Unimplemented);
     let mut context = tonic::client::Grpc::new(channel);
     context.ready().await.unwrap();
-    let result: Result<tonic::Response<harmos_protocol::context::TimeGetResponse>, tonic::Status> = context
+    let result: Result<tonic::Response<harmos_protocol::plugin::host::TimeGetResponse>, tonic::Status> = context
         .unary(
-            tonic::Request::new(harmos_protocol::context::TimeGetRequest {}),
-            tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.context.v1.Time/Get"),
+            tonic::Request::new(harmos_protocol::plugin::host::TimeGetRequest {}),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.plugin.host.v1.Time/Get"),
             tonic_prost::ProstCodec::default(),
         )
         .await;

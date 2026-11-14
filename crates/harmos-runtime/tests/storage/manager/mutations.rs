@@ -9,6 +9,8 @@
 
 /* === Imports === */
 
+use harmos_operations::storage::CreateFileWriterRequest;
+
 // Standard Library Imports
 use std::sync::atomic::Ordering;
 
@@ -58,15 +60,15 @@ async fn operation_retries_three() {
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry")).await.unwrap();
-    let request = harmos_protocol::v1::StorageCreateFileWriterRequest {
-        mutation: Some(identity(&f.storage, "resume").into()),
-        session: Some(file.session().unwrap().clone().into()),
+    let request = CreateFileWriterRequest {
+        mutation: Some(identity(&f.storage, "resume")),
+        session: Some(file.session().unwrap().clone()),
     };
     f.data.control.fence_failures.store(3, Ordering::SeqCst);
-    let first = f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.unwrap();
-    assert_eq!(first.production.as_ref().unwrap().session.as_ref().unwrap().generation, 2);
+    let first = f.runtime.operations.call_native::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.unwrap();
+    assert_eq!(first.production.as_ref().unwrap().session.generation, 2);
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 0);
-    assert_eq!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request).await.unwrap(), first);
+    assert_eq!(f.runtime.operations.call_native::<harmos_operations::storage::CreateFileWriter>(request).await.unwrap(), first);
     f.finish().await;
 }
 
@@ -125,24 +127,23 @@ async fn budgets_never_multiply() {
         .await
         .unwrap();
     let file = f.storage.produce_file(metadata("retry-budget")).await.unwrap();
-    let request = harmos_protocol::v1::StorageCreateFileWriterRequest {
-        mutation: Some(identity(&f.storage, "resume").into()),
-        session: Some(file.session().unwrap().clone().into()),
+    let request = CreateFileWriterRequest {
+        mutation: Some(identity(&f.storage, "resume")),
+        session: Some(file.session().unwrap().clone()),
     };
     f.data.control.fence_failures.store(5, Ordering::SeqCst);
-    assert!(f.runtime.operations.call_protobuf::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.is_err());
+    assert!(f.runtime.operations.call_native::<harmos_operations::storage::CreateFileWriter>(request.clone()).await.is_err());
     assert_eq!(f.data.control.fence_failures.load(Ordering::SeqCst), 1);
     f.data.control.fence_failures.store(0, Ordering::SeqCst);
     assert_eq!(
         f.runtime
             .operations
-            .call_protobuf::<harmos_operations::storage::CreateFileWriter>(request)
+            .call_native::<harmos_operations::storage::CreateFileWriter>(request)
             .await
             .unwrap()
             .production
             .unwrap()
             .session
-            .unwrap()
             .generation,
         2
     );

@@ -29,7 +29,7 @@ use std::{
 
 // Third Party Imports
 use harmos_operations::{access::Pending as Operation, execution::operations::ServingError};
-use harmos_protocol::v1::access as wire;
+use harmos_protocol::client::access as wire;
 use tokio::sync::Mutex;
 
 // Local Imports

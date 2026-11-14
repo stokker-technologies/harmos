@@ -28,7 +28,7 @@ use std::sync::Arc;
 // Third Party Imports
 // Local Imports
 use crate::manager::Inner;
-use crate::{Error, ReadBatch, Result, StorageManager};
+use crate::{Error, MemorySize, ReadBatch, Result, StorageManager};
 use harmos_domain::model::storage::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection};
 
 /* === Constants === */
@@ -48,17 +48,17 @@ struct Selection {
 
 /* === Traits === */
 
-trait DirectoryOutput {
-    fn protobuf_len(&self) -> usize;
+trait DirectoryOutput: crate::MemorySize {
+    fn output_bytes(&self) -> usize;
 }
 impl DirectoryOutput for DirectoryEntry {
-    fn protobuf_len(&self) -> usize {
-        prost::Message::encoded_len(self)
+    fn output_bytes(&self) -> usize {
+        self.memory_size()
     }
 }
 impl DirectoryOutput for DirectoryEvent {
-    fn protobuf_len(&self) -> usize {
-        self.encoded_len()
+    fn output_bytes(&self) -> usize {
+        self.memory_size()
     }
 }
 
@@ -83,7 +83,7 @@ impl StorageManager {
 /* === Private Functions === */
 
 fn item<T: DirectoryOutput>(inner: &Arc<Inner>, value: T) -> Result<ReadBatch<T>> {
-    if value.protobuf_len() > inner.settings.response.batch_bytes.get() {
+    if value.output_bytes() > inner.settings.response.batch_bytes.get() {
         return Err(Error::ResourceExhausted { resource: "directory response bytes" });
     }
     Ok(ReadBatch::new(value))

@@ -21,8 +21,10 @@ use super::fixture::{
     Bank, Identifier, Ledger, Runtime, SchemaKey, StorageManager, catalog, config, history, record, schema, state_settings,
 };
 use super::fixture::{Data, StorageBackends};
+use harmos_operations::storage::{AppendRecords, GetFileBytes, ListRows};
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
+use harmos_runtime::operations::NativeOperation;
 use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
 use std::sync::Arc;
@@ -101,14 +103,14 @@ async fn runtime_baseline_walks() {
     assert!(storage.status().running);
 
     // Read the Catalog Before and After Serving Storage
-    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage_")), "nothing is served before the host registers it");
+    assert!(!served(&runtime).iter().any(|id| id.starts_with("storage.")), "nothing is served before the host registers it");
     runtime
         .operations
         .register_catalog(harmos_operations::storage::storage_catalog(), harmos_runtime::operations::Lane::default())
         .await
         .unwrap();
     let catalogue = served(&runtime);
-    for required in ["storage.query", "storage.write_records", "storage.read_file"] {
+    for required in [ListRows::ID, AppendRecords::ID, GetFileBytes::ID] {
         assert!(catalogue.iter().any(|id| id == required), "missing {required}");
     }
 

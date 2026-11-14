@@ -130,7 +130,7 @@ class PackagedCSharpConformance(unittest.TestCase):
                 creationflags=spawn_flags(),
             )
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertEqual(len([line for line in result.stdout.splitlines() if line.endswith("| PASS |")]), 31, result.stdout)
+            self.assertEqual(len([line for line in result.stdout.splitlines() if line.endswith("| PASS |")]), 36, result.stdout)
 
 
 # === Public Functions === #

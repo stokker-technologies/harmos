@@ -3,6 +3,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(HarmosConformance LANGUAGES C CXX)
     find_package(Harmos CONFIG REQUIRED)
     include(../../cmake/Protocol.cmake)
+    add_subdirectory(../client "${CMAKE_CURRENT_BINARY_DIR}/client")
+    add_subdirectory(../plugin "${CMAKE_CURRENT_BINARY_DIR}/plugin")
 endif()
 
 add_library(harmos_conformance_protocol STATIC)

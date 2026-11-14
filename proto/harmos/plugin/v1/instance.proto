@@ -2,7 +2,7 @@
 
 // Plugin Instance
 //
-// Calls the host makes to a running plugin.
+// Calls the host makes to a running plugin through the plugin boundary.
 
 syntax = "proto3";
 
@@ -11,7 +11,9 @@ package harmos.plugin.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/v1/types.proto";
+import "harmos/v1/description.proto";
+import "harmos/v1/invocation.proto";
+import "harmos/v1/stream.proto";
 
 // === Options === //
 
@@ -31,7 +33,17 @@ service Instance {
   // One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
   // opening it is the demand for the stream and closing it ends the demand.
   // For a stream with an interval the host then sends one harmos.v1.Tick per interval
-  // and the plugin answers each with one sample.
+  // and the plugin answers each with one sample. Only one tick may be unanswered.
+  // Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+  // ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
+  // same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
+  // caller context and grants, with the same routing and policy checks as Invoke.
+  // Replies may arrive out of order and are matched by call ID, unique for the whole
+  // Samples call, not reused on later ticks. Failures retain every field unchanged.
+  // Answering the tick or ending the stream cancels its outstanding children and
+  // suppresses their later replies. ChildCancel does the same for its child only.
+  // Child traffic outside an unanswered tick (including device streams), unknown or
+  // duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
   rpc Samples(stream InstanceSamplesRequest) returns (stream InstanceSamplesResponse);
 
   // Sent before the host shuts down or removes the plugin. The plugin runs
@@ -92,19 +104,28 @@ message InstanceInvokeResponse {
   }
 }
 
-// Carries a stream selection or clock tick for Instance.Samples.
+// Carries a stream selection, clock tick or child reply for Instance.Samples.
 message InstanceSamplesRequest {
   // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
     // First frame.
     harmos.v1.SamplesSelection open = 1;
     harmos.v1.Tick tick = 2;
+    // Reply to a child of the unanswered tick; never before open or after its sample.
+    harmos.v1.ChildResponse child = 3;
   }
 }
 
-// Carries one or more declared stream rows within the active demand call.
+// Carries declared stream rows or child traffic for the unanswered tick within the active demand call.
 message InstanceSamplesResponse {
+  // A tick answer ends its child-call scope. Must be empty when a child frame is selected.
   repeated harmos.v1.Sample samples = 1;
+  // Child frames do not answer the tick. Unset for sample-bearing responses.
+  oneof frame {
+    harmos.v1.ChildRequest child = 2;
+    harmos.v1.ChildCancel child_cancel = 3;
+    harmos.v1.ChildDemand child_demand = 4;
+  }
 }
 
 // Carries the reason text for Instance.Stop.

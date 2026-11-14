@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{Error, PluginManagerSettings};
 use harmos_domain::model::storage::{ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject};
-use harmos_protocol::v1 as wire;
+use harmos_protocol::client as wire;
 use harmos_storage::{CompareExchange, ObjectVersion, ObjectVersionToken, StorageManager};
 
 /* === Constants === */
@@ -44,7 +44,7 @@ struct RegistryObject {
 pub(super) struct Registry {
     pub next_revision: u64,
     pub entries: BTreeMap<String, SavedEntry>,
-    pub creates: BTreeMap<String, SavedCreate>,
+    pub creates: BTreeMap<String, SavedMutation>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -53,10 +53,18 @@ pub(super) struct SavedEntry {
     pub executable: Option<String>,
     pub executable_digest: Option<[u8; 32]>,
     pub generation: u64,
+    #[serde(default)]
+    pub settings: Vec<u8>,
+    #[serde(default)]
+    pub settings_revision: Vec<u8>,
+    #[serde(default)]
+    pub settings_receipts: BTreeMap<String, SavedMutation>,
+    #[serde(default)]
+    pub replacements: BTreeMap<String, SavedMutation>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct SavedCreate {
+pub(super) struct SavedMutation {
     pub request: Vec<u8>,
     pub response: Vec<u8>,
 }

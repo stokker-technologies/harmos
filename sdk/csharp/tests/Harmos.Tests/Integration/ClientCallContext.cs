@@ -2,6 +2,8 @@
 
 using Google.Protobuf;
 using Grpc.Core;
+using Status = Grpc.Core.Status;
+using Harmos.Client.V1;
 using Xunit;
 
 namespace Harmos.Tests.Integration;
@@ -27,7 +29,7 @@ public sealed class ClientCallContext
     await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await pending);
     await transport.Cancelled.Task;
     // The Following Resource Call Keeps Its Own Default Options.
-    using var following = client.Status.Get(new Harmos.V1.StatusGetRequest());
+    using var following = client.Status.Get(new StatusGetRequest());
     await following.ResponseAsync;
     Assert.Null(transport.Options.Deadline);
     Assert.Null(transport.Options.Headers);

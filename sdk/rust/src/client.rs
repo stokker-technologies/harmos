@@ -36,6 +36,7 @@ use tonic::{Request, Status, Streaming, transport::Channel};
 
 // Local Imports
 use codec::{Frame, Output, Wire};
+use harmos_protocol::v1::StorageTransferSettings;
 
 /* === Constants === */
 
@@ -48,7 +49,7 @@ use codec::{Frame, Output, Wire};
 /// Consumer-Owned Decoded Memory, Wire And Outgoing Queue Bounds. Operation Policy Stays With The Server.
 #[derive(Clone, Copy)]
 pub struct ClientSettings {
-    pub transfer: harmos_protocol::storage::StorageTransferSettings,
+    pub transfer: StorageTransferSettings,
     /// Shared Across Clones And Calls; Released When Decoded Values Reach The Caller.
     pub retained_bytes: NonZeroUsize,
 
@@ -109,11 +110,11 @@ pub struct Running<R, I, O> {
 /* === Implementations === */
 
 impl ClientSettings {
-    pub fn for_storage(transfer: harmos_protocol::storage::StorageTransferSettings, retained_bytes: NonZeroUsize) -> Result<Self, Status> {
+    pub fn for_storage(transfer: StorageTransferSettings, retained_bytes: NonZeroUsize) -> Result<Self, Status> {
         let message_bytes =
             harmos_protocol::transfer::message_bytes(&transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
                 Status::invalid_argument(
-                    "Configure Client: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                    "Configure Client: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
                 )
             })?;
         Ok(Self {
@@ -130,7 +131,7 @@ impl Client {
     pub fn new(channel: Channel, settings: ClientSettings) -> Result<Self, Status> {
         if harmos_protocol::transfer::required_message_bytes(&settings.transfer).is_none_or(|required| settings.message_bytes < required) {
             return Err(Status::invalid_argument(
-                "Configure Client: ClientSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                "Configure Client: ClientSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
             ));
         }
         if settings.retained_bytes.get() > Semaphore::MAX_PERMITS

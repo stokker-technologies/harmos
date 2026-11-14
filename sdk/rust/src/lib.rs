@@ -43,7 +43,7 @@
 //! over their generated protobuf type. Required requests implement `OperationRequest`.
 //!
 //! `Context` resources live for one invocation or publication call. Observers answer
-//! host ticks and cannot make child calls. Device streams use `Stream::publish_on`
+//! host ticks and may call declared host operations, clock, settings and Watches until answering the tick. Device streams use `Stream::publish_on`
 //! and `Publisher::publish`, with backpressure and no replay after demand closes.
 //! Declare clock requirements with `clock::TimeSleepRequest` and `clock::TimeGetRequest`; every wait and
 //! evidence-time read then travels on the invoking call. Independently spawned
@@ -73,7 +73,7 @@ mod plugin;
 pub mod prelude;
 #[cfg(not(target_arch = "wasm32"))]
 mod server;
-mod storage_contracts;
+
 mod stream;
 #[cfg(feature = "wasm")]
 pub mod wasm;
@@ -84,10 +84,10 @@ extern crate self as harmos;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use client::{Client, ClientSettings};
-pub use context::Context;
+pub use context::{Context, Watching};
 pub use error::{Error, Result};
+pub use harmos_protocol::v1;
 pub use harmos_protocol::v1::{Classification, Failure, OperationPolicy, RetryPolicy, Section, Visibility};
-pub use harmos_protocol::{storage, v1};
 pub use harmos_sdk_derive::Message;
 pub use message::{Message, OperationRequest};
 pub use operation::Operation;

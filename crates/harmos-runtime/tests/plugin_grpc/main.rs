@@ -28,8 +28,7 @@ mod failure;
 mod host_clock;
 mod host_consumption;
 mod host_invoke;
-mod host_values;
-mod host_values_failure;
+
 mod independent_streams;
 mod interval_stream;
 mod invoke_support;
@@ -45,6 +44,7 @@ mod python_clock;
 mod remote_reconnect;
 mod remote_stop;
 mod retry;
+mod samples_children;
 mod scope;
 mod stop_failure;
 mod stream_reconnect;

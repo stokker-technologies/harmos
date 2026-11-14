@@ -25,7 +25,7 @@ use harmos_protocol::{
     v1::{self, guest_child, guest_command, response},
 };
 use prost::Message as _;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
@@ -169,8 +169,8 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                 imports.children.insert(instance, (request.payload, false));
                 return Ok(v1::GuestSubmitted { instance }.encode_to_vec());
             }
-            if request.operation == "host.harmos.context.v1.Samples/Append" {
-                return Ok(harmos_protocol::context::SamplesAppendResponse {}.encode_to_vec());
+            if request.operation == "host.example.plugin.host.v1.Progress/Publish" {
+                return Ok(Vec::new());
             }
             Ok(request.payload)
         }
@@ -223,6 +223,11 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert_eq!(world(&sandbox), world(&schematic));
     let example = Session::new(&schematic).await;
     assert_eq!(example.metadata.id, "schematic_tools");
+    let catalog = example.metadata.catalog.as_ref().unwrap();
+    let operations = catalog.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
+    assert_eq!(operations, BTreeSet::from(["schematic.route", "schematic.validate"]));
+    assert!(catalog.types.as_ref().is_some_and(|types| !types.file.is_empty()));
+    assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.plugin.host.v1.Settings/List"));
 
     // Register Inert Metadata Before Initializing Any Authored State
     let mut session = Session::new(&sandbox).await;
@@ -237,7 +242,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
                 "{}.{}",
                 if required.id == "provider.echo" {
                     "provider"
-                } else if required.id == "harmos.context.v1.Samples/Append" {
+                } else if required.id == "example.plugin.host.v1.Progress/Publish" {
                     "host"
                 } else {
                     "sandbox_guest"

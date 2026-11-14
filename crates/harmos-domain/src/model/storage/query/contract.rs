@@ -32,20 +32,20 @@ use crate::{Identifier, MemorySize, Result};
 
 /* === Structs === */
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowSlice {
     pub offset: u64,
     pub limit: Option<u64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ObjectSelection {
     pub schema: Option<SchemaKey>,
     pub key: Option<ObjectKey>,
     pub versions: ObjectVersions,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RecordSelection {
     pub schema: SchemaKey,
     pub scope: Option<Identifier>,
@@ -54,7 +54,7 @@ pub struct RecordSelection {
     pub source_end: Option<SystemTime>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StreamSelection {
     pub schema: SchemaKey,
     pub scope: Option<Identifier>,
@@ -66,18 +66,18 @@ pub struct StreamSelection {
     pub after: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SchemaSelection {
     pub schema: Option<SchemaKey>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileSelection {
     pub scope: Option<Identifier>,
     pub item: Option<Identifier>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct QueryCompletion {
     pub at: StorageCursor,
     pub rows: u64,
@@ -85,13 +85,13 @@ pub struct QueryCompletion {
 
 /* === Enums === */
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ObjectVersions {
     Latest,
     Revisions,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Source {
     Objects(ObjectSelection),
     Records(RecordSelection),

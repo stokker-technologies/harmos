@@ -22,8 +22,12 @@ from google.protobuf.descriptor import Descriptor, EnumDescriptor
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 
+from harmos.v1.operation_pb2 import OperationContract, Visibility
+from harmos.v1.policy_pb2 import OperationPolicy
+from harmos.v1.stream_pb2 import StreamDeclaration
+
 # Local Imports
-from .v1 import types_pb2 as wire
+
 
 # Type Checking Imports
 
@@ -41,8 +45,8 @@ class Operation[Q: Message, R: Message]:
     id: str
     request: type[Q]
     response: type[R]
-    visibility: wire.Visibility
-    policy: wire.OperationPolicy | None = None
+    visibility: Visibility
+    policy: OperationPolicy | None = None
     description: str = ""
     replay_safe: bool = False
     watch: bool = False
@@ -57,8 +61,8 @@ class Operation[Q: Message, R: Message]:
         item = sha256(self.id.encode() + b"\0" + response + response).digest()
         return sha256(b"harmos.protobuf.stream.v1\0" + base + b"\0\1" + item).digest()
 
-    def contract(self) -> wire.OperationContract:
-        return wire.OperationContract(
+    def contract(self) -> OperationContract:
+        return OperationContract(
             id=self.id,
             request=self.request.DESCRIPTOR.full_name,
             response=self.response.DESCRIPTOR.full_name,
@@ -78,8 +82,8 @@ class Stream:
     interval_setting: str = ""
     description: str = ""
 
-    def declaration(self) -> wire.StreamDeclaration:
-        return wire.StreamDeclaration(
+    def declaration(self) -> StreamDeclaration:
+        return StreamDeclaration(
             id=self.id,
             row=self.row.DESCRIPTOR.full_name,
             interval=self.interval,
@@ -96,8 +100,8 @@ def operation[Q: Message, R: Message, F: Callable](
     *,
     request: type[Q],
     response: type[R],
-    visibility: wire.Visibility,
-    policy: wire.OperationPolicy | None = None,
+    visibility: Visibility,
+    policy: OperationPolicy | None = None,
     description: str = "",
     replay_safe: bool = False,
 ) -> Callable[[F], F]:

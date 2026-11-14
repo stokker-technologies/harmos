@@ -22,9 +22,14 @@ pub mod v1;
 // Third Party Imports
 
 // Local Imports
+use harmos::v1::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 use harmos::{
     Classification, Context, Failure, Message, Observer, Operation, OperationRequest, Plugin, Publisher, Result, Stream, Visibility,
 };
+use harmos_protocol::plugin::host::{OperationsGetRequest, OperationsListRequest, SettingsListRequest};
+use prost::Message as _;
+use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
+use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 use v1::{Graph, graph::Nested};
 
 /* === Constants === */
@@ -95,7 +100,7 @@ impl Message for Value {
     fn name() -> String {
         "harmos.conformance.v1.Value".into()
     }
-    fn types() -> prost_types::FileDescriptorSet {
+    fn types() -> FileDescriptorSet {
         v1::types()
     }
 }
@@ -103,7 +108,7 @@ impl Message for PayloadOnly {
     fn name() -> String {
         "harmos.conformance.v1.PayloadOnly".into()
     }
-    fn types() -> prost_types::FileDescriptorSet {
+    fn types() -> FileDescriptorSet {
         v1::types()
     }
 }
@@ -111,7 +116,7 @@ impl Message for Graph {
     fn name() -> String {
         "harmos.conformance.v1.Graph".into()
     }
-    fn types() -> prost_types::FileDescriptorSet {
+    fn types() -> FileDescriptorSet {
         v1::types()
     }
 }
@@ -119,7 +124,7 @@ impl Message for Nested {
     fn name() -> String {
         "harmos.conformance.v1.Graph.Nested".into()
     }
-    fn types() -> prost_types::FileDescriptorSet {
+    fn types() -> FileDescriptorSet {
         v1::types()
     }
 }
@@ -159,14 +164,65 @@ impl OperationRequest for HostFail {
 
 pub fn plugin() -> Plugin {
     let ticks = Stream::<Value>::new("conformance.ticks");
-    let observer = Observer::new(&ticks, tick).every(prost_types::Duration { seconds: 1, nanos: 0 });
+    let observer = Observer::new(&ticks, tick).every(ProtoDuration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
     let settings = Stream::<Value>::new("conformance.settings");
-    let configured = Observer::new(&settings, tick)
-        .every(prost_types::Duration { seconds: 1, nanos: 0 })
-        .interval_setting("harmos.conformance.v1.Graph.interval");
+    let configured = Observer::new(&settings, tick).every(ProtoDuration { seconds: 1, nanos: 0 }).interval_setting("interval");
+    let children_stream = Stream::<Value>::new("conformance.tick_children");
+    let children_observer = Observer::new(&children_stream, tick_children).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let context_stream = Stream::<Value>::new("conformance.tick_context");
+    let context_observer = Observer::new(&context_stream, tick_context).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let failure_stream = Stream::<Value>::new("conformance.tick_failure");
+    let failure_observer = Observer::new(&failure_stream, tick_failure).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let watch_stream = Stream::<Value>::new("conformance.tick_watch");
+    let watch_observer = Observer::new(&watch_stream, tick_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let cancel_stream = Stream::<Value>::new("conformance.tick_cancel");
+    let cancel_observer = Observer::new(&cancel_stream, tick_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
     Plugin::new("conformance", "1.0.0")
-        .message::<PayloadOnly>()
+        .settings(SettingsDeclarations {
+            values: vec![
+                SettingDeclaration {
+                    name: "enabled".into(),
+                    title: "Enabled".into(),
+                    description: String::new(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Flag(false)),
+                    }),
+                },
+                SettingDeclaration {
+                    name: "count".into(),
+                    title: "Count".into(),
+                    description: String::new(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Integer(3)),
+                    }),
+                },
+                SettingDeclaration {
+                    name: "gain".into(),
+                    title: "Gain".into(),
+                    description: String::new(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Number(1.5)),
+                    }),
+                },
+                SettingDeclaration {
+                    name: "label".into(),
+                    title: "Label".into(),
+                    description: String::new(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Text("default".into())),
+                    }),
+                },
+                SettingDeclaration {
+                    name: "interval".into(),
+                    title: "Interval".into(),
+                    description: String::new(),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Duration(ProtoDuration { seconds: 2, nanos: 0 })),
+                    }),
+                },
+            ],
+        })
         .message::<PayloadOnly>()
         .operation(Operation::new("conformance.local", local).visibility(Visibility::Private).replay_safe())
         .operation(Operation::new("conformance.local_call", local_call).visibility(Visibility::Public))
@@ -185,6 +241,8 @@ pub fn plugin() -> Plugin {
         .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
         .operation(Operation::new("conformance.watch", watch).visibility(Visibility::Public))
         .operation(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.settings_read", settings_read).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.discover", discover).visibility(Visibility::Public))
         .requires::<PeerPublic>()
         .requires::<PeerProtected>()
         .requires::<OwnProtected>()
@@ -196,13 +254,26 @@ pub fn plugin() -> Plugin {
         .requires::<Graph>()
         .requires::<harmos::clock::TimeSleepRequest>()
         .requires::<harmos::clock::TimeGetRequest>()
+        .requires::<SettingsListRequest>()
+        .requires::<OperationsListRequest>()
+        .requires::<OperationsGetRequest>()
         .stream(ticks)
         .stream(device)
         .stream(settings)
+        .stream(children_stream)
+        .observer(children_observer)
+        .stream(context_stream)
+        .observer(context_observer)
+        .stream(failure_stream)
+        .observer(failure_observer)
+        .stream(watch_stream)
+        .observer(watch_observer)
+        .stream(cancel_stream)
+        .observer(cancel_observer)
         .observer(observer)
         .observer(configured)
         .section(Graph {
-            interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            interval: Some(ProtoDuration { seconds: 2, nanos: 0 }),
             ..Default::default()
         })
 }
@@ -212,33 +283,33 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
         b"retry" => Some(harmos::v1::OperationPolicy {
             retries: Some(harmos::v1::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
                 deterministic_jitter: true,
             }),
             ..Default::default()
         }),
         b"deadline" => Some(harmos::v1::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
-            attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
+            attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
             ..Default::default()
         }),
         b"overall" => Some(harmos::v1::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         b"retry-bound" => Some(harmos::v1::OperationPolicy {
-            timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
             retries: Some(harmos::v1::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
+                initial: Some(ProtoDuration { seconds: 3600, nanos: 0 }),
                 ..Default::default()
             }),
             ..Default::default()
         }),
         b"cancel" => Some(harmos::v1::OperationPolicy {
-            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         _ => None,
@@ -248,7 +319,7 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
 
 async fn clock(ctx: &Context, _: Value) -> Result<Value> {
     let before = ctx.now().await?;
-    ctx.sleep(std::time::Duration::from_secs(3600)).await?;
+    ctx.sleep(Duration::from_secs(3600)).await?;
     let after = ctx.now().await?;
     Ok(Value {
         value: (after.seconds - before.seconds).to_le_bytes().to_vec(),
@@ -262,8 +333,8 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
             Some(harmos::v1::OperationPolicy {
                 retries: Some(harmos::v1::RetryPolicy {
                     total_attempts: 3,
-                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
-                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
+                    initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+                    maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
                     deterministic_jitter: true,
                 }),
                 ..Default::default()
@@ -376,7 +447,7 @@ async fn watch(context: &Context, request: Value) -> Result<Value> {
 
 async fn local(context: &Context, request: Value) -> Result<Value> {
     if matches!(request.value.as_slice(), b"deadline" | b"overall") {
-        context.sleep(std::time::Duration::from_secs(3600)).await?;
+        context.sleep(Duration::from_secs(3600)).await?;
         return Ok(request);
     }
     if request.value == b"cancel" {
@@ -409,4 +480,100 @@ async fn peer_call(context: &Context, request: Value) -> Result<Value> {
         b"self" => context.call(OwnProtected { value: request.value }).await,
         _ => context.call(PeerLocal { value: request.value }).await,
     }
+}
+
+async fn settings_read(context: &Context, _: Value) -> Result<Value> {
+    let settings = context.settings().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
+    Ok(Value { value: settings.encode_to_vec() })
+}
+
+async fn discover(context: &Context, _: Value) -> Result<Value> {
+    let first = context
+        .call(OperationsListRequest {})
+        .await?
+        .operations
+        .into_iter()
+        .next()
+        .and_then(|entry| entry.contract)
+        .ok_or_else(|| harmos::Error::Invalid("List Operations: Contract Missing".into()))?;
+    let selected = context
+        .call(OperationsGetRequest { id: first.id.clone() })
+        .await?
+        .operation
+        .and_then(|entry| entry.contract)
+        .ok_or_else(|| harmos::Error::Invalid("Get Operation: Contract Missing".into()))?;
+    if first != selected {
+        return Err(harmos::Error::Invalid("Get Operation: Metadata Changed".into()));
+    }
+    Ok(Value { value: first.id.into_bytes() })
+}
+
+async fn tick_children(context: &Context) -> Result<Value> {
+    let (first, second) = tokio::join!(context.call(HostEcho { value: vec![1] }), context.call(HostEcho { value: vec![2] }));
+    let mut value = first?.value;
+    value.extend(second?.value);
+    Ok(Value { value })
+}
+
+async fn tick_context(context: &Context) -> Result<Value> {
+    let echo = context
+        .call(HostEcho {
+            value: context.scope()?.as_bytes().to_vec(),
+        })
+        .await?
+        .encode_to_vec();
+    let clock = context.call(harmos::clock::TimeGetRequest {}).await?.encode_to_vec();
+    let settings = context.settings().await?.encode_to_vec();
+    let mut value = Vec::new();
+    for payload in [echo, clock, settings] {
+        let length = u32::try_from(payload.len()).map_err(|error| harmos::Error::Invalid(format!("Encode Tick Context: {error}")))?;
+        value.extend(length.to_le_bytes());
+        value.extend(payload);
+    }
+    Ok(Value { value })
+}
+
+async fn tick_failure(context: &Context) -> Result<Value> {
+    match context.call(HostFail { value: Vec::new() }).await {
+        Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
+        Err(error) => Err(error),
+        Ok(_) => Err(harmos::Error::Invalid("Call Failure Fixture: Expected Failure".into())),
+    }
+}
+
+async fn tick_watch(context: &Context) -> Result<Value> {
+    let mut watching = context
+        .watch(
+            HostWatch {
+                value: context.scope()?.as_bytes().to_vec(),
+            },
+            NonZeroUsize::new(4096).unwrap(),
+        )
+        .await?;
+    let mut value = Vec::new();
+    while let Some(item) = watching.next().await? {
+        value.extend(item.value);
+    }
+    Ok(Value { value })
+}
+
+async fn tick_cancel(context: &Context) -> Result<Value> {
+    {
+        let pending = context.call(HostPending { value: Vec::new() });
+        let release = context.call(HostEcho { value: b"release".to_vec() });
+        tokio::pin!(pending, release);
+        tokio::select! {
+            biased;
+            result = &mut pending => { result?; return Err(harmos::Error::Invalid("Cancel Tick Child: Pending Child Answered".into())); },
+            result = &mut release => { result?; },
+        }
+    }
+    let pending = context.call(HostPending { value: Vec::new() });
+    tokio::pin!(pending);
+    futures_util::future::poll_fn(|cx| match pending.as_mut().poll(cx) {
+        Poll::Ready(result) => Poll::Ready(result.map(|_| ())),
+        Poll::Pending => Poll::Ready(Ok(())),
+    })
+    .await?;
+    Ok(Value { value: b"cancelled".to_vec() })
 }

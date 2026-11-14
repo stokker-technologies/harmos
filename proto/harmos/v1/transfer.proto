@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Transfer Defaults
+//
+// Shared transfer and carrier defaults for clients, plugins and the host.
+
+syntax = "proto2";
+
+package harmos.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// One Storage Setting Shared by Host and SDK Defaults.
+message StorageTransferSettings {
+  // Maximum bytes per default transfer chunk; unset uses the declared 4 MiB proto2 default.
+  optional uint64 chunk_bytes = 1 [default = 4194304];
+}
+
+// One Declared Transport Default for All Generated SDKs and Host Carriers.
+message MessageSettings {
+  // Carrier message ceiling; unset uses the declared 8 MiB proto2 default. Startup refuses a ceiling smaller than configured chunks plus framing.
+  optional uint64 message_bytes = 1 [default = 8388608];
+}
+
+// === Enums === //
+
+// Space for Default Session, Receipt, Cut and Carrier Framing.
+enum TransferFraming {
+  TRANSFER_FRAMING_UNSPECIFIED = 0;
+  TRANSFER_FRAMING_BYTES = 512;
+}

@@ -29,11 +29,11 @@ use crate::MemorySize;
 
 /* === Structs === */
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Sort {
     pub keys: Vec<SortKey>,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SortKey {
     pub field: FieldPath,
     pub descending: bool,
