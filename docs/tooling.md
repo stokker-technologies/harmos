@@ -717,14 +717,17 @@ filter, the same executable additionally uses ordinary Criterion sampling, whose
 remain under `target/benchmarks/storage/criterion/`. The storage-interface design owns workload
 identity and proposed acceptance budgets; this command does not establish a performance claim.
 
-The `native` selection constructs the same deterministic source in the optional durable SQLite
-backend and measures native full/window scans, exact-frontier projection windows/replay and
-index construction/seek reads. It does not construct the row-query baseline fixture. Ingest,
-catch-up and index construction report individual elapsed measurements; read cases retain ten
-Criterion samples. Verification runs outside timing. The owned temporary database is removed
-after close; `candidate.txt`, compiler metadata and Criterion samples remain for comparison.
-The existing baseline capture is not a durable-backend baseline; preserve its compiler metadata
-as `compiler-baseline.json` before a later run replaces `compiler.json`.
+`mise run bench -- --storage --filter time_merge` selects the million-row engine
+merge cases; `--filter query` selects the existing query executable. Both build
+only their selected target in the bench profile.
+
+The `interface` selection constructs the same deterministic source in the public
+memory backend and measures saved scans, projection windows/replay and index
+construction/seek reads. It does not construct the row-query baseline fixture.
+Ingest, catch-up and index construction report elapsed measurements; read cases
+retain ten Criterion samples. Verification runs outside timing. There is no
+library database file or disk-management cost. Product backend reports retain
+the same workload names and record their own durability mode.
 
 ## Storage Consumer Proof
 

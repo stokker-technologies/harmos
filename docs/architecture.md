@@ -23,14 +23,22 @@ same content boundary. See [Application-Owned Content](storage.md#application-ow
 
 **Locked direction, 2026-11-14:** the dependency order is
 `harmos-domain <- harmos-query <- harmos-storage <- harmos-operations <- harmos-runtime`.
-The runtime's `storage` feature is off by default. Enabling it selects the public
-in-memory primary and recovery adapters unless the application registers its own
-`StorageBackends`. Disabling it must remove storage, query and Arrow from the
-runtime's production dependency graph. These changes are not yet landed.
+The domain contracts, query engine and storage layers are implemented in their
+named crates. `harmos-storage::memory::{Backend, RecoveryBackend}` provides the
+public process-lifetime implementation. `StorageBackends::in_memory` composes it;
+`harmos_runtime::storage::StorageManager::in_memory(catalog, settings)` supplies
+the runtime clock. Consumers still supply their budgets.
 
-### Current Module Inventory
+**Pending locked direction:** runtime storage must become off by default and
+select the memory implementation when no product backend is registered. The
+current plugin manager stores its registry and resolves bundle content through
+`StorageManager`; its dependency must be separated before a runtime without
+storage can exclude storage, query and Arrow. That manager is outside this
+worktree's authorized edit scope. No feature-isolation claim is made here.
 
-Every path in this inventory is relative to `crates/harmos-storage/src/`.
+### Inventory Before the Split
+
+This is the required pre-move inventory. Every path is relative to `crates/harmos-storage/src/`.
 The categories describe responsibility, not the current module visibility.
 
 | Responsibility | Current Modules |
@@ -46,13 +54,14 @@ The categories describe responsibility, not the current module visibility.
 | Backend | `sqlite/**`, `state/file/**`; both leave the library |
 | Benchmark Fixtures | `bench_support/**`; migrate workloads to the in-memory adapter |
 
-The in-memory implementation currently lives in `tests/support/{storage,read_backend,
-file_backend,record_store}.rs`. Promote its actual data and recovery behavior;
-fault injection, counters, gates and test settings remain test support.
+The in-memory implementation previously lived in `tests/support/{storage,read_backend,
+file_backend,record_store}.rs`. Its data, recovery and deterministic control state now live in `src/memory/`;
+fixture settings remain under test support. The snapshot payload is immutable
+`Arc<[u8]>` with the existing segmented digest checks, without a temporary file.
 
 ### Query Import Inventory
 
-The current 27 `use crate::storage...` declarations are listed below. Line numbers
+The original 27 `use crate::storage...` declarations are listed below. Line numbers
 refer to the tree before the split. Self-imports are included so the count is
 reproducible; they are not all dependencies on manager state.
 
@@ -105,7 +114,7 @@ No replacement engine API exposes `Sample` or storage catalog state.
 
 ### Batch Source at a Cut
 
-The following is the proposed seam, not a compatibility export. `Source`,
+The implemented seam is in `harmos-query/src/batches.rs`. `Source`,
 `StorageCursor`, filters and projections are domain contracts. `BatchScan`,
 `BatchPage`, `QueryFuture` and the two traits belong to `harmos-query`.
 
@@ -125,7 +134,7 @@ pub trait BatchReader: Send {
 ```
 
 `BatchScan` carries bounded row/byte work limits, an optional payload projection
-and pruning filters/time bounds. Opening fixes the cut and output schema. Source
+and a pruning filter; selection carries the time bounds. Opening fixes the cut and output schema. Source
 implementations must honor selection and cut, may prune false rows, and must
 produce exactly the requested projected schema. Residual engine filters preserve
 correctness when pruning is declined. A page carries a batch and an explicit
@@ -135,12 +144,73 @@ tokens; neither is interpreted by the engine.
 
 The storage implementation owns snapshot validation/retention, active query
 admission, object schema normalization, bounded backend calls and row-to-batch
-conversion. It reacquires admission per page, and cancellation releases owned work.
+conversion. Manager readers own admission while a page is active; operation pagination releases
+it between pages. Standalone batch sources acquire admission while opening and
+reading each page, so a two-input engine reader also works with one active slot.
+Cancellation releases owned work.
 A backend with native batches can implement the same source, including projection
 and pruning, without exposing its persistence model. Engine readers own plans,
 transforms, reductions, ordering, spill and typed batch decoding. The manager calls
 their public constructors and transforms; the engine never imports manager,
 session, receipt, staging, executor or recovery types. This admits the crate split.
+
+### Implemented Crate Boundaries
+
+`harmos-domain` owns selections, cursors, `Query`, `TimeMerge`, shared read limits
+and payload schema contracts. `harmos-query` owns Arrow wrappers, the batch-source
+traits, execution plans, transforms, reductions, statistics, ordering, spill,
+typed readers, columnar execution helpers and index key encoding. It has no
+storage dependency. Storage owns admission, snapshots, source decoding and
+backend calls, index/projection catalogs and atomic publication. The former
+SQLite backend and file recovery journal are removed. Arrow in storage is used
+for admitted-batch conversion and manager query integration.
+
+Products implement `StorageBackend` and `state::StateBackend`, register their
+object catalog and pass `StorageBackends { primary, state }` to runtime
+`StorageManager::with_catalog(catalog, backends, settings)`. Register that manager
+with `setup.settings().storage(&storage)`. The two backend owners have separate
+flush/session contracts; the library promises no cross-owner transaction. The
+in-memory adapters retain saved cuts, receipts, files and recovery only for the
+lifetime of their shared instances. Process restart durability is a product
+backend responsibility. See [Storage Interfaces](storage.md#backend-registration).
+
+### One Ordered Time Merge
+
+`Query.merge: Option<TimeMerge>` names one secondary stream at the query's exact
+cut. Both inputs must be nondecreasing by their named Int64 or nanosecond timestamp
+fields. The engine refuses descending input. Output nests complete rows under
+`left` and `right`; ordinary transforms then project, group or aggregate it.
+`TimeMerge.work` bounds retained rows and Arrow bytes; output follows the ordinary
+page limits. The same sweep operator implements all four uses:
+
+```rust,ignore
+let merge = |mode| TimeMerge {
+    source: samples.clone(),
+    primary_time: FieldPath::from("payload.time"),
+    secondary_time: FieldPath::from("payload.time"),
+    mode,
+    work,
+};
+// Record [start, end) windows, including overlapping windows.
+query.source = records.clone();
+query.merge = Some(merge(TimeMergeMode::Range { end: FieldPath::from("payload.end") }));
+// Latest stream value at or before each record; absent values are null.
+query.merge = Some(merge(TimeMergeMode::AtOrBefore));
+// Rows in [record time, next record time), then existing grouped aggregates.
+query.merge = Some(merge(TimeMergeMode::Intervals));
+query.transforms = vec![grouped_aggregate];
+// The same at-or-before operation with a stream as the primary input.
+query.source = another_stream;
+query.merge = Some(merge(TimeMergeMode::AtOrBefore));
+```
+
+At-or-before ties select the last secondary row at that time. Interval ties select
+the last primary record; rows before the first record are omitted and the final
+interval extends to the end of the stream. Range output follows secondary time
+then primary record order. This is an ordered temporal operation, not a general
+join. In-process `ListRowsRequest.merge` uses this domain shape without a wire
+change. Four adapter stories live in `tests/integration/time_merge.rs`; the query
+crate's `integration-time-merge` bench measures each use over 1,000,000 rows.
 
 ## How to Use This Document
 
@@ -463,7 +533,7 @@ and caller-face authorization remain independent checks.
     and atomic conditional object replacement; preserve backend durability guarantees.
     **Why:** one generic read/write label would erase consistency and conflict behavior.
     **Where:** `crates/harmos-storage/src/snapshot.rs`,
-    `crates/harmos-storage/src/backend.rs`, `crates/harmos-storage/src/sqlite/mod.rs`,
+    `crates/harmos-storage/src/backend.rs`, `crates/harmos-storage/src/memory/`,
     `docs/storage.md`; requirement: Distinct Storage Guarantees in
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
     **Proof:** `saved_windows_match_fallback_while_live_writes_and_cancellation_advance`
@@ -474,8 +544,9 @@ and caller-face authorization remain independent checks.
     `crates/harmos-storage/tests/integration/projection_replay.rs`;
     `conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_restart`
     in `crates/harmos-storage/tests/integration/conditional_objects.rs`.
-    SQLite uses WAL with synchronous FULL; changing flush cadence is not permission
-    to weaken durability. New durable Watch semantics remain invariant 11's direction.
+    The memory adapter saves within its instance lifetime; a product backend owns
+    durable media. Changing flush cadence never weakens a registered backend's
+    guarantees. New durable Watch semantics remain invariant 11's direction.
     **Status:** landed.
 
 14. **Refuse Incompatible Roots.** Incompatible host state definitions or corrupt

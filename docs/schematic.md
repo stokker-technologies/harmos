@@ -55,8 +55,8 @@ read its effective library-stored value through plugin-host `Settings.List` when
 routing. A client updates complete plugin settings through
 `client.plugins.settings.{list,set}`; the plugin's caller identity scopes its read.
 The native host launches its own sidecar process and creates a remote entry through
-the library manager. The manager stores typed settings in the example's SQLite
-registry beside its recovery files. Entry deletion settles the activation before
+the library manager. The manager stores typed settings in the example's shared
+in-memory registry for that host lifetime. Entry deletion settles the activation before
 the application reaps its process. `LaunchConfig.plugins` selects this management
 assembly; focused storage hosts can supply their own storage assembly instead.
 Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
@@ -67,7 +67,7 @@ messages with SDK operation builders. Native analysis publishes
 progress through its host-owned callback resource.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
-the recovery journal and recordings, configures `Setup<Self>`, and places the
+the in-memory storage and recording consumer, configures `Setup<Self>`, and places the
 operation catalog value. The application composes `transactions_state_catalog()`,
 `records_registry()` and stream definitions as values. Transaction entries explicitly
 select `.reversible::<Inverse>()` or `.barrier()`. `app::launch` calls `Runtime::launch`; shutdown drains work
@@ -146,16 +146,18 @@ Fixture preparation joins the Product and Tests manifests and stamps those exact
 `target/build/dev/<target>/fixtures/stamp.json`, and the system stories in
 `crates/*/tests/system/` drive those artifacts.
 
-The [JSONL adapter](../examples/schematic/storage/) is the example's persistence format. A document's recovery journal is distinct from a native
-plugin sidecar. Saving uses the adapter's checkpoint protocol after runtime
-settlement and publishes the document through an atomic file replacement.
+The application owns [document serialization](../examples/schematic/app/src/document.rs).
+Save settles the runtime and atomically replaces a JSON document containing the
+state and position. Open reads that explicit document; there is no automatic
+JSONL recovery or recording sidecar. Unsaved state is process-lifetime state.
 
-The optional [query service composition](../examples/schematic/app/src/services/queries.rs)
-constructs a SQLite/Arrow backend beside the JSONL adapter using caller-supplied history,
-catalog and storage budgets. The [saved preview journey](../examples/schematic/app/tests/storage/main.rs)
-covers saved scans and conditional update/conflict outcomes through the library's
-in-process storage operations.
-It leaves the document's recovery and stream persistence with their existing adapters.
+The [storage composition](../examples/schematic/app/src/services/queries.rs)
+constructs the public in-memory adapter with the application catalog and caller
+budgets. Managed state, plugin registry, file operations and the stream recording
+consumer share that manager. [Storage stories](../examples/schematic/app/tests/storage/main.rs)
+cover retained scans, conditional outcomes and resumable application uploads.
+A product needing process-restart durability supplies its own primary and recovery
+backends through `StorageBackends`; the example carries no disk backend.
 
 ## Application File Contracts
 
@@ -189,7 +191,7 @@ The native gRPC plugin is a Product artifact; its framed transport benchmarks ar
 The host benchmarks transfer 10,000 records, 30 MiB of file bytes and 1,000,000
 samples in both directions, running the datasets concurrently on one reused
 host/guest instance. Setup and verification are outside timing.
-The transfer store is in memory; storage benchmarks separately measure disk I/O.
+The transfer store is in memory; library storage benchmarks separately measure manager and memory-adapter costs.
 
 The CLI writes a structured `schematic-walkthrough-<pid>.json` document and analysis result
 when `STKR_TEST_REPORT_DIR` is set. System and packaged journeys inspect this data alongside
