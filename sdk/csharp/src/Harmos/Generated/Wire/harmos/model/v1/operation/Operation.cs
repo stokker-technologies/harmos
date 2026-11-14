@@ -25,50 +25,51 @@ namespace Harmos;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "Ch9oYXJtb3MvbW9kZWwvdjEvb3BlcmF0aW9uLnByb3RvEg9oYXJtb3MubW9k",
-            "ZWwudjEaHGhhcm1vcy9tb2RlbC92MS9wb2xpY3kucHJvdG8itQIKEU9wZXJh",
-            "dGlvbkNvbnRyYWN0Eg4KAmlkGAEgASgJUgJpZBIYCgdyZXF1ZXN0GAIgASgJ",
-            "UgdyZXF1ZXN0EhoKCHJlc3BvbnNlGAMgASgJUghyZXNwb25zZRI7Cgp2aXNp",
-            "YmlsaXR5GAQgASgOMhsuaGFybW9zLm1vZGVsLnYxLlZpc2liaWxpdHlSCnZp",
-            "c2liaWxpdHkSOAoGcG9saWN5GAUgASgLMiAuaGFybW9zLm1vZGVsLnYxLk9w",
-            "ZXJhdGlvblBvbGljeVIGcG9saWN5EiAKC2ZpbmdlcnByaW50GAYgASgMUgtm",
-            "aW5nZXJwcmludBIgCgtkZXNjcmlwdGlvbhgHIAEoCVILZGVzY3JpcHRpb24S",
-            "HwoLcmVwbGF5X3NhZmUYCCABKAhSCnJlcGxheVNhZmUiPwoLUmVxdWlyZW1l",
-            "bnQSDgoCaWQYASABKAlSAmlkEiAKC2ZpbmdlcnByaW50GAIgASgMUgtmaW5n",
-            "ZXJwcmludCKvAQoIUHJvdG9idWYSIAoLZGVzY3JpcHRvcnMYASABKAxSC2Rl",
-            "c2NyaXB0b3JzEhgKB3JlcXVlc3QYAiABKAlSB3JlcXVlc3QSGgoIcmVzcG9u",
-            "c2UYAyABKAlSCHJlc3BvbnNlEhkKBWlucHV0GAQgASgJSABSBWlucHV0iAEB",
-            "EhsKBm91dHB1dBgFIAEoCUgBUgZvdXRwdXSIAQFCCAoGX2lucHV0QgkKB19v",
-            "dXRwdXQibAoER3JwYxIYCgdwYWNrYWdlGAEgASgJUgdwYWNrYWdlEhgKB3Nl",
-            "cnZpY2UYAiABKAlSB3NlcnZpY2USFgoGbWV0aG9kGAMgASgJUgZtZXRob2QS",
-            "GAoHbWFuYWdlZBgEIAEoCFIHbWFuYWdlZCJKCgVHcmFudBIcCglvcGVyYXRp",
-            "b24YASABKAlSCW9wZXJhdGlvbhIZCgVzY29wZRgCIAEoCUgAUgVzY29wZYgB",
-            "AUIICgZfc2NvcGUi4gIKEkRpc2NvdmVyZWRDb250cmFjdBIOCgJpZBgBIAEo",
-            "CVICaWQSIAoLZGVzY3JpcHRpb24YAiABKAlSC2Rlc2NyaXB0aW9uEjsKCnZp",
-            "c2liaWxpdHkYAyABKA4yGy5oYXJtb3MubW9kZWwudjEuVmlzaWJpbGl0eVIK",
-            "dmlzaWJpbGl0eRI4CgZwb2xpY3kYBCABKAsyIC5oYXJtb3MubW9kZWwudjEu",
-            "T3BlcmF0aW9uUG9saWN5UgZwb2xpY3kSHwoLcmVwbGF5X3NhZmUYBSABKAhS",
-            "CnJlcGxheVNhZmUSIAoLZmluZ2VycHJpbnQYBiABKAxSC2ZpbmdlcnByaW50",
-            "EjUKCHByb3RvYnVmGAcgASgLMhkuaGFybW9zLm1vZGVsLnYxLlByb3RvYnVm",
-            "Ughwcm90b2J1ZhIpCgRncnBjGAggASgLMhUuaGFybW9zLm1vZGVsLnYxLkdy",
-            "cGNSBGdycGMikgIKE0Rpc2NvdmVyZWRPcGVyYXRpb24SFAoFb3duZXIYASAB",
-            "KAlSBW93bmVyEh4KCmdlbmVyYXRpb24YAiABKARSCmdlbmVyYXRpb24SPwoI",
-            "Y29udHJhY3QYAyABKAsyIy5oYXJtb3MubW9kZWwudjEuRGlzY292ZXJlZENv",
-            "bnRyYWN0Ughjb250cmFjdBIuCgZncmFudHMYBCADKAsyFi5oYXJtb3MubW9k",
-            "ZWwudjEuR3JhbnRSBmdyYW50cxItChJjb25kaXRpb25hbF9hY2Nlc3MYBSAB",
-            "KAhSEWNvbmRpdGlvbmFsQWNjZXNzEiUKDmdycGNfYXZhaWxhYmxlGAYgASgI",
-            "Ug1ncnBjQXZhaWxhYmxlKnEKClZpc2liaWxpdHkSGgoWVklTSUJJTElUWV9V",
-            "TlNQRUNJRklFRBAAEhYKElZJU0lCSUxJVFlfUFJJVkFURRABEhUKEVZJU0lC",
-            "SUxJVFlfUFVCTElDEAISGAoUVklTSUJJTElUWV9QUk9URUNURUQQA2IGcHJv",
-            "dG8z"));
+            "ZWwudjEaHWhhcm1vcy9tb2RlbC92MS9jYWxsZXJzLnByb3RvGhxoYXJtb3Mv",
+            "bW9kZWwvdjEvcG9saWN5LnByb3RvIrUCChFPcGVyYXRpb25Db250cmFjdBIO",
+            "CgJpZBgBIAEoCVICaWQSGAoHcmVxdWVzdBgCIAEoCVIHcmVxdWVzdBIaCghy",
+            "ZXNwb25zZRgDIAEoCVIIcmVzcG9uc2USOwoKdmlzaWJpbGl0eRgEIAEoDjIb",
+            "Lmhhcm1vcy5tb2RlbC52MS5WaXNpYmlsaXR5Ugp2aXNpYmlsaXR5EjgKBnBv",
+            "bGljeRgFIAEoCzIgLmhhcm1vcy5tb2RlbC52MS5PcGVyYXRpb25Qb2xpY3lS",
+            "BnBvbGljeRIgCgtmaW5nZXJwcmludBgGIAEoDFILZmluZ2VycHJpbnQSIAoL",
+            "ZGVzY3JpcHRpb24YByABKAlSC2Rlc2NyaXB0aW9uEh8KC3JlcGxheV9zYWZl",
+            "GAggASgIUgpyZXBsYXlTYWZlIj8KC1JlcXVpcmVtZW50Eg4KAmlkGAEgASgJ",
+            "UgJpZBIgCgtmaW5nZXJwcmludBgCIAEoDFILZmluZ2VycHJpbnQirwEKCFBy",
+            "b3RvYnVmEiAKC2Rlc2NyaXB0b3JzGAEgASgMUgtkZXNjcmlwdG9ycxIYCgdy",
+            "ZXF1ZXN0GAIgASgJUgdyZXF1ZXN0EhoKCHJlc3BvbnNlGAMgASgJUghyZXNw",
+            "b25zZRIZCgVpbnB1dBgEIAEoCUgAUgVpbnB1dIgBARIbCgZvdXRwdXQYBSAB",
+            "KAlIAVIGb3V0cHV0iAEBQggKBl9pbnB1dEIJCgdfb3V0cHV0ImwKBEdycGMS",
+            "GAoHcGFja2FnZRgBIAEoCVIHcGFja2FnZRIYCgdzZXJ2aWNlGAIgASgJUgdz",
+            "ZXJ2aWNlEhYKBm1ldGhvZBgDIAEoCVIGbWV0aG9kEhgKB21hbmFnZWQYBCAB",
+            "KAhSB21hbmFnZWQiSgoFR3JhbnQSHAoJb3BlcmF0aW9uGAEgASgJUglvcGVy",
+            "YXRpb24SGQoFc2NvcGUYAiABKAlIAFIFc2NvcGWIAQFCCAoGX3Njb3BlIpYD",
+            "ChJEaXNjb3ZlcmVkQ29udHJhY3QSDgoCaWQYASABKAlSAmlkEiAKC2Rlc2Ny",
+            "aXB0aW9uGAIgASgJUgtkZXNjcmlwdGlvbhI7Cgp2aXNpYmlsaXR5GAMgASgO",
+            "MhsuaGFybW9zLm1vZGVsLnYxLlZpc2liaWxpdHlSCnZpc2liaWxpdHkSOAoG",
+            "cG9saWN5GAQgASgLMiAuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvblBvbGlj",
+            "eVIGcG9saWN5Eh8KC3JlcGxheV9zYWZlGAUgASgIUgpyZXBsYXlTYWZlEiAK",
+            "C2ZpbmdlcnByaW50GAYgASgMUgtmaW5nZXJwcmludBI1Cghwcm90b2J1ZhgH",
+            "IAEoCzIZLmhhcm1vcy5tb2RlbC52MS5Qcm90b2J1ZlIIcHJvdG9idWYSKQoE",
+            "Z3JwYxgIIAEoCzIVLmhhcm1vcy5tb2RlbC52MS5HcnBjUgRncnBjEjIKB2Nh",
+            "bGxlcnMYCSABKA4yGC5oYXJtb3MubW9kZWwudjEuQ2FsbGVyc1IHY2FsbGVy",
+            "cyKSAgoTRGlzY292ZXJlZE9wZXJhdGlvbhIUCgVvd25lchgBIAEoCVIFb3du",
+            "ZXISHgoKZ2VuZXJhdGlvbhgCIAEoBFIKZ2VuZXJhdGlvbhI/Cghjb250cmFj",
+            "dBgDIAEoCzIjLmhhcm1vcy5tb2RlbC52MS5EaXNjb3ZlcmVkQ29udHJhY3RS",
+            "CGNvbnRyYWN0Ei4KBmdyYW50cxgEIAMoCzIWLmhhcm1vcy5tb2RlbC52MS5H",
+            "cmFudFIGZ3JhbnRzEi0KEmNvbmRpdGlvbmFsX2FjY2VzcxgFIAEoCFIRY29u",
+            "ZGl0aW9uYWxBY2Nlc3MSJQoOZ3JwY19hdmFpbGFibGUYBiABKAhSDWdycGNB",
+            "dmFpbGFibGUqcQoKVmlzaWJpbGl0eRIaChZWSVNJQklMSVRZX1VOU1BFQ0lG",
+            "SUVEEAASFgoSVklTSUJJTElUWV9QUklWQVRFEAESFQoRVklTSUJJTElUWV9Q",
+            "VUJMSUMQAhIYChRWSVNJQklMSVRZX1BST1RFQ1RFRBADYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.PolicyReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Harmos.CallersReflection.Descriptor, global::Harmos.PolicyReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Harmos.Visibility), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.OperationContract), global::Harmos.OperationContract.Parser, new[]{ "Id", "Request", "Response", "Visibility", "Policy", "Fingerprint", "Description", "ReplaySafe" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Requirement), global::Harmos.Requirement.Parser, new[]{ "Id", "Fingerprint" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Protobuf), global::Harmos.Protobuf.Parser, new[]{ "Descriptors", "Request", "Response", "Input", "Output" }, new[]{ "Input", "Output" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Grpc), global::Harmos.Grpc.Parser, new[]{ "Package", "Service", "Method", "Managed" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Grant), global::Harmos.Grant.Parser, new[]{ "Operation", "Scope" }, new[]{ "Scope" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.DiscoveredContract), global::Harmos.DiscoveredContract.Parser, new[]{ "Id", "Description", "Visibility", "Policy", "ReplaySafe", "Fingerprint", "Protobuf", "Grpc" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.DiscoveredContract), global::Harmos.DiscoveredContract.Parser, new[]{ "Id", "Description", "Visibility", "Policy", "ReplaySafe", "Fingerprint", "Protobuf", "Grpc", "Callers" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.DiscoveredOperation), global::Harmos.DiscoveredOperation.Parser, new[]{ "Owner", "Generation", "Contract", "Grants", "ConditionalAccess", "GrpcAvailable" }, null, null, null, null)
           }));
     }
@@ -1762,6 +1763,7 @@ namespace Harmos;
       fingerprint_ = other.fingerprint_;
       protobuf_ = other.protobuf_ != null ? other.protobuf_.Clone() : null;
       grpc_ = other.grpc_ != null ? other.grpc_.Clone() : null;
+      callers_ = other.callers_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1867,6 +1869,18 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "callers" field.</summary>
+    public const int CallersFieldNumber = 9;
+    private global::Harmos.Callers callers_ = global::Harmos.Callers.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.Callers Callers {
+      get { return callers_; }
+      set {
+        callers_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1890,6 +1904,7 @@ namespace Harmos;
       if (Fingerprint != other.Fingerprint) return false;
       if (!object.Equals(Protobuf, other.Protobuf)) return false;
       if (!object.Equals(Grpc, other.Grpc)) return false;
+      if (Callers != other.Callers) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1905,6 +1920,7 @@ namespace Harmos;
       if (Fingerprint.Length != 0) hash ^= Fingerprint.GetHashCode();
       if (protobuf_ != null) hash ^= Protobuf.GetHashCode();
       if (grpc_ != null) hash ^= Grpc.GetHashCode();
+      if (Callers != global::Harmos.Callers.Unspecified) hash ^= Callers.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1955,6 +1971,10 @@ namespace Harmos;
         output.WriteRawTag(66);
         output.WriteMessage(Grpc);
       }
+      if (Callers != global::Harmos.Callers.Unspecified) {
+        output.WriteRawTag(72);
+        output.WriteEnum((int) Callers);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1997,6 +2017,10 @@ namespace Harmos;
         output.WriteRawTag(66);
         output.WriteMessage(Grpc);
       }
+      if (Callers != global::Harmos.Callers.Unspecified) {
+        output.WriteRawTag(72);
+        output.WriteEnum((int) Callers);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -2030,6 +2054,9 @@ namespace Harmos;
       }
       if (grpc_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Grpc);
+      }
+      if (Callers != global::Harmos.Callers.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Callers);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -2075,6 +2102,9 @@ namespace Harmos;
           Grpc = new global::Harmos.Grpc();
         }
         Grpc.MergeFrom(other.Grpc);
+      }
+      if (other.Callers != global::Harmos.Callers.Unspecified) {
+        Callers = other.Callers;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -2136,6 +2166,10 @@ namespace Harmos;
             input.ReadMessage(Grpc);
             break;
           }
+          case 72: {
+            Callers = (global::Harmos.Callers) input.ReadEnum();
+            break;
+          }
         }
       }
     #endif
@@ -2194,6 +2228,10 @@ namespace Harmos;
               Grpc = new global::Harmos.Grpc();
             }
             input.ReadMessage(Grpc);
+            break;
+          }
+          case 72: {
+            Callers = (global::Harmos.Callers) input.ReadEnum();
             break;
           }
         }

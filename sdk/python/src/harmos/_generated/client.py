@@ -207,8 +207,8 @@ class PluginsSettingsResource:
 
     async def list(
         self,
+        name: str,
         *,
-        name: str | None = None,
         at: ReadCut | None = None,
         metadata: Metadata | None = None,
         timeout: float | None = None,

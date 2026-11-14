@@ -15,8 +15,10 @@
 
 // Local Imports
 #include "conformance.hpp"
+#include "_wire/caller.hpp"
 #include "_wire/contracts.hpp"
 #include "generated/types.hpp"
+#include "harmos/host/v1/invocations.pb.h"
 
 namespace authoring = harmos::plugin;
 namespace fixture_types = harmos::conformance;
@@ -40,6 +42,8 @@ using harmos::conformance::detail::steps_operation;
 using Graph = harmos::conformance::Graph;
 using Value = harmos::conformance::Value;
 using ValueOperation = harmos::plugin::Operation<Value, Value>;
+using harmos::host::v1::InvocationsCreateRequest;
+using harmos::host::v1::InvocationsCreateResponse;
 using harmos::plugin::Context;
 
 /* === Classes === */
@@ -376,6 +380,27 @@ authoring::Plugin fixture_types::plugin() {
     return value("cancelled");
   });
   plugin.stream(cancellations).observer(cancel_observer.every(interval));
+
+  const authoring::Operation<InvocationsCreateRequest, InvocationsCreateResponse> create("harmos.host.v1.Invocations/Create",
+                                                                                         sdk::VISIBILITY_PUBLIC);
+  const auto refuse = [create](Context &context, Value) {
+    InvocationsCreateRequest request;
+    if (!request.ParseFromArray(fixture_types::caller_request.data(), static_cast<int>(fixture_types::caller_request.size()))) {
+      throw runtime_error("Create Invocation: Invalid Generated Probe Request");
+    }
+    try {
+      context.call(create, request).get();
+    } catch (const sdk::Failure &failure) {
+      return value(authoring::detail::encode(failure.value));
+    }
+    throw runtime_error("Create Invocation: Client-Only Operation Was Admitted");
+  };
+  plugin.operation(ValueOperation("conformance.caller_refusal", sdk::VISIBILITY_PUBLIC, refuse)).requires_operation(create);
+  authoring::Stream<Value> refusals("conformance.tick_caller_refusal");
+  authoring::Observer<Value> refusal_observer(refusals, [refuse](Context &context) {
+    return refuse(context, Value{});
+  });
+  plugin.stream(refusals).observer(refusal_observer.every(interval));
 
   return plugin;
 }

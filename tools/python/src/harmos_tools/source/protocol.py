@@ -51,7 +51,7 @@ def caller_options(descriptors: FileDescriptorSet) -> dict[str, str]:
             del pending[file.name]
     result = {}
     for file in descriptors.file:
-        if not any(part in {"host", "plugin"} for part in Path(file.name).parts[:-1]):
+        if "host" not in Path(file.name).parts[:-1]:
             continue
         for service in file.service:
             for method in service.method:

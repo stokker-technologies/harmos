@@ -32,10 +32,10 @@ from harmos import (
 )
 from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest
 from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, TimeGetResponse, observer, operation, publisher
 
 from . import Graph, PayloadOnly, Value
+from ._caller import REQUEST
 
 # Type Checking Imports
 
@@ -56,7 +56,6 @@ HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISI
 CREATE_INVOCATION = Operation(
     "harmos.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
 )
-GET_TIME = Operation("harmos.host.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
 
 # === Types === #
 
@@ -223,16 +222,12 @@ class Fixture:
 
     @operation("conformance.caller_refusal", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def caller_refusal(self, context: Context, request: Value) -> Value:
-        create = InvocationsCreateRequest(operation=GET_TIME.id, fingerprint=GET_TIME.fingerprint, payload=b"")
+        create = InvocationsCreateRequest.FromString(REQUEST)
         try:
             await context.call(CREATE_INVOCATION, create)
         except Failure as failure:
             return Value(value=failure.value.SerializeToString())
         raise RuntimeError("Create Invocation: Client-Only Host Operation Was Admitted")
-
-    @observer("conformance.tick_caller_refusal", row=Value, interval=Duration(seconds=1))
-    async def tick_caller_refusal(self, context: Context) -> Value:
-        return await self.caller_refusal(context, Value())
 
     @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
     async def ticks(self, ctx: Context) -> Value:
@@ -304,6 +299,10 @@ class Fixture:
         automatic.add_done_callback(_settled)
         await started.wait()
         return Value(value=b"cancelled")
+
+    @observer("conformance.tick_caller_refusal", row=Value, interval=Duration(seconds=1))
+    async def tick_caller_refusal(self, context: Context) -> Value:
+        return await self.caller_refusal(context, Value())
 
 
 class ClockFixture:

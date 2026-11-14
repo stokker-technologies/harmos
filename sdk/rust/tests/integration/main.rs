@@ -21,19 +21,19 @@ mod support {
 }
 
 extern crate self as application_protocol;
-mod v1 {
-    include!("../fixtures/client/application.v1.rs");
+mod host {
+    include!("../fixtures/client/application.host.v1.rs");
     pub mod jobs {
-        include!("../fixtures/client/application.v1.jobs.rs");
+        include!("../fixtures/client/application.host.v1.jobs.rs");
     }
     pub mod plugins {
-        include!("../fixtures/client/application.v1.plugins.rs");
+        include!("../fixtures/client/application.host.v1.plugins.rs");
     }
 }
 mod client_reflection {
     include!("../fixtures/client/client-reflection.rs");
 }
-use v1 as wire;
+use host as wire;
 mod composed_resources {
     include!("../fixtures/client/resources.rs");
 }

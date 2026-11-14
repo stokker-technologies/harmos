@@ -135,7 +135,6 @@ pub struct OperationsGetOptions {
 }
 #[derive(Default)]
 pub struct PluginsSettingsListOptions {
-    pub name: Option<String>,
     pub at: Option<ReadCut>,
     pub context: CallOptions,
 }
@@ -751,11 +750,11 @@ impl PluginsSettings {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<SettingsListResponse, RpcStatus> {
-        self.list_with(PluginsSettingsListOptions::default()).await
+    pub async fn list(&self, name: impl Into<String>) -> Result<SettingsListResponse, RpcStatus> {
+        self.list_with(name, PluginsSettingsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
-        let value = SettingsListRequest { name: options.name, at: options.at };
+    pub async fn list_with(&self, name: impl Into<String>, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
+        let value = SettingsListRequest { name: Some(name.into()), at: options.at };
         let request = options.context.request(value);
         let response = self
             .client

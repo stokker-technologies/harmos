@@ -32,6 +32,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    task::{Context, Poll},
     time::{Duration, SystemTime},
 };
 
@@ -91,6 +92,10 @@ type Frames<T> = Pin<Box<dyn Stream<Item = StdResult<T, Status>> + Send>>;
 struct App;
 struct Probe;
 
+struct Forwarding<T> {
+    incoming: Pin<Box<Streaming<T>>>,
+}
+
 #[derive(Clone)]
 struct Forward {
     client: InstanceClient<Channel>,
@@ -102,6 +107,21 @@ struct Forward {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl<T> Stream for Forwarding<T>
+where
+    Streaming<T>: Stream<Item = StdResult<T, Status>>,
+{
+    type Item = T;
+
+    fn poll_next(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<T>> {
+        match self.incoming.as_mut().poll_next(context) {
+            Poll::Ready(Some(Ok(frame))) => Poll::Ready(Some(frame)),
+            Poll::Ready(Some(Err(_)) | None) => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
 
 impl ReflectMessage for CallerProbeGetRequest {
     fn descriptor(&self) -> MessageDescriptor {
@@ -116,12 +136,11 @@ impl ReflectMessage for CallerProbeGetResponse {
 }
 
 impl Lifecycle for App {
-    type Config = Arc<AtomicU64>;
+    type Config = ();
     type Error = IoError;
     type Context = Startup<Self>;
 
-    async fn prepare(counter: Self::Config, setup: &mut Setup<Self>) -> StdResult<Self, Self::Error> {
-        setup.resource(counter);
+    async fn prepare(_: Self::Config, setup: &mut Setup<Self>) -> StdResult<Self, Self::Error> {
         let factory = OperationFactory::protobuf::<Probe>().expect("caller probe contract");
         setup.catalog(Catalog::new().entry(factory), Default::default());
         setup.catalog(harmos_operations::lifecycle_catalog(), Default::default());
@@ -174,19 +193,15 @@ impl Instance for Forward {
     type InvokeStream = Streaming<InstanceInvokeResponse>;
 
     async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> StdResult<Response<Self::InvokeStream>, Status> {
-        let frames = stream::try_unfold(request.into_inner(), |mut incoming| async move {
-            incoming.message().await.map(|frame| frame.map(|frame| (frame, incoming)))
-        });
-        self.client.clone().invoke(frames.filter_map(|frame| async move { frame.ok() })).await
+        let frames = Forwarding { incoming: Box::pin(request.into_inner()) };
+        self.client.clone().invoke(frames).await
     }
 
     type SamplesStream = Frames<InstanceSamplesResponse>;
 
     async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> StdResult<Response<Self::SamplesStream>, Status> {
-        let frames = stream::try_unfold(request.into_inner(), |mut incoming| async move {
-            incoming.message().await.map(|frame| frame.map(|frame| (frame, incoming)))
-        });
-        let incoming = self.client.clone().samples(frames.filter_map(|frame| async move { frame.ok() })).await?.into_inner();
+        let frames = Forwarding { incoming: Box::pin(request.into_inner()) };
+        let incoming = self.client.clone().samples(frames).await?.into_inner();
         let sample = self.sample.clone();
         let frames = incoming.map(move |frame| {
             if let Ok(frame) = &frame {
@@ -227,7 +242,8 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
     // Compose a Real Host With the Same Caller Narrowing Used by SDK Generation.
     let counter = Arc::new(AtomicU64::new(0));
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::<App>::launch_with((), counter.clone(), |setup| {
+    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+        setup.resource::<AtomicU64>(counter.clone());
         setup.settings().clock(clock);
         setup.settings().operation_settings(OperationSettings {
             preparation_bytes: NonZeroUsize::new(16 * 1024 * 1024),

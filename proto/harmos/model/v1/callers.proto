@@ -14,7 +14,7 @@ import "google/protobuf/descriptor.proto";
 
 // === Options === //
 
-// Required on every wire operation; products may only narrow the declared audience.
+// Required on every host wire operation; products may only narrow the declared audience.
 extend google.protobuf.MethodOptions {
   Callers callers = 51001;
 }

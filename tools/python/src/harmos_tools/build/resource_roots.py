@@ -203,17 +203,46 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     python_exports(root / "sdk/python/src/harmos/_generated", descriptors)
     conformance = root / "sdk/rust/tests/fixtures/conformance/descriptors.bin"
     if conformance.is_file():
+        request = conformance.with_name("caller-request.bin").read_bytes()
+        (root / "sdk/python/tests/fixtures/conformance/_caller.py").write_text(
+            f"# @generated from caller probe descriptors; do not edit.\nREQUEST = {request!r}\n", encoding="utf-8", newline="\n"
+        )
+        subprocess.run(
+            [sys.executable, "-m", "ruff", "format", str(root / "sdk/python/tests/fixtures/conformance/_caller.py")],
+            check=True,
+            creationflags=spawn_flags(),
+        )
+        (root / "sdk/csharp/tests/Harmos.Conformance/CallerRequest.g.cs").write_text(
+            "// @generated from caller probe descriptors; do not edit.\nnamespace Harmos.Conformance;\n\ninternal static class CallerRequest\n{\n"
+            + "  internal static readonly byte[] Bytes = ["
+            + ", ".join(str(byte) for byte in request)
+            + "];\n}\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        caller = root / "sdk/cpp/examples/conformance/_wire/caller.hpp"
+        caller.write_text(
+            "// @generated from caller probe descriptors; do not edit.\n#pragma once\n#include <array>\n"
+            + "namespace harmos::conformance {\ninline constexpr std::array<unsigned char, "
+            + str(len(request))
+            + "> caller_request = {"
+            + ", ".join(str(byte) for byte in request)
+            + "};\n}\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        format_cpp([caller])
         schema = FileDescriptorSet.FromString(conformance.read_bytes())
         lines = [
             "// @generated from protocol descriptors; do not edit.",
             "#pragma once",
-            '#include "harmos/conformance/v1/fixture.pb.h"',
+            '#include "conformance/model/v1/fixture.pb.h"',
             "namespace harmos::conformance {",
         ]
         lines += [
             f"using {message.name} = ::{file.package.replace('.', '::')}::{message.name};"
             for file in schema.file
-            if file.package == "harmos.conformance.v1"
+            if file.package == "conformance.model.v1"
             for message in file.message_type
         ]
         lines += ["}"]
@@ -246,7 +275,11 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         cpp_host(root, [method for method in methods if method["face"] == "context"])
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
-        fixture_methods = clients + table(FileDescriptorSet.FromString(fixture.read_bytes()))
+        library = FileDescriptorSet.FromString(descriptors.SerializeToString())
+        composition = tomllib.loads((root / "sdk/tests/fixtures/client/composition.toml").read_text(encoding="utf-8"))
+        narrow_callers(library, composition.get("callers", {}))
+        fixture_methods = [method for method in table(library) if method["face"] == "client"]
+        fixture_methods += [method for method in table(FileDescriptorSet.FromString(fixture.read_bytes())) if method["face"] == "client"]
         merged = FileDescriptorSet()
         merged.file.extend(descriptors.file)
         merged.file.extend(FileDescriptorSet.FromString(fixture.read_bytes()).file)
@@ -771,7 +804,7 @@ def rust_message(full: str) -> str:
         return "prost_types::" + full.rsplit(".", 1)[-1]
     parts = full.split(".")
     version = next(index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part))
-    return snake(parts[0]) + "_protocol::" + "::".join(parts[version:])
+    return snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parts[version + 1 :]])
 
 
 def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
@@ -876,6 +909,8 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                 name = field["name"]
                 if name == "request_id":
                     expression = "match options.request_id { Some(value) => value, None => request_id()?, }"
+                elif method["request"] == "harmos.host.v1.plugins.SettingsListRequest" and name == "name":
+                    expression = "Some(name.into())"
                 elif field["optional"]:
                     expression = f"options.{name}"
                 elif field["kind"] == 11 and not field["repeated"]:
@@ -924,7 +959,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
     if target is not None:
         exports = sorted({method["response"] for method in methods if method["owner"] != "harmos"})
         facade = ["// @generated from protocol descriptors; do not edit."]
-        facade += [f"pub use {re.sub(r'^\w+_protocol::v[0-9]+', 'crate::wire', rust_message(name))};" for name in exports]
+        facade += [f"pub use {re.sub(r'^\w+_protocol::(?:host|plugin|model)', 'crate::wire', rust_message(name))};" for name in exports]
         (target.parent / "client_types.rs").write_text("\n".join(facade) + "\n", encoding="utf-8", newline="\n")
     if target is None:
         exports = [*names.values(), *("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)]
@@ -1861,7 +1896,14 @@ def format_cpp(paths: list[Path]) -> None:
 
 
 def compose(
-    repository: Path, descriptors: list[Path], output: Path, namespace: str, *, language: str | None = None, composition: Path | None = None
+    repository: Path,
+    descriptors: list[Path],
+    output: Path,
+    namespace: str,
+    *,
+    language: str | None = None,
+    composition: Path | None = None,
+    check: bool = False,
 ) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
         raise ValueError("Generate Client: Invalid Output Namespace")
@@ -1903,6 +1945,14 @@ def compose(
             merged,
             module_prefixes={package: f"{namespace}._wire.{package}" for package in packages},
         )
+    elif language == "csharp":
+        csharp(
+            repository, [method for method in table(merged) if method["face"] == "client"], namespace=namespace, target=output, check=check
+        )
+    elif language == "rust":
+        rust(repository, [method for method in table(merged) if method["face"] == "client"], target=output)
+    elif language == "cpp":
+        cpp(repository, [method for method in table(merged) if method["face"] == "client"], namespace=namespace, target=output)
     else:
         generate(output, merged, namespace=namespace)
 

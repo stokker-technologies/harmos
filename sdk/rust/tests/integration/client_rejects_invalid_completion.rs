@@ -24,7 +24,7 @@ use std::{
 };
 
 // Third Party Imports
-use super::v1::{JobsStartRequest, JobsStartResponse};
+use super::host::{JobsStartRequest, JobsStartResponse};
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, client::Method};
 use harmos_protocol::model::StorageTransferSettings;
@@ -183,8 +183,8 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     let descriptors = JobsStartRequest::default().descriptor().parent_pool().encode_to_vec();
     let protobuf = Protobuf {
         descriptors,
-        request: "application.v1.JobsStartRequest".into(),
-        response: "application.v1.JobsStartResponse".into(),
+        request: "application.host.v1.JobsStartRequest".into(),
+        response: "application.host.v1.JobsStartResponse".into(),
         input: None,
         output: None,
     };

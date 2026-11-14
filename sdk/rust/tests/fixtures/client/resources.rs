@@ -1,10 +1,10 @@
 // @generated from protocol descriptors; do not edit.
-use application_protocol::v1::JobsStartRequest;
-use application_protocol::v1::JobsStartResponse;
-use application_protocol::v1::jobs::ProgressWatchRequest;
-use application_protocol::v1::jobs::ProgressWatchResponse;
-use application_protocol::v1::plugins::AnnotationsGetRequest;
-use application_protocol::v1::plugins::AnnotationsGetResponse;
+use application_protocol::host::JobsStartRequest;
+use application_protocol::host::JobsStartResponse;
+use application_protocol::host::jobs::ProgressWatchRequest;
+use application_protocol::host::jobs::ProgressWatchResponse;
+use application_protocol::host::plugins::AnnotationsGetRequest;
+use application_protocol::host::plugins::AnnotationsGetResponse;
 use harmos::client::{CallOptions, ClientTransport, Watching, action_error, request_id};
 use harmos_protocol::host::InvocationsCancelRequest;
 use harmos_protocol::host::InvocationsCancelResponse;
@@ -47,8 +47,6 @@ use harmos_protocol::host::StatusWatchResponse;
 use harmos_protocol::host::StreamIdentity;
 use harmos_protocol::host::StreamsListRequest;
 use harmos_protocol::host::StreamsListResponse;
-use harmos_protocol::host::TimeGetRequest;
-use harmos_protocol::host::TimeGetResponse;
 use harmos_protocol::host::TimeSleepRequest;
 use harmos_protocol::host::TimeSleepResponse;
 use harmos_protocol::host::access::CertificatesCreateRequest;
@@ -87,7 +85,6 @@ use harmos_protocol::model::Receipt;
 use harmos_protocol::model::SettingValues;
 use prost_reflect::ReflectMessage;
 use prost_types::Duration;
-use prost_types::Timestamp;
 use tonic::Status as RpcStatus;
 use tonic::codegen::http::uri::PathAndQuery;
 #[derive(Default)]
@@ -141,7 +138,6 @@ pub struct OperationsGetOptions {
 }
 #[derive(Default)]
 pub struct PluginsSettingsListOptions {
-    pub name: Option<String>,
     pub at: Option<ReadCut>,
     pub context: CallOptions,
 }
@@ -231,10 +227,6 @@ pub struct StatusWatchOptions {
 #[derive(Default)]
 pub struct StreamsListOptions {
     pub schema: Option<String>,
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct TimeGetOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
@@ -546,7 +538,7 @@ impl Jobs {
         let response = self
             .client
             .unary::<JobsStartRequest, JobsStartResponse>(
-                PathAndQuery::from_static("/application.v1.Jobs/Start"),
+                PathAndQuery::from_static("/application.host.v1.Jobs/Start"),
                 request,
                 JobsStartResponse::default().descriptor(),
             )
@@ -573,7 +565,7 @@ impl JobsProgress {
         let response = self
             .client
             .watch_known::<ProgressWatchRequest, ProgressWatchResponse>(
-                PathAndQuery::from_static("/application.v1.jobs.Progress/Watch"),
+                PathAndQuery::from_static("/application.host.v1.jobs.Progress/Watch"),
                 request,
                 ProgressWatchResponse::default().descriptor(),
             )
@@ -840,7 +832,7 @@ impl PluginsAnnotations {
         let response = self
             .client
             .unary::<AnnotationsGetRequest, AnnotationsGetResponse>(
-                PathAndQuery::from_static("/application.v1.plugins.Annotations/Get"),
+                PathAndQuery::from_static("/application.host.v1.plugins.Annotations/Get"),
                 request,
                 AnnotationsGetResponse::default().descriptor(),
             )
@@ -858,11 +850,11 @@ impl PluginsSettings {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<SettingsListResponse, RpcStatus> {
-        self.list_with(PluginsSettingsListOptions::default()).await
+    pub async fn list(&self, name: impl Into<String>) -> Result<SettingsListResponse, RpcStatus> {
+        self.list_with(name, PluginsSettingsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
-        let value = SettingsListRequest { name: options.name, at: options.at };
+    pub async fn list_with(&self, name: impl Into<String>, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
+        let value = SettingsListRequest { name: Some(name.into()), at: options.at };
         let request = options.context.request(value);
         let response = self
             .client
@@ -1144,24 +1136,6 @@ pub struct Time {
 impl Time {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
-    }
-    pub async fn get(&self) -> Result<Timestamp, RpcStatus> {
-        self.get_with(TimeGetOptions::default()).await
-    }
-    pub async fn get_with(&self, options: TimeGetOptions) -> Result<Timestamp, RpcStatus> {
-        let value = TimeGetRequest {};
-        let request = options.context.request(value);
-        let response = self
-            .client
-            .unary::<TimeGetRequest, TimeGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Time/Get"),
-                request,
-                TimeGetResponse::default().descriptor(),
-            )
-            .await
-            .map_err(|error| action_error("time.get", error))?;
-        let response = response.into_inner();
-        response.now.ok_or_else(|| RpcStatus::data_loss("Read Time.Get: Missing Payload"))
     }
     pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse, RpcStatus> {
         self.sleep_with(duration, TimeSleepOptions::default()).await

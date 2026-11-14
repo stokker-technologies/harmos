@@ -234,6 +234,9 @@ pub struct DiscoveredContract {
     pub protobuf: ::core::option::Option<Protobuf>,
     #[prost(message, optional, tag = "8")]
     pub grpc: ::core::option::Option<Grpc>,
+    /// Effective callers after runtime composition has narrowed the declaration.
+    #[prost(enumeration = "Callers", tag = "9")]
+    pub callers: i32,
 }
 /// Pairs an admitted contract with its owner, activation generation and caller-specific access information.
 #[allow(clippy::all)]

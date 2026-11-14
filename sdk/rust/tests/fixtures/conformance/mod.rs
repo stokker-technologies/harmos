@@ -30,7 +30,7 @@ use harmos::plugin::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
-use prost::Message as _;
+use prost::Message as ProtoMessage;
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
 use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
@@ -43,31 +43,45 @@ use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 /* === Structs === */
 
 #[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+#[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostEcho {
     value: Vec<u8>,
 }
 
 #[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateRequest")]
+struct CreateInvocation {
+    operation: String,
+    fingerprint: Vec<u8>,
+    payload: Vec<u8>,
+}
+
+#[derive(Message)]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateResponse")]
+struct CreatedInvocation {
+    payload: Vec<u8>,
+}
+
+#[derive(Message)]
+#[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostPending {
     value: Vec<u8>,
 }
 
 #[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+#[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostFail {
     value: Vec<u8>,
 }
 
 #[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+#[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostWatch {
     value: Vec<u8>,
 }
 
 #[derive(Message)]
-#[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+#[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct LocalInput {
     value: Vec<u8>,
 }
@@ -75,7 +89,7 @@ struct LocalInput {
 macro_rules! peer_request {
     ($name:ident, $id:literal) => {
         #[derive(Message)]
-        #[harmos(package = "harmos.conformance.v1", file = "harmos/conformance/v1/fixture.proto", name = "Value")]
+        #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
         struct $name {
             value: Vec<u8>,
         }
@@ -96,9 +110,14 @@ peer_request!(OwnProtected, "example.plugin.v1.Lifecycle/Initialize");
 
 /* === Implementations === */
 
+impl OperationRequest for CreateInvocation {
+    type Response = CreatedInvocation;
+    const ID: &'static str = "harmos.host.v1.Invocations/Create";
+}
+
 impl Message for Value {
     fn name() -> String {
-        "harmos.conformance.v1.Value".into()
+        "conformance.model.v1.Value".into()
     }
     fn types() -> FileDescriptorSet {
         wire::types()
@@ -106,7 +125,7 @@ impl Message for Value {
 }
 impl Message for PayloadOnly {
     fn name() -> String {
-        "harmos.conformance.v1.PayloadOnly".into()
+        "conformance.model.v1.PayloadOnly".into()
     }
     fn types() -> FileDescriptorSet {
         wire::types()
@@ -114,7 +133,7 @@ impl Message for PayloadOnly {
 }
 impl Message for Graph {
     fn name() -> String {
-        "harmos.conformance.v1.Graph".into()
+        "conformance.model.v1.Graph".into()
     }
     fn types() -> FileDescriptorSet {
         wire::types()
@@ -122,7 +141,7 @@ impl Message for Graph {
 }
 impl Message for Nested {
     fn name() -> String {
-        "harmos.conformance.v1.Graph.Nested".into()
+        "conformance.model.v1.Graph.Nested".into()
     }
     fn types() -> FileDescriptorSet {
         wire::types()
@@ -178,6 +197,8 @@ pub fn plugin() -> Plugin {
     let watch_observer = Observer::new(&watch_stream, tick_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
     let cancel_stream = Stream::<Value>::new("conformance.tick_cancel");
     let cancel_observer = Observer::new(&cancel_stream, tick_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let refusal_stream = Stream::<Value>::new("conformance.tick_caller_refusal");
+    let refusal_observer = Observer::new(&refusal_stream, tick_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
     Plugin::new("conformance", "1.0.0")
         .settings(SettingsDeclarations {
             values: vec![
@@ -243,6 +264,8 @@ pub fn plugin() -> Plugin {
         .operation(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))
         .operation(Operation::new("conformance.settings_read", settings_read).visibility(Visibility::Public))
         .operation(Operation::new("conformance.discover", discover).visibility(Visibility::Public))
+        .operation(Operation::new("conformance.caller_refusal", caller_refusal).visibility(Visibility::Public))
+        .requires::<CreateInvocation>()
         .requires::<PeerPublic>()
         .requires::<PeerProtected>()
         .requires::<OwnProtected>()
@@ -270,12 +293,28 @@ pub fn plugin() -> Plugin {
         .observer(watch_observer)
         .stream(cancel_stream)
         .observer(cancel_observer)
+        .stream(refusal_stream)
+        .observer(refusal_observer)
         .observer(observer)
         .observer(configured)
         .section(Graph {
             interval: Some(ProtoDuration { seconds: 2, nanos: 0 }),
             ..Default::default()
         })
+}
+
+async fn caller_refusal(ctx: &Context, _: Value) -> Result<Value> {
+    let request = <CreateInvocation as ProtoMessage>::decode(include_bytes!("caller-request.bin").as_slice())
+        .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
+    match ctx.call(request).await {
+        Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
+        Err(error) => Err(error),
+        Ok(_) => Err(harmos::Error::Invalid("Create Invocation: Client-Only Operation Was Admitted".into())),
+    }
+}
+
+async fn tick_caller_refusal(ctx: &Context) -> Result<Value> {
+    caller_refusal(ctx, Value::default()).await
 }
 
 async fn local_call(ctx: &Context, request: Value) -> Result<Value> {

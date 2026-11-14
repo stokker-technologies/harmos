@@ -21,7 +21,7 @@ use harmos_protocol::host::invocations_client::InvocationsClient;
 use harmos_protocol::host::operations_client::OperationsClient;
 use harmos_protocol::host::time_client::TimeClient;
 use harmos_protocol::host::{InvocationsCreateRequest, OperationsListRequest, OperationsListResponse, TimeGetRequest, TimeGetResponse};
-use harmos_protocol::model::{Classification, Declarations, Requirement, StreamDeclaration};
+use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
 use harmos_protocol::plugin::{
     ChildRequest, InstanceSamplesResponse, Sample, child_response, instance_samples_request as request,
     instance_samples_response as response,
@@ -188,6 +188,13 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
     let third = observed.recv().await.unwrap();
     let Some(child_response::Result::Payload(payload)) = third.result else { panic!("Expected Discovery") };
     let listed = OperationsListResponse::decode(payload.as_slice()).unwrap();
+    let narrowed = listed
+        .operations
+        .iter()
+        .filter_map(|operation| operation.contract.as_ref())
+        .find(|contract| contract.id == "harmos.host.v1.Time/Get")
+        .unwrap();
+    assert_eq!(narrowed.callers(), Callers::Plugins);
     assert!(
         listed
             .operations

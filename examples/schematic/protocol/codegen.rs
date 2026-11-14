@@ -98,6 +98,9 @@ pub fn generate(root: &Path, compiler: &Path, includes: &Path, output: &Path) ->
     let mut callers = BTreeMap::new();
     for pool in &pools {
         for service in pool.services() {
+            if !service.package_name().split('.').any(|segment| segment == "host") {
+                continue;
+            }
             for method in service.methods() {
                 let id = format!("{}/{}", service.full_name(), method.name());
                 callers.insert(id, harmos_protocol::schema::method_callers(&method)?);

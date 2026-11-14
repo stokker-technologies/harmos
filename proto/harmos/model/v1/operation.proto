@@ -10,6 +10,7 @@ package harmos.model.v1;
 
 // === Imports === //
 
+import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/policy.proto";
 
 // === Options === //
@@ -96,6 +97,8 @@ message DiscoveredContract {
   // Absent for native-only declarations with no public protobuf binding.
   Protobuf protobuf = 7;
   Grpc grpc = 8;
+  // Effective callers after runtime composition has narrowed the declaration.
+  Callers callers = 9;
 }
 // Pairs an admitted contract with its owner, activation generation and caller-specific access information.
 message DiscoveredOperation {

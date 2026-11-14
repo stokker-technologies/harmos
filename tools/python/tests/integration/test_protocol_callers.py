@@ -43,14 +43,18 @@ class ProtocolCallers(unittest.TestCase):
         root = Path(__file__).resolve().parents[4]
         self.descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
 
-    def test_missing_callers_refuses_each_executor(self) -> None:
-        for executor in ["host", "plugin"]:
-            with self.subTest(executor=executor):
-                descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
-                file = next(file for file in descriptors.file if f"/{executor}/" in file.name and file.service)
-                file.service[0].method[0].ClearField("options")
-                with self.assertRaises(ValueError):
-                    caller_options(descriptors)
+    def test_missing_callers_refuses_host_operations(self) -> None:
+        descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
+        declared = caller_options(descriptors)
+        plugin = next(file for file in descriptors.file if "/plugin/" in file.name and file.service)
+        for service in plugin.service:
+            for method in service.method:
+                method.ClearField("options")
+        self.assertEqual(caller_options(descriptors), declared)
+        host = next(file for file in descriptors.file if "/host/" in file.name and file.service)
+        host.service[0].method[0].ClearField("options")
+        with self.assertRaises(ValueError):
+            caller_options(descriptors)
 
     def test_shared_operation_narrowing_changes_only_its_surfaces(self) -> None:
         original = table(self.descriptors)

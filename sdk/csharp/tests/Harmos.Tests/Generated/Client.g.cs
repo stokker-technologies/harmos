@@ -18,7 +18,6 @@ using JobsStartResponse = global::Application.Clients.JobsStartResponse;
 using ProgressWatchRequest = global::Application.Clients.ProgressWatchRequest;
 using ProgressWatchResponse = global::Application.Clients.ProgressWatchResponse;
 using Duration = global::Google.Protobuf.WellKnownTypes.Duration;
-using Timestamp = global::Google.Protobuf.WellKnownTypes.Timestamp;
 using CertificatesCreateRequest = global::Harmos.Clients.CertificatesCreateRequest;
 using CertificatesCreateResponse = global::Harmos.Clients.CertificatesCreateResponse;
 using ListenerGetRequest = global::Harmos.Clients.ListenerGetRequest;
@@ -87,8 +86,6 @@ using StatusWatchResponse = global::Harmos.Clients.StatusWatchResponse;
 using StreamIdentity = global::Harmos.Clients.StreamIdentity;
 using StreamsListRequest = global::Harmos.Clients.StreamsListRequest;
 using StreamsListResponse = global::Harmos.Clients.StreamsListResponse;
-using TimeGetRequest = global::Harmos.Clients.TimeGetRequest;
-using TimeGetResponse = global::Harmos.Clients.TimeGetResponse;
 using TimeSleepRequest = global::Harmos.Clients.TimeSleepRequest;
 using TimeSleepResponse = global::Harmos.Clients.TimeSleepResponse;
 using DiscoveredOperation = global::Harmos.DiscoveredOperation;
@@ -415,7 +412,7 @@ public sealed class JobsResource
     {
       Value = value,
     };
-    var method = new Method<JobsStartRequest, JobsStartResponse>(MethodType.Unary, "application.v1.Jobs", "Start",
+    var method = new Method<JobsStartRequest, JobsStartResponse>(MethodType.Unary, "application.host.v1.Jobs", "Start",
         Marshallers.Create<JobsStartRequest>(value => value.ToByteArray(), bytes => JobsStartRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<JobsStartResponse>(value => value.ToByteArray(), bytes => JobsStartResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -444,7 +441,7 @@ public sealed class JobsProgressResource
     {
       Value = value,
     };
-    var method = new Method<ProgressWatchRequest, ProgressWatchResponse>(MethodType.ServerStreaming, "application.v1.jobs.Progress", "Watch",
+    var method = new Method<ProgressWatchRequest, ProgressWatchResponse>(MethodType.ServerStreaming, "application.host.v1.jobs.Progress", "Watch",
         Marshallers.Create<ProgressWatchRequest>(value => value.ToByteArray(), bytes => ProgressWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<ProgressWatchResponse>(value => value.ToByteArray(), bytes => ProgressWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -744,7 +741,7 @@ public sealed class PluginsAnnotationsResource
     {
       Name = name,
     };
-    var method = new Method<AnnotationsGetRequest, AnnotationsGetResponse>(MethodType.Unary, "application.v1.plugins.Annotations", "Get",
+    var method = new Method<AnnotationsGetRequest, AnnotationsGetResponse>(MethodType.Unary, "application.host.v1.plugins.Annotations", "Get",
         Marshallers.Create<AnnotationsGetRequest>(value => value.ToByteArray(), bytes => AnnotationsGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<AnnotationsGetResponse>(value => value.ToByteArray(), bytes => AnnotationsGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -1130,26 +1127,6 @@ public sealed class TimeResource
   public TimeResource(CallInvoker invoker)
   {
     this.invoker = invoker;
-  }
-  public async Task<Timestamp> Get(CallOptions context = default)
-  {
-    var request = new TimeGetRequest
-    {
-    };
-    var method = new Method<TimeGetRequest, TimeGetResponse>(MethodType.Unary, "harmos.host.v1.Time", "Get",
-        Marshallers.Create<TimeGetRequest>(value => value.ToByteArray(), bytes => TimeGetRequest.Parser.ParseFrom(bytes)),
-        Marshallers.Create<TimeGetResponse>(value => value.ToByteArray(), bytes => TimeGetResponse.Parser.ParseFrom(bytes)));
-    using var call = invoker.AsyncUnaryCall(method, null, context, request);
-    TimeGetResponse response;
-    try
-    {
-      response = await call.ResponseAsync;
-    }
-    catch (RpcException error)
-    {
-      throw new RpcException(new Status(error.StatusCode, "Call time.get: " + error.Status.Detail), error.Trailers);
-    }
-    return response.Now ?? throw new InvalidOperationException("Read Time.Get: Missing Payload");
   }
   public async Task<TimeSleepResponse> Sleep(Duration duration, CallOptions context = default)
   {

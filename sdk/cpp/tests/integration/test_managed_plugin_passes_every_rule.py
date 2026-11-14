@@ -11,6 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import re
 import unittest
 
 # Third Party Imports
@@ -36,7 +37,11 @@ class ManagedPlugin(unittest.TestCase):
         # Check Every Rule and the Managed Process's Successful Cleanup and Exit.
         self.assertEqual(result.returncode, 0, result.stdout)
         rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 36, result.stdout)
+        summary = re.search(r"(\d+)/(\d+) Cases Passed", result.stdout)
+        self.assertIsNotNone(summary, result.stdout)
+        assert summary is not None
+        self.assertEqual(int(summary[1]), int(summary[2]), result.stdout)
+        self.assertEqual(len(rows), int(summary[2]), result.stdout)
 
 
 # === Public Functions === #

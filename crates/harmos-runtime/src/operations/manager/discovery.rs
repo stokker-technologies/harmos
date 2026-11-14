@@ -22,7 +22,9 @@ use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use harmos_protocol::model::{DiscoveredContract, DiscoveredOperation, Grant as WireGrant, Grpc, Protobuf, Visibility as WireVisibility};
+use harmos_protocol::model::{
+    Callers, DiscoveredContract, DiscoveredOperation, Grant as WireGrant, Grpc, Protobuf, Visibility as WireVisibility,
+};
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
@@ -122,7 +124,7 @@ impl Manager {
             let metadata = DiscoveredOperation {
                 owner: entry.owner.to_string(),
                 generation: entry.generation.value(),
-                contract: Some(describe(contract)?),
+                contract: Some(describe(contract, entry.callers())?),
                 grants: grants
                     .iter()
                     .map(|grant| WireGrant {
@@ -158,7 +160,7 @@ impl Manager {
 
 /* === Private Functions === */
 
-fn describe(contract: &Contract) -> Result<DiscoveredContract> {
+fn describe(contract: &Contract, callers: Callers) -> Result<DiscoveredContract> {
     use crate::operations::{Backoff, Jitter, ReplaySafety, RetryPolicy, Visibility};
     let definition = contract.operation();
     let policy = definition.policy;
@@ -178,6 +180,7 @@ fn describe(contract: &Contract) -> Result<DiscoveredContract> {
         }
     };
     Ok(DiscoveredContract {
+        callers: callers as i32,
         id: definition.id.to_string(),
         description: definition.description.clone(),
         visibility: match definition.visibility {

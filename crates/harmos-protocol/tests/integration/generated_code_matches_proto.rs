@@ -123,7 +123,11 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     codegen::generate_conformance(&compiler, &includes, output.path())?;
-    for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
+    for (source, target) in [
+        ("conformance.model.v1.rs", "generated.rs"),
+        ("conformance-descriptors.bin", "descriptors.bin"),
+        ("caller-request.bin", "caller-request.bin"),
+    ] {
         assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/tests/fixtures/conformance").join(target))?);
     }
     Ok(())

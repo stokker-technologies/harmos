@@ -7,6 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="$(RepoRoot)sdk/csharp/src/Harmos/Harmos.csproj" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
-    <Protobuf Include="$(RepoRoot)sdk/tests/fixtures/conformance/proto/**/*.proto" ProtoRoot="$(RepoRoot)sdk/tests/fixtures/conformance/proto" GrpcServices="None" />
+    <Protobuf Include="$(RepoRoot)sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto" ProtoRoot="$(RepoRoot)sdk/tests/fixtures/conformance/proto" GrpcServices="None" />
   </ItemGroup>
 </Project>

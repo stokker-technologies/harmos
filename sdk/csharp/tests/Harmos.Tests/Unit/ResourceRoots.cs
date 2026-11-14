@@ -54,15 +54,15 @@ public sealed class ResourceRoots
     var diagnostics = await client.Status.Diagnostics.Get("selection", 0, 512);
     Assert.Equal("harmos.host.v1.status.Diagnostics/Get:selection", diagnostics.Name);
     var started = await client.Jobs.Start("selection");
-    Assert.Equal("application.v1.Jobs/Start:selection", started);
+    Assert.Equal("application.host.v1.Jobs/Start:selection", started);
     var progress = new List<string>();
     await foreach (var item in client.Jobs.Progress.Watch("selection"))
     {
       progress.Add(item);
     }
-    Assert.Equal(["application.v1.jobs.Progress/Watch:selection:opened", "application.v1.jobs.Progress/Watch:selection:finished"], progress);
+    Assert.Equal(["application.host.v1.jobs.Progress/Watch:selection:opened", "application.host.v1.jobs.Progress/Watch:selection:finished"], progress);
     var annotation = await client.Plugins.Annotations.Get("example");
-    Assert.Equal("application.v1.plugins.Annotations/Get:example", annotation);
+    Assert.Equal("application.host.v1.plugins.Annotations/Get:example", annotation);
     var values = new SettingValues();
     var generated = await client.Plugins.Settings.Set("example", values, ByteString.Empty);
     Assert.False(generated.Revision.IsEmpty);

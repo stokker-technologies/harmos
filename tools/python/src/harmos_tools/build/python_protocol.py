@@ -163,7 +163,7 @@ def generate_client_fixture(output: Path) -> None:
 
 def generate_conformance(output: Path) -> None:
     proto = ROOT / "sdk/tests/fixtures/conformance/proto"
-    inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
+    inputs = ["conformance/model/v1/fixture.proto"]
     scratch = tempfile.mkdtemp()
     try:
         subprocess.run(

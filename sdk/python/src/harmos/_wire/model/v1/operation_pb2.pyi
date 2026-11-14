@@ -1,3 +1,4 @@
+from harmos._wire.model.v1 import callers_pb2 as _callers_pb2
 from harmos._wire.model.v1 import policy_pb2 as _policy_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
@@ -82,7 +83,7 @@ class Grant(_message.Message):
     def __init__(self, operation: _Optional[str] = ..., scope: _Optional[str] = ...) -> None: ...
 
 class DiscoveredContract(_message.Message):
-    __slots__ = ("id", "description", "visibility", "policy", "replay_safe", "fingerprint", "protobuf", "grpc")
+    __slots__ = ("id", "description", "visibility", "policy", "replay_safe", "fingerprint", "protobuf", "grpc", "callers")
     ID_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     VISIBILITY_FIELD_NUMBER: _ClassVar[int]
@@ -91,6 +92,7 @@ class DiscoveredContract(_message.Message):
     FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     PROTOBUF_FIELD_NUMBER: _ClassVar[int]
     GRPC_FIELD_NUMBER: _ClassVar[int]
+    CALLERS_FIELD_NUMBER: _ClassVar[int]
     id: str
     description: str
     visibility: Visibility
@@ -99,7 +101,8 @@ class DiscoveredContract(_message.Message):
     fingerprint: bytes
     protobuf: Protobuf
     grpc: Grpc
-    def __init__(self, id: _Optional[str] = ..., description: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[_policy_pb2.OperationPolicy, _Mapping]] = ..., replay_safe: _Optional[bool] = ..., fingerprint: _Optional[bytes] = ..., protobuf: _Optional[_Union[Protobuf, _Mapping]] = ..., grpc: _Optional[_Union[Grpc, _Mapping]] = ...) -> None: ...
+    callers: _callers_pb2.Callers
+    def __init__(self, id: _Optional[str] = ..., description: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[_policy_pb2.OperationPolicy, _Mapping]] = ..., replay_safe: _Optional[bool] = ..., fingerprint: _Optional[bytes] = ..., protobuf: _Optional[_Union[Protobuf, _Mapping]] = ..., grpc: _Optional[_Union[Grpc, _Mapping]] = ..., callers: _Optional[_Union[_callers_pb2.Callers, str]] = ...) -> None: ...
 
 class DiscoveredOperation(_message.Message):
     __slots__ = ("owner", "generation", "contract", "grants", "conditional_access", "grpc_available")

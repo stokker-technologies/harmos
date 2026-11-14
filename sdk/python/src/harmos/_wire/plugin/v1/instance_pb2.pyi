@@ -1,7 +1,6 @@
 import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from harmos._wire.model.v1 import callers_pb2 as _callers_pb2
 from harmos._wire.model.v1 import description_pb2 as _description_pb2
 from harmos._wire.plugin.v1 import invocation_pb2 as _invocation_pb2
 from harmos._wire.plugin.v1 import stream_pb2 as _stream_pb2

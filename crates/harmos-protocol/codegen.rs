@@ -49,11 +49,26 @@ pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> 
     config.out_dir(output);
     config.skip_source_info();
     config.file_descriptor_set_path(output.join("conformance-descriptors.bin"));
-    config.compile_protos(&[proto.join("harmos/conformance/v1/fixture.proto")], &[proto, includes.into()])?;
+    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    config.compile_protos(
+        &[proto.join("conformance/model/v1/fixture.proto"), proto.join("conformance/host/v1/caller_probe.proto")],
+        &[proto, library, includes.into()],
+    )?;
     let descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("conformance-descriptors.bin"))?.as_slice())?;
+    let request = harmos_protocol::host::InvocationsCreateRequest {
+        operation: "conformance.host.v1.CallerProbe/Get".into(),
+        fingerprint: harmos_protocol::schema::fingerprint(
+            "conformance.host.v1.CallerProbe/Get",
+            &descriptors,
+            "conformance.host.v1.CallerProbeGetRequest",
+            "conformance.host.v1.CallerProbeGetResponse",
+        )?,
+        payload: Vec::new(),
+    };
+    std::fs::write(output.join("caller-request.bin"), prost::Message::encode_to_vec(&request))?;
     let descriptors =
-        harmos_protocol::schema::operation_types(&descriptors, &["harmos.conformance.v1.Graph", "harmos.conformance.v1.PayloadOnly"])?;
+        harmos_protocol::schema::operation_types(&descriptors, &["conformance.model.v1.Graph", "conformance.model.v1.PayloadOnly"])?;
     std::fs::write(output.join("conformance-descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
     Ok(())
 }

@@ -107,6 +107,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate_client_fixture(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/client");
     fs::create_dir_all(&destination)?;
+    for entry in fs::read_dir(&destination)? {
+        let path = entry?.path();
+        if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with("application.v1") && name.ends_with(".rs")) {
+            fs::remove_file(path)?;
+        }
+    }
     for name in [
         "application.host.v1.rs",
         "application.host.v1.jobs.rs",
@@ -119,7 +125,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate_conformance(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/conformance");
     fs::create_dir_all(&destination)?;
-    for (source, target) in [("harmos.conformance.v1.rs", "generated.rs"), ("conformance-descriptors.bin", "descriptors.bin")] {
+    for (source, target) in [
+        ("conformance.model.v1.rs", "generated.rs"),
+        ("conformance-descriptors.bin", "descriptors.bin"),
+        ("caller-request.bin", "caller-request.bin"),
+    ] {
         fs::copy(output.path().join(source), destination.join(target))?;
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/schematic");

@@ -33,12 +33,15 @@ use harmos_runtime::{
 use tempfile::TempDir;
 
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
+use harmos_protocol::model::Callers;
+use harmos_protocol::schema::with_method_callers;
 use harmos_runtime::{
     MessageError, Runtime,
     operations::{ComponentError, ExecutionContext, Lane, OperationManager, ProtobufOperation, Resource, ServingError, Visibility},
 };
 use prost::Message as _;
 use prost_reflect::{DescriptorPool, MessageDescriptor};
+use prost_types::{MethodDescriptorProto, ServiceDescriptorProto};
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -89,7 +92,21 @@ fn descriptors() -> &'static DescriptorPool {
         let mut types = <ProviderEchoOperation as harmos::Message>::types();
         harmos::encoding::merge_descriptor_types(&mut types, <Echoed as harmos::Message>::types());
         harmos::encoding::merge_descriptor_types(&mut types, <PublishProgress as harmos::Message>::types());
-        prost_reflect::DescriptorPool::from_file_descriptor_set(types).unwrap()
+        harmos::encoding::merge_descriptor_types(&mut types, <() as harmos::Message>::types());
+        let file = types.file.iter_mut().find(|file| file.package.as_deref() == Some("example.host.v1")).unwrap();
+        file.dependency.push("google/protobuf/empty.proto".into());
+        file.service.push(ServiceDescriptorProto {
+            name: Some("Progress".into()),
+            method: vec![MethodDescriptorProto {
+                name: Some("Publish".into()),
+                input_type: Some(".example.host.v1.PublishProgress".into()),
+                output_type: Some(".google.protobuf.Empty".into()),
+                options: Some(Default::default()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        with_method_callers(types, &[("example.host.v1.Progress/Publish".into(), Callers::Plugins)].into_iter().collect()).unwrap()
     })
 }
 impl prost_reflect::ReflectMessage for ProviderEchoOperation {

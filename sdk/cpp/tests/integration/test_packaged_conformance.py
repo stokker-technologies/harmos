@@ -13,6 +13,7 @@
 
 # Standard Library Imports
 import os
+import re
 import shutil
 import subprocess
 import unittest
@@ -130,7 +131,11 @@ class PackagedConformance(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout)
         rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
-        self.assertEqual(len(rows), 36, result.stdout)
+        summary = re.search(r"(\d+)/(\d+) Cases Passed", result.stdout)
+        self.assertIsNotNone(summary, result.stdout)
+        assert summary is not None
+        self.assertEqual(int(summary[1]), int(summary[2]), result.stdout)
+        self.assertEqual(len(rows), int(summary[2]), result.stdout)
 
 
 # === Public Functions === #

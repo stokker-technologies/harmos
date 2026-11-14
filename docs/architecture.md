@@ -296,7 +296,7 @@ The independent library and example Buf modules run through `mise run format` an
 Regenerate with `mise run generate -- --sdk rust`, then python, csharp and cpp.
 Generation owns every output and removes obsolete generated modules. The protocol
 drift test compares committed sources and descriptor projections byte for byte.
-See the mapping below for the current definition-pass/consumer boundary.
+See the mapping below for the migrated identities and consumer ownership.
 
 ## Invariants
 
@@ -746,8 +746,8 @@ and caller-face authorization remain independent checks.
 ### Executor Layout and Definition Status
 
 The 2026-11-14 owner decision replaces audience packages with executor packages.
-This definition pass lands protocol declarations, generators and generated outputs;
-hand-written consumers and runtime admission remain assigned below. Former names
+Protocol declarations, runtime admission, SDKs, conformance and example consumers
+use this layout. Former names
 in the mapping are migration references only. There are no compatibility packages.
 
 ```text
@@ -820,10 +820,10 @@ operations, not duplicate declarations. Resource segments follow the version:
 | `harmos.plugin.host.v1.Settings/List` | `harmos.host.v1.plugins.Settings/List` | `harmos.host.v1.plugins.SettingsListRequest` / `harmos.host.v1.plugins.SettingsListResponse` | ALL |
 | `harmos.plugin.host.v1.Time/Get` | `harmos.host.v1.Time/Get` | `harmos.host.v1.TimeGetRequest` / `harmos.host.v1.TimeGetResponse` | ALL |
 | `harmos.plugin.host.v1.Time/Sleep` | `harmos.host.v1.Time/Sleep` | `harmos.host.v1.TimeSleepRequest` / `harmos.host.v1.TimeSleepResponse` | ALL |
-| `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | CLIENTS |
-| `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | CLIENTS |
-| `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | CLIENTS |
-| `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | CLIENTS |
+| `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.Instance/Get` | `harmos.plugin.v1.InstanceGetRequest` / `harmos.plugin.v1.InstanceGetResponse` | Host |
+| `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.Instance/Invoke` | `harmos.plugin.v1.InstanceInvokeRequest` / `harmos.plugin.v1.InstanceInvokeResponse` | Host |
+| `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.Instance/Samples` | `harmos.plugin.v1.InstanceSamplesRequest` / `harmos.plugin.v1.InstanceSamplesResponse` | Host |
+| `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.Instance/Stop` | `harmos.plugin.v1.InstanceStopRequest` / `harmos.plugin.v1.InstanceStopResponse` | Host |
 
 ### Message and Enum Mapping
 
@@ -1034,12 +1034,14 @@ rpc Get(TimeGetRequest) returns (TimeGetResponse) {
 }
 ```
 
-Every RPC under host/ and plugin/ requires a present, recognized nonzero option;
+Every RPC under host/ requires a present, recognized nonzero option;
 `mise run check -- --repository` compiles descriptors and checks it, alongside Buf
 format and lint. Generated descriptors retain custom method options. Runtime consumers must read
 those options from the raw descriptor bytes with prost_reflect; decoding and
-re-encoding through prost_types discards unknown custom options. A method's
-executor package does not imply its callers. Host operations with CLIENTS or ALL
+re-encoding through prost_types discards unknown custom options. A host method's
+executor package does not imply its callers. Plugin executor operations are called
+by the host by definition and carry no callers option; CLIENTS always means client
+programs, never the host. Host operations with CLIENTS or ALL
 generate the client surface; PLUGINS or ALL generate the plugin context. Plugin
 executor services generate connection stubs, never a host client/context resource.
 Reference documentation must use these same projections. Visibility, fingerprints,
@@ -1080,16 +1082,14 @@ packages = ["harmos.model.v1", "harmos.host.v1", "harmos.plugin.v1"]
 ```
 
 ```rust
-// Locked assembly API; the core consumer implements this method.
+// Apply Before Starting Listeners or Plugins.
 setup.composition(include_str!("../protocol/composition.toml"))?;
 ```
 
 `composition(&str) -> Result<(), AssemblyError>` applies the file's caller
 restrictions to the linked library declarations before listeners or plugins start.
 Runtime assembly does not open generator descriptor paths. It verifies the listed
-package roots against registered descriptors. The core consumer owns the parser and
-admission implementation; this is a declared contract, not landed runtime behavior.
-The generator implementation is landed:
+package roots against registered descriptors. Runtime assembly and SDK generation enforce the same restrictions:
 
 ```sh
 mise run generate -- --descriptors protocol/descriptors.bin --composition protocol/composition.toml --output target/generated/sdk --namespace application --sdk python
@@ -1101,8 +1101,8 @@ descriptor files, unknown operation keys, invalid callers and widening. The effe
 set must be a nonempty subset: ALL may become CLIENTS or PLUGINS; an exclusive
 caller may only remain itself. No mutable widening or per-listener second authority
 exists. A product's own wire services also declare caller options. Consumers migrate
-product packages to model/host/plugin with the next pin; this pass only updates the
-example's imports so regeneration remains possible.
+product packages to model/host/plugin with the next pin. Schematic already uses
+its own executor packages, composition file and generated application client.
 
 ### Native Type Ownership
 
@@ -1134,173 +1134,25 @@ application's descriptors and the same composition file.
 
 ### Consumer Work Lists
 
-Each numbered item is one remaining integration unit. Regenerate after source
-changes; never hand-edit generated code. Run focused proof per owner, then the
-combined candidate's required gates. These lists do not claim consumer compilation.
+The consumer migration is implemented across these owners. Regenerate bindings
+from their source definitions; generated files have no independent ownership.
 
-#### Core Crates — CONSUMER WORK LIST (8 Items)
+| Owner | Landed Consumer Work |
+| --- | --- |
+| Core Crates | Model/host/plugin imports, one host declaration and handler per operation, caller admission on direct/encoded/child paths, composition narrowing, trusted settings selectors and effective callers in discovery. Storage remains Private and in-process. |
+| Rust SDK | Public barrels, flattened client roots, shared plugin context resources, product fixture bindings and host method identities. The SDK client example is dynamic; the Schematic client is generated from application descriptors. |
+| Python SDK | Typed public payloads, generated client/context resources and internal executor wire modules, migrated example and fixture imports. |
+| C# SDK | Public payload namespaces, shared client/context reply types, generated roots and fixture bindings, caller-owned call context. |
+| C++ SDK | Public payload barrel, generated client/context methods, native protocol inventory, conformance fixture barrel, installed-package consumers. |
+| Conformance | Both wrong-caller directions use the real runtime, including direct and managed invocation admission; all 38 rules apply to each SDK fixture. |
+| Schematic and Fixtures | Executor packages, explicit host callers, composition input, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Guest publication declares its own PLUGINS-only host service. |
 
-1. `crates/harmos-domain/src/{protobuf,schema}/**`, `crates/harmos-storage/src/**`
-   and all `crates/**` wire imports: replace shared v1 with model; route carrier
-   Request/Cancel/Response/Child*/Tick/Sample/assignment types to plugin and schema
-   registry vocabulary to host. Delete SchemaInput consumers; no wire alias.
-2. `crates/harmos-operations/src/{clock,lifecycle,discovery,plugins,service,access}/**`
-   (including nested registry modules): replace client/plugin-host wrapper twins
-   with host types. Rename Invoke declaration to Create; remove duplicate clock,
-   lifecycle and discovery declarations/handlers and use clock::declarations_types.
-   Keep one folder per resource and one operation file per method.
-3. `crates/harmos-runtime/src/operations/**`, `src/grpc/**`: replace face-derived
-   admission with executor routing plus method callers. Implement composition(&str)
-   as above, refuse widening and wrong-caller dispatch (direct gRPC, managed,
-   encoded and plugin child paths), retain visibility/grant checks; delete old
-   client/context package heuristics and duplicated service registration.
-4. `crates/harmos-runtime/src/plugin/{grpc,guest}/**`, `src/operations/manager/**`:
-   use plugin carriers and assignments, host method identities and regenerated
-   fingerprints. Preserve activation fencing, child correlation, tick lifetime,
-   cancellation and failure preservation; delete plugin::host carrier paths.
-5. `crates/harmos-runtime/src/plugins/**` and settings handlers under
-   `crates/harmos-operations/src/plugins/**`: implement optional name resolution
-   from trusted CallingPlugin, client-required selection and foreign-name refusal;
-   return the richer List shape and remove the old Settings service adapter.
-6. `crates/harmos-protocol/src/schema.rs` and `tests/integration/{audience_faces,
-   generated_code_matches_proto,shared_primitives,schema_fingerprints}.rs`:
-   migrate executor identity classification and descriptor expectations; remove
-   old audience enum variants, duplicate wrapper comparison and client-clock file
-   assertion. Replace them with option/projection/admission journeys; no prose or
-   census-constant assertions. Protocol support imports already use model/plugin.
-7. `crates/harmos-runtime/tests/{operations,plugin_grpc,grpc,plugins,guest}/**`,
-   affected benches and fixtures: migrate IDs, messages and host registration;
-   add deterministic caller rejection in both directions and narrowed ALL
-   admission; preserve storage/query work owned by its concurrent change.
-8. `docs/product-guide.md`, `README.md`, `docs/{architecture,rust-sdk,python-sdk,
-   csharp-sdk,cpp-sdk}.md` and links to behaviour: replace old wire/module paths,
-   request-object client examples and tonic Request/into_inner usage with public
-   flattened calls. Keep README's SDK independence claim true and remove stale
-   face-local claims. Coordinate storage text with its owner.
-
-#### Rust SDK — CONSUMER WORK LIST (6 Items)
-
-1. `sdk/rust/src/wire.rs`, `src/{context,connection,client,clock,operation}.rs`
-   and submodules: private model/host/plugin imports; replace InvocationsInvoke
-   with InvocationsCreate. Delete client/plugin-host wire package imports and
-   duplicated clock graph use; keep the public harmos/client/plugin barrels.
-2. `sdk/rust/src/{native,server,plugin,wasm,stream}.rs` and submodules: move carrier
-   frames and assignments to plugin, use regenerated host IDs and fingerprints,
-   preserve native/wasm admission, scope and tick-scoped children.
-3. `sdk/rust/src/context.rs`, `src/plugin.rs`: use host.plugins.settings.list,
-   PluginsSettingsList requirement and richer SettingsListResponse.value;
-   omit name or use the caller's name. Delete old host.settings shortcuts and
-   host-only context wrapper assumptions; keep whole-map client Set.
-4. `sdk/rust/tests/{integration,system,wasm,support}/**`, binaries under src/bin
-   and fixture consumers: migrate wrappers/IDs and add caller/narrowing journeys.
-   Generated outputs are already replaced; do not restore deleted context bins.
-5. `sdk/rust/Cargo.toml`, `examples/client.rs`: remove schematic-protocol
-   dev-dependency and schematic.validate use. SDK client examples use only library
-   calls. Put the application call under examples/schematic through its generated
-   client; keep one separate short dynamic-call example using Invocations.Create.
-6. `docs/rust-sdk.md`, `docs/product-guide.md`, `README.md`: flatten request arguments,
-   hide protocol packages and remove old request construction/.into_inner examples;
-   link the library-only, application typed and short dynamic examples separately.
-
-#### Python SDK — CONSUMER WORK LIST (6 Items)
-
-1. `sdk/python/src/harmos/{_authoring,_contracts,_connection,_invocation,_schema}.py`
-   and related private modules: replace _wire.v1/client/plugin.host imports with
-   model/host/plugin and use Invocations.Create; keep dotted public barrels.
-2. `_invocation.py`, `_clock.py`, `_native.py` and carrier consumers: use plugin
-   child/sample/assignment frames and host operation IDs; preserve fingerprint,
-   activation, cancellation and tick lifetime behavior.
-3. `_invocation.py` settings conveniences and examples: use
-   context.host.plugins.settings.list, PLUGINS_SETTINGS_LIST and the richer
-   value/revision/declarations/cut reply; delete old top-level Settings calls.
-4. `sdk/python/tests/{integration,support,fixtures}/**`: migrate imports, fixture
-   selectors and required IDs; add wrong-caller/narrowed-surface journeys without
-   importing removed packages or exposing wire requests publicly.
-5. `sdk/python/examples/**`: library SDK examples depend on library calls only;
-   move application-operation calls under examples/schematic with its generated
-   client, and keep one separate short dynamic Invocations.Create example.
-6. `docs/python-sdk.md`, `docs/product-guide.md`: preserve flattened keyword-only
-   calls, per-call context, payload projection and public imports; remove old
-   application-dependent SDK example instructions and obsolete wire identities.
-
-#### C# SDK — CONSUMER WORK LIST (6 Items)
-
-1. `sdk/csharp/src/Harmos/{Context,Plugin,Operation,Client,Clock}.cs` and companion
-   modules: replace old protocol namespace assumptions with generated public
-   payloads and internal plugin carriers; keep Harmos/Clients/Plugins surfaces.
-2. `Context.cs`, server/carrier handlers: use plugin frames/assignments and host
-   identities, including Invocations.Create; retain host-only Instance admission,
-   scope, typed failures, child cancellation and tick lifetime.
-3. Settings conveniences/requirements: use Host.Plugins.Settings.List and
-   HostOperation.PluginsSettingsList; read the richer Harmos.Clients payload.
-   Delete top-level Host.Settings calls and duplicate response assumptions.
-4. `sdk/csharp/tests/Harmos.Tests/**`, conformance fixtures: migrate generated
-   imports, IDs and wrapper expectations; add caller/narrowing journeys. Do not
-   hand-edit Generated/Client.g.cs, Host.g.cs or Wire/ outputs.
-5. `sdk/csharp/examples/**`: SDK examples call library operations only; move
-   application operations into examples/schematic through its generated client
-   and retain a separate short dynamic Invocations.Create example.
-6. `docs/csharp-sdk.md`, `docs/product-guide.md`: use flattened content arguments,
-   owned CallOptions and payload returns; remove obsolete audience namespaces and
-   application-dependent SDK examples.
-
-#### C++ SDK — CONSUMER WORK LIST (6 Items)
-
-1. `sdk/cpp/include/harmos/{harmos,context,client_transport}.hpp` and related
-   detail headers: replace old generated package imports with model/host/plugin;
-   keep harmos/client/plugin public namespaces and request privacy.
-2. `sdk/cpp/src/{context,server,catalog}.cpp` and carrier code: move child/sample/
-   assignment types to plugin, adopt host identities and Invocations.Create,
-   preserve fingerprint, correlation, scope and failure semantics.
-3. Settings conveniences/requirements: use host().plugins.settings.list and
-   HostOperation::PluginsSettingsList; consume the richer shared root payload.
-   Delete old settings resource calls and plugin-host wire wrappers.
-4. `sdk/cpp/tests/**`, `examples/conformance/**`: migrate fixtures, protobuf include
-   paths and namespace expectations; add caller/narrowing proof. CMake's maintained
-   protocol inventory and generated resource/header sources are already replaced.
-5. `sdk/cpp/examples/{client,plugin}/**`: library-only SDK calls; application calls
-   move to examples/schematic through the application client; retain one short
-   dynamic Invocations.Create example independently of application dependencies.
-6. `docs/cpp-sdk.md`, `docs/product-guide.md`: preserve flattened arguments,
-   owned transport, option values and payload returns; remove old wire packages
-   and application-dependent SDK example instructions.
-
-#### Conformance, Example and Fixtures — CONSUMER WORK LIST (8 Items)
-
-1. `tools/conformance/src/{suite,reference,fixture}.rs`: replace model/plugin/host
-   imports, old clock/Settings IDs and request/response names; retain all existing
-   numbered cases and add cases 33/34 with independent result reporting.
-2. `tools/conformance/src/suite.rs`, runtime-host fixtures and each SDK fixture:
-   rule 33 registers a PLUGINS-only host fixture with an observable invocation
-   counter; a client must be refused before the counter changes. Rule 34 sends
-   a plugin child call to CLIENTS-only Invocations.Create and checks refusal with
-   no dispatched invocation. Keep the fixture declarations deterministic.
-3. `tools/conformance/tests/{integration,support}/**` and
-   `sdk/tests/fixtures/{conformance,client}/proto/**`: migrate product executor
-   packages and mandatory callers, keep one declared home and compose nested
-   resources. Use product composition input for narrowed audience journeys.
-4. `examples/schematic/proto/**`, `protocol/codegen.rs`, `protocol/src/**`:
-   migrate the example's own model/host/plugin packages and service files,
-   declare callers, add protocol/composition.toml and generate its own typed
-   clients. Shared library imports and generated Rust messages already moved.
-5. `examples/schematic/{app,operations,guest,sidecar,cli}/**`: migrate host operation
-   IDs, plugin frames and public SDK calls. `app/tests/storage/main.rs` must call
-   the operation registry with content arguments instead of request objects;
-   use Invocations.Create for its dynamic client dispatch. Storage wrappers
-   continue to call Private native operations, preserving storage-owner changes.
-6. `examples/schematic/` client example: move schematic.validate out of
-   `sdk/rust/examples/client.rs`, call it through the application's generated
-   client, and remove SDK-to-example dependencies. Keep a separate short dynamic
-   operation example, clearly distinct from the typed application client.
-7. `docs/product-guide.md`, example guides and SDK guides: replace stale
-   harmos_protocol::v1, tonic::Request::new/.into_inner and the schematic.validate
-   SDK client example; link the application client and library dynamic example.
-   Update behaviour links to proto/harmos/plugin/v1/behaviour.md.
-8. All fixture-generated descriptors/bindings and tests: regenerate from source,
-   verify a second generation is unchanged, then run focused consumer proof and
-   the combined integration gate. Delete superseded face-specific fixtures,
-   copied Storage wire contracts and old generated files; keep existing rules
-   1–32 and preserve native storage encodings.
+Caller narrowing is exercised by
+`crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`: narrow ALL to
+PLUGINS, refuse a client on direct and managed paths, omit the operation from
+client discovery, report effective PLUGINS to the plugin, and refuse widening.
+Generator composition coverage lives in
+`tools/python/tests/integration/test_protocol_callers.py`.
 
 ### Next Pin for Products That Vendor the Protocol
 
