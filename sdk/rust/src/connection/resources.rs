@@ -333,10 +333,7 @@ impl AccessListener {
     pub async fn set_with(
         &self, value: ListenerValue, expected_revision: Vec<u8>, options: AccessListenerSetOptions,
     ) -> Result<ListenerSetResponse, RpcStatus> {
-        let value = ListenerSetRequest {
-            value: Some(value),
-            expected_revision: expected_revision,
-        };
+        let value = ListenerSetRequest { value: Some(value), expected_revision };
         let request = options.context.request(value);
         let response = self
             .client
@@ -434,8 +431,8 @@ impl Invocations {
     ) -> Result<Vec<u8>, RpcStatus> {
         let value = InvocationsInvokeRequest {
             operation: operation.into(),
-            fingerprint: fingerprint,
-            payload: payload,
+            fingerprint,
+            payload,
         };
         let request = options.context.request(value);
         let response = self
@@ -454,7 +451,7 @@ impl Invocations {
         self.get_with(instance, InvocationsGetOptions::default()).await
     }
     pub async fn get_with(&self, instance: u64, options: InvocationsGetOptions) -> Result<InstanceState, RpcStatus> {
-        let value = InvocationsGetRequest { instance: instance };
+        let value = InvocationsGetRequest { instance };
         let request = options.context.request(value);
         let response = self
             .client
@@ -474,10 +471,7 @@ impl Invocations {
     pub async fn cancel_with(
         &self, instance: u64, reason: impl Into<String>, options: InvocationsCancelOptions,
     ) -> Result<InstanceState, RpcStatus> {
-        let value = InvocationsCancelRequest {
-            instance: instance,
-            reason: reason.into(),
-        };
+        let value = InvocationsCancelRequest { instance, reason: reason.into() };
         let request = options.context.request(value);
         let response = self
             .client
@@ -495,7 +489,7 @@ impl Invocations {
         self.watch_with(instance, InvocationsWatchOptions::default()).await
     }
     pub async fn watch_with(&self, instance: u64, options: InvocationsWatchOptions) -> Result<Watching<InstanceState>, RpcStatus> {
-        let value = InvocationsWatchRequest { instance: instance };
+        let value = InvocationsWatchRequest { instance };
         let request = options.context.request(value);
         let response = self
             .client
@@ -662,7 +656,7 @@ impl Plugins {
         let value = PluginsSetRequest {
             name: name.into(),
             value: Some(value),
-            expected_revision: expected_revision,
+            expected_revision,
         };
         let request = options.context.request(value);
         let response = self
@@ -683,10 +677,7 @@ impl Plugins {
     pub async fn delete_with(
         &self, name: impl Into<String>, expected_revision: Vec<u8>, options: PluginsDeleteOptions,
     ) -> Result<Receipt, RpcStatus> {
-        let value = PluginsDeleteRequest {
-            name: name.into(),
-            expected_revision: expected_revision,
-        };
+        let value = PluginsDeleteRequest { name: name.into(), expected_revision };
         let request = options.context.request(value);
         let response = self
             .client
@@ -706,10 +697,7 @@ impl Plugins {
     pub async fn restart_with(
         &self, name: impl Into<String>, expected_revision: Vec<u8>, options: PluginsRestartOptions,
     ) -> Result<PluginEntry, RpcStatus> {
-        let value = PluginsRestartRequest {
-            name: name.into(),
-            expected_revision: expected_revision,
-        };
+        let value = PluginsRestartRequest { name: name.into(), expected_revision };
         let request = options.context.request(value);
         let response = self
             .client
@@ -734,7 +722,7 @@ impl Plugins {
         let value = PluginsReplaceRequest {
             name: name.into(),
             placement: Some(placement),
-            expected_revision: expected_revision,
+            expected_revision,
             request_id: match options.request_id {
                 Some(value) => value,
                 None => request_id()?,
@@ -791,7 +779,7 @@ impl PluginsSettings {
         let value = SettingsSetRequest {
             name: name.into(),
             value: Some(value),
-            expected_revision: expected_revision,
+            expected_revision,
             request_id: match options.request_id {
                 Some(value) => value,
                 None => request_id()?,
@@ -905,11 +893,7 @@ impl StatusDiagnostics {
     pub async fn get_with(
         &self, name: impl Into<String>, offset: u64, max_bytes: u64, options: StatusDiagnosticsGetOptions,
     ) -> Result<DiagnosticsGetResponse, RpcStatus> {
-        let value = DiagnosticsGetRequest {
-            name: name.into(),
-            offset: offset,
-            max_bytes: max_bytes,
-        };
+        let value = DiagnosticsGetRequest { name: name.into(), offset, max_bytes };
         let request = options.context.request(value);
         let response = self
             .client
@@ -956,11 +940,7 @@ impl StatusLogs {
     pub async fn watch_with(
         &self, max_bytes: u64, max_events: u32, options: StatusLogsWatchOptions,
     ) -> Result<Watching<LogsWatchResponse>, RpcStatus> {
-        let value = LogsWatchRequest {
-            at: options.at,
-            max_bytes: max_bytes,
-            max_events: max_events,
-        };
+        let value = LogsWatchRequest { at: options.at, max_bytes, max_events };
         let request = options.context.request(value);
         let response = self
             .client
@@ -1007,11 +987,7 @@ impl StatusTraceEvents {
     pub async fn watch_with(
         &self, max_bytes: u64, max_events: u32, options: StatusTraceEventsWatchOptions,
     ) -> Result<Watching<TraceEventsWatchResponse>, RpcStatus> {
-        let value = TraceEventsWatchRequest {
-            at: options.at,
-            max_bytes: max_bytes,
-            max_events: max_events,
-        };
+        let value = TraceEventsWatchRequest { at: options.at, max_bytes, max_events };
         let request = options.context.request(value);
         let response = self
             .client

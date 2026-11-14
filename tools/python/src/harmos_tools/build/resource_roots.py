@@ -811,7 +811,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                     expression = f"{name}.into()"
                 else:
                     expression = name
-                lines += [f"            {name}: {expression},"]
+                lines += [f"            {name}," if expression == name else f"            {name}: {expression},"]
             lines += ["        };", "        let request = options.context.request(value);"]
             path = f"/{method['package']}.{method['service']}/{method['method']}"
             call = "watch_known" if method["server_streaming"] else "unary"
@@ -1001,7 +1001,7 @@ def rust_host(root: Path, methods: list[Method]) -> None:
                 value = (
                     f"options.{field['name']}" if field["optional"] else f"Some({field['name']})" if field["kind"] == 11 else field["name"]
                 )
-                lines += [f"            {field['name']}: {value},"]
+                lines += [f"            {field['name']}," if value == field["name"] else f"            {field['name']}: {value},"]
             lines += ["        };"]
             if method["server_streaming"]:
                 lines += [

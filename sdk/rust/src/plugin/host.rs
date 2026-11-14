@@ -119,7 +119,7 @@ impl HostInvocationsResource {
         self.get_with(instance, HostInvocationsGetOptions::default()).await
     }
     pub async fn get_with(&self, instance: u64, options: HostInvocationsGetOptions) -> Result<InstanceState> {
-        let request = InvocationsGetRequest { instance: instance };
+        let request = InvocationsGetRequest { instance };
         let response: InvocationsGetResponse = self.context.call_with(request, options.policy).await?;
         response.invocation.ok_or_else(|| Error::Invalid("Read InvocationsGet: Missing Payload".into()))
     }
@@ -127,7 +127,7 @@ impl HostInvocationsResource {
         self.cancel_with(instance, reason, HostInvocationsCancelOptions::default()).await
     }
     pub async fn cancel_with(&self, instance: u64, reason: String, options: HostInvocationsCancelOptions) -> Result<InstanceState> {
-        let request = InvocationsCancelRequest { instance: instance, reason: reason };
+        let request = InvocationsCancelRequest { instance, reason };
         let response: InvocationsCancelResponse = self.context.call_with(request, options.policy).await?;
         response.invocation.ok_or_else(|| Error::Invalid("Read InvocationsCancel: Missing Payload".into()))
     }
@@ -137,7 +137,7 @@ impl HostInvocationsResource {
     pub async fn watch_with(
         &self, instance: u64, max_item_bytes: NonZeroUsize, options: HostInvocationsWatchOptions,
     ) -> Result<HostInvocationsWatch> {
-        let request = InvocationsWatchRequest { instance: instance };
+        let request = InvocationsWatchRequest { instance };
         let HostInvocationsWatchOptions {} = options;
         Ok(HostInvocationsWatch {
             incoming: self.context.watch(request, max_item_bytes).await?,
@@ -161,7 +161,7 @@ impl HostOperationsResource {
         self.get_with(id, HostOperationsGetOptions::default()).await
     }
     pub async fn get_with(&self, id: String, options: HostOperationsGetOptions) -> Result<DiscoveredOperation> {
-        let request = OperationsGetRequest { id: id };
+        let request = OperationsGetRequest { id };
         let response: OperationsGetResponse = self.context.call_with(request, options.policy).await?;
         response.operation.ok_or_else(|| Error::Invalid("Read OperationsGet: Missing Payload".into()))
     }
