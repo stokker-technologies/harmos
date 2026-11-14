@@ -83,7 +83,7 @@ pub fn operation_identity(id: &str) -> Result<Executor, Error> {
         let selected = match segments[index - 1] {
             "host" => Executor::Host,
             "plugin" => Executor::Plugin,
-            _ => return Err(invalid()),
+            _ => continue,
         };
         if executor.replace(selected).is_some() {
             return Err(invalid());
@@ -415,6 +415,7 @@ mod tests {
             ("example.plugin.v2.steps.Progress/Get", Executor::Plugin),
             ("example.host.v1.Prompts/Create", Executor::Host),
             ("example.host.v1.jobs.Progress/Watch", Executor::Host),
+            ("example.host.v1.jobs.v2.Progress/Watch", Executor::Host),
         ] {
             assert_eq!(operation_identity(id).unwrap(), executor);
             assert_eq!(plugin_operation_identity(id).is_ok(), executor == Executor::Plugin);
