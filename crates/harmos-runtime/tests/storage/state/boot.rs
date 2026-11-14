@@ -17,8 +17,8 @@ use std::time::Duration;
 use tokio::sync::Notify;
 // Local Imports
 use super::{CleanupCapture, closed, incompatible};
-use crate::storage::Bank;
 use crate::storage::Backend;
+use crate::storage::Bank;
 use crate::storage::Ledger;
 use crate::storage::RecoveryBackend;
 use crate::storage::StorageBackends;

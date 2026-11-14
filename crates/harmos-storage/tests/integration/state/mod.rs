@@ -9,9 +9,9 @@
 
 /* === Imports === */
 
-use std::num::NonZeroUsize;
-use harmos_storage::{Identifier, StoreHistory, StorageCursor};
 use harmos_storage::state::StateBackend;
+use harmos_storage::{Identifier, StorageCursor, StoreHistory};
+use std::num::NonZeroUsize;
 
 /* === Tests === */
 
@@ -42,4 +42,3 @@ async fn snapshot_requires_singleton() {
     assert_eq!(backend.get_recovery_snapshot(NonZeroUsize::new(4096).unwrap()).await.unwrap(), Some(snapshot));
     backend.delete_recovery_session().await.unwrap();
 }
-

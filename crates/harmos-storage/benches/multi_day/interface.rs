@@ -22,7 +22,7 @@
 // Local Imports
 use harmos_storage::bench_support::{
     self,
-    workload::{ROWS, Workload, Sample},
+    workload::{ROWS, Sample, Workload},
 };
 use harmos_storage::memory::Backend;
 use std::sync::Arc;

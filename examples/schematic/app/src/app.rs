@@ -93,8 +93,6 @@ impl Lifecycle for SchematicEditor {
         setup.resource::<schematic_operations::transfer::Store>(Arc::new(Default::default()));
         Ok(Self)
     }
-
-
 }
 
 impl Application for SchematicEditor {

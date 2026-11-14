@@ -329,7 +329,9 @@ async fn original(storage: &StorageManager, snapshot: bool) -> Runtime<Model<fal
     .unwrap()
 }
 
-fn plugin_storage(catalog: ObjectCatalog, data: &Arc<crate::storage::Backend>, recovery: &Arc<harmos_storage::memory::RecoveryBackend>) -> StorageManager {
+fn plugin_storage(
+    catalog: ObjectCatalog, data: &Arc<crate::storage::Backend>, recovery: &Arc<harmos_storage::memory::RecoveryBackend>,
+) -> StorageManager {
     let backends = harmos_runtime::storage::StorageBackends {
         primary: data.clone(),
         state: recovery.clone(),
@@ -368,7 +370,7 @@ async fn historical_plugin_values(storage: &StorageManager, schema: &harmos_runt
     ] {
         let mut reader = storage
             .query(harmos_domain::model::storage::query::Query {
-            merge: None,
+                merge: None,
                 at: storage.get_saved_position(),
                 source,
                 transforms: vec![],
@@ -567,7 +569,7 @@ async fn changed_record_shape_refuses_root_and_preserves_history() {
 #[tokio::test]
 async fn native_stream_round_trip_uses_shared_revision() {
     let data = Arc::new(crate::storage::Backend::with_catalog(stored_plugin_objects_catalog(), crate::storage::history()));
-        let recovery = Arc::new(harmos_storage::memory::RecoveryBackend::new(crate::storage::history()));
+    let recovery = Arc::new(harmos_storage::memory::RecoveryBackend::new(crate::storage::history()));
     let disk = plugin_storage(ObjectCatalog::new(), &data, &recovery);
     let borrowed = Arc::new(Mutex::new(Vec::new()));
     let shared = Arc::new(Mutex::new(Vec::new()));

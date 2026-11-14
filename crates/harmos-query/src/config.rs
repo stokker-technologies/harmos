@@ -9,11 +9,7 @@
 
 /* === Modules === */
 
-
-
 /* === Re-Exports === */
-
-
 
 /* === Imports === */
 
@@ -21,15 +17,9 @@ use serde::{Deserialize, Serialize};
 
 /* === Constants === */
 
-
-
 /* === Macros === */
 
-
-
 /* === Type Aliases === */
-
-
 
 /* === Structs === */
 
@@ -41,26 +31,18 @@ pub struct QueryAccumulatorSettings {
 
 /* === Enums === */
 
-
-
 /* === Traits === */
-
-
 
 /* === Implementations === */
 
 impl Default for QueryAccumulatorSettings {
-    fn default() -> Self { Self { memory_bytes: 64 * 1024 } }
+    fn default() -> Self {
+        Self { memory_bytes: 64 * 1024 }
+    }
 }
 
 /* === Public Functions === */
 
-
-
 /* === Private Functions === */
 
-
-
 /* === Tests === */
-
-

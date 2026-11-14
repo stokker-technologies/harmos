@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use std::io::Result as IoResult;
+
 // Standard Library Imports
 use std::io::{self, Cursor, Read, Write};
 use std::num::NonZeroUsize;
@@ -70,7 +72,7 @@ pub struct SnapshotWriter {
 /* === Implementations === */
 
 impl SnapshotWriter {
-    pub fn new(limit: NonZeroUsize) -> io::Result<Self> {
+    pub fn new(limit: NonZeroUsize) -> IoResult<Self> {
         Ok(Self {
             data: Vec::new(),
             limit: limit.get(),
@@ -91,7 +93,7 @@ impl SnapshotWriter {
         }
     }
 
-    pub fn finish(mut self, position: Position) -> io::Result<SnapshotPayload> {
+    pub fn finish(mut self, position: Position) -> IoResult<SnapshotPayload> {
         self.flush()?;
         self.finish_segment();
         Ok(SnapshotPayload {
@@ -107,7 +109,7 @@ impl SnapshotWriter {
 }
 
 impl Write for SnapshotWriter {
-    fn write(&mut self, mut bytes: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, mut bytes: &[u8]) -> IoResult<usize> {
         let length = bytes.len();
         let total = self.total_bytes.checked_add(length).ok_or_else(|| io::Error::other("snapshot size overflow"))?;
         self.data.try_reserve(length).map_err(|_| io::Error::other("write snapshot: capacity exhausted"))?;
@@ -125,13 +127,13 @@ impl Write for SnapshotWriter {
         Ok(length)
     }
 
-    fn flush(&mut self) -> io::Result<()> {
+    fn flush(&mut self) -> IoResult<()> {
         Ok(())
     }
 }
 
 impl SnapshotPayload {
-    pub fn from_bytes(bytes: &[u8], limit: NonZeroUsize, position: Position) -> io::Result<Self> {
+    pub fn from_bytes(bytes: &[u8], limit: NonZeroUsize, position: Position) -> IoResult<Self> {
         let mut writer = SnapshotWriter::new(limit)?;
         writer.write_all(bytes)?;
         writer.finish(position)
@@ -166,11 +168,11 @@ impl SnapshotPayload {
         self.manifest.segments.capacity().saturating_mul(std::mem::size_of::<Segment>()).saturating_add(self.data.len())
     }
 
-    pub fn reader(&self) -> io::Result<Cursor<Arc<[u8]>>> {
+    pub fn reader(&self) -> IoResult<Cursor<Arc<[u8]>>> {
         Ok(Cursor::new(Arc::clone(&self.data)))
     }
 
-    pub fn verify(&self, maximum: usize) -> io::Result<()> {
+    pub fn verify(&self, maximum: usize) -> IoResult<()> {
         let invalid = || io::Error::new(io::ErrorKind::InvalidData, "invalid snapshot manifest or segment");
         if self.manifest.count != self.manifest.segments.len() {
             return Err(invalid());

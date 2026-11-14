@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Bounded Batch Sources At An Immutable Cut
 
 /* === Modules === */
@@ -16,15 +15,15 @@
 
 /* === Imports === */
 
+use crate::backend::ScanPage;
+use crate::execution::Context;
+use crate::manager::Inner;
+use crate::{Error, Result, SchemaKey, Snapshot, StorageSchema};
+use harmos_domain::model::storage::query::QueryCompletion;
+use harmos_query::{QueryArrow, QueryReader as EngineReader, QueryStep};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::OwnedSemaphorePermit;
-use crate::manager::Inner;
-use crate::{Error, Result, Snapshot, SchemaKey, StorageSchema};
-use crate::backend::ScanPage;
-use harmos_query::{QueryArrow, QueryStep, QueryReader as EngineReader};
-use harmos_domain::model::storage::query::QueryCompletion;
-use crate::execution::Context;
 
 /* === Constants === */
 
@@ -49,7 +48,12 @@ pub struct QueryReader {
 
 impl QueryReader {
     pub(super) fn new(inner: Arc<Inner>, reader: EngineReader, active: OwnedSemaphorePermit) -> Self {
-        Self { inner, reader, active: Some(active), context: Context::current() }
+        Self {
+            inner,
+            reader,
+            active: Some(active),
+            context: Context::current(),
+        }
     }
 
     pub fn configure_page(&mut self, rows: NonZeroUsize, bytes: NonZeroUsize) {
@@ -57,28 +61,35 @@ impl QueryReader {
         self.reader.configure_page(rows, bytes);
     }
 
-    pub fn suspend_page(&mut self) { self.active = None; }
+    pub fn suspend_page(&mut self) {
+        self.active = None;
+    }
 
     pub async fn next(&mut self) -> Result<Option<QueryArrow>> {
         loop {
             match self.step().await? {
                 QueryStep::Output(output) => return Ok(Some(output)),
-                QueryStep::Progress => {},
+                QueryStep::Progress => {}
                 QueryStep::Complete => return Ok(None),
             }
         }
     }
 
     pub async fn step(&mut self) -> Result<QueryStep> {
-        if self.active.is_none() { self.active = Some(query_slot(&self.inner).await?); }
+        if self.active.is_none() {
+            self.active = Some(query_slot(&self.inner).await?);
+        }
         let result = self.context.scope(self.reader.step()).await;
-        if matches!(&result, Ok(QueryStep::Complete) | Err(_)) { self.active = None; }
+        if matches!(&result, Ok(QueryStep::Complete) | Err(_)) {
+            self.active = None;
+        }
         Ok(result?)
     }
 
-    pub fn completion(&self) -> Result<QueryCompletion> { Ok(self.reader.completion()?) }
+    pub fn completion(&self) -> Result<QueryCompletion> {
+        Ok(self.reader.completion()?)
+    }
 }
-
 
 /* === Public Functions === */
 

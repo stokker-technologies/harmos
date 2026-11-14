@@ -35,8 +35,8 @@ use std::time::{Duration, Instant};
 use criterion::{BenchmarkId, Criterion};
 
 // Local Imports
-use harmos_storage::Aggregate;
 use harmos_query::Accumulator;
+use harmos_storage::Aggregate;
 use harmos_storage::query::scalar::Agg;
 use harmos_storage::query::scalar::ScalarValue;
 
@@ -151,34 +151,47 @@ fn main() {
 /* === Tests === */
 
 async fn journal_recovery() {
-    use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, StateBackend, SnapshotPayload};
+    use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, SnapshotPayload, StateBackend};
     use harmos_storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageCursor};
     use std::num::NonZeroUsize;
     let history = backend::history();
     let journal = harmos_storage::memory::RecoveryBackend::new(history.clone());
     journal.create_recovery_session().await.unwrap();
     for day in 0..7 {
-        let entries = (0..1440).map(|minute| {
-            let sequence = day * 1440 + minute + 1;
-            RecoveryEntry {
-                position: RecoveryPosition { history: history.clone(), sequence },
-                required_data: StorageCursor { history: history.clone(), sequence: 0 }, payload: sequence.to_le_bytes().to_vec(),
-            }
-        }).collect();
+        let entries = (0..1440)
+            .map(|minute| {
+                let sequence = day * 1440 + minute + 1;
+                RecoveryEntry {
+                    position: RecoveryPosition { history: history.clone(), sequence },
+                    required_data: StorageCursor { history: history.clone(), sequence: 0 },
+                    payload: sequence.to_le_bytes().to_vec(),
+                }
+            })
+            .collect();
         journal.append_recovery_entries(StorageBatch::new(entries)).await.unwrap();
     }
-    let through = RecoveryPosition { history: history.clone(), sequence: 7 * 1440 };
+    let through = RecoveryPosition {
+        history: history.clone(),
+        sequence: 7 * 1440,
+    };
     journal.flush(&through).await.unwrap();
     let mut after = RecoveryPosition { history: history.clone(), sequence: 0 };
-    let limits = ReadLimits { rows: NonZeroUsize::new(31).unwrap(), bytes: NonZeroUsize::new(16384).unwrap() };
+    let limits = ReadLimits {
+        rows: NonZeroUsize::new(31).unwrap(),
+        bytes: NonZeroUsize::new(16384).unwrap(),
+    };
     while after.sequence < through.sequence {
         let page = journal.list_recovery_entries(&after, &through, limits).await.unwrap();
         after = page.entries.last().unwrap().position.clone();
         black_box(page);
     }
-    let checkpoint = RecoveryPosition { history: history.clone(), sequence: through.sequence - 10 };
+    let checkpoint = RecoveryPosition {
+        history: history.clone(),
+        sequence: through.sequence - 10,
+    };
     let snapshot = RecoverySnapshot {
-        through: checkpoint.clone(), required_data: StorageCursor { history, sequence: 0 },
+        through: checkpoint.clone(),
+        required_data: StorageCursor { history, sequence: 0 },
         payload: SnapshotPayload::from_bytes(&[7], NonZeroUsize::new(65536).unwrap(), harmos_domain::state::Position::ORIGIN).unwrap(),
     };
     journal.set_recovery_snapshot(StorageBatch::new(vec![snapshot])).await.unwrap();

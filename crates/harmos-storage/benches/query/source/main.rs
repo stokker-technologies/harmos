@@ -23,8 +23,8 @@ extern crate harmos_domain as harmos;
 use criterion::{BenchmarkId, Criterion, Throughput};
 
 // Local Imports
-use harmos_storage::Message;
 use harmos_query::PayloadDecoder;
+use harmos_storage::Message;
 
 /* === Constants === */
 

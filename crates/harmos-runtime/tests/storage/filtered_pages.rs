@@ -13,24 +13,24 @@
 
 use super::{Fixture, config};
 use harmos_domain::Message;
+use harmos_domain::model::storage::query::Query;
 use harmos_operations::storage::{ListRows, ListRowsRequest};
 use harmos_protocol::v1;
-use harmos_storage::query::scalar::ScalarValue;
+use harmos_query::QueryArrow;
 use harmos_query::transform::Transform;
 use harmos_query::transform::filter::Clause;
 use harmos_query::transform::filter::Compare;
 use harmos_query::transform::filter::Condition;
 use harmos_query::transform::filter::Filter;
 use harmos_query::transform::filter::Term;
-use harmos_query::QueryArrow;
+use harmos_storage::Identifier;
+use harmos_storage::PayloadEncoding;
+use harmos_storage::RecordInput;
+use harmos_storage::SchemaKey;
 use harmos_storage::query::RecordSelection;
 use harmos_storage::query::RowSlice;
 use harmos_storage::query::Source;
-use harmos_storage::Identifier;
-use harmos_storage::PayloadEncoding;
-use harmos_domain::model::storage::query::Query;
-use harmos_storage::RecordInput;
-use harmos_storage::SchemaKey;
+use harmos_storage::query::scalar::ScalarValue;
 use std::{num::NonZeroU32, sync::atomic::Ordering};
 
 /* === Structs === */
@@ -76,7 +76,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
     let at = fixture.storage.flush().await.unwrap();
     fixture.data.control.record_page_rows.store(2, Ordering::Relaxed);
     let query = Query {
-            merge: None,
+        merge: None,
         at,
         source: Source::Records(RecordSelection {
             schema,
@@ -108,7 +108,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         slice: RowSlice::default(),
     };
     let mut request = ListRowsRequest {
-            merge: None,
+        merge: None,
         source: Some(query.source),
         transforms: query.transforms,
         at: None,

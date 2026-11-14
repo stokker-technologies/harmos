@@ -21,9 +21,9 @@ use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
-use harmos_storage::StorageManager;
 use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnSource;
+use harmos_storage::StorageManager;
 use prost::Message;
 
 pub(super) enum SetOutcome {

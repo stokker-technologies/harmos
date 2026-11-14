@@ -18,6 +18,8 @@ pub(super) mod testing;
 
 /* === Imports === */
 
+use super::transform::aggregate::Aggregate;
+
 // Standard Library Imports
 use std::cmp::Ordering;
 use std::fs::File;
@@ -238,7 +240,7 @@ fn normalized(value: ScalarValue) -> ScalarValue {
     if matches!(&value, ScalarValue::Float(value) if !value.is_finite()) { ScalarValue::Null } else { value }
 }
 
-fn aggregate(input: Spool, plan: &super::transform::aggregate::Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
+fn aggregate(input: Spool, plan: &Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     let schema = Arc::new(plan.output_schema(&input.schema)?);
     let mut keys = |batch: &RecordBatch, row| group_keys(plan, batch, row);
     let input = if plan.groups.is_empty() {
@@ -277,7 +279,7 @@ fn aggregate(input: Spool, plan: &super::transform::aggregate::Aggregate, check:
     output.finish()
 }
 
-fn group_keys(plan: &super::transform::aggregate::Aggregate, batch: &RecordBatch, row: usize) -> Result<Vec<ScalarValue>> {
+fn group_keys(plan: &Aggregate, batch: &RecordBatch, row: usize) -> Result<Vec<ScalarValue>> {
     plan.groups.iter().map(|group| group.field.value(batch, row).map(normalized)).collect()
 }
 

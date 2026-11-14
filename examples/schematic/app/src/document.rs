@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_runtime::state::At;
+
 // Standard Library Imports
 use std::io;
 use std::io::Write;
@@ -55,7 +57,10 @@ pub struct Document {
 
 impl Document {
     pub fn new() -> Self {
-        Self { origin: Schematic::default(), position: Position::ORIGIN }
+        Self {
+            origin: Schematic::default(),
+            position: Position::ORIGIN,
+        }
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(path = %path.as_ref().display()))]
@@ -71,8 +76,11 @@ impl Document {
         })
     }
 
-    pub fn save(path: &Path, snapshot: harmos_runtime::state::At<Schematic>) -> Result<(), DocumentError> {
-        let artifact = Artifact { position: snapshot.position, schematic: snapshot.value };
+    pub fn save(path: &Path, snapshot: At<Schematic>) -> Result<(), DocumentError> {
+        let artifact = Artifact {
+            position: snapshot.position,
+            schematic: snapshot.value,
+        };
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         serde_json::to_writer_pretty(&mut temporary, &artifact)?;
@@ -85,7 +93,6 @@ impl Document {
     pub fn into_origin(self) -> Origin {
         Origin::at(self.origin, self.position)
     }
-
 }
 
 /* === Public Functions === */

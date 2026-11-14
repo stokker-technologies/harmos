@@ -24,9 +24,6 @@ pub use harmos_domain::model::storage::DataBatch;
 // Third Party Imports
 // Local Imports
 
-
-
-
 /* === Constants === */
 
 /* === Macros === */

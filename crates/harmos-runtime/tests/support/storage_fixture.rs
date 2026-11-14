@@ -88,7 +88,7 @@ impl std::ops::Deref for Fixture {
 
 pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
     use harmos_query::QueryArrow;
-    use harmos_runtime::storage::query::{ RecordSelection, RowSlice, Source};
+    use harmos_runtime::storage::query::{RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_domain::model::storage::query::Query {
             merge: None,

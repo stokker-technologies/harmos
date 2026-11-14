@@ -15,8 +15,8 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::Bank;
 use super::Backend;
+use super::Bank;
 use super::Fixture;
 use super::Ledger;
 use super::RecoveryBackend;

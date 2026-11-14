@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Merge Two Time-Ordered Sources Without A General Join
 
 /* === Modules === */
@@ -27,13 +26,12 @@ use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use arrow_select::{concat::concat, take::take};
 
 // Local Imports
-use harmos_domain::model::storage::StorageCursor;
-use harmos_domain::model::storage::query::{TimeMerge, TimeMergeMode};
-use harmos_domain::model::storage::query::scalar::ScalarValue;
 use crate::batches::{BatchPage, BatchReader, QueryFuture};
 use crate::transform::{FieldPath, FieldPathExecution};
 use crate::{Error, Result};
-
+use harmos_domain::model::storage::StorageCursor;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
+use harmos_domain::model::storage::query::{TimeMerge, TimeMergeMode};
 
 /* === Constants === */
 
@@ -115,15 +113,26 @@ impl TimeMergeReader {
         Ok(Self {
             left: Input::new(left, plan.primary_time.clone()),
             right: Input::new(right, plan.secondary_time.clone()),
-            plan, schema, rows, previous: None, primary: None, sample: None,
-            prepared: false, active: Vec::new(), emit: 0, done: false,
+            plan,
+            schema,
+            rows,
+            previous: None,
+            primary: None,
+            sample: None,
+            prepared: false,
+            active: Vec::new(),
+            emit: 0,
+            done: false,
         })
     }
 
     async fn at_or_before(&mut self) -> Result<Step> {
         if self.primary.is_none() {
             match self.left.peek().await? {
-                Peek::Row(row) => { self.left.consume(); self.primary = Some(row); }
+                Peek::Row(row) => {
+                    self.left.consume();
+                    self.primary = Some(row);
+                }
                 Peek::Progress => return Ok(Step::Progress),
                 Peek::End => return Ok(Step::End),
             }
@@ -136,7 +145,9 @@ impl TimeMergeReader {
                     self.previous = Some(row);
                 }
                 Peek::Progress => return Ok(Step::Progress),
-                Peek::Row(_) | Peek::End => return Ok(Step::Pair(self.primary.take().expect("retained primary row"), self.previous.clone())),
+                Peek::Row(_) | Peek::End => {
+                    return Ok(Step::Pair(self.primary.take().expect("retained primary row"), self.previous.clone()));
+                }
             }
         }
         Ok(Step::Progress)
@@ -147,7 +158,13 @@ impl TimeMergeReader {
         loop {
             if self.sample.is_none() {
                 match self.right.peek().await? {
-                    Peek::Row(row) => { self.right.consume(); self.active.retain(|window| window.end.is_none_or(|end| end > row.time)); self.sample = Some(row); self.prepared = false; self.emit = 0; }
+                    Peek::Row(row) => {
+                        self.right.consume();
+                        self.active.retain(|window| window.end.is_none_or(|end| end > row.time));
+                        self.sample = Some(row);
+                        self.prepared = false;
+                        self.emit = 0;
+                    }
                     Peek::Progress => return Ok(Step::Progress),
                     Peek::End => return Ok(Step::End),
                 }
@@ -159,17 +176,26 @@ impl TimeMergeReader {
                         let end = match &self.plan.mode {
                             TimeMergeMode::Range { end } => {
                                 let end = timestamp(end, &row.batch, row.offset)?;
-                                if end < row.time { return Err(invalid("range end precedes its start")); }
+                                if end < row.time {
+                                    return Err(invalid("range end precedes its start"));
+                                }
                                 Some(end)
                             }
-                            TimeMergeMode::Intervals => { self.active.clear(); None }
+                            TimeMergeMode::Intervals => {
+                                self.active.clear();
+                                None
+                            }
                             TimeMergeMode::AtOrBefore => unreachable!("nearest mode uses its own sweep"),
                         };
                         self.left.consume();
-                        if end.is_none_or(|end| end > time) { self.active.push(Window { row, end }); }
+                        if end.is_none_or(|end| end > time) {
+                            self.active.push(Window { row, end });
+                        }
                         self.check_active()?;
                         work += 1;
-                        if work >= self.rows.get() { return Ok(Step::Progress); }
+                        if work >= self.rows.get() {
+                            return Ok(Step::Progress);
+                        }
                     }
                     Peek::Progress => return Ok(Step::Progress),
                     Peek::Row(_) | Peek::End => {
@@ -184,7 +210,9 @@ impl TimeMergeReader {
             }
             self.sample = None;
             work += 1;
-            if work >= self.rows.get() { return Ok(Step::Progress); }
+            if work >= self.rows.get() {
+                return Ok(Step::Progress);
+            }
         }
     }
 
@@ -211,7 +239,10 @@ impl TimeMergeReader {
                 TimeMergeMode::Range { .. } | TimeMergeMode::Intervals => self.intervals().await?,
             };
             match step {
-                Step::Pair(primary, secondary) => { left.push(Some(primary)); right.push(secondary); }
+                Step::Pair(primary, secondary) => {
+                    left.push(Some(primary));
+                    right.push(secondary);
+                }
                 Step::Progress => break,
                 Step::End => self.done = true,
             }
@@ -224,26 +255,46 @@ impl TimeMergeReader {
             RecordBatch::try_new(Arc::clone(&self.schema), vec![gather(&left, left_type)?, gather(&right, right_type)?])
                 .map_err(|_| invalid("cannot assemble matched rows"))?
         };
-        if batch.get_array_memory_size() > self.plan.work.bytes.get() { return Err(exhausted()); }
+        if batch.get_array_memory_size() > self.plan.work.bytes.get() {
+            return Err(exhausted());
+        }
         Ok(BatchPage { batch, complete: self.done })
     }
 }
 
 impl BatchReader for TimeMergeReader {
-    fn schema(&self) -> SchemaRef { Arc::clone(&self.schema) }
-    fn at(&self) -> &StorageCursor { self.left.reader.at() }
-    fn next(&mut self) -> QueryFuture<'_, BatchPage> { Box::pin(self.advance()) }
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+    fn at(&self) -> &StorageCursor {
+        self.left.reader.at()
+    }
+    fn next(&mut self) -> QueryFuture<'_, BatchPage> {
+        Box::pin(self.advance())
+    }
 }
 
 impl Input {
     fn new(reader: Box<dyn BatchReader>, time: FieldPath) -> Self {
-        Self { reader, time, batch: None, offset: 0, complete: false, previous: None, current: None }
+        Self {
+            reader,
+            time,
+            batch: None,
+            offset: 0,
+            complete: false,
+            previous: None,
+            current: None,
+        }
     }
 
     async fn peek(&mut self) -> Result<Peek> {
-        if let Some(row) = &self.current { return Ok(Peek::Row(row.clone())); }
+        if let Some(row) = &self.current {
+            return Ok(Peek::Row(row.clone()));
+        }
         if self.batch.as_ref().is_none_or(|batch| self.offset >= batch.num_rows()) {
-            if self.complete { return Ok(Peek::End); }
+            if self.complete {
+                return Ok(Peek::End);
+            }
             let page = self.reader.next().await?;
             self.complete = page.complete;
             self.offset = 0;
@@ -258,13 +309,19 @@ impl Input {
             return Err(invalid("inputs must be ordered by nondecreasing time"));
         }
         self.previous = Some(time);
-        let row = Row { batch: Arc::clone(batch), offset: self.offset, time };
+        let row = Row {
+            batch: Arc::clone(batch),
+            offset: self.offset,
+            time,
+        };
         self.offset += 1;
         self.current = Some(row.clone());
         Ok(Peek::Row(row))
     }
 
-    fn consume(&mut self) { self.current = None; }
+    fn consume(&mut self) {
+        self.current = None;
+    }
 }
 
 /* === Public Functions === */
@@ -287,13 +344,18 @@ fn gather(rows: &[Option<Row>], data_type: &DataType) -> Result<ArrayRef> {
         let mut end = start + 1;
         match &rows[start] {
             Some(first) => {
-                while end < rows.len() && rows[end].as_ref().is_some_and(|row| Arc::ptr_eq(&row.batch, &first.batch)) { end += 1; }
-                let indices = UInt64Array::from_iter_values(rows[start..end].iter().map(|row| row.as_ref().expect("non-null run").offset as u64));
+                while end < rows.len() && rows[end].as_ref().is_some_and(|row| Arc::ptr_eq(&row.batch, &first.batch)) {
+                    end += 1;
+                }
+                let indices =
+                    UInt64Array::from_iter_values(rows[start..end].iter().map(|row| row.as_ref().expect("non-null run").offset as u64));
                 let structure = StructArray::from(first.batch.as_ref().clone());
                 parts.push(take(&structure, &indices, None).map_err(|_| invalid("cannot select matched rows"))?);
             }
             None => {
-                while end < rows.len() && rows[end].is_none() { end += 1; }
+                while end < rows.len() && rows[end].is_none() {
+                    end += 1;
+                }
                 parts.push(new_null_array(data_type, end - start));
             }
         }
@@ -303,8 +365,12 @@ fn gather(rows: &[Option<Row>], data_type: &DataType) -> Result<ArrayRef> {
     concat(&arrays).map_err(|_| invalid("cannot concatenate matched rows"))
 }
 
-fn invalid(reason: &'static str) -> Error { Error::InvalidInput { field: "time merge", reason } }
+fn invalid(reason: &'static str) -> Error {
+    Error::InvalidInput { field: "time merge", reason }
+}
 
-fn exhausted() -> Error { Error::ResourceExhausted { resource: "time merge work" } }
+fn exhausted() -> Error {
+    Error::ResourceExhausted { resource: "time merge work" }
+}
 
 /* === Tests === */

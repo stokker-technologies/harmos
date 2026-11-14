@@ -18,11 +18,11 @@
 use super::{Fixture, config, storage_catalog};
 use harmos_operations::storage as operation;
 use harmos_protocol::v1::PageRequest;
+use harmos_query::QueryArrow;
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::FileMetadata;
 use harmos_runtime::storage::MutationId;
 use harmos_runtime::storage::StagedFile;
-use harmos_query::QueryArrow;
 use harmos_runtime::storage::query::RecordSelection;
 use harmos_runtime::storage::query::Source;
 use sha2::{Digest, Sha256};
@@ -204,7 +204,7 @@ async fn native_row_pages_replay_and_keep_their_durable_image() {
     assert_eq!(fixture.runtime.operations.call_native::<operation::AppendRecords>(request).await.unwrap(), accepted);
     fixture.storage.flush().await.unwrap();
     let mut request = operation::ListRowsRequest {
-            merge: None,
+        merge: None,
         source: Some(records()),
         at: None,
         transforms: Vec::new(),

@@ -11,8 +11,6 @@
 
 mod admissions;
 
-
-
 mod backend;
 mod batch;
 mod batching;
@@ -61,9 +59,7 @@ pub mod writes;
 
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
-pub use config::{
-    StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
-};
+pub use config::{StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings};
 pub use content::{ContentLease, ContentRead, ContentSource};
 pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
 pub use directory::{DirectoryReader, DirectoryWatcher};
@@ -89,17 +85,17 @@ pub use opened_capture::OpenedCapture;
 pub use persistence_work::{PersistenceWork, StageWork};
 
 pub use harmos_domain::model::storage::{ReadBatch, ReadPages};
+pub use query::QueryReader;
 pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
 pub use record_view::RecordView;
 pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
 pub use snapshot::Snapshot;
-pub use query::QueryReader;
 pub use staging::{FileProductionStatus, StorageFile};
 
+pub use harmos_domain::model::storage::StorageSchema;
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 pub use staging::checkpoint::FileSave;
 pub use worker::Worker;
-pub use harmos_domain::model::storage::StorageSchema;
 
 /* === Imports === */
 
@@ -112,7 +108,6 @@ extern crate self as harmos_storage;
 
 // Local Imports
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
-
 
 /* === Constants === */
 

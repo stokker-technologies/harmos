@@ -17,7 +17,8 @@ pub mod transform;
 /* === Re-Exports === */
 
 pub use contract::{
-    FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection, TimeMerge, TimeMergeMode,
+    FileSelection, ObjectSelection, ObjectVersions, Query, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source,
+    StreamSelection, TimeMerge, TimeMergeMode,
 };
 
 /* === Imports === */

@@ -9,33 +9,25 @@
 
 /* === Modules === */
 
-
-
 /* === Re-Exports === */
-
-
 
 /* === Imports === */
 
-use std::marker::PhantomData;
-use harmos_domain::{MemorySize, Message};
-use harmos_domain::model::storage::{ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StoredObject, StoredRecord, StoredRow, ReadBatch, ReadPages};
-use harmos_domain::model::storage::query::{ObjectVersions, RecordSelection, StreamSelection};
-use harmos_domain::model::storage::catalog::decode_admitted;
 use crate::batches::QueryFuture;
 use crate::{BackendFailure, Error, Result};
+use harmos_domain::model::storage::catalog::decode_admitted;
+use harmos_domain::model::storage::query::{ObjectVersions, RecordSelection, StreamSelection};
+use harmos_domain::model::storage::{
+    ObjectEntry, ObjectRevision, ReadBatch, ReadPages, SchemaKey, StorageCursor, StoredObject, StoredRecord, StoredRow,
+};
+use harmos_domain::{MemorySize, Message};
+use std::marker::PhantomData;
 
 /* === Constants === */
 
-
-
 /* === Macros === */
 
-
-
 /* === Type Aliases === */
-
-
 
 /* === Structs === */
 
@@ -78,8 +70,6 @@ struct DecodedPages<E> {
 
 /* === Enums === */
 
-
-
 /* === Traits === */
 
 pub trait PageSource<E>: Send {
@@ -89,10 +79,16 @@ pub trait PageSource<E>: Send {
 /* === Implementations === */
 
 impl<E> DecodedPages<E> {
-    fn new(source: Box<dyn PageSource<E>>) -> Self { Self { source: Some(source), failed: false } }
+    fn new(source: Box<dyn PageSource<E>>) -> Self {
+        Self { source: Some(source), failed: false }
+    }
     async fn next<V: MemorySize>(&mut self, build: impl Fn(E) -> Result<V>) -> Result<Option<ReadBatch<Vec<V>>>> {
-        if self.failed { return Err(Error::NotReady { domain: "read failed typed query" }); }
-        let Some(source) = &mut self.source else { return Ok(None); };
+        if self.failed {
+            return Err(Error::NotReady { domain: "read failed typed query" });
+        }
+        let Some(source) = &mut self.source else {
+            return Ok(None);
+        };
         self.failed = true;
         let page = source.next().await?;
         let Some(page) = page else {
@@ -107,23 +103,34 @@ impl<E> DecodedPages<E> {
 }
 
 impl StreamReader {
-    pub fn new(source: Box<dyn PageSource<StoredRow>>) -> Self { Self { pages: DecodedPages::new(source) } }
+    pub fn new(source: Box<dyn PageSource<StoredRow>>) -> Self {
+        Self { pages: DecodedPages::new(source) }
+    }
 }
 
 impl<T> ObjectReader<T> {
     pub fn new(source: Box<dyn PageSource<ObjectEntry>>, schema: SchemaKey) -> Self {
-        Self { pages: DecodedPages::new(source), schema, _value: PhantomData }
+        Self {
+            pages: DecodedPages::new(source),
+            schema,
+            _value: PhantomData,
+        }
     }
 }
 
 impl<T> RecordReader<T> {
     pub fn new(source: Box<dyn PageSource<StoredRecord>>) -> Self {
-        Self { pages: DecodedPages::new(source), _payload: PhantomData }
+        Self {
+            pages: DecodedPages::new(source),
+            _payload: PhantomData,
+        }
     }
 }
 
 impl StreamReader {
-    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRow>>>> { self.pages.next(Ok).await }
+    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRow>>>> {
+        self.pages.next(Ok).await
+    }
 }
 
 impl<T: StoredObject> ObjectReader<T> {
@@ -183,12 +190,6 @@ impl<T: Message + MemorySize> RecordReader<T> {
 
 /* === Public Functions === */
 
-
-
 /* === Private Functions === */
 
-
-
 /* === Tests === */
-
-

@@ -1,7 +1,7 @@
-use std::num::NonZeroUsize;
-use harmos_query::columnar::{ArrowPage, ArrowScan, Cancellation, ColumnKind, ScanEvidence, finish_page, flatten};
 use crate::{BackendSnapshot, Error, MemorySize, Result, ScanPage, StorageBackend};
 use harmos_domain::model::storage::{ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
+use harmos_query::columnar::{ArrowPage, ArrowScan, Cancellation, ColumnKind, ScanEvidence, finish_page, flatten};
+use std::num::NonZeroUsize;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageCapabilities {
     pub file_sessions: bool,
@@ -94,10 +94,22 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
         return Err(exhausted());
     }
     Ok(finish_page(
-        snapshot, read, &flat,
-        ScanEvidence { complete: count == 0, bytes, columns: read.required_columns(), payload_rows: count }, cancel,
+        snapshot,
+        read,
+        &flat,
+        ScanEvidence {
+            complete: count == 0,
+            bytes,
+            columns: read.required_columns(),
+            payload_rows: count,
+        },
+        cancel,
     )?)
 }
 
-pub(crate) fn invalid(reason: &'static str) -> Error { Error::InvalidInput { field: "storage columns", reason } }
-pub(crate) fn exhausted() -> Error { Error::ResourceExhausted { resource: "columnar query work" } }
+pub(crate) fn invalid(reason: &'static str) -> Error {
+    Error::InvalidInput { field: "storage columns", reason }
+}
+pub(crate) fn exhausted() -> Error {
+    Error::ResourceExhausted { resource: "columnar query work" }
+}

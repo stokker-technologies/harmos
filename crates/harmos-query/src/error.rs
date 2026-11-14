@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use std::error::Error as StdError;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -48,7 +50,7 @@ pub enum Error {
         kind: BackendFailure,
 
         #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn StdError + Send + Sync>,
     },
 
     #[error("invalid {field}: {reason}")]
@@ -85,7 +87,7 @@ impl Error {
         }
     }
 
-    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl StdError + Send + Sync + 'static) -> Self {
         Self::Backend {
             operation,
             kind,

@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use std::ops::Range;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -186,7 +188,7 @@ fn area(x0: f64, y0: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
     ((x0 - x2) * (y1 - y0) - (x0 - x1) * (y2 - y0)).abs()
 }
 
-fn mean_of(x: &[f64], y: &[f64], range: std::ops::Range<usize>) -> Option<(f64, f64)> {
+fn mean_of(x: &[f64], y: &[f64], range: Range<usize>) -> Option<(f64, f64)> {
     let count = range.len();
     if count == 0 {
         return None;

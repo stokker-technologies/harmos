@@ -13,6 +13,12 @@
 
 /* === Imports === */
 
+use super::files::FileEvent;
+use std::fmt::Debug;
+use std::fmt::Formatter;
+use std::fmt::Result as FormatResult;
+use std::result::Result as StdResult;
+
 // Standard Library Imports
 use std::borrow::Borrow;
 use std::ops::Deref;
@@ -50,7 +56,7 @@ impl<T> ReadBatch<T> {
     }
 
     // Moves A Unique Batch Through A Fallible Projection.
-    pub fn try_map<U, E>(self, map: impl FnOnce(T) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
+    pub fn try_map<U, E>(self, map: impl FnOnce(T) -> StdResult<U, E>) -> StdResult<ReadBatch<U>, E>
     where
         E: From<crate::Error>,
     {
@@ -67,9 +73,7 @@ impl<T> ReadBatch<T> {
         Ok(ReadBatch::new(value))
     }
 
-    pub fn try_map_with<U, V, E>(
-        self, other: ReadBatch<U>, map: impl FnOnce(T, U) -> std::result::Result<V, E>,
-    ) -> std::result::Result<ReadBatch<V>, E>
+    pub fn try_map_with<U, V, E>(self, other: ReadBatch<U>, map: impl FnOnce(T, U) -> StdResult<V, E>) -> StdResult<ReadBatch<V>, E>
     where
         E: From<crate::Error>,
     {
@@ -92,8 +96,8 @@ impl<T> ReadBatch<T> {
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for ReadBatch<T> {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: Debug> Debug for ReadBatch<T> {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> FormatResult {
         formatter.debug_tuple("ReadBatch").field(self.inner.as_ref()).finish()
     }
 }
@@ -151,21 +155,21 @@ mod tests {
     }
 }
 
-impl ReadBatch<super::files::FileEvent> {
-    pub fn event(&self) -> &super::files::FileEvent {
+impl ReadBatch<FileEvent> {
+    pub fn event(&self) -> &FileEvent {
         self.as_ref()
     }
 
     pub fn data(&self) -> Option<&[u8]> {
         match self.event() {
-            super::files::FileEvent::Data(batch) => Some(&batch.bytes),
+            FileEvent::Data(batch) => Some(&batch.bytes),
             _ => None,
         }
     }
 
     pub fn offset(&self) -> Option<u64> {
         match self.event() {
-            super::files::FileEvent::Data(batch) => Some(batch.offset),
+            FileEvent::Data(batch) => Some(batch.offset),
             _ => None,
         }
     }

@@ -18,6 +18,7 @@ use harmos_protocol::client::{
     operations_client::OperationsClient,
 };
 use harmos_protocol::v1::{FileMetadata, PageRequest, UploadState};
+use harmos_query::columnar::ColumnKind;
 use harmos_runtime::Identifier;
 use harmos_runtime::builtins::storage as operations;
 use harmos_runtime::builtins::storage::{
@@ -34,7 +35,6 @@ use harmos_runtime::{
     },
 };
 use harmos_storage::ReadLimits;
-use harmos_query::columnar::ColumnKind;
 use schematic_app::operations::transfer::{
     FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
 };
@@ -118,9 +118,7 @@ async fn saved_preview_survives_atomic_replacement() {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
-        manager = Some(
-            services::queries::attach(setup, catalog.clone(), settings).unwrap(),
-        );
+        manager = Some(services::queries::attach(setup, catalog.clone(), settings).unwrap());
     })
     .await
     .unwrap();
@@ -250,9 +248,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
-        manager = Some(
-            services::queries::attach(setup, catalog.clone(), settings).unwrap(),
-        );
+        manager = Some(services::queries::attach(setup, catalog.clone(), settings).unwrap());
     })
     .await
     .unwrap();

@@ -14,10 +14,10 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io;
-use harmos_runtime::{Message, storage::StorageManager};
-use harmos_query::typed::StreamRead;
 use harmos_domain::model::storage::query::StreamSelection;
+use harmos_query::typed::StreamRead;
+use harmos_runtime::{Message, storage::StorageManager};
+use std::io;
 
 // Third Party Imports
 
@@ -46,11 +46,25 @@ pub struct Columns {
 /* === Public Functions === */
 
 pub async fn read(storage: &StorageManager) -> io::Result<Columns> {
-    let mut reader = storage.list_samples(StreamRead {
-        at: storage.get_saved_position(),
-        selection: StreamSelection { schema: crate::storage::voltage_schema(), scope: None, item: None, stream: None, source_start: None, source_end: None, after: 0 },
-    }).await.map_err(io::Error::other)?;
-    let mut columns = Columns { position: Vec::new(), gap_missed: Vec::new() };
+    let mut reader = storage
+        .list_samples(StreamRead {
+            at: storage.get_saved_position(),
+            selection: StreamSelection {
+                schema: crate::storage::voltage_schema(),
+                scope: None,
+                item: None,
+                stream: None,
+                source_start: None,
+                source_end: None,
+                after: 0,
+            },
+        })
+        .await
+        .map_err(io::Error::other)?;
+    let mut columns = Columns {
+        position: Vec::new(),
+        gap_missed: Vec::new(),
+    };
     while let Some(page) = reader.next().await.map_err(io::Error::other)? {
         for row in page.iter() {
             let value = crate::storage::SavedVoltage::decode(&row.record.payload).map_err(io::Error::other)?;

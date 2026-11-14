@@ -136,9 +136,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             bytes: policy.response.batch_bytes,
         },
     };
-    for (backend, snapshot) in
-        [(&primary as &dyn StorageBackend, &saved), (fallback.as_ref() as &dyn StorageBackend, &saved_fallback)]
-    {
+    for (backend, snapshot) in [(&primary as &dyn StorageBackend, &saved), (fallback.as_ref() as &dyn StorageBackend, &saved_fallback)] {
         let mut read = read.clone();
         let mut values = Vec::new();
         let mut positions = Vec::new();
@@ -183,7 +181,6 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     primary.delete_snapshot(&saved).await.unwrap();
     assert!(list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.is_err());
     primary.delete_session().await.unwrap();
-    
 
     primary.create_session().await.unwrap();
     assert!(list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.is_err());

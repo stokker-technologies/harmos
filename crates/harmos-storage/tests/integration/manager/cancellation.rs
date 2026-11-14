@@ -102,7 +102,7 @@ async fn cancelled_query_releases() {
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
     let query = || harmos_domain::model::storage::query::Query {
-            merge: None,
+        merge: None,
         at: accepted.clone(),
         source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],

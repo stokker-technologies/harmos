@@ -231,9 +231,7 @@ impl Backend {
         })
     }
 
-    pub(super) fn read_production<'a>(
-        &'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize,
-    ) -> StorageFuture<'a, Vec<u8>> {
+    pub(super) fn read_production<'a>(&'a self, file: &'a StagedFile, offset: u64, max_bytes: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
             self.history.check(&file.history)?;
             if self.control.block_read.load(Ordering::SeqCst) {

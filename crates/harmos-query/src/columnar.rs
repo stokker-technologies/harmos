@@ -13,6 +13,13 @@
 
 /* === Imports === */
 
+use crate::ObjectEntry;
+use crate::StoredRecord;
+use crate::StoredRow;
+use arrow_schema::Field;
+use serde_json::Error as JsonError;
+use std::cmp::Ordering as CmpOrdering;
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::sync::{
@@ -32,8 +39,8 @@ use super::transform::{
     FieldPath, ProjectExecution,
     project::{Project, Projection},
 };
-use harmos_domain::model::storage::StorageSchema;
 use crate::{Error, MemorySize, Result, SchemaKey};
+use harmos_domain::model::storage::StorageSchema;
 use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 
 /* === Constants === */
@@ -43,8 +50,6 @@ use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 /* === Type Aliases === */
 
 /* === Structs === */
-
-
 
 #[derive(Clone, Default)]
 pub struct Cancellation(Arc<CancellationState>);
@@ -143,8 +148,6 @@ impl MemorySize for TimeBounds {
     }
 }
 
-
-
 impl MemorySize for ArrowPage {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>().saturating_add(self.batch.get_array_memory_size()).saturating_add(self.columns_read.memory_size())
@@ -237,11 +240,7 @@ impl ArrowScan {
 
 /* === Public Functions === */
 
-
-
 /* === Private Functions === */
-
-
 
 pub fn flatten(batch: &RecordBatch) -> Result<RecordBatch> {
     let mut paths = Vec::new();
@@ -260,7 +259,7 @@ pub fn flatten(batch: &RecordBatch) -> Result<RecordBatch> {
     project.apply(batch, &mut || Ok(()))
 }
 
-fn leaves(field: &arrow_schema::Field, parent: String, paths: &mut Vec<String>) {
+fn leaves(field: &Field, parent: String, paths: &mut Vec<String>) {
     let name = if parent.is_empty() { field.name().clone() } else { format!("{parent}.{}", field.name()) };
     if let DataType::Struct(fields) = field.data_type() {
         for field in fields {
@@ -280,13 +279,13 @@ pub fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBatch> {
     flatten(&batch)
 }
 
-pub fn records(schema: &StorageSchema, rows: &[crate::StoredRecord]) -> Result<RecordBatch> {
+pub fn records(schema: &StorageSchema, rows: &[StoredRecord]) -> Result<RecordBatch> {
     flatten(&crate::source::records(schema, rows.iter())?)
 }
-pub fn streams(schema: &StorageSchema, rows: &[crate::StoredRow]) -> Result<RecordBatch> {
+pub fn streams(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch> {
     flatten(&crate::source::stream(schema, rows)?)
 }
-pub fn objects(schema: &StorageSchema, rows: &[crate::ObjectEntry]) -> Result<RecordBatch> {
+pub fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBatch> {
     flatten(&crate::source::objects(schema, rows)?)
 }
 
@@ -451,8 +450,7 @@ fn matches_row(batch: &RecordBatch, row: usize, read: &ArrowScan) -> Result<bool
     Ok(true)
 }
 
-fn compare_bound(value: &ScalarValue, bound: f64) -> Result<std::cmp::Ordering> {
-    use std::cmp::Ordering;
+fn compare_bound(value: &ScalarValue, bound: f64) -> Result<CmpOrdering> {
     if !bound.is_finite() {
         return Err(invalid("ListColumnRows predicate bound must be finite"));
     }
@@ -466,21 +464,21 @@ fn compare_bound(value: &ScalarValue, bound: f64) -> Result<std::cmp::Ordering> 
     };
     // These Powers Of Two Are Exact F64 Endpoints Around Every Supported Integer.
     if bound >= 18_446_744_073_709_551_616.0 {
-        return Ok(Ordering::Less);
+        return Ok(CmpOrdering::Less);
     }
     if bound < i64::MIN as f64 {
-        return Ok(Ordering::Greater);
+        return Ok(CmpOrdering::Greater);
     }
     let order = integer.cmp(&(bound as i128));
-    if order != Ordering::Equal {
+    if order != CmpOrdering::Equal {
         return Ok(order);
     }
     Ok(if bound.fract() > 0.0 {
-        Ordering::Less
+        CmpOrdering::Less
     } else if bound.fract() < 0.0 {
-        Ordering::Greater
+        CmpOrdering::Greater
     } else {
-        Ordering::Equal
+        CmpOrdering::Equal
     })
 }
 
@@ -503,7 +501,7 @@ pub fn exhausted() -> Error {
         resource: "storage column page or work budget",
     }
 }
-fn encoding(source: serde_json::Error) -> Error {
+fn encoding(source: JsonError) -> Error {
     Error::backend("encode column plan", crate::BackendFailure::Permanent, source)
 }
 
@@ -512,7 +510,7 @@ fn encoding(source: serde_json::Error) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cmp::Ordering::{Equal, Greater, Less};
+    use CmpOrdering::{Equal, Greater, Less};
 
     #[test]
     fn numeric_column_bounds_preserve_integer_endpoints() {

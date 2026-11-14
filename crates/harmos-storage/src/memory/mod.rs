@@ -20,6 +20,21 @@ mod read_backend;
 
 /* === Imports === */
 
+use crate::SchemaWrite;
+use crate::SchemaWriteReceipt;
+use crate::execution::Execution;
+use crate::query::columnar::StorageCapabilities;
+use crate::query::projection::ProjectionCatalog;
+use crate::query::projection::ProjectionDefinition;
+use crate::query::projection::ProjectionPage;
+use crate::query::projection::ProjectionPublication;
+use crate::query::projection::ProjectionRead;
+use crate::query::projection::ProjectionStatus;
+use harmos_query::columnar::Cancellation;
+use harmos_query::index::IndexDefinition;
+use serde::Serialize;
+use std::time::SystemTime;
+
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
@@ -28,10 +43,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
+use crate::execution::Context;
 use tokio::sync::Notify;
 use tracing::Instrument;
 use tracing::subscriber::NoSubscriber;
-use crate::execution::Context;
 
 // Local Imports
 use crate::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
@@ -58,7 +73,7 @@ pub struct Control {
     pub record_page_rows: AtomicUsize,
     pub record_rows_copied: AtomicUsize,
     pub snapshot_rows_copied: AtomicUsize,
-    pub date: Mutex<Option<std::time::SystemTime>>,
+    pub date: Mutex<Option<SystemTime>>,
     pub fail_projection: AtomicBool,
     pub unsupported_conditional: AtomicBool,
     pub unsupported_sessions: AtomicBool,
@@ -189,7 +204,7 @@ struct Snapshot {
     rows: BTreeMap<u64, StoredRow>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Release {
     pub schema: SchemaKey,
     pub item: ObjectKey,
@@ -203,9 +218,9 @@ struct Conditional {
 }
 
 pub struct Backend {
-    clock: crate::execution::Execution,
+    clock: Execution,
     conditional: Mutex<Conditional>,
-    projections: Mutex<crate::query::projection::ProjectionCatalog>,
+    projections: Mutex<ProjectionCatalog>,
     indexes: Mutex<crate::query::index::IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
@@ -320,7 +335,7 @@ impl Backend {
     pub fn with_catalog(catalog: ObjectCatalog, history: StoreHistory) -> Self {
         static NEXT_SCOPE: AtomicUsize = AtomicUsize::new(1);
         Self {
-            clock: crate::execution::Execution::default(),
+            clock: Execution::default(),
             indexes: Mutex::default(),
             projections: Mutex::default(),
             conditional: Mutex::default(),
@@ -351,13 +366,13 @@ impl Backend {
             saved: AtomicUsize::new(0),
         }
     }
-    pub fn with_execution(catalog: ObjectCatalog, history: StoreHistory, clock: crate::execution::Execution) -> Self {
+    pub fn with_execution(catalog: ObjectCatalog, history: StoreHistory, clock: Execution) -> Self {
         let mut backend = Self::with_catalog(catalog, history);
         backend.clock = clock;
         backend
     }
 
-    fn date(&self) -> std::time::SystemTime {
+    fn date(&self) -> SystemTime {
         self.control.date.lock().unwrap().unwrap_or_else(|| self.clock.read().date)
     }
 
@@ -429,8 +444,8 @@ impl StorageBackend for Backend {
         })
     }
 
-    fn capabilities(&self) -> crate::query::columnar::StorageCapabilities {
-        crate::query::columnar::StorageCapabilities {
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities {
             file_sessions: !self.control.unsupported_sessions.load(Ordering::Acquire),
             file_deletion: true,
             mutation_receipts: true,
@@ -440,8 +455,7 @@ impl StorageBackend for Backend {
         }
     }
     fn set_projection_definition<'a>(
-        &'a self, definition: &'a crate::query::projection::ProjectionDefinition, expected: Option<u64>, rebuild: bool,
-        mutation: Option<&'a crate::MutationHeader>,
+        &'a self, definition: &'a ProjectionDefinition, expected: Option<u64>, rebuild: bool, mutation: Option<&'a crate::MutationHeader>,
     ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         Box::pin(async move {
             if self.control.block_definition.load(Ordering::Acquire) {
@@ -479,7 +493,7 @@ impl StorageBackend for Backend {
     }
     fn get_projection_definition<'a>(
         &'a self, name: &'a Identifier, revision: Option<u64>,
-    ) -> StorageFuture<'a, (crate::query::projection::ProjectionDefinition, u64)> {
+    ) -> StorageFuture<'a, (ProjectionDefinition, u64)> {
         Box::pin(async move {
             let projections = self.projections.lock().unwrap();
             match revision {
@@ -491,7 +505,7 @@ impl StorageBackend for Backend {
 
     fn get_projection_status<'a>(
         &'a self, name: &'a Identifier, revision: u64, frontier: Option<&'a StorageCursor>,
-    ) -> StorageFuture<'a, Option<crate::query::projection::ProjectionStatus>> {
+    ) -> StorageFuture<'a, Option<ProjectionStatus>> {
         Box::pin(async move {
             let projections = self.projections.lock().unwrap();
             let frontier = match frontier {
@@ -506,7 +520,7 @@ impl StorageBackend for Backend {
         })
     }
 
-    fn set_projection_output(&self, publication: crate::query::projection::ProjectionPublication) -> StorageFuture<'_, ()> {
+    fn set_projection_output(&self, publication: ProjectionPublication) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             self.image(publication.snapshot())?;
             if self.control.fail_projection.load(Ordering::SeqCst) {
@@ -515,9 +529,7 @@ impl StorageBackend for Backend {
             self.projections.lock().unwrap().publish(&publication)
         })
     }
-    fn list_projection_rows<'a>(
-        &'a self, read: &'a crate::query::projection::ProjectionRead,
-    ) -> StorageFuture<'a, crate::query::projection::ProjectionPage> {
+    fn list_projection_rows<'a>(&'a self, read: &'a ProjectionRead) -> StorageFuture<'a, ProjectionPage> {
         Box::pin(async move {
             self.history.check(&read.frontier.history)?;
             self.projections.lock().unwrap().read(read)
@@ -534,8 +546,8 @@ impl StorageBackend for Backend {
     }
 
     fn set_index_definition<'a>(
-        &'a self, definition: &'a harmos_query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
-        cancel: &'a harmos_query::columnar::Cancellation, mutation: Option<&'a crate::MutationHeader>,
+        &'a self, definition: &'a IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits, cancel: &'a Cancellation,
+        mutation: Option<&'a crate::MutationHeader>,
     ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         Box::pin(async move {
             if self.control.block_definition.load(Ordering::Acquire) {
@@ -571,7 +583,7 @@ impl StorageBackend for Backend {
             Ok(outcome)
         })
     }
-    fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (IndexDefinition, u64)> {
         Box::pin(async move { self.indexes.lock().unwrap().definition(name) })
     }
 
@@ -661,20 +673,20 @@ impl StorageBackend for Backend {
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
-    fn append_schemas(&self, write: crate::SchemaWrite) -> StorageFuture<'_, crate::SchemaWriteReceipt> {
+    fn append_schemas(&self, write: SchemaWrite) -> StorageFuture<'_, SchemaWriteReceipt> {
         Box::pin(async move {
             match write {
-                crate::SchemaWrite::Append(batch) => {
+                SchemaWrite::Append(batch) => {
                     let saved = self.persist(batch, &self.schemas, |value| &value.position, |_| Ok(())).await?;
-                    Ok(crate::SchemaWriteReceipt { saved, mutation: None })
+                    Ok(SchemaWriteReceipt { saved, mutation: None })
                 }
-                crate::SchemaWrite::Set(exchange) => {
+                SchemaWrite::Set(exchange) => {
                     self.history.check(&exchange.value.position.history)?;
                     self.control.write([exchange.value.position.sequence]).await?;
                     let mut ledger = self.mutation_receipts.lock().unwrap();
                     if let Some(receipt) = ledger.get(&exchange.mutation().mutation) {
                         exchange.replay(receipt)?;
-                        return Ok(crate::SchemaWriteReceipt {
+                        return Ok(SchemaWriteReceipt {
                             saved: self.at(self.saved.load(Ordering::SeqCst) as u64),
                             mutation: Some(receipt.clone()),
                         });
@@ -702,7 +714,7 @@ impl StorageBackend for Backend {
                     let receipt = exchange.receipt(outcome);
                     ledger.insert(receipt.mutation.clone(), receipt.clone());
                     self.saved.store(exchange.value.position.sequence as usize, Ordering::SeqCst);
-                    Ok(crate::SchemaWriteReceipt {
+                    Ok(SchemaWriteReceipt {
                         saved: exchange.value.position.clone(),
                         mutation: Some(receipt),
                     })
@@ -767,7 +779,10 @@ impl StorageBackend for Backend {
         Box::pin(async move {
             self.history.check(&through.history)?;
             if through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
-                return Err(Error::InvalidInput { field: "prune in-memory object revisions", reason: "frontier exceeds saved position" });
+                return Err(Error::InvalidInput {
+                    field: "prune in-memory object revisions",
+                    reason: "frontier exceeds saved position",
+                });
             }
             self.control.prune_calls.lock().unwrap().push((through.sequence, max_entries.get()));
             if self.control.block_prune.load(Ordering::SeqCst) {
@@ -1066,12 +1081,15 @@ impl StateBackend for RecoveryBackend {
                 return Err(failure(BackendFailure::Permanent));
             }
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
-        
-            }))
+        }))
     }
     fn append_recovery_entries(&self, entries: StorageBatch<RecoveryEntry>) -> StorageFuture<'_, ()> {
         Box::pin(recovery_call("write_entries", async move {
-            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "write_entries in-memory recovery" }); }
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady {
+                    domain: "write_entries in-memory recovery",
+                });
+            }
 
             if self.control.retain_recovery.load(Ordering::SeqCst) {
                 *self.control.retained_recovery.lock().unwrap() = Some(entries.clone());
@@ -1081,17 +1099,26 @@ impl StateBackend for RecoveryBackend {
             for entry in entries.as_slice() {
                 self.history.check(&entry.position.history)?;
                 if stored.get(&entry.position.sequence).is_some_and(|prior| prior != entry) {
-                    return Err(Error::backend("append in-memory recovery entries", BackendFailure::Conflict, std::io::Error::other("position contains different recovery bytes")));
+                    return Err(Error::backend(
+                        "append in-memory recovery entries",
+                        BackendFailure::Conflict,
+                        std::io::Error::other("position contains different recovery bytes"),
+                    ));
                 }
             }
-            for entry in entries.as_slice() { stored.insert(entry.position.sequence, entry.clone()); }
+            for entry in entries.as_slice() {
+                stored.insert(entry.position.sequence, entry.clone());
+            }
             Ok(())
-        
-            }))
+        }))
     }
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()> {
         Box::pin(recovery_call("write_snapshot", async move {
-            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "write_snapshot in-memory recovery" }); }
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady {
+                    domain: "write_snapshot in-memory recovery",
+                });
+            }
 
             if self.control.retain_snapshot.load(Ordering::SeqCst) {
                 *self.control.retained_snapshot.lock().unwrap() = Some(snapshot.clone());
@@ -1103,17 +1130,23 @@ impl StateBackend for RecoveryBackend {
                 });
             };
             self.history.check(&snapshot.through.history)?;
-            snapshot.payload.verify(snapshot.payload.segment_bytes()).map_err(|source| Error::backend("write in-memory recovery snapshot", BackendFailure::Corrupt, source))?;
+            snapshot
+                .payload
+                .verify(snapshot.payload.segment_bytes())
+                .map_err(|source| Error::backend("write in-memory recovery snapshot", BackendFailure::Corrupt, source))?;
             self.control.write([snapshot.through.sequence]).await?;
             *self.pending_snapshot.lock().unwrap() = Some(snapshot.clone());
             self.control.snapshot_written.notify_one();
             Ok(())
-        
-            }))
+        }))
     }
     fn get_recovery_snapshot(&self, maximum: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>> {
         Box::pin(recovery_call("read_snapshot", async move {
-            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "read_snapshot in-memory recovery" }); }
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady {
+                    domain: "read_snapshot in-memory recovery",
+                });
+            }
 
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
@@ -1121,22 +1154,34 @@ impl StateBackend for RecoveryBackend {
             }
             let snapshot = self.snapshot.lock().unwrap().clone();
             if snapshot.as_ref().is_some_and(|snapshot| snapshot.payload.len() > maximum.get()) {
-                return Err(Error::ResourceExhausted { resource: "read in-memory recovery snapshot" });
+                return Err(Error::ResourceExhausted {
+                    resource: "read in-memory recovery snapshot",
+                });
             }
             Ok(snapshot)
-        
-            }))
+        }))
     }
     fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,
     ) -> StorageFuture<'a, RecoveryPage> {
         Box::pin(recovery_call("read_entries", async move {
-            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "read_entries in-memory recovery" }); }
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady {
+                    domain: "read_entries in-memory recovery",
+                });
+            }
 
             self.history.check(&after.history)?;
             self.history.check(&through.history)?;
-            if after.sequence > through.sequence { return Err(Error::InvalidInput { field: "read in-memory recovery entries", reason: "start exceeds frontier" }); }
-            if after.sequence == through.sequence { return Ok(RecoveryPage { entries: Vec::new(), next: None }); }
+            if after.sequence > through.sequence {
+                return Err(Error::InvalidInput {
+                    field: "read in-memory recovery entries",
+                    reason: "start exceeds frontier",
+                });
+            }
+            if after.sequence == through.sequence {
+                return Ok(RecoveryPage { entries: Vec::new(), next: None });
+            }
             if self.control.block_read.load(Ordering::SeqCst) {
                 self.control.read_entered.notify_one();
                 self.control.read_release.notified().await;
@@ -1152,18 +1197,23 @@ impl StateBackend for RecoveryBackend {
                 bytes += size;
                 entries.push(entry.clone());
             }
-            if entries.is_empty() { return Err(Error::ResourceExhausted { resource: "read in-memory recovery entries" }); }
+            if entries.is_empty() {
+                return Err(Error::ResourceExhausted {
+                    resource: "read in-memory recovery entries",
+                });
+            }
             let last = entries.last().map_or(after.sequence, |e| e.position.sequence);
             Ok(RecoveryPage {
                 entries,
                 next: (last < through.sequence).then(|| self.at(last)),
             })
-        
-            }))
+        }))
     }
     fn flush<'a>(&'a self, through: &'a RecoveryPosition) -> StorageFuture<'a, RecoveryPosition> {
         Box::pin(recovery_call("flush", async move {
-            if !self.control.open.load(Ordering::SeqCst) { return Err(Error::NotReady { domain: "flush in-memory recovery" }); }
+            if !self.control.open.load(Ordering::SeqCst) {
+                return Err(Error::NotReady { domain: "flush in-memory recovery" });
+            }
 
             self.history.check(&through.history)?;
             self.control.flush(through.sequence).await?;
@@ -1176,12 +1226,10 @@ impl StateBackend for RecoveryBackend {
                 return Err(failure(BackendFailure::Transient));
             }
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
-        
-            }))
+        }))
     }
     fn delete_recovery_session(&self) -> StorageFuture<'_, ()> {
-        Box::pin(recovery_call("close", async move { self.control.close() 
-            }))
+        Box::pin(recovery_call("close", async move { self.control.close() }))
     }
 }
 
@@ -1210,7 +1258,7 @@ fn record_matches(row: &StoredRecord, schema: &SchemaKey, scope: &Option<Identif
         && scope.as_ref().is_none_or(|scope| Some(scope) == row.scope.as_ref())
 }
 
-fn window(start: Option<std::time::SystemTime>, end: Option<std::time::SystemTime>, time: Option<std::time::SystemTime>) -> bool {
+fn window(start: Option<SystemTime>, end: Option<SystemTime>, time: Option<SystemTime>) -> bool {
     match (start, end) {
         (Some(start), Some(end)) => time.is_some_and(|time| time >= start && time < end),
         _ => true,
@@ -1218,7 +1266,7 @@ fn window(start: Option<std::time::SystemTime>, end: Option<std::time::SystemTim
 }
 
 // Ascending Entries In (page.after, snapshot.at]; At Least One While Any Remain.
-fn scan<'a, T: Clone + serde::Serialize + 'a>(
+fn scan<'a, T: Clone + Serialize + 'a>(
     entries: impl Iterator<Item = &'a T>, snapshot: &BackendSnapshot, page: ScanPage, position: impl Fn(&T) -> &StorageCursor,
     matches: impl Fn(&T) -> bool,
 ) -> Result<Vec<T>> {

@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use std::io::Error as IoError;
+
 // Standard Library Imports
 use std::fs::File;
 use std::sync::Arc;
@@ -307,7 +309,7 @@ impl Pages {
 
 /* === Private Functions === */
 
-pub(super) fn io(error: std::io::Error) -> Error {
+pub(super) fn io(error: IoError) -> Error {
     Error::backend("query spill I/O", BackendFailure::Transient, error)
 }
 

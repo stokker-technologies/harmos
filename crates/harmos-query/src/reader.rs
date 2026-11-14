@@ -9,38 +9,31 @@
 
 /* === Modules === */
 
-
-
 /* === Re-Exports === */
-
-
 
 /* === Imports === */
 
-use std::num::NonZeroUsize;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use arrow_array::RecordBatch;
-use harmos_domain::MemorySize;
-use harmos_domain::model::storage::query::{Query, QueryCompletion};
 use crate::arrow::{ArrowBatch, ArrowSchema};
 use crate::batches::{BatchReader, BatchScan, BatchSource};
 use crate::execute::Plan;
 use crate::merge::TimeMergeReader;
-use harmos_domain::model::storage::ReadLimits;
 use crate::transform::Transform;
 use crate::{Error, Result};
+use arrow_array::RecordBatch;
+use harmos_domain::MemorySize;
+use harmos_domain::model::storage::ReadLimits;
+use harmos_domain::model::storage::query::{Query, QueryCompletion};
+use std::num::NonZeroUsize;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 /* === Constants === */
 
-
-
 /* === Macros === */
 
-
-
 /* === Type Aliases === */
-
-
 
 /* === Structs === */
 
@@ -90,12 +83,12 @@ pub enum QueryOutput {
 
 /* === Traits === */
 
-
-
 /* === Implementations === */
 
 impl Drop for CancelWork {
-    fn drop(&mut self) { self.0.store(true, Ordering::Release); }
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 
 impl QueryArrow {
@@ -159,16 +152,26 @@ impl QueryReader {
     }
 
     pub fn from_sources(
-        primary: Box<dyn BatchReader>, secondary: Option<Box<dyn BatchReader>>, query: Query,
-        projected: bool, output: QueryResponse, limits: ReadLimits,
+        primary: Box<dyn BatchReader>, secondary: Option<Box<dyn BatchReader>>, query: Query, projected: bool, output: QueryResponse,
+        limits: ReadLimits,
     ) -> Result<Self> {
         let source: Box<dyn BatchReader> = match (&query.merge, secondary) {
             (Some(merge), Some(secondary)) => {
-                if projected { return Err(Error::InvalidInput { field: "open time merge", reason: "project after merging both sources" }); }
+                if projected {
+                    return Err(Error::InvalidInput {
+                        field: "open time merge",
+                        reason: "project after merging both sources",
+                    });
+                }
                 Box::new(TimeMergeReader::new(primary, secondary, merge.clone(), limits.rows)?)
             }
             (None, None) => primary,
-            _ => return Err(Error::InvalidInput { field: "open time merge", reason: "request and second source must agree" }),
+            _ => {
+                return Err(Error::InvalidInput {
+                    field: "open time merge",
+                    reason: "request and second source must agree",
+                });
+            }
         };
         Self::from_reader(source, query, projected, output)
     }
@@ -176,20 +179,36 @@ impl QueryReader {
     pub fn from_reader(source: Box<dyn BatchReader>, mut query: Query, projected: bool, output: QueryResponse) -> Result<Self> {
         query.validate()?;
         if source.at() != &query.at {
-            return Err(Error::InvalidInput { field: "open query", reason: "source returned a different cut" });
+            return Err(Error::InvalidInput {
+                field: "open query",
+                reason: "source returned a different cut",
+            });
         }
         let mut transforms = std::mem::take(&mut query.transforms);
         if projected {
             if !matches!(transforms.first(), Some(Transform::Project(_))) {
-                return Err(Error::InvalidInput { field: "open query", reason: "source projection requires the leading transform" });
+                return Err(Error::InvalidInput {
+                    field: "open query",
+                    reason: "source projection requires the leading transform",
+                });
             }
             transforms.remove(0);
         }
         let plan = Plan::new(source.schema(), transforms, query.slice)?;
         Ok(Self {
-            query, source: Some(source), plan: Some(plan), output, maximum: output,
-            pending: None, pending_offset: 0, delivered: 0, source_done: false,
-            schema_sent: false, exhausted: false, failed: false, inflight: false,
+            query,
+            source: Some(source),
+            plan: Some(plan),
+            output,
+            maximum: output,
+            pending: None,
+            pending_offset: 0,
+            delivered: 0,
+            source_done: false,
+            schema_sent: false,
+            exhausted: false,
+            failed: false,
+            inflight: false,
         })
     }
 
@@ -202,7 +221,7 @@ impl QueryReader {
         loop {
             match self.step().await? {
                 QueryStep::Output(value) => return Ok(Some(value)),
-                QueryStep::Progress => {},
+                QueryStep::Progress => {}
                 QueryStep::Complete => return Ok(None),
             }
         }
@@ -211,12 +230,16 @@ impl QueryReader {
     pub async fn step(&mut self) -> Result<QueryStep> {
         if self.failed || self.inflight {
             self.fail();
-            return Err(Error::NotReady { domain: "advance failed or interrupted query" });
+            return Err(Error::NotReady {
+                domain: "advance failed or interrupted query",
+            });
         }
         self.inflight = true;
         let result = self.advance_step().await;
         self.inflight = false;
-        if result.is_err() { self.fail(); }
+        if result.is_err() {
+            self.fail();
+        }
         result
     }
 
@@ -228,7 +251,9 @@ impl QueryReader {
     }
 
     async fn advance_step(&mut self) -> Result<QueryStep> {
-        if self.exhausted { return Ok(QueryStep::Complete); }
+        if self.exhausted {
+            return Ok(QueryStep::Complete);
+        }
         if !self.schema_sent {
             let schema = self.plan.as_ref().expect("open plan").output_schema();
             self.schema_sent = true;
@@ -249,7 +274,9 @@ impl QueryReader {
         }
         self.pending = self.work(None).await?.filter(|batch| batch.num_rows() > 0);
         self.pending_offset = 0;
-        if self.pending.is_some() { return Ok(QueryStep::Progress); }
+        if self.pending.is_some() {
+            return Ok(QueryStep::Progress);
+        }
         self.plan = None;
         self.source = None;
         self.exhausted = true;
@@ -326,12 +353,6 @@ impl QueryReader {
 
 /* === Public Functions === */
 
-
-
 /* === Private Functions === */
 
-
-
 /* === Tests === */
-
-

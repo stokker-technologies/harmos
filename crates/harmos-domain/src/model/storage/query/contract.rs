@@ -132,13 +132,15 @@ pub enum Source {
 /* === Implementations === */
 
 impl Query {
-    pub fn validate(&self) -> crate::Result<()> {
+    pub fn validate(&self) -> Result<()> {
         self.source.validate()?;
         if let Some(merge) = &self.merge {
             merge.source.validate()?;
             if !matches!(merge.source, Source::Stream(_))
                 || !matches!(self.source, Source::Records(_) | Source::Stream(_))
-                || (matches!(merge.mode, TimeMergeMode::Range { .. } | TimeMergeMode::Intervals) && !matches!(self.source, Source::Records(_))) {
+                || (matches!(merge.mode, TimeMergeMode::Range { .. } | TimeMergeMode::Intervals)
+                    && !matches!(self.source, Source::Records(_)))
+            {
                 return Err(super::transform::invalid("time merge requires records or a stream against one stream"));
             }
         }
@@ -246,6 +248,9 @@ impl MemorySize for TimeMerge {
             .saturating_add(self.source.memory_size())
             .saturating_add(self.primary_time.memory_size())
             .saturating_add(self.secondary_time.memory_size())
-            .saturating_add(match &self.mode { TimeMergeMode::Range { end } => end.memory_size(), _ => 0 })
+            .saturating_add(match &self.mode {
+                TimeMergeMode::Range { end } => end.memory_size(),
+                _ => 0,
+            })
     }
 }

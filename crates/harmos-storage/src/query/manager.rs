@@ -13,17 +13,19 @@
 
 /* === Imports === */
 
+use std::num::NonZeroUsize;
+
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use harmos_query::{columnar::Cancellation, index::IndexDefinition};
 use super::{
     columnar::StorageCapabilities,
     projection::{ProjectionDefinition, ProjectionPage, ProjectionRead, ProjectionStatus},
 };
 use crate::{Identifier, ReadLimits, Result, StorageCursor, StorageManager};
+use harmos_query::{columnar::Cancellation, index::IndexDefinition};
 
 /* === Constants === */
 
@@ -40,7 +42,7 @@ use crate::{Identifier, ReadLimits, Result, StorageCursor, StorageManager};
 /* === Implementations === */
 
 impl StorageManager {
-    pub fn query_capacity(&self) -> std::num::NonZeroUsize {
+    pub fn query_capacity(&self) -> NonZeroUsize {
         self.inner.settings.request.max_active_queries
     }
     pub async fn get_index_definition(&self, name: &Identifier) -> Result<(IndexDefinition, u64)> {

@@ -11,10 +11,10 @@
 
 /* === Modules === */
 
+mod batches;
 pub mod columnar;
 pub mod index;
 mod manager;
-mod batches;
 mod object_schemas;
 pub mod projection;
 
@@ -23,16 +23,13 @@ mod typed;
 
 /* === Re-Exports === */
 
-
 pub use harmos_domain::model::storage::query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
     scalar,
 };
 
-pub(crate) use reader::schema_at;
 pub use reader::QueryReader;
-
-
+pub(crate) use reader::schema_at;
 
 /* === Imports === */
 

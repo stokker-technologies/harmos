@@ -177,7 +177,7 @@ impl RecordProjection for Projection {
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
 fn gate(at: StorageCursor) -> harmos_domain::model::storage::query::Query {
     harmos_domain::model::storage::query::Query {
-            merge: None,
+        merge: None,
         at,
         source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
         transforms: Vec::new(),

@@ -25,13 +25,13 @@ use arrow_schema::{DataType, Field, Schema};
 // Local Imports
 use super::ObjectSelection;
 use super::reader::schema_at;
-use harmos_query::transform::{Transform, project::Project};
 use crate::backend::ScanPage;
 use crate::config::SCAN_ROWS;
 use crate::manager::Inner;
 use crate::snapshot::Snapshot;
-use crate::{ObjectEntry, SchemaKey, StorageSchema};
 use crate::{Error, Result};
+use crate::{ObjectEntry, SchemaKey, StorageSchema};
+use harmos_query::transform::{Transform, project::Project};
 
 // Standard Library Imports
 

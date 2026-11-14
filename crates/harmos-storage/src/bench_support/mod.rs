@@ -34,17 +34,17 @@ use arrow_array::{BinaryArray, Float64Array, RecordBatch, UInt64Array};
 use serde::Serialize;
 
 // Local Imports
-use harmos_query::columnar::ArrowScan;
-use harmos_query::columnar::Cancellation;
-use harmos_query::columnar::ColumnPredicate;
-use harmos_query::columnar::TimeBounds;
 use crate::query::columnar::list_column_rows;
-use harmos_query::index::encode_key;
 use crate::query::index::list_index_entries;
 use crate::query::projection::ProjectionRead;
 use crate::query::projection::advance_projection;
 use crate::query::scalar::ScalarValue;
 use crate::*;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnPredicate;
+use harmos_query::columnar::TimeBounds;
+use harmos_query::index::encode_key;
 use workload::{CHUNK_ROWS, CONTENTION_ROUNDS, SAMPLES, WINDOW_ROWS, WRITERS, Workload, sample};
 
 /* === Constants === */
@@ -88,7 +88,9 @@ pub struct ScanResult {
 /* === Public Functions === */
 
 /// Run every case, including owner disposal and restart, with a backend-owned opener.
-pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> std::sync::Arc<dyn StorageBackend>) {
+pub fn run_with_reopen(
+    runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> std::sync::Arc<dyn StorageBackend>,
+) {
     let mut owner = Some(open());
     let completed = run(runtime, owner.as_deref().unwrap(), workload);
     measure("storage.stop.2m", 1, || drop(owner.take()));

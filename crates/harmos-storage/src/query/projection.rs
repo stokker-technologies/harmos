@@ -22,9 +22,9 @@ use serde::{Deserialize, Serialize};
 
 // Local Imports
 use super::columnar;
+use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend, StorageCursor};
 use harmos_query::columnar::{ArrowScan, Cancellation, ColumnSource};
 use harmos_query::time_buckets;
-use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend, StorageCursor};
 
 /* === Constants === */
 
@@ -144,7 +144,8 @@ impl ProjectionDefinition {
                 bytes: std::num::NonZeroUsize::MIN,
             },
         }
-        .validate().map_err(Into::into)
+        .validate()
+        .map_err(Into::into)
     }
 }
 

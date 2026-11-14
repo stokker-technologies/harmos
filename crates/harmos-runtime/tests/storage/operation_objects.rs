@@ -18,7 +18,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use super::super::{Bank, Backend, Ledger, RecoveryBackend, catalog, config, history};
+use super::super::{Backend, Bank, Ledger, RecoveryBackend, catalog, config, history};
 use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, StorageBackends, StorageManager, StoredObject};
 use harmos_runtime::{Identified, Identifier};
 

@@ -66,4 +66,3 @@ async fn checkpoint_survives_reopen() {
     assert_eq!(page.next, None);
     backend.delete_recovery_session().await.unwrap();
 }
-

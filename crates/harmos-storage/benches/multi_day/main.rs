@@ -34,11 +34,11 @@ use criterion::Criterion;
 
 // Local Imports
 use arrow_array::Float64Array;
+use harmos_query::QueryArrow;
 use harmos_query::transform::FieldPath;
 use harmos_query::transform::Transform;
 use harmos_query::transform::project::Project;
 use harmos_query::transform::project::Projection;
-use harmos_query::QueryArrow;
 use harmos_storage::query::RowSlice;
 use mapping_fixture::Mapped;
 use workload::ROWS;

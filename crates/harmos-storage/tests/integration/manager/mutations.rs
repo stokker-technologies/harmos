@@ -24,8 +24,8 @@ use tokio::sync::Notify;
 use super::backend::Backend;
 use super::backend::RecoveryBackend;
 use super::backend::history;
-use harmos_storage::memory::Control;
 use super::fixture::{Fixture, config, start};
+use harmos_storage::memory::Control;
 use harmos_storage::{FileMetadata, FileSession, Identifier, MutationId, MutationValue, StagedFile, StorageBackends, StorageManager};
 
 /* === Macros === */

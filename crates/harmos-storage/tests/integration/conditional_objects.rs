@@ -26,15 +26,15 @@ use std::{
 use crate::manager::{backend, fixture};
 use harmos_domain::model::storage::{catalog::object_schema, object_key};
 use harmos_domain::{Identified, Message, schema::Described};
-use harmos_storage::query::ObjectSelection;
-use harmos_storage::query::ObjectVersions;
-use harmos_storage::query::SchemaSelection;
 use harmos_query::columnar::ArrowScan;
 use harmos_query::columnar::Cancellation;
 use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnSource;
 use harmos_query::index::IndexDefinition;
 use harmos_query::index::IndexRead;
+use harmos_storage::query::ObjectSelection;
+use harmos_storage::query::ObjectVersions;
+use harmos_storage::query::SchemaSelection;
 use harmos_storage::query::index::list_index_entries;
 use harmos_storage::query::projection::ProjectionDefinition;
 use harmos_storage::query::projection::ProjectionRead;
@@ -375,7 +375,6 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
     forged.value.value.payload = Counter { id: 1, value: 444 }.encode();
     assert!(primary.set_object(&forged).await.is_err());
     primary.delete_session().await.unwrap();
-    
 
     // Restart, Replay Original Success And Conflict, Then Retire Acknowledged Outcomes.
     let storage = StorageManager::with_catalog(

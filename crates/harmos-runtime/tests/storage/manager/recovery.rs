@@ -16,8 +16,8 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::storage::Bank;
 use crate::storage::Backend;
+use crate::storage::Bank;
 use crate::storage::Fixture;
 use crate::storage::Ledger;
 use crate::storage::RecoveryBackend;

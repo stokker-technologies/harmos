@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use std::io::Error as IoError;
+
 // Standard Library Imports
 use std::{
     collections::BTreeMap,
@@ -232,7 +234,7 @@ impl Quantiles {
 
 /* === Private Functions === */
 
-fn io(error: std::io::Error) -> Error {
+fn io(error: IoError) -> Error {
     Error::backend("numeric spool", BackendFailure::Transient, error)
 }
 

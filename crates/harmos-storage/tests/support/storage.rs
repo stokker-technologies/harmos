@@ -14,9 +14,9 @@ mod settings;
 
 /* === Re-Exports === */
 
-pub use settings::storage_settings;
 pub use harmos_storage::memory::Backend;
 pub use harmos_storage::memory::RecoveryBackend;
+pub use settings::storage_settings;
 
 /* === Imports === */
 

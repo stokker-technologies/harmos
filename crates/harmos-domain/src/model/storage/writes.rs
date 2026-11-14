@@ -14,15 +14,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 // Third Party Imports
 
 // Local Imports
-use crate::schema::graph::Schema;
-use super::{SchemaKey, StorageCursor};
 use super::ArrowIpc;
+use super::{SchemaKey, StorageCursor};
+use crate::schema::graph::Schema;
 use crate::{Identifier, MemorySize, Result};
 
 /* === Constants === */
@@ -51,8 +51,6 @@ pub struct StorageSchema {
     pub key: SchemaKey,
     pub schema: Arc<Schema>,
 }
-
-
 
 #[derive(Clone, Debug)]
 pub struct DataBatch {
@@ -94,8 +92,6 @@ impl StorageSchema {
         Self { position, key, schema: schema.into() }
     }
 }
-
-
 
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {

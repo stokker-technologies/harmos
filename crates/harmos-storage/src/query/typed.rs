@@ -23,18 +23,18 @@ use std::sync::Arc;
 use tokio::sync::OwnedSemaphorePermit;
 
 // Local Imports
-use harmos_query::typed::{ObjectRead, ObjectReader, RecordRead, RecordReader, StreamRead, StreamReader, PageSource};
-use harmos_query::batches::QueryFuture;
-use super::reader::query_slot;
 use super::ObjectSelection;
+use super::reader::query_slot;
 use crate::backend::ScanPage;
 use crate::manager::Inner;
 use crate::selection::Entry;
 use crate::snapshot::Snapshot;
+use crate::{Error, MemorySize, Message, ReadBatch, Result};
 use crate::{StorageCursor, StorageManager, StoredObject};
-use crate::{ Error, MemorySize, Message, ReadBatch, Result};
-use harmos_domain::model::storage::catalog::{object_schema};
+use harmos_domain::model::storage::catalog::object_schema;
 use harmos_domain::model::storage::object_key;
+use harmos_query::batches::QueryFuture;
+use harmos_query::typed::{ObjectRead, ObjectReader, PageSource, RecordRead, RecordReader, StreamRead, StreamReader};
 
 /* === Constants === */
 
@@ -101,12 +101,6 @@ impl StorageManager {
         Ok(StreamReader::new(Box::new(pages)))
     }
 }
-
-
-
-
-
-
 
 impl<E: Entry> Pages<E>
 where
@@ -209,7 +203,9 @@ impl<E: Entry> Pages<E> {
 impl<E: Entry + MemorySize> PageSource<E> for Pages<E> {
     fn next(&mut self) -> QueryFuture<'_, Option<ReadBatch<Vec<E>>>> {
         Box::pin(async move {
-            Pages::next(self, Ok).await.map_err(|error| harmos_query::Error::backend("read typed source", harmos_query::BackendFailure::Permanent, error))
+            Pages::next(self, Ok)
+                .await
+                .map_err(|error| harmos_query::Error::backend("read typed source", harmos_query::BackendFailure::Permanent, error))
         })
     }
 }

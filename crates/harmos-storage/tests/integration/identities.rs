@@ -14,9 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{
-    num::NonZeroUsize,
-};
+use std::num::NonZeroUsize;
 
 // Third Party Imports
 
@@ -146,4 +144,3 @@ async fn stream_identities_keep_their_first_position_and_snapshot_selection() {
     backend.delete_snapshot(&current).await.unwrap();
     backend.delete_session().await.unwrap();
 }
-

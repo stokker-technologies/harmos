@@ -251,7 +251,10 @@ impl Backend {
                 self.history.check(version.history())?;
                 let sequence = version.revision().get();
                 if image.pruned_objects.get(&sequence).is_some_and(|(schema, item)| schema.id == query.schema && item == &query.item) {
-                    return Err(Error::Gap { requested: sequence, available: image.lost_objects_through.saturating_add(1) });
+                    return Err(Error::Gap {
+                        requested: sequence,
+                        available: image.lost_objects_through.saturating_add(1),
+                    });
                 }
             }
             let object = image.objects.values().rev().find(|object| {

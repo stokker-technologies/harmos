@@ -20,11 +20,11 @@ use arrow_array::{StringArray, StructArray, UInt64Array};
 
 // Local Imports
 use crate::support::{Bank, Ledger};
+use harmos_query::QueryArrow;
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginTransition, Router,
 };
-use harmos_query::QueryArrow;
 use harmos_runtime::storage::query::RowSlice;
 use harmos_runtime::storage::query::Source;
 use harmos_runtime::storage::query::StreamSelection;
@@ -280,7 +280,7 @@ async fn restart_on_one_root_reads_each_revision_with_its_own_schema() {
         for (index, key) in keys.iter().enumerate() {
             let mut reader = storage
                 .query(harmos_domain::model::storage::query::Query {
-            merge: None,
+                    merge: None,
                     at: storage.get_saved_position(),
                     source: Source::Stream(StreamSelection {
                         schema: key.clone(),

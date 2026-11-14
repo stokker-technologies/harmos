@@ -7,13 +7,12 @@
  * ***
  */
 
-
 // Exact Query Statistics And Spill Stories
 
 /* === Modules === */
 
-mod query;
 mod exact_quantile_spill;
+mod query;
 
 /* === Re-Exports === */
 
@@ -24,7 +23,6 @@ mod exact_quantile_spill;
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Constants === */
 

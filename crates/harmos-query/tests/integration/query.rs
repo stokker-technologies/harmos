@@ -16,10 +16,10 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_query::Accumulator;
+use harmos_domain::Aggregate;
 use harmos_domain::model::storage::query::scalar::Agg;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
-use harmos_domain::Aggregate;
+use harmos_query::Accumulator;
 use harmos_query::{Error, config::QueryAccumulatorSettings};
 
 /* === Tests === */

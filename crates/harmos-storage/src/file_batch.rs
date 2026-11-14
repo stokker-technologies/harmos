@@ -54,7 +54,6 @@ pub struct FileReadSlice {
 
 /* === Implementations === */
 
-
 impl FileReadBatch {
     pub(crate) fn new(batch: FileBatch) -> Self {
         Self { owner: ReadBatch::new(batch) }

@@ -9,8 +9,6 @@
 
 /* === Modules === */
 
-
-
 /* === Re-Exports === */
 
 pub use harmos_domain::model::storage::query::transform::TimeBucketPlan;

@@ -19,9 +19,8 @@ use std::sync::{
 use tokio::sync::Notify;
 // Local Imports
 use super::{CleanupCapture, closed};
-use crate::storage::support::{HOUSE, Noted, deposit};
-use crate::storage::Bank;
 use crate::storage::Backend;
+use crate::storage::Bank;
 use crate::storage::Ledger;
 use crate::storage::RecoveryBackend;
 use crate::storage::StorageBackends;
@@ -31,6 +30,7 @@ use crate::storage::config;
 use crate::storage::history;
 use crate::storage::record;
 use crate::storage::schema;
+use crate::storage::support::{HOUSE, Noted, deposit};
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::{Error, Identifier, services::ServiceContext, state::Position};
 
@@ -118,12 +118,12 @@ fn failure() -> Error {
 }
 
 async fn restore(journal: harmos_runtime::state::StateManager<Bank>, storage: StorageManager) -> harmos_runtime::Result<()> {
+    use harmos_query::QueryArrow;
     use harmos_query::transform::{
         Transform,
         project::{Project, Projection},
     };
-    use harmos_query::QueryArrow;
-    use harmos_runtime::storage::query::{ RecordSelection, RowSlice, Source};
+    use harmos_runtime::storage::query::{RecordSelection, RowSlice, Source};
     let mut reader = storage
         .query(harmos_domain::model::storage::query::Query {
             merge: None,

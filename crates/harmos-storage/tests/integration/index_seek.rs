@@ -130,7 +130,6 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
                 .and_then(|outcome| outcome.into_result(harmos_storage::DefinitionKind::Index))
                 .unwrap()
         );
-
     }
     let cut = StorageCursor { history: history.clone(), sequence: 9 };
     let saved = primary.create_snapshot(&cut).await.unwrap();
@@ -238,7 +237,6 @@ async fn seek_pages_keep_ties_and_saved_cuts_through_rebuild_and_restart() {
     resumed.descending = false;
     assert!(list_index_entries(&primary, &saved, &resumed, &cancel).await.is_err());
     primary.delete_session().await.unwrap();
-    
 
     // Reopen The Durable Catalog And Acquire A Fresh Saved-Cut Token.
     primary.create_session().await.unwrap();

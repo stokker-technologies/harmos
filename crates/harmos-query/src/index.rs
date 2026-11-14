@@ -78,8 +78,6 @@ pub struct IndexPage {
     pub complete: bool,
 }
 
-
-
 /* === Enums === */
 
 /* === Traits === */
@@ -99,8 +97,6 @@ impl IndexDefinition {
         Ok(())
     }
 }
-
-
 
 impl IndexRead {
     pub fn identity(&self, definition: &IndexDefinition) -> Result<[u8; 32]> {
@@ -138,8 +134,6 @@ impl IndexRead {
 }
 
 /* === Public Functions === */
-
-
 
 pub fn encode_key(values: &[ScalarValue]) -> Result<Vec<u8>> {
     let mut encoded = Vec::new();

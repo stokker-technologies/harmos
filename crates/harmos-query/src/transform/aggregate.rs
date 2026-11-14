@@ -17,6 +17,8 @@ pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, 
 
 /* === Imports === */
 
+use std::result::Result as StdResult;
+
 use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
@@ -189,7 +191,7 @@ impl Groups {
     }
 
     // Binary Search Over Groups Kept In Key Order.
-    fn find(&self, keys: &[ScalarValue]) -> Result<std::result::Result<usize, usize>> {
+    fn find(&self, keys: &[ScalarValue]) -> Result<StdResult<usize, usize>> {
         let (mut low, mut high) = (0usize, self.groups.len());
         while low < high {
             let middle = low + (high - low) / 2;

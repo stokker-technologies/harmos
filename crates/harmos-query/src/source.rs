@@ -19,6 +19,8 @@ pub mod testing;
 
 /* === Imports === */
 
+use crate::SchemaKey;
+
 // Standard Library Imports
 use std::{
     collections::HashMap,
@@ -34,8 +36,8 @@ use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
 use super::transform::project::Project;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
-use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
+use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 
 /* === Constants === */
 
@@ -376,14 +378,14 @@ fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> 
     ]
 }
 
-fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &crate::SchemaKey, rows: usize) -> Result<()> {
+fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &SchemaKey, rows: usize) -> Result<()> {
     columns.push((Field::new("schema_id", DataType::Utf8, false), strings((0..rows).map(|_| Some(key.id.as_str())))));
     columns.push((Field::new("schema_version", DataType::UInt32, false), Arc::new(UInt32Array::from(vec![key.version.get(); rows]))));
     columns.push((Field::new("payload_encoding", DataType::Utf8, false), strings((0..rows).map(|_| Some(encoding(key))))));
     Ok(())
 }
 
-fn encoding(key: &crate::SchemaKey) -> &'static str {
+fn encoding(key: &SchemaKey) -> &'static str {
     match key.payload_encoding {
         crate::PayloadEncoding::PostcardV1 => "postcard_v1",
     }

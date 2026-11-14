@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use arrow_ipc::Field as IpcField;
+
 // Standard Library Imports
 use std::io::Cursor;
 use std::sync::Arc;
@@ -155,7 +157,7 @@ pub(super) fn preflight(bytes: &[u8], batch: bool) -> Result<()> {
 
 /* === Private Functions === */
 
-fn inspect_field(field: arrow_ipc::Field<'_>, depth: usize, fields: &mut usize) -> Result<()> {
+fn inspect_field(field: IpcField<'_>, depth: usize, fields: &mut usize) -> Result<()> {
     *fields = fields.checked_add(1).ok_or_else(|| invalid("IPC field count overflow"))?;
     if depth > MAX_DEPTH || *fields > MAX_FIELDS || field.dictionary().is_some() {
         return Err(invalid("IPC field depth/count or dictionary encoding unsupported"));

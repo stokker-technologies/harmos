@@ -55,9 +55,7 @@ pub struct LaunchConfig {
 
 impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
-        Self {
-            recordings: recordings.into(),
-        }
+        Self { recordings: recordings.into() }
     }
 
     pub fn recordings(&self) -> &Path {

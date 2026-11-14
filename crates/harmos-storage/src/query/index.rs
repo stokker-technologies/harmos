@@ -18,17 +18,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 // Third Party Imports
 
-
-
-
 // Local Imports
 use super::columnar;
 use harmos_query::columnar::{ArrowScan, Cancellation};
 use harmos_query::index::*;
 
 use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend};
-
-
 
 #[derive(Default)]
 pub struct IndexCatalog {
@@ -125,4 +120,6 @@ pub async fn list_index_entries(
     }
     Ok(finish(snapshot, read, &definition, revision, candidates.into_iter().collect())?)
 }
-fn conflict(reason: &'static str) -> Error { Error::backend("update index", crate::BackendFailure::Conflict, std::io::Error::other(reason)) }
+fn conflict(reason: &'static str) -> Error {
+    Error::backend("update index", crate::BackendFailure::Conflict, std::io::Error::other(reason))
+}

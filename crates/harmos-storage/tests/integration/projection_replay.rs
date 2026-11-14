@@ -147,7 +147,6 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
         );
     }
     primary.delete_session().await.unwrap();
-    
 
     // Reopen, Keep The Published Cut, And Replay The Interrupted Candidate Once.
     primary.create_session().await.unwrap();

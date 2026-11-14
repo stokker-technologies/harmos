@@ -68,7 +68,9 @@ impl StorageManager {
     pub fn in_memory(catalog: super::ObjectCatalog, settings: StorageSettings) -> Result<Self> {
         let execution = crate::clock::current();
         let backends = StorageBackends::in_memory(catalog.clone(), execution.clone())?;
-        Ok(Self { engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)? })
+        Ok(Self {
+            engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)?,
+        })
     }
 
     pub fn new(backends: StorageBackends, settings: StorageSettings) -> Result<Self> {

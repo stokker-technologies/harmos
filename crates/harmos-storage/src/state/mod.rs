@@ -21,6 +21,8 @@ pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 
 /* === Imports === */
 
+use std::num::NonZeroUsize;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -68,7 +70,7 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn get_history(&self) -> &StoreHistory;
     fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition>;
-    fn get_recovery_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+    fn get_recovery_snapshot(&self, max_bytes: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
     fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,

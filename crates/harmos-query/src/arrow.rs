@@ -16,9 +16,10 @@ mod retention;
 
 /* === Re-Exports === */
 
-
-
 /* === Imports === */
+
+use crate::ReadBatch;
+use std::result::Result as StdResult;
 
 // Standard Library Imports
 use std::sync::Arc;
@@ -107,8 +108,8 @@ impl ArrowBatch {
         result
     }
 
-    pub fn try_map<U, E>(self, map: impl FnOnce(RecordBatch) -> std::result::Result<U, E>) -> std::result::Result<crate::ReadBatch<U>, E> {
-        Ok(crate::ReadBatch::new(map(self.batch)?))
+    pub fn try_map<U, E>(self, map: impl FnOnce(RecordBatch) -> StdResult<U, E>) -> StdResult<ReadBatch<U>, E> {
+        Ok(ReadBatch::new(map(self.batch)?))
     }
 
     pub fn as_record_batch(&self) -> &RecordBatch {

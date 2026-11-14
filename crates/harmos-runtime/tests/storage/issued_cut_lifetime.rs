@@ -62,7 +62,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         .unwrap();
     fixture.storage.flush().await.unwrap();
     let selection = operations::ListRowsRequest {
-            merge: None,
+        merge: None,
         source: Some(Source::Records(RecordSelection {
             schema: schema.clone(),
             scope: None,
@@ -75,7 +75,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
         page: None,
     };
     let local_query = harmos_domain::model::storage::query::Query {
-            merge: None,
+        merge: None,
         at: fixture.storage.get_saved_position(),
         source: harmos_storage::query::Source::Records(harmos_storage::query::RecordSelection {
             schema: schema.clone(),
@@ -119,7 +119,10 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
-            merge: None, at: old.resolved_at, ..selection.clone() })
+                merge: None,
+                at: old.resolved_at,
+                ..selection.clone()
+            })
             .await
             .is_err()
     );
@@ -128,7 +131,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
-            merge: None,
+                merge: None,
                 page: Some(v1::PageRequest {
                     page_token: old.next_page_token,
                     ..Default::default()
@@ -182,7 +185,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
-            merge: None,
+                merge: None,
                 at: fresh.resolved_at,
                 ..selection.clone()
             })
@@ -194,7 +197,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
-            merge: None,
+                merge: None,
                 page: Some(v1::PageRequest {
                     page_token: fresh.next_page_token,
                     ..Default::default()

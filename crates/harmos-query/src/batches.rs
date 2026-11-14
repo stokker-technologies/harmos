@@ -7,7 +7,6 @@
  * ***
  */
 
-
 // Bounded Batch Sources At An Immutable Cut
 
 /* === Modules === */
@@ -25,10 +24,9 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 
 // Local Imports
-use harmos_domain::model::storage::{ReadLimits, Source, StorageCursor};
-use harmos_domain::model::storage::query::transform::{filter::Filter, project::Project};
 use crate::Result;
-
+use harmos_domain::model::storage::query::transform::{filter::Filter, project::Project};
+use harmos_domain::model::storage::{ReadLimits, Source, StorageCursor};
 
 /* === Constants === */
 
@@ -51,15 +49,12 @@ pub struct BatchPage {
     pub complete: bool,
 }
 
-
 /* === Enums === */
 
 /* === Traits === */
 
 pub trait BatchSource: Send + Sync {
-    fn open<'a>(
-        &'a self, selection: &'a Source, at: &'a StorageCursor, scan: &'a BatchScan,
-    ) -> QueryFuture<'a, Box<dyn BatchReader>>;
+    fn open<'a>(&'a self, selection: &'a Source, at: &'a StorageCursor, scan: &'a BatchScan) -> QueryFuture<'a, Box<dyn BatchReader>>;
 }
 
 pub trait BatchReader: Send {
@@ -67,7 +62,6 @@ pub trait BatchReader: Send {
     fn at(&self) -> &StorageCursor;
     fn next(&mut self) -> QueryFuture<'_, BatchPage>;
 }
-
 
 /* === Implementations === */
 

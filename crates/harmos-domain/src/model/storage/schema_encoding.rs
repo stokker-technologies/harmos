@@ -62,7 +62,9 @@ impl StorageSchema {
                 self.0 = self.0.checked_add(bytes.len()).ok_or_else(|| std::io::Error::other("measure schema size: overflow"))?;
                 Ok(bytes.len())
             }
-            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
         }
         let mut counter = Counter(0);
         serde_json::to_writer(&mut counter, self).map_err(|_| invalid())?;
@@ -190,8 +192,7 @@ mod tests {
 
     #[test]
     fn stored_schema_retains_serde_representation() {
-        let schema =
-            Schema::from_declaration(<Stored as crate::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
+        let schema = Schema::from_declaration(<Stored as crate::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
         let revision = identity::revision(&schema).unwrap();
         let position = StorageCursor {
             history: StoreHistory {

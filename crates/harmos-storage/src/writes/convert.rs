@@ -27,8 +27,8 @@ use crate::schema::{
     Cardinality,
     graph::{Field, Kind, Schema},
 };
-use crate::{ObjectKey, ObjectValue, RecordInput, StreamInput};
 use crate::{Error, Identifier, Result};
+use crate::{ObjectKey, ObjectValue, RecordInput, StreamInput};
 
 /* === Constants === */
 

@@ -11,7 +11,6 @@
 
 use harmos_storage::memory::Control;
 
-
 // Standard Library Imports
 use std::future::Future;
 use std::num::NonZeroUsize;
@@ -1014,7 +1013,6 @@ mod windows {
     /* === Re-Exports === */
 
     /* === Imports === */
-
 
     // Standard Library Imports
 

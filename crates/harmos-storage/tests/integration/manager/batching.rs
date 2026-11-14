@@ -267,8 +267,7 @@ async fn filtered_backend_preserves_caller_outcome() {
     let subscriber = Registry::default().with(capture.clone()).with(tracing_subscriber::filter::LevelFilter::INFO);
     let dispatch = tracing::Dispatch::new(subscriber);
     async {
-        let state =
-            harmos_storage::memory::RecoveryBackend::new(super::history());
+        let state = harmos_storage::memory::RecoveryBackend::new(super::history());
         let caller = tracing::info_span!("backend_caller", outcome = "pending");
         async {
             assert!(state.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
@@ -809,7 +808,7 @@ async fn snapshot_payload_limit_survives_reopen() {
     let maximum = NonZeroUsize::new(4096).unwrap();
     let limits = ReadLimits { rows: NonZeroUsize::MIN, bytes: maximum };
     for length in [maximum.get() - 2, maximum.get() - 1, maximum.get()] {
-            let data = super::backend::Backend::new(super::backend::history());
+        let data = super::backend::Backend::new(super::backend::history());
         let data = Arc::new(data);
         let recovery = super::backend::RecoveryBackend::new(super::backend::history());
         let recovery = Arc::new(recovery);
@@ -1093,10 +1092,18 @@ async fn filesystem_trace_lifetimes() {
         .await
         .unwrap();
     assert_eq!(digest.bytes_read, 15);
-    assert!(f.storage.read_file(FileRead { source: FileSource::Local(root.path().join("missing.bin")), range })
-        .instrument(request.clone()).with_subscriber(dispatch.clone()).await.is_err());
-    let backend =
-        harmos_storage::memory::RecoveryBackend::new(super::history());
+    assert!(
+        f.storage
+            .read_file(FileRead {
+                source: FileSource::Local(root.path().join("missing.bin")),
+                range
+            })
+            .instrument(request.clone())
+            .with_subscriber(dispatch.clone())
+            .await
+            .is_err()
+    );
+    let backend = harmos_storage::memory::RecoveryBackend::new(super::history());
     async {
         assert!(backend.flush(&harmos_storage::RecoveryPosition { history: super::history(), sequence: 0 }).await.is_err());
         backend.create_recovery_session().await.unwrap();

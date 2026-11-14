@@ -29,11 +29,11 @@ use super::{
     FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey,
     ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
-use crate::{Error, Result};
-pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 use crate::execution::Execution;
 use crate::memory::Backend;
 use crate::memory::RecoveryBackend;
+use crate::{Error, Result};
+pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
@@ -51,16 +51,12 @@ pub struct StorageBackends {
     pub state: Arc<dyn super::state::StateBackend>,
 }
 
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScanPage {
     pub after: u64,
     pub rows: NonZeroUsize,
     pub bytes: NonZeroUsize,
 }
-
-
 
 /// Cumulative physical work on one backend owner; differences describe an isolated operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -294,18 +290,20 @@ pub trait StorageBackend: Send + Sync + 'static {
 impl StorageBackends {
     pub fn in_memory(catalog: ObjectCatalog, clock: Execution) -> Result<Self> {
         let mut identity = [0u8; 32];
-        getrandom::fill(&mut identity).map_err(|source| Error::backend("create in-memory storage identity", crate::BackendFailure::Permanent, source))?;
+        getrandom::fill(&mut identity)
+            .map_err(|source| Error::backend("create in-memory storage identity", crate::BackendFailure::Permanent, source))?;
         let store = identity[..16].iter().map(|byte| format!("{byte:02x}")).collect::<String>();
         let epoch = identity[16..].iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-        let history = StoreHistory { store: crate::Identifier::new(store).map_err(harmos_domain::Error::from)?, epoch: crate::Identifier::new(epoch).map_err(harmos_domain::Error::from)? };
+        let history = StoreHistory {
+            store: crate::Identifier::new(store).map_err(harmos_domain::Error::from)?,
+            epoch: crate::Identifier::new(epoch).map_err(harmos_domain::Error::from)?,
+        };
         Ok(Self {
             primary: Arc::new(Backend::with_execution(catalog, history.clone(), clock)),
             state: Arc::new(RecoveryBackend::new(history)),
         })
     }
 }
-
-
 
 /* === Public Functions === */
 

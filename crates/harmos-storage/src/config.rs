@@ -95,8 +95,6 @@ pub struct StorageResponseSettings {
     pub batch_bytes: NonZeroUsize,
 }
 
-
-
 /* === Enums === */
 
 /* === Traits === */
@@ -121,8 +119,6 @@ impl Default for StoragePolicy {
         }
     }
 }
-
-
 
 impl StorageSettings {
     pub fn validate(&self) -> crate::Result<()> {
