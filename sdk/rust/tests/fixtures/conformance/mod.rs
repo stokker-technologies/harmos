@@ -483,8 +483,7 @@ async fn peer_call(context: &Context, request: Value) -> Result<Value> {
 }
 
 async fn settings_read(context: &Context, _: Value) -> Result<Value> {
-    let settings =
-        context.settings().list().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
+    let settings = context.settings().list().await?.value.ok_or_else(|| harmos::Error::Invalid("List Settings: Values Missing".into()))?;
     Ok(Value { value: settings.encode_to_vec() })
 }
 

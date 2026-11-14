@@ -21,6 +21,7 @@ use std::{marker::PhantomData, sync::Arc};
 // Third Party Imports
 use prost::Message;
 use prost_reflect::ReflectMessage;
+use prost_types::FileDescriptorSet;
 use tonic::{Status, codegen::http::uri::PathAndQuery};
 
 // Local Imports
@@ -152,8 +153,8 @@ fn verify<T: ReflectMessage + Default>(name: &str, contract: &Protobuf) -> Resul
     if descriptor.full_name() != name {
         return Err(Status::invalid_argument("generated message name differs from operation contract"));
     }
-    let expected = prost_types::FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(invalid)?;
-    let actual = prost_types::FileDescriptorSet {
+    let expected = FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(invalid)?;
+    let actual = FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
     let expected = schema::message_types(&expected, name).map_err(invalid)?;

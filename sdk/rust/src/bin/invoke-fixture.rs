@@ -30,16 +30,18 @@ use std::{
 };
 
 // Third Party Imports
+use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
 use prost::{
     DecodeError, Message as _,
     bytes::{Buf, BufMut},
     encoding::{DecodeContext, WireType},
 };
 use prost_reflect::{DescriptorPool, ReflectMessage};
-use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
 
 // Local Imports
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, TimeGetResponse};
+use harmos::{Message, OperationRequest, Result, Visibility};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
 use harmos_protocol::model::OperationPolicy;
@@ -48,8 +50,6 @@ use harmos_protocol::model::SettingDeclaration;
 use harmos_protocol::model::SettingValue;
 use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::setting_value;
-use harmos::plugin::{Context, Operation, Plugin};
-use harmos::{Message, OperationRequest, Result, Visibility};
 
 /* === Constants === */
 
@@ -155,7 +155,7 @@ impl Message for HostOutput {
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct HostControl {}
 impl OperationRequest for HostControl {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "fixture.control";
 }
 
@@ -197,7 +197,7 @@ impl OperationRequest for CallerProbe<StatusGetRequest> {
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationContext {}
 impl OperationRequest for ApplicationContext {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "example.host.v1.Prompts/Create";
 }
 
@@ -205,7 +205,7 @@ impl OperationRequest for ApplicationContext {
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationClient {}
 impl OperationRequest for ApplicationClient {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "example.host.v1.Steps/Execute";
 }
 
@@ -213,7 +213,7 @@ impl OperationRequest for ApplicationClient {
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationInstance {}
 impl OperationRequest for ApplicationInstance {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "example.plugin.v1.Control/Execute";
 }
 
@@ -292,9 +292,8 @@ fn main() -> Result<()> {
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
-        let stream = harmos::plugin::Stream::<Value>::new("fixture.ticks");
-        let observer =
-            harmos::plugin::Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
+        let stream = Stream::<Value>::new("fixture.ticks");
+        let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
             .settings(SettingsDeclarations {
                 values: vec![SettingDeclaration {
@@ -329,10 +328,10 @@ fn main() -> Result<()> {
             }),
         )
     } else if mode == "twins" {
-        let left = harmos::plugin::Stream::<Value>::new("fixture.left");
-        let right = harmos::plugin::Stream::<Value>::new("fixture.right");
-        let left_observer = harmos::plugin::Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
-        let right_observer = harmos::plugin::Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
+        let left = Stream::<Value>::new("fixture.left");
+        let right = Stream::<Value>::new("fixture.right");
+        let left_observer = Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let right_observer = Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -344,7 +343,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
             .on_stop(|| Err(harmos::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
-        let stream = harmos::plugin::Stream::<Value>::new("fixture.device").publish_on(device);
+        let stream = Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0")
             .stream(stream)
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
@@ -365,7 +364,7 @@ fn main() -> Result<()> {
     } else if mode == "values" {
         Plugin::new("values", "1.0.0")
             .requires_host(HostOperation::PluginsSettingsList)
-            .message::<harmos::plugin::TimeGetResponse>()
+            .message::<TimeGetResponse>()
             .section(SettingsDeclarations {
                 values: vec![SettingDeclaration {
                     name: "reading".into(),
@@ -439,7 +438,7 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
-async fn device(context: &Context, publisher: harmos::plugin::Publisher<Value>) -> Result<()> {
+async fn device(context: &Context, publisher: Publisher<Value>) -> Result<()> {
     DEVICE_ACTIVE.store(true, Ordering::SeqCst);
     let _demand = DeviceDemand;
     publisher.publish(Value { value: b"device".to_vec() }).await?;

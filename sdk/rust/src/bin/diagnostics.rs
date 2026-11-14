@@ -22,10 +22,10 @@ use harmos::plugin::HostOperation;
 // Third Party Imports
 
 // Local Imports
-use harmos_protocol::model::setting_value;
 use harmos::plugin::HostInvocationsWatch;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Error, Message, Result, Visibility};
+use harmos_protocol::model::setting_value;
 
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, Timestamp};
@@ -100,11 +100,10 @@ fn main() -> Result<()> {
     .every(ProtoDuration { seconds: 1, nanos: 0 });
     let children = Stream::<SampleReading>::new("execution.children");
     let child_observer = Observer::new(&children, samples_children).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let device =
-        Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: harmos::plugin::Publisher<Isolation>| {
-            context.cancelled().await;
-            Ok(())
-        });
+    let device = Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: Publisher<Isolation>| {
+        context.cancelled().await;
+        Ok(())
+    });
     Plugin::new("execution", "1.0.0")
         .stream(children)
         .observer(child_observer)
