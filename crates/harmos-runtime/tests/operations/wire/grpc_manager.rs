@@ -347,7 +347,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "harmos.client.v1.Operations/List" | "grpc.descendant" => (),
+            "harmos.host.v1.Operations/List" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
@@ -427,7 +427,7 @@ fn descendant_declaration_operation()
 }
 
 impl NamedService for Endpoint {
-    const NAME: &'static str = "fixture.Identity";
+    const NAME: &'static str = "fixture.host.v1.Identity";
 }
 impl Service<http::Request<Body>> for Endpoint {
     type Response = http::Response<Body>;
@@ -440,7 +440,7 @@ impl Service<http::Request<Body>> for Endpoint {
         let authority = self.authority.clone();
         Box::pin(async move {
             Ok(match request.uri().path() {
-                "/fixture.Identity/Hold" => {
+                "/fixture.host.v1.Identity/Hold" => {
                     harmos_runtime::grpc::server::download::<HoldDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -448,7 +448,7 @@ impl Service<http::Request<Body>> for Endpoint {
                     )
                     .await
                 }
-                "/fixture.Identity/Download" => {
+                "/fixture.host.v1.Identity/Download" => {
                     harmos_runtime::grpc::server::download::<DownloadDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -456,7 +456,7 @@ impl Service<http::Request<Body>> for Endpoint {
                     )
                     .await
                 }
-                "/fixture.Identity/Upload" => {
+                "/fixture.host.v1.Identity/Upload" => {
                     harmos_runtime::grpc::server::upload::<UploadDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -464,7 +464,7 @@ impl Service<http::Request<Body>> for Endpoint {
                     )
                     .await
                 }
-                "/fixture.Identity/Exchange" => {
+                "/fixture.host.v1.Identity/Exchange" => {
                     harmos_runtime::grpc::server::exchange::<ExchangeDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -472,7 +472,7 @@ impl Service<http::Request<Body>> for Endpoint {
                     )
                     .await
                 }
-                "/fixture.Identity/Guarded" => {
+                "/fixture.host.v1.Identity/Guarded" => {
                     harmos_runtime::grpc::server::unary::<GuardedDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -480,7 +480,7 @@ impl Service<http::Request<Body>> for Endpoint {
                     )
                     .await
                 }
-                "/fixture.Identity/Descendant" => {
+                "/fixture.host.v1.Identity/Descendant" => {
                     harmos_runtime::grpc::server::unary::<DescendantDeclaration, harmos_runtime::grpc::Transcoded>(
                         authority,
                         wire_settings(),
@@ -671,7 +671,7 @@ async fn call(channel: tonic::transport::Channel, token: Option<&'static str>) -
     let response = client
         .unary(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Who"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Who"),
             Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)?,
         )
         .await?;
@@ -701,7 +701,8 @@ async fn external_call(
 async fn external_catalog(
     channel: tonic::transport::Channel, token: Option<&'static str>,
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
-    use harmos_protocol::client::{OperationsListRequest, OperationsListResponse};
+    use harmos_protocol::host::OperationsListRequest;
+    use harmos_protocol::host::OperationsListResponse;
     let settings = harmos_runtime::grpc::server::Settings::default();
     let (decode, encode) = (settings.decode, settings.encode);
     let mut client = tonic::client::Grpc::new(channel)
@@ -714,7 +715,7 @@ async fn external_catalog(
         request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
     let response: tonic::Response<OperationsListResponse> = client
-        .unary(request, http::uri::PathAndQuery::from_static("/harmos.client.v1.Operations/List"), tonic_prost::ProstCodec::default())
+        .unary(request, http::uri::PathAndQuery::from_static("/harmos.host.v1.Operations/List"), tonic_prost::ProstCodec::default())
         .await?;
     Ok(response.into_inner().operations)
 }
@@ -747,7 +748,7 @@ async fn failures<F: Future<Output = ()>>(
     let streaming = match client
         .server_streaming(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Download"),
             Codec::<harmos_runtime::grpc::Transcoded, OutputEnvelope<Reply, Reply>, harmos_runtime::operations::Response<Ask>>::new(
                 decode, encode,
             )
@@ -767,7 +768,7 @@ async fn failures<F: Future<Output = ()>>(
     let upload = client
         .client_streaming(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Upload"),
             Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
                 decode, encode,
             )
@@ -785,7 +786,7 @@ async fn failures<F: Future<Output = ()>>(
     let exchange = match client
         .streaming(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Exchange"),
             Codec::<
                 harmos_runtime::grpc::Transcoded,
                 OutputEnvelope<Reply, Reply>,

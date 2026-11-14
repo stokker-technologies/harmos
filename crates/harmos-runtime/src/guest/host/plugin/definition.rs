@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Section;
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::fmt;
@@ -52,7 +54,7 @@ pub struct PluginContributions {
     pub streams: Vec<StreamDeclaration>,
     pub listeners: Vec<harmos_operations::listeners::Definition>,
     pub registrations: Vec<Registration>,
-    pub sections: Vec<harmos_protocol::v1::Section>,
+    pub sections: Vec<Section>,
 }
 
 /* === Enums === */

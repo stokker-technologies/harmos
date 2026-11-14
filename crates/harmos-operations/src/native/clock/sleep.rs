@@ -15,6 +15,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::TimeSleepResponse;
+
 use super::ClockAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
@@ -41,11 +44,11 @@ pub struct Sleep;
 /* === Implementations === */
 
 impl ProtobufOperation for Sleep {
-    type Request = harmos_protocol::client::TimeSleepRequest;
-    type Response = harmos_protocol::client::TimeSleepResponse;
+    type Request = TimeSleepRequest;
+    type Response = TimeSleepResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.Time/Sleep";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Time", "Sleep"));
+    const ID: &'static str = "harmos.host.v1.Time/Sleep";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Time", "Sleep"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
@@ -56,7 +59,7 @@ impl ProtobufOperation for Sleep {
             return Err(ServingError::Codec(crate::MessageError::borrowed("invalid sleep duration")));
         }
         clock.0.sleep(std::time::Duration::new(duration.seconds as u64, duration.nanos as u32)).await;
-        Ok(harmos_protocol::client::TimeSleepResponse {})
+        Ok(TimeSleepResponse {})
     }
 }
 

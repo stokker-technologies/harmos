@@ -146,14 +146,29 @@ impl HostFixture {
     }
 
     pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
+        Self::configured(source, None, std::num::NonZeroUsize::new(4096).unwrap()).await
+    }
+
+    pub async fn with_composition(
+        source: harmos_runtime::clock::Clock, composition: &str, preparation_bytes: std::num::NonZeroUsize,
+    ) -> Self {
+        Self::configured(Some(source), Some(composition), preparation_bytes).await
+    }
+
+    async fn configured(
+        source: Option<harmos_runtime::clock::Clock>, composition: Option<&str>, preparation_bytes: std::num::NonZeroUsize,
+    ) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
         let stored = Arc::new(std::sync::Mutex::new(Vec::new()));
         let runtime = crate::support::booted(Default::default(), |setup| {
+            if let Some(composition) = composition {
+                setup.composition(composition).unwrap();
+            }
             setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
-                preparation_bytes: std::num::NonZeroUsize::new(4096),
+                preparation_bytes: Some(preparation_bytes),
                 ..Default::default()
             });
             setup.settings().attach_streams(Store(stored.clone(), harmos_runtime::storage::Cursor::ORIGIN, signals.clone()));
@@ -170,10 +185,7 @@ impl HostFixture {
         let request = method.input().full_name().to_owned();
         let response = method.output().full_name().to_owned();
         let types = tempfile::tempdir().unwrap();
-        let descriptors = prost_types::FileDescriptorSet {
-            file: service.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
-        };
-        std::fs::write(types.path().join("host.pb"), descriptors.encode_to_vec()).unwrap();
+        std::fs::write(types.path().join("host.pb"), service.parent_pool().encode_to_vec()).unwrap();
         Self {
             runtime,
             clock,

@@ -22,7 +22,7 @@ use super::requests::{FileMetadata, FileProducer, FileProgress, FileReference, F
 // Third Party Imports
 
 // Local Imports
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::{StorageCursor, StorageManager};
 
 /* === Constants === */
@@ -59,9 +59,9 @@ pub(super) fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) 
     error.downcast_ref::<crate::Error>().map(super::classify).unwrap_or(crate::operations::FailureKind::Permanent)
 }
 
-pub(super) fn receipt(mutation: &MutationId, position: Option<StorageCursor>) -> v1::Receipt {
+pub(super) fn receipt(mutation: &MutationId, position: Option<StorageCursor>) -> model::Receipt {
     let position = position.map(position_to_wire);
-    v1::Receipt {
+    model::Receipt {
         request_id: format!("{}:{}", mutation.window, mutation.key),
         accepted_at: position.clone(),
         durable_at: position,
@@ -69,14 +69,14 @@ pub(super) fn receipt(mutation: &MutationId, position: Option<StorageCursor>) ->
     }
 }
 
-pub(super) fn cut(position: StorageCursor) -> v1::ReadCut {
-    v1::ReadCut {
+pub(super) fn cut(position: StorageCursor) -> model::ReadCut {
+    model::ReadCut {
         positions: vec![position_to_wire(position)],
         revisions: Vec::new(),
     }
 }
 
-pub(super) fn at(cut: Option<v1::ReadCut>) -> crate::Result<Option<StorageCursor>> {
+pub(super) fn at(cut: Option<model::ReadCut>) -> crate::Result<Option<StorageCursor>> {
     let Some(cut) = cut else { return Ok(None) };
     if !cut.revisions.is_empty() || cut.positions.len() != 1 {
         return Err(crate::Error::InvalidInput {
@@ -104,7 +104,7 @@ pub(super) fn required<T>(value: Option<T>) -> crate::Result<T> {
 
 pub(super) async fn create(
     storage: &StorageManager, metadata: FileMetadata, mutation: MutationId,
-) -> crate::Result<(FileProducer, v1::Receipt)> {
+) -> crate::Result<(FileProducer, model::Receipt)> {
     if !storage.capabilities().file_sessions || !storage.capabilities().mutation_receipts {
         return Err(harmos_storage::Error::backend(
             "CreateFileProduction",
@@ -119,21 +119,21 @@ pub(super) async fn create(
 
 pub(super) async fn append(
     storage: &StorageManager, session: FileSession, mutation: MutationId, offset: u64, data: Vec<u8>,
-) -> crate::Result<(FileProducer, v1::Receipt)> {
+) -> crate::Result<(FileProducer, model::Receipt)> {
     let production = storage.append_file_once(&mutation.clone(), &session, offset, harmos_storage::FileChunk::new(data)).await?;
     Ok((production, receipt(&mutation, None)))
 }
 
 pub(super) async fn writer(
     storage: &StorageManager, session: FileSession, mutation: MutationId,
-) -> crate::Result<(FileProducer, v1::Receipt)> {
+) -> crate::Result<(FileProducer, model::Receipt)> {
     let production = storage.resume_file_once(&mutation.clone(), &session).await?;
     Ok((production, receipt(&mutation, None)))
 }
 
 pub(super) async fn publish(
     storage: &StorageManager, session: FileSession, mutation: MutationId, length: u64, sha256: Vec<u8>,
-) -> crate::Result<(FileReference, v1::Receipt)> {
+) -> crate::Result<(FileReference, model::Receipt)> {
     let digest = sha256.try_into().map_err(|_| crate::Error::InvalidInput {
         field: "PublishFileProduction",
         reason: "SHA-256 requires 32 bytes",
@@ -147,15 +147,15 @@ pub(super) async fn publish(
 
 pub(super) async fn delete(
     storage: &StorageManager, session: FileSession, mutation: MutationId,
-) -> crate::Result<(FileProgress, v1::Receipt)> {
+) -> crate::Result<(FileProgress, model::Receipt)> {
     let progress = storage.abandon_file_once(&mutation.clone(), &session).await?;
     Ok((progress, receipt(&mutation, None)))
 }
 
 pub(super) async fn get(
     storage: &StorageManager, snapshots: &super::snapshot::SavedSnapshots, file: FileReference, offset: u64, max_bytes: u64,
-    at: Option<v1::ReadCut>, scope: Option<&str>,
-) -> crate::Result<(harmos_storage::FileBytesRange, v1::ReadCut)> {
+    at: Option<model::ReadCut>, scope: Option<&str>,
+) -> crate::Result<(harmos_storage::FileBytesRange, model::ReadCut)> {
     let max_bytes = if max_bytes == 0 { storage.settings().transfer.chunk_bytes() } else { max_bytes };
     let maximum = usize::try_from(max_bytes).ok().and_then(std::num::NonZeroUsize::new).ok_or(crate::Error::InvalidInput {
         field: "GetFileBytes",
@@ -224,9 +224,9 @@ pub(super) async fn get(
 
 /* === Private Functions === */
 
-fn position_to_wire(position: StorageCursor) -> v1::Position {
-    v1::Position {
-        history: Some(v1::History {
+fn position_to_wire(position: StorageCursor) -> model::Position {
+    model::Position {
+        history: Some(model::History {
             store: position.history.store.to_string(),
             epoch: position.history.epoch.to_string(),
         }),

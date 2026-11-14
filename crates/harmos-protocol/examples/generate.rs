@@ -107,9 +107,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate_client_fixture(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/client");
     fs::create_dir_all(&destination)?;
-    for name in
-        ["application.v1.rs", "application.v1.jobs.rs", "application.v1.plugins.rs", "client-descriptors.bin", "client-reflection.rs"]
-    {
+    for name in [
+        "application.host.v1.rs",
+        "application.host.v1.jobs.rs",
+        "application.host.v1.plugins.rs",
+        "client-descriptors.bin",
+        "client-reflection.rs",
+    ] {
         fs::copy(output.path().join(name), destination.join(name))?;
     }
     codegen::generate_conformance(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
@@ -120,9 +124,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/schematic");
     schematic::generate(&root, &protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
-    for (source, target) in
-        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
-    {
+    for (source, target) in [
+        ("schematic.host.v1.rs", "host.rs"),
+        ("schematic.model.v1.rs", "model.rs"),
+        ("schematic.plugin.v1.rs", "plugin.rs"),
+        ("schematic.client.rs", "client.rs"),
+        ("schematic.reflection.rs", "reflection.rs"),
+        ("schematic.descriptors.bin", "descriptors.bin"),
+    ] {
         fs::copy(output.path().join(source), root.join("protocol/src").join(target))?;
     }
     Ok(())

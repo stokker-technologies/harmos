@@ -41,7 +41,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 // Local Imports
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::{client as wire, v1};
+use harmos_protocol::host as wire;
+use harmos_protocol::model;
 
 /* === Constants === */
 
@@ -70,7 +71,7 @@ pub struct Access(pub Arc<dyn Management>);
 
 #[derive(Debug, thiserror::Error)]
 #[error("{message}: {action}", message = .0.message, action = .0.action)]
-pub struct Error(pub Box<v1::Failure>);
+pub struct Error(pub Box<model::Failure>);
 
 /* === Enums === */
 
@@ -93,8 +94,8 @@ pub trait Management: Send + Sync + 'static {
 
 impl Error {
     pub fn new(code: &str, message: impl Into<String>, action: &str) -> Self {
-        Self(Box::new(v1::Failure {
-            classification: v1::Classification::Permanent as i32,
+        Self(Box::new(model::Failure {
+            classification: model::Classification::Permanent as i32,
             code: code.into(),
             message: message.into(),
             action: action.into(),

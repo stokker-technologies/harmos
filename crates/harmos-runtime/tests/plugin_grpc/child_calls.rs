@@ -11,6 +11,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Classification;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -46,7 +48,7 @@ async fn child_calls_reach_host_and_public_peer_without_start_order() {
     // Missing Operations Fail With Their Identifier
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"unknown")).await.unwrap_err();
     let failure = call_error(&error);
-    assert_eq!(failure.classification(), harmos_protocol::v1::Classification::Refused);
+    assert_eq!(failure.classification(), Classification::Refused);
     assert!(failure.to_string().contains("fixture.missing"));
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();

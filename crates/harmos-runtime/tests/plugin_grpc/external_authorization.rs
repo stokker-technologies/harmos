@@ -64,7 +64,7 @@ struct LocalFetchDeclaration {
 static LOCAL_FETCH_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<LocalFetchDeclaration>("gated.local", POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("fixture.gated.v1", "Local", "Fetch"));
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.gated.host.v1", "Local", "Fetch"));
 
 const LOCAL_FETCH_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<LocalFetchDeclaration> =
     harmos_runtime::operations::OperationSpec::<LocalFetchDeclaration>::new(&LOCAL_FETCH_DECLARATION_DESCRIPTION)
@@ -196,19 +196,19 @@ async fn external_request_grants() {
     let denied = |result: Result<u32, tonic::Status>| {
         assert_eq!(result.unwrap_err().code(), tonic::Code::PermissionDenied);
     };
-    assert_eq!(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 1).await.unwrap(), 2);
-    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 20).await);
-    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.v1.Local/Fetch", 21).await);
+    assert_eq!(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.host.v1.Local/Fetch", 1).await.unwrap(), 2);
+    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.host.v1.Local/Fetch", 20).await);
+    denied(fetch(channel.clone(), "Bearer lacking", "/fixture.gated.host.v1.Local/Fetch", 21).await);
     assert_eq!(local.0.load(Ordering::SeqCst), 1, "refusals never run");
-    assert_eq!(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 20).await.unwrap(), 21);
-    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 21).await);
+    assert_eq!(fetch(channel.clone(), "Bearer holder", "/fixture.gated.host.v1.Local/Fetch", 20).await.unwrap(), 21);
+    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.host.v1.Local/Fetch", 21).await);
     // A grant is permission to call one operation: the held scope does not
     // carry over to a grant the request resolves on another operation.
-    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.v1.Local/Fetch", 22).await);
+    denied(fetch(channel.clone(), "Bearer holder", "/fixture.gated.host.v1.Local/Fetch", 22).await);
     assert_eq!(local.0.load(Ordering::SeqCst), 2, "refusals never run");
-    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 20).await.unwrap(), 21);
-    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 21).await.unwrap(), 22);
-    denied(fetch(channel.clone(), "Bearer full", "/fixture.gated.v1.Local/Fetch", 22).await);
+    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.host.v1.Local/Fetch", 20).await.unwrap(), 21);
+    assert_eq!(fetch(channel.clone(), "Bearer full", "/fixture.gated.host.v1.Local/Fetch", 21).await.unwrap(), 22);
+    denied(fetch(channel.clone(), "Bearer full", "/fixture.gated.host.v1.Local/Fetch", 22).await);
     assert_eq!(local.0.load(Ordering::SeqCst), 4, "full control still refuses a foreign-operation grant");
 
     // Shut Down The External Interface And Host

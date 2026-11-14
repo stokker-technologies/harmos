@@ -20,10 +20,14 @@ use super::{
     actor::{Actor, changed},
     persistence::{Registry, SavedMutation, problem},
 };
-use harmos_protocol::{
-    client::{PluginEntry, plugins as wire},
-    v1::{Declarations, SettingDeclaration, SettingValue, SettingValues, SettingsDeclarations, setting_value::Value},
-};
+use harmos_protocol::host::PluginEntry;
+use harmos_protocol::host::plugins as wire;
+use harmos_protocol::model::Declarations;
+use harmos_protocol::model::SettingDeclaration;
+use harmos_protocol::model::SettingValue;
+use harmos_protocol::model::SettingValues;
+use harmos_protocol::model::SettingsDeclarations;
+use harmos_protocol::model::setting_value::Value;
 use prost::Message;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -56,13 +60,18 @@ pub(super) struct Snapshot {
 
 impl Actor {
     pub(super) fn settings_list(&mut self, request: wire::SettingsListRequest) -> Result<wire::SettingsListResponse, Error> {
-        if !self.registry.entries.contains_key(&request.name) {
+        let name = request
+            .name
+            .as_ref()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| Error::new("name_required", "List Plugin Settings", "select a plugin entry"))?;
+        if !self.registry.entries.contains_key(name) {
             return Err(Error::new("entry_missing", "List Plugin Settings", "select an existing plugin entry"));
         }
         let snapshot = self.snapshot(request.at.as_ref())?.clone();
         let settings = snapshot
             .settings
-            .get(&request.name)
+            .get(name)
             .ok_or_else(|| Error::new("settings_not_ready", "List Plugin Settings", "wait for the plugin to report its description"))?;
         let response = wire::SettingsListResponse {
             declarations: settings.declarations.clone(),
@@ -145,7 +154,7 @@ impl Actor {
 /* === Public Functions === */
 
 pub(crate) fn declarations_from(declarations: &Declarations) -> Result<Vec<SettingDeclaration>, Error> {
-    let Some(section) = declarations.sections.iter().find(|section| section.r#type == "harmos.v1.SettingsDeclarations") else {
+    let Some(section) = declarations.sections.iter().find(|section| section.r#type == "harmos.model.v1.SettingsDeclarations") else {
         return Ok(Vec::new());
     };
     let values = SettingsDeclarations::decode(section.payload.as_slice())

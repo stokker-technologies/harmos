@@ -27,6 +27,19 @@ pub use pairings_list::PairingsList;
 
 /* === Imports === */
 
+use harmos_protocol::host::access::CertificatesCreateRequest;
+use harmos_protocol::host::access::CertificatesCreateResponse;
+use harmos_protocol::host::access::ListenerGetRequest;
+use harmos_protocol::host::access::ListenerGetResponse;
+use harmos_protocol::host::access::ListenerSetRequest;
+use harmos_protocol::host::access::ListenerSetResponse;
+use harmos_protocol::host::access::PairingsCreateRequest;
+use harmos_protocol::host::access::PairingsCreateResponse;
+use harmos_protocol::host::access::PairingsDeleteRequest;
+use harmos_protocol::host::access::PairingsDeleteResponse;
+use harmos_protocol::host::access::PairingsListRequest;
+use harmos_protocol::host::access::PairingsListResponse;
+
 // Standard Library Imports
 use std::{future::Future, pin::Pin, time::Duration};
 
@@ -60,24 +73,12 @@ pub struct AccessAccess(pub std::sync::RwLock<Option<std::sync::Weak<dyn Access>
 /* === Traits === */
 
 pub trait Access: Send + Sync {
-    fn listener_get(
-        &self, request: harmos_protocol::client::access::ListenerGetRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::ListenerGetResponse>;
-    fn listener_set(
-        &self, request: harmos_protocol::client::access::ListenerSetRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::ListenerSetResponse>;
-    fn pairings_create(
-        &self, request: harmos_protocol::client::access::PairingsCreateRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::PairingsCreateResponse>;
-    fn pairings_list(
-        &self, request: harmos_protocol::client::access::PairingsListRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::PairingsListResponse>;
-    fn pairings_delete(
-        &self, request: harmos_protocol::client::access::PairingsDeleteRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::PairingsDeleteResponse>;
-    fn certificates_create(
-        &self, request: harmos_protocol::client::access::CertificatesCreateRequest,
-    ) -> Pending<'_, harmos_protocol::client::access::CertificatesCreateResponse>;
+    fn listener_get(&self, request: ListenerGetRequest) -> Pending<'_, ListenerGetResponse>;
+    fn listener_set(&self, request: ListenerSetRequest) -> Pending<'_, ListenerSetResponse>;
+    fn pairings_create(&self, request: PairingsCreateRequest) -> Pending<'_, PairingsCreateResponse>;
+    fn pairings_list(&self, request: PairingsListRequest) -> Pending<'_, PairingsListResponse>;
+    fn pairings_delete(&self, request: PairingsDeleteRequest) -> Pending<'_, PairingsDeleteResponse>;
+    fn certificates_create(&self, request: CertificatesCreateRequest) -> Pending<'_, CertificatesCreateResponse>;
 }
 
 /* === Implementations === */

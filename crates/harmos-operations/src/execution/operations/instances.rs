@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsCreateRequest;
+
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
@@ -37,9 +39,7 @@ pub struct InstanceAccess(pub Arc<dyn Instances>);
 /* === Traits === */
 
 pub trait Instances: Send + Sync {
-    fn invoke(
-        &self, request: harmos_protocol::client::InvocationsInvokeRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, super::ServingError>> + Send + '_>>;
+    fn invoke(&self, request: InvocationsCreateRequest) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, super::ServingError>> + Send + '_>>;
     fn owned(&self, id: Id) -> Option<Arc<dyn InstanceControl>>;
 }
 pub trait InstanceControl: Send + Sync {

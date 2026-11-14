@@ -15,6 +15,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+
 use super::ClockAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
@@ -41,18 +44,18 @@ pub struct Get;
 /* === Implementations === */
 
 impl ProtobufOperation for Get {
-    type Request = harmos_protocol::client::TimeGetRequest;
-    type Response = harmos_protocol::client::TimeGetResponse;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.Time/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Time", "Get"));
+    const ID: &'static str = "harmos.host.v1.Time/Get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Time", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let clock = context.resource::<ClockAccess>().map_err(|_| ServingError::Catalog)?;
         let _ = request;
-        Ok(harmos_protocol::client::TimeGetResponse { now: Some(clock.0.now()) })
+        Ok(TimeGetResponse { now: Some(clock.0.now()) })
     }
 }
 

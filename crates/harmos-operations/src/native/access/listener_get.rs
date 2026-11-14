@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::access::ListenerGetRequest;
+use harmos_protocol::host::access::ListenerGetResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,11 +41,11 @@ pub struct ListenerGet;
 /* === Implementations === */
 
 impl ProtobufOperation for ListenerGet {
-    type Request = harmos_protocol::client::access::ListenerGetRequest;
-    type Response = harmos_protocol::client::access::ListenerGetResponse;
+    type Request = ListenerGetRequest;
+    type Response = ListenerGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.access.Listener/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1.access", "Listener", "Get"));
+    const ID: &'static str = "harmos.host.v1.access.Listener/Get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.access", "Listener", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<AccessAccess>()];

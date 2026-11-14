@@ -762,29 +762,30 @@ async fn run(
                 }
                 let previous = registry.ready_generations();
                 let outcome = tokio::select! {
-                    biased;
-                    _ = stopped.changed() => Initialization::Closing,
-                    _ = reply.closed() => Initialization::Cancelled,
-                    _ = interrupts.changed() => Initialization::Cancelled,
-                    result = async {
-                        use crate::plugin::manager::{Manager, Management};
-                        use harmos_protocol::client::{PluginsListRequest, plugin_placement::Kind};
-                        let mut selected = registry.definitions().map(|definition| definition.id.clone()).collect::<BTreeSet<_>>();
-                        if let Ok(manager) = lifecycle.operations.resources().resource::<Manager>() {
-                            let entries = manager.list(PluginsListRequest { at: None }).await.map_err(|source| Error::OperationFailed {
-                                operation: "Initialize Guest Plugins".into(), source: Arc::new(source),
-                            })?;
-                            for entry in entries.entries {
-                                if matches!(entry.placement.and_then(|placement| placement.kind), Some(Kind::Guest(_)))
-                                    && !entry.value.is_some_and(|value| value.enabled) {
-                                    selected.remove(&entry.name);
-                                    if let Some(source) = lifecycle.sources.get_mut(&entry.name) { source.enabled = false; }
-                                }
-                            }
-                        }
-                        registry.initialize_selected(&selected, &mut lifecycle).await
-                    } => Initialization::Complete(result),
-                };
+                                    biased;
+                                    _ = stopped.changed() => Initialization::Closing,
+                                    _ = reply.closed() => Initialization::Cancelled,
+                                    _ = interrupts.changed() => Initialization::Cancelled,
+                                    result = async {
+                                        use crate::plugin::manager::{Manager, Management};
+                                        use harmos_protocol::host::PluginsListRequest;
+                use harmos_protocol::host::plugin_placement::Kind;
+                                        let mut selected = registry.definitions().map(|definition| definition.id.clone()).collect::<BTreeSet<_>>();
+                                        if let Ok(manager) = lifecycle.operations.resources().resource::<Manager>() {
+                                            let entries = manager.list(PluginsListRequest { at: None }).await.map_err(|source| Error::OperationFailed {
+                                                operation: "Initialize Guest Plugins".into(), source: Arc::new(source),
+                                            })?;
+                                            for entry in entries.entries {
+                                                if matches!(entry.placement.and_then(|placement| placement.kind), Some(Kind::Guest(_)))
+                                                    && !entry.value.is_some_and(|value| value.enabled) {
+                                                    selected.remove(&entry.name);
+                                                    if let Some(source) = lifecycle.sources.get_mut(&entry.name) { source.enabled = false; }
+                                                }
+                                            }
+                                        }
+                                        registry.initialize_selected(&selected, &mut lifecycle).await
+                                    } => Initialization::Complete(result),
+                                };
                 match outcome {
                     Initialization::Complete(result) => {
                         schedule_failure(&mut registry, &lifecycle, &result);

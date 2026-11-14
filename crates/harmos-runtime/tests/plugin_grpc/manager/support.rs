@@ -19,6 +19,24 @@ pub use process::Process;
 
 /* === Imports === */
 
+use harmos_protocol::host::PluginChange;
+use harmos_protocol::host::PluginEntry;
+use harmos_protocol::host::PluginManaged;
+use harmos_protocol::host::PluginPlacement;
+use harmos_protocol::host::PluginRemote;
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginValue;
+use harmos_protocol::host::PluginsCreateRequest;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsWatchResponse;
+use harmos_protocol::host::plugin_change::Kind;
+use harmos_protocol::host::plugin_placement::Kind as WireKind;
+use harmos_protocol::host::plugins_client::PluginsClient;
+use harmos_protocol::host::plugins_watch_response::Event;
+use harmos_protocol::plugin::InstanceGetRequest;
+use harmos_protocol::plugin::InstanceGetResponse;
+use harmos_protocol::plugin::instance_client::InstanceClient;
+
 // Standard Library Imports
 use std::{
     num::NonZeroUsize,
@@ -51,7 +69,7 @@ use harmos_runtime::{
 
 /* === Type Aliases === */
 
-pub type Client = harmos_protocol::client::plugins_client::PluginsClient<tonic::transport::Channel>;
+pub type Client = PluginsClient<tonic::transport::Channel>;
 
 /* === Structs === */
 
@@ -74,7 +92,7 @@ pub struct Backends {
 
 pub struct Peer {
     pub url: String,
-    pub description: harmos_protocol::plugin::InstanceGetResponse,
+    pub description: InstanceGetResponse,
     child: tokio::process::Child,
     drain: tokio::task::JoinHandle<()>,
 }
@@ -147,7 +165,7 @@ impl Host {
     pub async fn close(self) {
         self.runtime.shutdown().await.unwrap();
     }
-    pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> harmos_protocol::client::PluginManaged {
+    pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();
         let mut production = self
             .storage
@@ -163,7 +181,7 @@ impl Host {
         production.write_all(bytes).await.unwrap();
         let file = production.finish().await.unwrap();
         self.storage.flush_until(&file.position).await.unwrap();
-        harmos_protocol::client::PluginManaged {
+        PluginManaged {
             content: Some(file.into()),
             sha256: digest,
         }
@@ -196,9 +214,8 @@ impl Peer {
             }
         };
         let drain = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
-        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::connect(url.clone()).await.unwrap();
-        let description =
-            client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
+        let mut client = InstanceClient::connect(url.clone()).await.unwrap();
+        let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner();
         Self { url, description, child, drain }
     }
     pub fn is_running(&mut self) -> bool {
@@ -277,45 +294,34 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
         response_bytes: nz(1024 * 1024),
     }
 }
-pub fn remote(name: &str, url: &str) -> harmos_protocol::client::PluginsCreateRequest {
-    harmos_protocol::client::PluginsCreateRequest {
+pub fn remote(name: &str, url: &str) -> PluginsCreateRequest {
+    PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
-        placement: Some(harmos_protocol::client::PluginPlacement {
-            kind: Some(harmos_protocol::client::plugin_placement::Kind::Remote(harmos_protocol::client::PluginRemote { url: url.into() })),
+        placement: Some(PluginPlacement {
+            kind: Some(WireKind::Remote(PluginRemote { url: url.into() })),
         }),
-        value: Some(harmos_protocol::client::PluginValue { enabled: true }),
+        value: Some(PluginValue { enabled: true }),
     }
 }
-pub fn managed(
-    name: &str, content: harmos_protocol::client::PluginManaged, enabled: bool,
-) -> harmos_protocol::client::PluginsCreateRequest {
-    harmos_protocol::client::PluginsCreateRequest {
+pub fn managed(name: &str, content: PluginManaged, enabled: bool) -> PluginsCreateRequest {
+    PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
-        placement: Some(harmos_protocol::client::PluginPlacement {
-            kind: Some(harmos_protocol::client::plugin_placement::Kind::Managed(content)),
-        }),
-        value: Some(harmos_protocol::client::PluginValue { enabled }),
+        placement: Some(PluginPlacement { kind: Some(WireKind::Managed(content)) }),
+        value: Some(PluginValue { enabled }),
     }
 }
-pub fn list() -> harmos_protocol::client::PluginsListRequest {
-    harmos_protocol::client::PluginsListRequest { at: None }
+pub fn list() -> PluginsListRequest {
+    PluginsListRequest { at: None }
 }
-pub async fn state(
-    watch: &mut tonic::Streaming<harmos_protocol::client::PluginsWatchResponse>, name: &str, state: harmos_protocol::client::PluginState,
-    activation: u64,
-) -> harmos_protocol::client::PluginEntry {
+pub async fn state(watch: &mut tonic::Streaming<PluginsWatchResponse>, name: &str, state: PluginState, activation: u64) -> PluginEntry {
     loop {
         let response = watch.message().await.unwrap().expect("plugin state event");
         let entry = match response.event {
-            Some(harmos_protocol::client::plugins_watch_response::Event::Snapshot(snapshot)) => {
-                snapshot.entries.into_iter().find(|entry| entry.name == name)
-            }
-            Some(harmos_protocol::client::plugins_watch_response::Event::Change(harmos_protocol::client::PluginChange {
-                kind: Some(harmos_protocol::client::plugin_change::Kind::Entry(entry)),
-            })) => Some(entry),
-            Some(harmos_protocol::client::plugins_watch_response::Event::ResyncRequired(error)) => panic!("{error}"),
+            Some(Event::Snapshot(snapshot)) => snapshot.entries.into_iter().find(|entry| entry.name == name),
+            Some(Event::Change(PluginChange { kind: Some(Kind::Entry(entry)) })) => Some(entry),
+            Some(Event::ResyncRequired(error)) => panic!("{error}"),
             _ => None,
         };
         if let Some(entry) = entry

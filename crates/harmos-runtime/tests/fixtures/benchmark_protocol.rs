@@ -45,7 +45,7 @@ pub static ECHO_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclara
         },
     )
     .visibility(harmos_runtime::operations::Visibility::Public)
-    .grpc(harmos_runtime::operations::Grpc::new("benchmark.v1", "Commands", "Echo"));
+    .grpc(harmos_runtime::operations::Grpc::new("benchmark.host.v1", "Commands", "Echo"));
 
 pub const ECHO_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<EchoDeclaration> =
     harmos_runtime::operations::OperationSpec::<EchoDeclaration>::new(&ECHO_DECLARATION_DESCRIPTION);

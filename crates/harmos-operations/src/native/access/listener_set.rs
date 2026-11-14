@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::access::ListenerSetRequest;
+use harmos_protocol::host::access::ListenerSetResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,11 +41,11 @@ pub struct ListenerSet;
 /* === Implementations === */
 
 impl ProtobufOperation for ListenerSet {
-    type Request = harmos_protocol::client::access::ListenerSetRequest;
-    type Response = harmos_protocol::client::access::ListenerSetResponse;
+    type Request = ListenerSetRequest;
+    type Response = ListenerSetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.access.Listener/Set";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1.access", "Listener", "Set"));
+    const ID: &'static str = "harmos.host.v1.access.Listener/Set";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.access", "Listener", "Set"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<AccessAccess>()];

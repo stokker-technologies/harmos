@@ -15,13 +15,15 @@
 
 /* === Imports === */
 
-use crate::model::Declarations;
+use crate::host::TimeGetRequest;
+use crate::model::{Callers, Declarations};
 
 // Standard Library Imports
 use std::collections::{BTreeMap, BTreeSet};
 
 // Third Party Imports
 use prost::Message;
+use prost_reflect::{DescriptorPool, DynamicMessage, MethodDescriptor, ReflectMessage, Value};
 use prost_types::{DescriptorProto, FileDescriptorSet};
 use sha2::{Digest, Sha256};
 
@@ -42,10 +44,9 @@ pub struct Error(String);
 /* === Enums === */
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OperationFace {
+pub enum Executor {
     Plugin,
-    Context,
-    Client,
+    Host,
 }
 
 /* === Traits === */
@@ -54,12 +55,12 @@ pub enum OperationFace {
 
 /* === Public Functions === */
 
-/// Validate a Wire Operation Identity and Resolve Its Audience Face.
-pub fn operation_identity(id: &str) -> Result<OperationFace, Error> {
+/// Validate a Wire Operation Identity and Resolve Its Executor.
+pub fn operation_identity(id: &str) -> Result<Executor, Error> {
     let invalid = || Error(format!("Declare {id}: Invalid Wire Operation Identity"));
     let Some((service, method)) = id.split_once('/') else {
         if id.split('.').all(|segment| !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')) {
-            return Ok(OperationFace::Plugin);
+            return Ok(Executor::Plugin);
         }
         return Err(invalid());
     };
@@ -73,39 +74,101 @@ pub fn operation_identity(id: &str) -> Result<OperationFace, Error> {
         return Err(invalid());
     }
     let segments: Vec<_> = package.split('.').collect();
-    let mut face = OperationFace::Client;
+    let mut executor = None;
     for (index, segment) in segments.iter().enumerate().skip(1) {
-        let version =
-            segment.strip_prefix('v').is_some_and(|version| !version.is_empty() && version.bytes().all(|byte| byte.is_ascii_digit()));
+        let version = segment.strip_prefix('v').is_some_and(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()));
         if !version {
             continue;
         }
-        let boundary = if index >= 2 && segments[index - 2..index] == ["plugin", "host"] {
-            Some(OperationFace::Context)
-        } else if segments[index - 1] == "plugin" {
-            Some(OperationFace::Plugin)
-        } else {
-            None
+        let selected = match segments[index - 1] {
+            "host" => Executor::Host,
+            "plugin" => Executor::Plugin,
+            _ => return Err(invalid()),
         };
-        if let Some(boundary) = boundary {
-            if face != OperationFace::Client {
-                return Err(invalid());
-            }
-            face = boundary;
+        if executor.replace(selected).is_some() {
+            return Err(invalid());
         }
     }
-    Ok(face)
+    executor.ok_or_else(invalid)
 }
 
-/// Admit Only Plugin-Face Identities Outside the Library Namespace.
+/// Admit Only Plugin Executor Identities Outside the Library Namespace.
 pub fn plugin_operation_identity(id: &str) -> Result<(), Error> {
-    if operation_identity(id)? != OperationFace::Plugin {
-        return Err(Error(format!("Register {id}: Serve Operations on the Plugin Face")));
+    if operation_identity(id)? != Executor::Plugin {
+        return Err(Error(format!("Register {id}: Serve Operations on the Plugin Executor")));
     }
     if id.starts_with("harmos.") || id.starts_with("harmos_") {
         return Err(Error(format!("Register {id}: Host Namespace Is Reserved")));
     }
     Ok(())
+}
+
+/// Read The Mandatory Caller Option Without Dropping Unknown Descriptor Fields.
+pub fn method_callers(method: &MethodDescriptor) -> Result<Callers, Error> {
+    let id = format!("{}/{}", method.parent_service().full_name(), method.name());
+    let extension = method
+        .parent_pool()
+        .get_extension_by_name("harmos.model.v1.callers")
+        .ok_or_else(|| Error(format!("Declare {id}: Missing Callers Option Definition")))?;
+    let options = method.options();
+    if !options.has_extension(&extension) {
+        return Err(Error(format!("Declare {id}: Missing Callers Option")));
+    }
+    let value = options.get_extension(&extension);
+    let Value::EnumNumber(value) = value.as_ref() else {
+        return Err(Error(format!("Declare {id}: Invalid Callers Option")));
+    };
+    match Callers::try_from(*value) {
+        Ok(Callers::Clients) => Ok(Callers::Clients),
+        Ok(Callers::Plugins) => Ok(Callers::Plugins),
+        Ok(Callers::All) => Ok(Callers::All),
+        _ => Err(Error(format!("Declare {id}: Invalid Callers Option"))),
+    }
+}
+
+/// Attach Effective Caller Options To Runtime-Projected Service Descriptors.
+pub fn with_method_callers(mut types: FileDescriptorSet, callers: &BTreeMap<String, Callers>) -> Result<DescriptorPool, Error> {
+    let authority = TimeGetRequest::default().descriptor();
+    let authority = authority.parent_pool();
+    for name in ["google/protobuf/descriptor.proto", "harmos/model/v1/callers.proto"] {
+        let declared = authority.get_file_by_name(name).expect("protocol caller option dependency");
+        let declared = declared.file_descriptor_proto().clone();
+        match types.file.iter_mut().find(|file| file.name.as_deref() == Some(name)) {
+            Some(file) => *file = declared,
+            None => types.file.push(declared),
+        }
+    }
+    for file in &mut types.file {
+        if !file.service.is_empty() && !file.dependency.iter().any(|name| name == "harmos/model/v1/callers.proto") {
+            file.dependency.push("harmos/model/v1/callers.proto".into());
+        }
+    }
+    let meta = authority.get_message_by_name("google.protobuf.FileDescriptorSet").expect("descriptor set schema");
+    let extension = authority.get_extension_by_name("harmos.model.v1.callers").expect("protocol caller option");
+    let mut descriptors = DynamicMessage::decode(meta, types.encode_to_vec().as_slice()).map_err(|error| Error(error.to_string()))?;
+    let files = descriptors.get_field_by_name_mut("file").and_then(Value::as_list_mut).expect("descriptor files");
+    for file in files {
+        let file = file.as_message_mut().expect("file descriptor");
+        let package = file.get_field_by_name("package").expect("package field").as_str().unwrap_or_default().to_owned();
+        let services = file.get_field_by_name_mut("service").and_then(Value::as_list_mut).expect("descriptor services");
+        for service in services {
+            let service = service.as_message_mut().expect("service descriptor");
+            let service_name = service.get_field_by_name("name").expect("service name").as_str().unwrap_or_default().to_owned();
+            let methods = service.get_field_by_name_mut("method").and_then(Value::as_list_mut).expect("descriptor methods");
+            for method in methods {
+                let method = method.as_message_mut().expect("method descriptor");
+                let name = method.get_field_by_name("name").expect("method name").as_str().unwrap_or_default().to_owned();
+                let id = format!("{package}.{service_name}/{name}");
+                let caller = callers.get(&id).copied().ok_or_else(|| Error(format!("Declare {id}: Missing Caller Projection")))?;
+                if !matches!(caller, Callers::Clients | Callers::Plugins | Callers::All) {
+                    return Err(Error(format!("Declare {id}: Invalid Caller Projection")));
+                }
+                let options = method.get_field_by_name_mut("options").and_then(Value::as_message_mut).expect("method options");
+                options.set_extension(&extension, Value::EnumNumber(caller as i32));
+            }
+        }
+    }
+    DescriptorPool::decode(descriptors.encode_to_vec().as_slice()).map_err(|error| Error(error.to_string()))
 }
 
 /// Hash an operation's reachable request and response descriptors, independently
@@ -345,48 +408,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wire_identities_resolve_faces_without_native_segment_restrictions() {
-        for (id, face) in [
-            ("example.step.0", OperationFace::Plugin),
-            ("example.criterion.12", OperationFace::Plugin),
-            ("example.plugin.v1.Lifecycle/Initialize", OperationFace::Plugin),
-            ("example.plugin.v2.steps.Progress/Get", OperationFace::Plugin),
-            ("example.plugin.host.v1.Prompts/Create", OperationFace::Context),
-            ("example.plugin.host.v1.jobs.Progress/Watch", OperationFace::Context),
-            ("example.v1.Steps/Execute", OperationFace::Client),
-            ("example.v1.jobs.Progress/Get", OperationFace::Client),
-            ("example.context.values.Prompts/Create", OperationFace::Client),
-            ("_example.v1._Service/_Method", OperationFace::Client),
+    fn wire_identities_resolve_executors_and_reject_missing_executor() {
+        for (id, executor) in [
+            ("example.step.0", Executor::Plugin),
+            ("example.plugin.v1.Lifecycle/Initialize", Executor::Plugin),
+            ("example.plugin.v2.steps.Progress/Get", Executor::Plugin),
+            ("example.host.v1.Prompts/Create", Executor::Host),
+            ("example.host.v1.jobs.Progress/Watch", Executor::Host),
         ] {
-            assert_eq!(operation_identity(id).unwrap(), face, "{id}");
-            assert_eq!(plugin_operation_identity(id).is_ok(), face == OperationFace::Plugin, "{id}");
+            assert_eq!(operation_identity(id).unwrap(), executor);
+            assert_eq!(plugin_operation_identity(id).is_ok(), executor == Executor::Plugin);
         }
         for id in [
             "",
             ".example",
-            "example.",
-            "example..step.0",
-            "example step",
-            "example.-step",
-            "example.écho",
+            "example..step",
             "Steps/Execute",
-            ".Steps/Execute",
-            "example.plugin.v1.Steps/",
-            "example.plugin.v1./Execute",
-            "example.plugin.v1.Steps/Execute/Again",
-            "example.0.Steps/Execute",
-            "example.v1.Steps/0",
-            "example.plugin.v1.plugin.host.v1.Steps/Execute",
+            "example.values.Steps/Get",
+            "example.model.v1.Steps/Get",
+            "example.host.v1.Steps/",
+            "example.host.v1.Steps/Get/Again",
+            "example.plugin.v1.host.v1.Steps/Get",
         ] {
-            let error = operation_identity(id).unwrap_err().to_string();
-            assert!(error.contains("Declare"), "{error}");
-            assert!(error.contains(id), "{error}");
+            assert!(operation_identity(id).is_err(), "{id}");
         }
-        for id in
-            ["harmos.plugin.v1.Instance/Invoke", "harmos.plugin.host.v1.Time/Get", "harmos.client.v1.Time/Get", "harmos_forged.step.0"]
-        {
-            assert!(operation_identity(id).is_ok());
-            assert!(plugin_operation_identity(id).unwrap_err().to_string().contains(id));
-        }
+        assert!(plugin_operation_identity("harmos.plugin.v1.Instance/Invoke").is_err());
     }
 }

@@ -18,10 +18,16 @@ use crate::execution::operations::{
 };
 use crate::plugin::Grant;
 use crate::{Error, Identifier, MessageError};
-use harmos_protocol::client::{
-    OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, SchemaDescription, SchemasListRequest,
-    SchemasListResponse, StreamIdentity, StreamsListRequest, StreamsListResponse,
-};
+use harmos_protocol::host::OperationsGetRequest;
+use harmos_protocol::host::OperationsGetResponse;
+use harmos_protocol::host::OperationsListRequest;
+use harmos_protocol::host::OperationsListResponse;
+use harmos_protocol::host::SchemaDescription;
+use harmos_protocol::host::SchemasListRequest;
+use harmos_protocol::host::SchemasListResponse;
+use harmos_protocol::host::StreamIdentity;
+use harmos_protocol::host::StreamsListRequest;
+use harmos_protocol::host::StreamsListResponse;
 use harmos_storage::follow::Entry;
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use std::{num::NonZeroUsize, sync::Arc};
@@ -36,8 +42,8 @@ macro_rules! operation {
             type Request = $request;
             type Response = $response;
             type Endpoints = ();
-            const ID: &'static str = concat!("harmos.client.v1.", $service, "/", $method);
-            const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", $service, $method));
+            const ID: &'static str = concat!("harmos.host.v1.", $service, "/", $method);
+            const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", $service, $method));
             const POLICY: crate::OperationPolicy = super::POLICY;
             const VISIBILITY: Visibility = Visibility::Public;
             const RESOURCES: &'static [Resource] = $resources;

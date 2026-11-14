@@ -100,6 +100,7 @@ impl Manager {
             .filter(|entry| entry.active.load(Ordering::Acquire) && entry.available().is_ok())
             .filter_map(|entry| {
                 Some(crate::operations::GrpcMethod {
+                    callers: entry.callers(),
                     owner: entry.owner.clone(),
                     generation: entry.generation,
                     contract: entry.contract.clone()?,

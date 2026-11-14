@@ -31,6 +31,7 @@ use prost_reflect::{
 use super::schema;
 use harmos_domain::config::SchemaSettings;
 use harmos_operations::operations::Contract;
+use harmos_protocol::schema::Error as CallersError;
 
 /* === Constants === */
 
@@ -58,6 +59,9 @@ pub enum DescriptorError {
 
     #[error(transparent)]
     Descriptor(#[from] prost_reflect::DescriptorError),
+
+    #[error(transparent)]
+    Callers(#[from] CallersError),
 }
 
 /* === Traits === */

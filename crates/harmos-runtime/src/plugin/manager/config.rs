@@ -22,7 +22,8 @@ use prost::Message;
 // Local Imports
 use super::Error;
 use crate::{bundle::Limits, plugin::grpc::PlacementSettings};
-use harmos_protocol::{client as wire, v1};
+use harmos_protocol::host as wire;
+use harmos_protocol::model;
 
 /* === Constants === */
 
@@ -75,9 +76,9 @@ impl PluginManagerSettings {
                 "supply capacities representable by the runtime channels",
             ));
         }
-        let boundary = v1::ReadCut {
-            positions: vec![v1::Position {
-                history: Some(v1::History {
+        let boundary = model::ReadCut {
+            positions: vec![model::Position {
+                history: Some(model::History {
                     store: self.namespace.clone(),
                     epoch: crate::bundle::digest(&[]),
                 }),

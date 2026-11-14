@@ -11,6 +11,12 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsCancelRequest;
+use harmos_protocol::host::InvocationsCancelResponse;
+use harmos_protocol::host::InvocationsGetRequest;
+use harmos_protocol::host::InvocationsGetResponse;
+use harmos_protocol::model::Grant;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -88,8 +94,8 @@ async fn builtin_grpc_roundtrip() {
         .into_iter()
         .filter_map(|method| method.contract.grpc().map(|grpc| grpc.path()))
         .collect::<Vec<_>>();
-    assert!(paths.contains(&"/harmos.client.v1.Invocations/Get".to_owned()));
-    assert!(paths.contains(&"/harmos.client.v1.Invocations/Cancel".to_owned()));
+    assert!(paths.contains(&"/harmos.host.v1.Invocations/Get".to_owned()));
+    assert!(paths.contains(&"/harmos.host.v1.Invocations/Cancel".to_owned()));
 
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
@@ -97,24 +103,21 @@ async fn builtin_grpc_roundtrip() {
     let id = parked.id();
 
     // An External Caller Neither Sees nor Cancels a Host Instance
-    let status = generated_call::<harmos_protocol::client::InvocationsGetRequest, harmos_protocol::client::InvocationsGetResponse>(
-        channel.clone(),
-        "/harmos.client.v1.Invocations/Get",
-        Get::of(id),
-    )
-    .await;
+    let status =
+        generated_call::<InvocationsGetRequest, InvocationsGetResponse>(channel.clone(), "/harmos.host.v1.Invocations/Get", Get::of(id))
+            .await;
     assert!(status.is_err());
     let unknown = harmos_runtime::operations::OperationInstanceId::new(u64::MAX);
-    let cancel = generated_call::<harmos_protocol::client::InvocationsCancelRequest, harmos_protocol::client::InvocationsCancelResponse>(
+    let cancel = generated_call::<InvocationsCancelRequest, InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.client.v1.Invocations/Cancel",
+        "/harmos.host.v1.Invocations/Cancel",
         Cancel::of(unknown),
     )
     .await;
     assert!(cancel.is_err());
-    let foreign = generated_call::<harmos_protocol::client::InvocationsCancelRequest, harmos_protocol::client::InvocationsCancelResponse>(
+    let foreign = generated_call::<InvocationsCancelRequest, InvocationsCancelResponse>(
         channel.clone(),
-        "/harmos.client.v1.Invocations/Cancel",
+        "/harmos.host.v1.Invocations/Cancel",
         Cancel::of(id),
     )
     .await;
@@ -172,36 +175,39 @@ async fn external_authority_parity() {
     let guarded = alice.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert_eq!(
         guarded.grants,
-        [harmos_protocol::v1::Grant {
+        [Grant {
             operation: "grpc.guarded".into(),
             scope: Some("reading".into())
         }]
     );
     let bob = external_catalog(channel.clone(), Some("Bearer bob")).await.unwrap();
     assert!(bob.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
-    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:alice");
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer bob"), "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer limited"), "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
-    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Descendant").await.unwrap(), "external:alice");
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer bob"), "/fixture.Identity/Descendant").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Descendant").await.unwrap(),
+        "external:alice"
+    );
+    assert_eq!(
+        external_call(channel.clone(), Some("Bearer bob"), "/fixture.host.v1.Identity/Descendant").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
-    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
-    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:alice");
+    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:carol");
     let mut context = harmos_runtime::operations::CallContext::default();
     context.insert(Principal("bob".into())).unwrap();
     assert_eq!(
         runtime.operations.with_context(context).operation::<DescendantDeclaration>(DescendantDeclaration {}).await.unwrap().actor,
         "host:bob"
     );
-    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.Identity/Guarded").await.unwrap(), "external:carol");
+    assert_eq!(external_call(channel.clone(), Some("Bearer carol"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:carol");
     mode.store(1, std::sync::atomic::Ordering::Release);
     assert!(
         external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap().iter().all(|entry| entry
@@ -213,27 +219,30 @@ async fn external_authority_parity() {
             != "grpc.guarded")
     );
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::PermissionDenied
     );
     mode.store(2, std::sync::atomic::Ordering::Release);
     assert_eq!(
-        external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err().code(),
+        external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(),
         tonic::Code::InvalidArgument
     );
     mode.store(3, std::sync::atomic::Ordering::Release);
     let incompatible = external_catalog(channel.clone(), Some("Bearer alice")).await.unwrap();
     assert!(incompatible.iter().all(|entry| entry.contract.as_ref().unwrap().id.as_str() != "grpc.guarded"));
-    let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap_err();
+    let denied = external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap_err();
     assert_eq!(denied.code(), tonic::Code::PermissionDenied, "full control must validate the live contract");
     mode.store(4, std::sync::atomic::Ordering::Release);
     let full = external_catalog(channel.clone(), Some("Bearer limited")).await.unwrap();
     let guarded = full.iter().find(|entry| entry.contract.as_ref().unwrap().id.as_str() == "grpc.guarded").unwrap();
     assert!(guarded.grants.is_empty(), "full control does not invent finite scopes");
     assert!(guarded.conditional_access);
-    assert_eq!(external_call(channel.clone(), Some("Bearer limited"), "/fixture.Identity/Guarded").await.unwrap(), "external:limited");
+    assert_eq!(
+        external_call(channel.clone(), Some("Bearer limited"), "/fixture.host.v1.Identity/Guarded").await.unwrap(),
+        "external:limited"
+    );
     mode.store(0, std::sync::atomic::Ordering::Release);
-    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.Identity/Guarded").await.unwrap(), "external:alice");
+    assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
     crate::support::app::shutdown(&runtime).await.unwrap();
 
@@ -252,7 +261,7 @@ async fn external_authority_parity() {
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap(), "external:anonymous");
+    assert_eq!(external_call(channel, None, "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:anonymous");
     crate::support::app::shutdown(&runtime).await.unwrap();
     let runtime = Runtime::<App>::launch((), ()).await.unwrap();
     runtime
@@ -276,7 +285,7 @@ async fn external_authority_parity() {
         .unwrap();
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    assert_eq!(external_call(channel, None, "/fixture.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
+    assert_eq!(external_call(channel, None, "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
@@ -443,7 +452,7 @@ async fn stalled_listener_settles() {
         let mut unread = client
             .server_streaming(
                 request,
-                http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Hold"),
                 Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
             )
             .await
@@ -511,7 +520,7 @@ async fn shutdown_streams_unavailable() {
     let mut held = client
         .server_streaming(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Hold"),
             Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
@@ -531,7 +540,7 @@ async fn shutdown_streams_unavailable() {
         uploader
             .client_streaming(
                 request,
-                http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
+                http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Upload"),
                 Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
                     decode, encode,
                 )
@@ -672,7 +681,7 @@ struct NativeDownload {}
 static NATIVE_DOWNLOAD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<NativeDownload>("grpc.download", WHO_POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Download"));
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Identity", "Download"));
 
 const NATIVE_DOWNLOAD_OPERATION: harmos_runtime::operations::OperationSpec<NativeDownload> =
     harmos_runtime::operations::OperationSpec::<NativeDownload>::new(&NATIVE_DOWNLOAD_DESCRIPTION);
@@ -713,7 +722,7 @@ struct NativeUpload {}
 static NATIVE_UPLOAD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<NativeUpload>("grpc.upload", WHO_POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Upload"));
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Identity", "Upload"));
 
 const NATIVE_UPLOAD_OPERATION: harmos_runtime::operations::OperationSpec<NativeUpload> =
     harmos_runtime::operations::OperationSpec::<NativeUpload>::new(&NATIVE_UPLOAD_DESCRIPTION);
@@ -758,7 +767,7 @@ struct NativeExchange {}
 static NATIVE_EXCHANGE_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<NativeExchange>("grpc.exchange", WHO_POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Exchange"));
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Identity", "Exchange"));
 
 const NATIVE_EXCHANGE_OPERATION: harmos_runtime::operations::OperationSpec<NativeExchange> =
     harmos_runtime::operations::OperationSpec::<NativeExchange>::new(&NATIVE_EXCHANGE_DESCRIPTION);
@@ -873,7 +882,7 @@ async fn streaming_principals(native: bool) {
     let response = client
         .server_streaming(
             request,
-            http::uri::PathAndQuery::from_static("/fixture.Identity/Download"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Download"),
             Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode).unwrap(),
         )
         .await
@@ -893,7 +902,7 @@ async fn streaming_principals(native: bool) {
             let response = client
                 .streaming(
                     request,
-                    http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"),
+                    http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Exchange"),
                     Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
                         decode, encode,
                     )
@@ -908,7 +917,7 @@ async fn streaming_principals(native: bool) {
             let response = client
                 .client_streaming(
                     request,
-                    http::uri::PathAndQuery::from_static("/fixture.Identity/Upload"),
+                    http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Upload"),
                     Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<InputEnvelope<Ask, Reply>>>::new(
                         decode, encode,
                     )
@@ -979,7 +988,7 @@ async fn observes_cancel_deadline() {
         static NATIVE_HOLD_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
             harmos_runtime::operations::WireDeclaration::request::<NativeHold>("grpc.hold", WHO_POLICY)
                 .visibility(harmos_runtime::operations::Visibility::Public)
-                .grpc(harmos_runtime::operations::Grpc::new("fixture", "Identity", "Hold"));
+                .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Identity", "Hold"));
 
         const NATIVE_HOLD_OPERATION: harmos_runtime::operations::OperationSpec<NativeHold> =
             harmos_runtime::operations::OperationSpec::<NativeHold>::new(&NATIVE_HOLD_DESCRIPTION);
@@ -1046,7 +1055,7 @@ async fn observes_cancel_deadline() {
             let response = client
                 .server_streaming(
                     request,
-                    http::uri::PathAndQuery::from_static("/fixture.Identity/Hold"),
+                    http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Hold"),
                     Codec::<harmos_runtime::grpc::Transcoded, Reply, harmos_runtime::operations::Response<Ask>>::new(decode, encode)
                         .unwrap(),
                 )
@@ -1210,8 +1219,11 @@ async fn reload_certificate_preserves_stream() {
     client.ready().await.unwrap();
     let (decode, encode) = limits();
     let codec = Codec::<harmos_runtime::grpc::Transcoded, Reply, Response<InputEnvelope<Ask, Reply>>>::new(decode, encode).unwrap();
-    let mut stream =
-        client.streaming(request, http::uri::PathAndQuery::from_static("/fixture.Identity/Exchange"), codec).await.unwrap().into_inner();
+    let mut stream = client
+        .streaming(request, http::uri::PathAndQuery::from_static("/fixture.host.v1.Identity/Exchange"), codec)
+        .await
+        .unwrap()
+        .into_inner();
     assert!(matches!(&*stream.message().await.unwrap().unwrap(), Reply { actor } if actor == "alice"));
 
     // Invalid And Mismatched Material Never Replaces The Active Identity.
@@ -1266,7 +1278,7 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     static PROGRESS_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
         harmos_runtime::operations::WireDeclaration::request::<Progress>("grpc.progress", WHO_POLICY)
             .visibility(harmos_runtime::operations::Visibility::Public)
-            .grpc(harmos_runtime::operations::Grpc::new("fixture", "Deadlines", "Progress"));
+            .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Deadlines", "Progress"));
 
     const PROGRESS_OPERATION: harmos_runtime::operations::OperationSpec<Progress> =
         harmos_runtime::operations::OperationSpec::<Progress>::new(&PROGRESS_DESCRIPTION);
@@ -1308,7 +1320,7 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     let mut output = client
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Progress {})),
-            http::uri::PathAndQuery::from_static("/fixture.Deadlines/Progress"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Deadlines/Progress"),
             Codec::<harmos_runtime::grpc::Transcoded, u32, harmos_runtime::operations::Response<Progress>>::new(decode, encode).unwrap(),
         )
         .await
@@ -1346,7 +1358,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     static BUFFERED_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
         harmos_runtime::operations::WireDeclaration::request::<Buffered>("grpc.buffered", WHO_POLICY)
             .visibility(harmos_runtime::operations::Visibility::Public)
-            .grpc(harmos_runtime::operations::Grpc::new("fixture", "Deadlines", "Buffered"));
+            .grpc(harmos_runtime::operations::Grpc::new("fixture.host.v1", "Deadlines", "Buffered"));
 
     const BUFFERED_OPERATION: harmos_runtime::operations::OperationSpec<Buffered> =
         harmos_runtime::operations::OperationSpec::<Buffered>::new(&BUFFERED_DESCRIPTION);
@@ -1403,7 +1415,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     let mut output = client
         .server_streaming(
             tonic::Request::new(harmos_runtime::operations::Response::new(Buffered {})),
-            http::uri::PathAndQuery::from_static("/fixture.Deadlines/Buffered"),
+            http::uri::PathAndQuery::from_static("/fixture.host.v1.Deadlines/Buffered"),
             Codec::<harmos_runtime::grpc::Transcoded, Vec<u8>, harmos_runtime::operations::Response<Buffered>>::new(
                 DecodeSettings {
                     message_bytes: capacity,

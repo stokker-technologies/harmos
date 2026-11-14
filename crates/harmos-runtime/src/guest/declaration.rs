@@ -15,12 +15,14 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::GuestRegistration;
+
 use super::Error;
 use harmos_operations::{
     inventory::contracts::Required,
     operations::{Contract, OperationDefinition, OperationPolicy, Protobuf, ReplaySafety, Visibility},
 };
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use prost::Message as _;
 use std::num::NonZeroUsize;
 
@@ -45,8 +47,8 @@ pub struct Declaration {
     pub operations: Vec<OperationDefinition>,
     pub contracts: Contracts,
     pub streams: Vec<harmos_operations::StreamDeclaration>,
-    pub sections: Vec<v1::Section>,
-    pub(crate) registration: v1::GuestRegistration,
+    pub sections: Vec<model::Section>,
+    pub(crate) registration: GuestRegistration,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Contracts {
@@ -62,7 +64,7 @@ pub struct Contracts {
 /* === Implementations === */
 
 impl Declaration {
-    pub(crate) fn new(registration: v1::GuestRegistration, stream_window: Option<NonZeroUsize>) -> Result<Self, Error> {
+    pub(crate) fn new(registration: GuestRegistration, stream_window: Option<NonZeroUsize>) -> Result<Self, Error> {
         let invalid = |message: String| Error::Guest { message };
         if !harmos_domain::identity::segment(&registration.id) {
             return Err(invalid("Invalid Guest Identity".into()));
@@ -106,11 +108,11 @@ impl Declaration {
                 return Err(invalid("Invalid or Duplicate Guest Requirement".into()));
             }
             let contract = contract(
-                &v1::OperationContract {
+                &model::OperationContract {
                     id: required.id.clone(),
                     request: required.request.clone(),
                     response: required.response.clone(),
-                    visibility: v1::Visibility::Public as i32,
+                    visibility: model::Visibility::Public as i32,
                     ..Default::default()
                 },
                 types,
@@ -179,11 +181,11 @@ impl Declaration {
 
 /* === Private Functions === */
 
-fn contract(operation: &v1::OperationContract, types: &prost_types::FileDescriptorSet) -> Result<Contract, Error> {
+fn contract(operation: &model::OperationContract, types: &prost_types::FileDescriptorSet) -> Result<Contract, Error> {
     let invalid = |message: String| Error::Guest { message };
     let visibility = match operation.visibility() {
-        v1::Visibility::Public => Visibility::Public,
-        v1::Visibility::Protected => Visibility::Protected,
+        model::Visibility::Public => Visibility::Public,
+        model::Visibility::Protected => Visibility::Protected,
         _ => return Err(invalid("Invalid Guest Operation Visibility".into())),
     };
     let policy = OperationPolicy::try_from(operation.policy.as_ref()).map_err(|error| invalid(error.to_string()))?;

@@ -21,7 +21,7 @@ use super::requests::required;
 
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::columnar::Cancellation;
 use harmos_query::columnar::ColumnSource;
 use harmos_storage::ReadLimits;
@@ -32,8 +32,8 @@ use std::num::NonZeroUsize;
 /* === Public Functions === */
 
 pub(super) async fn columns(
-    context: &ExecutionContext, selection: Option<ColumnSelection>, at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
-) -> Result<(ArrowPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<ColumnSelection>, at: Option<model::ReadCut>, page: Option<model::PageRequest>,
+) -> Result<(ArrowPage, model::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -91,9 +91,9 @@ pub(super) async fn columns(
 }
 
 pub(super) async fn indexes(
-    context: &ExecutionContext, selection: Option<IndexSelection>, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
-    page: Option<v1::PageRequest>,
-) -> Result<(IndexPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<IndexSelection>, source: Option<ColumnSource>, at: Option<model::ReadCut>,
+    page: Option<model::PageRequest>,
+) -> Result<(IndexPage, model::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -154,9 +154,9 @@ pub(super) async fn indexes(
 }
 
 pub(super) async fn projections(
-    context: &ExecutionContext, selection: Option<ProjectionSelection>, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
-    page: Option<v1::PageRequest>,
-) -> Result<(ProjectionPage, v1::ReadCut, String), ServingError> {
+    context: &ExecutionContext, selection: Option<ProjectionSelection>, source: Option<ColumnSource>, at: Option<model::ReadCut>,
+    page: Option<model::PageRequest>,
+) -> Result<(ProjectionPage, model::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -222,7 +222,9 @@ pub(super) async fn projections(
 
 /* === Private Functions === */
 
-fn bounds(storage: &StorageManager, page: &v1::PageRequest, cut: &v1::ReadCut, repeated_key: bool) -> crate::Result<(ReadLimits, usize)> {
+fn bounds(
+    storage: &StorageManager, page: &model::PageRequest, cut: &model::ReadCut, repeated_key: bool,
+) -> crate::Result<(ReadLimits, usize)> {
     let settings = storage.settings().response;
     let maximum = if page.max_bytes == 0 {
         settings.batch_bytes.get()
@@ -240,7 +242,7 @@ fn bounds(storage: &StorageManager, page: &v1::PageRequest, cut: &v1::ReadCut, r
     let bytes = NonZeroUsize::new(available / if repeated_key { 3 } else { 1 }).ok_or_else(exhausted)?;
     Ok((ReadLimits { rows, bytes }, maximum))
 }
-fn response_bytes<T: MemorySize>(page: &T, cut: &v1::ReadCut, token: &str, maximum: usize) -> crate::Result<()> {
+fn response_bytes<T: MemorySize>(page: &T, cut: &model::ReadCut, token: &str, maximum: usize) -> crate::Result<()> {
     let bytes = field(page.memory_size()) + field(cut.encoded_len()) + if token.is_empty() { 0 } else { field(token.len()) };
     super::admission::page_bytes(bytes, maximum)
 }
@@ -255,12 +257,12 @@ pub(super) fn decode_revision(bytes: &[u8]) -> crate::Result<u64> {
     }
     Ok(value)
 }
-pub(super) fn revision_at(cut: &v1::ReadCut, resource: &str) -> crate::Result<Option<u64>> {
+pub(super) fn revision_at(cut: &model::ReadCut, resource: &str) -> crate::Result<Option<u64>> {
     cut.revisions.iter().find(|revision| revision.name == resource).map(|revision| decode_revision(&revision.revision)).transpose()
 }
-pub(super) fn with_revision(mut cut: v1::ReadCut, name: &str, revision: u64) -> v1::ReadCut {
+pub(super) fn with_revision(mut cut: model::ReadCut, name: &str, revision: u64) -> model::ReadCut {
     if !cut.revisions.iter().any(|resource| resource.name == name) {
-        cut.revisions.push(v1::ResourceRevision {
+        cut.revisions.push(model::ResourceRevision {
             name: name.into(),
             revision: super::definitions::revision(revision),
         });

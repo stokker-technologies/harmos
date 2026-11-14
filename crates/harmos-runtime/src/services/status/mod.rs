@@ -22,6 +22,15 @@ pub use redaction::Redaction;
 
 /* === Imports === */
 
+use harmos_protocol::host::ComponentState;
+use harmos_protocol::host::HealthComponent;
+use harmos_protocol::host::HostIdentity;
+use harmos_protocol::host::HostStatus;
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::StatusGetResponse;
+use harmos_protocol::host::StatusWatchRequest;
+use harmos_protocol::host::StatusWatchResponse;
+
 // Standard Library Imports
 use std::{
     collections::BTreeMap,
@@ -34,8 +43,9 @@ use harmos_operations::{
     execution::operations::ServingError,
     status::{EventStream, Pending},
 };
-use harmos_protocol::client::status as wire;
-use harmos_protocol::v1::{self};
+use harmos_protocol::host::status as wire;
+
+use harmos_protocol::model;
 use history::History;
 use tokio::sync::watch;
 
@@ -68,7 +78,7 @@ pub struct StatusSettings {
 pub struct Status {
     clock: crate::clock::Clock,
     settings: StatusSettings,
-    identity: harmos_protocol::client::HostIdentity,
+    identity: HostIdentity,
     pub redaction: Redaction,
     state: Mutex<State>,
     changes: watch::Sender<u64>,
@@ -80,7 +90,7 @@ struct State {
     providers: BTreeMap<u64, Arc<dyn Contribution>>,
     next_provider: u64,
     providers_revision: u64,
-    components: Vec<harmos_protocol::client::HealthComponent>,
+    components: Vec<HealthComponent>,
     available: bool,
     archive: Option<Arc<diagnostics::Archive>>,
 }
@@ -94,7 +104,7 @@ pub struct Registration {
 /* === Traits === */
 
 pub trait Contribution: Send + Sync + 'static {
-    fn health(&self) -> Result<Vec<harmos_protocol::client::HealthComponent>, Box<dyn std::error::Error + Send + Sync>>;
+    fn health(&self) -> Result<Vec<HealthComponent>, Box<dyn std::error::Error + Send + Sync>>;
     fn diagnostics(&self) -> Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>>;
 }
 
@@ -124,7 +134,7 @@ impl Status {
         let epoch = identifier("Status.Configure")?;
         let history =
             |name| History::new(name, &epoch, settings.history_items.get(), settings.history_bytes.get(), settings.read_leases.get());
-        let identity = harmos_protocol::client::HostIdentity {
+        let identity = HostIdentity {
             application_name: settings.application_name.clone(),
             application_version: settings.application_version.clone(),
             host_id: settings.host_id.clone(),
@@ -179,25 +189,23 @@ impl Status {
             };
             let mut components = BTreeMap::from([(
                 "services".to_owned(),
-                harmos_protocol::client::HealthComponent {
+                HealthComponent {
                     name: "services".into(),
-                    state: harmos_protocol::client::ComponentState::Healthy as i32,
+                    state: ComponentState::Healthy as i32,
                     reason: String::new(),
                 },
             )]);
             for (id, provider) in providers {
                 let facts = provider.health().unwrap_or_else(|_| {
-                    vec![harmos_protocol::client::HealthComponent {
+                    vec![HealthComponent {
                         name: format!("contribution.{id}"),
-                        state: harmos_protocol::client::ComponentState::Unavailable as i32,
+                        state: ComponentState::Unavailable as i32,
                         reason: "Status.Get: contribution unavailable".into(),
                     }]
                 });
                 for mut component in facts {
                     if component.name.is_empty()
-                        || harmos_protocol::client::ComponentState::try_from(component.state)
-                            .ok()
-                            .is_none_or(|s| s == harmos_protocol::client::ComponentState::Unspecified)
+                        || ComponentState::try_from(component.state).ok().is_none_or(|s| s == ComponentState::Unspecified)
                     {
                         return Err(failure("Status.Get", "contribution returned invalid health"));
                     }
@@ -213,7 +221,7 @@ impl Status {
                 continue;
             }
             let components: Vec<_> = components.into_values().collect();
-            let status = harmos_protocol::client::HostStatus {
+            let status = HostStatus {
                 identity: Some(self.identity.clone()),
                 available: state.available,
                 components: components.clone(),
@@ -273,17 +281,16 @@ impl Status {
         drop(state);
         self.changed();
     }
-    fn snapshot(&self, state: &State) -> harmos_protocol::client::HostStatus {
-        harmos_protocol::client::HostStatus {
+    fn snapshot(&self, state: &State) -> HostStatus {
+        HostStatus {
             identity: Some(self.identity.clone()),
-            available: state.available
-                && state.components.iter().all(|c| c.state != harmos_protocol::client::ComponentState::Unavailable as i32),
+            available: state.available && state.components.iter().all(|c| c.state != ComponentState::Unavailable as i32),
             components: state.components.clone(),
         }
     }
     fn page(
-        &self, trace: bool, at: Option<&v1::Position>, page: Option<&v1::PageRequest>,
-    ) -> Result<(Vec<wire::Event>, v1::Position, String), ServingError> {
+        &self, trace: bool, at: Option<&model::Position>, page: Option<&model::PageRequest>,
+    ) -> Result<(Vec<wire::Event>, model::Position, String), ServingError> {
         let action = if trace { "Status.TraceEvents.List" } else { "Status.Logs.List" };
         let page = page.ok_or_else(|| failure(action, "page bounds are required"))?;
         let mut state = self.state.lock().expect("status lock is healthy");
@@ -291,8 +298,8 @@ impl Status {
         history.page(at, page, action)
     }
     fn event_watch(
-        self: Arc<Self>, trace: bool, at: Option<v1::Position>, maximum_items: usize, maximum_bytes: usize,
-    ) -> Result<EventStream<(Vec<wire::Event>, v1::Position)>, ServingError> {
+        self: Arc<Self>, trace: bool, at: Option<model::Position>, maximum_items: usize, maximum_bytes: usize,
+    ) -> Result<EventStream<(Vec<wire::Event>, model::Position)>, ServingError> {
         let action = if trace { "Status.TraceEvents.Watch" } else { "Status.Logs.Watch" };
         if maximum_items == 0 || maximum_bytes == 0 {
             return Err(failure(action, "positive event and byte bounds are required"));
@@ -361,17 +368,15 @@ impl Drop for Registration {
     }
 }
 impl harmos_operations::status::Status for Port {
-    fn get(&self, _: harmos_protocol::client::StatusGetRequest) -> Pending<'_, harmos_protocol::client::StatusGetResponse> {
+    fn get(&self, _: StatusGetRequest) -> Pending<'_, StatusGetResponse> {
         Box::pin(async move {
             let mut state = self.state.lock().expect("status lock is healthy");
             let status = self.snapshot(&state);
             let resolved_at = Some(state.status_history.latest());
-            Ok(harmos_protocol::client::StatusGetResponse { status: Some(status), resolved_at })
+            Ok(StatusGetResponse { status: Some(status), resolved_at })
         })
     }
-    fn watch(
-        &self, request: harmos_protocol::client::StatusWatchRequest,
-    ) -> Pending<'_, EventStream<harmos_protocol::client::StatusWatchResponse>> {
+    fn watch(&self, request: StatusWatchRequest) -> Pending<'_, EventStream<StatusWatchResponse>> {
         Box::pin(async move {
             let changes = self.changes.subscribe();
             self.state.lock().expect("status lock is healthy").status_history.resolve(request.at.as_ref(), "Status.Watch")?;
@@ -385,7 +390,7 @@ impl harmos_operations::status::Status for Port {
                     if opening.is_none() || Some(boundary.sequence) != opening {
                         changes.borrow_and_update();
                         let sequence = boundary.sequence;
-                        let event = harmos_protocol::client::StatusWatchResponse {
+                        let event = StatusWatchResponse {
                             status: Some(status),
                             resolved_at: Some(boundary),
                         };
@@ -449,8 +454,8 @@ impl harmos_operations::status::Status for Port {
 /* === Public Functions === */
 
 pub(crate) fn failure(action: &'static str, reason: &str) -> ServingError {
-    let failure = v1::Failure {
-        classification: v1::Classification::Permanent as i32,
+    let failure = model::Failure {
+        classification: model::Classification::Permanent as i32,
         code: "action_failed".into(),
         message: format!("{action}: {reason}"),
         action: action.into(),

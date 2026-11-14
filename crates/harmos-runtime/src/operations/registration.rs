@@ -50,7 +50,7 @@ pub struct Registration {
 #[derive(Clone)]
 pub(crate) struct CatalogBinding {
     bind: Arc<BindCatalog>,
-    factories: Vec<harmos_operations::execution::operations::OperationFactory>,
+    pub(crate) factories: Vec<harmos_operations::execution::operations::OperationFactory>,
     lanes: Vec<&'static str>,
 }
 

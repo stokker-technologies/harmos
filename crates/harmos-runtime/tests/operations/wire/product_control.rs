@@ -15,6 +15,11 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::host::invocations_client::InvocationsClient;
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -66,18 +71,18 @@ impl ProtobufOperation for Cancel {
     const ID: &'static str = "controls.cancel";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::lifecycle::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const GRPC: Option<Grpc> = Some(Grpc::new("control.v1", "Work", "Cancel"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("control.host.v1", "Work", "Cancel"));
     const RESOURCES: &'static [Resource] = &[Resource::of::<Work>()];
     async fn run(context: ExecutionContext, _: Request, _: &()) -> Result<Reply, ServingError> {
         let work = context.resource::<Work>().unwrap();
         if work.queued.load(Ordering::SeqCst) {
             return Err(ServingError::Handler(
-                harmos_protocol::v1::Failure {
-                    classification: harmos_protocol::v1::Classification::Refused as i32,
+                Failure {
+                    classification: Classification::Refused as i32,
                     code: "queued_cancel".into(),
                     message: "Cancel Work: Target Is Queued".into(),
                     action: "Cancel After Starting Work".into(),
-                    cause: Some(Box::new(harmos_protocol::v1::Failure {
+                    cause: Some(Box::new(Failure {
                         code: "queued_target".into(),
                         ..Default::default()
                     })),
@@ -97,7 +102,7 @@ impl ProtobufOperation for Stop {
     const ID: &'static str = "controls.stop";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::lifecycle::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const GRPC: Option<Grpc> = Some(Grpc::new("control.v1", "Work", "Stop"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("control.host.v1", "Work", "Stop"));
     const RESOURCES: &'static [Resource] = &[Resource::of::<Work>()];
     async fn run(context: ExecutionContext, _: Request, _: &()) -> Result<Reply, ServingError> {
         let work = context.resource::<Work>().unwrap();
@@ -146,17 +151,17 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
         .await
         .unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
-    let mut client = harmos_protocol::client::invocations_client::InvocationsClient::new(channel);
+    let mut client = InvocationsClient::new(channel);
     let error = client
-        .invoke(harmos_protocol::client::InvocationsInvokeRequest {
+        .create(InvocationsCreateRequest {
             operation: Cancel::ID.into(),
             fingerprint: cancel_contract.fingerprint().0.to_vec(),
             payload: Request::default().encode_to_vec(),
         })
         .await
         .unwrap_err();
-    let failure = harmos_protocol::v1::Failure::decode(error.details()).unwrap();
-    assert_eq!(failure.classification(), harmos_protocol::v1::Classification::Refused);
+    let failure = Failure::decode(error.details()).unwrap();
+    assert_eq!(failure.classification(), Classification::Refused);
     assert_eq!(failure.code, "queued_cancel");
     assert!(failure.message.contains("Cancel"));
     assert_eq!(failure.cause.unwrap().code, "queued_target");
@@ -164,7 +169,7 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
 
     let stopped = tokio::spawn(async move {
         client
-            .invoke(harmos_protocol::client::InvocationsInvokeRequest {
+            .create(InvocationsCreateRequest {
                 operation: Stop::ID.into(),
                 fingerprint: stop_contract.fingerprint().0.to_vec(),
                 payload: Request::default().encode_to_vec(),

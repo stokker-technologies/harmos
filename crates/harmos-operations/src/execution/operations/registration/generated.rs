@@ -501,8 +501,8 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
-    if matches!(O::ID, "harmos.client.v1.Time/Sleep" | "harmos.client.v1.Time/Get") {
-        let clock = Contract::clock(O::ID == "harmos.client.v1.Time/Sleep", O::POLICY, settings)?;
+    if matches!(O::ID, "harmos.host.v1.Time/Sleep" | "harmos.host.v1.Time/Get") {
+        let clock = Contract::clock(O::ID == "harmos.host.v1.Time/Sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
         let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {
@@ -510,7 +510,17 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         }
         return Ok(clock);
     }
-    Contract::from_protobuf(operation, protobuf, O::GRPC, settings)
+    let contract = Contract::from_protobuf(operation, protobuf, O::GRPC, settings)?;
+    let Some((service, method)) = O::ID.split_once('/') else {
+        return Ok(contract);
+    };
+    let service = request.parent_pool().get_service_by_name(service).ok_or_else(|| {
+        super::super::ContractError::Protobuf(format!("Declare {}: operation service and callers option are missing", O::ID))
+    })?;
+    let method = service.methods().find(|candidate| candidate.name() == method).ok_or(super::super::ContractError::Grpc)?;
+    let callers =
+        harmos_protocol::schema::method_callers(&method).map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+    Ok(contract.with_callers(callers))
 }
 
 pub(crate) fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {

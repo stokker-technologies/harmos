@@ -20,29 +20,29 @@ use super::requests::{MutationId, ObjectValue, SchemaInput, SchemaKey};
 use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnSource;
 use harmos_storage::StorageManager;
 use prost::Message;
 
 pub(super) enum SetOutcome {
-    Applied(Box<ObjectValue>, Vec<u8>, v1::Receipt),
+    Applied(Box<ObjectValue>, Vec<u8>, model::Receipt),
     Conflict(Vec<u8>),
 }
 
 /* === Public Functions === */
 
 pub(super) fn revision(value: harmos_storage::ObjectVersionToken) -> Vec<u8> {
-    v1::Position {
+    model::Position {
         history: Some(value.history().clone().into()),
         sequence: value.revision().get(),
     }
     .encode_to_vec()
 }
 pub(super) async fn get(
-    context: &ExecutionContext, schema: Option<SchemaKey>, item: String, at: Option<v1::ReadCut>,
-) -> Result<(Option<ObjectValue>, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, schema: Option<SchemaKey>, item: String, at: Option<model::ReadCut>,
+) -> Result<(Option<ObjectValue>, Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
@@ -86,7 +86,7 @@ pub(super) async fn set(
         let expected = if create_if_absent && expected_revision.is_empty() {
             None
         } else if !create_if_absent && !expected_revision.is_empty() {
-            let encoded = v1::Position::decode(expected_revision.as_slice()).map_err(|_| crate::Error::InvalidInput {
+            let encoded = model::Position::decode(expected_revision.as_slice()).map_err(|_| crate::Error::InvalidInput {
                 field: "SetObject",
                 reason: "invalid expected revision; get again and retry",
             })?;

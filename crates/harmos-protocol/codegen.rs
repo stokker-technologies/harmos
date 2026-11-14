@@ -238,12 +238,15 @@ pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
 /// Generate Independent Library and Product Contracts for SDK Composition Stories.
 pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
     let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto", "application/v1/plugins/annotations.proto"]
-        .map(|file| proto.join(file));
+    let files =
+        ["application/host/v1/jobs.proto", "application/host/v1/jobs/progress.proto", "application/host/v1/plugins/annotations.proto"]
+            .map(|file| proto.join(file));
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
+    config.extern_path(".harmos.model.v1", "::harmos_protocol::model");
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));
-    tonic_prost_build::configure().out_dir(output).compile_with_config(config, &files, &[proto, includes.into()])?;
+    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    tonic_prost_build::configure().out_dir(output).compile_with_config(config, &files, &[proto, library, includes.into()])?;
     let descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("client-descriptors.bin"))?.as_slice())?;
     let mut source = String::from(
@@ -251,8 +254,11 @@ pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) 
     );
     for file in &descriptors.file {
         let package = file.package.as_deref().ok_or("fixture package missing")?;
-        let suffix = package.split_once(".v1").ok_or("fixture version missing")?.1.trim_start_matches('.');
-        let module = if suffix.is_empty() { "crate::v1".to_owned() } else { format!("crate::v1::{}", suffix.replace('.', "::")) };
+        let Some(suffix) = package.strip_prefix("application.host.v1") else {
+            continue;
+        };
+        let suffix = suffix.trim_start_matches('.');
+        let module = if suffix.is_empty() { "crate::host".to_owned() } else { format!("crate::host::{}", suffix.replace('.', "::")) };
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("fixture message missing")?;
             source.push_str(&format!("impl ReflectMessage for {module}::{name} {{ fn descriptor(&self) -> MessageDescriptor {{ pool().get_message_by_name(\"{package}.{name}\").expect(\"generated fixture message\") }} }}\n"));

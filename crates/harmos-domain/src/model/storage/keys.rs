@@ -15,6 +15,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::PayloadEncoding as WirePayloadEncoding;
+use harmos_protocol::host::SchemaKey as WireSchemaKey;
+
 // Standard Library Imports
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -154,7 +157,7 @@ impl ObjectRetention {
     }
 }
 
-impl From<SchemaKey> for harmos_protocol::v1::SchemaKey {
+impl From<SchemaKey> for WireSchemaKey {
     fn from(value: SchemaKey) -> Self {
         Self {
             id: value.id.to_string(),
@@ -163,10 +166,10 @@ impl From<SchemaKey> for harmos_protocol::v1::SchemaKey {
         }
     }
 }
-impl TryFrom<harmos_protocol::v1::SchemaKey> for SchemaKey {
+impl TryFrom<WireSchemaKey> for SchemaKey {
     type Error = Error;
-    fn try_from(value: harmos_protocol::v1::SchemaKey) -> Result<Self> {
-        if value.payload_encoding != harmos_protocol::v1::PayloadEncoding::PostcardV1 as i32 {
+    fn try_from(value: WireSchemaKey) -> Result<Self> {
+        if value.payload_encoding != WirePayloadEncoding::PostcardV1 as i32 {
             return Err(Error::InvalidInput {
                 field: "payload_encoding",
                 reason: "unsupported storage encoding",

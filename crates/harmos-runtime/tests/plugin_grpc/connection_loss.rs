@@ -11,6 +11,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Classification;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -35,7 +37,7 @@ async fn dropped_connection_fails_only_its_in_flight_calls() {
     host.signals.entered.notified().await;
     caller.disconnect().await;
     let error = invocation.await.unwrap_err();
-    assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Transient);
+    assert_eq!(call_error(&error).classification(), Classification::Transient);
 
     // Disconnected Operations Leave The Registry
     let mut status = attached.status();

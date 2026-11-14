@@ -11,6 +11,13 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::TimeSleepRequest as WireTimeSleepRequest;
+use harmos_protocol::host::plugins::SettingsListResponse as WireSettingsListResponse;
+use harmos_protocol::plugin::ChildCancel;
+use harmos_protocol::plugin::ChildDemand;
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::Sample as WireSample;
+
 use super::{
     invoke_support::{Host, Reply},
     manager::support::{self as manager, Backends, Host as ManagedHost},
@@ -21,11 +28,16 @@ use harmos_operations::{
     Failure,
     operations::{OperationSpec, WireDeclaration},
 };
-use harmos_protocol::{
-    client::{self, TimeGetRequest, TimeGetResponse},
-    plugin::{self, InstanceSamplesResponse, instance_samples_request as request, instance_samples_response as response},
-    v1::{self, Failure as ProtocolFailure, child_response},
-};
+use harmos_protocol::host;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::model;
+use harmos_protocol::model::Failure as ProtocolFailure;
+use harmos_protocol::plugin;
+use harmos_protocol::plugin::InstanceSamplesResponse;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::instance_samples_request as request;
+use harmos_protocol::plugin::instance_samples_response as response;
 use harmos_runtime::{
     clock::Clock,
     operations::{
@@ -60,7 +72,7 @@ static DECLARATION: WireDeclaration = WireDeclaration::request::<Host>(
     },
 )
 .visibility(Visibility::Public)
-.grpc(Grpc::new("fixture.plugin.host.v1", "TickChildren", "Call"));
+.grpc(Grpc::new("fixture.host.v1", "TickChildren", "Call"));
 
 /* === Structs === */
 
@@ -92,7 +104,7 @@ impl ProtobufOperation for Watch {
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(context: ExecutionContext, _: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         output
-            .send(client::TimeGetResponse {
+            .send(host::TimeGetResponse {
                 now: Some(prost_types::Timestamp { seconds: 5, nanos: 0 }),
             })
             .await
@@ -123,15 +135,15 @@ fn payload(value: &[u8]) -> Vec<u8> {
     bytes
 }
 fn expected_failure() -> ProtocolFailure {
-    v1::Failure {
-        classification: v1::Classification::Transient as i32,
+    model::Failure {
+        classification: model::Classification::Transient as i32,
         code: "tick_failure".into(),
         operation: "fixture.tick_child".into(),
         plugin: "host".into(),
         message: "fixture message".into(),
         diagnostics: "fixture diagnostics".into(),
         details: [("key".into(), "value".into())].into(),
-        cause: Some(Box::new(v1::Failure {
+        cause: Some(Box::new(model::Failure {
             code: "cause".into(),
             ..Default::default()
         })),
@@ -175,7 +187,7 @@ async fn child(
 ) {
     frame(
         output,
-        response::Frame::Child(v1::ChildRequest {
+        response::Frame::Child(ChildRequest {
             call,
             operation: operation.into(),
             fingerprint,
@@ -213,50 +225,46 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     let watch_fingerprint = watch_factory.contract().unwrap().fingerprint().0.to_vec();
     host.runtime.operations.register_operation(watch_factory, Default::default()).await.unwrap();
     host.runtime.operations.register_operation(factory, Default::default()).await.unwrap();
-    let pool = client::TimeGetResponse::default().descriptor().parent_pool().clone();
+    let pool = host::TimeGetResponse::default().descriptor().parent_pool().clone();
     let mut files: BTreeMap<_, _> = pool.files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())).collect();
     files.extend(descriptor.parent_pool().files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())));
     let types = prost_types::FileDescriptorSet { file: files.into_values().collect() };
-    let settings_id = "harmos.plugin.host.v1.Settings/List";
+    let settings_id = "harmos.host.v1.plugins.Settings/List";
     let settings_fingerprint = harmos_protocol::schema::fingerprint(
         settings_id,
         &types,
-        "harmos.plugin.host.v1.SettingsListRequest",
-        "harmos.plugin.host.v1.SettingsListResponse",
+        "harmos.host.v1.plugins.SettingsListRequest",
+        "harmos.host.v1.plugins.SettingsListResponse",
     )
     .unwrap();
-    let clock_id = "harmos.plugin.host.v1.Time/Sleep";
-    let clock_fingerprint = harmos_protocol::schema::fingerprint(
-        clock_id,
-        &types,
-        "harmos.plugin.host.v1.TimeSleepRequest",
-        "harmos.plugin.host.v1.TimeSleepResponse",
-    )
-    .unwrap();
-    let mut catalog = v1::Declarations {
+    let clock_id = "harmos.host.v1.Time/Sleep";
+    let clock_fingerprint =
+        harmos_protocol::schema::fingerprint(clock_id, &types, "harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse")
+            .unwrap();
+    let mut catalog = model::Declarations {
         types: Some(types),
         requires: vec![
-            v1::Requirement {
+            model::Requirement {
                 id: Watch::ID.into(),
                 fingerprint: watch_fingerprint.clone(),
             },
-            v1::Requirement {
+            model::Requirement {
                 id: "fixture.tick_child".into(),
                 fingerprint: fingerprint.clone(),
             },
-            v1::Requirement {
+            model::Requirement {
                 id: settings_id.into(),
                 fingerprint: settings_fingerprint.clone(),
             },
-            v1::Requirement {
+            model::Requirement {
                 id: clock_id.into(),
                 fingerprint: clock_fingerprint.clone(),
             },
         ],
         streams: ["alpha", "beta", "outside", "device", "duplicate", "mixed", "unknown_demand"]
-            .map(|id| v1::StreamDeclaration {
+            .map(|id| model::StreamDeclaration {
                 id: id.into(),
-                row: "harmos.client.v1.TimeGetResponse".into(),
+                row: "harmos.host.v1.TimeGetResponse".into(),
                 interval: (id != "device").then_some(prost_types::Duration { seconds: 1, nanos: 0 }),
                 ..Default::default()
             })
@@ -302,10 +310,10 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                         assert_eq!(reply.call, 1);
                         output
                             .send(Ok(plugin::InstanceSamplesResponse {
-                                samples: vec![v1::Sample {
+                                samples: vec![WireSample {
                                     at: tick.at,
                                     sequence,
-                                    row: client::TimeGetResponse { now: tick.at }.encode_to_vec(),
+                                    row: host::TimeGetResponse { now: tick.at }.encode_to_vec(),
                                 }],
                                 frame: None,
                             }))
@@ -320,8 +328,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 if open.stream == "mixed" {
                     output
                         .send(Ok(plugin::InstanceSamplesResponse {
-                            samples: vec![v1::Sample { at: tick.at, sequence, row: vec![] }],
-                            frame: Some(response::Frame::ChildCancel(v1::ChildCancel { call: 1 })),
+                            samples: vec![WireSample { at: tick.at, sequence, row: vec![] }],
+                            frame: Some(response::Frame::ChildCancel(ChildCancel { call: 1 })),
                         }))
                         .await
                         .unwrap();
@@ -330,7 +338,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                     return;
                 }
                 if open.stream == "unknown_demand" {
-                    frame(&output, response::Frame::ChildDemand(v1::ChildDemand { call: 99 })).await;
+                    frame(&output, response::Frame::ChildDemand(ChildDemand { call: 99 })).await;
                     assert!(input.message().await.unwrap().is_none());
                     signals.refusals.fetch_add(1, Ordering::SeqCst);
                     return;
@@ -345,14 +353,14 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 let cancelled = format!("{key}:cancel");
                 child(&output, base + 5, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{cancelled}").as_bytes())).await;
                 signals.parked(&cancelled).entered.notified().await;
-                frame(&output, response::Frame::ChildCancel(v1::ChildCancel { call: base + 5 })).await;
+                frame(&output, response::Frame::ChildCancel(ChildCancel { call: base + 5 })).await;
                 signals.parked(&cancelled).cancelled.notified().await;
                 child(
                     &output,
                     base + 7,
                     clock_id,
                     clock_fingerprint.clone(),
-                    plugin::host::TimeSleepRequest {
+                    WireTimeSleepRequest {
                         duration: Some(prost_types::Duration { seconds: 0, nanos: 250_000_000 }),
                     }
                     .encode_to_vec(),
@@ -360,7 +368,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 .await;
                 frame(
                     &output,
-                    response::Frame::Child(v1::ChildRequest {
+                    response::Frame::Child(ChildRequest {
                         call: base + 8,
                         operation: Watch::ID.into(),
                         fingerprint: watch_fingerprint.clone(),
@@ -370,7 +378,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                     }),
                 )
                 .await;
-                frame(&output, response::Frame::ChildDemand(v1::ChildDemand { call: base + 8 })).await;
+                frame(&output, response::Frame::ChildDemand(ChildDemand { call: base + 8 })).await;
                 let mut replies = BTreeMap::new();
                 for _ in 0..6 {
                     let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
@@ -381,8 +389,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                         let Some(child_response::Result::Item(item)) = &reply.result else {
                             panic!("Expected Watch Item");
                         };
-                        assert_eq!(client::TimeGetResponse::decode(item.as_slice()).unwrap().now.unwrap().seconds, 5);
-                        frame(&output, response::Frame::ChildCancel(v1::ChildCancel { call: base + 8 })).await;
+                        assert_eq!(host::TimeGetResponse::decode(item.as_slice()).unwrap().now.unwrap().seconds, 5);
+                        frame(&output, response::Frame::ChildCancel(ChildCancel { call: base + 8 })).await;
                     }
                     if reply.call == base + 2 {
                         assert!(!replies.contains_key(&(base + 1)));
@@ -395,7 +403,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 let Some(child_response::Result::Payload(settings)) = &replies[&(base + 4)] else {
                     panic!("Expected Settings");
                 };
-                assert!(plugin::host::SettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
+                assert!(WireSettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
                 assert!(matches!(&replies[&(base + 7)], Some(child_response::Result::Payload(_))));
                 let ended = format!("{key}:end");
                 child(&output, base + 6, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
@@ -403,10 +411,10 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 let at = tick.at.unwrap();
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
-                        samples: vec![v1::Sample {
+                        samples: vec![WireSample {
                             at: Some(at),
                             sequence,
-                            row: client::TimeGetResponse { now: Some(at) }.encode_to_vec(),
+                            row: host::TimeGetResponse { now: Some(at) }.encode_to_vec(),
                         }],
                         frame: None,
                     }))
@@ -418,9 +426,9 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
         });
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
-    let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
+    let mut watch = host.client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
     host.client.create(manager::remote("tick_owner", &remote.address)).await.unwrap();
-    manager::state(&mut watch, "tick_owner", client::PluginState::Ready, 1).await;
+    manager::state(&mut watch, "tick_owner", host::PluginState::Ready, 1).await;
     drop(watch);
     signals.rejected.notified().await;
     let mut feed = host.runtime.streams.follow(harmos_runtime::storage::Cursor::ORIGIN);

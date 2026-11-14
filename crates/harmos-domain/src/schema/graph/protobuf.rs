@@ -15,6 +15,15 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::SchemaCardinality as WireSchemaCardinality;
+use harmos_protocol::host::SchemaDefinition;
+use harmos_protocol::host::SchemaField;
+use harmos_protocol::host::SchemaForm as WireSchemaForm;
+use harmos_protocol::host::SchemaGraph;
+use harmos_protocol::host::SchemaKind;
+use harmos_protocol::host::SchemaOmission as WireSchemaOmission;
+use harmos_protocol::host::SchemaRepresentation;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -26,7 +35,6 @@ use crate::schema::{
     wire::{Form, Omission, Representation},
 };
 use crate::{Error, Result};
-use harmos_protocol::v1 as wire;
 
 /* === Constants === */
 
@@ -42,7 +50,7 @@ use harmos_protocol::v1 as wire;
 
 /* === Implementations === */
 
-impl From<Cardinality> for wire::SchemaCardinality {
+impl From<Cardinality> for WireSchemaCardinality {
     fn from(value: Cardinality) -> Self {
         match value {
             Cardinality::Required => Self::Required,
@@ -55,16 +63,16 @@ impl From<Cardinality> for wire::SchemaCardinality {
 impl TryFrom<i32> for Cardinality {
     type Error = Error;
     fn try_from(value: i32) -> Result<Self> {
-        match wire::SchemaCardinality::try_from(value) {
-            Ok(wire::SchemaCardinality::Required) => Ok(Self::Required),
-            Ok(wire::SchemaCardinality::Optional) => Ok(Self::Optional),
-            Ok(wire::SchemaCardinality::Repeated) => Ok(Self::Repeated),
-            Ok(wire::SchemaCardinality::Variant) => Ok(Self::Variant),
+        match WireSchemaCardinality::try_from(value) {
+            Ok(WireSchemaCardinality::Required) => Ok(Self::Required),
+            Ok(WireSchemaCardinality::Optional) => Ok(Self::Optional),
+            Ok(WireSchemaCardinality::Repeated) => Ok(Self::Repeated),
+            Ok(WireSchemaCardinality::Variant) => Ok(Self::Variant),
             Err(_) => Err(invalid("unknown SchemaCardinality")),
         }
     }
 }
-impl From<Form> for wire::SchemaForm {
+impl From<Form> for WireSchemaForm {
     fn from(value: Form) -> Self {
         match value {
             Form::Object => Self::Object,
@@ -81,20 +89,20 @@ impl From<Form> for wire::SchemaForm {
 impl TryFrom<i32> for Form {
     type Error = Error;
     fn try_from(value: i32) -> Result<Self> {
-        match wire::SchemaForm::try_from(value) {
-            Ok(wire::SchemaForm::Object) => Ok(Self::Object),
-            Ok(wire::SchemaForm::Unit) => Ok(Self::Unit),
-            Ok(wire::SchemaForm::Value) => Ok(Self::Value),
-            Ok(wire::SchemaForm::Tuple) => Ok(Self::Tuple),
-            Ok(wire::SchemaForm::External) => Ok(Self::External),
-            Ok(wire::SchemaForm::Internal) => Ok(Self::Internal),
-            Ok(wire::SchemaForm::Adjacent) => Ok(Self::Adjacent),
-            Ok(wire::SchemaForm::Untagged) => Ok(Self::Untagged),
+        match WireSchemaForm::try_from(value) {
+            Ok(WireSchemaForm::Object) => Ok(Self::Object),
+            Ok(WireSchemaForm::Unit) => Ok(Self::Unit),
+            Ok(WireSchemaForm::Value) => Ok(Self::Value),
+            Ok(WireSchemaForm::Tuple) => Ok(Self::Tuple),
+            Ok(WireSchemaForm::External) => Ok(Self::External),
+            Ok(WireSchemaForm::Internal) => Ok(Self::Internal),
+            Ok(WireSchemaForm::Adjacent) => Ok(Self::Adjacent),
+            Ok(WireSchemaForm::Untagged) => Ok(Self::Untagged),
             Err(_) => Err(invalid("unknown SchemaForm")),
         }
     }
 }
-impl From<Omission> for wire::SchemaOmission {
+impl From<Omission> for WireSchemaOmission {
     fn from(value: Omission) -> Self {
         match value {
             Omission::None => Self::OmitNone,
@@ -105,54 +113,54 @@ impl From<Omission> for wire::SchemaOmission {
 impl TryFrom<i32> for Omission {
     type Error = Error;
     fn try_from(value: i32) -> Result<Self> {
-        match wire::SchemaOmission::try_from(value) {
-            Ok(wire::SchemaOmission::OmitNone) => Ok(Self::None),
-            Ok(wire::SchemaOmission::OmitEmpty) => Ok(Self::Empty),
+        match WireSchemaOmission::try_from(value) {
+            Ok(WireSchemaOmission::OmitNone) => Ok(Self::None),
+            Ok(WireSchemaOmission::OmitEmpty) => Ok(Self::Empty),
             Err(_) => Err(invalid("unknown SchemaOmission")),
         }
     }
 }
-impl From<Field> for wire::SchemaField {
+impl From<Field> for SchemaField {
     fn from(value: Field) -> Self {
         let (kind, definition) = match value.kind {
-            Kind::Bool => (wire::SchemaKind::Bool, None),
-            Kind::U32 => (wire::SchemaKind::Uint32, None),
-            Kind::U64 => (wire::SchemaKind::Uint64, None),
-            Kind::I32 => (wire::SchemaKind::Int32, None),
-            Kind::I64 => (wire::SchemaKind::Int64, None),
-            Kind::F32 => (wire::SchemaKind::Float32, None),
-            Kind::F64 => (wire::SchemaKind::Float64, None),
-            Kind::String => (wire::SchemaKind::String, None),
-            Kind::Bytes => (wire::SchemaKind::Bytes, None),
-            Kind::Message { definition } => (wire::SchemaKind::Message, Some(definition as u64)),
+            Kind::Bool => (SchemaKind::Bool, None),
+            Kind::U32 => (SchemaKind::Uint32, None),
+            Kind::U64 => (SchemaKind::Uint64, None),
+            Kind::I32 => (SchemaKind::Int32, None),
+            Kind::I64 => (SchemaKind::Int64, None),
+            Kind::F32 => (SchemaKind::Float32, None),
+            Kind::F64 => (SchemaKind::Float64, None),
+            Kind::String => (SchemaKind::String, None),
+            Kind::Bytes => (SchemaKind::Bytes, None),
+            Kind::Message { definition } => (SchemaKind::Message, Some(definition as u64)),
         };
         Self {
             name: value.name.into_owned(),
             tag: value.tag,
             kind: kind as i32,
-            cardinality: wire::SchemaCardinality::from(value.cardinality) as i32,
+            cardinality: WireSchemaCardinality::from(value.cardinality) as i32,
             definition,
         }
     }
 }
-impl TryFrom<wire::SchemaField> for Field {
+impl TryFrom<SchemaField> for Field {
     type Error = Error;
-    fn try_from(value: wire::SchemaField) -> Result<Self> {
-        let kind = wire::SchemaKind::try_from(value.kind).map_err(|_| invalid("unknown schema field kind"))?;
-        if kind != wire::SchemaKind::Message && value.definition.is_some() {
+    fn try_from(value: SchemaField) -> Result<Self> {
+        let kind = SchemaKind::try_from(value.kind).map_err(|_| invalid("unknown schema field kind"))?;
+        if kind != SchemaKind::Message && value.definition.is_some() {
             return Err(invalid("scalar field cannot reference a definition"));
         }
         let kind = match kind {
-            wire::SchemaKind::Bool => Kind::Bool,
-            wire::SchemaKind::Uint32 => Kind::U32,
-            wire::SchemaKind::Uint64 => Kind::U64,
-            wire::SchemaKind::Int32 => Kind::I32,
-            wire::SchemaKind::Int64 => Kind::I64,
-            wire::SchemaKind::Float32 => Kind::F32,
-            wire::SchemaKind::Float64 => Kind::F64,
-            wire::SchemaKind::String => Kind::String,
-            wire::SchemaKind::Bytes => Kind::Bytes,
-            wire::SchemaKind::Message => Kind::Message {
+            SchemaKind::Bool => Kind::Bool,
+            SchemaKind::Uint32 => Kind::U32,
+            SchemaKind::Uint64 => Kind::U64,
+            SchemaKind::Int32 => Kind::I32,
+            SchemaKind::Int64 => Kind::I64,
+            SchemaKind::Float32 => Kind::F32,
+            SchemaKind::Float64 => Kind::F64,
+            SchemaKind::String => Kind::String,
+            SchemaKind::Bytes => Kind::Bytes,
+            SchemaKind::Message => Kind::Message {
                 definition: value
                     .definition
                     .ok_or_else(|| invalid("message definition is required"))?
@@ -168,35 +176,35 @@ impl TryFrom<wire::SchemaField> for Field {
         })
     }
 }
-impl From<Schema> for wire::SchemaGraph {
+impl From<Schema> for SchemaGraph {
     fn from(value: Schema) -> Self {
         Self {
             root: value.root as u64,
             definitions: value
                 .definitions
                 .into_iter()
-                .map(|fields| wire::SchemaDefinition {
+                .map(|fields| SchemaDefinition {
                     fields: fields.into_iter().map(Into::into).collect(),
                 })
                 .collect(),
             representations: value
                 .representations
                 .into_iter()
-                .map(|(definition, value)| wire::SchemaRepresentation {
+                .map(|(definition, value)| SchemaRepresentation {
                     definition: definition as u64,
-                    form: wire::SchemaForm::from(value.form) as i32,
+                    form: WireSchemaForm::from(value.form) as i32,
                     tag: value.tag,
                     content: value.content,
-                    omissions: value.omissions.into_iter().map(|(key, value)| (key, wire::SchemaOmission::from(value) as i32)).collect(),
+                    omissions: value.omissions.into_iter().map(|(key, value)| (key, WireSchemaOmission::from(value) as i32)).collect(),
                     maps: value.maps,
                 })
                 .collect(),
         }
     }
 }
-impl TryFrom<wire::SchemaGraph> for Schema {
+impl TryFrom<SchemaGraph> for Schema {
     type Error = Error;
-    fn try_from(value: wire::SchemaGraph) -> Result<Self> {
+    fn try_from(value: SchemaGraph) -> Result<Self> {
         let mut representations = std::collections::BTreeMap::new();
         for representation in value.representations {
             let index = representation.definition.try_into().map_err(|_| invalid("representation index exceeds platform range"))?;

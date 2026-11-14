@@ -18,16 +18,18 @@ pub(crate) mod invoke;
 mod managed;
 mod publish;
 pub(crate) mod samples;
-pub(crate) mod settings;
-
 /* === Re-Exports === */
 
 pub use config::PlacementSettings;
-pub use harmos_protocol::v1;
+pub use harmos_protocol::model;
 pub use invoke::CallError;
 pub use managed::Managed;
 
 /* === Imports === */
+
+use harmos_protocol::plugin::InstanceGetRequest;
+use harmos_protocol::plugin::InstanceGetResponse;
+use harmos_protocol::plugin::InstanceStopRequest;
 
 // Standard Library Imports
 use std::{future::Future, sync::Arc};
@@ -38,7 +40,7 @@ use tokio::sync::watch;
 // Local Imports
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
-use harmos_protocol::v1::SettingValues;
+use harmos_protocol::model::SettingValues;
 use managed::Process;
 use publish::{PreparedPublications, Publications};
 
@@ -55,7 +57,7 @@ type Outcome = Result<(), Arc<Error>>;
 #[derive(Clone)]
 pub struct CallingPlugin {
     pub name: Option<String>,
-    pub description: harmos_protocol::plugin::InstanceGetResponse,
+    pub description: InstanceGetResponse,
     connection: Arc<Connection>,
     provider: String,
 }
@@ -66,7 +68,7 @@ pub struct Activation {
     provider: String,
     pub settings: SettingValues,
     pub number: u64,
-    pub description: harmos_protocol::plugin::InstanceGetResponse,
+    pub description: InstanceGetResponse,
     pub previous_started_at: Option<prost_types::Timestamp>,
     pub executable_digest: Option<[u8; 32]>,
     pub process_id: Option<u32>,
@@ -155,6 +157,10 @@ pub enum Error {
 /* === Implementations === */
 
 impl CallingPlugin {
+    pub(crate) fn connection_identity(&self) -> usize {
+        Arc::as_ptr(&self.connection) as usize
+    }
+
     pub(crate) fn same_activation(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.connection, &other.connection)
     }
@@ -278,7 +284,7 @@ impl Activation {
     }
 
     /// Inspect This Connection Only; An Old Handle Never Follows Reconnection.
-    pub async fn get(&self) -> Result<harmos_protocol::plugin::InstanceGetResponse, Error> {
+    pub async fn get(&self) -> Result<InstanceGetResponse, Error> {
         self.connected(describe(&self.connection)).await
     }
 
@@ -425,10 +431,10 @@ impl Attached {
 
 /* === Private Functions === */
 
-async fn describe(connection: &Connection) -> Result<harmos_protocol::plugin::InstanceGetResponse, Error> {
+async fn describe(connection: &Connection) -> Result<InstanceGetResponse, Error> {
     let mut client = connection.client();
     client
-        .get(harmos_protocol::plugin::InstanceGetRequest {
+        .get(InstanceGetRequest {
             revision: 1,
             host: "harmos".into(),
             host_version: env!("CARGO_PKG_VERSION").into(),
@@ -536,7 +542,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             let streams_closed = clock.timeout_at(deadline, publications.close()).await;
             let mut client = activation.connection.client();
             let result = clock
-                .timeout_at(deadline, client.stop(harmos_protocol::plugin::InstanceStopRequest { reason }))
+                .timeout_at(deadline, client.stop(InstanceStopRequest { reason }))
                 .await
                 .map_err(|_| Error::Timeout("Stop"))
                 .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));

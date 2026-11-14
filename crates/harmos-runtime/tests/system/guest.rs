@@ -13,20 +13,28 @@
 
 /* === Imports === */
 
-use harmos_protocol::{
-    client::{
-        PluginState as EntryState, PluginValue, PluginsDeleteRequest, PluginsGetRequest, PluginsListRequest, PluginsReplaceRequest,
-        PluginsSetRequest, PluginsWatchRequest, plugin_change,
-        plugin_placement::Kind,
-        plugins::{SettingsListRequest, SettingsSetRequest},
-        plugins_watch_response::Event,
-    },
-    v1::{SettingValue, setting_value::Value},
-};
+use harmos_protocol::host::PluginState as EntryState;
+use harmos_protocol::host::PluginValue;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsReplaceRequest;
+use harmos_protocol::host::PluginsSetRequest;
+use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::plugin_change;
+use harmos_protocol::host::plugin_placement::Kind;
+use harmos_protocol::host::plugins::SettingsListRequest;
+use harmos_protocol::host::plugins::SettingsSetRequest;
+use harmos_protocol::host::plugins_watch_response::Event;
+use harmos_protocol::model::SettingValue;
+use harmos_protocol::model::setting_value::Value;
 use harmos_runtime::plugin::manager::Management;
 use harmos_runtime::{Identifier, Runtime, guest::PluginState};
 use prost::Message as _;
-use schematic_operations::protocol::{Connection, Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
+use schematic_operations::protocol::plugin::{
+    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
+};
+use schematic_operations::protocol::{Connection, Point, Snapshot};
 use std::{num::NonZeroUsize, sync::Arc, time::SystemTime};
 
 /* === Constants === */
@@ -68,25 +76,23 @@ async fn guest_composition_walks() {
     .unwrap();
     let runtime = Arc::new(runtime);
     entries.start(&runtime).await.unwrap();
-    let route = ProposeRoute {
+    let route = SchematicProposeRouteRequest {
         from: Some(Point { x: 0, y: 0 }),
         to: Some(Point { x: 3, y: 4 }),
     };
-    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
+    assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_err());
 
     // Load the Same Unary Builder Values Used by the Native SDK
     let bytes = crate::support::fixtures::component("schematic-guest");
     let host = harmos_runtime::guest::Host::new(&runtime).unwrap();
     let loaded = host.load(&bytes).unwrap();
     assert_eq!(loaded.declaration().id, "schematic_tools");
-    let declared: Vec<_> = loaded.declaration().operations.iter().map(|operation| operation.id.as_str()).collect();
-    assert_eq!(declared, ["schematic.validate", "schematic.route"]);
     runtime
         .plugin
         .register_guest(
             loaded,
             harmos_runtime::config::PluginSettings {
-                host_operations: [Identifier::new("harmos.plugin.host.v1.Settings/List").unwrap()].into_iter().collect(),
+                host_operations: [Identifier::new("harmos.host.v1.plugins.Settings/List").unwrap()].into_iter().collect(),
                 configuration: b"null".to_vec(),
                 ..Default::default()
             },
@@ -98,25 +104,25 @@ async fn guest_composition_walks() {
     let original = runtime.plugin.status("schematic_tools").unwrap();
     assert_eq!(original.state, PluginState::Ready);
 
-    // Route and Validate With the Authoritative Application Messages
-    let bytes = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
-    let answer = Route::decode(bytes.as_slice()).unwrap();
+    // SchematicProposeRouteResponse and Validate With the Authoritative Application Messages
+    let bytes = runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.unwrap();
+    let answer = SchematicProposeRouteResponse::decode(bytes.as_slice()).unwrap();
     assert_eq!(answer.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 }]);
-    let request = ValidateSchematic {
+    let request = SchematicValidateRequest {
         schematic: Some(Snapshot {
             symbols: vec![1, 1],
             connections: vec![Connection { from: 1, to: 2 }],
         }),
     };
-    let bytes = runtime.operations.call_encoded("schematic.validate", request.encode_to_vec()).await.unwrap();
-    assert_eq!(Validation::decode(bytes.as_slice()).unwrap().diagnostics.len(), 2);
+    let bytes = runtime.operations.call_encoded("schematic.plugin.v1.Schematic/Validate", request.encode_to_vec()).await.unwrap();
+    assert_eq!(SchematicValidateResponse::decode(bytes.as_slice()).unwrap().diagnostics.len(), 2);
 
     // Read and Change the Guest's Stored Typed Settings Through Its Entry
     let name = "schematic_tools".to_owned();
     let listed = entries.list(PluginsListRequest { at: None }).await.unwrap();
     assert_eq!(listed.entries.len(), 1);
     assert!(matches!(listed.entries[0].placement.as_ref().unwrap().kind, Some(Kind::Guest(_))));
-    let before = entries.settings_list(SettingsListRequest { name: name.clone(), at: None }).await.unwrap();
+    let before = entries.settings_list(SettingsListRequest { name: Some(name.clone()), at: None }).await.unwrap();
     let old_cut = before.resolved_at.clone();
     let mut value = before.value.unwrap();
     value.values.insert("horizontal_first".into(), SettingValue { value: Some(Value::Flag(false)) });
@@ -140,17 +146,20 @@ async fn guest_composition_walks() {
             .await
             .is_err()
     );
-    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
-    assert_eq!(Route::decode(answer.as_slice()).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }, Point { x: 3, y: 4 }]);
+    let answer = runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.unwrap();
+    assert_eq!(
+        SchematicProposeRouteResponse::decode(answer.as_slice()).unwrap().points,
+        [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }, Point { x: 3, y: 4 }]
+    );
 
     // Replace the Activation and Keep Answering the Same Contract
     runtime.plugin.reload("schematic_tools").await.unwrap();
     let reloaded = runtime.plugin.status("schematic_tools").unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, original.generation);
-    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_ok());
-    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
-    assert_eq!(Route::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
+    assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_ok());
+    let answer = runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.unwrap();
+    assert_eq!(SchematicProposeRouteResponse::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
     let entry = entries.get(PluginsGetRequest { name: name.clone(), at: None }).await.unwrap().entry.unwrap();
     // Disable the Entry, Preserve Its Module, and Reenable It Through Management
     let disabled = entries
@@ -164,7 +173,7 @@ async fn guest_composition_walks() {
         .entry
         .unwrap();
     runtime.plugin.initialize().await.unwrap();
-    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
+    assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_err());
     let mut changes = entries.watch(PluginsWatchRequest { name: Some(name.clone()), at: None }).await.unwrap();
     entries
         .set(PluginsSetRequest {
@@ -184,8 +193,8 @@ async fn guest_composition_walks() {
             break;
         }
     }
-    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
-    assert_eq!(Route::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
+    let answer = runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.unwrap();
+    assert_eq!(SchematicProposeRouteResponse::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
     let entry = entries.get(PluginsGetRequest { name: name.clone(), at: None }).await.unwrap().entry.unwrap();
     let refusal = entries
         .replace(PluginsReplaceRequest {
@@ -205,8 +214,8 @@ async fn guest_composition_walks() {
         .await
         .unwrap();
     assert!(entries.list(PluginsListRequest { at: None }).await.unwrap().entries.is_empty());
-    assert!(entries.settings_list(SettingsListRequest { name, at: old_cut }).await.is_err());
+    assert!(entries.settings_list(SettingsListRequest { name: Some(name), at: old_cut }).await.is_err());
     assert!(runtime.plugin.status("schematic_tools").is_none());
-    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
+    assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_err());
     runtime.shutdown().await.unwrap();
 }

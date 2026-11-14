@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::OperationAssignments;
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -24,7 +26,7 @@ use super::manager::{Entry, Submission};
 use super::wire::EncodedInput;
 use super::{EncodedInvocation, Manager};
 use crate::guest::host::plugin::{PluginKind, PluginLifecycleAuthority, PluginLifecyclePhase, PluginScope};
-use harmos_protocol::v1::GuestInitialize as Initialize;
+use harmos_protocol::plugin::GuestInitialize as Initialize;
 use prost::Message as _;
 
 use crate::{Error, Result};
@@ -155,11 +157,9 @@ impl PluginSdkRegistration {
             let request = Initialize {
                 configuration: config_json.to_vec(),
                 generation_context: generation_context.to_vec(),
-                assignments: Some(harmos_protocol::v1::OperationAssignments::decode(assignments.as_slice()).map_err(|_| {
-                    Error::InvalidInput {
-                        field: "guest assignments",
-                        reason: "invalid host assignments",
-                    }
+                assignments: Some(OperationAssignments::decode(assignments.as_slice()).map_err(|_| Error::InvalidInput {
+                    field: "guest assignments",
+                    reason: "invalid host assignments",
                 })?),
             };
             Ok(request.encode_to_vec())

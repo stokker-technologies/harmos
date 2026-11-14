@@ -11,6 +11,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Classification;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -32,7 +34,7 @@ async fn protected_peer_operation_is_refused_across_plugins() {
 
     // Refuse The Call Across Plugin Owners
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"secret")).await.unwrap_err();
-    assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
+    assert_eq!(call_error(&error).classification(), Classification::Refused);
     assert!(call_error(&error).to_string().contains("example.plugin.v1.Lifecycle/Initialize"));
 
     // The Host Can Still Invoke That Protected Operation

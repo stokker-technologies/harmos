@@ -80,6 +80,7 @@ serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true, features = ["raw_value"] }
 
 # Configuration
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 
 # Filesystem
 tar = { workspace = true }

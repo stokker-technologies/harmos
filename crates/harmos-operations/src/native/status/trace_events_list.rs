@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::status::TraceEventsListRequest;
+use harmos_protocol::host::status::TraceEventsListResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,11 +41,11 @@ pub struct TraceEventsList;
 /* === Implementations === */
 
 impl ProtobufOperation for TraceEventsList {
-    type Request = harmos_protocol::client::status::TraceEventsListRequest;
-    type Response = harmos_protocol::client::status::TraceEventsListResponse;
+    type Request = TraceEventsListRequest;
+    type Response = TraceEventsListResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.status.TraceEvents/List";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1.status", "TraceEvents", "List"));
+    const ID: &'static str = "harmos.host.v1.status.TraceEvents/List";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.status", "TraceEvents", "List"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];

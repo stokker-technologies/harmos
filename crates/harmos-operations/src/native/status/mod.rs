@@ -29,6 +29,21 @@ pub use watch::Watch;
 
 /* === Imports === */
 
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::StatusGetResponse;
+use harmos_protocol::host::StatusWatchRequest;
+use harmos_protocol::host::StatusWatchResponse;
+use harmos_protocol::host::status::DiagnosticsGetRequest;
+use harmos_protocol::host::status::DiagnosticsGetResponse;
+use harmos_protocol::host::status::LogsListRequest;
+use harmos_protocol::host::status::LogsListResponse;
+use harmos_protocol::host::status::LogsWatchRequest;
+use harmos_protocol::host::status::LogsWatchResponse;
+use harmos_protocol::host::status::TraceEventsListRequest;
+use harmos_protocol::host::status::TraceEventsListResponse;
+use harmos_protocol::host::status::TraceEventsWatchRequest;
+use harmos_protocol::host::status::TraceEventsWatchResponse;
+
 // Standard Library Imports
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
@@ -63,25 +78,13 @@ pub struct StatusAccess(pub std::sync::OnceLock<Arc<dyn Status>>);
 /* === Traits === */
 
 pub trait Status: Send + Sync {
-    fn get(&self, request: harmos_protocol::client::StatusGetRequest) -> Pending<'_, harmos_protocol::client::StatusGetResponse>;
-    fn watch(
-        &self, request: harmos_protocol::client::StatusWatchRequest,
-    ) -> Pending<'_, EventStream<harmos_protocol::client::StatusWatchResponse>>;
-    fn logs_list(
-        &self, request: harmos_protocol::client::status::LogsListRequest,
-    ) -> Pending<'_, harmos_protocol::client::status::LogsListResponse>;
-    fn logs_watch(
-        &self, request: harmos_protocol::client::status::LogsWatchRequest,
-    ) -> Pending<'_, EventStream<harmos_protocol::client::status::LogsWatchResponse>>;
-    fn trace_events_list(
-        &self, request: harmos_protocol::client::status::TraceEventsListRequest,
-    ) -> Pending<'_, harmos_protocol::client::status::TraceEventsListResponse>;
-    fn trace_events_watch(
-        &self, request: harmos_protocol::client::status::TraceEventsWatchRequest,
-    ) -> Pending<'_, EventStream<harmos_protocol::client::status::TraceEventsWatchResponse>>;
-    fn diagnostics_get(
-        &self, request: harmos_protocol::client::status::DiagnosticsGetRequest,
-    ) -> Pending<'_, harmos_protocol::client::status::DiagnosticsGetResponse>;
+    fn get(&self, request: StatusGetRequest) -> Pending<'_, StatusGetResponse>;
+    fn watch(&self, request: StatusWatchRequest) -> Pending<'_, EventStream<StatusWatchResponse>>;
+    fn logs_list(&self, request: LogsListRequest) -> Pending<'_, LogsListResponse>;
+    fn logs_watch(&self, request: LogsWatchRequest) -> Pending<'_, EventStream<LogsWatchResponse>>;
+    fn trace_events_list(&self, request: TraceEventsListRequest) -> Pending<'_, TraceEventsListResponse>;
+    fn trace_events_watch(&self, request: TraceEventsWatchRequest) -> Pending<'_, EventStream<TraceEventsWatchResponse>>;
+    fn diagnostics_get(&self, request: DiagnosticsGetRequest) -> Pending<'_, DiagnosticsGetResponse>;
 }
 
 /* === Implementations === */

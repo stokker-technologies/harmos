@@ -21,7 +21,8 @@
 use prost::Message;
 
 // Local Imports
-use harmos_protocol::{policy, v1};
+use harmos_protocol::model;
+use harmos_protocol::policy;
 
 /* === Constants === */
 
@@ -46,60 +47,60 @@ use harmos_protocol::{policy, v1};
 #[test]
 fn a_consumer_retains_composite_reads_receipts_failures_and_retry_policy() {
     // Retain Two Independent Histories And A Writable Revision
-    let accepted = v1::Position {
-        history: Some(v1::History {
+    let accepted = model::Position {
+        history: Some(model::History {
             store: "store".into(),
             epoch: "epoch".into(),
         }),
         sequence: 7,
     };
-    let other = v1::Position {
-        history: Some(v1::History {
+    let other = model::Position {
+        history: Some(model::History {
             store: "other".into(),
             epoch: "epoch".into(),
         }),
         sequence: 3,
     };
-    let cut = v1::ReadCut {
+    let cut = model::ReadCut {
         positions: vec![accepted.clone(), other],
-        revisions: vec![v1::ResourceRevision {
+        revisions: vec![model::ResourceRevision {
             name: "definition".into(),
             revision: vec![1, 2],
         }],
     };
-    assert_eq!(v1::ReadCut::decode(cut.encode_to_vec().as_slice()).unwrap(), cut);
+    assert_eq!(model::ReadCut::decode(cut.encode_to_vec().as_slice()).unwrap(), cut);
 
     // Acceptance Alone Does Not Claim Durability
-    let mut receipt = v1::Receipt {
+    let mut receipt = model::Receipt {
         request_id: "mutation".into(),
         accepted_at: Some(accepted.clone()),
         ..Default::default()
     };
-    let received = v1::Receipt::decode(receipt.encode_to_vec().as_slice()).unwrap();
+    let received = model::Receipt::decode(receipt.encode_to_vec().as_slice()).unwrap();
     assert_eq!(received.accepted_at, Some(accepted.clone()));
     assert!(received.durable_at.is_none());
     assert!(!received.completed);
     receipt.durable_at = Some(accepted);
     receipt.completed = true;
-    assert_eq!(v1::Receipt::decode(receipt.encode_to_vec().as_slice()).unwrap(), receipt);
+    assert_eq!(model::Receipt::decode(receipt.encode_to_vec().as_slice()).unwrap(), receipt);
 
     // Preserve A Structured Child Cause Independently Of Diagnostics
-    let failure = v1::Failure {
-        classification: v1::Classification::Transient as i32,
+    let failure = model::Failure {
+        classification: model::Classification::Transient as i32,
         code: "unavailable".into(),
         action: "Call again".into(),
-        cause: Some(Box::new(v1::Failure {
+        cause: Some(Box::new(model::Failure {
             code: "child_unavailable".into(),
             ..Default::default()
         })),
         diagnostics: "source".into(),
         ..Default::default()
     };
-    assert_eq!(v1::Failure::decode(failure.encode_to_vec().as_slice()).unwrap(), failure);
+    assert_eq!(model::Failure::decode(failure.encode_to_vec().as_slice()).unwrap(), failure);
 
     // Apply A Call-Local Total-Attempt Budget With Exponential Backoff
-    let wire = v1::OperationPolicy {
-        retries: Some(v1::RetryPolicy {
+    let wire = model::OperationPolicy {
+        retries: Some(model::RetryPolicy {
             total_attempts: 3,
             initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),

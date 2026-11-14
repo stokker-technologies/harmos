@@ -11,6 +11,10 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsWatchRequest;
+
 use super::support::{self, Backends, Host};
 use crate::plugin_grpc::support::Remote;
 use harmos_runtime::plugin::manager::Management;
@@ -29,8 +33,8 @@ async fn host_restores_plugin_entries() {
     let original = host.client.create(request.clone()).await.unwrap().into_inner();
     host.client.create(support::managed("disabled", content, false)).await.unwrap();
     host.client.create(support::remote("remote", &remote.address)).await.unwrap();
-    let mut watch = host.client.watch(harmos_protocol::client::PluginsWatchRequest::default()).await.unwrap().into_inner();
-    let managed = support::state(&mut watch, "enabled", harmos_protocol::client::PluginState::Ready, 1).await;
+    let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
+    let managed = support::state(&mut watch, "enabled", PluginState::Ready, 1).await;
     let before = host.client.list(support::list()).await.unwrap().into_inner();
     let old_cut = before.resolved_at;
     drop(watch);
@@ -41,32 +45,24 @@ async fn host_restores_plugin_entries() {
 
     // Restore Durable Entries and Reconstruct Live State
     let mut host = Host::start(root.path(), &backends).await;
-    let mut watch = host.client.watch(harmos_protocol::client::PluginsWatchRequest::default()).await.unwrap().into_inner();
-    let managed_after = support::state(&mut watch, "enabled", harmos_protocol::client::PluginState::Ready, managed.activation + 1).await;
-    let remote_after = host.manager.get(harmos_protocol::client::PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap();
+    let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
+    let managed_after = support::state(&mut watch, "enabled", PluginState::Ready, managed.activation + 1).await;
+    let remote_after = host.manager.get(PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap();
     assert!(remote_after.entry.unwrap().placement.is_some());
-    let remote_watch =
-        host.client.watch(harmos_protocol::client::PluginsWatchRequest { name: Some("remote".into()), at: None }).await.unwrap();
+    let remote_watch = host.client.watch(PluginsWatchRequest { name: Some("remote".into()), at: None }).await.unwrap();
     let mut remote_watch = remote_watch.into_inner();
-    let remote_after = support::state(&mut remote_watch, "remote", harmos_protocol::client::PluginState::Ready, 2).await;
+    let remote_after = support::state(&mut remote_watch, "remote", PluginState::Ready, 2).await;
     assert_eq!(managed_after.name, managed.name);
     assert_eq!(managed_after.placement, managed.placement);
     assert_eq!(managed_after.revision, managed.revision);
     assert!(managed_after.process.is_some());
     let restored = support::Process::observe(managed_after.process.as_ref().unwrap().id).await;
     assert!(remote_after.process.is_none());
-    let disabled = host
-        .client
-        .get(harmos_protocol::client::PluginsGetRequest { name: "disabled".into(), at: None })
-        .await
-        .unwrap()
-        .into_inner()
-        .entry
-        .unwrap();
-    assert_eq!(disabled.state, harmos_protocol::client::PluginState::Stopped as i32);
+    let disabled = host.client.get(PluginsGetRequest { name: "disabled".into(), at: None }).await.unwrap().into_inner().entry.unwrap();
+    assert_eq!(disabled.state, PluginState::Stopped as i32);
     assert!(disabled.process.is_none());
     assert_eq!(host.client.create(request).await.unwrap().into_inner(), original);
-    assert!(host.client.get(harmos_protocol::client::PluginsGetRequest { name: "enabled".into(), at: old_cut }).await.is_err());
+    assert!(host.client.get(PluginsGetRequest { name: "enabled".into(), at: old_cut }).await.is_err());
 
     // Settle Both Restored Activations With the Host
     drop(watch);

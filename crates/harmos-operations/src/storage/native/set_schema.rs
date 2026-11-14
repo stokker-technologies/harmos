@@ -9,6 +9,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Position;
+
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
@@ -45,11 +47,9 @@ impl NativeOperation for SetSchema {
             let expected = if request.create_if_absent && request.expected_revision.is_empty() {
                 None
             } else if !request.create_if_absent && !request.expected_revision.is_empty() {
-                let value = harmos_protocol::v1::Position::decode(request.expected_revision.as_slice()).map_err(|_| {
-                    crate::Error::InvalidInput {
-                        field: "SetSchema",
-                        reason: "invalid expected revision",
-                    }
+                let value = Position::decode(request.expected_revision.as_slice()).map_err(|_| crate::Error::InvalidInput {
+                    field: "SetSchema",
+                    reason: "invalid expected revision",
                 })?;
                 if value.encode_to_vec() != request.expected_revision {
                     return Err(crate::Error::InvalidInput {
@@ -69,7 +69,7 @@ impl NativeOperation for SetSchema {
                 graph: Some(graph.clone()),
             };
             let position = storage.set_schema_once(&mutation, key, graph, expected).await?;
-            let revision = harmos_protocol::v1::Position::from(position.clone()).encode_to_vec();
+            let revision = Position::from(position.clone()).encode_to_vec();
             Ok(Self::Response {
                 schema: Some(schema),
                 revision,

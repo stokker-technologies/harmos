@@ -14,7 +14,7 @@
 use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::QueryOutput;
 use harmos_storage::query::RecordSelection;
 use harmos_storage::query::Source;
@@ -82,7 +82,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
-        page: Some(v1::PageRequest {
+        page: Some(model::PageRequest {
             page_size: 2,
             max_bytes: maximum as u64,
             page_token: String::new(),
@@ -151,7 +151,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 merge: None,
                 at: None,
-                page: Some(v1::PageRequest {
+                page: Some(model::PageRequest {
                     page_token: current.next_page_token,
                     ..selection.page.clone().unwrap()
                 }),
@@ -168,7 +168,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
-        page: Some(v1::PageRequest {
+        page: Some(model::PageRequest {
             page_token: first.next_page_token.clone(),
             ..selection.page.clone().unwrap()
         }),
@@ -205,7 +205,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     foreign.at.as_mut().unwrap().positions[0].history.as_mut().unwrap().epoch = "foreign".into();
     assert!(fixture.runtime.operations.call_native::<operations::ListRows>(foreign).await.is_err());
     let mut unissued = selection.clone();
-    unissued.at.as_mut().unwrap().revisions.push(v1::ResourceRevision {
+    unissued.at.as_mut().unwrap().revisions.push(model::ResourceRevision {
         name: "unissued".into(),
         revision: vec![1],
     });

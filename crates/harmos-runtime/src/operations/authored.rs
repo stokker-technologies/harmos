@@ -306,6 +306,8 @@ fn execution_context(context: Context<'_>) -> Result<harmos_operations::executio
     })?;
     #[cfg(feature = "plugin-guest")]
     if let Some(scope) = context.caller_scope() {
+        dependencies
+            .replace(Arc::new(harmos_operations::execution::operations::access::CallingPlugin { name: Some(scope.owner().to_owned()) }));
         dependencies.insert(Arc::new(scope.clone())).map_err(|source| Error::OperationFailed {
             operation: "calling plugin".into(),
             source: Arc::new(source),

@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Callers;
+
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -41,6 +43,7 @@ pub struct GrpcBinding {
 
 #[derive(Clone, Debug)]
 pub struct GrpcMethod {
+    pub callers: Callers,
     pub owner: crate::Identifier,
     pub generation: super::OperationGeneration,
     pub contract: crate::operations::Contract,

@@ -146,7 +146,7 @@ impl ProtobufOperation for Publisher {
     type Request = PublishProgress;
     type Response = ();
     type Endpoints = ();
-    const ID: &'static str = "example.plugin.host.v1.Progress/Publish";
+    const ID: &'static str = "example.host.v1.Progress/Publish";
     const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_runtime::operations::HostContext>()];
@@ -289,7 +289,7 @@ pub fn host(runtime: &Runtime<Bank>) -> Host<Bank> {
 pub fn settings(configuration: &str) -> PluginSettings {
     PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["example.plugin.host.v1.Progress/Publish", "provider.echo"]
+        host_operations: ["example.host.v1.Progress/Publish", "provider.echo"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

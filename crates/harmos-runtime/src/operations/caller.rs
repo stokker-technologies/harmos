@@ -81,6 +81,8 @@ pub(super) struct LifecycleLoan {
 pub(super) enum Source {
     Host,
 
+    GrpcPlugin(crate::plugin::grpc::CallingPlugin),
+
     #[cfg(feature = "grpc")]
     External {
         source: Box<Source>,
@@ -109,6 +111,11 @@ pub(super) enum Source {
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Identity {
     Host,
+
+    GrpcPlugin {
+        owner: String,
+        connection: usize,
+    },
 
     #[cfg(feature = "grpc")]
     External(super::OperationInstanceId),
@@ -246,9 +253,26 @@ impl Source {
             return Ok(origin);
         }
 
+        if let Self::GrpcPlugin(caller) = self {
+            return Ok(Origin {
+                identity: Identity::GrpcPlugin {
+                    owner: caller.owner().to_owned(),
+                    connection: caller.connection_identity(),
+                },
+                #[cfg(feature = "plugin-guest")]
+                scope: None,
+                #[cfg(feature = "plugin-guest")]
+                lifecycle: None,
+                #[cfg(feature = "plugin-guest")]
+                resident: false,
+                grants: None,
+            });
+        }
+
         #[cfg(feature = "plugin-guest")]
         let scope = match self {
             Self::Host => None,
+            Self::GrpcPlugin(_) => unreachable!("gRPC plugin origin was checked"),
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
             Self::Scope(scope) => {
@@ -307,6 +331,9 @@ impl Source {
                 id: *id,
             };
         }
+        if matches!(self, Self::GrpcPlugin(_)) {
+            return self.clone();
+        }
         // A Host Provider Serving a Plugin Requirement Acts for That Caller
         #[cfg(feature = "plugin-guest")]
         if entry.plugin().is_none() && _origin.scope.is_some() {
@@ -328,6 +355,9 @@ impl Source {
     }
 
     pub(super) fn for_binding(_entry: &std::sync::Arc<super::manager::Entry>) -> Self {
+        if let Some(binding) = _entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
+            return Self::GrpcPlugin(binding.caller.clone());
+        }
         #[cfg(feature = "plugin-guest")]
         if _entry.plugin().is_some() {
             return Self::Binding(Arc::downgrade(_entry));
@@ -355,6 +385,14 @@ impl LifecycleLoan {
 }
 
 impl Origin {
+    pub(super) fn is_plugin(&self) -> bool {
+        #[cfg(feature = "plugin-guest")]
+        if self.scope.is_some() {
+            return true;
+        }
+        matches!(self.identity, Identity::GrpcPlugin { .. })
+    }
+
     pub(super) fn has_lifecycle_loan(&self) -> bool {
         #[cfg(not(feature = "plugin-guest"))]
         {

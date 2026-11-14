@@ -15,7 +15,13 @@
 
 /* === Imports === */
 
-use harmos_protocol::client::{PluginDescription, PluginProcess, PluginState, PluginsReplaceRequest, PluginsReplaceResponse};
+use harmos_protocol::model::SettingValues;
+
+use harmos_protocol::host::PluginDescription;
+use harmos_protocol::host::PluginProcess;
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginsReplaceRequest;
+use harmos_protocol::host::PluginsReplaceResponse;
 
 use super::{
     Error,
@@ -23,7 +29,7 @@ use super::{
     content::Installation,
     persistence::{SavedMutation, problem},
 };
-use harmos_protocol::client as wire;
+use harmos_protocol::host as wire;
 use prost::Message;
 
 // Standard Library Imports
@@ -103,7 +109,7 @@ impl Actor {
                 entry.name.clone(),
                 placement,
                 (!saved.settings.is_empty())
-                    .then(|| harmos_protocol::v1::SettingValues::decode(saved.settings.as_slice()))
+                    .then(|| SettingValues::decode(saved.settings.as_slice()))
                     .transpose()
                     .map_err(|error| problem("Read Replacement Settings", error))?,
             )

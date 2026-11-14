@@ -11,6 +11,16 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::InstanceGetRequest;
+use harmos_protocol::plugin::InstanceGetResponse;
+use harmos_protocol::plugin::InstanceInvokeRequest;
+use harmos_protocol::plugin::InstanceInvokeResponse;
+use harmos_protocol::plugin::InstanceSamplesRequest;
+use harmos_protocol::plugin::InstanceSamplesResponse;
+use harmos_protocol::plugin::InstanceStopRequest;
+use harmos_protocol::plugin::InstanceStopResponse;
+use harmos_protocol::plugin::instance_client::InstanceClient;
+
 // Standard Library Imports
 use std::{
     path::PathBuf,
@@ -34,8 +44,8 @@ use tokio::{
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
+use harmos_protocol::model;
 use harmos_protocol::plugin::instance_server::{Instance, InstanceServer};
-use harmos_protocol::v1;
 use harmos_runtime::{
     Runtime,
     clock::{Clock, Reading, Sleep, Source},
@@ -46,11 +56,7 @@ use harmos_runtime::{
 
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 pub type App = crate::support::Bank;
-type SamplesHandler = Arc<
-    dyn Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
-        + Send
-        + Sync,
->;
+type SamplesHandler = Arc<dyn Fn(Streaming<InstanceSamplesRequest>) -> Output<InstanceSamplesResponse> + Send + Sync>;
 
 /* === Structs === */
 
@@ -75,7 +81,7 @@ pub struct Remote {
 
 #[derive(Clone)]
 struct Fixture {
-    catalog: Arc<Mutex<v1::Declarations>>,
+    catalog: Arc<Mutex<model::Declarations>>,
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
@@ -137,7 +143,7 @@ impl Remote {
     pub async fn start() -> Self {
         let service = Fixture {
             catalog: Arc::new(Mutex::new({
-                let mut catalog = v1::Declarations::default();
+                let mut catalog = model::Declarations::default();
                 catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
                 catalog
             })),
@@ -208,17 +214,11 @@ impl Remote {
         self.service.stops.load(Ordering::SeqCst)
     }
 
-    pub fn samples(
-        &self,
-        handler: impl Fn(Streaming<harmos_protocol::plugin::InstanceSamplesRequest>) -> Output<harmos_protocol::plugin::InstanceSamplesResponse>
-        + Send
-        + Sync
-        + 'static,
-    ) {
+    pub fn samples(&self, handler: impl Fn(Streaming<InstanceSamplesRequest>) -> Output<InstanceSamplesResponse> + Send + Sync + 'static) {
         *self.service.samples.lock().unwrap() = Some(Arc::new(handler));
     }
 
-    pub fn declarations(&self, catalog: v1::Declarations) {
+    pub fn declarations(&self, catalog: model::Declarations) {
         *self.service.catalog.lock().unwrap() = catalog;
     }
 
@@ -234,9 +234,9 @@ impl Remote {
         receiver
     }
 
-    pub async fn get(&self) -> harmos_protocol::plugin::InstanceGetResponse {
-        let mut client = harmos_protocol::plugin::instance_client::InstanceClient::connect(self.address.clone()).await.unwrap();
-        client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
+    pub async fn get(&self) -> InstanceGetResponse {
+        let mut client = InstanceClient::connect(self.address.clone()).await.unwrap();
+        client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
     }
 }
 
@@ -249,15 +249,13 @@ impl Drop for Remote {
 
 #[tonic::async_trait]
 impl Instance for Fixture {
-    async fn get(
-        &self, _: Request<harmos_protocol::plugin::InstanceGetRequest>,
-    ) -> Result<Response<harmos_protocol::plugin::InstanceGetResponse>, Status> {
+    async fn get(&self, _: Request<InstanceGetRequest>) -> Result<Response<InstanceGetResponse>, Status> {
         let pending = self.pending_description.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(harmos_protocol::plugin::InstanceGetResponse {
+        Ok(Response::new(InstanceGetResponse {
             message_bytes: harmos_protocol::transfer::default_message_bytes().get() as u64,
             id: "remote".into(),
             version: "1.0.0".into(),
@@ -271,35 +269,29 @@ impl Instance for Fixture {
             declarations: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
-    type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
-    async fn invoke(
-        &self, _: Request<Streaming<harmos_protocol::plugin::InstanceInvokeRequest>>,
-    ) -> Result<Response<Self::InvokeStream>, Status> {
+    type InvokeStream = Output<InstanceInvokeResponse>;
+    async fn invoke(&self, _: Request<Streaming<InstanceInvokeRequest>>) -> Result<Response<Self::InvokeStream>, Status> {
         Err(Status::not_found("Unknown Operation"))
     }
-    type SamplesStream = Output<harmos_protocol::plugin::InstanceSamplesResponse>;
-    async fn samples(
-        &self, request: Request<Streaming<harmos_protocol::plugin::InstanceSamplesRequest>>,
-    ) -> Result<Response<Self::SamplesStream>, Status> {
+    type SamplesStream = Output<InstanceSamplesResponse>;
+    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
         let handler = self.samples.lock().unwrap().clone().ok_or_else(|| Status::not_found("Unknown Stream"))?;
         Ok(Response::new(handler(request.into_inner())))
     }
-    async fn stop(
-        &self, _: Request<harmos_protocol::plugin::InstanceStopRequest>,
-    ) -> Result<Response<harmos_protocol::plugin::InstanceStopResponse>, Status> {
+    async fn stop(&self, _: Request<InstanceStopRequest>) -> Result<Response<InstanceStopResponse>, Status> {
         self.stops.fetch_add(1, Ordering::SeqCst);
         let pending = self.pending_stop.lock().unwrap().take();
         if let Some(pending) = pending {
             let _ = pending.send(());
             return std::future::pending().await;
         }
-        Ok(Response::new(harmos_protocol::plugin::InstanceStopResponse {}))
+        Ok(Response::new(InstanceStopResponse {}))
     }
 }
 
 /* === Public Functions === */
 
-pub fn catalog() -> v1::Declarations {
+pub fn catalog() -> model::Declarations {
     let types = prost_types::FileDescriptorSet {
         file: vec![prost_types::FileDescriptorProto {
             name: Some("fixture.proto".into()),
@@ -313,13 +305,13 @@ pub fn catalog() -> v1::Declarations {
         }],
     };
     let fingerprint = harmos_protocol::schema::fingerprint("fixture.echo", &types, "fixture.Value", "fixture.Value").unwrap();
-    let mut catalog = v1::Declarations {
+    let mut catalog = model::Declarations {
         types: Some(types),
-        operations: vec![v1::OperationContract {
+        operations: vec![model::OperationContract {
             id: "fixture.echo".into(),
             request: "fixture.Value".into(),
             response: "fixture.Value".into(),
-            visibility: v1::Visibility::Public as i32,
+            visibility: model::Visibility::Public as i32,
             fingerprint,
             ..Default::default()
         }],

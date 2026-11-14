@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::{InvocationsCreateRequest, InvocationsCreateResponse};
+
 use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
 
@@ -32,7 +34,7 @@ use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Re
 
 /* === Structs === */
 
-pub struct Invoke;
+pub struct Create;
 
 /* === Enums === */
 
@@ -40,12 +42,12 @@ pub struct Invoke;
 
 /* === Implementations === */
 
-impl ProtobufOperation for Invoke {
-    type Request = harmos_protocol::client::InvocationsInvokeRequest;
-    type Response = harmos_protocol::client::InvocationsInvokeResponse;
+impl ProtobufOperation for Create {
+    type Request = InvocationsCreateRequest;
+    type Response = InvocationsCreateResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.Invocations/Invoke";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Invocations", "Invoke"));
+    const ID: &'static str = "harmos.host.v1.Invocations/Create";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Create"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];

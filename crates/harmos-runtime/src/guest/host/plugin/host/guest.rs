@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::PluginDescription;
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -85,7 +87,7 @@ impl<A: Application> PluginHost<A> {
         })?;
         let declaration = loaded.declaration();
         let entry = manager
-            .register_guest(harmos_protocol::client::PluginDescription {
+            .register_guest(PluginDescription {
                 id: declaration.id.clone(),
                 version: declaration.version.to_string(),
                 started_at: None,

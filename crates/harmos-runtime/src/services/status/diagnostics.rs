@@ -13,12 +13,14 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::PageRequest;
+
 // Standard Library Imports
 use std::io::Write;
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::client::status::{DiagnosticsGetRequest, DiagnosticsGetResponse};
+use harmos_protocol::host::status::{DiagnosticsGetRequest, DiagnosticsGetResponse};
 use sha2::{Digest, Sha256};
 
 // Local Imports
@@ -151,7 +153,7 @@ impl Status {
         let action = "Status.Diagnostics.Get";
         let (status, providers, logs, traces) = {
             let mut state = self.state.lock().expect("status lock is healthy");
-            let page = harmos_protocol::v1::PageRequest {
+            let page = PageRequest {
                 page_size: u32::MAX,
                 max_bytes: self
                     .settings

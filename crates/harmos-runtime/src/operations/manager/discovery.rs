@@ -13,13 +13,16 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::OperationPolicy;
+use harmos_protocol::model::RetryPolicy as WireRetryPolicy;
+
 // Standard Library Imports
 
 use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 // Third Party Imports
-use harmos_protocol::v1 as host;
+use harmos_protocol::model::{DiscoveredContract, DiscoveredOperation, Grant as WireGrant, Grpc, Protobuf, Visibility as WireVisibility};
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
@@ -44,7 +47,7 @@ type ProviderEntry = (String, String, Arc<Entry>);
 /* === Implementations === */
 
 impl Manager {
-    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<Vec<host::DiscoveredOperation>> {
+    pub(in crate::operations) fn discover(&self, source: &Source) -> Result<Vec<DiscoveredOperation>> {
         let origin = source.check()?;
         let mut output = Vec::new();
         let mut position = None;
@@ -116,13 +119,13 @@ impl Manager {
             } else {
                 grants
             };
-            let metadata = host::DiscoveredOperation {
+            let metadata = DiscoveredOperation {
                 owner: entry.owner.to_string(),
                 generation: entry.generation.value(),
                 contract: Some(describe(contract)?),
                 grants: grants
                     .iter()
-                    .map(|grant| host::Grant {
+                    .map(|grant| WireGrant {
                         operation: grant.operation.to_string(),
                         scope: grant.scope.as_ref().map(ToString::to_string),
                     })
@@ -155,7 +158,7 @@ impl Manager {
 
 /* === Private Functions === */
 
-fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
+fn describe(contract: &Contract) -> Result<DiscoveredContract> {
     use crate::operations::{Backoff, Jitter, ReplaySafety, RetryPolicy, Visibility};
     let definition = contract.operation();
     let policy = definition.policy;
@@ -166,7 +169,7 @@ fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
                 Backoff::Fixed { delay, jitter } => (delay, None, jitter),
                 Backoff::Exponential { initial, maximum, jitter } => (initial, Some(maximum), jitter),
             };
-            Some(harmos_protocol::v1::RetryPolicy {
+            Some(WireRetryPolicy {
                 total_attempts: total_attempts as u64,
                 initial: Some(duration(initial)?),
                 maximum: maximum.map(duration).transpose()?,
@@ -174,15 +177,15 @@ fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
             })
         }
     };
-    Ok(host::DiscoveredContract {
+    Ok(DiscoveredContract {
         id: definition.id.to_string(),
         description: definition.description.clone(),
         visibility: match definition.visibility {
-            Visibility::Private => host::Visibility::Private,
-            Visibility::Protected => host::Visibility::Protected,
-            Visibility::Public => host::Visibility::Public,
+            Visibility::Private => WireVisibility::Private,
+            Visibility::Protected => WireVisibility::Protected,
+            Visibility::Public => WireVisibility::Public,
         } as i32,
-        policy: Some(harmos_protocol::v1::OperationPolicy {
+        policy: Some(OperationPolicy {
             timeout: Some(duration(policy.timeout)?),
             attempt_timeout: Some(duration(policy.attempt_timeout)?),
             cancellation_timeout: Some(duration(policy.cancellation_timeout)?),
@@ -191,7 +194,7 @@ fn describe(contract: &Contract) -> Result<host::DiscoveredContract> {
         replay_safe: definition.replay != ReplaySafety::Unknown,
         fingerprint: definition.fingerprint.0.to_vec(),
         protobuf: descriptors(contract)?,
-        grpc: contract.grpc().map(|binding| host::Grpc {
+        grpc: contract.grpc().map(|binding| Grpc {
             package: binding.package.to_string(),
             service: binding.service.to_string(),
             method: binding.method.to_string(),
@@ -209,14 +212,14 @@ fn duration(value: std::time::Duration) -> Result<prost_types::Duration> {
         nanos: value.subsec_nanos() as i32,
     })
 }
-fn descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+fn descriptors(contract: &Contract) -> Result<Option<Protobuf>> {
     if let Some(protobuf) = contract.protobuf() {
         return Ok(Some(protobuf.clone()));
     }
     projected_descriptors(contract)
 }
 #[cfg(feature = "grpc")]
-fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> {
+fn projected_descriptors(contract: &Contract) -> Result<Option<Protobuf>> {
     use prost::Message;
     let Some(binding) = contract.grpc() else { return Ok(None) };
     let service = crate::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, contract)]).map_err(|source| {
@@ -250,7 +253,7 @@ fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> 
         operation: contract.operation().id.to_string(),
         source: Arc::new(source),
     })?;
-    Ok(Some(host::Protobuf {
+    Ok(Some(Protobuf {
         descriptors: types.encode_to_vec(),
         request,
         response,
@@ -259,7 +262,7 @@ fn projected_descriptors(contract: &Contract) -> Result<Option<host::Protobuf>> 
     }))
 }
 #[cfg(not(feature = "grpc"))]
-fn projected_descriptors(_: &Contract) -> Result<Option<host::Protobuf>> {
+fn projected_descriptors(_: &Contract) -> Result<Option<Protobuf>> {
     Ok(None)
 }
 #[cfg(feature = "grpc")]

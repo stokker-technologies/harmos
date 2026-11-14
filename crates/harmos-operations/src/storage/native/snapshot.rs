@@ -13,7 +13,7 @@
 
 use super::requests::SavedSnapshot;
 
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::{Snapshot, StorageCursor, StorageManager};
 use ring::{digest, hmac};
 use std::{
@@ -46,7 +46,7 @@ pub(crate) struct SnapshotRead {
 struct HeldSnapshot {
     identity: Vec<u8>,
     snapshot: Arc<Snapshot>,
-    cut: v1::ReadCut,
+    cut: model::ReadCut,
     explicit: bool,
     observation: Option<Arc<super::file_access::Observation>>,
     _permit: tokio::sync::OwnedSemaphorePermit,
@@ -64,7 +64,7 @@ impl SnapshotRead {
     pub(crate) fn identity(&self) -> &[u8] {
         &self.snapshot.identity
     }
-    pub(crate) fn cut(&self) -> &v1::ReadCut {
+    pub(crate) fn cut(&self) -> &model::ReadCut {
         &self.snapshot.cut
     }
     pub(super) fn observation(&self) -> Option<&super::file_access::Observation> {
@@ -116,7 +116,7 @@ impl SavedSnapshots {
         self.insert_cut(Arc::new(snapshot), cut, true, permit, None, None)
     }
     fn insert_cut(
-        &self, snapshot: Arc<Snapshot>, cut: v1::ReadCut, explicit: bool, permit: tokio::sync::OwnedSemaphorePermit,
+        &self, snapshot: Arc<Snapshot>, cut: model::ReadCut, explicit: bool, permit: tokio::sync::OwnedSemaphorePermit,
         observation: Option<Arc<super::file_access::Observation>>, identity: Option<Vec<u8>>,
     ) -> harmos_storage::Result<SavedSnapshot> {
         let mut token = vec![0; 32];
@@ -161,7 +161,9 @@ impl SavedSnapshots {
         registry.order.retain(|token| token != &handle.token);
         Ok(())
     }
-    pub(crate) async fn create(&self, storage: &StorageManager, at: Option<v1::ReadCut>) -> crate::Result<(SavedSnapshot, v1::ReadCut)> {
+    pub(crate) async fn create(
+        &self, storage: &StorageManager, at: Option<model::ReadCut>,
+    ) -> crate::Result<(SavedSnapshot, model::ReadCut)> {
         if let Some(at) = at {
             let read = self.resolve(storage, Some(at)).await?;
             let permit = self.reserve()?;
@@ -184,7 +186,7 @@ impl SavedSnapshots {
         }
     }
     /// Resolve Only A Cut Previously Returned By This Owner, Or Select Its Current Durable Cut.
-    pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<v1::ReadCut>) -> crate::Result<SnapshotRead> {
+    pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<model::ReadCut>) -> crate::Result<SnapshotRead> {
         let _issuance = self.issuance.lock().await;
         let explicit = at.is_some();
         let cut = at.unwrap_or_else(|| super::transfers::cut(storage.get_saved_position()));
@@ -213,7 +215,7 @@ impl SavedSnapshots {
         Ok(read)
     }
     /// Retain A Cut Selected By The Storage/Provider Owner, Never An Unvalidated Caller Cut.
-    pub(crate) async fn composite(&self, storage: &StorageManager, cut: v1::ReadCut) -> crate::Result<v1::ReadCut> {
+    pub(crate) async fn composite(&self, storage: &StorageManager, cut: model::ReadCut) -> crate::Result<model::ReadCut> {
         let _issuance = self.issuance.lock().await;
         if self.registry.lock().unwrap().entries.values().any(|held| held.cut == cut && held.snapshot.is_available()) {
             return Ok(cut);
@@ -250,7 +252,7 @@ impl SavedSnapshots {
         getrandom::fill(&mut revision)
             .map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "observation revision entropy" })?;
         let mut cut = super::transfers::cut(position);
-        cut.revisions.push(v1::ResourceRevision { name: resource, revision });
+        cut.revisions.push(model::ResourceRevision { name: resource, revision });
         let handle = self.insert_cut(snapshot, cut, false, permit, Some(Arc::new(observation)), None)?;
         Ok(self.read(handle)?)
     }
@@ -269,7 +271,7 @@ impl SavedSnapshots {
         Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
     }
     pub(crate) fn open_cursor<T: serde::de::DeserializeOwned>(
-        &self, token: &str, plan: &[u8], maximum: usize, at: Option<&v1::ReadCut>,
+        &self, token: &str, plan: &[u8], maximum: usize, at: Option<&model::ReadCut>,
     ) -> crate::Result<(SnapshotRead, T)> {
         const PREFIX: &[u8] = b"storage.list:v1\0";
         if token.len() > maximum || !token.len().is_multiple_of(2) {

@@ -21,7 +21,8 @@
 
 // Local Imports
 use super::support::{self, Remote};
-use harmos_protocol::{schema, v1};
+use harmos_protocol::model;
+use harmos_protocol::schema;
 use harmos_runtime::plugin::grpc::{Error, Placement};
 
 /* === Constants === */
@@ -53,8 +54,8 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
         "example..step.0",
         "example.plugin.v1.Steps/",
         "harmos.plugin.v1.Instance/Invoke",
-        "example.plugin.host.v1.Prompts/Create",
-        "example.client.v1.Steps/Execute",
+        "example.host.v1.Prompts/Create",
+        "example.host.v1.Steps/Execute",
     ] {
         let mut catalog = support::catalog();
         let operation = &mut catalog.operations[0];
@@ -79,7 +80,7 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
     let mut catalog = support::catalog();
     let operation = &mut catalog.operations[0];
     operation.id = "example.plugin.v1.Steps/Execute".into();
-    operation.visibility = v1::Visibility::Public as i32;
+    operation.visibility = model::Visibility::Public as i32;
     operation.fingerprint =
         schema::fingerprint(&operation.id, catalog.types.as_ref().unwrap(), &operation.request, &operation.response).unwrap();
     catalog.digest = schema::declarations_digest(&catalog);

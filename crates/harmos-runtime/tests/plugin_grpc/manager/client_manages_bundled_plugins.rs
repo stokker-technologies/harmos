@@ -11,6 +11,11 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsRestartRequest;
+use harmos_protocol::host::PluginsWatchRequest;
+
 use super::support::{self, Backends, Host};
 
 /* === Tests === */
@@ -22,16 +27,11 @@ async fn client_manages_bundled_plugins() {
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let content = host.upload("bundle", support::bundle(true)).await;
-    let mut watch = host
-        .client
-        .watch(harmos_protocol::client::PluginsWatchRequest { name: Some("managed".into()), at: None })
-        .await
-        .unwrap()
-        .into_inner();
+    let mut watch = host.client.watch(PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
 
     // Create a Managed Entry and Observe Its Process Identity
     host.client.create(support::managed("managed", content, true)).await.unwrap();
-    let ready = support::state(&mut watch, "managed", harmos_protocol::client::PluginState::Ready, 1).await;
+    let ready = support::state(&mut watch, "managed", PluginState::Ready, 1).await;
     let process = ready.process.as_ref().unwrap();
     let first_id = process.id;
     let first = support::Process::observe(first_id).await;
@@ -40,7 +40,7 @@ async fn client_manages_bundled_plugins() {
 
     // Kill Only That Process and Observe the Retained Failure
     assert!(first.kill().await.success());
-    let unavailable = support::state(&mut watch, "managed", harmos_protocol::client::PluginState::Unavailable, ready.activation).await;
+    let unavailable = support::state(&mut watch, "managed", PluginState::Unavailable, ready.activation).await;
     assert_eq!(unavailable.name, ready.name);
     assert_eq!(unavailable.placement, ready.placement);
     assert!(unavailable.process.is_none());
@@ -51,7 +51,7 @@ async fn client_manages_bundled_plugins() {
     // Restart Replaces the Activation and Starts a New Process
     let restarting = host
         .client
-        .restart(harmos_protocol::client::PluginsRestartRequest {
+        .restart(PluginsRestartRequest {
             name: "managed".into(),
             expected_revision: ready.revision,
         })
@@ -60,14 +60,14 @@ async fn client_manages_bundled_plugins() {
         .into_inner()
         .entry
         .unwrap();
-    let ready = support::state(&mut watch, "managed", harmos_protocol::client::PluginState::Ready, restarting.activation).await;
+    let ready = support::state(&mut watch, "managed", PluginState::Ready, restarting.activation).await;
     assert!(ready.activation > unavailable.activation);
     let second_id = ready.process.unwrap().id;
     let second = support::Process::observe(second_id).await;
 
     // Delete Awaits Process Exit and Removes Its Installed Files
     host.client
-        .delete(harmos_protocol::client::PluginsDeleteRequest {
+        .delete(PluginsDeleteRequest {
             name: "managed".into(),
             expected_revision: ready.revision,
         })

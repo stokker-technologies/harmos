@@ -15,14 +15,29 @@
 
 /* === Imports === */
 
-use harmos_protocol::client::PluginDescription;
+use harmos_protocol::host::PluginDescription;
 
-use harmos_protocol::client::{
-    PluginChange, PluginEntry, PluginProcess, PluginSnapshot, PluginState, PluginsCreateRequest, PluginsCreateResponse,
-    PluginsDeleteRequest, PluginsDeleteResponse, PluginsGetRequest, PluginsGetResponse, PluginsListRequest, PluginsListResponse,
-    PluginsReplaceRequest, PluginsReplaceResponse, PluginsRestartRequest, PluginsRestartResponse, PluginsSetRequest, PluginsSetResponse,
-    PluginsWatchRequest, PluginsWatchResponse,
-};
+use harmos_protocol::host::PluginChange;
+use harmos_protocol::host::PluginEntry;
+use harmos_protocol::host::PluginProcess;
+use harmos_protocol::host::PluginSnapshot;
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginsCreateRequest;
+use harmos_protocol::host::PluginsCreateResponse;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsDeleteResponse;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsGetResponse;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsListResponse;
+use harmos_protocol::host::PluginsReplaceRequest;
+use harmos_protocol::host::PluginsReplaceResponse;
+use harmos_protocol::host::PluginsRestartRequest;
+use harmos_protocol::host::PluginsRestartResponse;
+use harmos_protocol::host::PluginsSetRequest;
+use harmos_protocol::host::PluginsSetResponse;
+use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::PluginsWatchResponse;
 
 // Standard Library Imports
 use std::{
@@ -45,7 +60,8 @@ use super::{
     persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
 use crate::plugin::grpc::{Attached, Managed, Placement, Status};
-use harmos_protocol::{client as wire, v1};
+use harmos_protocol::host as wire;
+use harmos_protocol::model;
 
 /* === Constants === */
 
@@ -60,12 +76,12 @@ pub(super) type GuestControl = Arc<dyn Fn(String, GuestAction) -> Pin<Box<dyn Fu
 
 type Reply<T> = oneshot::Sender<Result<T, Error>>;
 type Attachment = Pin<Box<dyn Future<Output = Result<Attached, crate::plugin::grpc::Error>> + Send>>;
-pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<v1::SettingValues>) -> Attachment + Send + Sync>;
+pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<model::SettingValues>) -> Attachment + Send + Sync>;
 pub(super) type Stage = Arc<
     dyn Fn(
             String,
             Placement,
-            Option<v1::SettingValues>,
+            Option<model::SettingValues>,
         ) -> Pin<Box<dyn Future<Output = Result<crate::plugin::grpc::PreparedPlugin, crate::plugin::grpc::Error>> + Send>>
         + Send
         + Sync,
@@ -84,7 +100,7 @@ pub(super) struct Actor {
     pub(super) activate: Activate,
     commands: mpsc::Sender<Command>,
     participant: crate::runtime::StopParticipant,
-    history: v1::History,
+    history: model::History,
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
     pub(super) issued: BTreeSet<u64>,
@@ -94,7 +110,7 @@ pub(super) struct Actor {
 
 #[derive(Clone)]
 pub(super) struct Snapshot {
-    pub(super) cut: v1::ReadCut,
+    pub(super) cut: model::ReadCut,
     entries: BTreeMap<String, PluginEntry>,
     event: Option<PluginChange>,
     pub(super) settings: BTreeMap<String, super::settings::Snapshot>,
@@ -177,7 +193,7 @@ impl Actor {
         }
         let mut epoch = [0_u8; 16];
         getrandom::fill(&mut epoch).map_err(|error| problem("Create Plugin Read History", error))?;
-        let history = v1::History {
+        let history = model::History {
             store: settings.namespace.clone(),
             epoch: crate::bundle::digest(&epoch),
         };
@@ -281,9 +297,9 @@ impl Actor {
         }
     }
 
-    pub(super) fn cut(&self) -> v1::ReadCut {
-        v1::ReadCut {
-            positions: vec![v1::Position {
+    pub(super) fn cut(&self) -> model::ReadCut {
+        model::ReadCut {
+            positions: vec![model::Position {
                 history: Some(self.history.clone()),
                 sequence: self.sequence,
             }],
@@ -322,7 +338,7 @@ impl Actor {
         Ok(())
     }
 
-    pub(super) fn snapshot(&self, at: Option<&v1::ReadCut>) -> Result<&Snapshot, Error> {
+    pub(super) fn snapshot(&self, at: Option<&model::ReadCut>) -> Result<&Snapshot, Error> {
         match at {
             Some(at) => self
                 .snapshots
@@ -437,13 +453,13 @@ impl Actor {
         self.publish(Some(change))
     }
 
-    pub(super) fn receipt(&mut self, request_id: String) -> v1::Receipt {
-        let position = v1::Position {
+    pub(super) fn receipt(&mut self, request_id: String) -> model::Receipt {
+        let position = model::Position {
             history: Some(self.history.clone()),
             sequence: self.sequence + 1,
         };
         self.issued.insert(position.sequence);
-        v1::Receipt {
+        model::Receipt {
             request_id,
             accepted_at: Some(position.clone()),
             durable_at: Some(position),
@@ -563,14 +579,14 @@ impl Actor {
         let mut entry = self.entry(&request.name, &request.expected_revision, "Set Plugin")?;
         let value = request.value.ok_or_else(|| Error::new("value_required", "Set Plugin", "supply the complete writable value"))?;
         if entry.value.as_ref() == Some(&value) && entry.state != PluginState::Stopping as i32 {
-            let position = v1::Position {
+            let position = model::Position {
                 history: Some(self.history.clone()),
                 sequence: self.sequence,
             };
             self.issued.insert(position.sequence);
             return Ok(PluginsSetResponse {
                 entry: Some(entry),
-                receipt: Some(v1::Receipt {
+                receipt: Some(model::Receipt {
                     request_id: String::new(),
                     accepted_at: Some(position.clone()),
                     durable_at: Some(position),
@@ -692,7 +708,7 @@ impl Actor {
             None => Err(Error::new("placement_required", "Start Plugin", "restore a valid placement")),
         };
         let values = (!saved.settings.is_empty())
-            .then(|| v1::SettingValues::decode(saved.settings.as_slice()))
+            .then(|| model::SettingValues::decode(saved.settings.as_slice()))
             .transpose()
             .map_err(|error| problem("Restore Plugin Settings", error));
         let attachment = placement.and_then(|placement| values.map(|values| (self.attach)(name.to_owned(), placement, values)));
@@ -848,9 +864,9 @@ pub(super) fn changed(entry: PluginEntry) -> PluginChange {
         kind: Some(wire::plugin_change::Kind::Entry(entry)),
     }
 }
-pub(super) fn unavailable(name: &str, cause: String) -> v1::Failure {
-    v1::Failure {
-        classification: v1::Classification::Transient as i32,
+pub(super) fn unavailable(name: &str, cause: String) -> model::Failure {
+    model::Failure {
+        classification: model::Classification::Transient as i32,
         code: "plugin_unavailable".into(),
         message: format!("Activate Plugin: {cause}"),
         action: "correct the reported cause and Restart the plugin".into(),
@@ -859,7 +875,7 @@ pub(super) fn unavailable(name: &str, cause: String) -> v1::Failure {
     }
 }
 async fn watch_event(
-    sender: &mpsc::Sender<PluginsWatchResponse>, event: PluginsWatchResponse, max_bytes: usize, resolved_at: &mut Option<v1::ReadCut>,
+    sender: &mpsc::Sender<PluginsWatchResponse>, event: PluginsWatchResponse, max_bytes: usize, resolved_at: &mut Option<model::ReadCut>,
 ) -> bool {
     if event.encoded_len() > max_bytes {
         let event = PluginsWatchResponse {

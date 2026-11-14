@@ -11,9 +11,11 @@
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::v1::AssignedOperation;
+pub use harmos_protocol::plugin::AssignedOperation;
 
 /* === Imports === */
+
+use harmos_protocol::plugin::OperationAssignments as WireOperationAssignments;
 
 // Standard Library Imports
 use std::any::{Any, TypeId, type_name};
@@ -130,7 +132,7 @@ impl ExecutionContext {
 impl OperationAssignments {
     pub fn install(&self, bytes: &[u8]) -> Result<(), super::ServingError> {
         use prost::Message;
-        let assignments = harmos_protocol::v1::OperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
+        let assignments = WireOperationAssignments::decode(bytes).map_err(|_| super::ServingError::Catalog)?;
         let entries = assignments.operations;
         let mut locals = std::collections::BTreeSet::new();
         for entry in &entries {
@@ -218,21 +220,21 @@ mod tests {
     fn protobuf_assignments_validate_and_freeze_the_catalog() {
         use prost::Message;
         let entry = AssignedOperation {
-            operation: "host.harmos.client.v1.Operations/List".into(),
+            operation: "host.harmos.host.v1.Operations/List".into(),
             fingerprint: vec![7; 32],
             generation: 1,
         };
-        let encoded = harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone()] }.encode_to_vec();
-        let decoded = harmos_protocol::v1::OperationAssignments::decode(encoded.as_slice()).unwrap();
+        let encoded = WireOperationAssignments { operations: vec![entry.clone()] }.encode_to_vec();
+        let decoded = WireOperationAssignments::decode(encoded.as_slice()).unwrap();
         assert_eq!(decoded.operations[0].operation, entry.operation);
         let assignments = OperationAssignments::default();
         assignments.install(&encoded).unwrap();
         assignments.install(&encoded).unwrap();
         let replacement = AssignedOperation { generation: 2, ..entry.clone() };
-        assert!(assignments.install(&harmos_protocol::v1::OperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
+        assert!(assignments.install(&WireOperationAssignments { operations: vec![replacement] }.encode_to_vec()).is_err());
         assert!(
             OperationAssignments::default()
-                .install(&harmos_protocol::v1::OperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
+                .install(&WireOperationAssignments { operations: vec![entry.clone(), entry] }.encode_to_vec())
                 .is_err()
         );
         let mut invalid = decoded.clone();
@@ -242,20 +244,20 @@ mod tests {
         for operation in ["host.example.step.0", "provider.example.plugin.v1.Steps/Execute"] {
             let mut numeric = decoded.operations[0].clone();
             numeric.operation = operation.into();
-            let assignments = harmos_protocol::v1::OperationAssignments { operations: vec![numeric] };
+            let assignments = WireOperationAssignments { operations: vec![numeric] };
             OperationAssignments::default().install(&assignments.encode_to_vec()).unwrap();
         }
         for operation in ["host.example..step.0", "host.example.plugin.v1.Steps/"] {
             let mut malformed = decoded.operations[0].clone();
             malformed.operation = operation.into();
-            let assignments = harmos_protocol::v1::OperationAssignments { operations: vec![malformed] };
+            let assignments = WireOperationAssignments { operations: vec![malformed] };
             assert!(OperationAssignments::default().install(&assignments.encode_to_vec()).is_err());
         }
         let operations = ["first.example.step.0", "second.example.step.0"].map(|operation| AssignedOperation {
             operation: operation.into(),
             ..decoded.operations[0].clone()
         });
-        let assignments = harmos_protocol::v1::OperationAssignments { operations: operations.into() };
+        let assignments = WireOperationAssignments { operations: operations.into() };
         assert!(OperationAssignments::default().install(&assignments.encode_to_vec()).is_err());
     }
 

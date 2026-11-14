@@ -159,6 +159,10 @@ impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfigu
     type Lane = crate::operations::Lane;
     type LaneSettings = LaneSettings;
 
+    fn composition(&mut self, source: &str) -> Result<(), super::AssemblyError> {
+        self.composition(source)
+    }
+
     fn lane(&mut self, lane: crate::operations::Lane, settings: LaneSettings) {
         if !self.lanes.configure(lane.name(), settings.capacity) {
             self.configuration_errors.push(StartupError::UnknownLane { lane: lane.name() });

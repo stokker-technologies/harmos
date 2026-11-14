@@ -108,15 +108,18 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         fs::read(output.path().join("message-options-descriptors.bin"))?,
         include_bytes!("../../src/message-options-descriptors.bin")
     );
-    assert_eq!(fs::read(output.path().join("client-clock-descriptors.bin"))?, include_bytes!("../../src/client-clock-descriptors.bin"));
     for entry in fs::read_dir(output.path().join("context-types"))? {
         let path = entry?.path();
         assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
     }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
-    for name in
-        ["application.v1.rs", "application.v1.jobs.rs", "application.v1.plugins.rs", "client-descriptors.bin", "client-reflection.rs"]
-    {
+    for name in [
+        "application.host.v1.rs",
+        "application.host.v1.jobs.rs",
+        "application.host.v1.plugins.rs",
+        "client-descriptors.bin",
+        "client-reflection.rs",
+    ] {
         assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
     }
     codegen::generate_conformance(&compiler, &includes, output.path())?;

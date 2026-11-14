@@ -15,6 +15,10 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::model::Classification;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -41,8 +45,8 @@ pub(super) struct Control;
 /* === Implementations === */
 
 impl ProtobufOperation for Control {
-    type Request = harmos_protocol::plugin::host::TimeGetRequest;
-    type Response = harmos_protocol::plugin::host::TimeGetResponse;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
     type Endpoints = ();
     const ID: &'static str = "fixture.control";
     const POLICY: harmos_operations::OperationPolicy = harmos_operations::lifecycle::POLICY;
@@ -74,7 +78,7 @@ async fn protected_host_operation_refuses_a_plugin_with_a_matching_requirement()
     let caller = host.sdk("caller").await;
     let _caller = host.runtime.attach_grpc(Placement::Remote(caller.address.clone()), support::settings()).await.unwrap();
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"control")).await.unwrap_err();
-    assert_eq!(call_error(&error).classification(), harmos_protocol::v1::Classification::Refused);
+    assert_eq!(call_error(&error).classification(), Classification::Refused);
     assert!(call_error(&error).to_string().contains("fixture.control"));
     host.runtime.shutdown().await.unwrap();
 }

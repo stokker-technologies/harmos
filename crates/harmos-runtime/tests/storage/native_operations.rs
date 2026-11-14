@@ -17,7 +17,7 @@
 
 use super::{Fixture, config, storage_catalog};
 use harmos_operations::storage as operation;
-use harmos_protocol::v1::PageRequest;
+use harmos_protocol::model::PageRequest;
 use harmos_query::QueryArrow;
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::FileMetadata;

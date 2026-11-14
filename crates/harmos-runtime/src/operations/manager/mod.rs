@@ -33,6 +33,8 @@ pub(crate) use plugin_grpc::Admission as GrpcAdmission;
 
 /* === Imports === */
 
+use harmos_protocol::model::Callers;
+
 // Standard Library Imports
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -94,6 +96,7 @@ pub(crate) struct WeakOperationManager {
 }
 
 pub(crate) struct Registry {
+    callers: Arc<BTreeMap<String, Callers>>,
     pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
     pub(crate) status: Arc<harmos_operations::status::StatusAccess>,
     pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,
@@ -123,6 +126,7 @@ struct State {
 }
 
 pub(super) struct Entry {
+    callers: Arc<BTreeMap<String, Callers>>,
     pub(super) carrier: harmos_operations::execution::__private::ResourceSet,
     owner: Identifier,
     definition: OperationDefinition,

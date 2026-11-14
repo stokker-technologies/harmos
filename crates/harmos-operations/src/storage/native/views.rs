@@ -20,7 +20,7 @@ use super::requests::{MutationWindow, ProjectionStatus, ReadLimits, SavedSnapsho
 use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::columnar::Cancellation;
 use harmos_query::columnar::ColumnSource;
 use harmos_storage::StorageManager;
@@ -32,7 +32,9 @@ pub(super) async fn capabilities(context: &ExecutionContext) -> Result<(StorageC
     let info = storage.info().map_err(|error| super::admission::failure(error.into()))?;
     Ok((storage.capabilities(), info.mutations, info.file_batch_bytes))
 }
-pub(super) async fn create(context: &ExecutionContext, at: Option<v1::ReadCut>) -> Result<(SavedSnapshot, v1::ReadCut), ServingError> {
+pub(super) async fn create(
+    context: &ExecutionContext, at: Option<model::ReadCut>,
+) -> Result<(SavedSnapshot, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     snapshots.create(&storage, at).await.map_err(super::admission::failure)
@@ -49,7 +51,7 @@ pub(super) async fn delete(context: &ExecutionContext, snapshot: Option<SavedSna
 
 pub(super) async fn advance_projection(
     context: &ExecutionContext, snapshot: Option<SavedSnapshot>, name: String, work: Option<ReadLimits>, source: Option<ColumnSource>,
-) -> Result<(Vec<u8>, v1::ReadCut), ServingError> {
+) -> Result<(Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -72,8 +74,8 @@ pub(super) async fn advance_projection(
 }
 
 pub(super) async fn projection_status(
-    context: &ExecutionContext, name: String, revision: Vec<u8>, at: Option<v1::ReadCut>, source: Option<ColumnSource>,
-) -> Result<(Option<ProjectionStatus>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, revision: Vec<u8>, at: Option<model::ReadCut>, source: Option<ColumnSource>,
+) -> Result<(Option<ProjectionStatus>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -109,9 +111,9 @@ pub(super) async fn projection_status(
     .await
 }
 
-fn projection_cut(position: harmos_storage::StorageCursor, name: &harmos_storage::Identifier, revision: u64) -> v1::ReadCut {
+fn projection_cut(position: harmos_storage::StorageCursor, name: &harmos_storage::Identifier, revision: u64) -> model::ReadCut {
     let mut cut = super::transfers::cut(position);
-    cut.revisions.push(v1::ResourceRevision {
+    cut.revisions.push(model::ResourceRevision {
         name: format!("storage.projection.{name}"),
         revision: super::definitions::revision(revision),
     });

@@ -14,7 +14,7 @@ mod native;
 
 /* === Re-Exports === */
 
-pub use harmos_protocol::v1::DiscoveredOperation;
+pub use harmos_protocol::model::DiscoveredOperation;
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use native::*;
 

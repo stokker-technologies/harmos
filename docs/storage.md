@@ -402,7 +402,7 @@ let result = context.call_native::<GetFileBytes>(GetFileBytesRequest {
 
 Requests and results are native Rust values; schema graphs, mutations, positions,
 file sessions, queries, conditional outcomes and Arrow pages retain their native
-owners. Shared `harmos.v1.File`, `Upload`, `FileReference`, positions, cuts and
+owners. Shared `harmos.model.v1.File`, `Upload`, `FileReference`, positions, cuts and
 receipts are vocabulary a product can reuse at its serialization boundary.
 `Plugins.Create` and `Plugins.Replace` still accept an immutable bundle reference.
 
