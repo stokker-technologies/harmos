@@ -7,6 +7,7 @@ using System;
 using Google.Protobuf;
 using Grpc.Core;
 using Harmos.Clients;
+using Harmos.Plugins;
 using Harmos;
 using Xunit;
 using FixtureClient = Fixture.Client;
@@ -16,6 +17,33 @@ namespace Harmos.Tests.Unit;
 
 public sealed class ResourceRoots
 {
+  [Fact]
+  public void CallerSurfacesExposeSharedOperationsAndKeepAdministrationOnClients()
+  {
+    Assert.NotNull(typeof(InvocationsResource).GetMethod("Create"));
+    Assert.Null(typeof(HostInvocationsResource).GetMethod("Create"));
+    Assert.NotNull(typeof(PluginsSettingsResource).GetMethod("Set"));
+    Assert.Null(typeof(HostPluginsSettingsResource).GetMethod("Set"));
+    var clientSettings = typeof(PluginsSettingsResource).GetMethod("List")!;
+    var pluginSettings = typeof(HostPluginsSettingsResource).GetMethod("List")!;
+    Assert.Equal(clientSettings.ReturnType, pluginSettings.ReturnType);
+    Assert.Equal(typeof(Task<SettingsListResponse>), pluginSettings.ReturnType);
+    Assert.Null(typeof(HostRoot).GetProperty("Access"));
+    Assert.Null(typeof(HostRoot).GetProperty("Status"));
+    Assert.NotNull(typeof(HostTimeResource).GetMethod("Get"));
+    Assert.NotNull(typeof(TimeResource).GetMethod("Get"));
+  }
+
+  [Fact]
+  public async Task DynamicInvocationRoutesCreateWithTheDiscoveredContractAndPayload()
+  {
+    var client = new Client(new Invoker());
+    var payload = ByteString.CopyFromUtf8("input");
+    var contract = (await client.Operations.Get("fixture.echo")).Contract;
+    var response = await client.Invocations.Create(contract.Id, contract.Fingerprint, payload);
+    Assert.Equal(payload, response);
+  }
+
   [Fact]
   public async Task LibraryAndProductServicesShareParentsAndRetainWatchCardinality()
   {
@@ -62,6 +90,24 @@ public sealed class ResourceRoots
     private static TResponse Reply<TRequest, TResponse>(Method<TRequest, TResponse> method, TRequest request, string suffix = "")
       where TRequest : class where TResponse : class
     {
+      if (request is OperationsGetRequest discovery)
+      {
+        Assert.Equal("/harmos.host.v1.Operations/Get", method.FullName);
+        return (TResponse)(object)new OperationsGetResponse
+        {
+          Operation = new DiscoveredOperation
+          {
+            Contract = new DiscoveredContract { Id = discovery.Id, Fingerprint = ByteString.CopyFromUtf8("contract") }
+          }
+        };
+      }
+      if (request is InvocationsCreateRequest invocation)
+      {
+        Assert.Equal("/harmos.host.v1.Invocations/Create", method.FullName);
+        Assert.Equal("fixture.echo", invocation.Operation);
+        Assert.Equal(ByteString.CopyFromUtf8("contract"), invocation.Fingerprint);
+        return (TResponse)(object)new InvocationsCreateResponse { Payload = invocation.Payload };
+      }
       if (request is SettingsSetRequest settings)
       {
         return (TResponse)(object)new SettingsSetResponse { Revision = ByteString.CopyFromUtf8(settings.RequestId) };

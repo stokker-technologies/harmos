@@ -32,8 +32,8 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
 
   public SdkPlugin Build() => new SdkPlugin("conformance", "1.0.0")
-      .Message<Harmos.Conformance.PayloadOnly>()
-      .Message<Harmos.Conformance.PayloadOnly>()
+      .Message<PayloadOnly>()
+      .Message<PayloadOnly>()
       .Operation(local, Local)
       .Operation(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall)
       .Operation(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo)

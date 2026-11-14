@@ -72,12 +72,12 @@ class PackagedCSharpConformance(unittest.TestCase):
             consumer.mkdir()
             project = consumer / "Consumer.csproj"
             project.write_text(
-                f'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="{version}" /><PackageReference Include="Grpc.Tools" Version="{grpc_tools}" PrivateAssets="All" /><Protobuf Include="proto/harmos/conformance/v1/fixture.proto" ProtoRoot="proto" GrpcServices="None" /></ItemGroup></Project>',
+                f'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="{version}" /><PackageReference Include="Grpc.Tools" Version="{grpc_tools}" PrivateAssets="All" /><Protobuf Include="proto/conformance/model/v1/fixture.proto" ProtoRoot="proto" GrpcServices="None" /></ItemGroup></Project>',
                 encoding="utf-8",
             )
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/Fixture.cs", consumer / "Fixture.cs")
             shutil.copytree(root / "sdk/tests/fixtures/conformance/proto", consumer / "proto")
-            (consumer / "Program.cs").write_text("await new Harmos.Conformance.Fixture().Build().ServeAsync();\n", encoding="utf-8")
+            (consumer / "Program.cs").write_text("using Harmos.Conformance;\nawait new Fixture().Build().ServeAsync();\n", encoding="utf-8")
             config = consumer / "NuGet.Config"
             config.write_text(
                 f'<configuration><packageSources><clear /><add key="fixture" value="{feed.as_posix()}" /><add key="nuget" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>',

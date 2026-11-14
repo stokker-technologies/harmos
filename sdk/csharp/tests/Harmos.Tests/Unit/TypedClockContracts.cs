@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using System;
 using Google.Protobuf.Reflection;
@@ -85,9 +87,9 @@ public sealed class TypedClockContracts
         MessageType = { new DescriptorProto { Name = "TimeSleepResponse" } }
       } }
     };
-    var bytes = System.Text.Encoding.UTF8.GetBytes("harmos.host.v1.Time/Sleep\0")
+    var bytes = Encoding.UTF8.GetBytes("harmos.host.v1.Time/Sleep\0")
       .Concat(request.ToByteArray()).Concat(response.ToByteArray()).ToArray();
-    var fingerprint = ByteString.CopyFrom(System.Security.Cryptography.SHA256.HashData(bytes));
+    var fingerprint = ByteString.CopyFrom(SHA256.HashData(bytes));
     Assert.Equal(fingerprint, declarations.Requires[0].Fingerprint);
   }
 }

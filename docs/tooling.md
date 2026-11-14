@@ -410,98 +410,11 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 
 ### C# Plugin SDK
 
-The C# SDK pins .NET 10 in both `sdk/csharp/mise.toml` and `global.json`.
-Install it with `mise -C sdk/csharp install --locked`. `Harmos.slnx` is the entry
-point for the library in `src/Harmos`, xUnit stories in `tests/Harmos.Tests`, the
-fixture executable in `tests/Harmos.Conformance`, and runnable `examples/Client`
-and `examples/Plugin` projects. All test namespaces start with
-`Harmos.Tests`; public SDK namespaces and NuGet package id `Harmos` are unchanged.
-
-```sh
-mise -C sdk/csharp run build
-mise run build -- --package harmos-conformance
-mise -C sdk/csharp run test
-mise -C sdk/csharp run check
-mise -C sdk/csharp run package
-```
-
-Root `build`, `test`, `check` and `package` selections with `--language csharp`
-delegate to those tasks; `--profile release` selects Release. Test and package
-consume the built solution without recompiling. The conformance story runs the shared host
-rules with managed and remote lifecycles. `--layer unit|integration` narrows the
-C# test selection. `mise run build:rust:csharp-fixture` builds and stages only the
-C# portion of the Rust Tests producer for focused diagnostics.
-
-Import Client, connection options, errors and shared messages from `Harmos`;
-client response/options types from `Harmos.Clients`; authoring and plugin-host types
-from `Harmos.Plugins`. Requests and native stubs are internal. Typed calls take content,
-for example `await client.Plugins.Get("example")` and `await client.Operations.List()`.
-Optional fields and CallOptions are optional parameters. Calls own transport state;
-streams yield projected payloads and cancel on disposal. See
-[SDK Call Contracts](architecture.md#sdk-call-contracts) for response projection.
-`examples/Client` connects and lists typed operation contracts;
-`examples/Plugin` serves one typed public echo operation.
-
-Declare library-stored settings and their typed defaults with
-`plugin.Setting("interval", new SettingValue { Duration = new Duration { Seconds = 2 } })`.
-Declare `.Requires(HostOperation.SettingsList)` before calling `context.Host.Settings.List()`;
-the result contains only the calling plugin entry's complete settings and revision.
-`Transfer.MessageBytes` retains shared carrier sizing for product wrappers.
-Products declare their own wire operations over native storage and any pushed publication.
-
-An observer's `context` can call declared host operations, clock, settings and
-Watch during its unanswered tick. Child IDs remain unique across ticks on one
-Samples call; separate calls have independent scopes. Answering a tick cancels
-its outstanding children, and ending demand cancels the active observer context.
-Device streams cannot issue child calls. Direct carrier stories exercise correlation,
-structured failures, Watch demand, cleanup and outside-tick refusal without a Rust host.
-
-`Directory.Build.props` owns framework, nullable checking, warnings as errors,
-latest .NET analysis, build code style, package metadata and the version read from
-`Cargo.toml`'s workspace package. `Directory.Packages.props` owns each package
-version once; every normal restore is locked against the committed project lock
-files. For an intentional dependency update, run
-`mise -C sdk/csharp exec -- dotnet restore Harmos.slnx --force-evaluate -p:RestoreLockedMode=false`
-and commit the regenerated locks. The SDK pin and mise pin must change together.
-
-Generated client roots are committed as `src/Harmos/Generated/Client.g.cs` and
-`tests/Harmos.Tests/Generated/Client.g.cs`. Update them only with
-`mise run generate -- --sdk csharp`. Check compares generator output in memory
-with both committed files and fails with that command on drift; format and check
-do not rewrite generated roots. Protobuf message/service C# is generated during
-build into ignored intermediates. `UseArtifactsOutput` places all binaries,
-intermediates, test results and packages under `sdk/csharp/artifacts/`.
-`Directory.Build.targets` records each executable's SDK-relative path in
-`artifacts/paths/<Configuration>/<Project>.txt`; C# stories, Python tooling and
-Rust consumers read that manifest instead of constructing framework output paths.
-The independent package consumer queries its own MSBuild `TargetPath`.
-
-Package output is `artifacts/packages/Harmos.<version>.nupkg` plus its symbol
-package. The version is now `0.1.14`, replacing `0.1.0`. Metadata includes the
-Apache-2.0 expression, repository URL, README, authors, description and tags.
-The pinned SDK supplies SourceLink; builds are deterministic and CI enables
-`ContinuousIntegrationBuild`. No task publishes to a registry.
-
-A source-archive consumer switches by removing its Harmos source `Compile` items,
-Harmos library `Protobuf` inputs and direct dependencies used only to compile the
-SDK. Add the package output folder as a local source alongside NuGet.org in its
-`NuGet.Config`, then reference the package:
-
-```xml
-<PackageReference Include="Harmos" Version="0.1.14" />
-```
-
-Target .NET 10, retain the application's own protobuf generation and its build
-dependencies, and refresh the consumer's lock file once before locked restore.
-Keep existing `Harmos.*` using directives. An isolated tooling story compiles the
-test-owned conformance fixture using only this local-feed package and runs the shared
-rules; no conformance messages or implementation ship in `Harmos`.
-
-Validation adds `Check / C#` and `Test / C#` on Linux and Windows. Check builds
-and formats the solution; Test downloads the compiled solution and Rust reference
-host from the existing Tests producer and runs without rebuilding.
-These lanes install only Python, uv and .NET. Dev pushes retain checks/builds only;
-PR and Nightly validation run the C# tests.
+The [C# SDK Guide](csharp-sdk.md) covers public imports, client calls, plugin
+settings, callers, composition and the .NET 10 build/test/check/package tasks.
+Use `sdk/csharp/Harmos.slnx` for the SDK, examples and conformance fixture.
+Root task selections with `--language csharp` delegate to the SDK's mise verbs.
+`mise -C sdk/csharp run build:rust-fixture` stages the C# fixture for Rust consumers.
 
 ### Rust Integration Tests
 
