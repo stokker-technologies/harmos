@@ -25,6 +25,7 @@ use super::columnar;
 use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend, StorageCursor};
 use harmos_query::columnar::{ArrowScan, Cancellation, ColumnSource};
 use harmos_query::time_buckets;
+use harmos_query::time_buckets::TimeBucketPlan;
 
 /* === Constants === */
 
@@ -517,7 +518,7 @@ pub(crate) fn check_retired(retired: Option<u64>, requested: u64) -> Result<()> 
 
     Ok(())
 }
-fn bucket_columns(plan: &time_buckets::TimeBucketPlan) -> Vec<String> {
+fn bucket_columns(plan: &TimeBucketPlan) -> Vec<String> {
     let mut columns = plan.group.clone();
     columns.extend([plan.time.clone(), plan.value.clone(), plan.identity.clone(), "_storage.position".into()]);
     columns.sort();

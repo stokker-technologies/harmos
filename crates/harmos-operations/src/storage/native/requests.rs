@@ -42,6 +42,7 @@ use prost::Message;
 // Third Party Imports
 
 // Local Imports
+use harmos_domain::model::storage::query::TimeMerge;
 
 /* === Constants === */
 
@@ -340,7 +341,7 @@ pub struct SetObjectResponse {
 
 #[derive(Clone, Debug)]
 pub struct ListRowsRequest {
-    pub merge: Option<harmos_domain::model::storage::query::TimeMerge>,
+    pub merge: Option<TimeMerge>,
     pub source: Option<Source>,
     pub at: Option<ReadCut>,
     pub transforms: Vec<Transform>,

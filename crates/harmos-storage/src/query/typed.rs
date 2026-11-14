@@ -24,8 +24,10 @@ use tokio::sync::OwnedSemaphorePermit;
 
 // Local Imports
 use super::ObjectSelection;
+use super::Source;
 use super::reader::query_slot;
 use crate::backend::ScanPage;
+use crate::execution::Context;
 use crate::manager::Inner;
 use crate::selection::Entry;
 use crate::snapshot::Snapshot;
@@ -33,6 +35,7 @@ use crate::{Error, MemorySize, Message, ReadBatch, Result};
 use crate::{StorageCursor, StorageManager, StoredObject};
 use harmos_domain::model::storage::catalog::object_schema;
 use harmos_domain::model::storage::object_key;
+use harmos_query::BackendFailure;
 use harmos_query::batches::QueryFuture;
 use harmos_query::typed::{ObjectRead, ObjectReader, PageSource, RecordRead, RecordReader, StreamRead, StreamReader};
 
@@ -47,7 +50,7 @@ use harmos_query::typed::{ObjectRead, ObjectReader, PageSource, RecordRead, Reco
 // Scan State Shared By Both Readers. The Active Slot And Snapshot Release Once
 // The Source Is Exhausted; Dropping An In-Progress `next` Poisons The Reader.
 struct Pages<E: Entry> {
-    context: crate::execution::Context,
+    context: Context,
     inner: Arc<Inner>,
     selection: E::Selection,
     snapshot: Option<Snapshot>,
@@ -83,7 +86,7 @@ impl StorageManager {
 impl StorageManager {
     #[tracing::instrument(name = "storage.manager.list_records", level = "trace", skip_all)]
     pub async fn list_records<T: Message + MemorySize>(&self, read: RecordRead) -> Result<RecordReader<T>> {
-        super::Source::Records(read.selection.clone()).validate()?;
+        Source::Records(read.selection.clone()).validate()?;
 
         let mut pages = Pages::open(self, read.at, read.selection).await?;
         pages.after = read.after;
@@ -93,7 +96,7 @@ impl StorageManager {
 
 impl StorageManager {
     pub async fn list_samples(&self, read: StreamRead) -> Result<StreamReader> {
-        super::Source::Stream(read.selection.clone()).validate()?;
+        Source::Stream(read.selection.clone()).validate()?;
 
         let after = read.selection.after;
         let mut pages = Pages::open(self, read.at, read.selection).await?;
@@ -112,7 +115,7 @@ where
         let active = query_slot(inner).await?;
         let snapshot = manager.snapshot(&at).await?;
         Ok(Self {
-            context: crate::execution::Context::current(),
+            context: Context::current(),
             inner: Arc::clone(inner),
             selection,
             snapshot: Some(snapshot),
@@ -197,9 +200,7 @@ impl<E: Entry> Pages<E> {
 impl<E: Entry + MemorySize> PageSource<E> for Pages<E> {
     fn next(&mut self) -> QueryFuture<'_, Option<ReadBatch<Vec<E>>>> {
         Box::pin(async move {
-            Pages::next(self, Ok)
-                .await
-                .map_err(|error| harmos_query::Error::backend("read typed source", harmos_query::BackendFailure::Permanent, error))
+            Pages::next(self, Ok).await.map_err(|error| harmos_query::Error::backend("read typed source", BackendFailure::Permanent, error))
         })
     }
 }
