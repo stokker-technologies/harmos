@@ -25,6 +25,7 @@ use harmos::plugin::HostOperation;
 // Third Party Imports
 
 // Local Imports
+use graph::Nested;
 use harmos::plugin::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
@@ -32,7 +33,6 @@ use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_val
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
 use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
-use wire::graph::Nested;
 
 /* === Constants === */
 
