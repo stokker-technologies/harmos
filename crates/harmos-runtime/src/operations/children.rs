@@ -188,6 +188,10 @@ pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: ones
 
 pub(crate) fn refused(error: Error) -> Refusal {
     if let Some(failure) = error.operation_failure() {
+        let failure = match &error {
+            Error::OperationFailed { operation, .. } => failure.in_operation(operation.as_str()),
+            _ => failure,
+        };
         return Refusal::failed(failure.refusal_code().unwrap_or(harmos_operations::FAILED), failure);
     }
     match error {
@@ -246,3 +250,22 @@ fn unknown(instance: u64) -> Refusal {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_refusal_preserves_classification_code_and_operation_frame() {
+        let failure = harmos_operations::Failure::new(crate::operations::FailureKind::Transient, "provider unavailable");
+        let source = Refusal::failed(73, failure);
+        let error = Error::OperationFailed {
+            operation: "provider.read".into(),
+            source: Arc::new(source),
+        };
+        let refusal = refused(error);
+        assert_eq!(refusal.code(), 73);
+        assert_eq!(refusal.failure().code(), crate::operations::FailureKind::Transient);
+        assert_eq!(refusal.failure().context().operation(), Some("provider.read"));
+    }
+}
