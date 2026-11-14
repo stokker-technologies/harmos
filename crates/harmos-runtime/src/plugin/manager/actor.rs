@@ -15,7 +15,6 @@
 
 /* === Imports === */
 
-#[cfg(feature = "plugin-guest")]
 use harmos_protocol::client::PluginDescription;
 
 use harmos_protocol::client::{
