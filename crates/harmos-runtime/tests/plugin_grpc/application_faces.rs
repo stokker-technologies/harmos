@@ -78,7 +78,7 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         .grpc()
         .attach(harmos_runtime::grpc::Settings {
             operations: Default::default(),
-            reflection: false,
+            reflection: true,
             address: "127.0.0.1:0".parse().unwrap(),
             tls: None,
             connections: std::num::NonZeroUsize::new(4).unwrap(),
@@ -89,8 +89,38 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         .await
         .unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
+    // Reflect Shared Descriptor Files Once and Keep the Effective Client Surface.
+    use tonic_reflection::pb::v1::{
+        ServerReflectionRequest, server_reflection_client::ServerReflectionClient, server_reflection_request::MessageRequest,
+        server_reflection_response::MessageResponse,
+    };
+    let mut reflection = ServerReflectionClient::new(channel.clone());
+    let reflected = reflection
+        .server_reflection_info(stream::iter([ServerReflectionRequest {
+            message_request: Some(MessageRequest::FileContainingSymbol("harmos.host.v1.Time".into())),
+            ..Default::default()
+        }]))
+        .await
+        .unwrap()
+        .into_inner()
+        .message()
+        .await
+        .unwrap()
+        .unwrap();
+    let Some(MessageResponse::FileDescriptorResponse(files)) = reflected.message_response else { panic!("Expected Time Descriptors") };
+    let descriptors = prost_types::FileDescriptorSet {
+        file: files.file_descriptor_proto.iter().map(|file| prost_types::FileDescriptorProto::decode(file.as_slice()).unwrap()).collect(),
+    };
+    let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(descriptors).unwrap();
+    let time = pool.get_service_by_name("harmos.host.v1.Time").unwrap();
+    assert!(!time.methods().any(|method| method.name() == "Get"));
+    assert!(time.methods().any(|method| method.name() == "Sleep"));
     let mut time = TimeClient::new(channel.clone());
     let refused = time.get(TimeGetRequest {}).await.unwrap_err();
+    assert_eq!(refused.code(), tonic::Code::PermissionDenied);
+    let failure = harmos_protocol::model::Failure::decode(refused.details()).unwrap();
+    assert_eq!(failure.classification(), Classification::Refused);
+    assert_eq!(failure.code, harmos_operations::WRONG_CALLER.to_string());
     assert!(refused.to_string().contains("harmos.host.v1.Time/Get"));
     let mut discovery = OperationsClient::new(channel.clone());
     let listed = discovery.list(OperationsListRequest {}).await.unwrap().into_inner();
@@ -184,6 +214,8 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
     let second = observed.recv().await.unwrap();
     let Some(child_response::Result::Failure(failure)) = second.result else { panic!("Expected Caller Refusal") };
     assert_eq!(failure.classification(), Classification::Refused);
+    assert_eq!(failure.code, harmos_operations::WRONG_CALLER.to_string());
+    assert_eq!(failure.action, "Call");
     assert!(failure.message.contains("harmos.host.v1.Invocations/Create"));
     let third = observed.recv().await.unwrap();
     let Some(child_response::Result::Payload(payload)) = third.result else { panic!("Expected Discovery") };

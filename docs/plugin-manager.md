@@ -1,8 +1,8 @@
 # Plugin Management
 
 `harmos_runtime::plugin::manager` owns a persistent set of hosted plugins.
-Its `harmos.host.v1.Plugins` service is separate from
-`harmos.plugin.v1.Instance`, which each plugin executable implements.
+Its client plugin-management resource is separate from the instance service that
+each plugin executable implements.
 
 ## Host Composition
 
@@ -131,7 +131,7 @@ The library neither stores nor interprets those sections.
 
 ## Typed Settings
 
-A plugin reports `harmos.v1.SettingsDeclarations` in `Declarations.sections`. Each
+A plugin reports `SettingsDeclarations` in `Declarations.sections`. Each
 setting has a name, title, description and typed default. `SettingValue` carries
 one flag, integer, finite number, text or duration. List materializes defaults;
 Set replaces the complete map, rejects unknown or missing names and checks each
@@ -139,7 +139,7 @@ value's variant against its declared default. Settings have a revision separate
 from the plugin entry revision. Resending the same request identity and normalized
 value replays its original receipt, including after restart; changed input refuses.
 
-`harmos.host.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
+`/harmos.host.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
 The SDK handler remains named `context`. Running plugins explicitly read settings;
 there is no change notification. Host stream intervals configured by setting name
 use the value selected for that activation; restart to apply a changed interval.

@@ -32,6 +32,7 @@ from harmos import (
     ReadCut,
     SettingDeclaration,
     SettingsDeclarations,
+    SettingsListResponse,
     SettingValue,
     SettingValues,
 )
@@ -41,7 +42,7 @@ from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamp
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, publisher
 
 # Type Checking Imports
 

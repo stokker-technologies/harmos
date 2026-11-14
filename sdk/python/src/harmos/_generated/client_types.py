@@ -7,13 +7,7 @@ from harmos._wire.host.v1.access.pairings_pb2 import Pairing as Pairing
 from harmos._wire.host.v1.access.pairings_pb2 import PairingsCreateResponse as PairingsCreateResponse
 from harmos._wire.host.v1.access.pairings_pb2 import PairingsDeleteResponse as PairingsDeleteResponse
 from harmos._wire.host.v1.access.pairings_pb2 import PairingsListResponse as PairingsListResponse
-from harmos._wire.host.v1.invocations_pb2 import InvocationsCancelResponse as InvocationsCancelResponse
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateResponse as InvocationsCreateResponse
-from harmos._wire.host.v1.invocations_pb2 import InvocationsGetResponse as InvocationsGetResponse
-from harmos._wire.host.v1.invocations_pb2 import InvocationsWatchResponse as InvocationsWatchResponse
-from harmos._wire.host.v1.operations_pb2 import OperationsGetResponse as OperationsGetResponse
-from harmos._wire.host.v1.operations_pb2 import OperationsListResponse as OperationsListResponse
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse as SettingsListResponse
 from harmos._wire.host.v1.plugins.settings_pb2 import SettingsSetResponse as SettingsSetResponse
 from harmos._wire.host.v1.plugins_pb2 import PLUGIN_STATE_CONNECTING as PLUGIN_STATE_CONNECTING
 from harmos._wire.host.v1.plugins_pb2 import PLUGIN_STATE_READY as PLUGIN_STATE_READY
@@ -96,8 +90,55 @@ from harmos._wire.host.v1.status_pb2 import StatusGetResponse as StatusGetRespon
 from harmos._wire.host.v1.status_pb2 import StatusWatchResponse as StatusWatchResponse
 from harmos._wire.host.v1.streams_pb2 import StreamIdentity as StreamIdentity
 from harmos._wire.host.v1.streams_pb2 import StreamsListResponse as StreamsListResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse as TimeGetResponse
-from harmos._wire.host.v1.time_pb2 import TimeSleepResponse as TimeSleepResponse
+
+CertificatesCreateResponse.__module__ = "harmos.client"
+ListenerGetResponse.__module__ = "harmos.client"
+ListenerSetResponse.__module__ = "harmos.client"
+ListenerValue.__module__ = "harmos.client"
+Pairing.__module__ = "harmos.client"
+PairingsCreateResponse.__module__ = "harmos.client"
+PairingsDeleteResponse.__module__ = "harmos.client"
+PairingsListResponse.__module__ = "harmos.client"
+InvocationsCreateResponse.__module__ = "harmos.client"
+SettingsSetResponse.__module__ = "harmos.client"
+PluginChange.__module__ = "harmos.client"
+PluginDescription.__module__ = "harmos.client"
+PluginEntry.__module__ = "harmos.client"
+PluginGuest.__module__ = "harmos.client"
+PluginManaged.__module__ = "harmos.client"
+PluginPlacement.__module__ = "harmos.client"
+PluginProcess.__module__ = "harmos.client"
+PluginRemote.__module__ = "harmos.client"
+PluginSnapshot.__module__ = "harmos.client"
+PluginValue.__module__ = "harmos.client"
+PluginsCreateResponse.__module__ = "harmos.client"
+PluginsDeleteResponse.__module__ = "harmos.client"
+PluginsGetResponse.__module__ = "harmos.client"
+PluginsListResponse.__module__ = "harmos.client"
+PluginsReplaceResponse.__module__ = "harmos.client"
+PluginsRestartResponse.__module__ = "harmos.client"
+PluginsSetResponse.__module__ = "harmos.client"
+PluginsWatchResponse.__module__ = "harmos.client"
+SchemaDefinition.__module__ = "harmos.client"
+SchemaField.__module__ = "harmos.client"
+SchemaGraph.__module__ = "harmos.client"
+SchemaKey.__module__ = "harmos.client"
+SchemaRepresentation.__module__ = "harmos.client"
+SchemaDescription.__module__ = "harmos.client"
+SchemasListResponse.__module__ = "harmos.client"
+DiagnosticsGetResponse.__module__ = "harmos.client"
+Event.__module__ = "harmos.client"
+LogsListResponse.__module__ = "harmos.client"
+LogsWatchResponse.__module__ = "harmos.client"
+TraceEventsListResponse.__module__ = "harmos.client"
+TraceEventsWatchResponse.__module__ = "harmos.client"
+HealthComponent.__module__ = "harmos.client"
+HostIdentity.__module__ = "harmos.client"
+HostStatus.__module__ = "harmos.client"
+StatusGetResponse.__module__ = "harmos.client"
+StatusWatchResponse.__module__ = "harmos.client"
+StreamIdentity.__module__ = "harmos.client"
+StreamsListResponse.__module__ = "harmos.client"
 
 __all__ = [
     "ADJACENT",
@@ -120,10 +161,7 @@ __all__ = [
     "INT32",
     "INT64",
     "INTERNAL",
-    "InvocationsCancelResponse",
     "InvocationsCreateResponse",
-    "InvocationsGetResponse",
-    "InvocationsWatchResponse",
     "ListenerGetResponse",
     "ListenerSetResponse",
     "ListenerValue",
@@ -134,8 +172,6 @@ __all__ = [
     "OMIT_EMPTY",
     "OMIT_NONE",
     "OPTIONAL",
-    "OperationsGetResponse",
-    "OperationsListResponse",
     "PAYLOAD_ENCODING_UNSPECIFIED",
     "PLUGIN_STATE_CONNECTING",
     "PLUGIN_STATE_READY",
@@ -182,15 +218,12 @@ __all__ = [
     "SchemaOmission",
     "SchemaRepresentation",
     "SchemasListResponse",
-    "SettingsListResponse",
     "SettingsSetResponse",
     "StatusGetResponse",
     "StatusWatchResponse",
     "StreamIdentity",
     "StreamsListResponse",
     "TUPLE",
-    "TimeGetResponse",
-    "TimeSleepResponse",
     "TraceEventsListResponse",
     "TraceEventsWatchResponse",
     "UINT32",

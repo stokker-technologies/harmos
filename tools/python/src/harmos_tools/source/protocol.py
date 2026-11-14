@@ -12,6 +12,8 @@
 # === Imports === #
 
 # Standard Library Imports
+import ast
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -104,11 +106,74 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
 
 
 def main() -> None:
+    check_public_surfaces(Path(__file__).resolve().parents[5])
     with tempfile.TemporaryDirectory() as scratch:
         output = Path(scratch) / "descriptors.bin"
         subprocess.run(["buf", "build", "--as-file-descriptor-set", "-o", str(output)], check=True, creationflags=spawn_flags())
         methods = caller_options(FileDescriptorSet.FromString(output.read_bytes()))
         print(f"Protocol Callers: {len(methods)} Annotated Operations")
+
+
+def check_public_surfaces(root: Path) -> None:
+    """Keep Protocol Implementation Names Out of Consumer Entry Points.
+
+    Allow internal generated directories (detail, _generated, _wire), canonical
+    gRPC method paths, and protocol documentation that maps packages
+    (proto/**/*.md and docs/architecture.md). Markdown link destinations refer
+    to source files and are not SDK imports.
+    """
+    wire = re.compile(r"\b_wire\b|\w+_wire\b|\bHarmos\.Internal\b|\b(?:[A-Za-z_]\w*(?:\.|::))+v\d+\b|[/\\]v\d+[/\\]")
+    grpc_path = re.compile(r"/?[a-zA-Z_]\w*(?:\.\w+)*\.v\d+(?:\.\w+)*/[A-Za-z_]\w*")
+    candidates = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
+    candidates += sorted((root / "sdk/cpp/include").rglob("*.hpp"))
+    candidates += sorted((root / "sdk/cpp/examples").glob("*/generated/*.hpp"))
+    candidates += [
+        path
+        for path in (root / "sdk/python/src/harmos").rglob("*")
+        if path.suffix in {".py", ".pyi"}
+        and not any(part.startswith("_") for part in path.relative_to(root / "sdk/python/src/harmos").parts[:-1])
+        and (not path.name.startswith("_") or path.name == "__init__.py")
+    ]
+    findings = []
+    for path in candidates:
+        relative = path.relative_to(root)
+        if relative.as_posix() == "docs/architecture.md" or "detail" in relative.parts:
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            line = grpc_path.sub("", line)
+            if path.suffix == ".md":
+                line = re.sub(r"\]\([^)]*\)", "]()", line)
+            if wire.search(line) or (path.suffix != ".md" and re.search(r"\bv\d+\b", line)):
+                findings.append(f"{relative.as_posix()}:{number}: Public Surface Names a Wire Package")
+    exports: dict[str, Path] = {}
+    for name in ("__init__.py", "client.py", "plugin/__init__.py"):
+        path = root / "sdk/python/src/harmos" / name
+        if not path.is_file():
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Assign) or not any(
+                isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
+            ):
+                continue
+            if not isinstance(node.value, (ast.List, ast.Tuple)):
+                raise ValueError(f"Check Public Exports: {path} Must Declare Its Names Explicitly")
+            for item in node.value.elts:
+                if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
+                    raise ValueError(f"Check Public Exports: {path} Must Declare String Names")
+                if item.value in exports:
+                    findings.append(f"{path.relative_to(root)}: Duplicate Public Export {item.value}")
+                exports[item.value] = path
+    for path in sorted((root / "sdk/csharp/src/Harmos").rglob("*.cs")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"^namespace .*\.V\d+\b", line):
+                findings.append(f"{path.relative_to(root)}:{number}: Public Wire Namespace")
+    for path in sorted((root / "sdk/rust/src").rglob("*.rs")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"\bpub\s+mod\s+(?:wire|v\d+)\b", line):
+                findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")
+    if findings:
+        raise ValueError("Check Public Surfaces:\n" + "\n".join(findings))
+    print("Public Surfaces: Headers, Stubs, Exports and Guides Passed")
 
 
 # === Private Functions === #

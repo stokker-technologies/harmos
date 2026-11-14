@@ -40,7 +40,8 @@ use prost_reflect::{DescriptorPool, ReflectMessage};
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
 
 // Local Imports
-use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, TimeGetResponse};
+use harmos::TimeGetResponse;
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Message, OperationRequest, Result, Visibility};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;

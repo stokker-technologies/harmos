@@ -113,7 +113,14 @@ public:
 };
 } // namespace
 
-shared_ptr<detail::Watch> Context::open_watch(plugin::v1::ChildRequest request) {
+shared_ptr<detail::Watch> Context::open_watch(const detail::OperationDefinition &operation, const string &payload,
+                                              std::size_t max_item_bytes) {
+  plugin::v1::ChildRequest request;
+  request.set_operation(operation.contract.id());
+  request.set_fingerprint(operation.contract.fingerprint());
+  request.set_payload(payload);
+  request.set_watch(true);
+  request.set_max_response_bytes(max_item_bytes);
   auto result = std::make_shared<ChildWatch>();
   auto root = state_->transport ? state_->transport : state_;
   result->state = root;
@@ -317,13 +324,9 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
         guard->background = true;
         Context timer(guard);
         auto alarm = [&](const Duration &duration) {
-          plugin::v1::ChildRequest request;
-          request.set_operation(SLEEP.definition.contract.id());
-          request.set_fingerprint(SLEEP.definition.contract.fingerprint());
           host_wire::TimeSleepRequest sleep;
           *sleep.mutable_duration() = duration;
-          request.set_payload(detail::encode(sleep));
-          return timer.send(std::move(request));
+          return timer.send(SLEEP.definition, detail::encode(sleep), {});
         };
         try {
           {
@@ -419,7 +422,14 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
   return result;
 }
 
-shared_future<string> Context::send(plugin::v1::ChildRequest request, std::function<void()> *cancel) {
+shared_future<string> Context::send(const detail::OperationDefinition &operation, const string &payload,
+                                    std::optional<OperationPolicy> policy, std::function<void()> *cancel) {
+  plugin::v1::ChildRequest request;
+  request.set_operation(operation.contract.id());
+  request.set_fingerprint(operation.contract.fingerprint());
+  request.set_payload(payload);
+  if (policy)
+    *request.mutable_policy() = std::move(*policy);
   auto root = transport(state_);
   shared_future<string> result;
   {

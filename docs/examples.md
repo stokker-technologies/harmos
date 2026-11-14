@@ -16,21 +16,21 @@ On Windows, use `windows-x86_64` and the `.exe` suffix for native executables.
 
 Shared models, vertical operations, host app, CLI, guest and sidecar have separate crates under
 `examples/schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed
-analysis and cancellation. Application contracts live in `examples/schematic/proto/schematic/host/v1/schematic.proto`;
+analysis and cancellation. Application contracts live in [schematic.proto](../examples/schematic/proto/schematic/host/v1/schematic.proto);
 `examples/schematic/protocol` owns their generator and generated-code drift test.
 The example's explicit document Save/Open lives in `examples/schematic/app/src/document.rs`;
 its host storage uses the public in-memory adapter.
-Its own `Files` and `Uploads` contracts use shared `harmos.model.v1.File` and `Upload`
+Its own `Files` and `Uploads` contracts use shared `File` and `Upload`
 messages over private native storage operations. Both plugins declare typed routing
 settings and read them through caller-scoped `plugins.Settings.List`.
-Protocol packages follow the executor: `harmos.model.v1` contains shared values,
-`harmos.host.v1` contains host operations and `harmos.plugin.v1` contains plugin
+The SDK root contains shared values; its client and plugin barrels contain the
+types for their respective callers. The protocol separates host and plugin
 operations and carriers. Caller options determine the generated client and context
 resources. The [Schematic client](../examples/schematic/protocol/examples/client.rs)
 uses the application's generated resource root.
 
 The shared client-composition fixture is
-`sdk/tests/fixtures/client/proto/application/host/v1/plugins/annotations.proto`.
+[annotations.proto](../sdk/tests/fixtures/client/proto/application/host/v1/plugins/annotations.proto).
 It adds application-owned `Annotations.Get` under the library `Plugins` parent,
 alongside the sibling application `Jobs` root:
 

@@ -78,24 +78,23 @@ class ClientRoot(IsolatedAsyncioTestCase):
         scratch = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, scratch)
         client_file = scratch / "client.py"
-        host_file = scratch / "host.py"
+        host_file = scratch / "plugin.py"
         descriptor_file = scratch / "descriptors.bin"
         descriptor_file.write_bytes(descriptors.SerializeToString())
+        descriptor_file.with_suffix(".toml").write_text(
+            '[[libraries]]\ndescriptors = "descriptors.bin"\npackages = ["harmos.model.v1", "harmos.host.v1", "harmos.plugin.v1", "application.host.v1"]\n',
+            encoding="utf-8",
+        )
         program = "\n".join(
             [
                 "import sys",
                 "from pathlib import Path",
                 "from google.protobuf.descriptor_pb2 import FileDescriptorSet",
-                "from harmos_tools.build.resource_roots import python, python_host, table",
-                "schema = FileDescriptorSet.FromString(Path(sys.argv[1]).read_bytes())",
-                "methods = table(schema)",
-                "clients = [method for method in methods if method['face'] == 'client']",
-                "hosts = [method for method in methods if method['face'] == 'context']",
-                "python(Path(sys.argv[2]), clients, schema, module_prefixes={'application': 'tests.fixtures.client._wire.application'})",
-                "python_host(Path(sys.argv[3]), hosts, schema)",
+                "from harmos_tools.build.resource_roots import compose",
+                "compose(Path(sys.argv[4]), [], Path(sys.argv[2]), 'tests.fixtures.client', language='python', composition=Path(sys.argv[1]).with_suffix('.toml'))",
             ]
         )
-        subprocess.run(
+        generated = subprocess.run(
             [
                 "uv",
                 "run",
@@ -109,10 +108,13 @@ class ClientRoot(IsolatedAsyncioTestCase):
                 str(descriptor_file),
                 str(client_file),
                 str(host_file),
+                str(root),
             ],
-            check=True,
+            capture_output=True,
+            text=True,
             creationflags=spawn_flags(),
         )
+        self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
         client_spec = spec_from_file_location("narrowed_client", client_file)
         host_spec = spec_from_file_location("narrowed_host", host_file)
         assert client_spec is not None and client_spec.loader is not None

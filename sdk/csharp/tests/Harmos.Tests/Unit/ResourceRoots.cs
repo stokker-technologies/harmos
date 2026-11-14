@@ -32,6 +32,10 @@ public sealed class ResourceRoots
     Assert.Null(typeof(HostRoot).GetProperty("Status"));
     Assert.NotNull(typeof(HostTimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(TimeResource).GetMethod("Get"));
+    Assert.NotNull(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Get"));
+    Assert.Null(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Sleep"));
+    Assert.Null(typeof(Fixture.TimeResource).GetMethod("Get"));
+    Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Sleep"));
   }
 
   [Fact]

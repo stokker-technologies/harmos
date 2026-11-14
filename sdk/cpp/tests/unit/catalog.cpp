@@ -23,6 +23,7 @@
 #include "harmos/_generated/client.hpp"
 #include "harmos/harmos.hpp"
 #include "harmos/host/v1/time.pb.h"
+#include "plugin.hpp"
 
 namespace authoring = harmos::plugin;
 namespace host_wire = harmos::host::v1;
@@ -48,6 +49,8 @@ using Value = harmos::conformance::Value;
 template <class T>
 concept ReadsTime = requires(T root) { root.time.get(); };
 template <class T>
+concept Sleeps = requires(T root) { root.time.sleep(Duration{}); };
+template <class T>
 concept CreatesInvocation = requires(T root) { root.invocations.create(string{}, string{}, string{}); };
 template <class T>
 concept ListsSettings = requires(T root) { root.plugins.settings.list(); };
@@ -60,6 +63,8 @@ TEST_CASE("Caller Options Select SDK Surfaces and Composition Narrows Them") {
   REQUIRE(ReadsTime<sdk::Client>);
   REQUIRE(ReadsTime<authoring::HostRoot>);
   REQUIRE_FALSE(ReadsTime<fixture::Client>);
+  STATIC_REQUIRE(ReadsTime<fixture::plugin::HostRoot>);
+  STATIC_REQUIRE_FALSE(Sleeps<fixture::plugin::HostRoot>);
   REQUIRE(CreatesInvocation<sdk::Client>);
   REQUIRE_FALSE(CreatesInvocation<authoring::HostRoot>);
   REQUIRE(ListsSettings<sdk::Client>);

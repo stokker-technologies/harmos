@@ -6,3 +6,4 @@ packages = ["harmos.model.v1", "harmos.host.v1", "harmos.plugin.v1"]
 
 [callers]
 "harmos.host.v1.Time/Get" = "PLUGINS"
+"harmos.host.v1.Time/Sleep" = "CLIENTS"

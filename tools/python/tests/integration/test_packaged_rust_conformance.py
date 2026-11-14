@@ -111,6 +111,36 @@ class PackagedRustConformance(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout)
 
+            # Compile the Composed Plugin Surface Before Trying Its Excluded Call.
+            generated = (root / "sdk/rust/tests/fixtures/client/plugin.rs").as_posix()
+            library = consumer / "src/lib.rs"
+            source = f'pub mod composed {{ include!("{generated}"); }}\n'
+            library.write_text(source, encoding="utf-8")
+            result = subprocess.run(
+                ["cargo", "check", "--offline", "--lib", "--manifest-path", str(consumer / "Cargo.toml")],
+                cwd=consumer,
+                env=environment,
+                capture_output=True,
+                text=True,
+                creationflags=spawn_flags(),
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            library.write_text(
+                source + "pub async fn denied(context: composed::PluginContext) { context.host.time.sleep(Default::default()).await; }\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["cargo", "check", "--offline", "--lib", "--manifest-path", str(consumer / "Cargo.toml")],
+                cwd=consumer,
+                env=environment,
+                capture_output=True,
+                text=True,
+                creationflags=spawn_flags(),
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("E0599", result.stderr)
+            self.assertIn("sleep", result.stderr)
+
 
 # === Public Functions === #
 

@@ -187,6 +187,9 @@ pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: ones
 }
 
 pub(crate) fn refused(error: Error) -> Refusal {
+    if let Some(failure) = error.operation_failure() {
+        return Refusal::failed(failure.refusal_code().unwrap_or(harmos_operations::FAILED), failure);
+    }
     match error {
         Error::OperationCaller { source } => source.into_refusal(),
         Error::OperationFailed { ref operation, ref source } => {
@@ -205,7 +208,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
             let failure = failure.in_operation(operation.as_str());
             Refusal::failed(harmos_operations::FAILED, failure)
         }
-        Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
+        Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
         Error::NotRegistered { .. } => Refusal::new(harmos_operations::UNKNOWN, error),
         Error::OperationPayload { .. } => Refusal::new(harmos_operations::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut { .. }) => Refusal::new(-32_607, error),

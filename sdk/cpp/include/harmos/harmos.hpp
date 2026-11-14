@@ -31,7 +31,6 @@
 
 // Local Imports
 #include "harmos/_generated/client.hpp"
-#include "harmos/plugin/v1/invocation.pb.h"
 #include "harmos/transfer.hpp"
 
 /* === Macros === */
@@ -119,8 +118,10 @@ private:
   std::string scope_;
   std::shared_ptr<detail::Invocation> state_;
   std::unordered_map<std::type_index, std::any> resources_;
-  std::shared_future<std::string> send(::harmos::plugin::v1::ChildRequest request, std::function<void()> *cancel = nullptr);
-  std::shared_ptr<detail::Watch> open_watch(::harmos::plugin::v1::ChildRequest request);
+  std::shared_future<std::string> send(const detail::OperationDefinition &operation, const std::string &payload,
+                                       std::optional<OperationPolicy> policy, std::function<void()> *cancel = nullptr);
+  std::shared_ptr<detail::Watch> open_watch(const detail::OperationDefinition &operation, const std::string &payload,
+                                            std::size_t max_item_bytes);
   std::optional<std::shared_future<std::string>> local(const detail::OperationDefinition &operation, const std::string &payload,
                                                        std::optional<OperationPolicy> policy, std::function<void()> *cancel);
 };
@@ -280,13 +281,7 @@ private:
 template <class Q, class R> Watching<R> Context::watch(const Operation<Q, R> &operation, const Q &request, std::size_t max_item_bytes) {
   if (!operation.definition.watch)
     throw std::invalid_argument("Watch " + operation.definition.contract.id() + ": Server-Streaming Contract Required");
-  ::harmos::plugin::v1::ChildRequest child;
-  child.set_operation(operation.definition.contract.id());
-  child.set_fingerprint(operation.definition.contract.fingerprint());
-  child.set_payload(detail::encode(request));
-  child.set_watch(true);
-  child.set_max_response_bytes(max_item_bytes);
-  return Watching<R>(open_watch(std::move(child)));
+  return Watching<R>(open_watch(operation.definition, detail::encode(request), max_item_bytes));
 }
 
 template <class Q, class R>
@@ -297,13 +292,7 @@ Call<R> Context::call(const Operation<Q, R> &operation, const Q &request, std::o
   std::function<void()> cancel;
   if (auto result = local(operation.definition, payload, policy, &cancel))
     return Call<R>(*result, std::move(cancel));
-  ::harmos::plugin::v1::ChildRequest child;
-  child.set_operation(operation.definition.contract.id());
-  child.set_fingerprint(operation.definition.contract.fingerprint());
-  child.set_payload(detail::encode(request));
-  if (policy)
-    *child.mutable_policy() = std::move(*policy);
-  auto result = send(std::move(child), &cancel);
+  auto result = send(operation.definition, payload, std::move(policy), &cancel);
   return Call<R>(std::move(result), std::move(cancel));
 }
 

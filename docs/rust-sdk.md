@@ -50,7 +50,8 @@ plugin surface. Time and invocation lookup, cancellation and watching are shared
 host operations; invocation creation belongs to clients.
 
 Client generation selects operations callable by clients; context generation selects
-operations callable by plugins. A composition file can narrow a library operation's
+operations callable by plugins. Composition generation also emits `plugin.rs` with
+`PluginContext::new(context)` and its product-specific `host` root. A composition file can narrow a library operation's
 callers. Both generated surfaces read that effective declaration, and widening is
 rejected. The host enforces caller restrictions independently of generated methods.
 

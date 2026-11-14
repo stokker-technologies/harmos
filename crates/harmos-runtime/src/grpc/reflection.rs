@@ -90,18 +90,25 @@ impl Reflection {
                     .push((binding.method.as_ref(), &method.contract));
             }
         }
-        let mut files = std::collections::BTreeMap::new();
+        let mut files = prost_types::FileDescriptorSet::default();
+        let mut services = std::collections::BTreeMap::new();
         for ((package, service), methods) in groups {
             let service =
                 super::descriptor(&package, &service, &methods).map_err(|_| Status::internal("operation descriptor snapshot failed"))?;
             for file in service.parent_pool().files() {
-                let file = file.file_descriptor_proto().clone();
-                if let Some(previous) = files.insert(file.name.clone(), file.clone())
-                    && previous != file
-                {
-                    return Err(Status::internal("conflicting operation descriptors"));
+                let mut file = file.file_descriptor_proto().clone();
+                for service in std::mem::take(&mut file.service) {
+                    services.entry(file.name.clone()).or_insert_with(Vec::new).push(service);
                 }
+                // Each Contract Carries Only Its Reachable Types From Shared Files.
+                // Caller Option Extensions Are Reattached Once Below.
+                file.extension.clear();
+                harmos_protocol::schema::merge_message_types(&mut files, prost_types::FileDescriptorSet { file: vec![file] })
+                    .map_err(|error| Status::internal(format!("Reflect Operations: {error}")))?;
             }
+        }
+        for file in &mut files.file {
+            file.service = services.remove(&file.name).unwrap_or_default();
         }
         let callers = methods
             .iter()
@@ -111,9 +118,8 @@ impl Reflection {
                 Some((format!("{}.{}/{}", binding.package, binding.service, binding.method), method.callers))
             })
             .collect();
-        let mut pool =
-            harmos_protocol::schema::with_method_callers(prost_types::FileDescriptorSet { file: files.into_values().collect() }, &callers)
-                .map_err(|_| Status::internal("operation descriptors are invalid"))?;
+        let mut pool = harmos_protocol::schema::with_method_callers(files, &callers)
+            .map_err(|_| Status::internal("operation descriptors are invalid"))?;
         pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET).map_err(|_| Status::internal("reflection descriptors are invalid"))?;
         Ok(pool)
     }

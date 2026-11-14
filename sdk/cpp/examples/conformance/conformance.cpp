@@ -383,7 +383,7 @@ authoring::Plugin fixture_types::plugin() {
 
   const authoring::Operation<InvocationsCreateRequest, InvocationsCreateResponse> create("harmos.host.v1.Invocations/Create",
                                                                                          sdk::VISIBILITY_PUBLIC);
-  const auto refuse = [create](Context &context, Value) {
+  const auto refuse = [create](Context &context, Value input) {
     InvocationsCreateRequest request;
     if (!request.ParseFromArray(fixture_types::caller_request.data(), static_cast<int>(fixture_types::caller_request.size()))) {
       throw runtime_error("Create Invocation: Invalid Generated Probe Request");
@@ -391,6 +391,8 @@ authoring::Plugin fixture_types::plugin() {
     try {
       context.call(create, request).get();
     } catch (const sdk::Failure &failure) {
+      if (input.value() == "propagate")
+        throw;
       return value(authoring::detail::encode(failure.value));
     }
     throw runtime_error("Create Invocation: Client-Only Operation Was Admitted");

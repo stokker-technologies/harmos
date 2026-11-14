@@ -176,10 +176,12 @@ drives all four languages; no per-operation client layer is maintained. Compose
 library and product descriptors with:
 
 ```sh
-mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --output path/to/generated --namespace application
+mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --composition path/to/composition.toml --output path/to/generated/client.rs --namespace application
 ```
 
-This writes all four language roots directly from an in-memory descriptor table.
+The selected language receives both client and plugin context roots from one
+descriptor table after caller narrowing. Other languages use the same command
+with their SDK selector and output filename; C++ also emits the plugin implementation.
 Product protobuf bindings retain their qualified message identity. Rust product
 roots take the existing client's `transport_handle()`. Python generates explicit
 resource classes and composes them with ordinary typed attributes; see the

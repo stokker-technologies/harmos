@@ -29,10 +29,11 @@ from harmos import (
     RetryPolicy,
     SettingDeclaration,
     SettingValue,
+    TimeGetResponse,
 )
 from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, TimeGetResponse, observer, operation, publisher
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, operation, publisher
 
 from . import Graph, PayloadOnly, Value
 from ._caller import REQUEST
@@ -226,6 +227,8 @@ class Fixture:
         try:
             await context.call(CREATE_INVOCATION, create)
         except Failure as failure:
+            if request.value == b"propagate":
+                raise
             return Value(value=failure.value.SerializeToString())
         raise RuntimeError("Create Invocation: Client-Only Host Operation Was Admitted")
 

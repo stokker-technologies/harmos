@@ -1,4 +1,12 @@
 # @generated from protocol descriptors; do not edit.
+from harmos._wire.host.v1.invocations_pb2 import InvocationsCancelResponse as InvocationsCancelResponse
+from harmos._wire.host.v1.invocations_pb2 import InvocationsGetResponse as InvocationsGetResponse
+from harmos._wire.host.v1.invocations_pb2 import InvocationsWatchResponse as InvocationsWatchResponse
+from harmos._wire.host.v1.operations_pb2 import OperationsGetResponse as OperationsGetResponse
+from harmos._wire.host.v1.operations_pb2 import OperationsListResponse as OperationsListResponse
+from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse as SettingsListResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetResponse as TimeGetResponse
+from harmos._wire.host.v1.time_pb2 import TimeSleepResponse as TimeSleepResponse
 from harmos._wire.model.v1.callers_pb2 import ALL as ALL
 from harmos._wire.model.v1.callers_pb2 import CALLERS_UNSPECIFIED as CALLERS_UNSPECIFIED
 from harmos._wire.model.v1.callers_pb2 import CLIENTS as CLIENTS
@@ -55,6 +63,45 @@ from harmos._wire.model.v1.transfer_pb2 import MessageSettings as MessageSetting
 from harmos._wire.model.v1.transfer_pb2 import StorageTransferSettings as StorageTransferSettings
 from harmos._wire.model.v1.transfer_pb2 import TransferFraming as TransferFraming
 
+InvocationsCancelResponse.__module__ = "harmos"
+InvocationsGetResponse.__module__ = "harmos"
+InvocationsWatchResponse.__module__ = "harmos"
+OperationsGetResponse.__module__ = "harmos"
+OperationsListResponse.__module__ = "harmos"
+SettingsListResponse.__module__ = "harmos"
+TimeGetResponse.__module__ = "harmos"
+TimeSleepResponse.__module__ = "harmos"
+Declarations.__module__ = "harmos"
+Section.__module__ = "harmos"
+FailureValue.__module__ = "harmos"
+File.__module__ = "harmos"
+FileMetadata.__module__ = "harmos"
+FileReference.__module__ = "harmos"
+Upload.__module__ = "harmos"
+InstanceState.__module__ = "harmos"
+DiscoveredContract.__module__ = "harmos"
+DiscoveredOperation.__module__ = "harmos"
+Grant.__module__ = "harmos"
+Grpc.__module__ = "harmos"
+OperationContract.__module__ = "harmos"
+Protobuf.__module__ = "harmos"
+Requirement.__module__ = "harmos"
+PageRequest.__module__ = "harmos"
+OperationPolicy.__module__ = "harmos"
+RetryPolicy.__module__ = "harmos"
+History.__module__ = "harmos"
+Position.__module__ = "harmos"
+ReadCut.__module__ = "harmos"
+ResourceRevision.__module__ = "harmos"
+Receipt.__module__ = "harmos"
+SettingDeclaration.__module__ = "harmos"
+SettingValue.__module__ = "harmos"
+SettingValues.__module__ = "harmos"
+SettingsDeclarations.__module__ = "harmos"
+StreamDeclaration.__module__ = "harmos"
+MessageSettings.__module__ = "harmos"
+StorageTransferSettings.__module__ = "harmos"
+
 __all__ = [
     "ALL",
     "CALLERS_UNSPECIFIED",
@@ -78,9 +125,14 @@ __all__ = [
     "Grpc",
     "History",
     "InstanceState",
+    "InvocationsCancelResponse",
+    "InvocationsGetResponse",
+    "InvocationsWatchResponse",
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",
+    "OperationsGetResponse",
+    "OperationsListResponse",
     "PLUGINS",
     "PageRequest",
     "Position",
@@ -95,10 +147,13 @@ __all__ = [
     "SettingValue",
     "SettingValues",
     "SettingsDeclarations",
+    "SettingsListResponse",
     "StorageTransferSettings",
     "StreamDeclaration",
     "TRANSFER_FRAMING_BYTES",
     "TRANSFER_FRAMING_UNSPECIFIED",
+    "TimeGetResponse",
+    "TimeSleepResponse",
     "TransferFraming",
     "UPLOAD_STATE_ABANDONED",
     "UPLOAD_STATE_FINISHED",

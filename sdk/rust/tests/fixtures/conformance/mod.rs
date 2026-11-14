@@ -26,7 +26,7 @@ use harmos::plugin::HostOperation;
 
 // Local Imports
 use graph::Nested;
-use harmos::plugin::TimeGetResponse;
+use harmos::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
@@ -303,11 +303,11 @@ pub fn plugin() -> Plugin {
         })
 }
 
-async fn caller_refusal(ctx: &Context, _: Value) -> Result<Value> {
+async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
     let request = <CreateInvocation as ProtoMessage>::decode(include_bytes!("caller-request.bin").as_slice())
         .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
     match ctx.call(request).await {
-        Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
+        Err(harmos::Error::Failure(failure)) if value.value != b"propagate" => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
         Ok(_) => Err(harmos::Error::Invalid("Create Invocation: Client-Only Operation Was Admitted".into())),
     }

@@ -45,7 +45,7 @@ pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
 pub use harmos_sdk_derive::Request;
 pub use inventory::{StreamDeclaration, publications::StreamSpec};
 pub use operations::{OperationDefinition, OperationSpec, RequestShape};
-pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, reserved};
+pub use refusal::{FAILED, RESERVED, Refusal, UNKNOWN, UNREADABLE, WRONG_CALLER, reserved};
 pub use registration::Requirement;
 pub use registration::{CATALOG_EXPORT_FLAG, Registrar, Registration, RegistrationError};
 

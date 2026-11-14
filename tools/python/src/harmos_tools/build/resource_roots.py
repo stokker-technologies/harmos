@@ -246,13 +246,14 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
             for message in file.message_type
         ]
         lines += ["}"]
-        target = root / "sdk/cpp/examples/conformance/_wire/types.hpp"
+        target = root / "sdk/cpp/examples/conformance/detail/types.hpp"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        (root / "sdk/cpp/examples/conformance/_wire/types.hpp").unlink(missing_ok=True)
         facade = target.parent.parent / "generated/types.hpp"
         facade.parent.mkdir(parents=True, exist_ok=True)
         facade.write_text(
-            '// @generated from protocol descriptors; do not edit.\n#pragma once\n#include "../_wire/types.hpp"\n',
+            '// @generated from protocol descriptors; do not edit.\n#pragma once\n#include "../detail/types.hpp"\n',
             encoding="utf-8",
             newline="\n",
         )
@@ -275,24 +276,19 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         cpp_host(root, [method for method in methods if method["face"] == "context"])
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
-        library = FileDescriptorSet.FromString(descriptors.SerializeToString())
-        composition = tomllib.loads((root / "sdk/tests/fixtures/client/composition.toml").read_text(encoding="utf-8"))
-        narrow_callers(library, composition.get("callers", {}))
-        fixture_methods = [method for method in table(library) if method["face"] == "client"]
-        fixture_methods += [method for method in table(FileDescriptorSet.FromString(fixture.read_bytes())) if method["face"] == "client"]
-        merged = FileDescriptorSet()
-        merged.file.extend(descriptors.file)
-        merged.file.extend(FileDescriptorSet.FromString(fixture.read_bytes()).file)
-        python(
-            root / "sdk/python/tests/fixtures/client/_generated/client.py",
-            fixture_methods,
-            merged,
-            module_prefixes={"application": "tests.fixtures.client._wire.application"},
-        )
-        for folder in ["sdk/csharp/tests/Harmos.Tests/Generated"]:
-            (root / folder).mkdir(parents=True, exist_ok=True)
-        rust(root, fixture_methods, target=fixture.parent / "resources.rs")
-        csharp(root, fixture_methods, namespace="fixture", target=root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs")
+        for language, target, fixture_namespace in [
+            ("python", root / "sdk/python/tests/fixtures/client/_generated/client.py", "tests.fixtures.client"),
+            ("rust", fixture.parent / "resources.rs", "fixture"),
+            ("csharp", root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs", "fixture"),
+        ]:
+            compose(
+                root,
+                [fixture],
+                target,
+                fixture_namespace,
+                language=language,
+                composition=root / "sdk/tests/fixtures/client/composition.toml",
+            )
     paths = [
         root / "sdk/rust/src" / name
         for name in (
@@ -308,7 +304,7 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     ]
     paths = [path for path in paths if path.is_file()]
     if fixture.is_file():
-        paths.extend([fixture.parent / "resources.rs", fixture.parent / "client_types.rs"])
+        paths.extend([fixture.parent / "resources.rs", fixture.parent / "client_types.rs", fixture.parent / "plugin.rs"])
     subprocess.run(
         ["rustfmt", "--edition", "2024", "--config-path", str(root / "sdk/rust/rustfmt.toml"), *map(str, paths)],
         check=True,
@@ -332,19 +328,21 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
         "ChildWatchCancel",
     }
     groups: dict[str, list[tuple[str, str, str]]] = {"shared": [], "client_types": [], "plugin_types": []}
+    messages: set[tuple[str, str]] = set()
     for file in descriptors.file:
         if not file.package.startswith("harmos.") or file.name.endswith("guest.proto"):
             continue
         if ".plugin." in file.package:
             continue
         module = file.name.removesuffix(".proto").replace("/", ".").replace("harmos.", "harmos._wire.", 1) + "_pb2"
+        messages.update((module, definition.name) for definition in file.message_type)
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
             name = "FailureValue" if definition.name == "Failure" else definition.name
             groups_for_type = (
                 {"shared"}
-                if ".model." in file.package
+                if ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
@@ -352,7 +350,7 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
         for definition in file.enum_type:
             groups_for_type = (
                 {"shared"}
-                if ".model." in file.package
+                if ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
@@ -361,6 +359,8 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
     for group, entries in groups.items():
         lines = ["# @generated from protocol descriptors; do not edit."]
         lines += [f"from {module} import {original} as {name}" for module, original, name in sorted(entries)]
+        public_module = "harmos" if group == "shared" else "harmos." + group.removesuffix("_types")
+        lines += [f'{name}.__module__ = "{public_module}"' for module, original, name in sorted(entries) if (module, original) in messages]
         lines += ["", "__all__ = [", *[f"    {name!r}," for name in sorted(name for _, _, name in entries)], "]", ""]
         (target / f"{group}.py").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
@@ -641,12 +641,22 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
     )
 
 
-def python_host(target: Path, methods: list[Method], descriptors: FileDescriptorSet) -> None:
+def python_host(
+    target: Path,
+    methods: list[Method],
+    descriptors: FileDescriptorSet,
+    *,
+    module_prefixes: dict[str, str] | None = None,
+    context_wrapper: bool = False,
+) -> None:
     modules = {}
     for file in descriptors.file:
         module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
         if module.startswith("harmos."):
             module = module.replace("harmos.", "harmos._wire.", 1)
+        for package, prefix in (module_prefixes or {}).items():
+            if module.startswith(package + "."):
+                module = prefix + module.removeprefix(package)
         for definition in file.message_type:
             modules[f"{file.package}.{definition.name}"] = module
     used = {method[key] for method in methods for key in ("request", "response")}
@@ -750,6 +760,8 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
             lines += [f"{indent}{'yield' if method['server_streaming'] else 'return'} {value}"]
             if method["server_streaming"]:
                 lines += ["        finally:", "            await call.aclose()"]
+    if context_wrapper:
+        lines += ["class PluginContext:", '    def __init__(self, context: "Context") -> None:', "        self.host = HostRoot(context)"]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     config = Path(__file__).resolve().parents[5] / "sdk/python/pyproject.toml"
@@ -777,7 +789,9 @@ def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
                 .replace("harmos_protocol::model", "crate::wire::shared")
                 .replace("harmos_protocol::host", "crate::wire::host")
             )
-            groups_for_type = {"shared"} if ".model." in file.package else audiences.get(full, {"client"})
+            groups_for_type = (
+                {"shared"} if ".model." in file.package or len(audiences.get(full, set())) > 1 else audiences.get(full, {"client"})
+            )
             for group in groups_for_type:
                 groups[group].append(f"pub use {source};")
             if isinstance(definition, DescriptorProto) and (
@@ -1003,7 +1017,7 @@ def rust_context(root: Path, methods: list[Method]) -> None:
     (root / "sdk/rust/src/context/contracts.rs").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def rust_host(root: Path, methods: list[Method]) -> None:
+def rust_host(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
@@ -1127,6 +1141,21 @@ def rust_host(root: Path, methods: list[Method]) -> None:
                     lines += [f"        Ok(response{'.' + payload['name'] if payload else ''})"]
             lines += ["    }"]
         lines += ["}"]
+    if target is not None:
+        source = "\n".join(lines)
+        start = source.index("impl Plugin {")
+        end = source.index("#[derive(Clone)]", start)
+        source = source[:start] + source[end:]
+        source = source.replace(
+            "use crate::{Context, Error, Result, Plugin, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};"
+        )
+        source = re.sub(r"\bContext\b", "harmos::plugin::Context", source)
+        source = source.replace("crate::context::Watching", "harmos::plugin::Watching")
+        source += "\n#[derive(Clone)]\npub struct PluginContext { pub host: HostRoot }\nimpl PluginContext {\n"
+        source += "pub fn new(context: harmos::plugin::Context) -> Self { Self { host: HostRoot::new(context) } }\n}\n"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source + "\n", encoding="utf-8", newline="\n")
+        return
     target = root / "sdk/rust/src/plugin/host.rs"
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     exports = ["HostOperation", "HostRoot", *names.values()]
@@ -1336,7 +1365,9 @@ def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         destination.write_text(source, encoding="utf-8", newline="\n")
 
 
-def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> None:
+def csharp_host(
+    root: Path, methods: list[Method], *, check: bool = False, target: Path | None = None, namespace: str = "Harmos.Plugins"
+) -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
@@ -1359,12 +1390,14 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
         "using System.Runtime.CompilerServices;",
         "using Google.Protobuf;",
         "using Google.Protobuf.WellKnownTypes;",
+        *(["using Harmos;", "using Harmos.Plugins;", "using Harmos.Clients;"] if target else []),
         *[
             f"using {method[key].rsplit('.', 1)[-1]} = global::{csharp_message(method[key + '_csharp'])};"
             for method in methods
+            if target is None or method["owner"] != "harmos"
             for key in ("request", "response")
         ],
-        "namespace Harmos.Plugins;",
+        f"namespace {namespace};",
         "public enum HostOperation",
         "{",
     ]
@@ -1372,6 +1405,8 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
     lines += ["}", "internal static class HostContracts", "{"]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
+        if target is not None and method["owner"] == "harmos":
+            continue
         q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
         lines += [
             f'  internal static readonly Operation<{q}, {r}> {name} = new("{method["package"]}.{method["service"]}/{method["method"]}", Visibility.Public, watch: {str(method["server_streaming"]).lower()});'
@@ -1385,7 +1420,8 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
     ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        lines += [f"    HostOperation.{name} => plugin.Requires(HostContracts.{name}),"]
+        contract = f"Harmos.Plugins.HostOperation.{name}" if target is not None and method["owner"] == "harmos" else f"HostContracts.{name}"
+        lines += [f"    HostOperation.{name} => plugin.Requires({contract}),"]
     lines += [
         '    _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")',
         "  };",
@@ -1412,7 +1448,22 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
             result = field_type(payload) if payload else r
             name = "".join(title(part) for part in method["path"])
             result = f"IAsyncEnumerable<{result}>" if stream else f"Task<{result}>"
-            lines += [f"  public async {result} {method['method']}({', '.join(parameters)})", "  {", f"    var request = new {q}", "    {"]
+            lines += [f"  public async {result} {method['method']}({', '.join(parameters)})", "  {"]
+            if target is not None and method["owner"] == "harmos":
+                path = ".".join(title(part) for part in method["path"][:-1])
+                args = [field["name"] for field in method["fields"] if not field["optional"]]
+                if stream:
+                    args += ["maxItemBytes"]
+                args += [field["name"] for field in method["fields"] if field["optional"]]
+                args += ([] if stream else ["policy"]) + ["cancellationToken"]
+                call = f"context.Host.{path}.{method['method']}({', '.join(args)})"
+                if stream:
+                    lines += [f"    await foreach (var response in {call}) {{ yield return response; }}"]
+                else:
+                    lines += [f"    return await {call};"]
+                lines += ["  }"]
+                continue
+            lines += [f"    var request = new {q}", "    {"]
             lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"] if not field["optional"]]
             lines += ["    };"]
             lines += [
@@ -1437,12 +1488,20 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
                 ]
             lines += ["  }"]
         lines += ["}"]
-    destination = root / "sdk/csharp/src/Harmos/Generated/Host.g.cs"
+    if target is not None:
+        lines += [
+            "public sealed class PluginContext(Harmos.Plugins.Context context)",
+            "{",
+            "  public HostRoot Host { get; } = new(context);",
+            "}",
+        ]
+    destination = target or root / "sdk/csharp/src/Harmos/Generated/Host.g.cs"
     source = "\n".join(lines) + "\n"
     if check:
         if not destination.is_file() or destination.read_text(encoding="utf-8") != source:
             raise ValueError("Check C# Host Resources: Generated Drift; Run mise run generate -- --sdk csharp")
     else:
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(source, encoding="utf-8", newline="\n")
 
 
@@ -1461,7 +1520,7 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
         "ChildWatchCancel",
     }
     private = ["// @generated from protocol descriptors; do not edit.", "#pragma once"]
-    public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "detail/messages_wire.hpp"']
+    public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "detail/messages.hpp"']
     entries = []
     hidden = []
     for file in descriptors.file:
@@ -1512,12 +1571,13 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
         public += ["}"]
     destination = root / "sdk/cpp/include/harmos"
     (destination / "detail").mkdir(parents=True, exist_ok=True)
-    (destination / "detail/messages_wire.hpp").write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
+    (destination / "detail/messages.hpp").write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
+    (destination / "detail/messages_wire.hpp").unlink(missing_ok=True)
     (destination / "messages.hpp").write_text("\n".join(public) + "\n", encoding="utf-8", newline="\n")
-    format_cpp([destination / "messages.hpp", destination / "detail/messages_wire.hpp"])
+    format_cpp([destination / "messages.hpp", destination / "detail/messages.hpp"])
 
 
-def cpp_host(root: Path, methods: list[Method]) -> None:
+def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, namespace: str = "harmos") -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
@@ -1686,6 +1746,29 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
             declarations.append(f"using {qualified};")
             imported.add(name)
     source = [*source[:boundary], *sorted(declarations), body]
+    if target is not None:
+        public = "\n".join(header).replace("namespace harmos::plugin {", f"namespace {namespace.replace('.', '::')}::plugin {{")
+        public = re.sub(r"\bContext\b", "::harmos::plugin::Context", public)
+        public = public.replace("  ::harmos::plugin::Context context;", "private:\n  ::harmos::plugin::Context context;\npublic:")
+        public = public.rsplit("}", 1)[0]
+        public += "struct PluginContext {\n  HostRoot host;\n  explicit PluginContext(::harmos::plugin::Context context) : host{"
+        public += ", ".join("{context}" for node in nodes if len(node) == 1) + "} {}\n};\n}\n"
+        public = '#include "harmos/harmos.hpp"\n' + public
+        # SDK Payloads Keep Their One Public Barrel Path.
+        public = public.replace("std::optional<OperationPolicy>", "std::optional<::harmos::OperationPolicy>")
+        implementation = "\n".join(source)
+        implementation = implementation[: implementation.index("HostRoot Context::host()")]
+        implementation += "}\n"
+        implementation = implementation.replace(
+            "namespace harmos::plugin {",
+            f"namespace {namespace.replace('.', '::')}::plugin {{\nusing namespace ::harmos::plugin;\nusing namespace ::harmos;",
+        )
+        implementation = f'#include "{target.name}"\n' + implementation
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(public, encoding="utf-8", newline="\n")
+        target.with_suffix(".cpp").write_text(implementation, encoding="utf-8", newline="\n")
+        format_cpp([target, target.with_suffix(".cpp")])
+        return
     folder = root / "sdk/cpp/include/harmos/_generated"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "host.hpp").write_text("\n".join(header) + "\n", encoding="utf-8", newline="\n")
@@ -1766,11 +1849,13 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
     private += ["}"]
     destination = target or root / "sdk/cpp/include/harmos/_generated/client.hpp"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    wire = destination.parent / "client_wire.hpp"
+    wire = destination.parent / "detail/client.hpp"
+    wire.parent.mkdir(parents=True, exist_ok=True)
     wire.write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
-    lines += ['#include "client_wire.hpp"']
+    (destination.parent / "client_wire.hpp").unlink(missing_ok=True)
+    lines += ['#include "detail/client.hpp"']
     if namespace != "harmos":
-        public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "client_wire.hpp"']
+        public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "detail/client.hpp"']
         for method in methods:
             if method["owner"] == "harmos":
                 continue
@@ -1937,22 +2022,40 @@ def compose(
     merged.file.extend(files[name] for name in sorted(files))
     if settings.get("callers"):
         narrow_callers(merged, settings["callers"])
+    methods = table(merged)
+    clients = [method for method in methods if method["face"] == "client"]
+    contexts = [method for method in methods if method["face"] == "context"]
     if language == "python":
         packages = {file.package.split(".", 1)[0] for file in merged.file if not file.package.startswith(("harmos.", "google."))}
         python(
             output,
-            [method for method in table(merged) if method["face"] == "client"],
+            clients,
             merged,
             module_prefixes={package: f"{namespace}._wire.{package}" for package in packages},
         )
+        plugin = output.with_name("plugin.py")
+        python_host(
+            plugin,
+            contexts,
+            merged,
+            module_prefixes={package: f"{namespace}._wire.{package}" for package in packages},
+            context_wrapper=True,
+        )
     elif language == "csharp":
-        csharp(
-            repository, [method for method in table(merged) if method["face"] == "client"], namespace=namespace, target=output, check=check
+        csharp(repository, clients, namespace=namespace, target=output, check=check)
+        csharp_host(
+            repository,
+            contexts,
+            target=output.with_name("Plugin.g.cs"),
+            namespace=".".join(part.title() for part in namespace.split(".")) + ".Plugins",
+            check=check,
         )
     elif language == "rust":
-        rust(repository, [method for method in table(merged) if method["face"] == "client"], target=output)
+        rust(repository, clients, target=output)
+        rust_host(repository, contexts, target=output.with_name("plugin.rs"))
     elif language == "cpp":
-        cpp(repository, [method for method in table(merged) if method["face"] == "client"], namespace=namespace, target=output)
+        cpp(repository, clients, namespace=namespace, target=output)
+        cpp_host(repository, contexts, target=output.with_name("plugin.hpp"), namespace=namespace)
     else:
         generate(output, merged, namespace=namespace)
 

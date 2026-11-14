@@ -63,9 +63,9 @@ def add_ProgressServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'tests.fixtures.client._wire.application.host.v1.jobs.Progress', rpc_method_handlers)
+            'application.host.v1.jobs.Progress', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('tests.fixtures.client._wire.application.host.v1.jobs.Progress', rpc_method_handlers)
+    server.add_registered_method_handlers('application.host.v1.jobs.Progress', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.

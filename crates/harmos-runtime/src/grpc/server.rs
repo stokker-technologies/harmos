@@ -438,14 +438,14 @@ fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) ->
 // value in the status details. Origin diagnostics stay inside the host: chains
 // and backtraces are not disclosed to network callers.
 fn with_failure(status: Status, error: &Error) -> Status {
-    let Some(failure) = error.failure() else {
+    let Some(failure) = error.operation_failure() else {
         return status;
     };
     if !status.details().is_empty() {
         return status;
     }
 
-    let details = failure.clone().without_diagnostics().encode();
+    let details = failure.without_diagnostics().encode();
     Status::with_details_and_metadata(status.code(), status.message(), details.into(), status.metadata().clone())
 }
 
@@ -463,6 +463,18 @@ fn caller_refusal(mut error: &Error) -> Option<&str> {
 }
 
 pub(super) fn status(error: Error) -> Status {
+    if let Some(failure) = error.operation_failure()
+        && failure.refusal_code() == Some(harmos_operations::WRONG_CALLER)
+        && failure.code() == harmos_operations::operations::FailureKind::Unauthorized
+    {
+        let mut status = Status::with_details(
+            tonic::Code::PermissionDenied,
+            failure.cause(),
+            prost::Message::encode_to_vec(&harmos_protocol::model::Failure::from(&failure.clone().without_diagnostics())).into(),
+        );
+        status.set_source(Arc::new(error));
+        return status;
+    }
     let status = explicit_status(&error).unwrap_or_else(|| match caller_refusal(&error) {
         Some(operation) => Status::permission_denied(format!("Call {operation}: caller is not allowed")),
         None => Status::new(code(&error), "operation request failed"),

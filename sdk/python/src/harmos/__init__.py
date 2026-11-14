@@ -33,9 +33,14 @@ from ._generated.shared import Grant as Grant
 from ._generated.shared import Grpc as Grpc
 from ._generated.shared import History as History
 from ._generated.shared import InstanceState as InstanceState
+from ._generated.shared import InvocationsCancelResponse as InvocationsCancelResponse
+from ._generated.shared import InvocationsGetResponse as InvocationsGetResponse
+from ._generated.shared import InvocationsWatchResponse as InvocationsWatchResponse
 from ._generated.shared import MessageSettings as MessageSettings
 from ._generated.shared import OperationContract as OperationContract
 from ._generated.shared import OperationPolicy as OperationPolicy
+from ._generated.shared import OperationsGetResponse as OperationsGetResponse
+from ._generated.shared import OperationsListResponse as OperationsListResponse
 from ._generated.shared import PageRequest as PageRequest
 from ._generated.shared import Position as Position
 from ._generated.shared import Protobuf as Protobuf
@@ -47,10 +52,13 @@ from ._generated.shared import RetryPolicy as RetryPolicy
 from ._generated.shared import Section as Section
 from ._generated.shared import SettingDeclaration as SettingDeclaration
 from ._generated.shared import SettingsDeclarations as SettingsDeclarations
+from ._generated.shared import SettingsListResponse as SettingsListResponse
 from ._generated.shared import SettingValue as SettingValue
 from ._generated.shared import SettingValues as SettingValues
 from ._generated.shared import StorageTransferSettings as StorageTransferSettings
 from ._generated.shared import StreamDeclaration as StreamDeclaration
+from ._generated.shared import TimeGetResponse as TimeGetResponse
+from ._generated.shared import TimeSleepResponse as TimeSleepResponse
 from ._generated.shared import TransferFraming as TransferFraming
 from ._generated.shared import Upload as Upload
 from ._generated.shared import UploadState as UploadState
@@ -83,9 +91,14 @@ __all__ = [
     "Grpc",
     "History",
     "InstanceState",
+    "InvocationsCancelResponse",
+    "InvocationsGetResponse",
+    "InvocationsWatchResponse",
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",
+    "OperationsGetResponse",
+    "OperationsListResponse",
     "PLUGINS",
     "PageRequest",
     "Position",
@@ -101,10 +114,13 @@ __all__ = [
     "SettingValue",
     "SettingValues",
     "SettingsDeclarations",
+    "SettingsListResponse",
     "StorageTransferSettings",
     "StreamDeclaration",
     "TRANSFER_FRAMING_BYTES",
     "TRANSFER_FRAMING_UNSPECIFIED",
+    "TimeGetResponse",
+    "TimeSleepResponse",
     "TransferFraming",
     "UPLOAD_STATE_ABANDONED",
     "UPLOAD_STATE_FINISHED",

@@ -71,7 +71,7 @@ pub struct ProviderOwner {
     pub started: tokio::sync::Notify,
     pub cancelled: Arc<tokio::sync::Notify>,
 }
-struct Provider;
+pub(super) struct Provider;
 pub struct Publisher;
 struct Cancelled(Arc<tokio::sync::Notify>);
 

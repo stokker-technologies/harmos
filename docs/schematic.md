@@ -47,8 +47,8 @@ initialization starts; the readiness interval covers plugin initialization.
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The protocol crate exposes generated contracts without the host stack.
-Shared values live in `harmos.model.v1`, host operations in `harmos.host.v1`, and
-plugin operations and connection carriers in `harmos.plugin.v1`. Every operation
+Shared values use the SDK root; client and plugin types use their respective barrels.
+The protocol package mapping is documented in [Architecture](architecture.md). Every operation
 declares CLIENTS, PLUGINS or ALL. The SDK handler keeps its `context` API; its host
 resources include only operations callable by plugins.
 
@@ -62,7 +62,7 @@ through `Runtime::launch_with` while keeping that preparation path.
 
 The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated
-from `examples/schematic/proto/schematic/host/v1/schematic.proto`. It ends in `serve()`.
+from [schematic.proto](../examples/schematic/proto/schematic/host/v1/schematic.proto). It ends in `serve()`.
 The host uses managed gRPC placement and checks its `Instance.Get` identity.
 The guest uses `harmos/wasm` and one `harmos_register` function returning SDK builders.
 
@@ -115,7 +115,7 @@ The CLI build script derives its schema bundle from the
 native operations crate without launching handlers. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest declarations includes only portable operations. The
-`schematic.host.v1.Schematic` schema describes known methods. Exporting it does not
+`Schematic` schema describes known methods. Exporting it does not
 start a gRPC server. Client generation consumes the CLI host's captured schema;
 native plugin discovery uses `Instance.Get` instead of an embedded inventory or an export flag.
 Native packages obtain identity through `Instance.Get`, call `Stop`, and contain the
@@ -150,11 +150,11 @@ backends through `StorageBackends`; the example carries no disk backend.
 ## Application File Contracts
 
 [files.proto](../examples/schematic/proto/schematic/host/v1/files.proto) declares
-`schematic.host.v1.Files.Read` and `Hash`;
+`Files.Read` and `Hash`;
 [uploads.proto](../examples/schematic/proto/schematic/host/v1/uploads.proto) declares
-`schematic.host.v1.Uploads.Create`, `Get`, `Resume`, `Append`, `Publish` and `Delete`.
+`Uploads.Create`, `Get`, `Resume`, `Append`, `Publish` and `Delete`.
 These are application contracts over private native storage operations. Shared
-`harmos.model.v1.File` and `Upload` carry content references and fenced production
+`File` and `Upload` carry content references and fenced production
 progress; the application owns request shaping, access decisions and policy.
 `Uploads.Get` without an upload selects the replay window and storage chunk size.
 Mutations carry that issued window plus a request key. `Resume` fences the old

@@ -294,6 +294,8 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
         .err()
         .ok_or_else(|| Error::Invalid("Call Probe: Client Reached Plugins-Only Handler".into()))?;
     require(status.code() == Code::PermissionDenied, "Call Probe: Direct Caller Was Not Refused")?;
+    let failure = Failure::decode(status.details())?;
+    wrong_caller(&failure, TARGET)?;
     let mut client = InvocationsClient::connect(address).await?;
     let status = client
         .create(InvocationsCreateRequest::decode(request().as_slice())?)
@@ -301,6 +303,8 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
         .err()
         .ok_or_else(|| Error::Invalid("Create Invocation: Client Reached Plugins-Only Handler".into()))?;
     require(status.code() == Code::PermissionDenied, "Create Invocation: Client Was Not Refused")?;
+    let failure = Failure::decode(status.details())?;
+    wrong_caller(&failure, TARGET)?;
     require(counter.load(Ordering::SeqCst) == 1, "Call Probe: Refused Client Reached Handler")?;
     drop(client);
     drop(listener);
@@ -310,10 +314,16 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
 async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller: &Controller, address: &str) -> Result<()> {
     // Admit Only This Journey's SDK Contributions Without Taking Ownership of Its Process.
     let sample = Arc::new(Mutex::new(None));
-    let forward = Forward {
-        client: InstanceClient::connect(address.to_owned()).await?,
-        sample: sample.clone(),
-    };
+    let mut client = InstanceClient::connect(address.to_owned()).await?;
+    let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
+    let fingerprint = description
+        .declarations
+        .as_ref()
+        .and_then(|declarations| declarations.operations.iter().find(|operation| operation.id == "conformance.caller_refusal"))
+        .ok_or_else(|| Error::Invalid("Call Operation: Missing Refusal Fixture".into()))?
+        .fingerprint
+        .clone();
+    let forward = Forward { client, sample: sample.clone() };
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = format!("http://{}", listener.local_addr()?);
     let incoming = stream::unfold(listener, |listener| async {
@@ -348,6 +358,30 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
             refusal(&payload)?;
             require(counter.load(Ordering::SeqCst) == 1, "Create Invocation: Refused Plugin Dispatched a Nested Call")?;
 
+            // A Client's Nested Invocation Keeps the Plugin's Original Denial.
+            let listener = runtime
+                .grpc()
+                .attach(GrpcSettings {
+                    address: "127.0.0.1:0".parse().expect("loopback"),
+                    ..Default::default()
+                })
+                .await
+                .map_err(invalid)?;
+            let mut invocations = InvocationsClient::connect(format!("http://{}", listener.local_addr())).await?;
+            let status = invocations
+                .create(InvocationsCreateRequest {
+                    operation: "conformance.caller_refusal".into(),
+                    fingerprint,
+                    payload: fixture::payload(b"propagate"),
+                })
+                .await
+                .err()
+                .ok_or_else(|| Error::Invalid("Create Invocation: Nested Refusal Was Lost".into()))?;
+            require(status.code() == Code::PermissionDenied, "Create Invocation: Nested Refusal Became Internal")?;
+            wrong_caller(&Failure::decode(status.details())?, CREATE)?;
+            drop(invocations);
+            drop(listener);
+
             // Keep the Connection Usable After Both Refusals.
             let payload = fixture::payload(b"after refusal");
             let reply = runtime.operations.call_encoded("conformance.step.0", payload.clone()).await.map_err(invalid)?;
@@ -366,9 +400,22 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
 fn refusal(payload: &[u8]) -> Result<()> {
     let value = fixture::Value::decode(payload)?;
     let failure = Failure::decode(value.value.as_slice())?;
+    wrong_caller(&failure, CREATE)?;
     require(
         failure.classification == Classification::Refused as i32 && failure.operation == CREATE && !failure.plugin.is_empty(),
         "Create Invocation: Caller Refusal Changed Classification or Operation",
+    )
+}
+
+fn wrong_caller(failure: &Failure, operation: &str) -> Result<()> {
+    require(
+        failure.classification == Classification::Refused as i32
+            && failure.code == harmos_operations::WRONG_CALLER.to_string()
+            && failure.action == "Call"
+            && failure.operation == operation
+            && failure.message.contains(operation)
+            && failure.message.contains(&failure.action),
+        "Call Operation: Wrong-Caller Failure Lost Its Kind, Code, Action or Operation",
     )
 }
 

@@ -360,6 +360,13 @@ pub(super) async fn watch_child(
 }
 
 pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> model::Failure {
+    if let Some(failure) = error.operation_failure() {
+        let mut failure = model::Failure::from(&failure);
+        if failure.plugin.is_empty() {
+            failure.plugin = plugin.into();
+        }
+        return failure;
+    }
     if let crate::Error::OperationFailed { source, .. } = error {
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
             return model::Failure::from(failure.as_ref());
