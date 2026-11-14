@@ -13,8 +13,17 @@
 
 #[rustfmt::skip]
 mod contracts;
+#[cfg(not(target_arch = "wasm32"))]
+mod native_output;
+#[cfg(target_arch = "wasm32")]
+mod wasm_output;
 
 /* === Re-Exports === */
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) use native_output::ChildOutput;
+#[cfg(target_arch = "wasm32")]
+pub(crate) use wasm_output::ChildOutput;
 
 /* === Imports === */
 
@@ -27,28 +36,23 @@ use std::{
     mem,
     num::NonZeroUsize,
     result::Result as StdResult,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
 // Third Party Imports
-use crate::Operation;
-use crate::operation::LocalFuture;
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, Timestamp};
 use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tonic::Status;
 
 // Local Imports
-use crate::{Error, Message, OperationRequest, Result, message::request_fingerprint};
+use crate::{Error, Message, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
 use harmos_protocol::plugin::host::{
     SettingsListRequest, SettingsListResponse, TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse,
 };
-use harmos_protocol::plugin::{InstanceInvokeResponse, InstanceSamplesResponse, instance_invoke_response, instance_samples_response};
-use harmos_protocol::v1::{self};
+use harmos_protocol::plugin::instance_invoke_response;
+use harmos_protocol::v1;
 
 /* === Constants === */
 
@@ -114,49 +118,6 @@ pub struct Context {
     pub(crate) child: Option<Arc<dyn ChildTransport>>,
     pub(crate) values: Vec<v1::GuestValue>,
     pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<Timestamp>)>>,
-}
-
-#[derive(Clone)]
-pub(crate) enum ChildOutput {
-    Invoke(mpsc::Sender<StdResult<InstanceInvokeResponse, Status>>),
-    Samples { sender: mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>, active: Arc<AtomicBool> },
-}
-
-impl ChildOutput {
-    fn check(&self) -> Result<()> {
-        if let Self::Samples { active, .. } = self
-            && !active.load(Ordering::Acquire)
-        {
-            return Err(Status::invalid_argument("Call Child: No Unanswered Samples Tick").into());
-        }
-        Ok(())
-    }
-
-    async fn send(&self, frame: instance_invoke_response::Frame) -> Result<()> {
-        match self {
-            Self::Invoke(sender) => sender
-                .send(Ok(InstanceInvokeResponse { frame: Some(frame) }))
-                .await
-                .map_err(|_| Status::unavailable("Send Child Frame: Host Closed"))?,
-            Self::Samples { sender, .. } => {
-                let cancel = matches!(&frame, instance_invoke_response::Frame::ChildCancel(_));
-                let frame = match frame {
-                    instance_invoke_response::Frame::Child(child) => instance_samples_response::Frame::Child(child),
-                    instance_invoke_response::Frame::ChildCancel(cancel) => instance_samples_response::Frame::ChildCancel(cancel),
-                    instance_invoke_response::Frame::ChildDemand(demand) => instance_samples_response::Frame::ChildDemand(demand),
-                    instance_invoke_response::Frame::Response(_) => {
-                        return Err(Error::Invalid("Send Child Frame: Unexpected Result".into()));
-                    }
-                };
-                let permit = sender.reserve().await.map_err(|_| Status::unavailable("Send Samples Child: Host Closed"))?;
-                if !cancel {
-                    self.check()?;
-                }
-                permit.send(Ok(InstanceSamplesResponse { samples: Vec::new(), frame: Some(frame) }));
-            }
-        }
-        Ok(())
-    }
 }
 
 pub(crate) struct Calls {
@@ -315,6 +276,7 @@ impl Context {
             closed: false,
             response: PhantomData,
         };
+        let limit = self.calls.lock().expect("Child Calls Poisoned").watches[&call].limit;
         output
             .send(instance_invoke_response::Frame::Child(v1::ChildRequest {
                 call,
@@ -322,7 +284,7 @@ impl Context {
                 payload: request.encode_to_vec(),
                 fingerprint,
                 watch: true,
-                max_response_bytes: max_item_bytes.get() as u64,
+                max_response_bytes: limit as u64,
                 ..Default::default()
             }))
             .await?;

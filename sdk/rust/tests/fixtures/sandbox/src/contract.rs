@@ -107,6 +107,19 @@ pub struct FinishOperation {
     pub mode: u32,
 }
 
+/// Product-owned publication request; the SDK supplies no library publication wire operation.
+#[derive(harmos::Message, Debug, Clone, PartialEq)]
+#[harmos(package = "example.plugin.host.v1", file = "example/plugin/host/v1/progress.proto")]
+pub struct PublishProgress {
+    pub stream: String,
+    pub payload: Vec<u8>,
+}
+
+impl harmos::OperationRequest for PublishProgress {
+    type Response = ();
+    const ID: &'static str = "example.plugin.host.v1.Progress/Publish";
+}
+
 /* === Enums === */
 
 /* === Traits === */

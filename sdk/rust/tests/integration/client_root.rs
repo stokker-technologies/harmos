@@ -22,7 +22,12 @@
 // Local Imports
 
 use super::{composed_resources::Root, v1};
+use futures_core::Stream;
 use harmos::client::{Client, ClientSettings};
+use harmos_protocol::{
+    client::{self as host, status},
+    v1::StorageTransferSettings,
+};
 use std::{num::NonZeroUsize, pin::Pin};
 use tonic::{Request, Response, Status};
 
@@ -42,13 +47,11 @@ struct Endpoint;
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl harmos_protocol::v1::status_server::Status for Endpoint {
-    async fn get(
-        &self, _: Request<harmos_protocol::v1::StatusGetRequest>,
-    ) -> Result<Response<harmos_protocol::v1::StatusGetResponse>, Status> {
-        Ok(Response::new(harmos_protocol::v1::StatusGetResponse {
-            status: Some(harmos_protocol::v1::HostStatus {
-                identity: Some(harmos_protocol::v1::HostIdentity {
+impl host::status_server::Status for Endpoint {
+    async fn get(&self, _: Request<host::StatusGetRequest>) -> Result<Response<host::StatusGetResponse>, Status> {
+        Ok(Response::new(host::StatusGetResponse {
+            status: Some(host::HostStatus {
+                identity: Some(host::HostIdentity {
                     application_name: "status:selection".into(),
                     ..Default::default()
                 }),
@@ -57,17 +60,15 @@ impl harmos_protocol::v1::status_server::Status for Endpoint {
             ..Default::default()
         }))
     }
-    type WatchStream = Pin<Box<dyn futures_core::Stream<Item = Result<harmos_protocol::v1::StatusWatchResponse, Status>> + Send>>;
-    async fn watch(&self, _: Request<harmos_protocol::v1::StatusWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
+    type WatchStream = Pin<Box<dyn Stream<Item = Result<host::StatusWatchResponse, Status>> + Send>>;
+    async fn watch(&self, _: Request<host::StatusWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
         Ok(Response::new(Box::pin(futures_util::stream::empty())))
     }
 }
 #[tonic::async_trait]
-impl harmos_protocol::v1::status::diagnostics_server::Diagnostics for Endpoint {
-    async fn get(
-        &self, request: Request<harmos_protocol::v1::status::DiagnosticsGetRequest>,
-    ) -> Result<Response<harmos_protocol::v1::status::DiagnosticsGetResponse>, Status> {
-        Ok(Response::new(harmos_protocol::v1::status::DiagnosticsGetResponse {
+impl status::diagnostics_server::Diagnostics for Endpoint {
+    async fn get(&self, request: Request<status::DiagnosticsGetRequest>) -> Result<Response<status::DiagnosticsGetResponse>, Status> {
+        Ok(Response::new(status::DiagnosticsGetResponse {
             name: format!("diagnostics:{}", request.into_inner().name),
             ..Default::default()
         }))
@@ -83,7 +84,7 @@ impl v1::jobs_server::Jobs for Endpoint {
 }
 #[tonic::async_trait]
 impl v1::jobs::progress_server::Progress for Endpoint {
-    type WatchStream = Pin<Box<dyn futures_core::Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
+    type WatchStream = Pin<Box<dyn Stream<Item = Result<v1::jobs::ProgressWatchResponse, Status>> + Send>>;
     async fn watch(&self, request: Request<v1::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
         let value = request.into_inner().value;
         Ok(Response::new(Box::pin(futures_util::stream::iter([
@@ -108,8 +109,8 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let serving = tokio::spawn(
         tonic::transport::Server::builder()
-            .add_service(harmos_protocol::v1::status_server::StatusServer::new(Endpoint))
-            .add_service(harmos_protocol::v1::status::diagnostics_server::DiagnosticsServer::new(Endpoint))
+            .add_service(host::status_server::StatusServer::new(Endpoint))
+            .add_service(status::diagnostics_server::DiagnosticsServer::new(Endpoint))
             .add_service(v1::jobs_server::JobsServer::new(Endpoint))
             .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
@@ -118,7 +119,7 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     );
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(1024) },
+        transfer: StorageTransferSettings { chunk_bytes: Some(1024) },
         retained_bytes: NonZeroUsize::new(4096).unwrap(),
         message_bytes: NonZeroUsize::new(4096).unwrap(),
         input_items: NonZeroUsize::MIN,
@@ -133,7 +134,7 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     assert_eq!(
         client
             .status
-            .get(Request::new(harmos_protocol::v1::StatusGetRequest {}))
+            .get(Request::new(host::StatusGetRequest {}))
             .await
             .unwrap()
             .into_inner()
@@ -148,7 +149,7 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
         client
             .status
             .diagnostics
-            .get(Request::new(harmos_protocol::v1::status::DiagnosticsGetRequest {
+            .get(Request::new(status::DiagnosticsGetRequest {
                 name: "selection".into(),
                 ..Default::default()
             }))

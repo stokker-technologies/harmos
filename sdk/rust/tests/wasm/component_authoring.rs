@@ -169,8 +169,8 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                 imports.children.insert(instance, (request.payload, false));
                 return Ok(v1::GuestSubmitted { instance }.encode_to_vec());
             }
-            if request.operation == "host.harmos.context.v1.Samples/Append" {
-                return Ok(harmos_protocol::context::SamplesAppendResponse {}.encode_to_vec());
+            if request.operation == "host.example.plugin.host.v1.Progress/Publish" {
+                return Ok(Vec::new());
             }
             Ok(request.payload)
         }
@@ -237,7 +237,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
                 "{}.{}",
                 if required.id == "provider.echo" {
                     "provider"
-                } else if required.id == "harmos.context.v1.Samples/Append" {
+                } else if required.id == "example.plugin.host.v1.Progress/Publish" {
                     "host"
                 } else {
                     "sandbox_guest"

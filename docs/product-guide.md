@@ -992,15 +992,23 @@ typed native declarations. Assignment catalogs use the generated
 `harmos.v1.OperationAssignments` messages, with frozen identity validation.
 
 Guest commands, answers and child controls use authoritative `harmos.v1` protobuf
-messages. Built-in `storage.hash_file` and `harmos.context.v1.Samples/Append` calls use their generated
-contracts; no private guest payload mirrors are retained. Fingerprints, provider
+messages. Guests call application-owned publication and storage contracts;
+Harmos storage operations stay private and in-process. Fingerprints, provider
 generations and host grants remain checked. Stored data encoding and schema
 revisions are unchanged.
 
 ### Generated Rust Clients
 
+Generated roots follow call boundaries: `harmos_protocol::client` contains client
+requests and resources, `harmos_protocol::plugin` contains the implemented Instance
+service, and `harmos_protocol::plugin::host` contains host calls available to a
+plugin. Shared values remain in `harmos_protocol::v1`. Managed bundle replacement
+uses `client.plugins.replace`; library-stored settings use
+`client.plugins.settings.list` and `.set`. Product operations expose any required
+storage access; the SDK has no library storage wire root.
+
 `harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
-The caller supplies storage transfer settings and the required
+The caller supplies shared transfer settings and the required
 `retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
 limits use the generated 8 MiB message default; explicit ceilings must carry the
 configured transfer chunk plus framing. The default chunk remains 4 MiB. For example:
@@ -1016,9 +1024,11 @@ across client clones and calls. Repeated, map and nested values are accounted be
 decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
-`catalog` calls `CatalogEntries.List` once and receives the complete authorized catalog.
-There is no page request, token or application byte bound; carrier overflow names the action.
-Bind the selected `harmos_protocol::v1::OperationContract` to generated application messages:
+Discover contracts with `client.operations.list` or `client.operations.get` using
+`harmos_protocol::client::{OperationsListRequest, OperationsGetRequest}`. Typed
+`client.schemas.list` and `client.streams.list` expose their registries. Each List
+returns the complete authorized inventory; carrier overflow names the action.
+Bind the selected shared `harmos_protocol::v1::DiscoveredContract` to generated application messages:
 
 ```rust
 use harmos::client::Method;
@@ -1396,6 +1406,39 @@ operation implementations can live in a protocol-only crate;
 shared models remain in a domain crate. Host applications depend on
 `harmos-runtime` and own state, storage adapters and placement settings.
 Plugin artifact crates declare `publish = false`.
+
+The [served plugin example](../sdk/rust/examples/plugin.rs) declares one public
+operation and a typed setting default. Declare settings with
+`Plugin::settings(v1::SettingsDeclarations { values })`; every `SettingDeclaration`
+contains a name, title, description and a selected `SettingValue` default. False
+flags and empty text remain present values. The SDK checks duplicate names and
+missing defaults when constructing the catalog. The library stores overrides and
+applies defaults for the admitted plugin entry.
+
+```rust
+use harmos_protocol::plugin::host::SettingsListRequest;
+
+let plugin = Plugin::new("echo", "1.0.0")
+    .settings(declarations)
+    .requires::<SettingsListRequest>();
+// Inside a handler, `context` retains the calling plugin's identity.
+let settings = context.settings().await?;
+```
+
+`Context::settings` calls `Settings.List` without a plugin selector and returns the
+values, settings revision and issued read cut. For an issued cut, call the typed
+`SettingsListRequest { at: Some(cut) }` directly. Declare every host operation,
+clock and Watch requirement with `Plugin::requires`.
+
+Observer contexts can make declared child calls while answering one Samples tick.
+Unary calls and Watches use the same carrier as that tick, preserve structured
+failures and correlate replies by IDs unique across the entire Samples stream.
+Returning the sample cancels open children; ending demand cancels the active tick.
+Retained contexts refuse further calls after the answer, and device stream contexts
+have no child-call scope. Sample timestamps and sequences retain their existing
+meaning. WebAssembly contexts share the boundary types and settings API; any
+non-tick publication is an application-owned operation over native storage or
+stream publication.
 
 ## Reloadable gRPC Certificates
 

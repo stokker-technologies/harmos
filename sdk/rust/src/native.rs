@@ -15,8 +15,11 @@
 
 /* === Imports === */
 
-use crate::{Context, Result};
+use crate::{Context, Plugin, Result, server};
 use harmos_protocol::v1::{self, child_response};
+use std::result::Result as StdResult;
+use tokio::{runtime::Builder, task::LocalSet};
+use tonic::Status;
 
 // Standard Library Imports
 
@@ -38,16 +41,16 @@ use harmos_protocol::v1::{self, child_response};
 
 /* === Implementations === */
 
-impl crate::Plugin {
+impl Plugin {
     pub fn serve(self) -> Result<()> {
         let catalog = self.catalog()?;
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-        runtime.block_on(tokio::task::LocalSet::new().run_until(crate::server::serve(self, catalog)))
+        let runtime = Builder::new_current_thread().enable_all().build()?;
+        runtime.block_on(LocalSet::new().run_until(server::serve(self, catalog)))
     }
 }
 
 impl Context {
-    pub(crate) async fn reply(&self, child: v1::ChildResponse) -> std::result::Result<(), tonic::Status> {
+    pub(crate) async fn reply(&self, child: v1::ChildResponse) -> StdResult<(), Status> {
         let watch = {
             let mut calls = self.calls.lock().expect("Child Calls Poisoned");
             if matches!(&child.result, Some(child_response::Result::Item(_))) {
@@ -59,13 +62,13 @@ impl Context {
         if let Some(watch) = watch {
             if matches!(&child.result, Some(child_response::Result::Item(bytes) | child_response::Result::Payload(bytes)) if bytes.len() > watch.limit)
             {
-                return Err(tonic::Status::resource_exhausted("Watch: Item Exceeds Consumer Limit"));
+                return Err(Status::resource_exhausted("Watch: Item Exceeds Consumer Limit"));
             }
             let item = match child.result {
                 Some(child_response::Result::Item(bytes)) => Ok(Some(bytes)),
                 Some(child_response::Result::Payload(_)) => Ok(None),
                 Some(child_response::Result::Failure(failure)) => Err(failure.into()),
-                None => return Err(tonic::Status::invalid_argument("Watch: Child Result Missing")),
+                None => return Err(Status::invalid_argument("Watch: Child Result Missing")),
             };
             let _ = watch.sender.send(item).await;
             return Ok(());
@@ -76,7 +79,7 @@ impl Context {
         let result = match child.result {
             Some(child_response::Result::Payload(payload)) => Ok(payload),
             Some(child_response::Result::Failure(failure)) => Err(failure.into()),
-            Some(child_response::Result::Item(_)) | None => return Err(tonic::Status::invalid_argument("Unary Child Result Missing")),
+            Some(child_response::Result::Item(_)) | None => return Err(Status::invalid_argument("Unary Child Result Missing")),
         };
         let send = self
             .calls
@@ -84,7 +87,7 @@ impl Context {
             .expect("Child Calls Poisoned")
             .pending
             .remove(&child.call)
-            .ok_or_else(|| tonic::Status::invalid_argument("Unknown or Duplicate Child"))?;
+            .ok_or_else(|| Status::invalid_argument("Unknown or Duplicate Child"))?;
         let _ = send.sender.send(result);
         Ok(())
     }

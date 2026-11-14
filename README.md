@@ -84,6 +84,9 @@ Plugin and client authors depend on `harmos` and import `harmos::prelude::*`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
 Clients bind `client::Method` to generated application types, then use `Client::call`,
 `Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
+The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
+and reads its calling entry through `Context::settings`. Discover contracts through
+`client.operations.list`; client wrappers live in `harmos_protocol::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote `harmos.plugin.v1.Instance` placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
@@ -96,8 +99,9 @@ describes their repeated key/value entry representation.
 
 `harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
 ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
-See [Storage Interfaces](docs/storage.md) for native and generated SDK APIs, backend obligations, bounded unary pages and retained-cut query examples.
-Clients and plugins share resumable unary file productions and bounded content ranges.
+See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
+Applications expose their own wire operations over private native storage.
+Applications can expose resumable unary file productions and bounded content ranges through product operations.
 Hosts can register [application-owned immutable content](docs/storage.md#application-owned-content)
 for those ranged reads without copying it into library persistence.
 

@@ -21,7 +21,6 @@ mod method;
 /* === Re-Exports === */
 
 pub use harmos_protocol::v1;
-use harmos_protocol::v1::StorageTransferSettings;
 pub use method::{Method, NoItems};
 
 /* === Imports === */
@@ -37,6 +36,7 @@ use tonic::{Request, Status, Streaming, transport::Channel};
 
 // Local Imports
 use codec::{Frame, Output, Wire};
+use harmos_protocol::v1::StorageTransferSettings;
 
 /* === Constants === */
 

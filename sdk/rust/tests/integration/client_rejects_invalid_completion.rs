@@ -24,8 +24,10 @@ use std::{
 };
 
 // Third Party Imports
+use super::v1::{JobsStartRequest, JobsStartResponse};
 use futures_core::Stream;
 use harmos::{Client, ClientSettings, client::Method};
+use harmos_protocol::v1::StorageTransferSettings;
 use harmos_protocol::{schema, v1 as host};
 use prost_reflect::ReflectMessage;
 use tonic::{
@@ -53,17 +55,17 @@ struct Invoke;
 #[derive(Clone, PartialEq, prost::Message)]
 struct Opening {
     #[prost(message, optional, tag = "1")]
-    request: Option<host::CatalogEntriesListRequest>,
+    request: Option<JobsStartRequest>,
 }
 
 #[derive(Clone, PartialEq, prost::Message)]
 struct Frame {
     #[prost(message, optional, tag = "3")]
-    unknown: Option<host::CatalogEntriesListResponse>,
+    unknown: Option<JobsStartResponse>,
     #[prost(message, optional, tag = "1")]
-    item: Option<host::CatalogEntriesListResponse>,
+    item: Option<JobsStartResponse>,
     #[prost(message, optional, tag = "2")]
-    response: Option<host::CatalogEntriesListResponse>,
+    response: Option<JobsStartResponse>,
 }
 
 /* === Enums === */
@@ -73,7 +75,7 @@ struct Frame {
 /* === Implementations === */
 
 impl tonic::server::NamedService for Peer {
-    const NAME: &'static str = "fault.v1.Operations";
+    const NAME: &'static str = "fault.client.v1.Operations";
 }
 
 impl<B> Service<http::Request<B>> for Peer
@@ -111,36 +113,36 @@ impl tonic::server::StreamingService<Opening> for Invoke {
                 Ok(Frame {
                     unknown: None,
                     item: None,
-                    response: Some(host::CatalogEntriesListResponse::default()),
+                    response: Some(JobsStartResponse::default()),
                 })
             };
             let item = || {
                 Ok(Frame {
                     unknown: None,
-                    item: Some(host::CatalogEntriesListResponse::default()),
+                    item: Some(JobsStartResponse::default()),
                     response: None,
                 })
             };
-            let frames = match request.kind {
+            let frames = match request.value.parse::<i32>().unwrap() {
                 0 => Vec::new(),
                 1 => vec![terminal(), terminal()],
                 2 => vec![terminal(), item()],
                 3 => vec![item()],
                 6 => vec![Ok(Frame {
-                    unknown: Some(host::CatalogEntriesListResponse::default()),
+                    unknown: Some(JobsStartResponse::default()),
                     item: None,
                     response: None,
                 })],
                 7 => vec![Ok(Frame {
                     unknown: None,
-                    item: Some(host::CatalogEntriesListResponse::default()),
-                    response: Some(host::CatalogEntriesListResponse::default()),
+                    item: Some(JobsStartResponse::default()),
+                    response: Some(JobsStartResponse::default()),
                 })],
                 5 => vec![Ok(Frame {
                     unknown: None,
                     item: None,
-                    response: Some(host::CatalogEntriesListResponse {
-                        entries: vec![0; 2048],
+                    response: Some(JobsStartResponse {
+                        value: "x".repeat(2048),
                         ..Default::default()
                     }),
                 })],
@@ -170,18 +172,18 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     }));
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{address}")).unwrap().connect().await.unwrap();
     let settings = ClientSettings {
-        transfer: harmos_protocol::storage::StorageTransferSettings { chunk_bytes: Some(256) },
+        transfer: StorageTransferSettings { chunk_bytes: Some(256) },
         retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
         message_bytes: NonZeroUsize::new(1024).unwrap(),
         input_items: NonZeroUsize::new(1).unwrap(),
         input_bytes: NonZeroUsize::new(1024).unwrap(),
     };
     let client = Client::new(channel, settings).unwrap();
-    let descriptors = host::CatalogEntriesListRequest::default().descriptor().parent_pool().encode_to_vec();
+    let descriptors = JobsStartRequest::default().descriptor().parent_pool().encode_to_vec();
     let protobuf = host::Protobuf {
         descriptors,
-        request: "harmos.v1.CatalogEntriesListRequest".into(),
-        response: "harmos.v1.CatalogEntriesListResponse".into(),
+        request: "application.v1.JobsStartRequest".into(),
+        response: "application.v1.JobsStartResponse".into(),
         input: None,
         output: None,
     };
@@ -192,18 +194,18 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
         fingerprint,
         protobuf: Some(protobuf),
         grpc: Some(host::Grpc {
-            package: "fault.v1".into(),
+            package: "fault.client.v1".into(),
             service: "Operations".into(),
             method: "Read".into(),
             managed: true,
         }),
         ..Default::default()
     };
-    let method = Method::<host::CatalogEntriesListRequest, host::CatalogEntriesListResponse>::new(contract).unwrap();
+    let method = Method::<JobsStartRequest, JobsStartResponse>::new(contract).unwrap();
 
     // Refuse Missing, Duplicate, Post-Terminal And Undeclared Item Frames.
     for kind in 0..4 {
-        let request = host::CatalogEntriesListRequest { kind, ..Default::default() };
+        let request = JobsStartRequest { value: kind.to_string() };
         let mut running = client.start(&method, Request::new(request)).await.unwrap();
         let error = running.next().await.unwrap_err();
         assert_eq!(error.code(), tonic::Code::DataLoss);
@@ -211,19 +213,19 @@ async fn client_rejects_invalid_completion_and_preserves_status_details() {
     }
 
     // Refuse Unknown Envelope Variants And Honor Protobuf's Last Oneof Variant.
-    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 6, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(JobsStartRequest { value: "6".into() })).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::DataLoss);
-    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 7, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(JobsStartRequest { value: "7".into() })).await.unwrap();
     assert!(running.join().await.is_ok());
 
     // Preserve A Terminal gRPC Status And Its Binary Details.
-    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 4, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(JobsStartRequest { value: "4".into() })).await.unwrap();
     let error = running.join().await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::PermissionDenied);
     assert_eq!(error.details(), b"evidence");
 
     // Refuse A Frame Larger Than The Consumer's Wire Budget.
-    let running = client.start(&method, Request::new(host::CatalogEntriesListRequest { kind: 5, ..Default::default() })).await.unwrap();
+    let running = client.start(&method, Request::new(JobsStartRequest { value: "5".into() })).await.unwrap();
     assert_eq!(running.join().await.unwrap_err().code(), tonic::Code::OutOfRange);
 
     // Close The Peer After Every Response Has Settled.
