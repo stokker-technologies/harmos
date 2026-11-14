@@ -29,6 +29,7 @@ use super::{Manager, OperationInstanceId};
 #[cfg(test)]
 use crate::supervision::executor;
 use crate::{Error, Refusal, Result, operations::Scope};
+use harmos_protocol::schema::operation_identity;
 
 /* === Constants === */
 
@@ -191,8 +192,8 @@ impl Manager {
         }
         // Guest Assignments Retain Their Provider Beside the Canonical Service/Method Identity.
         if let Some((owner, local)) = operation.split_once('.')
-            && local.starts_with("harmos.")
             && local.contains('/')
+            && operation_identity(local).is_ok()
         {
             let entry = self.capture_routed(local, owner, &origin)?;
             return self.dispatch_encoded(entry, payload, source, parent, submitted, options);

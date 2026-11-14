@@ -17,7 +17,7 @@
 
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
-    Runtime,
+    MessageError, Runtime,
     operations::{ExecutionContext, ProtobufOperation, Resource, ServingError, Visibility},
 };
 use prost::Message as _;
@@ -142,10 +142,13 @@ impl ProtobufOperation for Publisher {
             }))
         })?;
         let lease = scope.publication(&request.stream).map_err(|error| ServingError::Native(Arc::new(error)))?;
+        let sample = Echoed::decode(request.payload.as_slice())
+            .map_err(|error| ServingError::Codec(MessageError::new(format!("Publish Progress: {error}"))))?;
+        let payload = harmos_runtime::Message::encode(&sample.said);
         lease
             .stage_derived_row(
                 harmos_runtime::streams::PublicationRow {
-                    payload: request.payload,
+                    payload,
                     published_unix_micros: None,
                     context: None,
                 },

@@ -10,13 +10,6 @@ unit = 120
 
 
 [[conventions.testing.overrides]]
-category = "acceptance"
-language = "rust"
-reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"
-select = "binary_id(=harmos-runtime::acceptance) & test(=storage::grpc_descriptors_compile)"
-timeout_seconds = 120
-
-[[conventions.testing.overrides]]
 category = "system"
 language = "rust"
 reason = "Reviewed correctness bound with the 120-second test minimum; performance is measured by benchmarks"

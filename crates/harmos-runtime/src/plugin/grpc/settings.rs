@@ -52,8 +52,7 @@ impl ProtobufOperation for List {
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<CallingPlugin>(), Resource::of::<Access>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let caller = context.resource::<CallingPlugin>().map_err(|_| ServingError::Catalog)?;
-        let name = caller.name.clone().ok_or_else(|| {
+        let name = context.resource::<CallingPlugin>().ok().and_then(|caller| caller.name.clone()).ok_or_else(|| {
             ServingError::Handler(Failure::new(
                 FailureKind::Unauthorized,
                 "List Plugin Settings: the calling plugin has no management entry",
