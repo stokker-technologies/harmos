@@ -188,9 +188,9 @@ impl Backoff {
     }
 }
 
-impl TryFrom<Option<&crate::v1::OperationPolicy>> for OperationPolicy {
+impl TryFrom<Option<&crate::model::OperationPolicy>> for OperationPolicy {
     type Error = PolicyError;
-    fn try_from(wire: Option<&crate::v1::OperationPolicy>) -> Result<Self, Self::Error> {
+    fn try_from(wire: Option<&crate::model::OperationPolicy>) -> Result<Self, Self::Error> {
         let wire = wire.cloned().unwrap_or_default();
         let duration = |value: Option<prost_types::Duration>, default| -> Result<Duration, PolicyError> {
             value.map(Duration::try_from).transpose().map(|value| value.unwrap_or(default)).map_err(|_| PolicyError::InvalidDuration)

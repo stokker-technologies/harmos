@@ -96,8 +96,8 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
     for (package, files) in &packages {
         let mut config = prost_build::Config::new();
         config.protoc_executable(compiler);
-        config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
-        config.type_attribute(".harmos.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.model.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.model.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
             let module = module_path(external)?;
             if package.starts_with(&format!("{external}.")) {
@@ -116,7 +116,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
                 config.extern_path(format!(".{external}"), format!("crate::{module}"));
             }
         }
-        let services = !package.starts_with("harmos.plugin.host.");
+        let services = package.starts_with("harmos.host.") || package.starts_with("harmos.plugin.");
         let package_output = output.join(package);
         std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
@@ -139,18 +139,17 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
             let parent = module.rsplit("::").next().ok_or("missing parent module")?;
             source.push_str(&format!("\npub mod {name} {{ include!(\"{parent}/{name}.rs\"); }}\n"));
         }
-        if package == "harmos.plugin.v1" {
-            source.push_str("\npub mod host { include!(\"plugin/host.rs\"); }\n");
-        }
         std::fs::write(path, source)?;
     }
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.
     for file in &mut descriptors.file {
         file.source_code_info = None;
     }
-    std::fs::write(output.join("descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
+    // Keep Protoc's Bytes: prost_types Would Discard Custom Method Options.
+    // Protoc Omits Source Info Unless Explicitly Requested.
     // Preproject Guest Graphs During Generation, Before Fuel-Bounded Registration.
-    let guest_types = harmos_protocol::schema::operation_types(&descriptors, &["harmos.v1.GuestInitialize", "harmos.v1.GuestShutdown"])?;
+    let guest_types =
+        harmos_protocol::schema::operation_types(&descriptors, &["harmos.plugin.v1.GuestInitialize", "harmos.plugin.v1.GuestShutdown"])?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
     let options = prost_types::FileDescriptorSet {
         file: prost_reflect::DescriptorPool::global().files().map(|file| file.file_descriptor_proto().clone()).collect(),
@@ -179,7 +178,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         }
     }
     std::fs::write(output.join("message-options-descriptors.bin"), prost::Message::encode_to_vec(&options))?;
-    for (package, name) in [("harmos.plugin.host.v1", "clock-descriptors.bin"), ("harmos.client.v1", "client-clock-descriptors.bin")] {
+    for (package, name) in [("harmos.host.v1", "clock-descriptors.bin")] {
         let roots: Vec<_> =
             ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("{package}.{name}")).into();
         let names: Vec<_> = roots.iter().map(String::as_str).collect();
@@ -193,8 +192,8 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         let package = file.package.as_deref().unwrap_or_default();
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("missing message name")?;
-            if package != "harmos.plugin.host.v1"
-                && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
+            if !package.starts_with("harmos.host.v1")
+                && !(package == "harmos.model.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
             {
                 continue;
             }
@@ -223,9 +222,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
 /* === Private Functions === */
 
 pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
-    for (prefix, root) in
-        [("harmos.plugin.host.v1", "plugin::host"), ("harmos.client.v1", "client"), ("harmos.plugin.v1", "plugin"), ("harmos.v1", "v1")]
-    {
+    for (prefix, root) in [("harmos.host.v1", "host"), ("harmos.plugin.v1", "plugin"), ("harmos.model.v1", "model")] {
         if package == prefix {
             return Ok(root.into());
         }

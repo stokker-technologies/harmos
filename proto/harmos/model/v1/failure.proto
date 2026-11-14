@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operation Failures
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Preserves machine classification, refusal code, causal context and support diagnostics across operation carriers.
+message Failure {
+  Classification classification = 1;
+  // Stable machine-readable code, for example "provider_absent".
+  string code = 2;
+  // What happened.
+  string message = 3;
+  // What the user can do about it.
+  string action = 4;
+  // Operation and plugin where it happened.
+  string operation = 5;
+  string plugin = 6;
+  // Failure of a child call that led to this one.
+  Failure cause = 7;
+  // Extra named facts.
+  map<string, string> details = 8;
+  // Stack or source chain for support. Never shown as the message.
+  string diagnostics = 9;
+}
+
+// === Enums === //
+
+enum Classification {
+  CLASSIFICATION_UNSPECIFIED = 0;
+  // Retrying will not help.
+  CLASSIFICATION_PERMANENT = 1;
+  // Another attempt may succeed.
+  CLASSIFICATION_TRANSIENT = 2;
+  CLASSIFICATION_CANCELLED = 3;
+  CLASSIFICATION_TIMED_OUT = 4;
+  // Not admitted: visibility, fingerprint mismatch or absent provider.
+  CLASSIFICATION_REFUSED = 5;
+}

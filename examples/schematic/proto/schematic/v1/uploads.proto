@@ -11,9 +11,9 @@ package schematic.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/v1/file.proto";
-import "harmos/v1/position.proto";
-import "harmos/v1/receipt.proto";
+import "harmos/model/v1/file.proto";
+import "harmos/model/v1/position.proto";
+import "harmos/model/v1/receipt.proto";
 
 // === Options === //
 
@@ -39,31 +39,31 @@ service Uploads {
 
 // Creates one upload; request is a replay identity within the issued mutation window.
 message UploadsCreateRequest {
-  harmos.v1.FileMetadata metadata = 1;
+  harmos.model.v1.FileMetadata metadata = 1;
   UploadMutation mutation = 2;
 }
 
 // Returns the new writer and mutation receipt.
 message UploadsCreateResponse {
-  harmos.v1.Upload upload = 1;
-  harmos.v1.Receipt receipt = 2;
+  harmos.model.v1.Upload upload = 1;
+  harmos.model.v1.Receipt receipt = 2;
 }
 
 // Selects optional upload progress; omit upload to read only the replay window.
 message UploadsGetRequest {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
 }
 
 // Returns current progress, including accepted and durable lengths.
 message UploadsGetResponse {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
   UploadWindow mutations = 2;
   uint64 chunk_bytes = 3;
 }
 
 // Resumes one upload with fencing of the previous writer.
 message UploadsResumeRequest {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
   UploadMutation mutation = 2;
 }
 
@@ -71,12 +71,12 @@ message UploadsResumeRequest {
 message UploadsResumeResponse {
   uint64 writer_generation = 1;
   uint64 accepted_length = 2;
-  harmos.v1.Receipt receipt = 3;
+  harmos.model.v1.Receipt receipt = 3;
 }
 
 // Appends a chunk under the supplied upload's writer fence.
 message UploadsAppendRequest {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
   uint64 offset = 2;
   bytes bytes = 3;
   UploadMutation mutation = 4;
@@ -85,12 +85,12 @@ message UploadsAppendRequest {
 // Returns the accepted prefix and replay receipt; Get reads current durable progress.
 message UploadsAppendResponse {
   uint64 accepted_length = 1;
-  harmos.v1.Receipt receipt = 2;
+  harmos.model.v1.Receipt receipt = 2;
 }
 
 // Publishes the complete upload only if length and SHA-256 match.
 message UploadsPublishRequest {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
   uint64 length = 2;
   bytes sha256 = 3;
   UploadMutation mutation = 4;
@@ -98,27 +98,27 @@ message UploadsPublishRequest {
 
 // Returns the published immutable file and durable publication receipt.
 message UploadsPublishResponse {
-  harmos.v1.File file = 1;
-  harmos.v1.Receipt receipt = 2;
+  harmos.model.v1.File file = 1;
+  harmos.model.v1.Receipt receipt = 2;
 }
 
 // Abandons one unfinished upload under its current writer fence.
 message UploadsDeleteRequest {
-  harmos.v1.Upload upload = 1;
+  harmos.model.v1.Upload upload = 1;
   UploadMutation mutation = 2;
 }
 
 // Returns terminal upload state and its receipt.
 message UploadsDeleteResponse {
-  harmos.v1.UploadState state = 1;
-  harmos.v1.Receipt receipt = 2;
+  harmos.model.v1.UploadState state = 1;
+  harmos.model.v1.Receipt receipt = 2;
 }
 
 // === Resources === //
 
 // Reports the native storage owner's current replay window without moving ownership.
 message UploadWindow {
-  harmos.v1.History history = 1;
+  harmos.model.v1.History history = 1;
   string id = 2;
   google.protobuf.Timestamp expires_at = 3;
 }

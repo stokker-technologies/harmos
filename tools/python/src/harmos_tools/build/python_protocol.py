@@ -37,9 +37,8 @@ ROOT = Path(__file__).resolve().parents[5]
 PROTOCOLS = tuple(
     sorted(
         path.relative_to(ROOT / "proto").as_posix()
-        for face in ("v1", "client/v1", "plugin")
+        for face in ("model", "host", "plugin")
         for path in (ROOT / "proto/harmos" / face).rglob("*.proto")
-        if path.name != "guest.proto"
     )
 )
 GENERATED = tuple(
@@ -57,6 +56,8 @@ GENERATED = tuple(
 
 def generate(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
+    for name in ["harmos/v1/__init__.py", "harmos/plugin/v1/__init__.py"]:
+        (output / name).unlink(missing_ok=True)
     for path in (output / "harmos").rglob("*_pb2*"):
         name = path.relative_to(output).as_posix()
         if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in GENERATED:
@@ -74,7 +75,7 @@ def generate(output: Path) -> None:
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
     # All Protocol Packages Are Private Implementation Modules.
-    for face in ("v1", "client", "plugin"):
+    for face in ("model", "host", "plugin"):
         source = output / "harmos" / face
         destination = output / "harmos/_wire" / face
         if source.is_dir():
@@ -87,7 +88,7 @@ def generate(output: Path) -> None:
     for name in GENERATED:
         path = output / name
         source = path.read_text(encoding="utf-8")
-        for face in ("v1", "client", "plugin"):
+        for face in ("model", "host", "plugin"):
             source = source.replace(f"from harmos.{face}", f"from harmos._wire.{face}")
             source = source.replace(f"import harmos.{face}.", f"import harmos._wire.{face}.")
             source = source.replace(f"'harmos.{face}.", f"'harmos._wire.{face}.")

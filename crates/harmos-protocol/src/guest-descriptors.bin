@@ -1,18 +1,18 @@
 
-“
-harmos/v1/guest.proto	harmos.v1harmos/v1/operation.proto"z
+Ô
+harmos/plugin/v1/guest.protoharmos.plugin.v1 harmos/plugin/v1/operation.proto"Å
 GuestInitialize
 configuration (
-generation_context (4
-assignments (2.harmos.v1.OperationAssignments"
+generation_context (;
+assignments (2&.harmos.plugin.v1.OperationAssignments"
 GuestShutdownbproto3
-…
-harmos/v1/operation.proto	harmos.v1"O
+ﬁ
+ harmos/plugin/v1/operation.protoharmos.plugin.v1"O
 AssignedOperation
 	operation (	
 fingerprint (
 
-generation ("H
-OperationAssignments0
+generation ("O
+OperationAssignments7
 
-operations (2.harmos.v1.AssignedOperationbproto3
+operations (2#.harmos.plugin.v1.AssignedOperationbproto3

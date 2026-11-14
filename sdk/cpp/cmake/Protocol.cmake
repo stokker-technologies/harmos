@@ -1,38 +1,38 @@
 # Explicit SDK Protocol Inventory; Conformance and Client Fixtures Are Test Support.
 set(HARMOS_PROTOCOLS
-    harmos/client/v1/access/certificates.proto
-    harmos/client/v1/access/listener.proto
-    harmos/client/v1/access/pairings.proto
-    harmos/client/v1/invocations.proto
-    harmos/client/v1/operations.proto
-    harmos/client/v1/plugins.proto
-    harmos/client/v1/plugins/settings.proto
-    harmos/client/v1/schemas.proto
-    harmos/client/v1/status.proto
-    harmos/client/v1/status/diagnostics.proto
-    harmos/client/v1/status/logs.proto
-    harmos/client/v1/status/trace_events.proto
-    harmos/client/v1/streams.proto
-    harmos/client/v1/time.proto
-    harmos/plugin/host/v1/invocations.proto
-    harmos/plugin/host/v1/operations.proto
-    harmos/plugin/host/v1/settings.proto
-    harmos/plugin/host/v1/time.proto
+    harmos/host/v1/access/certificates.proto
+    harmos/host/v1/access/listener.proto
+    harmos/host/v1/access/pairings.proto
+    harmos/host/v1/invocations.proto
+    harmos/host/v1/operations.proto
+    harmos/host/v1/plugins.proto
+    harmos/host/v1/plugins/settings.proto
+    harmos/host/v1/schema.proto
+    harmos/host/v1/schemas.proto
+    harmos/host/v1/status.proto
+    harmos/host/v1/status/diagnostics.proto
+    harmos/host/v1/status/logs.proto
+    harmos/host/v1/status/trace_events.proto
+    harmos/host/v1/streams.proto
+    harmos/host/v1/time.proto
+    harmos/model/v1/callers.proto
+    harmos/model/v1/description.proto
+    harmos/model/v1/failure.proto
+    harmos/model/v1/file.proto
+    harmos/model/v1/invocation.proto
+    harmos/model/v1/operation.proto
+    harmos/model/v1/page.proto
+    harmos/model/v1/policy.proto
+    harmos/model/v1/position.proto
+    harmos/model/v1/receipt.proto
+    harmos/model/v1/setting.proto
+    harmos/model/v1/stream.proto
+    harmos/model/v1/transfer.proto
+    harmos/plugin/v1/guest.proto
     harmos/plugin/v1/instance.proto
-    harmos/v1/description.proto
-    harmos/v1/failure.proto
-    harmos/v1/file.proto
-    harmos/v1/guest.proto
-    harmos/v1/invocation.proto
-    harmos/v1/operation.proto
-    harmos/v1/page.proto
-    harmos/v1/policy.proto
-    harmos/v1/position.proto
-    harmos/v1/receipt.proto
-    harmos/v1/schema.proto
-    harmos/v1/setting.proto
-    harmos/v1/stream.proto
-    harmos/v1/transfer.proto)
+    harmos/plugin/v1/invocation.proto
+    harmos/plugin/v1/operation.proto
+    harmos/plugin/v1/stream.proto)
 
 function(harmos_protocol target root output)
     cmake_parse_arguments(PROTOCOL "SYNC_SERVER" "" "" ${ARGN})

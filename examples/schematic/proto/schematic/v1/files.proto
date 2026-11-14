@@ -10,8 +10,8 @@ package schematic.v1;
 
 // === Imports === //
 
-import "harmos/v1/file.proto";
-import "harmos/v1/position.proto";
+import "harmos/model/v1/file.proto";
+import "harmos/model/v1/position.proto";
 
 // === Options === //
 
@@ -29,10 +29,10 @@ service Files {
 
 // Selects one published file range; zero max_bytes uses the storage chunk setting.
 message FilesReadRequest {
-  harmos.v1.File file = 1;
+  harmos.model.v1.File file = 1;
   uint64 offset = 2;
   uint64 max_bytes = 3;
-  harmos.v1.ReadCut at = 4;
+  harmos.model.v1.ReadCut at = 4;
 }
 
 // Returns a bounded content range and its issued read cut.
@@ -40,26 +40,26 @@ message FilesReadResponse {
   uint64 offset = 1;
   bytes bytes = 2;
   bool complete = 3;
-  harmos.v1.ReadCut resolved_at = 4;
+  harmos.model.v1.ReadCut resolved_at = 4;
 }
 
 // Selects one file source and an optional bounded range for hashing.
 message FilesHashRequest {
   // The example permits explicit filesystem paths and immutable stored content.
   oneof source {
-    harmos.v1.File file = 1;
+    harmos.model.v1.File file = 1;
     string path = 2;
   }
   uint64 offset = 3;
   optional uint64 length = 4;
-  harmos.v1.ReadCut at = 5;
+  harmos.model.v1.ReadCut at = 5;
 }
 
 // Returns the digest of exactly the selected bytes and its issued read cut.
 message FilesHashResponse {
   uint64 read_bytes = 1;
   bytes sha256 = 2;
-  harmos.v1.ReadCut resolved_at = 3;
+  harmos.model.v1.ReadCut resolved_at = 3;
 }
 
 // === Resources === //

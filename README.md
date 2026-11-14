@@ -91,7 +91,7 @@ Clients bind `client::Method` to generated application types, then use `Client::
 `Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
 The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
 and reads its calling entry through `Context::settings`. Discover contracts through
-`client.operations.list`; client wrappers live in `harmos_protocol::client`.
+`client.operations.list`; public client response types live in `harmos::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.

@@ -1,13 +1,0 @@
-
-¯
-'harmos/plugin/host/v1/invocations.protoharmos.plugin.host.v1harmos/v1/invocation.proto"I
-InvocationsCancelResponse,
-
-invocation (2.harmos.v1.InstanceStatebproto3
-‘
-harmos/v1/invocation.proto	harmos.v1"`
-InstanceState
-phase (	
-outcome (	
-cancellation_requested (
-attempt (bproto3

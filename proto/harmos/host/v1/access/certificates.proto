@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Host Certificates
+//
+// Operations executed by the host; each method declares its permitted callers.
+
+syntax = "proto3";
+
+package harmos.host.v1.access;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Host.V1.AccessResources";
+
+// === Services === //
+
+// Owns TLS certificate rotation and the associated revocation of durable client pairings.
+service Certificates {
+  // Generate and persist a new TLS certificate, rotate the live listener and revoke all existing pairings; repeating the call rotates again.
+  rpc Create(CertificatesCreateRequest) returns (CertificatesCreateResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Create === //
+
+// Request for Certificates.Create.
+message CertificatesCreateRequest {}
+
+// Returns the newly persisted TLS certificate after live rotation and pairing revocation.
+message CertificatesCreateResponse {
+  string certificate_pem = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

@@ -7,7 +7,7 @@
  * ***
  */
 
-//! Audience-separated client, plugin-host and instance protocol contracts.
+//! Model values and host/plugin executor protocol contracts.
 //! [`schema`] owns descriptor fingerprints and declaration digests shared by peers.
 
 /* === Modules === */
@@ -18,7 +18,7 @@ pub mod policy;
 pub mod service;
 pub mod transfer;
 #[rustfmt::skip]
-pub mod client;
+pub mod host;
 #[rustfmt::skip]
 pub mod plugin;
 #[rustfmt::skip]
@@ -27,7 +27,7 @@ pub mod schema;
 
 // Checked-In Output of the Generator Exercised by the Integration Drift Check.
 #[rustfmt::skip]
-pub mod v1;
+pub mod model;
 
 /* === Re-Exports === */
 

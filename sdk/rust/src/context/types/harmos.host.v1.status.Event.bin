@@ -1,0 +1,18 @@
+
+g
+google/protobuf/timestamp.protogoogle.protobuf"+
+	Timestamp
+seconds (
+nanos (bproto3
+È
+ harmos/host/v1/status/logs.protoharmos.host.v1.statusgoogle/protobuf/timestamp.proto"ã
+Event
+sequence (/
+observed_at (2.google.protobuf.Timestamp
+level (	
+target (	
+message (	8
+fields (2(.harmos.host.v1.status.Event.FieldsEntry-
+FieldsEntry
+key (	
+value (	:8bproto3

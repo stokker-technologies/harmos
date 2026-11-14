@@ -1,0 +1,29 @@
+
+g
+google/protobuf/timestamp.protogoogle.protobuf"+
+	Timestamp
+seconds (
+nanos (bproto3
+Û
+ harmos/host/v1/status/logs.protoharmos.host.v1.statusgoogle/protobuf/timestamp.protoharmos/model/v1/position.proto"ã
+Event
+sequence (/
+observed_at (2.google.protobuf.Timestamp
+level (	
+target (	
+message (	8
+fields (2(.harmos.host.v1.status.Event.FieldsEntry-
+FieldsEntry
+key (	
+value (	:8"q
+LogsWatchResponse,
+events (2.harmos.host.v1.status.Event.
+resolved_at (2.harmos.model.v1.Positionbproto3
+«
+harmos/model/v1/position.protoharmos.model.v1"'
+History
+store (	
+epoch (	"G
+Position)
+history (2.harmos.model.v1.History
+sequence (bproto3

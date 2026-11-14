@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Host Diagnostics
+//
+// Operations executed by the host; each method declares its permitted callers.
+
+syntax = "proto3";
+
+package harmos.host.v1.status;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Host.V1.StatusResources";
+
+// === Services === //
+
+// Exposes bounded ranges of the host's retained redacted diagnostics archive.
+service Diagnostics {
+  // Create a redacted diagnostics archive on an empty name at offset zero, or read bounded ranges of the retained archive; unknown/expired names refuse.
+  rpc Get(DiagnosticsGetRequest) returns (DiagnosticsGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Get === //
+
+// Carries the resource name, byte offset and byte bound for Diagnostics.Get.
+message DiagnosticsGetRequest {
+  // Empty creates a fresh archive and requires offset zero; otherwise selects the retained archive returned by an earlier response.
+  string name = 1;
+  // Zero-based byte offset, at most the selected archive length.
+  uint64 offset = 2;
+  // Positive range size no greater than the host's configured range_bytes budget.
+  uint64 max_bytes = 3;
+}
+
+// Returns archive bytes at the requested offset with the retained archive identity, complete length and complete digest.
+message DiagnosticsGetResponse {
+  // Opaque retained archive identity used for subsequent ranges; a newer archive can retire it.
+  string name = 1;
+  bytes data = 2;
+  uint64 total_length = 3;
+  // 32-byte SHA-256 of the complete archive, not just the returned range.
+  bytes sha256 = 4;
+}
+
+// === Resources === //
+
+// === Enums === //

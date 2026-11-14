@@ -78,19 +78,19 @@ class InstanceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Invoke(self, request_iterator, context):
-        """One invocation of one operation. The host opens the call with a harmos.v1.Request.
-        While it runs, the plugin may send harmos.v1.ChildRequest frames and the host
-        answers each with a harmos.v1.ChildResponse. The plugin ends the call with a
-        harmos.v1.Response. The host may send harmos.v1.Cancel at any time.
+        """One invocation of one operation. The host opens the call with a harmos.plugin.v1.Request.
+        While it runs, the plugin may send harmos.plugin.v1.ChildRequest frames and the host
+        answers each with a harmos.plugin.v1.ChildResponse. The plugin ends the call with a
+        harmos.plugin.v1.Response. The host may send harmos.plugin.v1.Cancel at any time.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def Samples(self, request_iterator, context):
-        """One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
+        """One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
         opening it is the demand for the stream and closing it ends the demand.
-        For a stream with an interval the host then sends one harmos.v1.Tick per interval
+        For a stream with an interval the host then sends one harmos.plugin.v1.Tick per interval
         and the plugin answers each with one sample. Only one tick may be unanswered.
         Between receiving a tick and sending its sample, the plugin may send ChildRequest,
         ChildDemand and ChildCancel frames; the host replies with ChildResponse on this

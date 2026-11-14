@@ -48,7 +48,7 @@ pub fn generate(root: &Path, compiler: &Path, includes: &Path, output: &Path) ->
     let mut config = Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);
-    config.extern_path(".harmos.v1", "::harmos_protocol::v1");
+    config.extern_path(".harmos.model.v1", "::harmos_protocol::model");
     config.file_descriptor_set_path(output.join("schematic.descriptors.bin"));
     config.compile_protos(
         &[proto.join("schematic/v1/operations.proto"), proto.join("schematic/v1/files.proto"), proto.join("schematic/v1/uploads.proto")],

@@ -15,6 +15,7 @@
 import re
 import subprocess
 import sys
+import tomllib
 from argparse import ArgumentParser
 from pathlib import Path
 from typing import TypedDict
@@ -24,6 +25,7 @@ from google.protobuf.descriptor_pb2 import DescriptorProto, FieldDescriptorProto
 
 # Local Imports
 from ..process import spawn_flags
+from ..source.protocol import caller_options, narrow_callers
 
 # Type Checking Imports
 
@@ -31,6 +33,9 @@ from ..process import spawn_flags
 # === Public Exports === #
 
 # === Constants === #
+
+# Canonical Public Payload Names Filled from Each Descriptor Inventory.
+CPP_TYPES: dict[str, str] = {}
 
 # === Types === #
 
@@ -71,6 +76,7 @@ class Method(TypedDict):
 
 def table(descriptors: FileDescriptorSet) -> list[Method]:
     methods: list[Method] = []
+    callers = caller_options(descriptors)
     leaves = set()
     csharp_types = {}
     definitions: dict[str, DescriptorProto] = {}
@@ -101,49 +107,72 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
         if version is None or version == 0:
             continue
         boundary = parts[:version]
-        if boundary[-2:] == ["plugin", "host"]:
-            face = "context"
-            owner = ".".join(boundary[:-2])
-        elif boundary[-1] == "plugin":
-            face = "plugin"
-            owner = ".".join(boundary[:-1])
-        else:
-            face = "client"
-            owner = ".".join(boundary[:-1] if boundary[-1] == "client" else boundary)
+        executor = boundary[-1]
+        owner = ".".join(boundary[:-1]) if executor in {"host", "plugin", "model"} else ".".join(boundary)
         for service in file.service:
             for method in service.method:
                 response = definitions[method.output_type]
                 payload = response.field[0] if len(response.field) == 1 else None
                 path = [*parts[version + 1 :], snake(service.name), snake(method.name)]
-                leaf = (face, *path)
-                if leaf in leaves:
-                    raise ValueError(f"Client Resource Collision: {'.'.join(path)}")
-                leaves.add(leaf)
-                methods.append(
-                    Method(
-                        owner=owner,
-                        face=face,
-                        version=parts[version],
-                        parents=parts[version + 1 :],
-                        service=service.name,
-                        method=method.name,
-                        package=file.package,
-                        path=path,
-                        request=method.input_type.lstrip("."),
-                        response=method.output_type.lstrip("."),
-                        request_csharp=csharp_types[method.input_type],
-                        response_csharp=csharp_types[method.output_type],
-                        client_streaming=method.client_streaming,
-                        server_streaming=method.server_streaming,
-                        file=file.name,
-                        fields=[field(value) for value in definitions[method.input_type].field],
-                        payload_field=field(payload) if payload is not None else None,
-                    )
+                identity = f"{file.package}.{service.name}/{method.name}"
+                audience = callers.get(identity, "CLIENTS")
+                faces = (
+                    ["plugin"]
+                    if executor == "plugin"
+                    else [
+                        face for face, allowed in [("client", {"CLIENTS", "ALL"}), ("context", {"PLUGINS", "ALL"})] if audience in allowed
+                    ]
                 )
+                for face in faces:
+                    leaf = (face, *path)
+                    if leaf in leaves:
+                        raise ValueError(f"Client Resource Collision: {'.'.join(path)}")
+                    leaves.add(leaf)
+                    methods.append(
+                        Method(
+                            owner=owner,
+                            face=face,
+                            version=parts[version],
+                            parents=parts[version + 1 :],
+                            service=service.name,
+                            method=method.name,
+                            package=file.package,
+                            path=path,
+                            request=method.input_type.lstrip("."),
+                            response=method.output_type.lstrip("."),
+                            request_csharp=csharp_types[method.input_type],
+                            response_csharp=csharp_types[method.output_type],
+                            client_streaming=method.client_streaming,
+                            server_streaming=method.server_streaming,
+                            file=file.name,
+                            fields=[field(value) for value in definitions[method.input_type].field],
+                            payload_field=field(payload) if payload is not None else None,
+                        )
+                    )
     for leaf in leaves:
         if any(leaf[:length] in leaves for length in range(2, len(leaf))):
             raise ValueError(f"Client Resource Collision: {'.'.join(leaf[1:])}")
     return methods
+
+
+def payload_audiences(descriptors: FileDescriptorSet) -> dict[str, set[str]]:
+    definitions = {f"{file.package}.{definition.name}": definition for file in descriptors.file for definition in file.message_type}
+    audiences: dict[str, set[str]] = {}
+    for method in table(descriptors):
+        if method["face"] == "plugin":
+            continue
+        pending = [method["request"], method["response"]]
+        visited = set()
+        while pending:
+            name = pending.pop()
+            if name in visited:
+                continue
+            visited.add(name)
+            audiences.setdefault(name, set()).add("client" if method["face"] == "client" else "plugin")
+            definition = definitions.get(name)
+            if definition is not None:
+                pending.extend(field.type_name.lstrip(".") for field in definition.field if field.type_name)
+    return audiences
 
 
 def snake(name: str) -> str:
@@ -257,6 +286,7 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
 def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
     methods = table(descriptors)
+    audiences = payload_audiences(descriptors)
     requests = {method["request"] for method in methods}
     carriers = {
         "Request",
@@ -272,17 +302,28 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
     for file in descriptors.file:
         if not file.package.startswith("harmos.") or file.name.endswith("guest.proto"):
             continue
-        group = "client_types" if ".client." in file.package else "plugin_types" if ".plugin.host." in file.package else "shared"
-        if ".plugin." in file.package and ".plugin.host." not in file.package:
+        if ".plugin." in file.package:
             continue
         module = file.name.removesuffix(".proto").replace("/", ".").replace("harmos.", "harmos._wire.", 1) + "_pb2"
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
             name = "FailureValue" if definition.name == "Failure" else definition.name
-            groups[group].append((module, definition.name, name))
+            groups_for_type = (
+                {"shared"}
+                if ".model." in file.package
+                else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
+            )
+            for group in groups_for_type:
+                groups[group].append((module, definition.name, name))
         for definition in file.enum_type:
-            groups[group].extend((module, value.name, value.name) for value in definition.value)
+            groups_for_type = (
+                {"shared"}
+                if ".model." in file.package
+                else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
+            )
+            for group in groups_for_type:
+                groups[group].extend((module, value.name, value.name) for value in definition.value)
     target.mkdir(parents=True, exist_ok=True)
     for group, entries in groups.items():
         lines = ["# @generated from protocol descriptors; do not edit."]
@@ -570,7 +611,8 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
         )
         return f"list[{value}]" if field["repeated"] else value
 
-    nodes = sorted({method["path"][0] for method in methods})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    names = {node: "Host" + "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     lines = [
         "# @generated from protocol descriptors; do not edit.",
         "from collections.abc import AsyncGenerator",
@@ -578,8 +620,8 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
         "from typing import TYPE_CHECKING, cast",
         "from google.protobuf.message import Message",
         "from harmos._contracts import Operation",
-        "from harmos._wire.v1.operation_pb2 import VISIBILITY_PUBLIC",
-        "from harmos._wire.v1.policy_pb2 import OperationPolicy",
+        "from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC",
+        "from harmos._wire.model.v1.policy_pb2 import OperationPolicy",
     ]
     lines += [f"from {modules[full]} import {full.rsplit('.', 1)[-1]}" for full in sorted(used)]
     lines += ["if TYPE_CHECKING:", "    from harmos._invocation import Context", "class HostOperation(Enum):"]
@@ -601,14 +643,15 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
         "class HostRoot:",
         "    def __init__(self, context: 'Context') -> None:",
     ]
-    lines += [f"        self.{node} = Host{node.title()}Resource(context)" for node in nodes]
+    lines += [f"        self.{node[-1]} = {names[node]}(context)" for node in nodes if len(node) == 1]
     for node in nodes:
         lines += [
-            f"class Host{node.title()}Resource:",
+            f"class {names[node]}:",
             "    def __init__(self, context: 'Context') -> None:",
             "        self._context = context",
         ]
-        for method in (method for method in methods if method["path"][0] == node):
+        lines += [f"        self.{child[-1]} = {names[child]}(context)" for child in nodes if child[:-1] == node]
+        for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "_".join(method["path"]).upper()
             q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             parameters = [f"{field['name']}: {field_type(field)}" for field in method["fields"] if not field["optional"]]
@@ -660,33 +703,31 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
 
 def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
     requests = {method["request"] for method in table(descriptors)}
+    audiences = payload_audiences(descriptors)
     groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
     for file in descriptors.file:
-        if (
-            not file.package.startswith("harmos.")
-            or file.name.endswith("guest.proto")
-            or (".plugin." in file.package and ".plugin.host." not in file.package)
-        ):
+        if not file.package.startswith("harmos.") or file.name.endswith("guest.proto") or ".plugin." in file.package:
             continue
-        group = "client" if ".client." in file.package else "plugin" if ".plugin.host." in file.package else "shared"
         for definition in [*file.message_type, *file.enum_type]:
             full = f"{file.package}.{definition.name}"
             if full in requests or definition.name in {"Request", "Response"} or definition.name.startswith("Child"):
                 continue
             source = (
                 rust_message(full)
-                .replace("harmos_protocol::v1", "crate::wire::shared")
-                .replace("harmos_protocol::plugin::host", "crate::wire::host")
-                .replace("harmos_protocol::client", "crate::wire::client")
+                .replace("harmos_protocol::model", "crate::wire::shared")
+                .replace("harmos_protocol::host", "crate::wire::host")
             )
-            groups[group].append(f"pub use {source};")
+            groups_for_type = {"shared"} if ".model." in file.package else audiences.get(full, {"client"})
+            for group in groups_for_type:
+                groups[group].append(f"pub use {source};")
             if isinstance(definition, DescriptorProto) and (
                 any(not nested.options.map_entry for nested in definition.nested_type)
                 or definition.enum_type
                 or any(field.HasField("oneof_index") and not field.proto3_optional for field in definition.field)
             ):
                 parent = source.rsplit("::", 1)[0]
-                groups[group].append(f"pub use {parent}::{snake(definition.name)};")
+                for group in groups_for_type:
+                    groups[group].append(f"pub use {parent}::{snake(definition.name)};")
     for group, lines in groups.items():
         target = root / "sdk/rust/src" / ("exports.rs" if group == "shared" else f"{group}/types.rs")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -696,12 +737,9 @@ def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
 
 
 def rust_message(full: str) -> str:
-    if full.startswith("harmos.client.v1."):
-        return "harmos_protocol::client::" + "::".join(full.split(".")[3:])
-    if full.startswith("harmos.plugin.host.v1."):
-        return "harmos_protocol::plugin::host::" + "::".join(full.split(".")[4:])
-    if full.startswith("harmos.v1."):
-        return "harmos_protocol::v1::" + full.rsplit(".", 1)[-1]
+    for package, module in [("harmos.host.v1.", "host"), ("harmos.plugin.v1.", "plugin"), ("harmos.model.v1.", "model")]:
+        if full.startswith(package):
+            return f"harmos_protocol::{module}::" + "::".join(full.removeprefix(package).split("."))
     if full.startswith("google.protobuf."):
         return "prost_types::" + full.rsplit(".", 1)[-1]
     parts = full.split(".")
@@ -869,7 +907,7 @@ def rust_context(root: Path, methods: list[Method]) -> None:
     lines = ["// @generated from the protocol descriptor table; do not edit.", "use crate::{Message, OperationRequest};"]
     messages = sorted(
         {method[field] for method in methods for field in ("request", "response")}
-        | {"harmos.v1.SettingDeclaration", "harmos.v1.SettingsDeclarations"}
+        | {"harmos.model.v1.SettingDeclaration", "harmos.model.v1.SettingsDeclarations"}
     )
 
     lines += ["use prost::Message as _;", "use prost_types::FileDescriptorSet;"]
@@ -908,7 +946,8 @@ def rust_host(root: Path, methods: list[Method]) -> None:
         )
         return f"Vec<{value}>" if field["repeated"] else value
 
-    nodes = sorted({method["path"][0] for method in methods})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
         field["type"]
@@ -940,9 +979,9 @@ def rust_host(root: Path, methods: list[Method]) -> None:
         "#[derive(Clone)]",
         "pub struct HostRoot {",
     ]
-    lines += [f"    pub {node}: Host{title(node)}Resource," for node in nodes]
+    lines += [f"    pub {node[-1]}: {names[node]}," for node in nodes if len(node) == 1]
     lines += ["}", "impl HostRoot {", "    fn new(context: Context) -> Self {", "        Self {"]
-    lines += [f"            {node}: Host{title(node)}Resource {{ context: context.clone() }}," for node in nodes]
+    lines += [f"            {node[-1]}: {names[node]}::new(context.clone())," for node in nodes if len(node) == 1]
     lines += ["        }", "    }", "}"]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
@@ -971,12 +1010,17 @@ def rust_host(root: Path, methods: list[Method]) -> None:
     for node in nodes:
         lines += [
             "#[derive(Clone)]",
-            f"pub struct Host{title(node)}Resource {{",
-            "    context: Context,",
+            f"pub struct {names[node]} {{",
+            *(["    context: Context,"] if any(tuple(method["path"][:-1]) == node for method in methods) else []),
+            *[f"    pub {child[-1]}: {names[child]}," for child in nodes if child[:-1] == node],
             "}",
-            f"impl Host{title(node)}Resource {{",
+            f"impl {names[node]} {{",
+            "    fn new(context: Context) -> Self { Self {",
+            *[f"        {child[-1]}: {names[child]}::new(context.clone())," for child in nodes if child[:-1] == node],
+            *(["        context,"] if any(tuple(method["path"][:-1]) == node for method in methods) else []),
+            "    } }",
         ]
-        for method in (method for method in methods if method["path"][0] == node):
+        for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
             q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
@@ -1016,7 +1060,7 @@ def rust_host(root: Path, methods: list[Method]) -> None:
         lines += ["}"]
     target = root / "sdk/rust/src/plugin/host.rs"
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    exports = ["HostOperation", "HostRoot", *(f"Host{title(node)}Resource" for node in nodes)]
+    exports = ["HostOperation", "HostRoot", *names.values()]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
         exports += [f"Host{name}Options"]
@@ -1031,13 +1075,12 @@ def rust_host(root: Path, methods: list[Method]) -> None:
 
 def csharp_message(name: str) -> str:
     return (
-        name.replace("Harmos.Plugin.Host.V1", "Harmos.Plugins")
-        .replace("Harmos.Plugin.V1", "Harmos.Internal.Plugin")
-        .replace("Harmos.Client.V1.StatusResources", "Harmos.Clients")
-        .replace("Harmos.Client.V1.PluginsResources", "Harmos.Clients")
-        .replace("Harmos.Client.V1.AccessResources", "Harmos.Clients")
-        .replace("Harmos.Client.V1", "Harmos.Clients")
-        .replace("Harmos.V1", "Harmos")
+        name.replace("Harmos.Plugin.V1", "Harmos.Internal.Plugin")
+        .replace("Harmos.Host.V1.StatusResources", "Harmos.Clients")
+        .replace("Harmos.Host.V1.PluginsResources", "Harmos.Clients")
+        .replace("Harmos.Host.V1.AccessResources", "Harmos.Clients")
+        .replace("Harmos.Host.V1", "Harmos.Clients")
+        .replace("Harmos.Model.V1", "Harmos")
     )
 
 
@@ -1235,7 +1278,8 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
             value = {1: "double", 2: "float", 8: "bool", 9: "string", 12: "ByteString", 4: "ulong", 13: "uint"}.get(field["kind"], "long")
         return f"IReadOnlyList<{value}>" if field["repeated"] else value
 
-    nodes = sorted({method["path"][0] for method in methods})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#nullable enable",
@@ -1246,6 +1290,11 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
         "using System.Runtime.CompilerServices;",
         "using Google.Protobuf;",
         "using Google.Protobuf.WellKnownTypes;",
+        *[
+            f"using {method[key].rsplit('.', 1)[-1]} = global::{csharp_message(method[key + '_csharp'])};"
+            for method in methods
+            for key in ("request", "response")
+        ],
         "namespace Harmos.Plugins;",
         "public enum HostOperation",
         "{",
@@ -1275,11 +1324,12 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
         "public sealed class HostRoot(Context context)",
         "{",
     ]
-    lines += [f"  public Host{title(node)}Resource {title(node)} {{ get; }} = new(context);" for node in nodes]
+    lines += [f"  public {names[node]} {title(node[-1])} {{ get; }} = new(context);" for node in nodes if len(node) == 1]
     lines += ["}"]
     for node in nodes:
-        lines += [f"public sealed class Host{title(node)}Resource(Context context)", "{"]
-        for method in (method for method in methods if method["path"][0] == node):
+        lines += [f"public sealed class {names[node]}(Context context)", "{"]
+        lines += [f"  public {names[child]} {title(child[-1])} {{ get; }} = new(context);" for child in nodes if child[:-1] == node]
+        for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             parameters = [f"{field_type(field)} {field['name']}" for field in method["fields"] if not field["optional"]]
             stream = method["server_streaming"]
@@ -1294,8 +1344,13 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
             name = "".join(title(part) for part in method["path"])
             result = f"IAsyncEnumerable<{result}>" if stream else f"Task<{result}>"
             lines += [f"  public async {result} {method['method']}({', '.join(parameters)})", "  {", f"    var request = new {q}", "    {"]
-            lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"]]
+            lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"] if not field["optional"]]
             lines += ["    };"]
+            lines += [
+                f"    if ({field['name']} is not null) request.{title(field['name'])} = {field['name']};"
+                for field in method["fields"]
+                if field["optional"]
+            ]
             value = f"response.{title(payload['name'])}" if payload else "response"
             if payload and payload["kind"] == 11 and not payload["repeated"]:
                 value += f' ?? throw new InvalidOperationException("Read {name}: Missing Payload")'
@@ -1324,6 +1379,7 @@ def csharp_host(root: Path, methods: list[Method], *, check: bool = False) -> No
 
 def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
     methods = table(descriptors)
+    audiences = payload_audiences(descriptors)
     requests = {method["request"] for method in methods}
     carriers = {
         "Request",
@@ -1340,20 +1396,19 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
     entries = []
     hidden = []
     for file in descriptors.file:
-        if (
-            file.name.endswith("guest.proto")
-            or not file.package.startswith("harmos.")
-            or (".plugin." in file.package and ".plugin.host." not in file.package)
-        ):
+        if file.name.endswith("guest.proto") or not file.package.startswith("harmos.") or ".plugin." in file.package:
             continue
         private += [f'#include "{file.name.removesuffix(".proto")}.pb.h"']
-        boundary = "client" if ".client." in file.package else "plugin" if ".plugin.host." in file.package else ""
+        boundary = "client" if ".host." in file.package else ""
         for definition in [*file.message_type, *file.enum_type]:
+            groups_for_type = audiences.get(f"{file.package}.{definition.name}", {"client"})
+            boundary = "" if ".model." in file.package or len(groups_for_type) > 1 else next(iter(groups_for_type))
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 alias = (boundary.title() or "Shared") + definition.name
                 hidden.append(f"using {alias} = ::{file.package.replace(chr(46), chr(58) + chr(58))}::{definition.name};")
                 continue
             name = "FailureValue" if definition.name == "Failure" else definition.name
+            CPP_TYPES[f"{file.package}.{definition.name}"] = "::harmos::" + (boundary + "::" if boundary else "") + name
             alias = (boundary.title() or "Shared") + name
             entries.append((boundary, name, alias, f"::{file.package.replace('.', '::')}::{definition.name}", False))
         for definition in file.enum_type:
@@ -1407,7 +1462,8 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
         )
         return f"std::vector<{value}>" if field["repeated"] else value
 
-    nodes = sorted({method["path"][0] for method in methods})
+    nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
+    names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     header = [
         "// @generated from protocol descriptors; do not edit.",
         "#pragma once",
@@ -1441,9 +1497,13 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
                 f"  std::function<std::optional<{value}>()> next_;",
                 "};",
             ]
-    for node in nodes:
-        header += [f"struct Host{title(node)}Resource {{", "  Context context;"]
-        for method in (method for method in methods if method["path"][0] == node):
+    for node in reversed(nodes):
+        children = [child for child in nodes if child[:-1] == node]
+        header += [f"struct {names[node]} {{", "  Context context;"]
+        header += [f"  {names[child]} {child[-1]};" for child in children]
+        initializers = ["context(value)", *[f"{child[-1]}(value)" for child in children]]
+        header += [f"  {names[node]}(Context value) : {', '.join(initializers)} {{}}"]
+        for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
             q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             payload = method["payload_field"]
@@ -1453,7 +1513,7 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
                 parameters += ["std::size_t max_item_bytes"]
             header += [f"  {result} {method['path'][-1]}({', '.join([*parameters, 'Host' + name + 'Options options = {}'])});"]
             source += [
-                f"{result} Host{title(node)}Resource::{method['path'][-1]}({', '.join([*parameters, 'Host' + name + 'Options options'])}) {{",
+                f"{result} {names[node]}::{method['path'][-1]}({', '.join([*parameters, 'Host' + name + 'Options options'])}) {{",
                 f"  {q} request;",
             ]
             for field in method["fields"]:
@@ -1503,13 +1563,13 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
             source += ["}"]
         header += ["};"]
     header += ["struct HostRoot {"]
-    header += [f"  Host{title(node)}Resource {node};" for node in nodes]
+    header += [f"  {names[node]} {node[-1]};" for node in nodes if len(node) == 1]
     header += ["};", "}"]
     source += [
         "}",
         "namespace harmos::plugin {",
         "HostRoot Context::host() {",
-        "  return {" + ", ".join("{*this}" for _ in nodes) + "};",
+        "  return {" + ", ".join("{*this}" for node in nodes if len(node) == 1) + "};",
         "}",
         "Plugin& Plugin::requires_operation(HostOperation operation) {",
         "  switch (operation) {",
@@ -1570,16 +1630,23 @@ def cpp_message(full: str) -> str:
     parts = full.split(".")
     if full.startswith("google.protobuf."):
         return "::google::protobuf::" + parts[-1]
-    if full.startswith("harmos.client."):
-        return "::harmos::client::" + parts[-1]
-    if full.startswith("harmos.plugin.host."):
-        return "::harmos::plugin::" + parts[-1]
-    if full.startswith("harmos.v1."):
+    if full.startswith("harmos.host."):
+        # Shared Host Replies Belong to the Root; Audience-Exclusive Replies to Their Barrel.
+        return CPP_TYPES.get(full, "::harmos::client::" + parts[-1])
+    if full.startswith("harmos.model."):
         return "::harmos::" + parts[-1]
     return "::" + parts[0] + "::client::" + parts[-1]
 
 
 def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None) -> None:
+    library = root / "crates/harmos-protocol/src/descriptors.bin"
+    if library.is_file():
+        schema = FileDescriptorSet.FromString(library.read_bytes())
+        for full, groups in payload_audiences(schema).items():
+            if not full.startswith("harmos.host."):
+                continue
+            boundary = "" if len(groups) > 1 else next(iter(groups)) + "::"
+            CPP_TYPES[full] = "::harmos::" + boundary + full.rsplit(".", 1)[-1]
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -1759,18 +1826,41 @@ def format_cpp(paths: list[Path]) -> None:
     subprocess.run(["clang-format", f"--style=file:{policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
 
 
-def compose(repository: Path, descriptors: list[Path], output: Path, namespace: str, *, language: str | None = None) -> None:
+def compose(
+    repository: Path, descriptors: list[Path], output: Path, namespace: str, *, language: str | None = None, composition: Path | None = None
+) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
         raise ValueError("Generate Client: Invalid Output Namespace")
     merged = FileDescriptorSet()
     files = {}
-    for path in [repository / "crates/harmos-protocol/src/descriptors.bin", *descriptors]:
-        for file in FileDescriptorSet.FromString(path.read_bytes()).file:
+    libraries = []
+    settings = {}
+    if composition is not None:
+        settings = tomllib.loads(composition.read_text(encoding="utf-8"))
+        if set(settings) - {"libraries", "callers"}:
+            raise ValueError("Compose SDK: Unknown Composition Fields")
+        libraries = [(composition.parent / library["descriptors"], library["packages"]) for library in settings.get("libraries", [])]
+    else:
+        libraries = [(repository / "crates/harmos-protocol/src/descriptors.bin", [])]
+    for path, packages in [*libraries, *((path, []) for path in descriptors)]:
+        library = FileDescriptorSet.FromString(path.read_bytes())
+        existing_packages = {file.package for file in library.file}
+        if set(packages) - existing_packages:
+            raise ValueError("Compose SDK: Library Package Is Absent from Its Descriptors")
+        for file in library.file:
+            if (
+                packages
+                and not file.package.startswith("google.")
+                and not any(file.package == package or file.package.startswith(package + ".") for package in packages)
+            ):
+                continue
             file.ClearField("source_code_info")
             if file.name in files and files[file.name] != file:
                 raise ValueError(f"Generate Client: Conflicting Descriptor File {file.name}")
             files[file.name] = file
     merged.file.extend(files[name] for name in sorted(files))
+    if settings.get("callers"):
+        narrow_callers(merged, settings["callers"])
     if language == "python":
         packages = {file.package.split(".", 1)[0] for file in merged.file if not file.package.startswith(("harmos.", "google."))}
         python(
@@ -1788,6 +1878,7 @@ def main() -> None:
     parser.add_argument("--descriptors", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--namespace", default="harmos")
+    parser.add_argument("--composition", type=Path)
     parser.add_argument("--language", choices=("python",))
     parser.add_argument("--cpp-fixture", type=Path)
     options = parser.parse_args()
@@ -1800,7 +1891,7 @@ def main() -> None:
     elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")
-        compose(root, options.descriptors, options.output, options.namespace, language=options.language)
+        compose(root, options.descriptors, options.output, options.namespace, language=options.language, composition=options.composition)
     else:
         generate(root)
 

@@ -3,13 +3,13 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct FilesReadRequest {
     #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<::harmos_protocol::v1::File>,
+    pub file: ::core::option::Option<::harmos_protocol::model::File>,
     #[prost(uint64, tag = "2")]
     pub offset: u64,
     #[prost(uint64, tag = "3")]
     pub max_bytes: u64,
     #[prost(message, optional, tag = "4")]
-    pub at: ::core::option::Option<::harmos_protocol::v1::ReadCut>,
+    pub at: ::core::option::Option<::harmos_protocol::model::ReadCut>,
 }
 /// Returns a bounded content range and its issued read cut.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -21,7 +21,7 @@ pub struct FilesReadResponse {
     #[prost(bool, tag = "3")]
     pub complete: bool,
     #[prost(message, optional, tag = "4")]
-    pub resolved_at: ::core::option::Option<::harmos_protocol::v1::ReadCut>,
+    pub resolved_at: ::core::option::Option<::harmos_protocol::model::ReadCut>,
 }
 /// Selects one file source and an optional bounded range for hashing.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -31,7 +31,7 @@ pub struct FilesHashRequest {
     #[prost(uint64, optional, tag = "4")]
     pub length: ::core::option::Option<u64>,
     #[prost(message, optional, tag = "5")]
-    pub at: ::core::option::Option<::harmos_protocol::v1::ReadCut>,
+    pub at: ::core::option::Option<::harmos_protocol::model::ReadCut>,
     /// The example permits explicit filesystem paths and immutable stored content.
     #[prost(oneof = "files_hash_request::Source", tags = "1, 2")]
     pub source: ::core::option::Option<files_hash_request::Source>,
@@ -42,7 +42,7 @@ pub mod files_hash_request {
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Source {
         #[prost(message, tag = "1")]
-        File(::harmos_protocol::v1::File),
+        File(::harmos_protocol::model::File),
         #[prost(string, tag = "2")]
         Path(::prost::alloc::string::String),
     }
@@ -55,7 +55,7 @@ pub struct FilesHashResponse {
     #[prost(bytes = "vec", tag = "2")]
     pub sha256: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub resolved_at: ::core::option::Option<::harmos_protocol::v1::ReadCut>,
+    pub resolved_at: ::core::option::Option<::harmos_protocol::model::ReadCut>,
 }
 /// Requests validation of the supplied schematic snapshot.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -230,7 +230,7 @@ pub struct Batch {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsCreateRequest {
     #[prost(message, optional, tag = "1")]
-    pub metadata: ::core::option::Option<::harmos_protocol::v1::FileMetadata>,
+    pub metadata: ::core::option::Option<::harmos_protocol::model::FileMetadata>,
     #[prost(message, optional, tag = "2")]
     pub mutation: ::core::option::Option<UploadMutation>,
 }
@@ -238,21 +238,21 @@ pub struct UploadsCreateRequest {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsCreateResponse {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<::harmos_protocol::v1::Receipt>,
+    pub receipt: ::core::option::Option<::harmos_protocol::model::Receipt>,
 }
 /// Selects optional upload progress; omit upload to read only the replay window.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsGetRequest {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
 }
 /// Returns current progress, including accepted and durable lengths.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsGetResponse {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(message, optional, tag = "2")]
     pub mutations: ::core::option::Option<UploadWindow>,
     #[prost(uint64, tag = "3")]
@@ -262,7 +262,7 @@ pub struct UploadsGetResponse {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsResumeRequest {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(message, optional, tag = "2")]
     pub mutation: ::core::option::Option<UploadMutation>,
 }
@@ -274,13 +274,13 @@ pub struct UploadsResumeResponse {
     #[prost(uint64, tag = "2")]
     pub accepted_length: u64,
     #[prost(message, optional, tag = "3")]
-    pub receipt: ::core::option::Option<::harmos_protocol::v1::Receipt>,
+    pub receipt: ::core::option::Option<::harmos_protocol::model::Receipt>,
 }
 /// Appends a chunk under the supplied upload's writer fence.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsAppendRequest {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(uint64, tag = "2")]
     pub offset: u64,
     #[prost(bytes = "vec", tag = "3")]
@@ -294,13 +294,13 @@ pub struct UploadsAppendResponse {
     #[prost(uint64, tag = "1")]
     pub accepted_length: u64,
     #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<::harmos_protocol::v1::Receipt>,
+    pub receipt: ::core::option::Option<::harmos_protocol::model::Receipt>,
 }
 /// Publishes the complete upload only if length and SHA-256 match.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsPublishRequest {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(uint64, tag = "2")]
     pub length: u64,
     #[prost(bytes = "vec", tag = "3")]
@@ -312,31 +312,31 @@ pub struct UploadsPublishRequest {
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsPublishResponse {
     #[prost(message, optional, tag = "1")]
-    pub file: ::core::option::Option<::harmos_protocol::v1::File>,
+    pub file: ::core::option::Option<::harmos_protocol::model::File>,
     #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<::harmos_protocol::v1::Receipt>,
+    pub receipt: ::core::option::Option<::harmos_protocol::model::Receipt>,
 }
 /// Abandons one unfinished upload under its current writer fence.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsDeleteRequest {
     #[prost(message, optional, tag = "1")]
-    pub upload: ::core::option::Option<::harmos_protocol::v1::Upload>,
+    pub upload: ::core::option::Option<::harmos_protocol::model::Upload>,
     #[prost(message, optional, tag = "2")]
     pub mutation: ::core::option::Option<UploadMutation>,
 }
 /// Returns terminal upload state and its receipt.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsDeleteResponse {
-    #[prost(enumeration = "::harmos_protocol::v1::UploadState", tag = "1")]
+    #[prost(enumeration = "::harmos_protocol::model::UploadState", tag = "1")]
     pub state: i32,
     #[prost(message, optional, tag = "2")]
-    pub receipt: ::core::option::Option<::harmos_protocol::v1::Receipt>,
+    pub receipt: ::core::option::Option<::harmos_protocol::model::Receipt>,
 }
 /// Reports the native storage owner's current replay window without moving ownership.
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadWindow {
     #[prost(message, optional, tag = "1")]
-    pub history: ::core::option::Option<::harmos_protocol::v1::History>,
+    pub history: ::core::option::Option<::harmos_protocol::model::History>,
     #[prost(string, tag = "2")]
     pub id: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]

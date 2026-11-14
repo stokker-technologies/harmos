@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Invocation Frames
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Reports an invocation's phase, terminal outcome, cancellation request and current attempt without exposing its payload.
+message InstanceState {
+  string phase = 1;
+  string outcome = 2;
+  bool cancellation_requested = 3;
+  uint32 attempt = 4;
+}
+
+// === Enums === //

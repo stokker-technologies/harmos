@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Stream Declarations and Samples
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "google/protobuf/timestamp.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Requests one interval sample at the authoritative host timestamp.
+message Tick {
+  // Host time of the tick. The answering sample carries it.
+  google.protobuf.Timestamp at = 1;
+}
+// Opens demand for one declared plugin stream under an opaque invocation scope.
+message SamplesSelection {
+  // Identity of the declared stream, resolved under the current caller/activation.
+  string stream = 1;
+  // Opaque to Harmos. The product names what the stream belongs to.
+  string scope = 2;
+}
+// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+message Sample {
+  // For an interval stream, the time of the Tick this sample answers. For
+  // other streams, the device's own time if it supplies one; when unset
+  // the host stamps the sample on arrival.
+  google.protobuf.Timestamp at = 1;
+  // Serialized row message of the stream.
+  bytes row = 2;
+  // Counts samples on this call from 1, so the host can see a gap.
+  uint64 sequence = 3;
+}
+
+// === Enums === //

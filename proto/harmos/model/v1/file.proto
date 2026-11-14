@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Files and Uploads
+//
+// Shared file vocabulary for product wrappers and plugin bundles across all boundaries.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/position.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Declares a file's identity, optional scope and optional publication expectations before producing its bytes.
+message FileMetadata {
+  // File identity used for storage and resource-grant admission.
+  string id = 1;
+  // Optional stored scope metadata; unset records no scope.
+  optional string scope = 2;
+  string media_type = 3;
+  // If present, publication must match this byte length; unset imposes no declared length expectation.
+  optional uint64 expected_length = 4;
+  // If present, publication must match this 32-byte digest; unset imposes no declared digest expectation.
+  optional bytes expected_sha256 = 5;
+}
+
+// Addresses published immutable content with its storage position, metadata, length and SHA-256 digest.
+message FileReference {
+  // Storage position of published content; application-owned content uses its provider's reference identity.
+  Position position = 1;
+  FileMetadata metadata = 2;
+  uint64 length = 3;
+  // SHA-256 of the complete immutable file, encoded as 32 bytes.
+  bytes sha256 = 4;
+}
+
+// Describes one published immutable file for a product-owned file resource.
+message File {
+  FileReference reference = 1;
+}
+
+// Describes resumable upload progress for a product-owned upload resource, without declaring storage calls.
+message Upload {
+  // Production identity, independent of the current writer generation.
+  string id = 1;
+  // Store incarnation owning the upload; foreign histories cannot resume it.
+  History history = 2;
+  // Current writer fence; resuming invalidates an older writer. Terminal uploads have no writer.
+  uint64 writer_generation = 3;
+  // Accepted bytes may still be lost on a crash.
+  uint64 accepted_length = 4;
+  // Byte prefix acknowledged persisted by the storage owner.
+  uint64 durable_length = 5;
+  UploadState state = 6;
+}
+
+// === Enums === //
+
+enum UploadState {
+  UPLOAD_STATE_UNSPECIFIED = 0;
+  UPLOAD_STATE_PRODUCING = 1;
+  UPLOAD_STATE_FINISHED = 2;
+  UPLOAD_STATE_ABANDONED = 3;
+}

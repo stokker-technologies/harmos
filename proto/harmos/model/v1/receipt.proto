@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Mutation Receipts
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/position.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Reports a mutation's accepted and durable positions separately; acceptance alone does not promise persisted bytes.
+message Receipt {
+  // Caller request identity, or the mutation window/key correlation used by storage; some conditional operations leave it empty.
+  string request_id = 1;
+  // Position accepted by the owner, when one exists; it is not by itself a durability acknowledgement.
+  Position accepted_at = 2;
+  // Position acknowledged durable, when supplied; staging receipts may omit both positions.
+  Position durable_at = 3;
+  // Whether the reported mutation outcome has completed, independently of whether a durable position is present.
+  bool completed = 4;
+}
+
+// === Enums === //

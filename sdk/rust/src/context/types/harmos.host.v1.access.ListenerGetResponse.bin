@@ -1,0 +1,11 @@
+
+Š
+$harmos/host/v1/access/listener.protoharmos.host.v1.access"t
+ListenerGetResponse3
+value (2$.harmos.host.v1.access.ListenerValue
+revision (
+bound_endpoint (	"M
+ListenerValue
+enabled (
+endpoint (	
+certificate_names (	bproto3

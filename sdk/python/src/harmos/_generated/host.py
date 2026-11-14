@@ -8,7 +8,7 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos._contracts import Operation
-from harmos._wire.plugin.host.v1.invocations_pb2 import (
+from harmos._wire.host.v1.invocations_pb2 import (
     InvocationsCancelRequest,
     InvocationsCancelResponse,
     InvocationsGetRequest,
@@ -16,32 +16,27 @@ from harmos._wire.plugin.host.v1.invocations_pb2 import (
     InvocationsWatchRequest,
     InvocationsWatchResponse,
 )
-from harmos._wire.plugin.host.v1.operations_pb2 import (
-    OperationsGetRequest,
-    OperationsGetResponse,
-    OperationsListRequest,
-    OperationsListResponse,
-)
-from harmos._wire.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.v1.invocation_pb2 import InstanceState
-from harmos._wire.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
-from harmos._wire.v1.policy_pb2 import OperationPolicy
-from harmos._wire.v1.position_pb2 import ReadCut
+from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
+from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._wire.model.v1.invocation_pb2 import InstanceState
+from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
+from harmos._wire.model.v1.policy_pb2 import OperationPolicy
+from harmos._wire.model.v1.position_pb2 import ReadCut
 
 if TYPE_CHECKING:
     from harmos._invocation import Context
 
 
 class HostOperation(Enum):
-    INVOCATIONS_GET = "harmos.plugin.host.v1.Invocations/Get"
-    INVOCATIONS_CANCEL = "harmos.plugin.host.v1.Invocations/Cancel"
-    INVOCATIONS_WATCH = "harmos.plugin.host.v1.Invocations/Watch"
-    OPERATIONS_LIST = "harmos.plugin.host.v1.Operations/List"
-    OPERATIONS_GET = "harmos.plugin.host.v1.Operations/Get"
-    SETTINGS_LIST = "harmos.plugin.host.v1.Settings/List"
-    TIME_GET = "harmos.plugin.host.v1.Time/Get"
-    TIME_SLEEP = "harmos.plugin.host.v1.Time/Sleep"
+    INVOCATIONS_GET = "harmos.host.v1.Invocations/Get"
+    INVOCATIONS_CANCEL = "harmos.host.v1.Invocations/Cancel"
+    INVOCATIONS_WATCH = "harmos.host.v1.Invocations/Watch"
+    OPERATIONS_LIST = "harmos.host.v1.Operations/List"
+    OPERATIONS_GET = "harmos.host.v1.Operations/Get"
+    PLUGINS_SETTINGS_LIST = "harmos.host.v1.plugins.Settings/List"
+    TIME_GET = "harmos.host.v1.Time/Get"
+    TIME_SLEEP = "harmos.host.v1.Time/Sleep"
 
 
 _INVOCATIONS_GET = Operation(
@@ -59,8 +54,8 @@ _OPERATIONS_LIST = Operation(
 _OPERATIONS_GET = Operation(
     HostOperation.OPERATIONS_GET.value, OperationsGetRequest, OperationsGetResponse, visibility=VISIBILITY_PUBLIC, watch=False
 )
-_SETTINGS_LIST = Operation(
-    HostOperation.SETTINGS_LIST.value, SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC, watch=False
+_PLUGINS_SETTINGS_LIST = Operation(
+    HostOperation.PLUGINS_SETTINGS_LIST.value, SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC, watch=False
 )
 _TIME_GET = Operation(HostOperation.TIME_GET.value, TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 _TIME_SLEEP = Operation(HostOperation.TIME_SLEEP.value, TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC, watch=False)
@@ -78,8 +73,8 @@ def host_requirement(operation: HostOperation) -> Operation[Message, Message]:
             return cast(Operation[Message, Message], _OPERATIONS_LIST)
         case HostOperation.OPERATIONS_GET:
             return cast(Operation[Message, Message], _OPERATIONS_GET)
-        case HostOperation.SETTINGS_LIST:
-            return cast(Operation[Message, Message], _SETTINGS_LIST)
+        case HostOperation.PLUGINS_SETTINGS_LIST:
+            return cast(Operation[Message, Message], _PLUGINS_SETTINGS_LIST)
         case HostOperation.TIME_GET:
             return cast(Operation[Message, Message], _TIME_GET)
         case HostOperation.TIME_SLEEP:
@@ -91,7 +86,7 @@ class HostRoot:
     def __init__(self, context: "Context") -> None:
         self.invocations = HostInvocationsResource(context)
         self.operations = HostOperationsResource(context)
-        self.settings = HostSettingsResource(context)
+        self.plugins = HostPluginsResource(context)
         self.time = HostTimeResource(context)
 
 
@@ -142,13 +137,21 @@ class HostOperationsResource:
         return response.operation
 
 
-class HostSettingsResource:
+class HostPluginsResource:
+    def __init__(self, context: "Context") -> None:
+        self._context = context
+        self.settings = HostPluginsSettingsResource(context)
+
+
+class HostPluginsSettingsResource:
     def __init__(self, context: "Context") -> None:
         self._context = context
 
-    async def list(self, *, at: ReadCut | None = None, policy: OperationPolicy | None = None) -> SettingsListResponse:
-        request = SettingsListRequest(at=at)
-        response = await self._context.call(_SETTINGS_LIST, request, policy=policy)
+    async def list(
+        self, *, name: str | None = None, at: ReadCut | None = None, policy: OperationPolicy | None = None
+    ) -> SettingsListResponse:
+        request = SettingsListRequest(name=name, at=at)
+        response = await self._context.call(_PLUGINS_SETTINGS_LIST, request, policy=policy)
         return response
 
 

@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Host Plugin Settings
+//
+// Operations executed by the host; each method declares its permitted callers.
+
+syntax = "proto3";
+
+package harmos.host.v1.plugins;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+import "harmos/model/v1/position.proto";
+import "harmos/model/v1/receipt.proto";
+import "harmos/model/v1/setting.proto";
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Host.V1.PluginsResources";
+// === Services === //
+
+// Owns the library-stored settings for a plugin entry; product secrets remain product-owned.
+service Settings {
+  // Read declarations, complete values, revision and issued cut; plugin callers are restricted to their own entry.
+  rpc List(SettingsListRequest) returns (SettingsListResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Replace the complete setting values at the expected revision; identical request identity and input replay the original receipt, while changed input refuses.
+  rpc Set(SettingsSetRequest) returns (SettingsSetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === List === //
+
+// Selects a plugin entry and optional issued settings boundary.
+message SettingsListRequest {
+  // Clients select a plugin; plugins omit this or name themselves. Any other plugin name is refused.
+  optional string name = 1;
+  // Unset selects the latest durable settings; otherwise resend an issued cut unchanged.
+  optional harmos.model.v1.ReadCut at = 2;
+}
+
+// Returns the plugin's declarations and complete current setting values at one revision.
+message SettingsListResponse {
+  repeated harmos.model.v1.SettingDeclaration declarations = 1;
+  harmos.model.v1.SettingValues value = 2;
+  // Opaque settings revision, separate from the plugin entry revision.
+  bytes revision = 3;
+  harmos.model.v1.ReadCut resolved_at = 4;
+}
+
+// === Set === //
+
+// Carries the whole replacement value, expected settings revision and replay identity.
+message SettingsSetRequest {
+  string name = 1;
+  // Complete declared value set; missing, unknown or differently typed values refuse.
+  harmos.model.v1.SettingValues value = 2;
+  // Issued settings revision; conflicts require getting the values again before retrying.
+  bytes expected_revision = 3;
+  // Nonempty caller-chosen identity retained with the normalized request for replay.
+  string request_id = 4;
+}
+
+// Returns the complete applied value, new settings revision and mutation receipt.
+message SettingsSetResponse {
+  harmos.model.v1.SettingValues value = 1;
+  bytes revision = 2;
+  harmos.model.v1.Receipt receipt = 3;
+}
+
+// === Resources === //
+
+// === Enums === //

@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Host Listener
+//
+// Operations executed by the host; each method declares its permitted callers.
+
+syntax = "proto3";
+
+package harmos.host.v1.access;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Host.V1.AccessResources";
+
+// === Services === //
+
+// Owns the client TLS listener's persisted configuration and staged live replacement.
+service Listener {
+  // Read the persisted listener value, conditional revision and currently bound endpoint.
+  rpc Get(ListenerGetRequest) returns (ListenerGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Validate and apply the complete listener value at its expected revision; failed staging preserves the active listener and revision conflicts refuse.
+  rpc Set(ListenerSetRequest) returns (ListenerSetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Get === //
+
+// Request for Listener.Get.
+message ListenerGetRequest {}
+
+// Returns persisted listener configuration, its conditional revision and the actual attached socket address.
+message ListenerGetResponse {
+  ListenerValue value = 1;
+  // Opaque conditional listener revision; use the exact bytes for Set rather than deriving or incrementing them.
+  bytes revision = 2;
+  // Actual attached socket endpoint, which can differ from a configured port-zero address; empty when no listener is attached.
+  string bound_endpoint = 3;
+}
+
+// === Set === //
+
+// Carries the replacement value and expected revision for Listener.Set.
+message ListenerSetRequest {
+  ListenerValue value = 1;
+  // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
+  bytes expected_revision = 2;
+}
+
+// Returns applied listener configuration, its conditional revision and the actual attached socket address.
+message ListenerSetResponse {
+  ListenerValue value = 1;
+  // Opaque conditional listener revision; use the exact bytes for Set rather than deriving or incrementing them.
+  bytes revision = 2;
+  // Actual attached socket endpoint after applying the value; empty when no listener is attached.
+  string bound_endpoint = 3;
+}
+
+// === Resources === //
+
+// Configures TLS listener enablement, socket address and nonempty certificate subject names.
+message ListenerValue {
+  bool enabled = 1;
+  // Socket address to bind; port zero permits the OS to choose a port.
+  string endpoint = 2;
+  // Nonempty certificate names; empty lists and empty entries refuse validation.
+  repeated string certificate_names = 3;
+}
+
+// === Enums === //

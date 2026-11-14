@@ -318,3 +318,19 @@ order is C.1, C.2, C.3, C.4, followed by C.5; each part closes with its named fo
 - [x] G.1 Give host-registered WebAssembly guests a guest placement and durable plugin entry; use the existing typed settings List/Set, caller-scoped List and atomic deletion. Own proto, protocol generation, runtime plugin/guest registration and settings, relevant runtime fixtures/stories, focused fixture stamping, examples and guides; exclude harmos-storage and query modules. Preserve managed-only Replace and consumer-owned guest module loading.
 - [x] G.2 Replace the reported Catalog message and fields/builders with Declarations without aliases across proto, generated bindings, four SDKs, conformance, examples, fixtures and guides. Keep internal operation/object registries named catalog. Review README claims.
 - [x] G.3 On the committed head run format, each language/repository check, locked workspace test compilation, runtime system stories, native/wasm schematic, packaging/guest verification, all SDK conformance fixtures and all four SDK suites; repeat generation and verify a clean tree. Keep commits local.
+
+## Executor Layout Definition Pass
+
+The sole writer owns `proto/harmos/**`, protocol generation and its crate's support
+modules, the four SDK generators and their generated outputs, protocol repository
+checks, and the protocol sections of `docs/architecture.md`. Consumers deliberately
+remain for the work lists there; storage/query source is outside this pass.
+No push or specification lifecycle command is authorized. The two parent owner
+amendments remain open until their runtime/SDK consumers complete the work lists;
+this pass closes only definitions, generation and its focused proof.
+
+- [x] E.1 Inventory and merge host resources; replace wire packages with model/host/plugin, annotate every RPC and split operation sections; move carriers and registry vocabulary and delete SchemaInput.
+- [x] E.2 Adapt protocol and four-SDK generation to caller options and executor paths, preserve public barrels and call style, regenerate every output and remove obsolete generated paths.
+- [x] E.3 Enforce mandatory caller options in the repository protocol check and add deterministic negative coverage.
+- [x] E.4 Update behaviour rules without renumbering, declare runtime narrowing and generator composition input, and publish complete identity mappings and per-owner consumer work lists.
+- [x] E.5 Run format, repository check, protocol compilation and repeat generation with no drift; commit the definition pass locally.

@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use crate::v1;
+use crate::plugin;
 use prost::{
     Message,
     bytes::Buf,
@@ -62,8 +62,8 @@ pub fn types() -> &'static prost_types::FileDescriptorSet {
 
 pub fn lifecycle_fingerprint(operation: &str) -> Result<Vec<u8>, Error> {
     let request = match operation {
-        "harmos.initialize" => "harmos.v1.GuestInitialize",
-        "harmos.shutdown" => "harmos.v1.GuestShutdown",
+        "harmos.initialize" => "harmos.plugin.v1.GuestInitialize",
+        "harmos.shutdown" => "harmos.plugin.v1.GuestShutdown",
         _ => return Err(Error("Unknown Lifecycle Action".into())),
     };
     let mut types = types().clone();
@@ -87,31 +87,31 @@ pub fn encode<M: Message>(message: &M) -> Result<Vec<u8>, Error> {
     Ok(message.encode_to_vec())
 }
 
-pub fn decode_command(bytes: &[u8]) -> Result<v1::GuestCommand, Error> {
+pub fn decode_command(bytes: &[u8]) -> Result<plugin::GuestCommand, Error> {
     validate_envelope(bytes, false)?;
-    let command = v1::GuestCommand::decode(bytes).map_err(|error| Error(error.to_string()))?;
+    let command = plugin::GuestCommand::decode(bytes).map_err(|error| Error(error.to_string()))?;
     if command.phase.is_none() {
         return Err(Error("Command Phase Is Required".into()));
     }
-    if let Some(v1::guest_command::Phase::Initialize(invocation) | v1::guest_command::Phase::Attempt(invocation)) = &command.phase {
+    if let Some(plugin::guest_command::Phase::Initialize(invocation) | plugin::guest_command::Phase::Attempt(invocation)) = &command.phase {
         validate_values(&invocation.values)?;
     }
     Ok(command)
 }
 
-pub fn decode_child(bytes: &[u8]) -> Result<v1::GuestChild, Error> {
+pub fn decode_child(bytes: &[u8]) -> Result<plugin::GuestChild, Error> {
     validate_envelope(bytes, true)?;
-    let child = v1::GuestChild::decode(bytes).map_err(|error| Error(error.to_string()))?;
+    let child = plugin::GuestChild::decode(bytes).map_err(|error| Error(error.to_string()))?;
     if child.action.is_none() {
         return Err(Error("Child Action Is Required".into()));
     }
-    if let Some(v1::guest_child::Action::Call(call)) = &child.action {
+    if let Some(plugin::guest_child::Action::Call(call)) = &child.action {
         validate_values(&call.values)?;
     }
     Ok(child)
 }
 
-pub fn validate_values(values: &[v1::GuestValue]) -> Result<(), Error> {
+pub fn validate_values(values: &[plugin::GuestValue]) -> Result<(), Error> {
     let mut keys = BTreeSet::new();
     let mut bytes = 0usize;
     for value in values {
@@ -187,8 +187,8 @@ mod tests {
     #[test]
     fn receiving_context_rejects_amplification_and_malformed_values() {
         let command = |values| {
-            v1::GuestCommand {
-                phase: Some(v1::guest_command::Phase::Attempt(v1::GuestInvocation {
+            plugin::GuestCommand {
+                phase: Some(plugin::guest_command::Phase::Attempt(plugin::GuestInvocation {
                     invocation: 1,
                     context: vec![1; 32],
                     values,
@@ -196,7 +196,7 @@ mod tests {
             }
             .encode_to_vec()
         };
-        let valid = v1::GuestValue {
+        let valid = plugin::GuestValue {
             key: "trace".into(),
             payload: vec![1, 2, 3],
         };
@@ -205,9 +205,9 @@ mod tests {
         let fragment = command(vec![valid]);
         assert!(decode_command(&fragment.repeat(CONTEXT_VALUES + 1)).is_err());
         assert!(decode_command(&[0x1a, 0xff]).is_err());
-        assert!(decode_command(&command(vec![v1::GuestValue { key: String::new(), payload: Vec::new() }])).is_err());
+        assert!(decode_command(&command(vec![plugin::GuestValue { key: String::new(), payload: Vec::new() }])).is_err());
         assert!(
-            decode_command(&command(vec![v1::GuestValue {
+            decode_command(&command(vec![plugin::GuestValue {
                 key: "large".into(),
                 payload: vec![0; CONTEXT_BYTES]
             }]))

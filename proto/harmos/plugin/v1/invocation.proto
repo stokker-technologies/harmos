@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Invocation Frames
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/failure.proto";
+import "harmos/model/v1/policy.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Opens exactly one plugin operation attempt; subsequent Request frames on that Invoke are invalid.
+message Request {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Serialized request message of the operation.
+  bytes payload = 2;
+  // Unique per invocation, for logs and correlation.
+  string invocation = 3;
+  // 1 for the first attempt.
+  uint32 attempt = 4;
+  // Opaque to Harmos. The product names what the invocation belongs to.
+  string scope = 5;
+}
+// Asks an active attempt to cancel cooperatively; the handler may still return a typed final result.
+message Cancel {
+  string reason = 1;
+}
+// Terminates an operation attempt with either encoded success or a structured failure, including empty success bytes.
+message Response {
+  // Selects one variant; an unset discriminator carries no selected value.
+  oneof result {
+    // Serialized response message of the operation.
+    bytes payload = 1;
+    harmos.model.v1.Failure failure = 2;
+  }
+}
+// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
+message ChildRequest {
+  // Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
+  uint64 call = 1;
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 2;
+  // Encoded request message of the operation bound by fingerprint.
+  bytes payload = 3;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 4;
+  // Optional override of the callee's policy for this call.
+  harmos.model.v1.OperationPolicy policy = 5;
+  // Explicit server-streaming child; each item requires one ChildDemand.
+  bool watch = 6;
+  // Consumer-owned maximum encoded item size; required for Watch.
+  uint64 max_response_bytes = 7;
+  // Policy guard timers do not make the executing handler idle.
+  bool background = 8;
+}
+// Permits one further item from a streaming child; demand is not a second child invocation.
+message ChildDemand {
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
+  uint64 call = 1;
+}
+// Cancels the outstanding child identified within this Invoke or Samples carrier.
+message ChildCancel {
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
+  uint64 call = 1;
+}
+// Correlates a unary result, streaming item or failure with a child call on the same carrier.
+message ChildResponse {
+  // Child correlation ID unique within this Invoke or Samples carrier; reuse does not refer to a child on another call.
+  uint64 call = 1;
+  // Selects one variant; an unset discriminator carries no selected value.
+  oneof result {
+    // Encoded terminal response of the declared operation; selecting empty bytes still represents success.
+    bytes payload = 2;
+    harmos.model.v1.Failure failure = 3;
+    bytes item = 4;
+  }
+}
+
+// === Enums === //
