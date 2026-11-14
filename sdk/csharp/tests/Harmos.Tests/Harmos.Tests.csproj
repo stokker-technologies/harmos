@@ -6,7 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="$(RepoRoot)sdk/csharp/src/Harmos/Harmos.csproj" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
-    <Protobuf Include="$(RepoRoot)sdk/tests/fixtures/client/proto/**/*.proto" ProtoRoot="$(RepoRoot)sdk/tests/fixtures/client/proto" GrpcServices="None" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="All" />

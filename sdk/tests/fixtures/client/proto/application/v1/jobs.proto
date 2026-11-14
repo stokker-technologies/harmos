@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package application.v1;
+option csharp_namespace = "Application.Clients";
 service Jobs { rpc Start(JobsStartRequest) returns (JobsStartResponse); }
 message JobsStartRequest { string value = 1; }
 message JobsStartResponse { string value = 1; }

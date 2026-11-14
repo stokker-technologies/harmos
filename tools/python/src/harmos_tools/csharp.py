@@ -44,13 +44,13 @@ def executable(root: Path, profile: str = "dev") -> Path:
     return root / "sdk/csharp" / manifest.read_text(encoding="utf-8-sig").strip()
 
 
-def protocols(root: Path, *, check: bool = False) -> None:
+def protocols(root: Path, *, descriptors: Path | None = None, destination: Path | None = None, check: bool = False) -> None:
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
     from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
     from .build.resource_roots import csharp_message, table
 
-    descriptors = root / "crates/harmos-protocol/src/descriptors.bin"
+    descriptors = descriptors or root / "crates/harmos-protocol/src/descriptors.bin"
     schema = FileDescriptorSet.FromString(descriptors.read_bytes())
     requests = {method["request"].rsplit(".", 1)[-1] for method in table(schema)}
     requests.update(
@@ -65,10 +65,10 @@ def protocols(root: Path, *, check: bool = False) -> None:
     if not protoc.is_file():
         raise FileNotFoundError("Generate C# Protocol: Run mise -C sdk/csharp run restore")
     scratch = Path(tempfile.mkdtemp())
-    destination = root / "sdk/csharp/src/Harmos/Generated/Wire"
+    destination = destination or root / "sdk/csharp/src/Harmos/Generated/Wire"
     try:
         for file in schema.file:
-            if not file.name.startswith("harmos/") or file.name.endswith("guest.proto"):
+            if file.name.startswith("google/") or file.name.endswith("guest.proto"):
                 continue
             output = scratch / Path(file.name).with_suffix("")
             output.mkdir(parents=True, exist_ok=True)
@@ -83,6 +83,11 @@ def protocols(root: Path, *, check: bool = False) -> None:
                 if path.name.endswith("Grpc.cs"):
                     source = source.replace("namespace Harmos.Plugins {", "namespace Harmos.Internal.Host {")
                     source = source.replace("namespace Harmos.Clients {", "namespace Harmos.Internal.Client {")
+                    namespace = csharp_message(file.options.csharp_namespace)
+                    if namespace.endswith(".Clients"):
+                        source = source.replace(
+                            f"namespace {namespace} {{", f"namespace {namespace.removesuffix('.Clients')}.Internal.Client {{"
+                        )
                 # Carrier Messages Are Never an Authoring Surface.
                 if file.package == "harmos.plugin.v1":
                     source = source.replace("public sealed partial class ", "internal sealed partial class ")
@@ -114,9 +119,11 @@ def clients(root: Path, *, check: bool = False) -> None:
     descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
     methods = [method for method in table(descriptors) if method["face"] == "client"]
     protocols(root, check=check)
+    fixture_path = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
+    protocols(root, descriptors=fixture_path, destination=root / "sdk/csharp/tests/Harmos.Tests/Generated/Wire", check=check)
     csharp(root, methods, check=check)
     csharp_host(root, [method for method in table(descriptors) if method["face"] == "context"], check=check)
-    fixture = FileDescriptorSet.FromString((root / "sdk/rust/tests/fixtures/client/client-descriptors.bin").read_bytes())
+    fixture = FileDescriptorSet.FromString(fixture_path.read_bytes())
     csharp(
         root,
         methods + table(fixture),
