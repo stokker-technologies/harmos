@@ -152,6 +152,40 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
     // Preproject Guest Graphs During Generation, Before Fuel-Bounded Registration.
     let guest_types = harmos_protocol::schema::operation_types(&descriptors, &["harmos.v1.GuestInitialize", "harmos.v1.GuestShutdown"])?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
+    let options = prost_types::FileDescriptorSet {
+        file: prost_reflect::DescriptorPool::global().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+    };
+    let mut options = harmos_protocol::schema::message_types(&options, "google.protobuf.MessageOptions")?;
+    for file in &mut options.file {
+        let mut pending: Vec<_> = file.message_type.iter_mut().collect();
+        while let Some(message) = pending.pop() {
+            message.options = None;
+            for field in &mut message.field {
+                field.options = None;
+            }
+            for enumeration in &mut message.enum_type {
+                enumeration.options = None;
+                for value in &mut enumeration.value {
+                    value.options = None;
+                }
+            }
+            pending.extend(message.nested_type.iter_mut());
+        }
+        for enumeration in &mut file.enum_type {
+            enumeration.options = None;
+            for value in &mut enumeration.value {
+                value.options = None;
+            }
+        }
+    }
+    std::fs::write(output.join("message-options-descriptors.bin"), prost::Message::encode_to_vec(&options))?;
+    for (package, name) in [("harmos.plugin.host.v1", "clock-descriptors.bin"), ("harmos.client.v1", "client-clock-descriptors.bin")] {
+        let roots: Vec<_> =
+            ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("{package}.{name}")).into();
+        let names: Vec<_> = roots.iter().map(String::as_str).collect();
+        let types = harmos_protocol::schema::operation_types(&descriptors, &names)?;
+        std::fs::write(output.join(name), prost::Message::encode_to_vec(&types))?;
+    }
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
     std::fs::create_dir_all(&sdk_types)?;

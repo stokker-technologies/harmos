@@ -103,6 +103,12 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
     assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
     assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
     assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
+    assert_eq!(fs::read(output.path().join("clock-descriptors.bin"))?, include_bytes!("../../src/clock-descriptors.bin"));
+    assert_eq!(
+        fs::read(output.path().join("message-options-descriptors.bin"))?,
+        include_bytes!("../../src/message-options-descriptors.bin")
+    );
+    assert_eq!(fs::read(output.path().join("client-clock-descriptors.bin"))?, include_bytes!("../../src/client-clock-descriptors.bin"));
     for entry in fs::read_dir(output.path().join("context-types"))? {
         let path = entry?.path();
         assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);

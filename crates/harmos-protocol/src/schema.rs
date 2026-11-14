@@ -148,6 +148,11 @@ pub fn catalog_digest(catalog: &crate::v1::Catalog) -> Vec<u8> {
     Sha256::digest(catalog.encode_to_vec()).to_vec()
 }
 
+/// Preprojected Message Options for Validation Without Loading Unrelated Meta-Schemas.
+pub fn descriptor_options() -> FileDescriptorSet {
+    FileDescriptorSet::decode(include_bytes!("message-options-descriptors.bin").as_slice()).expect("generated message option descriptors")
+}
+
 /// Project a message's descriptor graph into the canonical data-only set.
 pub fn message_types(types: &FileDescriptorSet, root: &str) -> Result<FileDescriptorSet, Error> {
     let mut symbols = BTreeMap::new();

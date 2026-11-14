@@ -258,7 +258,17 @@ impl Plugin {
             catalog.sections.push(section.clone());
             merge_types(&mut types, definitions.clone())?;
         }
-        let pool = DescriptorPool::from_file_descriptor_set(types.clone())
+        let mut validation = types.clone();
+        let mut messages: Vec<_> = types.file.iter().flat_map(|file| &file.message_type).collect();
+        let mut message_options = false;
+        while let Some(message) = messages.pop() {
+            message_options |= message.options.is_some();
+            messages.extend(&message.nested_type);
+        }
+        if message_options && !validation.file.iter().any(|file| file.name.as_deref() == Some("google/protobuf/descriptor.proto")) {
+            merge_types(&mut validation, harmos_protocol::schema::descriptor_options())?;
+        }
+        let pool = DescriptorPool::from_file_descriptor_set(validation)
             .map_err(|error| Error::Invalid(format!("Invalid Protobuf Definitions: {error}")))?;
         let names = catalog
             .operations

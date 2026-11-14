@@ -60,7 +60,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             fs::copy(path, target)?;
         }
     }
-    for name in ["reflection.rs", "descriptors.bin", "guest-descriptors.bin"] {
+    for name in [
+        "reflection.rs",
+        "descriptors.bin",
+        "guest-descriptors.bin",
+        "clock-descriptors.bin",
+        "client-clock-descriptors.bin",
+        "message-options-descriptors.bin",
+    ] {
         fs::copy(output.path().join(name), destination.join(name))?;
     }
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/src/context/types");
