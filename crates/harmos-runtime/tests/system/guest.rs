@@ -15,9 +15,11 @@
 
 use harmos_protocol::{
     client::{
-        PluginsDeleteRequest, PluginsGetRequest, PluginsListRequest, PluginsReplaceRequest,
+        PluginState as EntryState, PluginValue, PluginsDeleteRequest, PluginsGetRequest, PluginsListRequest, PluginsReplaceRequest,
+        PluginsSetRequest, PluginsWatchRequest, plugin_change,
         plugin_placement::Kind,
         plugins::{SettingsListRequest, SettingsSetRequest},
+        plugins_watch_response::Event,
     },
     v1::{SettingValue, setting_value::Value},
 };
@@ -147,6 +149,41 @@ async fn guest_composition_walks() {
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, original.generation);
     assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_ok());
+    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
+    assert_eq!(Route::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
+    let entry = entries.get(PluginsGetRequest { name: name.clone(), at: None }).await.unwrap().entry.unwrap();
+    // Disable the Entry, Preserve Its Module, and Reenable It Through Management
+    let disabled = entries
+        .set(PluginsSetRequest {
+            name: name.clone(),
+            expected_revision: entry.revision,
+            value: Some(PluginValue { enabled: false }),
+        })
+        .await
+        .unwrap()
+        .entry
+        .unwrap();
+    runtime.plugin.initialize().await.unwrap();
+    assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
+    let mut changes = entries.watch(PluginsWatchRequest { name: name.clone(), at: None }).await.unwrap();
+    entries
+        .set(PluginsSetRequest {
+            name: name.clone(),
+            expected_revision: disabled.revision,
+            value: Some(PluginValue { enabled: true }),
+        })
+        .await
+        .unwrap();
+    loop {
+        let event = changes.recv().await.unwrap().event.unwrap();
+        if let Event::Change(change) = event
+            && let Some(plugin_change::Kind::Entry(entry)) = change.kind
+            && entry.value.is_some_and(|value| value.enabled)
+            && entry.state == EntryState::Ready as i32
+        {
+            break;
+        }
+    }
     let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
     assert_eq!(Route::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
     let entry = entries.get(PluginsGetRequest { name: name.clone(), at: None }).await.unwrap().entry.unwrap();

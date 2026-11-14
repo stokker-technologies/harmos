@@ -72,7 +72,7 @@ impl Actor {
         };
         entry.declarations_digest = description.declarations.as_ref().expect("inspected guest declarations").digest.clone();
         entry.description = Some(description);
-        entry.state = PluginState::Connecting as i32;
+        entry.state = if entry.value.is_some_and(|value| value.enabled) { PluginState::Connecting } else { PluginState::Stopped } as i32;
         if let Some(saved) = registry.entries.get_mut(&name) {
             saved.entry = entry.encode_to_vec();
         } else {
@@ -101,7 +101,7 @@ impl Actor {
             return Ok(());
         };
         let mut entry = PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Observe Guest Plugin", error))?;
-        if !is_guest(&entry) {
+        if !is_guest(&entry) || !entry.value.is_some_and(|value| value.enabled) {
             return Ok(());
         }
         let previous = entry.clone();
