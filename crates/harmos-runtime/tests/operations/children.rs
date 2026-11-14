@@ -212,6 +212,7 @@ async fn runtime() -> (Runtime<App>, Arc<Trace>) {
 async fn parent_joins_child() {
     let exits = [(Exit::Return, false), (Exit::Fail, false), (Exit::Wait, false), (Exit::Wait, true)];
     for (exit, cancel) in exits {
+        let attempts = if matches!(exit, Exit::Wait) && !cancel { 2 } else { 1 };
         let (runtime, trace) = runtime().await;
         let parent = runtime.operation(ParentContractDeclaration { exit }).start().await.unwrap();
         if cancel {
@@ -221,7 +222,8 @@ async fn parent_joins_child() {
         let outcome = parent.await;
 
         // The Child Future Is Dropped Before The Parent Settles.
-        assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-dropped"]);
+        assert_eq!(trace.attempts.load(Ordering::SeqCst), attempts);
+        assert_eq!(*trace.events.lock().unwrap(), ["parent-attempt", "child-started", "child-dropped"].repeat(attempts));
         match outcome {
             Ok(_) => {}
             Err(Error::OperationFailed { source, .. }) => assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Attempt))),
