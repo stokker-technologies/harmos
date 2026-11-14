@@ -37,7 +37,7 @@ public:
     state_->requirements = requirements;
     state_->plugin = plugin;
     for (const auto &operation : operations)
-      if (operation.contract.visibility() == ::harmos::v1::VISIBILITY_PRIVATE)
+      if (operation.contract.visibility() == ::harmos::VISIBILITY_PRIVATE)
         state_->local.emplace(operation.contract.id(), operation);
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
       std::lock_guard lock(tick_mutex_);

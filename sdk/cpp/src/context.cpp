@@ -14,7 +14,7 @@
 // Third Party Imports
 
 // Local Imports
-#include "harmos/plugin/host/v1/time.pb.h"
+#include "harmos/host/v1/time.pb.h"
 #include "invocation.hpp"
 #include <absl/numeric/int128.h>
 #include <google/protobuf/util/time_util.h>
@@ -49,10 +49,10 @@ using std::vector;
 /* === Public Functions === */
 
 namespace harmos::plugin {
-namespace wire = ::harmos::v1;
-namespace host_wire = ::harmos::plugin::host::v1;
+namespace wire = ::harmos::model::v1;
+namespace host_wire = ::harmos::host::v1;
 namespace {
-const Operation<host_wire::TimeSleepRequest, host_wire::TimeSleepResponse> SLEEP("harmos.plugin.host.v1.Time/Sleep", VISIBILITY_PUBLIC);
+const Operation<host_wire::TimeSleepRequest, host_wire::TimeSleepResponse> SLEEP("harmos.host.v1.Time/Sleep", VISIBILITY_PUBLIC);
 }
 namespace {
 class ChildWatch final : public detail::Watch {
@@ -113,7 +113,7 @@ public:
 };
 } // namespace
 
-shared_ptr<detail::Watch> Context::open_watch(wire::ChildRequest request) {
+shared_ptr<detail::Watch> Context::open_watch(plugin::v1::ChildRequest request) {
   auto result = std::make_shared<ChildWatch>();
   auto root = state_->transport ? state_->transport : state_;
   result->state = root;
@@ -204,7 +204,7 @@ void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &rea
         ++item;
         continue;
       }
-      wire::ChildResponse terminal;
+      plugin::v1::ChildResponse terminal;
       terminal.set_call(item->first);
       *terminal.mutable_failure() = interrupted(state, kind, reason);
       item->second->terminal = std::move(terminal);
@@ -317,10 +317,10 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
         guard->background = true;
         Context timer(guard);
         auto alarm = [&](const Duration &duration) {
-          wire::ChildRequest request;
+          plugin::v1::ChildRequest request;
           request.set_operation(SLEEP.definition.contract.id());
           request.set_fingerprint(SLEEP.definition.contract.fingerprint());
-          plugin::host::v1::TimeSleepRequest sleep;
+          host_wire::TimeSleepRequest sleep;
           *sleep.mutable_duration() = duration;
           request.set_payload(detail::encode(sleep));
           return timer.send(std::move(request));
@@ -419,7 +419,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
   return result;
 }
 
-shared_future<string> Context::send(wire::ChildRequest request, std::function<void()> *cancel) {
+shared_future<string> Context::send(plugin::v1::ChildRequest request, std::function<void()> *cancel) {
   auto root = transport(state_);
   shared_future<string> result;
   {
@@ -487,8 +487,8 @@ Timestamp Context::now() {
   return host().time.get();
 }
 
-plugin::SettingsListResponse Context::settings() {
-  return host().settings.list();
+SettingsListResponse Context::settings() {
+  return host().plugins.settings.list();
 }
 } // namespace harmos::plugin
 
@@ -507,7 +507,7 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
     root->pending.clear();
     root->guards.clear();
     for (auto &[id, watch] : root->watches) {
-      wire::ChildResponse terminal;
+      plugin::v1::ChildResponse terminal;
       terminal.set_call(id);
       *terminal.mutable_failure() = interrupted(state, wire::CLASSIFICATION_CANCELLED, reason);
       watch->terminal = std::move(terminal);

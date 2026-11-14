@@ -37,8 +37,8 @@ namespace harmos::plugin::detail {
 struct Invocation;
 struct WatchState {
   std::weak_ptr<Invocation> owner;
-  std::optional<::harmos::v1::ChildResponse> item;
-  std::optional<::harmos::v1::ChildResponse> terminal;
+  std::optional<::harmos::plugin::v1::ChildResponse> item;
+  std::optional<::harmos::plugin::v1::ChildResponse> terminal;
   bool demanded = false;
   std::uint64_t max_item_bytes = 0;
 };
@@ -59,7 +59,7 @@ struct Invocation {
   std::function<void()> read;
   std::once_flag reading;
   std::map<std::string, OperationDefinition> local;
-  ::harmos::v1::Request request;
+  ::harmos::plugin::v1::Request request;
   std::string plugin;
   std::optional<std::string> cancelled;
   std::uint64_t next = 0;
@@ -68,7 +68,7 @@ struct Invocation {
   std::atomic<bool> tick_active = false;
   std::atomic<bool> accepting_children = true;
 
-  bool receive(const ::harmos::v1::ChildResponse &child, bool allow_retired = true) {
+  bool receive(const ::harmos::plugin::v1::ChildResponse &child, bool allow_retired = true) {
     std::lock_guard lock(mutex);
     if (tick_scoped && !tick_active)
       return false;
@@ -77,7 +77,7 @@ struct Invocation {
     auto watching = watches.find(child.call());
     if (watching != watches.end()) {
       auto &watch = *watching->second;
-      if (child.result_case() == ::harmos::v1::ChildResponse::RESULT_NOT_SET || child.item().size() > watch.max_item_bytes ||
+      if (child.result_case() == ::harmos::plugin::v1::ChildResponse::RESULT_NOT_SET || child.item().size() > watch.max_item_bytes ||
           child.payload().size() > watch.max_item_bytes)
         return false;
       if (child.has_item()) {
@@ -93,7 +93,7 @@ struct Invocation {
       return true;
     }
     auto found = pending.find(child.call());
-    if (child.has_item() || found == pending.end() || child.result_case() == ::harmos::v1::ChildResponse::RESULT_NOT_SET)
+    if (child.has_item() || found == pending.end() || child.result_case() == ::harmos::plugin::v1::ChildResponse::RESULT_NOT_SET)
       return false;
     if (child.has_failure())
       found->second.set_exception(std::make_exception_ptr(Failure(child.failure())));

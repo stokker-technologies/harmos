@@ -4,7 +4,9 @@
 it includes the typed client, shared messages and plugin authoring boundary. The
 [conformance example](../sdk/cpp/examples/conformance/) supplies test support.
 The minimal [client](../sdk/cpp/examples/client/) connects and reads host status;
-the minimal [plugin](../sdk/cpp/examples/plugin/) serves one typed echo operation.
+the minimal [plugin](../sdk/cpp/examples/plugin/) declares one typed library setting.
+The client optionally discovers an operation and calls `invocations.create` with its
+fingerprint and an encoded payload; neither example needs application bindings.
 Both are built by the presets and can also use the installed package independently.
 
 ```cmake
@@ -63,6 +65,8 @@ source consumers pass the vcpkg toolchain when configuring that tree. The instal
 package story extracts that archive, builds its example with `find_package(Harmos)`
 and runs every host rule. Test consumers use existing SDK and host builds;
 `--layer unit` selects CTest and `--layer integration` selects the Python stories.
+The native client fixture also reads the shared declarative composition file: its
+client loses `time.get`, while the library client and plugin context retain it.
 `HARMOS_CONFORMANCE_HOST` may select a separately built host.
 For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
 Windows) explicitly with that variable; otherwise stories prefer the native
@@ -87,8 +91,11 @@ Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers case
 
 Import `Client`, connection options, errors and shared messages from `harmos`.
 Client response and options types have their single public path in `harmos::client`;
-authoring and plugin-host types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
+authoring types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
 Wire requests and transport adapters stay in private generated headers.
+Protocol definitions are grouped by model, host and plugin executor. Each host
+operation's callers option selects its client and plugin-context surfaces: `CLIENTS`,
+`PLUGINS` or `ALL`. A product's composition file may narrow that audience.
 
 ```cpp
 using harmos::Client;
@@ -113,8 +120,16 @@ streams project each item likewise. Empty and multiple-field responses retain th
 message. Status retains its status and resolved read cut. See the full list in
 [SDK Call Contracts](architecture.md#sdk-call-contracts).
 
-`client.operations.get` selects one complete operation identity. Typed schema and
-stream inventories are `client.schemas.list` and `client.streams.list`.
+`client.operations.get` selects one complete operation identity. A dynamic call uses
+the discovered contract's fingerprint and encoded request bytes:
+
+```cpp
+const auto operation = client.operations.get(operation_id);
+const auto response = client.invocations.create(
+    operation_id, operation.contract().fingerprint(), encoded_request);
+```
+
+Typed schema and stream inventories are `client.schemas.list` and `client.streams.list`.
 Application-generated clients can compose their own resources beneath
 `client.plugins` alongside the library's `client.plugins.settings` node.
 `client.plugins.replace` takes a managed placement and the entry's expected
@@ -143,17 +158,18 @@ setting.set_description("Enable Sampling");
 setting.mutable_default_()->set_flag(false);
 
 Plugin plugin("example", "1.0.0");
-plugin.setting(setting).requires_operation(HostOperation::SettingsList);
+plugin.setting(setting).requires_operation(HostOperation::PluginsSettingsList);
 ```
 
 `Plugin::setting` contributes one `SettingsDeclarations` section and its reachable
 types to `Declarations`. It refuses duplicate names and declarations without a name
 or selected default. Value variants are flag, integer, number, text and duration.
 Inside an operation or tick observer, `context.settings()` calls
-`context.host().settings.list()` and returns the calling entry's complete typed
-values, settings revision and issued read cut. It takes no plugin selector.
+`context.host().plugins.settings.list()` and returns declarations, complete typed
+values, settings revision and issued read cut. Its omitted name defaults to the
+calling entry; the host refuses a different entry's name from a plugin caller.
 
-Clients read declarations and values through `client.plugins.settings.list` and
+Clients select the entry with `client.plugins.settings.list({.name = "example"})` and
 replace the complete map through `client.plugins.settings.set`. Set takes the
 expected settings revision and an optional replay request ID. Settings revisions belong to
 settings separately from plugin entry revisions; policies and declared settings

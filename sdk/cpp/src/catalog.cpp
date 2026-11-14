@@ -203,7 +203,7 @@ FileDescriptorSet types(const Descriptor *descriptor) {
 } // namespace harmos::plugin::detail
 
 namespace harmos::plugin {
-namespace wire = ::harmos::v1;
+namespace wire = ::harmos::model::v1;
 Plugin::Plugin(string id, string version) : id_(std::move(id)), version_(std::move(version)) {}
 
 Plugin &Plugin::on_stop(std::function<void()> cleanup) {
