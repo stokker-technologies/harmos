@@ -314,19 +314,20 @@ report `Gap` rather than silently truncating history.
 The reference backend preserves ordered staged file chunks, identical replay,
 length/hash verification, immutable published references, bounded range reads and
 mutation receipt recovery. Unpublished file bytes cannot be read as published
-content. Optional resumable sessions and deletion remain separate advertised
-capabilities; they are not implied by `sqlite`. The existing file state/recovery
+content. SQLite also persists resumable sessions, writer generations and checkpoints;
+reopening trims an uncheckpointed tail to its durable prefix. Abandonment preserves
+retained content reads. File deletion remains a separate advertised capability. The existing file state/recovery
 backend and its journal/checkpoint format are retained.
 
-The native storage interface and the two face-local Storage services expose these
-capabilities. Register `builtins::storage_catalog()` and supply a storage manager with
+Private in-process storage operations expose these capabilities; a product owns
+any wire wrapper and its policy. Register `builtins::storage_catalog()` and supply a storage manager with
 `setup.settings().storage(&storage)`. The runtime supplies the retained snapshot registry,
 bounded by the consumer's `StorageRequestSettings.max_active_queries`; backend construction
 and every row/byte/work allowance remain consumer-owned. Embedders composing resources
 directly also supply `harmos_operations::storage::SavedSnapshots::new(capacity)`.
 
-Ordinary native queries retain their bounded row fallback. Public `ListRows` uses
-bounded unary pages. `AppendRecords`, `AppendSamples` and `AppendObjectRevisions` take
+Ordinary native queries retain their bounded row fallback. Native `ListRows` uses
+bounded pages; a product chooses its wire query shape. `AppendRecords`, `AppendSamples` and `AppendObjectRevisions` take
 one bounded immutable batch and a mutation identity. Their replies report the original
 accepted position immediately. Resend the same normalized request to observe completion:
 `durable_at` appears only after the data and its replay receipt are acknowledged durable.

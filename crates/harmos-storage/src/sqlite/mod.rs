@@ -33,9 +33,9 @@ use tokio::sync::Mutex;
 use crate::query::columnar::{ArrowPage, ArrowScan, Cancellation, StorageCapabilities};
 use crate::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use crate::{
-    BackendFailure, BackendSnapshot, Error, FileChunk, FileMetadata, FileReference, MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey,
-    ObjectPoint, ReadLimits, Result, ScanPage, SchemaKey, StagedFile, StorageBackend, StorageBatch, StorageCursor, StorageFuture,
-    StorageSchema, StoreHistory, StoredRecord, StoredRow,
+    BackendFailure, BackendSnapshot, Error, FileCheckpoint, FileChunk, FileMetadata, FilePhase, FileProgress, FileReference,
+    MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey, ObjectPoint, ReadLimits, Result, ScanPage, SchemaKey, StagedFile,
+    StorageBackend, StorageBatch, StorageCursor, StorageFuture, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 
 /* === Constants === */
@@ -125,6 +125,7 @@ impl SqliteBackend {
             CREATE TABLE IF NOT EXISTS arrow_columns(chunk INTEGER NOT NULL REFERENCES arrow_chunks(id), name TEXT NOT NULL, data BLOB NOT NULL, minimum REAL, maximum REAL, time_min INTEGER, time_max INTEGER, PRIMARY KEY(chunk,name));
             CREATE TABLE IF NOT EXISTS storage_files(id TEXT PRIMARY KEY, metadata BLOB NOT NULL, length INTEGER NOT NULL, finished BLOB);
             CREATE TABLE IF NOT EXISTS storage_file_chunks(id TEXT NOT NULL REFERENCES storage_files(id), offset INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY(id,offset));
+            CREATE TABLE IF NOT EXISTS storage_file_sessions(id TEXT PRIMARY KEY REFERENCES storage_files(id), generation INTEGER NOT NULL, abandoned INTEGER NOT NULL, checkpoint BLOB);
             CREATE TABLE IF NOT EXISTS storage_mutations(id TEXT PRIMARY KEY, data BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_indexes(name TEXT PRIMARY KEY,revision INTEGER NOT NULL,source TEXT NOT NULL,definition BLOB NOT NULL);
             CREATE TABLE IF NOT EXISTS storage_index_entries(name TEXT NOT NULL,revision INTEGER NOT NULL,key BLOB NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(name,revision,key,position)) WITHOUT ROWID;
@@ -217,7 +218,7 @@ impl StorageBackend for SqliteBackend {
 
     fn capabilities(&self) -> StorageCapabilities {
         StorageCapabilities {
-            file_sessions: false,
+            file_sessions: true,
             file_deletion: false,
             mutation_receipts: true,
             native_arrow: true,
@@ -440,6 +441,35 @@ impl StorageBackend for SqliteBackend {
     fn create_file_staging<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         let metadata = metadata.clone();
         Box::pin(self.call(move |state| files::create(state, &metadata)))
+    }
+    fn create_file_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
+        let metadata = metadata.clone();
+        Box::pin(self.call(move |state| files::production(state, &metadata)))
+    }
+    fn set_file_writer_generation<'a>(&'a self, file: &'a StagedFile, expected: u64, next: u64) -> StorageFuture<'a, ()> {
+        let file = file.clone();
+        Box::pin(self.call(move |state| files::fence(state, &file, expected, next)))
+    }
+    fn set_file_production_checkpoints(&self, checkpoints: StorageBatch<FileCheckpoint>) -> StorageFuture<'_, ()> {
+        Box::pin(self.call(move |state| files::checkpoints(state, checkpoints.as_slice())))
+    }
+    fn list_file_production_checkpoints(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<FileCheckpoint>> {
+        Box::pin(self.call(move |state| files::recover(state, limits)))
+    }
+    fn get_file_production<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, FileProgress> {
+        let file = file.clone();
+        Box::pin(self.call(move |state| files::progress(state, &file)))
+    }
+    fn get_file_production_bytes<'a>(&'a self, file: &'a StagedFile, offset: u64, maximum: NonZeroUsize) -> StorageFuture<'a, Vec<u8>> {
+        let file = file.clone();
+        Box::pin(self.call(move |state| {
+            let progress = files::progress(state, &file)?;
+            files::bytes(state, &file, offset, maximum, progress.length)
+        }))
+    }
+    fn delete_file_production<'a>(&'a self, file: &'a StagedFile) -> StorageFuture<'a, ()> {
+        let file = file.clone();
+        Box::pin(self.call(move |state| files::abandon(state, &file)))
     }
     fn append_file_bytes<'a>(&'a self, file: &'a StagedFile, offset: u64, bytes: FileChunk) -> StorageFuture<'a, ()> {
         let file = file.clone();
