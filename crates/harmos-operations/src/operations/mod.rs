@@ -30,9 +30,9 @@ pub use contract::{Codec, Contract, ContractError, Contracts, WireDeclaration};
 pub use direction::{Direction, NoStream, Stream, item_types};
 pub use error::{Error, Result};
 pub use grpc::Grpc;
+pub use harmos_protocol::model::Protobuf;
 pub use harmos_protocol::policy::{Backoff, FailureKind, Jitter, OperationPolicy, PolicyError, ReplaySafety, RetryPolicy};
 pub use harmos_protocol::service::{RestartPolicy, ServicePolicy};
-pub use harmos_protocol::v1::Protobuf;
 pub use protobuf::ProtobufExt;
 pub use specification::{OperationSpec, RequestShape};
 
@@ -165,8 +165,8 @@ mod tests {
 
     #[test]
     fn grpc_visibility_contracts() {
-        assert!(Grpc::new("example.v1", "Steps.Nested", "Execute").validate().is_err());
-        let binding = Grpc::new("visibility.v1", "Operations", "Call");
+        assert!(Grpc::new("example.host.v1", "Steps.Nested", "Execute").validate().is_err());
+        let binding = Grpc::new("visibility.host.v1", "Operations", "Call");
         for visibility in [Visibility::Private, Visibility::Protected, Visibility::Public] {
             let mut declaration = PUBLISHED_OPERATION.wire();
             declaration.operation.visibility = visibility;

@@ -27,20 +27,20 @@ pub struct ValidateSchematic;
 /* === Implementations === */
 
 impl ProtobufOperation for ValidateSchematic {
-    type Request = crate::protocol::ValidateSchematic;
-    type Response = crate::protocol::Validation;
+    type Request = crate::protocol::SchematicValidateRequest;
+    type Response = crate::protocol::SchematicValidateResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.validate";
+    const ID: &'static str = "schematic.host.v1.Schematic/Validate";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "Validate"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "Validate"));
     async fn run(_ctx: ExecutionContext, request: Self::Request, _endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
             let schematic: schematic_domain::model::Snapshot = request.schematic.ok_or(crate::Error::InvalidInput)?.into();
-            Ok(crate::protocol::Validation { diagnostics: schematic.diagnostics() })
+            Ok(crate::protocol::SchematicValidateResponse { diagnostics: schematic.diagnostics() })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

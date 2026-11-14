@@ -22,6 +22,8 @@ pub use serving::Serving;
 
 /* === Imports === */
 
+use harmos_protocol::plugin::GuestRegistration as WireGuestRegistration;
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -37,7 +39,7 @@ use wasmtime::{Config, Engine as WasmEngine, Store, StoreLimits, StoreLimitsBuil
 use super::Declaration;
 use crate::config::PluginGuestSettings;
 use crate::{Application, Runtime, streams::StreamManager};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use prost::Message as _;
 
 /* === Constants === */
@@ -369,7 +371,7 @@ impl<A: Application> Loaded<A> {
         let collected = store.run_concurrent(async |accessor| sdk.call_register(accessor).await).await.and_then(|result| result);
         let metadata = match collected {
             Ok(Ok(bytes)) if bytes.len() <= harmos_protocol::guest::COMMAND_BYTES => {
-                v1::GuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })?
+                WireGuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })?
             }
             Ok(Ok(_)) => {
                 return Err(Error::Guest {
@@ -459,8 +461,8 @@ impl<A: Application> Bridge<A> {
     }
 
     fn refusal(code: &str, message: impl Into<String>) -> Vec<u8> {
-        v1::Failure {
-            classification: v1::Classification::Refused as i32,
+        model::Failure {
+            classification: model::Classification::Refused as i32,
             code: code.into(),
             message: message.into(),
             ..Default::default()
@@ -468,7 +470,7 @@ impl<A: Application> Bridge<A> {
         .encode_to_vec()
     }
     fn forwarded(refusal: &OperationRefusal) -> Vec<u8> {
-        let mut failure = v1::Failure::from(refusal.failure());
+        let mut failure = model::Failure::from(refusal.failure());
         if failure.code.is_empty() {
             failure.code = refusal.code().to_string();
         }
@@ -479,7 +481,7 @@ impl<A: Application> Bridge<A> {
 /* === Public Functions === */
 
 /// Collect the Authoritative Guest Metadata Without Granting Host Authority.
-pub async fn inspect(bytes: &[u8], settings: PluginGuestSettings) -> Result<v1::GuestRegistration, Error> {
+pub async fn inspect(bytes: &[u8], settings: PluginGuestSettings) -> Result<WireGuestRegistration, Error> {
     if bytes.len() > settings.component_bytes.get() {
         return Err(Error::Oversized { limit: settings.component_bytes.get() });
     }
@@ -492,7 +494,7 @@ pub async fn inspect(bytes: &[u8], settings: PluginGuestSettings) -> Result<v1::
 
 /* === Private Functions === */
 
-async fn inspect_component(component: &Component, limits: StoreLimits, fuel: u64) -> Result<v1::GuestRegistration, Error> {
+async fn inspect_component(component: &Component, limits: StoreLimits, fuel: u64) -> Result<WireGuestRegistration, Error> {
     let mut linker: Linker<StoreLimits> = Linker::new(component.engine());
     linker
         .instance("harmos:guest/operation-context@1.0.0")
@@ -500,8 +502,8 @@ async fn inspect_component(component: &Component, limits: StoreLimits, fuel: u64
             interface.func_wrap_concurrent("child", |_, (_payload,): (Vec<u8>,)| {
                 Box::pin(async {
                     Ok((Err::<Vec<u8>, _>(
-                        v1::Failure {
-                            classification: v1::Classification::Refused as i32,
+                        model::Failure {
+                            classification: model::Classification::Refused as i32,
                             code: "registration_has_no_authority".into(),
                             message: "Registration Cannot Call the Host".into(),
                             ..Default::default()
@@ -531,7 +533,7 @@ async fn inspect_component(component: &Component, limits: StoreLimits, fuel: u64
             message: "Guest Registration Exceeds Its Byte Bound".into(),
         });
     }
-    v1::GuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })
+    WireGuestRegistration::decode(bytes.as_slice()).map_err(|error| Error::Guest { message: error.to_string() })
 }
 
 pub(super) fn store_limits(settings: PluginGuestSettings) -> StoreLimits {

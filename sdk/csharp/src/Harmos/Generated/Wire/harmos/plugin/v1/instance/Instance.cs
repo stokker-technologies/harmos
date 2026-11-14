@@ -25,50 +25,52 @@ namespace Harmos.Internal.Plugin;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "Ch9oYXJtb3MvcGx1Z2luL3YxL2luc3RhbmNlLnByb3RvEhBoYXJtb3MucGx1",
-            "Z2luLnYxGh9nb29nbGUvcHJvdG9idWYvdGltZXN0YW1wLnByb3RvGhtoYXJt",
-            "b3MvdjEvZGVzY3JpcHRpb24ucHJvdG8aGmhhcm1vcy92MS9pbnZvY2F0aW9u",
-            "LnByb3RvGhZoYXJtb3MvdjEvc3RyZWFtLnByb3RvImcKEkluc3RhbmNlR2V0",
-            "UmVxdWVzdBIaCghyZXZpc2lvbhgBIAEoDVIIcmV2aXNpb24SEgoEaG9zdBgC",
-            "IAEoCVIEaG9zdBIhCgxob3N0X3ZlcnNpb24YAyABKAlSC2hvc3RWZXJzaW9u",
-            "IqsCChNJbnN0YW5jZUdldFJlc3BvbnNlEg4KAmlkGAEgASgJUgJpZBIYCgd2",
-            "ZXJzaW9uGAIgASgJUgd2ZXJzaW9uEjkKCnN0YXJ0ZWRfYXQYAyABKAsyGi5n",
-            "b29nbGUucHJvdG9idWYuVGltZXN0YW1wUglzdGFydGVkQXQSOwoMZGVjbGFy",
-            "YXRpb25zGAQgASgLMhcuaGFybW9zLnYxLkRlY2xhcmF0aW9uc1IMZGVjbGFy",
-            "YXRpb25zEhoKCHJldmlzaW9uGAUgASgNUghyZXZpc2lvbhIQCgNzZGsYBiAB",
-            "KAlSA3NkaxIfCgtzZGtfdmVyc2lvbhgHIAEoCVIKc2RrVmVyc2lvbhIjCg1t",
-            "ZXNzYWdlX2J5dGVzGAggASgEUgxtZXNzYWdlQnl0ZXMirwEKFUluc3RhbmNl",
-            "SW52b2tlUmVxdWVzdBIuCgdyZXF1ZXN0GAEgASgLMhIuaGFybW9zLnYxLlJl",
-            "cXVlc3RIAFIHcmVxdWVzdBIwCgVjaGlsZBgCIAEoCzIYLmhhcm1vcy52MS5D",
-            "aGlsZFJlc3BvbnNlSABSBWNoaWxkEisKBmNhbmNlbBgDIAEoCzIRLmhhcm1v",
-            "cy52MS5DYW5jZWxIAFIGY2FuY2VsQgcKBWZyYW1lIv8BChZJbnN0YW5jZUlu",
-            "dm9rZVJlc3BvbnNlEi8KBWNoaWxkGAEgASgLMhcuaGFybW9zLnYxLkNoaWxk",
-            "UmVxdWVzdEgAUgVjaGlsZBI7CgxjaGlsZF9jYW5jZWwYAiABKAsyFi5oYXJt",
-            "b3MudjEuQ2hpbGRDYW5jZWxIAFILY2hpbGRDYW5jZWwSMQoIcmVzcG9uc2UY",
-            "AyABKAsyEy5oYXJtb3MudjEuUmVzcG9uc2VIAFIIcmVzcG9uc2USOwoMY2hp",
-            "bGRfZGVtYW5kGAQgASgLMhYuaGFybW9zLnYxLkNoaWxkRGVtYW5kSABSC2No",
-            "aWxkRGVtYW5kQgcKBWZyYW1lIq0BChZJbnN0YW5jZVNhbXBsZXNSZXF1ZXN0",
-            "EjEKBG9wZW4YASABKAsyGy5oYXJtb3MudjEuU2FtcGxlc1NlbGVjdGlvbkgA",
-            "UgRvcGVuEiUKBHRpY2sYAiABKAsyDy5oYXJtb3MudjEuVGlja0gAUgR0aWNr",
-            "EjAKBWNoaWxkGAMgASgLMhguaGFybW9zLnYxLkNoaWxkUmVzcG9uc2VIAFIF",
-            "Y2hpbGRCBwoFZnJhbWUi+gEKF0luc3RhbmNlU2FtcGxlc1Jlc3BvbnNlEisK",
-            "B3NhbXBsZXMYASADKAsyES5oYXJtb3MudjEuU2FtcGxlUgdzYW1wbGVzEi8K",
-            "BWNoaWxkGAIgASgLMhcuaGFybW9zLnYxLkNoaWxkUmVxdWVzdEgAUgVjaGls",
-            "ZBI7CgxjaGlsZF9jYW5jZWwYAyABKAsyFi5oYXJtb3MudjEuQ2hpbGRDYW5j",
-            "ZWxIAFILY2hpbGRDYW5jZWwSOwoMY2hpbGRfZGVtYW5kGAQgASgLMhYuaGFy",
-            "bW9zLnYxLkNoaWxkRGVtYW5kSABSC2NoaWxkRGVtYW5kQgcKBWZyYW1lIi0K",
-            "E0luc3RhbmNlU3RvcFJlcXVlc3QSFgoGcmVhc29uGAEgASgJUgZyZWFzb24i",
-            "FgoUSW5zdGFuY2VTdG9wUmVzcG9uc2Uy+gIKCEluc3RhbmNlElIKA0dldBIk",
-            "Lmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VHZXRSZXF1ZXN0GiUuaGFybW9z",
-            "LnBsdWdpbi52MS5JbnN0YW5jZUdldFJlc3BvbnNlEl8KBkludm9rZRInLmhh",
-            "cm1vcy5wbHVnaW4udjEuSW5zdGFuY2VJbnZva2VSZXF1ZXN0GiguaGFybW9z",
-            "LnBsdWdpbi52MS5JbnN0YW5jZUludm9rZVJlc3BvbnNlKAEwARJiCgdTYW1w",
-            "bGVzEiguaGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZVNhbXBsZXNSZXF1ZXN0",
-            "GikuaGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZVNhbXBsZXNSZXNwb25zZSgB",
-            "MAESVQoEU3RvcBIlLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VTdG9wUmVx",
-            "dWVzdBomLmhhcm1vcy5wbHVnaW4udjEuSW5zdGFuY2VTdG9wUmVzcG9uc2Vi",
-            "BnByb3RvMw=="));
+            "Z2luLnYxGh9nb29nbGUvcHJvdG9idWYvdGltZXN0YW1wLnByb3RvGiFoYXJt",
+            "b3MvbW9kZWwvdjEvZGVzY3JpcHRpb24ucHJvdG8aIWhhcm1vcy9wbHVnaW4v",
+            "djEvaW52b2NhdGlvbi5wcm90bxodaGFybW9zL3BsdWdpbi92MS9zdHJlYW0u",
+            "cHJvdG8iZwoSSW5zdGFuY2VHZXRSZXF1ZXN0EhoKCHJldmlzaW9uGAEgASgN",
+            "UghyZXZpc2lvbhISCgRob3N0GAIgASgJUgRob3N0EiEKDGhvc3RfdmVyc2lv",
+            "bhgDIAEoCVILaG9zdFZlcnNpb24isQIKE0luc3RhbmNlR2V0UmVzcG9uc2US",
+            "DgoCaWQYASABKAlSAmlkEhgKB3ZlcnNpb24YAiABKAlSB3ZlcnNpb24SOQoK",
+            "c3RhcnRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBS",
+            "CXN0YXJ0ZWRBdBJBCgxkZWNsYXJhdGlvbnMYBCABKAsyHS5oYXJtb3MubW9k",
+            "ZWwudjEuRGVjbGFyYXRpb25zUgxkZWNsYXJhdGlvbnMSGgoIcmV2aXNpb24Y",
+            "BSABKA1SCHJldmlzaW9uEhAKA3NkaxgGIAEoCVIDc2RrEh8KC3Nka192ZXJz",
+            "aW9uGAcgASgJUgpzZGtWZXJzaW9uEiMKDW1lc3NhZ2VfYnl0ZXMYCCABKARS",
+            "DG1lc3NhZ2VCeXRlcyLEAQoVSW5zdGFuY2VJbnZva2VSZXF1ZXN0EjUKB3Jl",
+            "cXVlc3QYASABKAsyGS5oYXJtb3MucGx1Z2luLnYxLlJlcXVlc3RIAFIHcmVx",
+            "dWVzdBI3CgVjaGlsZBgCIAEoCzIfLmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRS",
+            "ZXNwb25zZUgAUgVjaGlsZBIyCgZjYW5jZWwYAyABKAsyGC5oYXJtb3MucGx1",
+            "Z2luLnYxLkNhbmNlbEgAUgZjYW5jZWxCBwoFZnJhbWUimwIKFkluc3RhbmNl",
+            "SW52b2tlUmVzcG9uc2USNgoFY2hpbGQYASABKAsyHi5oYXJtb3MucGx1Z2lu",
+            "LnYxLkNoaWxkUmVxdWVzdEgAUgVjaGlsZBJCCgxjaGlsZF9jYW5jZWwYAiAB",
+            "KAsyHS5oYXJtb3MucGx1Z2luLnYxLkNoaWxkQ2FuY2VsSABSC2NoaWxkQ2Fu",
+            "Y2VsEjgKCHJlc3BvbnNlGAMgASgLMhouaGFybW9zLnBsdWdpbi52MS5SZXNw",
+            "b25zZUgAUghyZXNwb25zZRJCCgxjaGlsZF9kZW1hbmQYBCABKAsyHS5oYXJt",
+            "b3MucGx1Z2luLnYxLkNoaWxkRGVtYW5kSABSC2NoaWxkRGVtYW5kQgcKBWZy",
+            "YW1lIsIBChZJbnN0YW5jZVNhbXBsZXNSZXF1ZXN0EjgKBG9wZW4YASABKAsy",
+            "Ii5oYXJtb3MucGx1Z2luLnYxLlNhbXBsZXNTZWxlY3Rpb25IAFIEb3BlbhIs",
+            "CgR0aWNrGAIgASgLMhYuaGFybW9zLnBsdWdpbi52MS5UaWNrSABSBHRpY2sS",
+            "NwoFY2hpbGQYAyABKAsyHy5oYXJtb3MucGx1Z2luLnYxLkNoaWxkUmVzcG9u",
+            "c2VIAFIFY2hpbGRCBwoFZnJhbWUilgIKF0luc3RhbmNlU2FtcGxlc1Jlc3Bv",
+            "bnNlEjIKB3NhbXBsZXMYASADKAsyGC5oYXJtb3MucGx1Z2luLnYxLlNhbXBs",
+            "ZVIHc2FtcGxlcxI2CgVjaGlsZBgCIAEoCzIeLmhhcm1vcy5wbHVnaW4udjEu",
+            "Q2hpbGRSZXF1ZXN0SABSBWNoaWxkEkIKDGNoaWxkX2NhbmNlbBgDIAEoCzId",
+            "Lmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRDYW5jZWxIAFILY2hpbGRDYW5jZWwS",
+            "QgoMY2hpbGRfZGVtYW5kGAQgASgLMh0uaGFybW9zLnBsdWdpbi52MS5DaGls",
+            "ZERlbWFuZEgAUgtjaGlsZERlbWFuZEIHCgVmcmFtZSItChNJbnN0YW5jZVN0",
+            "b3BSZXF1ZXN0EhYKBnJlYXNvbhgBIAEoCVIGcmVhc29uIhYKFEluc3RhbmNl",
+            "U3RvcFJlc3BvbnNlMvoCCghJbnN0YW5jZRJSCgNHZXQSJC5oYXJtb3MucGx1",
+            "Z2luLnYxLkluc3RhbmNlR2V0UmVxdWVzdBolLmhhcm1vcy5wbHVnaW4udjEu",
+            "SW5zdGFuY2VHZXRSZXNwb25zZRJfCgZJbnZva2USJy5oYXJtb3MucGx1Z2lu",
+            "LnYxLkluc3RhbmNlSW52b2tlUmVxdWVzdBooLmhhcm1vcy5wbHVnaW4udjEu",
+            "SW5zdGFuY2VJbnZva2VSZXNwb25zZSgBMAESYgoHU2FtcGxlcxIoLmhhcm1v",
+            "cy5wbHVnaW4udjEuSW5zdGFuY2VTYW1wbGVzUmVxdWVzdBopLmhhcm1vcy5w",
+            "bHVnaW4udjEuSW5zdGFuY2VTYW1wbGVzUmVzcG9uc2UoATABElUKBFN0b3AS",
+            "JS5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlU3RvcFJlcXVlc3QaJi5oYXJt",
+            "b3MucGx1Z2luLnYxLkluc3RhbmNlU3RvcFJlc3BvbnNlYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.DescriptionReflection.Descriptor, global::Harmos.InvocationReflection.Descriptor, global::Harmos.StreamReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.DescriptionReflection.Descriptor, global::Harmos.Internal.Plugin.InvocationReflection.Descriptor, global::Harmos.Internal.Plugin.StreamReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceGetRequest), global::Harmos.Internal.Plugin.InstanceGetRequest.Parser, new[]{ "Revision", "Host", "HostVersion" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceGetResponse), global::Harmos.Internal.Plugin.InstanceGetResponse.Parser, new[]{ "Id", "Version", "StartedAt", "Declarations", "Revision", "Sdk", "SdkVersion", "MessageBytes" }, null, null, null, null),
@@ -891,8 +893,8 @@ namespace Harmos.Internal.Plugin;
     public const int RequestFieldNumber = 1;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.Request Request {
-      get { return frameCase_ == FrameOneofCase.Request ? (global::Harmos.Request) frame_ : null; }
+    public global::Harmos.Internal.Plugin.Request Request {
+      get { return frameCase_ == FrameOneofCase.Request ? (global::Harmos.Internal.Plugin.Request) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Request;
@@ -903,8 +905,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildFieldNumber = 2;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildResponse Child {
-      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.ChildResponse) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildResponse Child {
+      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.Internal.Plugin.ChildResponse) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Child;
@@ -915,8 +917,8 @@ namespace Harmos.Internal.Plugin;
     public const int CancelFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.Cancel Cancel {
-      get { return frameCase_ == FrameOneofCase.Cancel ? (global::Harmos.Cancel) frame_ : null; }
+    public global::Harmos.Internal.Plugin.Cancel Cancel {
+      get { return frameCase_ == FrameOneofCase.Cancel ? (global::Harmos.Internal.Plugin.Cancel) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Cancel;
@@ -1061,19 +1063,19 @@ namespace Harmos.Internal.Plugin;
       switch (other.FrameCase) {
         case FrameOneofCase.Request:
           if (Request == null) {
-            Request = new global::Harmos.Request();
+            Request = new global::Harmos.Internal.Plugin.Request();
           }
           Request.MergeFrom(other.Request);
           break;
         case FrameOneofCase.Child:
           if (Child == null) {
-            Child = new global::Harmos.ChildResponse();
+            Child = new global::Harmos.Internal.Plugin.ChildResponse();
           }
           Child.MergeFrom(other.Child);
           break;
         case FrameOneofCase.Cancel:
           if (Cancel == null) {
-            Cancel = new global::Harmos.Cancel();
+            Cancel = new global::Harmos.Internal.Plugin.Cancel();
           }
           Cancel.MergeFrom(other.Cancel);
           break;
@@ -1099,7 +1101,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
-            global::Harmos.Request subBuilder = new global::Harmos.Request();
+            global::Harmos.Internal.Plugin.Request subBuilder = new global::Harmos.Internal.Plugin.Request();
             if (frameCase_ == FrameOneofCase.Request) {
               subBuilder.MergeFrom(Request);
             }
@@ -1108,7 +1110,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildResponse subBuilder = new global::Harmos.ChildResponse();
+            global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1117,7 +1119,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.Cancel subBuilder = new global::Harmos.Cancel();
+            global::Harmos.Internal.Plugin.Cancel subBuilder = new global::Harmos.Internal.Plugin.Cancel();
             if (frameCase_ == FrameOneofCase.Cancel) {
               subBuilder.MergeFrom(Cancel);
             }
@@ -1145,7 +1147,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
           case 10: {
-            global::Harmos.Request subBuilder = new global::Harmos.Request();
+            global::Harmos.Internal.Plugin.Request subBuilder = new global::Harmos.Internal.Plugin.Request();
             if (frameCase_ == FrameOneofCase.Request) {
               subBuilder.MergeFrom(Request);
             }
@@ -1154,7 +1156,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildResponse subBuilder = new global::Harmos.ChildResponse();
+            global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1163,7 +1165,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.Cancel subBuilder = new global::Harmos.Cancel();
+            global::Harmos.Internal.Plugin.Cancel subBuilder = new global::Harmos.Internal.Plugin.Cancel();
             if (frameCase_ == FrameOneofCase.Cancel) {
               subBuilder.MergeFrom(Cancel);
             }
@@ -1241,8 +1243,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildFieldNumber = 1;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildRequest Child {
-      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.ChildRequest) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildRequest Child {
+      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.Internal.Plugin.ChildRequest) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Child;
@@ -1253,8 +1255,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildCancelFieldNumber = 2;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildCancel ChildCancel {
-      get { return frameCase_ == FrameOneofCase.ChildCancel ? (global::Harmos.ChildCancel) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildCancel ChildCancel {
+      get { return frameCase_ == FrameOneofCase.ChildCancel ? (global::Harmos.Internal.Plugin.ChildCancel) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.ChildCancel;
@@ -1265,8 +1267,8 @@ namespace Harmos.Internal.Plugin;
     public const int ResponseFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.Response Response {
-      get { return frameCase_ == FrameOneofCase.Response ? (global::Harmos.Response) frame_ : null; }
+    public global::Harmos.Internal.Plugin.Response Response {
+      get { return frameCase_ == FrameOneofCase.Response ? (global::Harmos.Internal.Plugin.Response) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Response;
@@ -1277,8 +1279,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildDemandFieldNumber = 4;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildDemand ChildDemand {
-      get { return frameCase_ == FrameOneofCase.ChildDemand ? (global::Harmos.ChildDemand) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildDemand ChildDemand {
+      get { return frameCase_ == FrameOneofCase.ChildDemand ? (global::Harmos.Internal.Plugin.ChildDemand) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.ChildDemand;
@@ -1437,25 +1439,25 @@ namespace Harmos.Internal.Plugin;
       switch (other.FrameCase) {
         case FrameOneofCase.Child:
           if (Child == null) {
-            Child = new global::Harmos.ChildRequest();
+            Child = new global::Harmos.Internal.Plugin.ChildRequest();
           }
           Child.MergeFrom(other.Child);
           break;
         case FrameOneofCase.ChildCancel:
           if (ChildCancel == null) {
-            ChildCancel = new global::Harmos.ChildCancel();
+            ChildCancel = new global::Harmos.Internal.Plugin.ChildCancel();
           }
           ChildCancel.MergeFrom(other.ChildCancel);
           break;
         case FrameOneofCase.Response:
           if (Response == null) {
-            Response = new global::Harmos.Response();
+            Response = new global::Harmos.Internal.Plugin.Response();
           }
           Response.MergeFrom(other.Response);
           break;
         case FrameOneofCase.ChildDemand:
           if (ChildDemand == null) {
-            ChildDemand = new global::Harmos.ChildDemand();
+            ChildDemand = new global::Harmos.Internal.Plugin.ChildDemand();
           }
           ChildDemand.MergeFrom(other.ChildDemand);
           break;
@@ -1481,7 +1483,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
-            global::Harmos.ChildRequest subBuilder = new global::Harmos.ChildRequest();
+            global::Harmos.Internal.Plugin.ChildRequest subBuilder = new global::Harmos.Internal.Plugin.ChildRequest();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1490,7 +1492,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildCancel subBuilder = new global::Harmos.ChildCancel();
+            global::Harmos.Internal.Plugin.ChildCancel subBuilder = new global::Harmos.Internal.Plugin.ChildCancel();
             if (frameCase_ == FrameOneofCase.ChildCancel) {
               subBuilder.MergeFrom(ChildCancel);
             }
@@ -1499,7 +1501,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.Response subBuilder = new global::Harmos.Response();
+            global::Harmos.Internal.Plugin.Response subBuilder = new global::Harmos.Internal.Plugin.Response();
             if (frameCase_ == FrameOneofCase.Response) {
               subBuilder.MergeFrom(Response);
             }
@@ -1508,7 +1510,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 34: {
-            global::Harmos.ChildDemand subBuilder = new global::Harmos.ChildDemand();
+            global::Harmos.Internal.Plugin.ChildDemand subBuilder = new global::Harmos.Internal.Plugin.ChildDemand();
             if (frameCase_ == FrameOneofCase.ChildDemand) {
               subBuilder.MergeFrom(ChildDemand);
             }
@@ -1536,7 +1538,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
           case 10: {
-            global::Harmos.ChildRequest subBuilder = new global::Harmos.ChildRequest();
+            global::Harmos.Internal.Plugin.ChildRequest subBuilder = new global::Harmos.Internal.Plugin.ChildRequest();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1545,7 +1547,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildCancel subBuilder = new global::Harmos.ChildCancel();
+            global::Harmos.Internal.Plugin.ChildCancel subBuilder = new global::Harmos.Internal.Plugin.ChildCancel();
             if (frameCase_ == FrameOneofCase.ChildCancel) {
               subBuilder.MergeFrom(ChildCancel);
             }
@@ -1554,7 +1556,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.Response subBuilder = new global::Harmos.Response();
+            global::Harmos.Internal.Plugin.Response subBuilder = new global::Harmos.Internal.Plugin.Response();
             if (frameCase_ == FrameOneofCase.Response) {
               subBuilder.MergeFrom(Response);
             }
@@ -1563,7 +1565,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 34: {
-            global::Harmos.ChildDemand subBuilder = new global::Harmos.ChildDemand();
+            global::Harmos.Internal.Plugin.ChildDemand subBuilder = new global::Harmos.Internal.Plugin.ChildDemand();
             if (frameCase_ == FrameOneofCase.ChildDemand) {
               subBuilder.MergeFrom(ChildDemand);
             }
@@ -1638,8 +1640,8 @@ namespace Harmos.Internal.Plugin;
     public const int OpenFieldNumber = 1;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.SamplesSelection Open {
-      get { return frameCase_ == FrameOneofCase.Open ? (global::Harmos.SamplesSelection) frame_ : null; }
+    public global::Harmos.Internal.Plugin.SamplesSelection Open {
+      get { return frameCase_ == FrameOneofCase.Open ? (global::Harmos.Internal.Plugin.SamplesSelection) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Open;
@@ -1650,8 +1652,8 @@ namespace Harmos.Internal.Plugin;
     public const int TickFieldNumber = 2;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.Tick Tick {
-      get { return frameCase_ == FrameOneofCase.Tick ? (global::Harmos.Tick) frame_ : null; }
+    public global::Harmos.Internal.Plugin.Tick Tick {
+      get { return frameCase_ == FrameOneofCase.Tick ? (global::Harmos.Internal.Plugin.Tick) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Tick;
@@ -1662,8 +1664,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildResponse Child {
-      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.ChildResponse) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildResponse Child {
+      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.Internal.Plugin.ChildResponse) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Child;
@@ -1808,19 +1810,19 @@ namespace Harmos.Internal.Plugin;
       switch (other.FrameCase) {
         case FrameOneofCase.Open:
           if (Open == null) {
-            Open = new global::Harmos.SamplesSelection();
+            Open = new global::Harmos.Internal.Plugin.SamplesSelection();
           }
           Open.MergeFrom(other.Open);
           break;
         case FrameOneofCase.Tick:
           if (Tick == null) {
-            Tick = new global::Harmos.Tick();
+            Tick = new global::Harmos.Internal.Plugin.Tick();
           }
           Tick.MergeFrom(other.Tick);
           break;
         case FrameOneofCase.Child:
           if (Child == null) {
-            Child = new global::Harmos.ChildResponse();
+            Child = new global::Harmos.Internal.Plugin.ChildResponse();
           }
           Child.MergeFrom(other.Child);
           break;
@@ -1846,7 +1848,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 10: {
-            global::Harmos.SamplesSelection subBuilder = new global::Harmos.SamplesSelection();
+            global::Harmos.Internal.Plugin.SamplesSelection subBuilder = new global::Harmos.Internal.Plugin.SamplesSelection();
             if (frameCase_ == FrameOneofCase.Open) {
               subBuilder.MergeFrom(Open);
             }
@@ -1855,7 +1857,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.Tick subBuilder = new global::Harmos.Tick();
+            global::Harmos.Internal.Plugin.Tick subBuilder = new global::Harmos.Internal.Plugin.Tick();
             if (frameCase_ == FrameOneofCase.Tick) {
               subBuilder.MergeFrom(Tick);
             }
@@ -1864,7 +1866,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.ChildResponse subBuilder = new global::Harmos.ChildResponse();
+            global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1892,7 +1894,7 @@ namespace Harmos.Internal.Plugin;
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
           case 10: {
-            global::Harmos.SamplesSelection subBuilder = new global::Harmos.SamplesSelection();
+            global::Harmos.Internal.Plugin.SamplesSelection subBuilder = new global::Harmos.Internal.Plugin.SamplesSelection();
             if (frameCase_ == FrameOneofCase.Open) {
               subBuilder.MergeFrom(Open);
             }
@@ -1901,7 +1903,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.Tick subBuilder = new global::Harmos.Tick();
+            global::Harmos.Internal.Plugin.Tick subBuilder = new global::Harmos.Internal.Plugin.Tick();
             if (frameCase_ == FrameOneofCase.Tick) {
               subBuilder.MergeFrom(Tick);
             }
@@ -1910,7 +1912,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.ChildResponse subBuilder = new global::Harmos.ChildResponse();
+            global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -1984,12 +1986,12 @@ namespace Harmos.Internal.Plugin;
 
     /// <summary>Field number for the "samples" field.</summary>
     public const int SamplesFieldNumber = 1;
-    private static readonly pb::FieldCodec<global::Harmos.Sample> _repeated_samples_codec
-        = pb::FieldCodec.ForMessage(10, global::Harmos.Sample.Parser);
-    private readonly pbc::RepeatedField<global::Harmos.Sample> samples_ = new pbc::RepeatedField<global::Harmos.Sample>();
+    private static readonly pb::FieldCodec<global::Harmos.Internal.Plugin.Sample> _repeated_samples_codec
+        = pb::FieldCodec.ForMessage(10, global::Harmos.Internal.Plugin.Sample.Parser);
+    private readonly pbc::RepeatedField<global::Harmos.Internal.Plugin.Sample> samples_ = new pbc::RepeatedField<global::Harmos.Internal.Plugin.Sample>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public pbc::RepeatedField<global::Harmos.Sample> Samples {
+    public pbc::RepeatedField<global::Harmos.Internal.Plugin.Sample> Samples {
       get { return samples_; }
     }
 
@@ -1997,8 +1999,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildFieldNumber = 2;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildRequest Child {
-      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.ChildRequest) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildRequest Child {
+      get { return frameCase_ == FrameOneofCase.Child ? (global::Harmos.Internal.Plugin.ChildRequest) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Child;
@@ -2009,8 +2011,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildCancelFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildCancel ChildCancel {
-      get { return frameCase_ == FrameOneofCase.ChildCancel ? (global::Harmos.ChildCancel) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildCancel ChildCancel {
+      get { return frameCase_ == FrameOneofCase.ChildCancel ? (global::Harmos.Internal.Plugin.ChildCancel) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.ChildCancel;
@@ -2021,8 +2023,8 @@ namespace Harmos.Internal.Plugin;
     public const int ChildDemandFieldNumber = 4;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.ChildDemand ChildDemand {
-      get { return frameCase_ == FrameOneofCase.ChildDemand ? (global::Harmos.ChildDemand) frame_ : null; }
+    public global::Harmos.Internal.Plugin.ChildDemand ChildDemand {
+      get { return frameCase_ == FrameOneofCase.ChildDemand ? (global::Harmos.Internal.Plugin.ChildDemand) frame_ : null; }
       set {
         frame_ = value;
         frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.ChildDemand;
@@ -2173,19 +2175,19 @@ namespace Harmos.Internal.Plugin;
       switch (other.FrameCase) {
         case FrameOneofCase.Child:
           if (Child == null) {
-            Child = new global::Harmos.ChildRequest();
+            Child = new global::Harmos.Internal.Plugin.ChildRequest();
           }
           Child.MergeFrom(other.Child);
           break;
         case FrameOneofCase.ChildCancel:
           if (ChildCancel == null) {
-            ChildCancel = new global::Harmos.ChildCancel();
+            ChildCancel = new global::Harmos.Internal.Plugin.ChildCancel();
           }
           ChildCancel.MergeFrom(other.ChildCancel);
           break;
         case FrameOneofCase.ChildDemand:
           if (ChildDemand == null) {
-            ChildDemand = new global::Harmos.ChildDemand();
+            ChildDemand = new global::Harmos.Internal.Plugin.ChildDemand();
           }
           ChildDemand.MergeFrom(other.ChildDemand);
           break;
@@ -2215,7 +2217,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildRequest subBuilder = new global::Harmos.ChildRequest();
+            global::Harmos.Internal.Plugin.ChildRequest subBuilder = new global::Harmos.Internal.Plugin.ChildRequest();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -2224,7 +2226,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.ChildCancel subBuilder = new global::Harmos.ChildCancel();
+            global::Harmos.Internal.Plugin.ChildCancel subBuilder = new global::Harmos.Internal.Plugin.ChildCancel();
             if (frameCase_ == FrameOneofCase.ChildCancel) {
               subBuilder.MergeFrom(ChildCancel);
             }
@@ -2233,7 +2235,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 34: {
-            global::Harmos.ChildDemand subBuilder = new global::Harmos.ChildDemand();
+            global::Harmos.Internal.Plugin.ChildDemand subBuilder = new global::Harmos.Internal.Plugin.ChildDemand();
             if (frameCase_ == FrameOneofCase.ChildDemand) {
               subBuilder.MergeFrom(ChildDemand);
             }
@@ -2265,7 +2267,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 18: {
-            global::Harmos.ChildRequest subBuilder = new global::Harmos.ChildRequest();
+            global::Harmos.Internal.Plugin.ChildRequest subBuilder = new global::Harmos.Internal.Plugin.ChildRequest();
             if (frameCase_ == FrameOneofCase.Child) {
               subBuilder.MergeFrom(Child);
             }
@@ -2274,7 +2276,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 26: {
-            global::Harmos.ChildCancel subBuilder = new global::Harmos.ChildCancel();
+            global::Harmos.Internal.Plugin.ChildCancel subBuilder = new global::Harmos.Internal.Plugin.ChildCancel();
             if (frameCase_ == FrameOneofCase.ChildCancel) {
               subBuilder.MergeFrom(ChildCancel);
             }
@@ -2283,7 +2285,7 @@ namespace Harmos.Internal.Plugin;
             break;
           }
           case 34: {
-            global::Harmos.ChildDemand subBuilder = new global::Harmos.ChildDemand();
+            global::Harmos.Internal.Plugin.ChildDemand subBuilder = new global::Harmos.Internal.Plugin.ChildDemand();
             if (frameCase_ == FrameOneofCase.ChildDemand) {
               subBuilder.MergeFrom(ChildDemand);
             }

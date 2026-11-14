@@ -25,7 +25,7 @@ Reopened: 2 symbols, 1 net, 3 route points
 
 Both backends read typed settings from their library-owned plugin entries. The
 guest is registered in-process with `PluginPlacement.guest`; it reads only its own
-values through plugin-host `Settings.List`. The host supplies its module again
+values through caller-scoped `plugins.Settings.List`. The host supplies its module again
 after restart, while its entry retains settings. See [Guest Entries](plugin-manager.md#webassembly-guests).
 
 Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
@@ -47,24 +47,10 @@ initialization starts; the readiness interval covers plugin initialization.
 The plugins return advice. The host applies it through `ApplyRoute`, preserving
 one owner for edits, undo/redo, and recovery. Neither plugin imports the app.
 The protocol crate exposes generated contracts without the host stack.
-The library's shared messages live in `harmos.v1`, client calls in
-`harmos.client.v1`, plugin implementations in `harmos.plugin.v1`, and calls from a
-plugin to its host in `harmos.plugin.host.v1`. The SDK handler remains `context`.
-Both plugins declare the typed `horizontal_first` flag, defaulting to true, and
-read its effective library-stored value through plugin-host `Settings.List` when
-routing. A client updates complete plugin settings through
-`client.plugins.settings.{list,set}`; the plugin's caller identity scopes its read.
-The native host launches its own sidecar process and creates a remote entry through
-the library manager. The manager stores typed settings in the example's shared
-in-memory registry for that host lifetime. Entry deletion settles the activation before
-the application reaps its process. `LaunchConfig.plugins` selects this management
-assembly; focused storage hosts can supply their own storage assembly instead.
-Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
-and its `generated_code_matches_proto` test checks source and descriptor drift.
-Buf formats and lints the example contracts alongside `proto/harmos/`. The operations
-crate owns native implementations without a feature gate. The guest uses the same generated
-messages with SDK operation builders. Native analysis publishes
-progress through its host-owned callback resource.
+Shared values live in `harmos.model.v1`, host operations in `harmos.host.v1`, and
+plugin operations and connection carriers in `harmos.plugin.v1`. Every operation
+declares CLIENTS, PLUGINS or ALL. The SDK handler keeps its `context` API; its host
+resources include only operations callable by plugins.
 
 `SchematicEditor` implements the shared `Lifecycle`. Its async `prepare` opens
 the in-memory storage and recording consumer, configures `Setup<Self>`, and places the
@@ -76,7 +62,7 @@ through `Runtime::launch_with` while keeping that preparation path.
 
 The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated
-from `examples/schematic/proto/schematic/v1/operations.proto`. It ends in `serve()`.
+from `examples/schematic/proto/schematic/host/v1/schematic.proto`. It ends in `serve()`.
 The host uses managed gRPC placement and checks its `Instance.Get` identity.
 The guest uses `harmos/wasm` and one `harmos_register` function returning SDK builders.
 
@@ -129,7 +115,7 @@ The CLI build script derives its schema bundle from the
 native operations crate without launching handlers. Each bundle contains `manifest.txt`, `descriptors.bin` and
 package-relative `.proto` files, preserving imports. The native catalogs include
 `ListDirectories`; the guest declarations includes only portable operations. The
-`schematic.v1.Schematic` schema describes known methods. Exporting it does not
+`schematic.host.v1.Schematic` schema describes known methods. Exporting it does not
 start a gRPC server. Client generation consumes the CLI host's captured schema;
 native plugin discovery uses `Instance.Get` instead of an embedded inventory or an export flag.
 Native packages obtain identity through `Instance.Get`, call `Stop`, and contain the
@@ -163,12 +149,12 @@ backends through `StorageBackends`; the example carries no disk backend.
 
 ## Application File Contracts
 
-[files.proto](../examples/schematic/proto/schematic/v1/files.proto) declares
-`schematic.v1.Files.Read` and `Hash`;
-[uploads.proto](../examples/schematic/proto/schematic/v1/uploads.proto) declares
-`schematic.v1.Uploads.Create`, `Get`, `Resume`, `Append`, `Publish` and `Delete`.
+[files.proto](../examples/schematic/proto/schematic/host/v1/files.proto) declares
+`schematic.host.v1.Files.Read` and `Hash`;
+[uploads.proto](../examples/schematic/proto/schematic/host/v1/uploads.proto) declares
+`schematic.host.v1.Uploads.Create`, `Get`, `Resume`, `Append`, `Publish` and `Delete`.
 These are application contracts over private native storage operations. Shared
-`harmos.v1.File` and `Upload` carry content references and fenced production
+`harmos.model.v1.File` and `Upload` carry content references and fenced production
 progress; the application owns request shaping, access decisions and policy.
 `Uploads.Get` without an upload selects the replay window and storage chunk size.
 Mutations carry that issued window plus a request key. `Resume` fences the old
@@ -184,7 +170,7 @@ carry the example's benchmark batches and retain their separate application mean
 
 The guest's `benchmark` feature enables unary record, sample and file-byte
 `Put`/`Take` operations in [guest transfer handlers](../examples/schematic/guest/src/transfer.rs).
-Transfer IDs isolate concurrent datasets. Its `Hash` bridge calls the application's `schematic.v1.Files/Hash` contract and
+Transfer IDs isolate concurrent datasets. Its `Hash` bridge calls the application's `schematic.host.v1.Files/Hash` contract and
 verifies a local-file range and digest before timing. The application owns the wire
 request and delegates execution to the library's private in-process hash operation.
 
@@ -198,3 +184,17 @@ The transfer store is in memory; library storage benchmarks separately measure m
 The CLI writes a structured `schematic-walkthrough-<pid>.json` document and analysis result
 when `STKR_TEST_REPORT_DIR` is set. System and packaged journeys inspect this data alongside
 the existing traces. Normal CLI output remains readable walkthrough prose.
+
+## Application Client
+
+The [client example](../examples/schematic/protocol/examples/client.rs) calls
+`schematic.validate` through `client.schematic.validate(snapshot)`. Its generated
+resource accepts content arguments and returns the diagnostic list directly.
+
+```sh
+mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-protocol --features sdk --example client
+```
+
+Pass the running application's gRPC URL to `target/debug/examples/client` and set
+`HARMOS_CLIENT_RETAINED_BYTES` to its decoded-memory budget. The application and
+SDK generation share [composition.toml](../examples/schematic/protocol/composition.toml).

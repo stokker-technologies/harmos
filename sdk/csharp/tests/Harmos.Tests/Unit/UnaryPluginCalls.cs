@@ -3,6 +3,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using System;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Xunit;

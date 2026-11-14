@@ -15,11 +15,14 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::plugin::ChildRequest;
+
 // Standard Library Imports
 use std::sync::{Arc, Weak};
 
 // Third Party Imports
-use harmos_protocol::v1;
+use harmos_protocol::model;
 
 // Local Imports
 use super::*;
@@ -123,35 +126,16 @@ impl Manager {
             lane: None,
             defaults: std::collections::BTreeMap::new(),
         })?;
-        let factories = vec![
+        let factories = [
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
             OperationFactory::protobuf::<harmos_operations::clock::Get>(),
-            OperationFactory::protobuf::<crate::plugin::grpc::settings::List>(),
         ];
-        let mut both_faces = Vec::new();
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
                 operation: "Time".into(),
                 source: Arc::new(source),
             })?;
-            if let Some(context) = factory
-                .contract()
-                .map_err(|source| Error::OperationFailed {
-                    operation: "Time".into(),
-                    source: Arc::new(source),
-                })?
-                .context(&self.schema_settings)
-                .map_err(|source| Error::OperationFailed {
-                    operation: "Time".into(),
-                    source: Arc::new(source),
-                })?
-            {
-                both_faces.push(factory.clone().with_contract(context));
-            }
-            both_faces.push(factory);
-        }
-        for factory in both_faces {
-            let contract = factory.contract().map_err(|source| Error::OperationFailed {
+            let contract = factory.contract_with_settings(&self.schema_settings).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
                 source: Arc::new(source),
             })?;
@@ -190,8 +174,8 @@ impl Manager {
                 id: Identifier::new(&contract.id).map_err(|error| PlacementError::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
                 visibility: match contract.visibility() {
-                    v1::Visibility::Protected => Visibility::Protected,
-                    v1::Visibility::Public => Visibility::Public,
+                    model::Visibility::Protected => Visibility::Protected,
+                    model::Visibility::Public => Visibility::Public,
                     _ => return Err(PlacementError::Invalid(format!("Invalid Visibility for {}", contract.id))),
                 },
                 policy: policy(contract.policy.as_ref()).map_err(|error| PlacementError::Invalid(error.to_string()))?,
@@ -241,7 +225,7 @@ impl Manager {
 }
 
 impl crate::operations::Context<'_> {
-    pub(crate) async fn invoke_client(&self, request: harmos_protocol::client::InvocationsInvokeRequest) -> Result<Vec<u8>> {
+    pub(crate) async fn invoke_client(&self, request: InvocationsCreateRequest) -> Result<Vec<u8>> {
         let entry = self.operations.capture_entry(&request.operation)?;
         if !entry.client_visible() {
             return Err(Error::OperationUnauthorized {
@@ -252,22 +236,20 @@ impl crate::operations::Context<'_> {
         }
         if fingerprint(&entry)? != request.fingerprint {
             return Err(Error::InvalidInput {
-                field: "Invoke fingerprint",
-                reason: "Invoke requires the admitted operation fingerprint",
+                field: "Create Invocation fingerprint",
+                reason: "Create Invocation requires the admitted operation fingerprint",
             });
         }
         self.submit_encoded(&request.operation, request.payload)?.await
     }
 
-    pub(crate) fn submit_grpc_child(
-        &self, caller: &crate::plugin::grpc::CallingPlugin, child: v1::ChildRequest,
-    ) -> Result<ChildInvocation> {
+    pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
         let owner = caller.owner();
         let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
-        if child.background && child.operation != "harmos.plugin.host.v1.Time/Sleep" {
+        if child.background && child.operation != "harmos.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
-                reason: "Invoke permits background waits only for context Time.Sleep",
+                reason: "Call Plugin Child permits background waits only for Time.Sleep",
             });
         }
         let entry = self.operations.capture_entry(&child.operation)?;
@@ -281,7 +263,7 @@ impl crate::operations::Context<'_> {
         if !plugin.is_some_and(|binding| caller.same_activation(&binding.caller)) && entry.definition.visibility != Visibility::Public {
             return Err(denied());
         }
-        if !entry.context_visible() {
+        if !entry.plugin_visible() {
             return Err(denied());
         }
         let required = requires.iter().find(|required| required.id == child.operation).ok_or_else(denied)?;
@@ -313,6 +295,7 @@ impl crate::operations::Context<'_> {
                 })?;
             let mut resources = self.operations.resources_for(&entry);
             resources.replace(Arc::new(caller.clone()));
+            resources.replace(Arc::new(harmos_operations::execution::operations::access::CallingPlugin { name: caller.name.clone() }));
             factory
                 .prepare_grpc(
                     resources,
@@ -343,7 +326,7 @@ impl crate::operations::Context<'_> {
         };
         let streams = prepared.streams.clone();
         let override_policy = child.policy.as_ref().map(|value| policy(Some(value))).transpose()?;
-        let invocation = self.operations.dispatch_grpc_prepared(entry, prepared, self, override_policy)?;
+        let invocation = self.operations.dispatch_grpc_prepared(entry, prepared, self, caller, override_policy)?;
         Ok(ChildInvocation { invocation, streams })
     }
 }
@@ -351,7 +334,7 @@ impl crate::operations::Context<'_> {
 impl Manager {
     fn dispatch_grpc_prepared(
         &self, entry: Arc<Entry>, prepared: harmos_operations::execution::__private::PreparedNative,
-        context: &crate::operations::Context<'_>, override_policy: Option<OperationPolicy>,
+        context: &crate::operations::Context<'_>, caller: &crate::plugin::grpc::CallingPlugin, override_policy: Option<OperationPolicy>,
     ) -> Result<crate::operations::EncodedInvocation> {
         let mut request = crate::operations::binding::Request::from(Vec::new());
         request.policy = override_policy;
@@ -363,7 +346,7 @@ impl Manager {
                 cause: None,
                 preparation: None,
             },
-            Source::Host,
+            Source::GrpcPlugin(caller.clone()),
             Some(crate::operations::wire::Parent {
                 scope: &context.scope,
                 ancestors: context.admission.held(),
@@ -427,7 +410,7 @@ pub(super) fn fingerprint(entry: &Entry) -> Result<Vec<u8>> {
     }
 }
 
-fn policy(policy: Option<&v1::OperationPolicy>) -> Result<OperationPolicy> {
+fn policy(policy: Option<&model::OperationPolicy>) -> Result<OperationPolicy> {
     OperationPolicy::try_from(policy).map_err(|_| Error::InvalidInput {
         field: "operation policy",
         reason: "invalid operation policy",

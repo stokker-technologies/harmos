@@ -16,8 +16,8 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::{num::NonZeroUsize, path::Path};
 
 // Third Party Imports
 
@@ -42,7 +42,7 @@ use schematic_app::{app::Runtime, document::Document};
 
 /* === Public Functions === */
 
-pub async fn host(directory: &Path) -> Arc<Runtime> {
+pub async fn host() -> Arc<Runtime> {
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let document = Document::new();
     let recordings = tempfile::tempdir().unwrap();

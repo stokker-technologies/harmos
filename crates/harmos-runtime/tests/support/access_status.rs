@@ -15,6 +15,10 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::ComponentState;
+use harmos_protocol::host::HealthComponent;
+use harmos_protocol::model::Failure;
+
 // Standard Library Imports
 use std::{
     num::NonZeroUsize,
@@ -25,8 +29,9 @@ use std::{
 };
 
 // Third Party Imports
-use harmos_protocol::client::access;
-use harmos_protocol::v1::{self};
+use harmos_protocol::host::access;
+
+use harmos_protocol::model;
 use harmos_runtime::{
     Runtime,
     grpc::access::{CredentialStore, Credentials, Pending},
@@ -64,7 +69,7 @@ pub struct Host {
     pub management: harmos_runtime::grpc::Attached,
 }
 pub struct Facts {
-    pub component: Mutex<harmos_protocol::client::HealthComponent>,
+    pub component: Mutex<HealthComponent>,
     pub text: String,
 }
 
@@ -187,9 +192,9 @@ impl Host {
 impl Facts {
     pub fn new(text: &str) -> Self {
         Self {
-            component: Mutex::new(harmos_protocol::client::HealthComponent {
+            component: Mutex::new(HealthComponent {
                 name: "host.component".into(),
-                state: harmos_protocol::client::ComponentState::Healthy as i32,
+                state: ComponentState::Healthy as i32,
                 reason: "Ready".into(),
             }),
             text: text.into(),
@@ -197,7 +202,7 @@ impl Facts {
     }
 }
 impl Contribution for Facts {
-    fn health(&self) -> std::result::Result<Vec<harmos_protocol::client::HealthComponent>, Box<dyn std::error::Error + Send + Sync>> {
+    fn health(&self) -> std::result::Result<Vec<HealthComponent>, Box<dyn std::error::Error + Send + Sync>> {
         Ok(vec![self.component.lock().unwrap().clone()])
     }
     fn diagnostics(&self) -> std::result::Result<Vec<Entry>, Box<dyn std::error::Error + Send + Sync>> {
@@ -212,7 +217,7 @@ impl Contribution for Facts {
 
 pub fn assert_action(status: tonic::Status, expected: &str) {
     let failure = harmos_runtime::Failure::decode(status.details()).expect("operation failure details");
-    let wire = harmos_protocol::v1::Failure::from(&failure);
+    let wire = Failure::from(&failure);
     assert_eq!(wire.action, expected);
     assert!(wire.message.contains(expected));
 }
@@ -220,8 +225,8 @@ pub fn assert_action(status: tonic::Status, expected: &str) {
 pub fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
-pub fn page(size: u32, token: String) -> v1::PageRequest {
-    v1::PageRequest {
+pub fn page(size: u32, token: String) -> model::PageRequest {
+    model::PageRequest {
         page_size: size,
         max_bytes: 4096,
         page_token: token,

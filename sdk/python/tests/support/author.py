@@ -18,7 +18,7 @@ from asyncio import Event
 from google.protobuf.duration_pb2 import Duration
 
 from harmos import VISIBILITY_PROTECTED
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetResponse
 
 # Local Imports
 from harmos.plugin import Context, observer, on_stop, operation

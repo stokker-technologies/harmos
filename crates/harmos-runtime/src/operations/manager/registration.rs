@@ -110,21 +110,7 @@ impl Manager {
             });
         }
         let mut entries = Vec::with_capacity(batch.operations.len());
-        let mut factories = Vec::new();
-        let declared: std::collections::BTreeSet<_> = batch.operations.iter().map(|factory| factory.definition.id.clone()).collect();
         for factory in batch.operations {
-            if let Ok(contract) = factory.contract_with_settings(&self.schema_settings)
-                && let Some(context) = contract.context(&self.schema_settings).map_err(|source| Error::OperationFailed {
-                    operation: factory.definition.id.to_string(),
-                    source: Arc::new(source),
-                })?
-                && !declared.contains(&context.operation().id)
-            {
-                factories.push(factory.clone().with_contract(context));
-            }
-            factories.push(factory);
-        }
-        for factory in factories {
             let provided = Self::provided_resources();
             factory.verify_resources(self.resources(), &provided).map_err(|source| Error::OperationFailed {
                 operation: factory.definition.id.to_string(),
@@ -216,6 +202,7 @@ impl Manager {
         })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
+            callers: self.registry.callers.clone(),
             carrier: harmos_operations::execution::__private::ResourceSet::new(),
             owner,
             definition,

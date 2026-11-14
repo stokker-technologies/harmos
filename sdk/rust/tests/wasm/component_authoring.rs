@@ -20,10 +20,6 @@ mod bindings {
 /* === Imports === */
 
 use super::contract::{EchoOperation, Echoed};
-use harmos_protocol::{
-    v1 as host,
-    v1::{self, guest_child, guest_command, response},
-};
 use prost::Message as _;
 use std::collections::{BTreeMap, BTreeSet};
 use wasmtime::component::{Component, Linker};
@@ -34,6 +30,19 @@ use wasmtime::{Config, Engine, Store};
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::model::InstanceState;
+use harmos_protocol::plugin::GuestChildAction;
+use harmos_protocol::plugin::GuestCommand;
+use harmos_protocol::plugin::GuestInitialize;
+use harmos_protocol::plugin::GuestInvocation;
+use harmos_protocol::plugin::GuestPrepare;
+use harmos_protocol::plugin::GuestRegistration;
+use harmos_protocol::plugin::GuestSubmitted;
+use harmos_protocol::plugin::Response;
+use harmos_protocol::plugin::{AssignedOperation, OperationAssignments};
+use harmos_protocol::plugin::{guest_child, guest_command, response};
 
 /* === Constants === */
 
@@ -48,13 +57,13 @@ struct Imports {
     limits: Option<wasmtime::StoreLimits>,
     calls: Vec<(String, bool)>,
     generations: Vec<usize>,
-    controls: Vec<v1::GuestChildAction>,
+    controls: Vec<GuestChildAction>,
     children: BTreeMap<u64, (Vec<u8>, bool)>,
 }
 struct Session {
     store: Store<Imports>,
     bindings: bindings::Plugin,
-    metadata: v1::GuestRegistration,
+    metadata: GuestRegistration,
 }
 
 /* === Enums === */
@@ -99,19 +108,19 @@ impl Session {
         store.set_fuel(10_000_000).unwrap();
         let bindings = bindings::Plugin::instantiate_async(&mut store, &component, &linker).await.unwrap();
         let metadata = store.run_concurrent(async |accessor| bindings.call_register(accessor).await).await.unwrap().unwrap().unwrap();
-        let metadata = v1::GuestRegistration::decode(metadata.as_slice()).unwrap();
+        let metadata = GuestRegistration::decode(metadata.as_slice()).unwrap();
         Self { store, bindings, metadata }
     }
     async fn phase(&mut self, phase: guest_command::Phase) -> response::Result {
         self.store.set_fuel(10_000_000).unwrap();
-        let command = v1::GuestCommand { phase: Some(phase) }.encode_to_vec();
+        let command = GuestCommand { phase: Some(phase) }.encode_to_vec();
         let bytes = self
             .store
             .run_concurrent(async |accessor| self.bindings.call_operate(accessor, self.metadata.id.clone(), command).await)
             .await
             .unwrap()
             .unwrap();
-        v1::Response::decode(bytes.as_slice()).unwrap().result.unwrap()
+        Response::decode(bytes.as_slice()).unwrap().result.unwrap()
     }
     async fn prepare(&mut self, id: &str, invocation: u64, payload: Vec<u8>) -> response::Result {
         let declarations = self.metadata.declarations.as_ref().unwrap();
@@ -120,7 +129,7 @@ impl Session {
         } else {
             declarations.operations.iter().find(|operation| operation.id == id).unwrap().fingerprint.clone()
         };
-        self.phase(guest_command::Phase::Prepare(v1::GuestPrepare {
+        self.phase(guest_command::Phase::Prepare(GuestPrepare {
             invocation,
             operation: format!("{}.{id}", self.metadata.id),
             fingerprint,
@@ -134,14 +143,14 @@ impl Session {
         if matches!(prepared, response::Result::Failure(_)) {
             return prepared;
         }
-        self.phase(guest_command::Phase::Initialize(v1::GuestInvocation {
+        self.phase(guest_command::Phase::Initialize(GuestInvocation {
             invocation,
             context: vec![1; 32],
             values: Vec::new(),
         }))
         .await;
         let answer = self
-            .phase(guest_command::Phase::Attempt(v1::GuestInvocation {
+            .phase(guest_command::Phase::Attempt(GuestInvocation {
                 invocation,
                 context: vec![1; 32],
                 values: Vec::new(),
@@ -167,9 +176,9 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                 let instance = imports.calls.len() as u64;
                 // ProviderEchoOperation and Echoed Have One String Field With the Same Tag.
                 imports.children.insert(instance, (request.payload, false));
-                return Ok(v1::GuestSubmitted { instance }.encode_to_vec());
+                return Ok(GuestSubmitted { instance }.encode_to_vec());
             }
-            if request.operation == "host.example.plugin.host.v1.Progress/Publish" {
+            if request.operation == "host.example.host.v1.Progress/Publish" {
                 return Ok(Vec::new());
             }
             Ok(request.payload)
@@ -179,11 +188,11 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
             imports.controls.push(action);
             let (payload, cancelled) = imports.children.get_mut(&control.instance).unwrap();
             match action {
-                v1::GuestChildAction::Status | v1::GuestChildAction::Cancel => {
-                    if action == v1::GuestChildAction::Cancel {
+                GuestChildAction::Status | GuestChildAction::Cancel => {
+                    if action == GuestChildAction::Cancel {
                         *cancelled = true;
                     }
-                    Ok(host::InstanceState {
+                    Ok(InstanceState {
                         phase: "running".into(),
                         cancellation_requested: *cancelled,
                         attempt: 1,
@@ -191,14 +200,14 @@ fn imported(imports: &mut Imports, bytes: Vec<u8>) -> Result<Vec<u8>, Vec<u8>> {
                     }
                     .encode_to_vec())
                 }
-                v1::GuestChildAction::Join if *cancelled => Err(v1::Failure {
-                    classification: v1::Classification::Cancelled as i32,
+                GuestChildAction::Join if *cancelled => Err(Failure {
+                    classification: Classification::Cancelled as i32,
                     message: "cancelled".into(),
                     ..Default::default()
                 }
                 .encode_to_vec()),
-                v1::GuestChildAction::Join => Ok(payload.clone()),
-                v1::GuestChildAction::Release | v1::GuestChildAction::Detach => Ok(Vec::new()),
+                GuestChildAction::Join => Ok(payload.clone()),
+                GuestChildAction::Release | GuestChildAction::Detach => Ok(Vec::new()),
                 _ => unreachable!(),
             }
         }
@@ -225,9 +234,9 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert_eq!(example.metadata.id, "schematic_tools");
     let declarations = example.metadata.declarations.as_ref().unwrap();
     let operations = declarations.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
-    assert_eq!(operations, BTreeSet::from(["schematic.route", "schematic.validate"]));
+    assert_eq!(operations, BTreeSet::from(["schematic.plugin.v1.Schematic/ProposeRoute", "schematic.plugin.v1.Schematic/Validate"]));
     assert!(declarations.types.as_ref().is_some_and(|types| !types.file.is_empty()));
-    assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.plugin.host.v1.Settings/List"));
+    assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.host.v1.plugins.Settings/List"));
 
     // Register Inert Metadata Before Initializing Any Authored State
     let mut session = Session::new(&sandbox).await;
@@ -237,12 +246,12 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     let assignments = metadata
         .requirements
         .iter()
-        .map(|required| host::AssignedOperation {
+        .map(|required| AssignedOperation {
             operation: format!(
                 "{}.{}",
                 if required.id == "provider.echo" {
                     "provider"
-                } else if required.id == "example.plugin.host.v1.Progress/Publish" {
+                } else if required.id == "example.host.v1.Progress/Publish" {
                     "host"
                 } else {
                     "sandbox_guest"
@@ -253,21 +262,21 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
             generation: 1,
         })
         .collect();
-    let initialize = v1::GuestInitialize {
+    let initialize = GuestInitialize {
         configuration: b"\"submit\"".to_vec(),
         generation_context: vec![2; 32],
-        assignments: Some(host::OperationAssignments { operations: assignments }),
+        assignments: Some(OperationAssignments { operations: assignments }),
     };
     assert!(
         matches!(session.call("harmos.initialize", 1, initialize.encode_to_vec()).await, response::Result::Payload(payload) if payload.is_empty())
     );
 
     // Observe Every Submitted-Child Control on the Actual Component Import
-    assert!(session.store.data().controls.contains(&v1::GuestChildAction::Status));
-    assert!(session.store.data().controls.contains(&v1::GuestChildAction::Join));
-    assert!(session.store.data().controls.contains(&v1::GuestChildAction::Cancel));
-    assert!(session.store.data().controls.contains(&v1::GuestChildAction::Release));
-    assert!(session.store.data().controls.contains(&v1::GuestChildAction::Detach));
+    assert!(session.store.data().controls.contains(&GuestChildAction::Status));
+    assert!(session.store.data().controls.contains(&GuestChildAction::Join));
+    assert!(session.store.data().controls.contains(&GuestChildAction::Cancel));
+    assert!(session.store.data().controls.contains(&GuestChildAction::Release));
+    assert!(session.store.data().controls.contains(&GuestChildAction::Detach));
 
     // Run a Unary Request and Preserve Its Structured Refusal Without Losing the Instance
     let request = EchoOperation { say: "hello".into() }.encode_to_vec();
@@ -286,7 +295,7 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert_eq!(session.store.data().generations.last(), Some(&32));
     let refused = session.call("probe.decline", 3, Vec::new()).await;
     assert!(
-        matches!(refused, response::Result::Failure(failure) if failure.code == "7" && failure.classification == v1::Classification::Permanent as i32)
+        matches!(refused, response::Result::Failure(failure) if failure.code == "7" && failure.classification == Classification::Permanent as i32)
     );
 
     // Retain Capacity Across Prepared Phases and Release the Original Slots Idempotently

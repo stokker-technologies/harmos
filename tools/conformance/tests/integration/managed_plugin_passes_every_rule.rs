@@ -73,7 +73,9 @@ async fn managed_plugin_passes_every_rule() -> Result<(), Box<dyn Error>> {
     let stdout = String::from_utf8(output.stdout)?;
     assert_eq!(output.status.code(), Some(1), "{stdout}\n{}", String::from_utf8_lossy(&output.stderr));
     assert!(stdout.lines().any(|line| line.starts_with("| 01 |") && line.contains("FAIL:")), "{stdout}");
-    assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT - 1, "{stdout}");
+    // The Real Host Also Refuses the Missing SDK Identity Before Caller Admission.
+    assert!(stdout.lines().any(|line| line.starts_with("| 34 |") && line.contains("FAIL:")), "{stdout}");
+    assert_eq!(stdout.lines().filter(|line| line.ends_with("| PASS |")).count(), harmos_conformance::RULE_COUNT - 2, "{stdout}");
 
     // Release the Identity Adapter.
     fault.close().await?;

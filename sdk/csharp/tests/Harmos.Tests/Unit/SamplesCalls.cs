@@ -10,6 +10,7 @@ using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
 using Grpc.Core;
 using Harmos.Internal.Plugin;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Microsoft.Extensions.Hosting;
@@ -71,13 +72,23 @@ public sealed class SamplesCalls
     await Task.WhenAll(firstServing, secondServing);
   }
 
-  [Fact]
-  public async Task ObserverReadsClockSettingsAndDemandBoundedWatch()
+  [Theory]
+  [InlineData(null)]
+  [InlineData("fixture")]
+  public async Task ObserverReadsClockSettingsAndDemandBoundedWatch(string? name)
   {
+    var expected = new SettingsListResponse
+    {
+      Declarations = { new SettingDeclaration { Name = "prefix", Default = new SettingValue { Text = "default" } } },
+      Value = new SettingValues { Values = { ["prefix"] = new SettingValue { Text = "tick" } } },
+      Revision = ByteString.CopyFromUtf8("settings-revision"),
+      ResolvedAt = new ReadCut { Positions = { new Position { History = new History { Store = "fixture", Epoch = "epoch" }, Sequence = 7 } } }
+    };
     var service = Service(async context =>
     {
       var now = await context.Host.Time.Get();
-      var settings = await context.Host.Settings.List();
+      var settings = await context.Host.Plugins.Settings.List(name: name);
+      Assert.Equal(expected, settings);
       var result = settings.Value.Values["prefix"].Text + now.Seconds;
       await foreach (var item in context.WatchAsync(Watch, new StringValue(), 4096))
       {
@@ -93,8 +104,11 @@ public sealed class SamplesCalls
     Assert.Equal(HostContracts.TimeGet.Contract.Id, clock.Operation);
     await call.Reply(clock.Call, new TimeGetResponse { Now = new Timestamp { Seconds = 7 } });
     var settings = (await call.Read()).Child;
-    Assert.Equal(HostContracts.SettingsList.Contract.Id, settings.Operation);
-    await call.Reply(settings.Call, new SettingsListResponse { Value = new SettingValues { Values = { ["prefix"] = new SettingValue { Text = "tick" } } } });
+    Assert.Equal(HostContracts.PluginsSettingsList.Contract.Id, settings.Operation);
+    var selector = SettingsListRequest.Parser.ParseFrom(settings.Payload);
+    Assert.Equal(name is not null, selector.HasName);
+    Assert.Equal(name ?? "", selector.Name);
+    await call.Reply(settings.Call, expected);
     var watch = (await call.Read()).Child;
     Assert.True(watch.Watch);
     Assert.Equal(watch.Call, (await call.Read()).ChildDemand.Call);
@@ -186,7 +200,7 @@ public sealed class SamplesCalls
 
   private static PluginService Service(Func<SdkContext, Task<StringValue>> observer, bool device = false)
   {
-    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.SettingsList);
+    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.PluginsSettingsList);
     var publication = device
         ? new Publication(null, async (context, rows) => { await context.CancelledAsync(); })
         : new Publication(async context => (await observer(context)).ToByteString(), null);

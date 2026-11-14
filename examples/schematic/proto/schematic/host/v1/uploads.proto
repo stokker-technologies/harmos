@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Schematic Uploads
+//
+// Application-owned resumable file production over private native storage operations.
+
+syntax = "proto3";
+
+package schematic.host.v1;
+
+// === Imports === //
+
+import "google/protobuf/timestamp.proto";
+import "harmos/model/v1/callers.proto";
+import "harmos/model/v1/file.proto";
+import "harmos/model/v1/position.proto";
+import "harmos/model/v1/receipt.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Produces files for application content and managed plugin bundles.
+service Uploads {
+  // Create a resumable upload from application metadata.
+  rpc Create(UploadsCreateRequest) returns (UploadsCreateResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Read the replay window and optional current upload progress.
+  rpc Get(UploadsGetRequest) returns (UploadsGetResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Fence the previous writer and return the resumed accepted prefix.
+  rpc Resume(UploadsResumeRequest) returns (UploadsResumeResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Append one bounded chunk at its exact expected offset.
+  rpc Append(UploadsAppendRequest) returns (UploadsAppendResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Publish immutable content after checking the declared length and digest.
+  rpc Publish(UploadsPublishRequest) returns (UploadsPublishResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Abandon an unfinished upload.
+  rpc Delete(UploadsDeleteRequest) returns (UploadsDeleteResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+}
+
+// === Requests and Responses === //
+
+// Creates one upload; request is a replay identity within the issued mutation window.
+message UploadsCreateRequest {
+  harmos.model.v1.FileMetadata metadata = 1;
+  UploadMutation mutation = 2;
+}
+
+// Returns the new writer and mutation receipt.
+message UploadsCreateResponse {
+  harmos.model.v1.Upload upload = 1;
+  harmos.model.v1.Receipt receipt = 2;
+}
+
+// Selects optional upload progress; omit upload to read only the replay window.
+message UploadsGetRequest {
+  harmos.model.v1.Upload upload = 1;
+}
+
+// Returns current progress, including accepted and durable lengths.
+message UploadsGetResponse {
+  harmos.model.v1.Upload upload = 1;
+  UploadWindow mutations = 2;
+  uint64 chunk_bytes = 3;
+}
+
+// Resumes one upload with fencing of the previous writer.
+message UploadsResumeRequest {
+  harmos.model.v1.Upload upload = 1;
+  UploadMutation mutation = 2;
+}
+
+// Returns the resumed writer and accepted prefix; Get reads current durable progress.
+message UploadsResumeResponse {
+  uint64 writer_generation = 1;
+  uint64 accepted_length = 2;
+  harmos.model.v1.Receipt receipt = 3;
+}
+
+// Appends a chunk under the supplied upload's writer fence.
+message UploadsAppendRequest {
+  harmos.model.v1.Upload upload = 1;
+  uint64 offset = 2;
+  bytes bytes = 3;
+  UploadMutation mutation = 4;
+}
+
+// Returns the accepted prefix and replay receipt; Get reads current durable progress.
+message UploadsAppendResponse {
+  uint64 accepted_length = 1;
+  harmos.model.v1.Receipt receipt = 2;
+}
+
+// Publishes the complete upload only if length and SHA-256 match.
+message UploadsPublishRequest {
+  harmos.model.v1.Upload upload = 1;
+  uint64 length = 2;
+  bytes sha256 = 3;
+  UploadMutation mutation = 4;
+}
+
+// Returns the published immutable file and durable publication receipt.
+message UploadsPublishResponse {
+  harmos.model.v1.File file = 1;
+  harmos.model.v1.Receipt receipt = 2;
+}
+
+// Abandons one unfinished upload under its current writer fence.
+message UploadsDeleteRequest {
+  harmos.model.v1.Upload upload = 1;
+  UploadMutation mutation = 2;
+}
+
+// Returns terminal upload state and its receipt.
+message UploadsDeleteResponse {
+  harmos.model.v1.UploadState state = 1;
+  harmos.model.v1.Receipt receipt = 2;
+}
+
+// === Resources === //
+
+// Reports the native storage owner's current replay window without moving ownership.
+message UploadWindow {
+  harmos.model.v1.History history = 1;
+  string id = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// Identifies one application mutation within a storage-issued replay window.
+message UploadMutation {
+  string window = 1;
+  string key = 2;
+}
+
+// === Enums === //

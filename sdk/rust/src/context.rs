@@ -47,13 +47,19 @@ use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tonic::Status;
 
 // Local Imports
+use crate::plugin::HostPluginsSettingsResource;
 use crate::{Error, Message, Operation, OperationRequest, Result, message::request_fingerprint, operation::LocalFuture};
-use harmos_protocol::plugin::host::{
-    SettingsListRequest, SettingsListResponse, TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse,
-};
+use harmos_protocol::host::{TimeGetRequest, TimeSleepRequest};
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::model::OperationPolicy;
+use harmos_protocol::plugin::ChildCancel;
+use harmos_protocol::plugin::ChildDemand;
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::GuestValue;
+use harmos_protocol::plugin::Request;
 use harmos_protocol::plugin::instance_invoke_response;
 use harmos_protocol::policy::RetryPolicy;
-use harmos_protocol::v1::{ChildCancel, ChildDemand, ChildRequest, Classification, Failure, GuestValue, OperationPolicy, Request};
 
 /* === Constants === */
 
@@ -399,29 +405,25 @@ impl Context {
     /// Declare `.requires_host(HostOperation::TimeSleep)` when composing the plugin.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
         let duration = ProtoDuration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
-        let request = TimeSleepRequest { duration: Some(duration) };
-        let payload = self.clock_call("harmos.plugin.host.v1.Time/Sleep", request.encode_to_vec()).await?;
-        TimeSleepResponse::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
+        self.clock_call(TimeSleepRequest { duration: Some(duration) }).await?;
         Ok(())
     }
 
     /// Read evidence time from the host; declare `.requires_host(HostOperation::TimeGet)`.
     pub async fn now(&self) -> Result<Timestamp> {
-        let payload = self.clock_call("harmos.plugin.host.v1.Time/Get", TimeGetRequest {}.encode_to_vec()).await?;
-        TimeGetResponse::decode(payload.as_slice())
-            .map_err(|error| Status::invalid_argument(error.to_string()))?
-            .now
-            .ok_or_else(|| Status::invalid_argument("Host Time Missing").into())
+        self.clock_call(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
     }
 
-    /// Read the calling plugin entry's effective settings. Declare `SettingsListRequest` as a requirement.
-    pub async fn settings(&self) -> Result<SettingsListResponse> {
-        self.call(SettingsListRequest { at: None }).await
+    /// Access the calling plugin entry's effective settings.
+    pub fn settings(&self) -> HostPluginsSettingsResource {
+        self.host().plugins.settings
     }
 
-    async fn clock_call(&self, id: &str, payload: Vec<u8>) -> Result<Vec<u8>> {
-        let fingerprint = self.requires.get(id).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {id}")))?.clone();
-        self.send_call(id, payload, fingerprint, None).await
+    // Local Operation Policies Depend on the Clock, so Clock Calls Go Straight to the Host.
+    async fn clock_call<Q: OperationRequest>(&self, request: Q) -> Result<Q::Response> {
+        let fingerprint = self.requires.get(Q::ID).ok_or_else(|| Error::Invalid(format!("Undeclared Requirement: {}", Q::ID)))?.clone();
+        let payload = self.send_call(Q::ID, request.encode_to_vec(), fingerprint, None).await?;
+        Q::Response::decode(payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()).into())
     }
 
     async fn send_call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
@@ -610,6 +612,58 @@ fn elapsed(started: &Timestamp, now: &Timestamp) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::{
+        Plugin, SettingValues,
+        plugin::{HostOperation, HostPluginsSettingsListOptions},
+    };
+    use harmos_protocol::host::plugins::{SettingsListRequest, SettingsListResponse};
+
+    struct SettingsTransport {
+        requests: Mutex<Vec<ChildRequest>>,
+        response: SettingsListResponse,
+    }
+
+    impl ChildTransport for SettingsTransport {
+        fn call<'a>(&'a self, request: ChildRequest, _: Vec<GuestValue>, _: bool) -> LocalFuture<'a, Result<Vec<u8>>> {
+            self.requests.lock().unwrap().push(request);
+            Box::pin(async { Ok(self.response.encode_to_vec()) })
+        }
+    }
+
+    #[tokio::test]
+    async fn settings_convenience_and_host_resource_share_operation_and_payload() {
+        // Admit the Shared Settings Requirement.
+        let declarations = Plugin::new("caller", "1.0.0").requires_host(HostOperation::PluginsSettingsList).declarations().unwrap();
+        let requires = declarations.requires.into_iter().map(|requirement| (requirement.id, requirement.fingerprint)).collect();
+        let mut context = Context::new(Request::default(), "caller".into(), Arc::new(requires));
+        let response = SettingsListResponse {
+            value: Some(SettingValues::default()),
+            revision: vec![1, 2, 3],
+            ..Default::default()
+        };
+        let transport = Arc::new(SettingsTransport {
+            requests: Mutex::new(Vec::new()),
+            response: response.clone(),
+        });
+        context.child = Some(transport.clone());
+
+        // Read Through Both Public Paths and Preserve the Full Reply.
+        assert_eq!(context.settings().list().await.unwrap(), response);
+        let options = HostPluginsSettingsListOptions {
+            name: Some("caller".into()),
+            ..Default::default()
+        };
+        assert_eq!(context.host().plugins.settings.list_with(options).await.unwrap(), response);
+
+        // Preserve the Optional Caller Selector on One Shared Operation.
+        let requests = transport.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].operation, requests[1].operation);
+        assert_eq!(requests[0].fingerprint, requests[1].fingerprint);
+        assert_eq!(SettingsListRequest::decode(requests[0].payload.as_slice()).unwrap().name, None);
+        assert_eq!(SettingsListRequest::decode(requests[1].payload.as_slice()).unwrap().name.as_deref(), Some("caller"));
+    }
 
     #[test]
     fn policy_clock_spans_keep_large_durations_and_fractional_seconds() {

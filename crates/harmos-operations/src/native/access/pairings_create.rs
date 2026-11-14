@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::access::PairingsCreateRequest;
+use harmos_protocol::host::access::PairingsCreateResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,11 +41,11 @@ pub struct PairingsCreate;
 /* === Implementations === */
 
 impl ProtobufOperation for PairingsCreate {
-    type Request = harmos_protocol::client::access::PairingsCreateRequest;
-    type Response = harmos_protocol::client::access::PairingsCreateResponse;
+    type Request = PairingsCreateRequest;
+    type Response = PairingsCreateResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.access.Pairings/Create";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1.access", "Pairings", "Create"));
+    const ID: &'static str = "harmos.host.v1.access.Pairings/Create";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.access", "Pairings", "Create"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<AccessAccess>()];

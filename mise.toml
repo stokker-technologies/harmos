@@ -250,6 +250,7 @@ description = "Check Repository Configuration and Conventions"
 run = [
   "buf format --diff --exit-code",
   "buf lint",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.source.protocol",
   { task = "format:toml --check" },
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.mise",
   "shellcheck --version",

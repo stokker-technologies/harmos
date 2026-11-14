@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::v1::Declarations;
+use harmos_protocol::model::Declarations;
 
 // Standard Library Imports
 use std::collections::BTreeSet;
@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 // Third Party Imports
 
 // Local Imports
-use super::{Error, v1};
+use super::{Error, model};
 use harmos_protocol::schema;
 
 /* === Constants === */
@@ -55,7 +55,7 @@ pub(super) fn verify(declarations: &Declarations) -> Result<(), Error> {
         if operation.id.is_empty() || !operations.insert(&operation.id) {
             return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.id)));
         }
-        if !matches!(v1::Visibility::try_from(operation.visibility), Ok(v1::Visibility::Protected | v1::Visibility::Public)) {
+        if !matches!(model::Visibility::try_from(operation.visibility), Ok(model::Visibility::Protected | model::Visibility::Public)) {
             return Err(Error::Invalid(format!("Invalid Operation Visibility: {}", operation.id)));
         }
         let fingerprint = schema::fingerprint(&operation.id, &types, &operation.request, &operation.response)

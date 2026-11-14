@@ -11,6 +11,16 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginValue;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsRestartRequest;
+use harmos_protocol::host::PluginsSetRequest;
+use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::plugins_watch_response::Event;
+
 use super::support::{self, Backends, Host, Peer};
 use crate::plugin_grpc::invoke_support::payload;
 use harmos::client::PluginsGetOptions;
@@ -31,13 +41,13 @@ async fn client_manages_remote_plugins() {
     host.policy.0.store(false, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(host.client.list(support::list()).await.unwrap_err().code(), tonic::Code::PermissionDenied);
     host.policy.0.store(true, std::sync::atomic::Ordering::SeqCst);
-    let mut watch = host.client.watch(harmos_protocol::client::PluginsWatchRequest::default()).await.unwrap().into_inner();
+    let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
 
     // Create a Remote Entry and Observe Its Admitted Catalog
     let request = support::remote("remote", &peer.url);
     let created = host.client.create(request.clone()).await.unwrap().into_inner();
     assert!(created.receipt.as_ref().unwrap().completed);
-    let ready = support::state(&mut watch, "remote", harmos_protocol::client::PluginState::Ready, 1).await;
+    let ready = support::state(&mut watch, "remote", PluginState::Ready, 1).await;
     let description = ready.description.as_ref().unwrap();
     assert_eq!(description.id, peer.description.id);
     assert_eq!(description.version, peer.description.version);
@@ -50,7 +60,7 @@ async fn client_manages_remote_plugins() {
     assert!(host.client.create(changed).await.is_err());
 
     // Read the Complete Entry at One Resolved Position
-    let got = host.client.get(harmos_protocol::client::PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap().into_inner();
+    let got = host.client.get(PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap().into_inner();
     let mut page = support::list();
     page.at = got.resolved_at.clone();
     let listed = host.client.list(page).await.unwrap().into_inner();
@@ -63,7 +73,8 @@ async fn client_manages_remote_plugins() {
         host.channel.clone(),
         ClientSettings {
             transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
-            retained_bytes: capacity,
+            // Complete Declarations Retain Decoded Descriptor Values Beyond Their Wire Size.
+            retained_bytes: NonZeroUsize::new(16 * 1024 * 1024).unwrap(),
             message_bytes: capacity,
             input_items: NonZeroUsize::new(1).unwrap(),
             input_bytes: capacity,
@@ -91,9 +102,9 @@ async fn client_manages_remote_plugins() {
     // Disable Using the Whole Writable Value and Refuse Its Stale Revision
     let disabled = host
         .client
-        .set(harmos_protocol::client::PluginsSetRequest {
+        .set(PluginsSetRequest {
             name: "remote".into(),
-            value: Some(harmos_protocol::client::PluginValue { enabled: false }),
+            value: Some(PluginValue { enabled: false }),
             expected_revision: ready.revision.clone(),
         })
         .await
@@ -101,13 +112,13 @@ async fn client_manages_remote_plugins() {
         .into_inner()
         .entry
         .unwrap();
-    assert_eq!(disabled.state, harmos_protocol::client::PluginState::Stopped as i32);
+    assert_eq!(disabled.state, PluginState::Stopped as i32);
     assert!(host.runtime.operations.call_encoded("conformance.step.0", payload(b"disabled")).await.is_err());
     assert!(
         host.client
-            .set(harmos_protocol::client::PluginsSetRequest {
+            .set(PluginsSetRequest {
                 name: "remote".into(),
-                value: Some(harmos_protocol::client::PluginValue { enabled: true }),
+                value: Some(PluginValue { enabled: true }),
                 expected_revision: ready.revision
             })
             .await
@@ -117,9 +128,9 @@ async fn client_manages_remote_plugins() {
     // Enable and Restart With Fresh Activation Evidence
     let enabled = host
         .client
-        .set(harmos_protocol::client::PluginsSetRequest {
+        .set(PluginsSetRequest {
             name: "remote".into(),
-            value: Some(harmos_protocol::client::PluginValue { enabled: true }),
+            value: Some(PluginValue { enabled: true }),
             expected_revision: disabled.revision,
         })
         .await
@@ -127,10 +138,10 @@ async fn client_manages_remote_plugins() {
         .into_inner()
         .entry
         .unwrap();
-    let ready = support::state(&mut watch, "remote", harmos_protocol::client::PluginState::Ready, enabled.activation).await;
+    let ready = support::state(&mut watch, "remote", PluginState::Ready, enabled.activation).await;
     let restarting = host
         .client
-        .restart(harmos_protocol::client::PluginsRestartRequest {
+        .restart(PluginsRestartRequest {
             name: "remote".into(),
             expected_revision: ready.revision,
         })
@@ -139,7 +150,7 @@ async fn client_manages_remote_plugins() {
         .into_inner()
         .entry
         .unwrap();
-    let ready = support::state(&mut watch, "remote", harmos_protocol::client::PluginState::Ready, restarting.activation).await;
+    let ready = support::state(&mut watch, "remote", PluginState::Ready, restarting.activation).await;
     assert!(ready.activation > enabled.activation);
 
     // List The Complete Configured Set And Repeat Its Issued Cut
@@ -148,29 +159,29 @@ async fn client_manages_remote_plugins() {
     let mut other = host.client.create(other).await.unwrap().into_inner().entry.unwrap();
     let first = host.client.list(support::list()).await.unwrap().into_inner();
     assert_eq!(first.entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>(), ["other", "remote"]);
-    let repeated = host.client.list(harmos_protocol::client::PluginsListRequest { at: first.resolved_at }).await.unwrap().into_inner();
+    let repeated = host.client.list(PluginsListRequest { at: first.resolved_at }).await.unwrap().into_inner();
     assert_eq!(repeated.entries, first.entries);
 
     // Report an Explicit Gap to an Observer That Retains Its Bounded Queue
-    let mut slow = host.manager.watch(harmos_protocol::client::PluginsWatchRequest::default()).await.unwrap();
+    let mut slow = host.manager.watch(PluginsWatchRequest::default()).await.unwrap();
     let capacity = support::settings(root.path()).watch_capacity.get();
     for _ in 0..(capacity * 2 + 2) {
         let enabled = !other.value.as_ref().unwrap().enabled;
-        let request = harmos_protocol::client::PluginsSetRequest {
+        let request = PluginsSetRequest {
             name: other.name.clone(),
-            value: Some(harmos_protocol::client::PluginValue { enabled }),
+            value: Some(PluginValue { enabled }),
             expected_revision: other.revision,
         };
         other = host.client.set(request).await.unwrap().into_inner().entry.unwrap();
     }
     loop {
         let event = slow.recv().await.unwrap();
-        if matches!(event.event, Some(harmos_protocol::client::plugins_watch_response::Event::ResyncRequired(_))) {
+        if matches!(event.event, Some(Event::ResyncRequired(_))) {
             break;
         }
     }
     host.client
-        .delete(harmos_protocol::client::PluginsDeleteRequest {
+        .delete(PluginsDeleteRequest {
             name: "other".into(),
             expected_revision: other.revision,
         })
@@ -179,7 +190,7 @@ async fn client_manages_remote_plugins() {
 
     // Delete the Entry Without Terminating Its External Process
     host.client
-        .delete(harmos_protocol::client::PluginsDeleteRequest {
+        .delete(PluginsDeleteRequest {
             name: "remote".into(),
             expected_revision: ready.revision,
         })

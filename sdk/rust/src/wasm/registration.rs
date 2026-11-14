@@ -16,7 +16,7 @@
 /* === Imports === */
 
 use crate::{Context, Error, Plugin, Result, operation::LocalFuture};
-use harmos_protocol::v1;
+
 use std::sync::Arc;
 
 // Standard Library Imports
@@ -24,6 +24,9 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::model::OperationPolicy;
+use harmos_protocol::plugin::GuestRegistration;
+use harmos_protocol::plugin::GuestRequirement;
 
 /* === Constants === */
 
@@ -40,8 +43,8 @@ pub struct Registration {
     pub(crate) initialize: Option<Arc<dyn Initialize>>,
     pub(crate) shutdown: Option<Arc<dyn Shutdown>>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
-    initialization_policy: Option<v1::OperationPolicy>,
-    shutdown_policy: Option<v1::OperationPolicy>,
+    initialization_policy: Option<OperationPolicy>,
+    shutdown_policy: Option<OperationPolicy>,
 }
 struct InitializeHandler<H>(H);
 struct ShutdownHandler<H>(H);
@@ -75,7 +78,7 @@ impl Registration {
         self.capacity = capacity;
         self
     }
-    pub fn lifecycle_policy(mut self, initialization: v1::OperationPolicy, shutdown: v1::OperationPolicy) -> Self {
+    pub fn lifecycle_policy(mut self, initialization: OperationPolicy, shutdown: OperationPolicy) -> Self {
         self.initialization_policy = Some(initialization);
         self.shutdown_policy = Some(shutdown);
         self
@@ -100,7 +103,7 @@ impl Registration {
         self
     }
     /// Inspect metadata without entering any lifecycle or operation callback.
-    pub fn metadata(&self) -> Result<v1::GuestRegistration> {
+    pub fn metadata(&self) -> Result<GuestRegistration> {
         if self.capacity == 0 {
             return Err(Error::Invalid("Guest Operation Capacity Must Be Positive".into()));
         }
@@ -113,14 +116,14 @@ impl Registration {
             .requirements
             .iter()
             .zip(&declarations.requires)
-            .map(|(required, contract)| v1::GuestRequirement {
+            .map(|(required, contract)| GuestRequirement {
                 id: required.id.clone(),
                 request: required.request.clone(),
                 response: required.response.clone(),
                 fingerprint: contract.fingerprint.clone(),
             })
             .collect();
-        Ok(v1::GuestRegistration {
+        Ok(GuestRegistration {
             id: self.plugin.id.clone(),
             version: self.plugin.version.clone(),
             declarations: Some(declarations),

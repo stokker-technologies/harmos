@@ -27,7 +27,7 @@ use serde_json::json;
 use crate::Result;
 use harmos_runtime::{state::Focus, state::PrincipalId};
 use schematic_app::domain::model;
-use schematic_app::protocol::{ProposeRoute, ValidateSchematic};
+use schematic_app::protocol::plugin::{SchematicProposeRouteRequest, SchematicValidateRequest};
 use schematic_app::state::{NetId, NetName, PinRef, Point, Rotation, SymbolId};
 use schematic_app::transactions::net::{ApplyRoute, ConnectPins};
 use schematic_app::transactions::symbol::{MoveSymbol, PlaceSymbol};
@@ -140,7 +140,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         let schematic = model::Snapshot { symbols, connections };
 
         // Validate the Schematic
-        let request = ValidateSchematic {
+        let request = SchematicValidateRequest {
             schematic: Some(schematic.clone().into()),
         };
         let diagnostics = schematic_app::services::call(&runtime, request).await?.diagnostics;
@@ -149,7 +149,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
         // Propose a Route
         let from = snapshot.symbol(SymbolId(1)).position;
         let to = snapshot.symbol(SymbolId(2)).position;
-        let request = ProposeRoute {
+        let request = SchematicProposeRouteRequest {
             from: Some(schematic_app::protocol::Point { x: from.x, y: from.y }),
             to: Some(schematic_app::protocol::Point { x: to.x, y: to.y }),
         };

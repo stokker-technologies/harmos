@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Visibility;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -52,7 +54,7 @@ async fn numeric_plugin_operation_is_admitted_and_invoked() {
     let activation = attached.activation().unwrap();
     let operation =
         activation.description.declarations.as_ref().unwrap().operations.iter().find(|operation| operation.id == "fixture.step.0").unwrap();
-    assert_eq!(operation.visibility(), harmos_protocol::v1::Visibility::Public);
+    assert_eq!(operation.visibility(), Visibility::Public);
 
     // Invoke Through the Host and Await the SDK Result.
     let input = payload(b"numeric step");

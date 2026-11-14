@@ -23,6 +23,7 @@ use std::collections::HashSet;
 
 // Local Imports
 use crate::{Error, Result};
+use harmos_protocol::model::Protobuf;
 
 /* === Constants === */
 
@@ -92,7 +93,7 @@ pub(crate) fn request_fingerprint<Q: OperationRequest>() -> Result<Vec<u8>> {
     merge_descriptor_types(&mut types, Q::Response::types());
     harmos_protocol::schema::host_fingerprint(
         Q::ID,
-        &harmos_protocol::v1::Protobuf {
+        &Protobuf {
             descriptors: prost::Message::encode_to_vec(&types),
             request: Q::name(),
             response: Q::Response::name(),

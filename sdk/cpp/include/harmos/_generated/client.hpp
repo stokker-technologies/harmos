@@ -24,7 +24,7 @@ struct AccessPairingsListOptions {
 struct AccessPairingsDeleteOptions {
   std::shared_ptr<grpc::ClientContext> context;
 };
-struct InvocationsInvokeOptions {
+struct InvocationsCreateOptions {
   std::shared_ptr<grpc::ClientContext> context;
 };
 struct InvocationsGetOptions {
@@ -43,6 +43,7 @@ struct OperationsGetOptions {
   std::shared_ptr<grpc::ClientContext> context;
 };
 struct PluginsSettingsListOptions {
+  std::optional<std::string> name;
   std::optional<::harmos::ReadCut> at;
   std::shared_ptr<grpc::ClientContext> context;
 };
@@ -206,9 +207,11 @@ struct AccessPairingsResource {
 struct PluginsSettingsResource {
   std::shared_ptr<grpc::Channel> channel;
   explicit PluginsSettingsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
-  ::harmos::client::SettingsListResponse list(const std::string &name, client::PluginsSettingsListOptions options = {}) {
+  ::harmos::SettingsListResponse list(client::PluginsSettingsListOptions options = {}) {
     detail::PluginsSettingsListRequest request;
-    request.set_name(name);
+    if (options.name) {
+      request.set_name(*options.name);
+    }
     if (options.at) {
       *request.mutable_at() = *options.at;
     }
@@ -349,17 +352,17 @@ struct AccessResource {
 struct InvocationsResource {
   std::shared_ptr<grpc::Channel> channel;
   explicit InvocationsResource(std::shared_ptr<grpc::Channel> channel) : channel(channel) {}
-  std::string invoke(const std::string &operation, const std::string &fingerprint, const std::string &payload,
-                     client::InvocationsInvokeOptions options = {}) {
-    detail::InvocationsInvokeRequest request;
+  std::string create(const std::string &operation, const std::string &fingerprint, const std::string &payload,
+                     client::InvocationsCreateOptions options = {}) {
+    detail::InvocationsCreateRequest request;
     request.set_operation(operation);
     request.set_fingerprint(fingerprint);
     request.set_payload(payload);
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
-    detail::InvocationsInvokeResponse response;
-    const auto status = detail::InvocationsInvokeService::NewStub(channel)->Invoke(context.get(), request, &response);
+    detail::InvocationsCreateResponse response;
+    const auto status = detail::InvocationsCreateService::NewStub(channel)->Create(context.get(), request, &response);
     if (!status.ok()) {
-      throw std::runtime_error("Call invocations.invoke: " + status.error_message());
+      throw std::runtime_error("Call invocations.create: " + status.error_message());
     }
     return response.payload();
   }
@@ -660,7 +663,7 @@ struct TimeResource {
     }
     return std::move(*response.mutable_now());
   }
-  ::harmos::client::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, client::TimeSleepOptions options = {}) {
+  ::harmos::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, client::TimeSleepOptions options = {}) {
     detail::TimeSleepRequest request;
     *request.mutable_duration() = duration;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();

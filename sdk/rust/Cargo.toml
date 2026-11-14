@@ -24,6 +24,9 @@ publish.workspace = true
 # === Package Targets === #
 
 [[example]]
+name = "dynamic"
+
+[[example]]
 name = "client"
 
 [[example]]
@@ -74,7 +77,6 @@ wit-bindgen = { workspace = true, default-features = true, features = ["async-sp
 [dev-dependencies]
 # Local
 harmos-protocol = { workspace = true }
-schematic-protocol = { path = "../../examples/schematic/protocol" }
 
 # Serialization
 tonic-prost = { workspace = true }

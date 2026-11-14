@@ -37,9 +37,10 @@ depends = ["restore"]
 usage = '''
 flag "--profile <profile>" default="dev"
 flag "--layer <layer>"
+flag "--filter <filter>"
 '''
-run = "dotnet test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
-run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
+run = "dotnet test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.filter %} --filter \"{{usage.filter}}\"{% elif usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
+run_windows = "\"{{env.DOTNET_ROOT}}/dotnet.exe\" test Harmos.slnx --no-build --no-restore --configuration {% if usage.profile == 'release' %}Release{% else %}Debug{% endif %}{% if usage.filter %} --filter \"{{usage.filter}}\"{% elif usage.layer %} --filter FullyQualifiedName~Harmos.Tests.{% if usage.layer == 'unit' %}Unit{% else %}Integration{% endif %}{% endif %} --logger \"console;verbosity=detailed\" --results-directory artifacts/test-results"
 
 [tasks.check]
 description = "Check C# Formatting and Generated Roots"

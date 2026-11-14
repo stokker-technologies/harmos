@@ -1,0 +1,18 @@
+
+…
+$harmos/host/v1/access/pairings.protoharmos.host.v1.accessharmos/model/v1/position.proto"$
+Pairing
+
+id (	
+label (	"x
+PairingsListResponse0
+pairings (2.harmos.host.v1.access.Pairing.
+resolved_at (2.harmos.model.v1.Positionbproto3
+«
+harmos/model/v1/position.protoharmos.model.v1"'
+History
+store (	
+epoch (	"G
+Position)
+history (2.harmos.model.v1.History
+sequence (bproto3

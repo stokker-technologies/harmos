@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Stream Declarations and Samples
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "google/protobuf/duration.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Declares a row type and either host-driven interval sampling or device-driven publication.
+message StreamDeclaration {
+  // Stream identity unique within its admitted provider inventory.
+  string id = 1;
+  // Fully qualified message name of one row, found in Declarations.types.
+  string row = 2;
+  string description = 3;
+  // Set for a stream sampled on the host's clock. Unset means the plugin
+  // sends samples when its device produces them.
+  google.protobuf.Duration interval = 4;
+  // Identifier of a plugin setting that gives the interval instead, if any.
+  string interval_setting = 5;
+}
+
+// === Enums === //

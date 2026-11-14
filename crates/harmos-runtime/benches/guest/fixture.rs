@@ -31,7 +31,10 @@ use std::time::{Duration, Instant};
 // Local Imports
 use harmos_runtime::Runtime;
 use prost::Message as _;
-use schematic_operations::protocol::{Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
+use schematic_operations::protocol::plugin::{
+    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
+};
+use schematic_operations::protocol::{Point, Snapshot};
 
 /* === Constants === */
 
@@ -98,17 +101,19 @@ impl Fixture {
         }
     }
 
-    pub async fn command(&self) -> Route {
-        let request = ProposeRoute {
+    pub async fn command(&self) -> SchematicProposeRouteResponse {
+        let request = SchematicProposeRouteRequest {
             from: Some(Point { x: 0, y: 0 }),
             to: Some(Point { x: 3, y: 4 }),
         };
-        let payload = self.runtime.operations.call_encoded("schematic.route", request.encode_to_vec()).await.unwrap();
-        Route::decode(payload.as_slice()).unwrap()
+        let payload =
+            self.runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", request.encode_to_vec()).await.unwrap();
+        SchematicProposeRouteResponse::decode(payload.as_slice()).unwrap()
     }
-    pub async fn payload(&self, request: ValidateSchematic) -> Validation {
-        let payload = self.runtime.operations.call_encoded("schematic.validate", request.encode_to_vec()).await.unwrap();
-        Validation::decode(payload.as_slice()).unwrap()
+    pub async fn payload(&self, request: SchematicValidateRequest) -> SchematicValidateResponse {
+        let payload =
+            self.runtime.operations.call_encoded("schematic.plugin.v1.Schematic/Validate", request.encode_to_vec()).await.unwrap();
+        SchematicValidateResponse::decode(payload.as_slice()).unwrap()
     }
 
     pub async fn finish(self) {
@@ -118,13 +123,13 @@ impl Fixture {
 
 /* === Public Functions === */
 
-pub fn verify_route(answer: &Route) {
+pub fn verify_route(answer: &SchematicProposeRouteResponse) {
     assert_eq!(answer.points, [Point { x: 0, y: 0 }, Point { x: 3, y: 0 }, Point { x: 3, y: 4 },]);
 }
 
-pub fn payload(symbols: usize) -> ValidateSchematic {
+pub fn payload(symbols: usize) -> SchematicValidateRequest {
     let symbols = (0..symbols).map(|value| value as u64).collect();
-    ValidateSchematic {
+    SchematicValidateRequest {
         schematic: Some(Snapshot { symbols, connections: Vec::new() }),
     }
 }
@@ -176,7 +181,7 @@ fn plugin_settings() -> harmos_runtime::config::PluginSettings {
         configuration: b"null".to_vec(),
         requires: Vec::new(),
         grants: Vec::new(),
-        host_operations: ["schematic.v1.Files/Hash", "harmos.plugin.host.v1.Settings/List"]
+        host_operations: ["schematic.host.v1.Files/Hash", "harmos.host.v1.plugins.Settings/List"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

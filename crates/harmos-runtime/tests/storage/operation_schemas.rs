@@ -9,6 +9,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::PageRequest;
+
 // Standard Library Imports
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -212,7 +214,7 @@ async fn schema_registry_roundtrip() {
         if response.next_page_token.is_empty() {
             break;
         }
-        listing.page = Some(harmos_protocol::v1::PageRequest {
+        listing.page = Some(PageRequest {
             page_token: response.next_page_token,
             ..Default::default()
         });

@@ -15,6 +15,10 @@ pub use harmos_operations::operations::instance::Id as OperationInstanceId;
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::model::DiscoveredOperation;
+use harmos_protocol::model::Failure;
+
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
@@ -486,7 +490,7 @@ pub(crate) fn fresh_instance() -> Result<OperationInstanceId> {
 
 impl harmos_operations::execution::operations::instances::Instances for HostContext {
     fn invoke(
-        &self, request: harmos_protocol::client::InvocationsInvokeRequest,
+        &self, request: InvocationsCreateRequest,
     ) -> std::pin::Pin<
         Box<dyn std::future::Future<Output = std::result::Result<Vec<u8>, harmos_operations::execution::ServingError>> + Send + '_>,
     > {
@@ -494,10 +498,10 @@ impl harmos_operations::execution::operations::instances::Instances for HostCont
             use prost::Message;
             let operation = request.operation.clone();
             self.borrow().invoke_client(request).await.map_err(|source| {
-                use harmos_protocol::v1::Classification;
+                use harmos_protocol::model::Classification;
                 let failure = match source.failure() {
-                    Some(failure) => harmos_protocol::v1::Failure::from(&failure.clone().without_diagnostics()),
-                    None => harmos_protocol::v1::Failure {
+                    Some(failure) => Failure::from(&failure.clone().without_diagnostics()),
+                    None => Failure {
                         classification: if matches!(&source, Error::OperationUnauthorized { .. } | Error::InvalidInput { .. }) {
                             Classification::Refused as i32
                         } else {
@@ -557,10 +561,7 @@ impl harmos_operations::execution::operations::instances::InstanceChanges for In
 }
 
 impl harmos_operations::execution::operations::access::Discovery for HostContext {
-    fn discover(
-        &self,
-    ) -> std::result::Result<Vec<harmos_protocol::v1::DiscoveredOperation>, harmos_operations::execution::operations::access::AccessError>
-    {
+    fn discover(&self) -> std::result::Result<Vec<DiscoveredOperation>, harmos_operations::execution::operations::access::AccessError> {
         let context = self.borrow();
         Ok(context.operations.discover(&context.source)?)
     }

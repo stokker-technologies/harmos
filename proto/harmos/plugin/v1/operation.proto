@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operation Contracts
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Freezes one dependency's routing identity, fingerprint and activation generation for a plugin.
+message AssignedOperation {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
+  bytes fingerprint = 2;
+  // Pinned activation generation; replacement admission must not redirect an existing handle.
+  uint64 generation = 3;
+}
+// Supplies the admitted dependency inventory; receivers reject duplicate identities and freeze the accepted assignment.
+message OperationAssignments {
+  repeated AssignedOperation operations = 1;
+}
+
+// === Enums === //

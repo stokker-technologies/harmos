@@ -31,9 +31,11 @@ from harmos import (
     SettingValue,
 )
 from harmos import FailureValue as WireFailure
+from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
 from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, TimeGetResponse, observer, operation, publisher
 
 from . import Graph, PayloadOnly, Value
+from ._caller import REQUEST
 
 # Type Checking Imports
 
@@ -51,6 +53,9 @@ PEER_PROTECTED = Operation("conformance.peer.protected", Value, Value, visibilit
 PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBILITY_PROTECTED)
 OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
+CREATE_INVOCATION = Operation(
+    "harmos.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
+)
 
 # === Types === #
 
@@ -201,7 +206,7 @@ class Fixture:
 
     @operation("conformance.settings_read", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def settings_read(self, context: Context, request: Value) -> Value:
-        settings = await context.host.settings.list()
+        settings = await context.host.plugins.settings.list()
         return Value(value=settings.value.SerializeToString())
 
     @operation("conformance.discover", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
@@ -214,6 +219,15 @@ class Fixture:
         if selected != operation:
             raise ValueError("Get Operation: Contract Differs from Inventory")
         return Value(value=operation.contract.id.encode())
+
+    @operation("conformance.caller_refusal", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def caller_refusal(self, context: Context, request: Value) -> Value:
+        create = InvocationsCreateRequest.FromString(REQUEST)
+        try:
+            await context.call(CREATE_INVOCATION, create)
+        except Failure as failure:
+            return Value(value=failure.value.SerializeToString())
+        raise RuntimeError("Create Invocation: Client-Only Host Operation Was Admitted")
 
     @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
     async def ticks(self, ctx: Context) -> Value:
@@ -237,7 +251,7 @@ class Fixture:
     async def tick_context(self, context: Context) -> Value:
         echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
         clock = TimeGetResponse(now=await context.host.time.get())
-        settings = await context.host.settings.list()
+        settings = await context.host.plugins.settings.list()
         value = b""
         for reply in (echo, clock, settings):
             payload = reply.SerializeToString()
@@ -286,6 +300,10 @@ class Fixture:
         await started.wait()
         return Value(value=b"cancelled")
 
+    @observer("conformance.tick_caller_refusal", row=Value, interval=Duration(seconds=1))
+    async def tick_caller_refusal(self, context: Context) -> Value:
+        return await self.caller_refusal(context, Value())
+
 
 class ClockFixture:
     """Reuse the Clock Journey Without External Device Demand."""
@@ -311,9 +329,10 @@ def plugin() -> Plugin:
             HOST_PENDING,
             HOST_FAIL,
             HOST_SCHEMA,
+            CREATE_INVOCATION,
             HostOperation.TIME_SLEEP,
             HostOperation.TIME_GET,
-            HostOperation.SETTINGS_LIST,
+            HostOperation.PLUGINS_SETTINGS_LIST,
             HostOperation.OPERATIONS_LIST,
             HostOperation.OPERATIONS_GET,
         ],

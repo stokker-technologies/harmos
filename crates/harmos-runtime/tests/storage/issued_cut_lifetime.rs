@@ -14,7 +14,7 @@
 use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::query::{RecordSelection, Source};
 use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -132,7 +132,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 merge: None,
-                page: Some(v1::PageRequest {
+                page: Some(model::PageRequest {
                     page_token: old.next_page_token,
                     ..Default::default()
                 }),
@@ -198,7 +198,7 @@ async fn cached_cuts_expire_while_explicit_leases_pin_their_image() {
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
                 merge: None,
-                page: Some(v1::PageRequest {
+                page: Some(model::PageRequest {
                     page_token: fresh.next_page_token,
                     ..Default::default()
                 }),

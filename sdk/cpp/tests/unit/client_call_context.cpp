@@ -20,6 +20,7 @@
 // Local Imports
 #include "client.hpp"
 
+namespace application_wire = application::host::v1;
 namespace chrono = std::chrono;
 using grpc::CallbackServerContext;
 using grpc::ClientContext;
@@ -44,12 +45,12 @@ using std::string;
 /* === Classes === */
 
 namespace {
-class Watch final : public ServerWriteReactor<application::v1::jobs::ProgressWatchResponse> {
+class Watch final : public ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> {
   mutex mutex_;
   bool writing_ = true;
   bool cancelled_ = false;
   promise<void> &cancelled;
-  application::v1::jobs::ProgressWatchResponse opening;
+  application_wire::jobs::ProgressWatchResponse opening;
 
 public:
   Watch(CallbackServerContext *context, promise<void> &event) : cancelled(event) {
@@ -76,10 +77,10 @@ public:
     delete this;
   }
 };
-struct Progress final : application::v1::jobs::Progress::CallbackService {
+struct Progress final : application_wire::jobs::Progress::CallbackService {
   promise<void> cancelled;
-  ServerWriteReactor<application::v1::jobs::ProgressWatchResponse> *Watch(CallbackServerContext *context,
-                                                                          const application::v1::jobs::ProgressWatchRequest *) override {
+  ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> *Watch(CallbackServerContext *context,
+                                                                           const application_wire::jobs::ProgressWatchRequest *) override {
     return new ::Watch(context, cancelled);
   }
 };

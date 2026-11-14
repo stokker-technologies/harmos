@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::StatusWatchRequest;
+use harmos_protocol::host::StatusWatchResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -39,11 +42,11 @@ pub struct Watch;
 /* === Implementations === */
 
 impl ProtobufOperation for Watch {
-    type Request = harmos_protocol::client::StatusWatchRequest;
-    type Response = harmos_protocol::client::StatusWatchResponse;
-    type Endpoints = ProtobufOutput<harmos_protocol::client::StatusWatchResponse>;
-    const ID: &'static str = "harmos.client.v1.Status/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Status", "Watch"));
+    type Request = StatusWatchRequest;
+    type Response = StatusWatchResponse;
+    type Endpoints = ProtobufOutput<StatusWatchResponse>;
+    const ID: &'static str = "harmos.host.v1.Status/Watch";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Status", "Watch"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];

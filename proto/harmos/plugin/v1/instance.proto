@@ -11,9 +11,9 @@ package harmos.plugin.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/v1/description.proto";
-import "harmos/v1/invocation.proto";
-import "harmos/v1/stream.proto";
+import "harmos/model/v1/description.proto";
+import "harmos/plugin/v1/invocation.proto";
+import "harmos/plugin/v1/stream.proto";
 
 // === Options === //
 
@@ -24,15 +24,15 @@ service Instance {
   // Identity, start time and declarations. Called once per connection, first.
   rpc Get(InstanceGetRequest) returns (InstanceGetResponse);
 
-  // One invocation of one operation. The host opens the call with a harmos.v1.Request.
-  // While it runs, the plugin may send harmos.v1.ChildRequest frames and the host
-  // answers each with a harmos.v1.ChildResponse. The plugin ends the call with a
-  // harmos.v1.Response. The host may send harmos.v1.Cancel at any time.
+  // One invocation of one operation. The host opens the call with a harmos.plugin.v1.Request.
+  // While it runs, the plugin may send harmos.plugin.v1.ChildRequest frames and the host
+  // answers each with a harmos.plugin.v1.ChildResponse. The plugin ends the call with a
+  // harmos.plugin.v1.Response. The host may send harmos.plugin.v1.Cancel at any time.
   rpc Invoke(stream InstanceInvokeRequest) returns (stream InstanceInvokeResponse);
 
-  // One declared stream. The host opens the call with a harmos.v1.SamplesSelection;
+  // One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
   // opening it is the demand for the stream and closing it ends the demand.
-  // For a stream with an interval the host then sends one harmos.v1.Tick per interval
+  // For a stream with an interval the host then sends one harmos.plugin.v1.Tick per interval
   // and the plugin answers each with one sample. Only one tick may be unanswered.
   // Between receiving a tick and sending its sample, the plugin may send ChildRequest,
   // ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
@@ -52,11 +52,11 @@ service Instance {
   rpc Stop(InstanceStopRequest) returns (InstanceStopResponse);
 }
 
-// === Requests and Responses === //
+// === Get === //
 
 // Carries the protocol revision, host name and host version for Instance.Get.
 message InstanceGetRequest {
-  // Highest revision of harmos.v1 the host implements. Starts at 1 and grows
+  // Highest revision of harmos.model.v1 the host implements. Starts at 1 and grows
   // with each additive release.
   uint32 revision = 1;
   // Name and version of the host application, for logs.
@@ -73,8 +73,8 @@ message InstanceGetResponse {
   // Captured once when the process started. A changed value on reconnect
   // means the process restarted.
   google.protobuf.Timestamp started_at = 3;
-  harmos.v1.Declarations declarations = 4;
-  // Highest revision of harmos.v1 the plugin implements.
+  harmos.model.v1.Declarations declarations = 4;
+  // Highest revision of harmos.model.v1 the plugin implements.
   uint32 revision = 5;
   // Name and version of the SDK that built the plugin, for logs.
   string sdk = 6;
@@ -83,13 +83,15 @@ message InstanceGetResponse {
   uint64 message_bytes = 8;
 }
 
+// === Invoke === //
+
 // Carries an opening request, child reply or cancellation frame for Instance.Invoke.
 message InstanceInvokeRequest {
   // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
-    harmos.v1.Request request = 1;
-    harmos.v1.ChildResponse child = 2;
-    harmos.v1.Cancel cancel = 3;
+    harmos.plugin.v1.Request request = 1;
+    harmos.plugin.v1.ChildResponse child = 2;
+    harmos.plugin.v1.Cancel cancel = 3;
   }
 }
 
@@ -97,36 +99,40 @@ message InstanceInvokeRequest {
 message InstanceInvokeResponse {
   // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
-    harmos.v1.ChildRequest child = 1;
-    harmos.v1.ChildCancel child_cancel = 2;
-    harmos.v1.Response response = 3;
-    harmos.v1.ChildDemand child_demand = 4;
+    harmos.plugin.v1.ChildRequest child = 1;
+    harmos.plugin.v1.ChildCancel child_cancel = 2;
+    harmos.plugin.v1.Response response = 3;
+    harmos.plugin.v1.ChildDemand child_demand = 4;
   }
 }
+
+// === Samples === //
 
 // Carries a stream selection, clock tick or child reply for Instance.Samples.
 message InstanceSamplesRequest {
   // Selects one variant; an unset discriminator carries no selected value.
   oneof frame {
     // First frame.
-    harmos.v1.SamplesSelection open = 1;
-    harmos.v1.Tick tick = 2;
+    harmos.plugin.v1.SamplesSelection open = 1;
+    harmos.plugin.v1.Tick tick = 2;
     // Reply to a child of the unanswered tick; never before open or after its sample.
-    harmos.v1.ChildResponse child = 3;
+    harmos.plugin.v1.ChildResponse child = 3;
   }
 }
 
 // Carries declared stream rows or child traffic for the unanswered tick within the active demand call.
 message InstanceSamplesResponse {
   // A tick answer ends its child-call scope. Must be empty when a child frame is selected.
-  repeated harmos.v1.Sample samples = 1;
+  repeated harmos.plugin.v1.Sample samples = 1;
   // Child frames do not answer the tick. Unset for sample-bearing responses.
   oneof frame {
-    harmos.v1.ChildRequest child = 2;
-    harmos.v1.ChildCancel child_cancel = 3;
-    harmos.v1.ChildDemand child_demand = 4;
+    harmos.plugin.v1.ChildRequest child = 2;
+    harmos.plugin.v1.ChildCancel child_cancel = 3;
+    harmos.plugin.v1.ChildDemand child_demand = 4;
   }
 }
+
+// === Stop === //
 
 // Carries the reason text for Instance.Stop.
 message InstanceStopRequest {

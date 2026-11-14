@@ -73,6 +73,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
     generate.add_argument("--descriptors", type=Path, action="append", default=[])
     generate.add_argument("--output", type=Path)
     generate.add_argument("--namespace", default="harmos")
+    generate.add_argument("--composition", type=Path)
     generate.add_argument("--sdk", choices=("python", "rust", "csharp", "cpp"))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)
@@ -407,7 +408,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
             if options.output is None:
                 parser.error("composed client roots require --output")
-            compose(root, options.descriptors, options.output, options.namespace, language=options.sdk)
+            compose(root, options.descriptors, options.output, options.namespace, language=options.sdk, composition=options.composition)
             return 0
         if options.sdk == "python":
             return _execute(["mise", "-C", "sdk/python", "run", "generate"])

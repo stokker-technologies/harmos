@@ -13,13 +13,18 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::status::LogsListResponse;
+use harmos_protocol::host::status::LogsWatchResponse;
+
 // Standard Library Imports
 use std::collections::{BTreeSet, VecDeque};
 
 // Third Party Imports
 use harmos_operations::execution::operations::ServingError;
-use harmos_protocol::client::status::Event;
-use harmos_protocol::v1::{History as WireHistory, PageRequest, Position};
+use harmos_protocol::host::status::Event;
+use harmos_protocol::model::History as WireHistory;
+use harmos_protocol::model::PageRequest;
+use harmos_protocol::model::Position;
 use prost::Message;
 
 // Local Imports
@@ -125,7 +130,7 @@ impl History {
             let last = events.last().map_or(after, |event| event.sequence);
             let more = self.events.iter().any(|event| event.sequence > last && event.sequence <= boundary.sequence);
             let token = if more { format!("{}/{}:{last}", self.identity.store, boundary.sequence) } else { String::new() };
-            let response = harmos_protocol::client::status::LogsListResponse {
+            let response = LogsListResponse {
                 events: events.clone(),
                 resolved_at: Some(boundary.clone()),
                 next_page_token: token.clone(),
@@ -155,7 +160,7 @@ impl History {
         if maximum_items == 0 || maximum_bytes == 0 {
             return Err(failure(action, "positive event and byte bounds are required"));
         }
-        let mut bytes = harmos_protocol::client::status::LogsWatchResponse {
+        let mut bytes = LogsWatchResponse {
             events: Vec::new(),
             resolved_at: Some(Position {
                 history: Some(self.identity.clone()),
@@ -168,7 +173,7 @@ impl History {
         }
         let mut events = Vec::new();
         for event in self.events.iter().filter(|event| event.sequence > after && event.sequence <= boundary) {
-            let size = harmos_protocol::client::status::LogsWatchResponse {
+            let size = LogsWatchResponse {
                 events: vec![event.clone()],
                 resolved_at: None,
             }

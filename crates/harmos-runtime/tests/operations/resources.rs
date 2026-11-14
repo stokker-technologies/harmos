@@ -218,7 +218,7 @@ async fn private_grpc_refused() {
             "resources.private_grpc",
             READ_CONTRACT_DECLARATION_OPERATION.entry().policy,
         )
-        .grpc(Grpc::new("resources.v1", "Private", "Call"));
+        .grpc(Grpc::new("resources.host.v1", "Private", "Call"));
 
     const PRIVATE_OPERATION: harmos_operations::operations::OperationSpec<Private> =
         harmos_operations::operations::OperationSpec::<Private>::new(&PRIVATE_DESCRIPTION);

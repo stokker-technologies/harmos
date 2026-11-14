@@ -1,0 +1,13 @@
+
+¨
+ harmos/host/v1/invocations.protoharmos.host.v1 harmos/model/v1/invocation.proto"N
+InvocationsWatchResponse2
+
+invocation (2.harmos.model.v1.InstanceStatebproto3
+ù
+ harmos/model/v1/invocation.protoharmos.model.v1"`
+InstanceState
+phase (	
+outcome (	
+cancellation_requested (
+attempt (bproto3

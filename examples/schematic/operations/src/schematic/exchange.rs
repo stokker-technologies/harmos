@@ -27,19 +27,19 @@ pub struct AnalyzeExchange;
 /* === Implementations === */
 
 impl ProtobufOperation for AnalyzeExchange {
-    type Request = crate::protocol::AnalyzeExchange;
-    type Response = crate::protocol::Analysis;
+    type Request = crate::protocol::SchematicAnalyzeExchangeHeader;
+    type Response = crate::protocol::AnalysisResult;
     type Endpoints = (
         harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>,
         harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>,
     );
-    const ID: &'static str = "schematic.analyze.exchange";
+    const ID: &'static str = "schematic.host.v1.Schematic/AnalyzeExchange";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "AnalyzeExchange"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "AnalyzeExchange"));
     const RESOURCES: &'static [harmos_operations::Resource] = &[harmos_operations::Resource::of::<super::upload::AnalysisResources>()];
     async fn run(ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
@@ -63,7 +63,7 @@ impl ProtobufOperation for AnalyzeExchange {
                 resources
                     .publish(schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked })?;
             }
-            Ok(crate::protocol::Analysis { checked })
+            Ok(crate::protocol::AnalysisResult { checked })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

@@ -17,7 +17,7 @@
 use std::{future::Future, pin::Pin};
 
 // Third Party Imports
-use harmos_protocol::client::access::ListenerValue;
+use harmos_protocol::host::access::ListenerValue;
 
 // Local Imports
 

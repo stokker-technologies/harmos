@@ -17,8 +17,12 @@ mod lifecycle;
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
 pub use harmos_operations::execution::StartupError;
+pub use harmos_operations::execution::lifecycle::AssemblyError;
 
 /* === Imports === */
+
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::model::Callers as WireCallers;
 
 // Standard Library Imports
 use std::any::type_name;
@@ -134,6 +138,7 @@ pub struct Builder<A: Application> {
     operation_settings: crate::operations::Settings,
     schema_settings: Arc<crate::config::SchemaSettings>,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
+    callers: std::collections::BTreeMap<String, WireCallers>,
     services: Vec<DeclaredService<A>>,
 
     #[cfg(feature = "simulation")]
@@ -404,6 +409,7 @@ impl<A: Application> Runtime<A> {
             operation_settings: crate::operations::Settings::default(),
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
             operation_middleware: Vec::new(),
+            callers: std::collections::BTreeMap::new(),
             services: Vec::new(),
             #[cfg(feature = "simulation")]
             simulation: crate::simulation::Configuration::new(),
@@ -471,6 +477,94 @@ impl<A: Application, const N: usize> Registration<A> for [Definition; N] {
 }
 
 impl<A: Application> Builder<A> {
+    /// Apply Product Caller Restrictions Before Runtime Assembly.
+    pub fn composition(&mut self, source: &str) -> Result<(), AssemblyError> {
+        use harmos_protocol::model::Callers;
+        use prost_reflect::ReflectMessage;
+        use toml_edit::DocumentMut;
+        let invalid = |message: String| AssemblyError(message);
+        let document = source.parse::<DocumentMut>().map_err(|error| invalid(error.to_string()))?;
+        if document.iter().any(|(name, _)| !matches!(name, "libraries" | "callers")) {
+            return Err(invalid("unknown composition field".into()));
+        }
+        let root = TimeGetRequest::default().descriptor();
+        let mut pools = vec![root.parent_pool().clone()];
+        let mut operations = std::collections::BTreeMap::new();
+        for binding in &self.operations {
+            for factory in &binding.factories {
+                if let Ok(contract) = factory.contract_with_settings(&self.schema_settings) {
+                    operations.insert(contract.operation().id.to_string(), contract.callers());
+                    if let Some(protobuf) = contract.protobuf() {
+                        let pool = prost_reflect::DescriptorPool::decode(protobuf.descriptors.as_slice())
+                            .map_err(|error| invalid(error.to_string()))?;
+                        pools.push(pool);
+                    }
+                }
+            }
+        }
+        if let Some(libraries) = document.get("libraries") {
+            let libraries = libraries.as_array_of_tables().ok_or_else(|| invalid("libraries must be an array of tables".into()))?;
+            for library in libraries {
+                if library.iter().any(|(name, _)| !matches!(name, "descriptors" | "packages")) {
+                    return Err(invalid("unknown library field".into()));
+                }
+                let descriptors = library
+                    .get("descriptors")
+                    .and_then(toml_edit::Item::as_str)
+                    .filter(|path| !path.is_empty())
+                    .ok_or_else(|| invalid("library descriptors must name an artifact".into()))?;
+                let _ = descriptors;
+                let packages = library
+                    .get("packages")
+                    .and_then(toml_edit::Item::as_array)
+                    .filter(|packages| !packages.is_empty())
+                    .ok_or_else(|| invalid("library packages must be a nonempty array".into()))?;
+                for package in packages {
+                    let package = package
+                        .as_str()
+                        .filter(|package| !package.is_empty())
+                        .ok_or_else(|| invalid("library package must be a nonempty string".into()))?;
+                    if !pools.iter().any(|pool| pool.files().any(|file| file.package_name() == package)) {
+                        return Err(invalid(format!("package {package} is not registered")));
+                    }
+                }
+            }
+        }
+        let mut restrictions = self.callers.clone();
+        if let Some(callers) = document.get("callers") {
+            let callers = callers.as_table().ok_or_else(|| invalid("callers must be a table".into()))?;
+            for (id, selected) in callers {
+                let selected = match selected.as_str() {
+                    Some("CLIENTS") => Callers::Clients,
+                    Some("PLUGINS") => Callers::Plugins,
+                    Some("ALL") => Callers::All,
+                    _ => return Err(invalid(format!("{id}: invalid callers"))),
+                };
+                let (service, method) = id.split_once('/').ok_or_else(|| invalid(format!("{id}: invalid operation identity")))?;
+                let method = pools
+                    .iter()
+                    .filter_map(|pool| pool.get_service_by_name(service))
+                    .find_map(|service| service.methods().find(|candidate| candidate.name() == method));
+                if harmos_protocol::schema::operation_identity(id).map_err(|error| invalid(error.to_string()))?
+                    != harmos_protocol::schema::Executor::Host
+                {
+                    return Err(invalid(format!("{id}: only host callers can be narrowed")));
+                }
+                let declared = match method {
+                    Some(method) => harmos_protocol::schema::method_callers(&method).map_err(|error| invalid(error.to_string()))?,
+                    None => operations.get(id).copied().ok_or_else(|| invalid(format!("{id}: unknown operation")))?,
+                };
+                let current = restrictions.get(id).copied().unwrap_or(declared);
+                if (selected as i32 & current as i32) != selected as i32 {
+                    return Err(invalid(format!("{id}: callers cannot widen {current:?} to {selected:?}")));
+                }
+                restrictions.insert(id.to_owned(), selected);
+            }
+        }
+        self.callers = restrictions;
+        Ok(())
+    }
+
     pub fn startup_cleanup(&self) -> BootstrapCleanup {
         self.cleanup.clone()
     }
@@ -830,6 +924,7 @@ impl<A: Application> Builder<A> {
             operation_settings,
             schema_settings,
             operation_middleware,
+            callers,
             services,
             ..
         } = self;
@@ -918,7 +1013,7 @@ impl<A: Application> Builder<A> {
             }
         }
         let operations =
-            crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings)
+            crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings, callers)
                 .map_err(Incompatible::work)?;
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;

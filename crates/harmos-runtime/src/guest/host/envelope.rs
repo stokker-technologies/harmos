@@ -15,11 +15,18 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::GuestChildAction;
+use harmos_protocol::plugin::GuestCommand;
+use harmos_protocol::plugin::GuestInvocation;
+use harmos_protocol::plugin::GuestPrepare;
+use harmos_protocol::plugin::GuestValue;
+use harmos_protocol::plugin::Response;
+
 use harmos_operations::execution::operations::{CallValue, OperationPolicy};
-use harmos_protocol::{
-    guest,
-    v1::{self, guest_child, guest_command, response},
-};
+use harmos_protocol::guest;
+use harmos_protocol::plugin::guest_child;
+use harmos_protocol::plugin::guest_command;
+use harmos_protocol::plugin::response;
 use prost::Message as _;
 
 /* === Constants === */
@@ -105,14 +112,14 @@ impl WireCommand {
                 fingerprint,
                 generation,
                 payload,
-            } => guest_command::Phase::Prepare(v1::GuestPrepare {
+            } => guest_command::Phase::Prepare(GuestPrepare {
                 invocation: *invocation,
                 operation: operation.clone(),
                 fingerprint: fingerprint.to_vec(),
                 generation: *generation,
                 payload: payload.clone(),
             }),
-            Self::Initialize { invocation, context } => guest_command::Phase::Initialize(v1::GuestInvocation {
+            Self::Initialize { invocation, context } => guest_command::Phase::Initialize(GuestInvocation {
                 invocation: *invocation,
                 context: context.to_vec(),
                 values: Vec::new(),
@@ -120,13 +127,13 @@ impl WireCommand {
             Self::Attempt { invocation, context, values } => {
                 let values = values
                     .iter()
-                    .map(|value| v1::GuestValue {
+                    .map(|value| GuestValue {
                         key: value.key.clone(),
                         payload: value.payload.clone(),
                     })
                     .collect::<Vec<_>>();
                 guest::validate_values(&values)?;
-                guest_command::Phase::Attempt(v1::GuestInvocation {
+                guest_command::Phase::Attempt(GuestInvocation {
                     invocation: *invocation,
                     context: context.to_vec(),
                     values,
@@ -135,7 +142,7 @@ impl WireCommand {
             Self::Finalize { invocation } => guest_command::Phase::Finalize(*invocation),
             Self::Cancel { invocation } => guest_command::Phase::Cancel(*invocation),
         };
-        Ok(guest::encode(&v1::GuestCommand { phase: Some(phase) })?)
+        Ok(guest::encode(&GuestCommand { phase: Some(phase) })?)
     }
 }
 impl WireAnswer {
@@ -143,7 +150,7 @@ impl WireAnswer {
         if bytes.len() > guest::COMMAND_BYTES {
             return Err(WireCodecError::Shape);
         }
-        Ok(match v1::Response::decode(bytes)?.result.ok_or(WireCodecError::Shape)? {
+        Ok(match Response::decode(bytes)?.result.ok_or(WireCodecError::Shape)? {
             response::Result::Payload(payload) => Self::Ready { payload },
             response::Result::Failure(failure) => Self::Failed { failure: failure.into() },
         })
@@ -180,12 +187,12 @@ impl WireChild {
             guest_child::Action::Control(control) => Self::Control(WireChildControl {
                 context: control.context.try_into().map_err(|_| WireCodecError::Shape)?,
                 instance: control.instance,
-                action: match v1::GuestChildAction::try_from(control.action).map_err(|_| WireCodecError::Shape)? {
-                    v1::GuestChildAction::Join => WireChildAction::Join,
-                    v1::GuestChildAction::Status => WireChildAction::Status,
-                    v1::GuestChildAction::Cancel => WireChildAction::Cancel,
-                    v1::GuestChildAction::Release => WireChildAction::Release,
-                    v1::GuestChildAction::Detach => WireChildAction::Detach,
+                action: match GuestChildAction::try_from(control.action).map_err(|_| WireCodecError::Shape)? {
+                    GuestChildAction::Join => WireChildAction::Join,
+                    GuestChildAction::Status => WireChildAction::Status,
+                    GuestChildAction::Cancel => WireChildAction::Cancel,
+                    GuestChildAction::Release => WireChildAction::Release,
+                    GuestChildAction::Detach => WireChildAction::Detach,
                     _ => return Err(WireCodecError::Shape),
                 },
             }),

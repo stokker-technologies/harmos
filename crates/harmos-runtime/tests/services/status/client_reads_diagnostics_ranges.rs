@@ -17,7 +17,7 @@
 use std::{io::Read, sync::Arc};
 
 // Third Party Imports
-use harmos_protocol::client::status as wire;
+use harmos_protocol::host::status as wire;
 use sha2::{Digest, Sha256};
 
 // Local Imports

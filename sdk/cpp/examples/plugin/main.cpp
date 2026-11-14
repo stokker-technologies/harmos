@@ -13,15 +13,12 @@
 #include <iostream>
 
 // Third Party Imports
-#include <google/protobuf/wrappers.pb.h>
 
 // Local Imports
 #include "harmos/harmos.hpp"
 
-using google::protobuf::StringValue;
-using harmos::VISIBILITY_PUBLIC;
-using harmos::plugin::Context;
-using harmos::plugin::Operation;
+using harmos::SettingDeclaration;
+using harmos::plugin::HostOperation;
 using harmos::plugin::Plugin;
 using std::exception;
 
@@ -43,10 +40,10 @@ using std::exception;
 
 int main() {
   try {
-    Operation<StringValue, StringValue> echo("example.echo", VISIBILITY_PUBLIC, [](Context &, StringValue request) {
-      return request;
-    });
-    Plugin("example", "1.0.0").operation(echo).serve();
+    SettingDeclaration setting;
+    setting.set_name("enabled");
+    setting.mutable_default_()->set_flag(false);
+    Plugin("example", "1.0.0").setting(setting).requires_operation(HostOperation::PluginsSettingsList).serve();
     return 0;
   } catch (const exception &error) {
     std::cerr << error.what() << '\n';

@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+#[cfg(feature = "plugin-guest")]
+use harmos_protocol::plugin::OperationAssignments;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -178,7 +181,7 @@ impl Manager {
             })
             .collect::<Result<Vec<_>>>()?;
         use prost::Message;
-        Ok(harmos_protocol::v1::OperationAssignments { operations: assignments }.encode_to_vec())
+        Ok(OperationAssignments { operations: assignments }.encode_to_vec())
     }
 
     // Capture Does Not Grant Readiness; Submission Rechecks The Exact Entry.

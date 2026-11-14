@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::Tick as WireTick;
+
 use super::{
     CallingPlugin, Error,
     invoke::{ChildReplies, failure, watch_child},
@@ -26,13 +28,12 @@ use futures_util::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use harmos_domain::MemorySize;
 use harmos_operations::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use harmos_operations::{OperationPolicy, operations::UNBOUNDED};
-use harmos_protocol::{
-    plugin::{
-        InstanceSamplesRequest, InstanceSamplesResponse, instance_samples_request::Frame as RequestFrame,
-        instance_samples_response::Frame as ResponseFrame,
-    },
-    v1::{self, ChildResponse, child_response},
-};
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::InstanceSamplesRequest;
+use harmos_protocol::plugin::InstanceSamplesResponse;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
+use harmos_protocol::plugin::instance_samples_response::Frame as ResponseFrame;
 use prost::Message;
 use prost_types::Timestamp;
 use std::time::Duration;
@@ -115,12 +116,13 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     let mut children = FuturesUnordered::<Child>::new();
     let mut controls = Children(BTreeMap::new());
     let mut cancelled = BTreeSet::new();
+    let mut ended = BTreeSet::new();
     let mut input = request.input.lock().await;
     let output = ChildReplies::Samples(request.output.clone());
     request
         .output
         .send(InstanceSamplesRequest {
-            frame: Some(RequestFrame::Tick(v1::Tick { at: Some(request.at) })),
+            frame: Some(RequestFrame::Tick(WireTick { at: Some(request.at) })),
         })
         .await
         .map_err(|_| invalid("Send Sample Tick: stream closed"))?;
@@ -192,6 +194,9 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
                     }
                 }
                 if let ResponseFrame::ChildDemand(demand) = frame {
+                    if ended.contains(&demand.call) {
+                        continue;
+                    }
                     let Some((_, _, Some(credits))) = controls.0.get(&demand.call) else {
                         break Err(invalid("Demand Sample Child: unknown watch identity"));
                     };
@@ -202,6 +207,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
             }
             Event::Child(call, operation, result) => {
                 controls.0.remove(&call);
+                ended.insert(call);
                 if cancelled.remove(&call) {
                     continue;
                 }

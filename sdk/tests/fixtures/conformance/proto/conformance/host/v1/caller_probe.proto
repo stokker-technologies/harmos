@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Caller Probe
+//
+// Declare the Plugin-Only Caller Probe
+
+syntax = "proto3";
+
+package conformance.host.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Proves that caller admission runs before an observable handler.
+service CallerProbe {
+  // Read the probe only from a plugin caller.
+  rpc Get(CallerProbeGetRequest) returns (CallerProbeGetResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// Calls the probe with an empty payload and a known contract fingerprint.
+message CallerProbeGetRequest {}
+
+// Confirms that the probe handler ran.
+message CallerProbeGetResponse {}
+
+// === Resources === //
+
+// === Enums === //

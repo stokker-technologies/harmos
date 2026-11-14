@@ -15,7 +15,7 @@ use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
 use harmos_operations::storage::{ColumnSelection, IndexSelection, ProjectionSelection};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnPredicate;
 use harmos_query::columnar::ColumnSource;
@@ -78,7 +78,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         rows: NonZeroUsize::new(64).unwrap(),
         bytes: NonZeroUsize::new(65536).unwrap(),
     };
-    let page = v1::PageRequest {
+    let page = model::PageRequest {
         page_size: 1,
         max_bytes: 8192,
         page_token: String::new(),

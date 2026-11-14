@@ -44,7 +44,16 @@ def executable(root: Path, profile: str = "dev") -> Path:
     return root / "sdk/csharp" / manifest.read_text(encoding="utf-8-sig").strip()
 
 
-def protocols(root: Path, *, descriptors: Path | None = None, destination: Path | None = None, check: bool = False) -> None:
+def protocols(
+    root: Path,
+    *,
+    descriptors: Path | None = None,
+    destination: Path | None = None,
+    check: bool = False,
+    package: str | None = None,
+    files: set[str] | None = None,
+    namespace_override: str | None = None,
+) -> None:
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
     from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
@@ -70,14 +79,21 @@ def protocols(root: Path, *, descriptors: Path | None = None, destination: Path 
         for file in schema.file:
             if file.name.startswith("google/") or file.name.endswith("guest.proto"):
                 continue
+            if package is not None and not (file.package == package or file.package.startswith(package + ".")):
+                continue
+            if files is not None and file.name not in files:
+                continue
             output = scratch / Path(file.name).with_suffix("")
             output.mkdir(parents=True, exist_ok=True)
             command = [str(protoc), f"--descriptor_set_in={descriptors}", f"--csharp_out={output}"]
-            if file.service:
+            if file.service and namespace_override is None:
                 command += [f"--plugin=protoc-gen-grpc={plugin}", f"--grpc_out={output}", "--grpc_opt=internal_access"]
             subprocess.run([*command, file.name], check=True, creationflags=spawn_flags())
             for path in output.glob("*.cs"):
                 source = csharp_message(path.read_text(encoding="utf-8"))
+                if namespace_override is not None:
+                    source = source.replace("namespace Harmos.Clients {", f"namespace {namespace_override} {{")
+                    source = source.replace("global::Harmos.Clients.", f"global::{namespace_override}.")
                 for name in requests:
                     source = source.replace(f"public sealed partial class {name} :", f"internal sealed partial class {name} :")
                 if path.name.endswith("Grpc.cs"):
@@ -114,21 +130,35 @@ def protocols(root: Path, *, descriptors: Path | None = None, destination: Path 
 def clients(root: Path, *, check: bool = False) -> None:
     from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-    from .build.resource_roots import csharp, csharp_host, table
+    from .build.resource_roots import compose, csharp, csharp_host, table
 
     descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
     methods = [method for method in table(descriptors) if method["face"] == "client"]
     protocols(root, check=check)
+    protocols(
+        root,
+        destination=root / "sdk/csharp/tests/Harmos.Conformance/Generated",
+        check=check,
+        files={"harmos/host/v1/invocations.proto"},
+        namespace_override="Harmos.Conformance.Wire",
+    )
     fixture_path = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
-    protocols(root, descriptors=fixture_path, destination=root / "sdk/csharp/tests/Harmos.Tests/Generated/Wire", check=check)
+    protocols(
+        root,
+        descriptors=fixture_path,
+        destination=root / "sdk/csharp/tests/Harmos.Tests/Generated/Wire",
+        check=check,
+        package="application",
+    )
     csharp(root, methods, check=check)
     csharp_host(root, [method for method in table(descriptors) if method["face"] == "context"], check=check)
-    fixture = FileDescriptorSet.FromString(fixture_path.read_bytes())
-    csharp(
+    compose(
         root,
-        methods + table(fixture),
-        namespace="fixture",
-        target=root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs",
+        [fixture_path],
+        root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs",
+        "fixture",
+        language="csharp",
+        composition=root / "sdk/tests/fixtures/client/composition.toml",
         check=check,
     )
 

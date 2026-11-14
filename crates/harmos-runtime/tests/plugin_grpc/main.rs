@@ -16,7 +16,6 @@ mod application_faces;
 mod cancellation;
 mod catalog_admission;
 mod child_calls;
-mod client_face_refusal;
 mod client_invoke;
 mod connection_loss;
 mod context_watch;

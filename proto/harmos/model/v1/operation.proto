@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operation Contracts
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+import "harmos/model/v1/policy.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Declares an operation's routing identity, payload shapes, visibility and execution policy before activation.
+message OperationContract {
+  // Unique among the host and all connected plugins, for example
+  // "example.set".
+  string id = 1;
+  // Fully qualified message names found in Declarations.types.
+  string request = 2;
+  // Fully qualified response message name resolved in Declarations.types.
+  string response = 3;
+  // Wire declarationss admit Public or Protected; Private remains process-local and Unspecified is invalid.
+  Visibility visibility = 4;
+  // Callee-owned execution budgets; the admitted declarations must provide a valid policy.
+  OperationPolicy policy = 5;
+  // SHA-256 over the id and the request and response definitions.
+  bytes fingerprint = 6;
+  string description = 7;
+  // Only explicitly replay-safe operations may retry transient failures.
+  bool replay_safe = 8;
+}
+// Binds a declared dependency to the contract fingerprint against which the caller was built.
+message Requirement {
+  // Identifier of the operation the plugin calls.
+  string id = 1;
+  // Fingerprint the plugin was built against.
+  bytes fingerprint = 2;
+}
+// Describes reachable protobuf types and root message names for unary and optional streaming directions.
+message Protobuf {
+  // Encoded FileDescriptorSet containing the reachable message graph.
+  bytes descriptors = 1;
+  // Fully qualified unary request root in descriptors.
+  string request = 2;
+  // Fully qualified unary response root in descriptors.
+  string response = 3;
+  // Streaming input root when present; unset means no streamed input direction.
+  optional string input = 4;
+  // Streaming output root when present; unset means no streamed output direction.
+  optional string output = 5;
+}
+// Names the service projection associated with a discovered operation.
+message Grpc {
+  string package = 1;
+  string service = 2;
+  string method = 3;
+  // Whether the projection uses the managed operation carrier rather than a direct service method.
+  bool managed = 4;
+}
+// Describes an admitted operation/resource scope; opaque invocation scope text does not itself confer this authority.
+message Grant {
+  // Complete admitted operation routing identity; no provider prefix or provider selection is added.
+  string operation = 1;
+  // Optional checked resource scope; unset is distinct from an authored invocation scope and is interpreted by grant admission.
+  optional string scope = 2;
+}
+// Advertises an operation's admitted policy, schema identity and available wire projections.
+message DiscoveredContract {
+  // Complete admitted operation routing identity; provider ownership is reported separately.
+  string id = 1;
+  string description = 2;
+  Visibility visibility = 3;
+  OperationPolicy policy = 4;
+  // True only for an explicitly replay-safe declaration.
+  bool replay_safe = 5;
+  // Expected operation contract digest used for admission; incompatible definitions refuse rather than invoking another shape.
+  bytes fingerprint = 6;
+  // Absent for native-only declarations with no public protobuf binding.
+  Protobuf protobuf = 7;
+  Grpc grpc = 8;
+  // Effective callers after runtime composition has narrowed the declaration.
+  Callers callers = 9;
+}
+// Pairs an admitted contract with its owner, activation generation and caller-specific access information.
+message DiscoveredOperation {
+  // Registered provider identity, not an operation routing prefix.
+  string owner = 1;
+  // Activation generation pinned by this discovered entry; a handle must not follow a replacement activation.
+  uint64 generation = 2;
+  DiscoveredContract contract = 3;
+  repeated Grant grants = 4;
+  // Whether admission also depends on request-specific resource grants.
+  bool conditional_access = 5;
+  // Whether this discovery exposes an available gRPC projection.
+  bool grpc_available = 6;
+}
+// === Enums === //
+
+// === Enums === //
+
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  // Process-local only; invalid in any wire declarations.
+  VISIBILITY_PRIVATE = 1;
+  // Everyone connected: other plugins and the host's clients.
+  VISIBILITY_PUBLIC = 2;
+  // The declaring plugin and its host, through the carrier only.
+  VISIBILITY_PROTECTED = 3;
+}

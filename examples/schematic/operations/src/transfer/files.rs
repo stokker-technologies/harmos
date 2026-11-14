@@ -53,8 +53,8 @@ impl ProtobufOperation for FilesHash {
     type Request = FilesHashRequest;
     type Response = FilesHashResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Files/Hash";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Files", "Hash"));
+    const ID: &'static str = "schematic.host.v1.Files/Hash";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Files", "Hash"));
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
@@ -92,8 +92,8 @@ impl ProtobufOperation for FilesRead {
     type Request = FilesReadRequest;
     type Response = FilesReadResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Files/Read";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Files", "Read"));
+    const ID: &'static str = "schematic.host.v1.Files/Read";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Files", "Read"));
     const POLICY: OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;

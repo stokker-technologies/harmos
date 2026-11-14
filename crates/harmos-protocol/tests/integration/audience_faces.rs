@@ -7,7 +7,7 @@
  * ***
  */
 
-// Face-Local Wrappers and Deliberate Stream Cardinality.
+// Executor Declarations And Caller Projections.
 
 /* === Modules === */
 
@@ -44,50 +44,58 @@ use prost_reflect::ReflectMessage;
 /* === Tests === */
 
 #[test]
-fn service_packages_separate_audiences_and_only_declared_methods_stream() {
-    let descriptor = harmos_protocol::plugin::host::TimeGetRequest::default().descriptor();
+fn executors_and_callers_project_host_operations_for_each_audience() {
+    use harmos_protocol::host::TimeGetRequest;
+    use harmos_protocol::model::Callers;
+    use harmos_protocol::schema::{Executor, method_callers, operation_identity};
+    let descriptor = TimeGetRequest::default().descriptor();
     let pool = descriptor.parent_pool();
-    let mut instances = Vec::new();
+
+    // Project Every Host Method From Its Mandatory Option.
+    let mut clients = std::collections::BTreeSet::new();
+    let mut plugins = std::collections::BTreeSet::new();
     for service in pool.services() {
-        let face = if service.full_name().starts_with("harmos.plugin.v1.") {
-            "plugin"
-        } else if service.full_name().starts_with("harmos.plugin.host.v1.") {
-            "context"
-        } else {
-            assert!(service.full_name().starts_with("harmos.client.v1."), "{}", service.full_name());
-            "client"
-        };
-        assert_ne!(service.name(), "Plugin");
-        assert_eq!(service.parent_file().services().len(), 1);
-        if face == "plugin" {
-            instances.push(service.full_name().to_owned());
+        let id = format!("{}/{}", service.full_name(), service.methods().next().unwrap().name());
+        let executor = operation_identity(&id).unwrap();
+        if executor == Executor::Plugin {
+            continue;
         }
         for method in service.methods() {
-            assert_eq!(method.input().name(), format!("{}{}Request", service.name(), method.name()));
-            assert_eq!(method.output().name(), format!("{}{}Response", service.name(), method.name()));
-            assert_eq!(method.input().parent_file().package_name(), service.parent_file().package_name());
-            assert_eq!(method.output().parent_file().package_name(), service.parent_file().package_name());
-            let carrier = face == "plugin" && matches!(method.name(), "Invoke" | "Samples");
-            assert_eq!(method.is_client_streaming(), carrier);
-            assert_eq!(method.is_server_streaming(), carrier || method.name().starts_with("Watch"));
-            assert!(!method.name().starts_with("Run"));
+            let callers = method_callers(&method).unwrap();
+            let id = format!("{}/{}", service.full_name(), method.name());
+            if executor == Executor::Host && matches!(callers, Callers::Clients | Callers::All) {
+                clients.insert(id.clone());
+            }
+            if executor == Executor::Host && matches!(callers, Callers::Plugins | Callers::All) {
+                plugins.insert(id);
+            }
         }
     }
-    assert_eq!(instances, ["harmos.plugin.v1.Instance"]);
-    assert!(pool.files().filter(|file| file.package_name() == "harmos.v1").all(|file| file.services().len() == 0));
-    for file in pool.files().filter(|file| file.package_name().starts_with("harmos.")) {
-        let package_path = file.package_name().replace('.', "/");
-        assert!(file.name().starts_with(&format!("{package_path}/")), "{}", file.name());
-        assert!(file.messages().all(|message| message.name() != "CatalogEntriesListResponse"));
-        assert!(file.services().all(|service| !matches!(service.name(), "Storage" | "CatalogEntries" | "HostValues" | "Samples")));
+
+    // Both Callers Resolve The Same Declaration And Payload Graph.
+    for id in ["harmos.host.v1.Time/Get", "harmos.host.v1.Operations/List", "harmos.host.v1.plugins.Settings/List"] {
+        assert!(clients.contains(id));
+        assert!(plugins.contains(id));
     }
-    for name in ["Operations", "Invocations", "Time"] {
-        let client = pool.get_service_by_name(&format!("harmos.client.v1.{name}")).unwrap();
-        let context = pool.get_service_by_name(&format!("harmos.plugin.host.v1.{name}")).unwrap();
-        for child in context.methods() {
-            let parent = client.methods().find(|method| method.name() == child.name()).unwrap();
-            assert_ne!(parent.input().full_name(), child.input().full_name());
-            assert_ne!(parent.output().full_name(), child.output().full_name());
-        }
-    }
+    assert!(clients.contains("harmos.host.v1.Invocations/Create"));
+    assert!(!plugins.contains("harmos.host.v1.Invocations/Create"));
+    assert!(!plugins.contains("harmos.host.v1.plugins.Settings/Set"));
+    assert!(pool.files().filter(|file| file.package_name() == "harmos.model.v1").all(|file| file.services().len() == 0));
+
+    // Runtime Projections Restore Caller Options After Data-Only Descriptor Assembly.
+    use prost::Message;
+    let raw = pool.encode_to_vec();
+    let types = prost_types::FileDescriptorSet::decode(raw.as_slice()).unwrap();
+    let callers = pool
+        .services()
+        .filter(|service| service.package_name().split('.').any(|segment| segment == "host"))
+        .flat_map(|service| service.methods().collect::<Vec<_>>())
+        .map(|method| (format!("{}/{}", method.parent_service().full_name(), method.name()), method_callers(&method).unwrap()))
+        .collect();
+    let retained = harmos_protocol::schema::with_method_callers(types, &callers).unwrap();
+    let service = retained.get_service_by_name("harmos.host.v1.Time").unwrap();
+    assert_eq!(method_callers(&service.methods().next().unwrap()).unwrap(), Callers::All);
+    let service = retained.get_service_by_name("harmos.host.v1.Invocations").unwrap();
+    let create = service.methods().find(|method| method.name() == "Create").unwrap();
+    assert_eq!(method_callers(&create).unwrap(), Callers::Clients);
 }

@@ -16,6 +16,7 @@
 /* === Imports === */
 
 use super::{Adapter, Registration};
+use crate::Error;
 use prost::Message as _;
 use std::cell::RefCell;
 
@@ -24,6 +25,10 @@ use std::cell::RefCell;
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::plugin::Response;
+use harmos_protocol::plugin::response;
 
 /* === Constants === */
 
@@ -58,9 +63,9 @@ impl Guest for Component {
     async fn operate(owner: String, command: Vec<u8>) -> Vec<u8> {
         match adapter() {
             Ok(adapter) => adapter.operate(&owner, &command).await,
-            Err(message) => harmos_protocol::v1::Response {
-                result: Some(harmos_protocol::v1::response::Result::Failure(harmos_protocol::v1::Failure {
-                    classification: harmos_protocol::v1::Classification::Permanent as i32,
+            Err(message) => Response {
+                result: Some(response::Result::Failure(Failure {
+                    classification: Classification::Permanent as i32,
                     code: "registration_failed".into(),
                     message,
                     ..Default::default()
@@ -85,9 +90,7 @@ fn adapter() -> Result<Adapter, String> {
         let adapter = Adapter::new(registration, |request| {
             Box::pin(async move {
                 harmos::guest::operation_context::child(request).await.map_err(|bytes| {
-                    harmos_protocol::v1::Failure::decode(bytes.as_slice())
-                        .map(crate::Error::from)
-                        .unwrap_or_else(|error| crate::Error::Invalid(error.to_string()))
+                    Failure::decode(bytes.as_slice()).map(Error::from).unwrap_or_else(|error| Error::Invalid(error.to_string()))
                 })
             })
         })

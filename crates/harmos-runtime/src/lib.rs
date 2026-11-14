@@ -60,7 +60,7 @@ pub use harmos_operations::{
 pub use harmos_operations::{Failure, StreamSpec};
 pub use operations::refusal::Refusal;
 pub use operations::{Catalog, CatalogDescription, Invocation, InvocationExt, Lane, Running};
-pub use runtime::{Handle, Runtime, StartupError};
+pub use runtime::{AssemblyError, Handle, Runtime, StartupError};
 pub use services::{ServiceContext, ServiceManager};
 
 // Contract Namespaces The Host Does Not Extend, Re-Exported Whole.

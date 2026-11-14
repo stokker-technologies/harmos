@@ -92,7 +92,7 @@ impl Fixture {
         let request = harmos_runtime::operations::Response::new(request);
         let request = tonic::Request::new(request);
 
-        let path = tonic::codegen::http::uri::PathAndQuery::from_static("/benchmark.v1.Commands/Echo");
+        let path = tonic::codegen::http::uri::PathAndQuery::from_static("/benchmark.host.v1.Commands/Echo");
         self.client.unary(request, path, codec).await.unwrap().into_inner()
     }
 

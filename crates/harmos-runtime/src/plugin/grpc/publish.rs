@@ -15,6 +15,11 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::InstanceSamplesRequest;
+use harmos_protocol::plugin::InstanceSamplesResponse;
+use harmos_protocol::plugin::SamplesSelection;
+use harmos_protocol::plugin::instance_samples_request::Frame;
+
 // Standard Library Imports
 use std::{
     collections::BTreeSet,
@@ -28,7 +33,7 @@ use futures_util::stream;
 use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
 
 // Local Imports
-use super::{Activation, Error, PlacementSettings, v1};
+use super::{Activation, Error, PlacementSettings, model};
 use crate::streams::protobuf::Row;
 use crate::{
     Application,
@@ -56,15 +61,15 @@ pub(super) struct PreparedPublications {
 }
 struct PreparedDemand {
     id: String,
-    output: mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
-    input: tonic::Streaming<harmos_protocol::plugin::InstanceSamplesResponse>,
+    output: mpsc::Sender<InstanceSamplesRequest>,
+    input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
     interval: Option<Duration>,
 }
 
 struct Demand {
-    output: mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>,
-    input: tonic::Streaming<harmos_protocol::plugin::InstanceSamplesResponse>,
+    output: mpsc::Sender<InstanceSamplesRequest>,
+    input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
     interval: Option<Duration>,
     lease: Arc<StreamWriter>,
@@ -116,8 +121,8 @@ impl Publications {
         for (id, row, interval) in rows {
             let (output, input) = mpsc::channel(1);
             output
-                .send(harmos_protocol::plugin::InstanceSamplesRequest {
-                    frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(v1::SamplesSelection {
+                .send(InstanceSamplesRequest {
+                    frame: Some(Frame::Open(SamplesSelection {
                         stream: id.clone(),
                         scope: operations.call_context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
                     })),
@@ -208,7 +213,7 @@ fn invalid(error: impl std::fmt::Display) -> Error {
     Error::Invalid(error.to_string())
 }
 
-fn interval(stream: &v1::StreamDeclaration, settings: &v1::SettingValues) -> Result<Option<Duration>, Error> {
+fn interval(stream: &model::StreamDeclaration, settings: &model::SettingValues) -> Result<Option<Duration>, Error> {
     let mut interval = stream.interval;
     if !stream.interval_setting.is_empty() {
         let value = settings
@@ -216,7 +221,7 @@ fn interval(stream: &v1::StreamDeclaration, settings: &v1::SettingValues) -> Res
             .get(&stream.interval_setting)
             .and_then(|value| value.value.as_ref())
             .ok_or_else(|| invalid("Read Stream Interval: setting is not declared"))?;
-        let v1::setting_value::Value::Duration(value) = value else {
+        let model::setting_value::Value::Duration(value) = value else {
             return Err(invalid("Read Stream Interval: setting must be a duration"));
         };
         interval = Some(*value);

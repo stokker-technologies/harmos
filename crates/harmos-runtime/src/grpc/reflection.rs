@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Callers;
+
 // Standard Library Imports
 use std::{collections::BTreeSet, pin::Pin};
 
@@ -78,6 +80,9 @@ impl Reflection {
         let methods = self.operations.grpc_methods();
         let mut groups = std::collections::BTreeMap::<_, Vec<_>>::new();
         for method in &methods {
+            if !matches!(method.callers, Callers::Clients | Callers::All) {
+                continue;
+            }
             if let Some(binding) = method.contract.grpc() {
                 groups
                     .entry((binding.package.to_string(), binding.service.to_string()))
@@ -98,8 +103,17 @@ impl Reflection {
                 }
             }
         }
-        let mut pool = DescriptorPool::from_file_descriptor_set(prost_types::FileDescriptorSet { file: files.into_values().collect() })
-            .map_err(|_| Status::internal("operation descriptors are invalid"))?;
+        let callers = methods
+            .iter()
+            .filter(|method| matches!(method.callers, Callers::Clients | Callers::All))
+            .filter_map(|method| {
+                let binding = method.contract.grpc()?;
+                Some((format!("{}.{}/{}", binding.package, binding.service, binding.method), method.callers))
+            })
+            .collect();
+        let mut pool =
+            harmos_protocol::schema::with_method_callers(prost_types::FileDescriptorSet { file: files.into_values().collect() }, &callers)
+                .map_err(|_| Status::internal("operation descriptors are invalid"))?;
         pool.decode_file_descriptor_set(pb::FILE_DESCRIPTOR_SET).map_err(|_| Status::internal("reflection descriptors are invalid"))?;
         Ok(pool)
     }

@@ -17,6 +17,8 @@ pub use harmos_protocol::policy::{Backoff, Jitter, RetryPolicy};
 
 /* === Imports === */
 
+use harmos_protocol::model::StorageTransferSettings;
+
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -51,7 +53,7 @@ pub(super) const SCAN_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StorageSettings {
-    pub transfer: harmos_protocol::v1::StorageTransferSettings,
+    pub transfer: StorageTransferSettings,
     pub policy: StoragePolicy,
     pub request: StorageRequestSettings,
     pub response: StorageResponseSettings,

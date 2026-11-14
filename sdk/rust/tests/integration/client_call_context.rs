@@ -30,7 +30,7 @@ use tonic::{Request, Response, Status};
 // Local Imports
 use super::{
     client::{JobsProgressWatchOptions, Root},
-    v1,
+    host as app_host,
 };
 use harmos::client::CallOptions;
 use harmos::{Client, ClientSettings};
@@ -45,7 +45,7 @@ use harmos::{Client, ClientSettings};
 
 struct Endpoint(std::sync::Mutex<Option<oneshot::Sender<()>>>);
 struct Watching {
-    opening: Option<v1::jobs::ProgressWatchResponse>,
+    opening: Option<app_host::jobs::ProgressWatchResponse>,
     cancelled: Option<oneshot::Sender<()>>,
 }
 
@@ -56,22 +56,22 @@ struct Watching {
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl v1::jobs::progress_server::Progress for Endpoint {
+impl app_host::jobs::progress_server::Progress for Endpoint {
     type WatchStream = Watching;
-    async fn watch(&self, request: Request<v1::jobs::ProgressWatchRequest>) -> Result<Response<Watching>, Status> {
+    async fn watch(&self, request: Request<app_host::jobs::ProgressWatchRequest>) -> Result<Response<Watching>, Status> {
         let metadata = request.metadata();
         let token = metadata.get("authorization").and_then(|value| value.to_str().ok());
         if token != Some("Bearer fixture") || metadata.get("grpc-timeout").is_none() {
             return Err(Status::unauthenticated("Watch Progress: metadata or deadline is missing"));
         }
         Ok(Response::new(Watching {
-            opening: Some(v1::jobs::ProgressWatchResponse { value: request.into_inner().value }),
+            opening: Some(app_host::jobs::ProgressWatchResponse { value: request.into_inner().value }),
             cancelled: self.0.lock().unwrap().take(),
         }))
     }
 }
 impl Stream for Watching {
-    type Item = Result<v1::jobs::ProgressWatchResponse, Status>;
+    type Item = Result<app_host::jobs::ProgressWatchResponse, Status>;
     fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.opening.take() {
             Some(value) => Poll::Ready(Some(Ok(value))),
@@ -104,7 +104,7 @@ async fn one_call_preserves_metadata_deadline_override_and_cancellation() {
     let (stop, stopped) = oneshot::channel();
     let server = tokio::spawn(
         tonic::transport::Server::builder()
-            .add_service(v1::jobs::progress_server::ProgressServer::new(Endpoint(std::sync::Mutex::new(Some(cancel)))))
+            .add_service(app_host::jobs::progress_server::ProgressServer::new(Endpoint(std::sync::Mutex::new(Some(cancel)))))
             .serve_with_incoming_shutdown(incoming, async {
                 let _ = stopped.await;
             }),

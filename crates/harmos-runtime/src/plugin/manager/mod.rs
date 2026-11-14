@@ -29,13 +29,27 @@ pub use persistence::catalog;
 /* === Imports === */
 
 #[cfg(feature = "plugin-guest")]
-use harmos_protocol::client::{PluginDescription, PluginEntry, PluginState};
+use harmos_protocol::host::{PluginEntry, PluginState};
 
-use harmos_protocol::client::{
-    PluginsCreateRequest, PluginsCreateResponse, PluginsDeleteRequest, PluginsDeleteResponse, PluginsGetRequest, PluginsGetResponse,
-    PluginsListRequest, PluginsListResponse, PluginsReplaceRequest, PluginsReplaceResponse, PluginsRestartRequest, PluginsRestartResponse,
-    PluginsSetRequest, PluginsSetResponse, PluginsWatchRequest, PluginsWatchResponse,
-};
+#[cfg(feature = "plugin-guest")]
+use harmos_protocol::host::PluginDescription;
+
+use harmos_protocol::host::PluginsCreateRequest;
+use harmos_protocol::host::PluginsCreateResponse;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsDeleteResponse;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsGetResponse;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsListResponse;
+use harmos_protocol::host::PluginsReplaceRequest;
+use harmos_protocol::host::PluginsReplaceResponse;
+use harmos_protocol::host::PluginsRestartRequest;
+use harmos_protocol::host::PluginsRestartResponse;
+use harmos_protocol::host::PluginsSetRequest;
+use harmos_protocol::host::PluginsSetResponse;
+use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::PluginsWatchResponse;
 
 // Standard Library Imports
 use std::sync::{Arc, OnceLock};
@@ -45,7 +59,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
-use harmos_protocol::client as wire;
+use harmos_protocol::host as wire;
 
 /* === Constants === */
 

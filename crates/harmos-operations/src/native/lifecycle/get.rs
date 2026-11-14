@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsGetRequest;
+use harmos_protocol::host::InvocationsGetResponse;
+
 use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
@@ -35,11 +38,11 @@ pub struct Get;
 /* === Implementations === */
 
 impl ProtobufOperation for Get {
-    type Request = harmos_protocol::client::InvocationsGetRequest;
-    type Response = harmos_protocol::client::InvocationsGetResponse;
+    type Request = InvocationsGetRequest;
+    type Response = InvocationsGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.Invocations/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Invocations", "Get"));
+    const ID: &'static str = "harmos.host.v1.Invocations/Get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
@@ -51,15 +54,15 @@ impl ProtobufOperation for Get {
             .owned(Id::new(request.instance))
             .ok_or_else(|| ServingError::Native(std::sync::Arc::new(Error::UnknownInstance(request.instance))))?;
         let _ = output;
-        Ok(harmos_protocol::client::InvocationsGetResponse {
+        Ok(InvocationsGetResponse {
             invocation: Some(super::state(instance.status())),
         })
     }
 }
 
 impl Get {
-    pub fn of(instance: Id) -> harmos_protocol::client::InvocationsGetRequest {
-        harmos_protocol::client::InvocationsGetRequest { instance: instance.value() }
+    pub fn of(instance: Id) -> InvocationsGetRequest {
+        InvocationsGetRequest { instance: instance.value() }
     }
 }
 

@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::StatusGetResponse;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -38,11 +41,11 @@ pub struct Get;
 /* === Implementations === */
 
 impl ProtobufOperation for Get {
-    type Request = harmos_protocol::client::StatusGetRequest;
-    type Response = harmos_protocol::client::StatusGetResponse;
+    type Request = StatusGetRequest;
+    type Response = StatusGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.client.v1.Status/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Status", "Get"));
+    const ID: &'static str = "harmos.host.v1.Status/Get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Status", "Get"));
     const POLICY: crate::OperationPolicy = super::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];

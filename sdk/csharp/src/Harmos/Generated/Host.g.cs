@@ -7,6 +7,22 @@ using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
+using InvocationsGetRequest = global::Harmos.Clients.InvocationsGetRequest;
+using InvocationsGetResponse = global::Harmos.Clients.InvocationsGetResponse;
+using InvocationsCancelRequest = global::Harmos.Clients.InvocationsCancelRequest;
+using InvocationsCancelResponse = global::Harmos.Clients.InvocationsCancelResponse;
+using InvocationsWatchRequest = global::Harmos.Clients.InvocationsWatchRequest;
+using InvocationsWatchResponse = global::Harmos.Clients.InvocationsWatchResponse;
+using OperationsListRequest = global::Harmos.Clients.OperationsListRequest;
+using OperationsListResponse = global::Harmos.Clients.OperationsListResponse;
+using OperationsGetRequest = global::Harmos.Clients.OperationsGetRequest;
+using OperationsGetResponse = global::Harmos.Clients.OperationsGetResponse;
+using SettingsListRequest = global::Harmos.Clients.SettingsListRequest;
+using SettingsListResponse = global::Harmos.Clients.SettingsListResponse;
+using TimeGetRequest = global::Harmos.Clients.TimeGetRequest;
+using TimeGetResponse = global::Harmos.Clients.TimeGetResponse;
+using TimeSleepRequest = global::Harmos.Clients.TimeSleepRequest;
+using TimeSleepResponse = global::Harmos.Clients.TimeSleepResponse;
 namespace Harmos.Plugins;
 public enum HostOperation
 {
@@ -15,20 +31,20 @@ public enum HostOperation
   InvocationsWatch,
   OperationsList,
   OperationsGet,
-  SettingsList,
+  PluginsSettingsList,
   TimeGet,
   TimeSleep,
 }
 internal static class HostContracts
 {
-  internal static readonly Operation<InvocationsGetRequest, InvocationsGetResponse> InvocationsGet = new("harmos.plugin.host.v1.Invocations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsCancelRequest, InvocationsCancelResponse> InvocationsCancel = new("harmos.plugin.host.v1.Invocations/Cancel", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsWatchRequest, InvocationsWatchResponse> InvocationsWatch = new("harmos.plugin.host.v1.Invocations/Watch", Visibility.Public, watch: true);
-  internal static readonly Operation<OperationsListRequest, OperationsListResponse> OperationsList = new("harmos.plugin.host.v1.Operations/List", Visibility.Public, watch: false);
-  internal static readonly Operation<OperationsGetRequest, OperationsGetResponse> OperationsGet = new("harmos.plugin.host.v1.Operations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<SettingsListRequest, SettingsListResponse> SettingsList = new("harmos.plugin.host.v1.Settings/List", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeGetRequest, TimeGetResponse> TimeGet = new("harmos.plugin.host.v1.Time/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeSleepRequest, TimeSleepResponse> TimeSleep = new("harmos.plugin.host.v1.Time/Sleep", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsGetRequest, InvocationsGetResponse> InvocationsGet = new("harmos.host.v1.Invocations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsCancelRequest, InvocationsCancelResponse> InvocationsCancel = new("harmos.host.v1.Invocations/Cancel", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsWatchRequest, InvocationsWatchResponse> InvocationsWatch = new("harmos.host.v1.Invocations/Watch", Visibility.Public, watch: true);
+  internal static readonly Operation<OperationsListRequest, OperationsListResponse> OperationsList = new("harmos.host.v1.Operations/List", Visibility.Public, watch: false);
+  internal static readonly Operation<OperationsGetRequest, OperationsGetResponse> OperationsGet = new("harmos.host.v1.Operations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<SettingsListRequest, SettingsListResponse> PluginsSettingsList = new("harmos.host.v1.plugins.Settings/List", Visibility.Public, watch: false);
+  internal static readonly Operation<TimeGetRequest, TimeGetResponse> TimeGet = new("harmos.host.v1.Time/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<TimeSleepRequest, TimeSleepResponse> TimeSleep = new("harmos.host.v1.Time/Sleep", Visibility.Public, watch: false);
 }
 public static class HostRequirements
 {
@@ -39,7 +55,7 @@ public static class HostRequirements
     HostOperation.InvocationsWatch => plugin.Requires(HostContracts.InvocationsWatch),
     HostOperation.OperationsList => plugin.Requires(HostContracts.OperationsList),
     HostOperation.OperationsGet => plugin.Requires(HostContracts.OperationsGet),
-    HostOperation.SettingsList => plugin.Requires(HostContracts.SettingsList),
+    HostOperation.PluginsSettingsList => plugin.Requires(HostContracts.PluginsSettingsList),
     HostOperation.TimeGet => plugin.Requires(HostContracts.TimeGet),
     HostOperation.TimeSleep => plugin.Requires(HostContracts.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")
@@ -49,7 +65,7 @@ public sealed class HostRoot(Context context)
 {
   public HostInvocationsResource Invocations { get; } = new(context);
   public HostOperationsResource Operations { get; } = new(context);
-  public HostSettingsResource Settings { get; } = new(context);
+  public HostPluginsResource Plugins { get; } = new(context);
   public HostTimeResource Time { get; } = new(context);
 }
 public sealed class HostInvocationsResource(Context context)
@@ -105,15 +121,20 @@ public sealed class HostOperationsResource(Context context)
     return response.Operation ?? throw new InvalidOperationException("Read OperationsGet: Missing Payload");
   }
 }
-public sealed class HostSettingsResource(Context context)
+public sealed class HostPluginsResource(Context context)
 {
-  public async Task<SettingsListResponse> List(ReadCut? at = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public HostPluginsSettingsResource Settings { get; } = new(context);
+}
+public sealed class HostPluginsSettingsResource(Context context)
+{
+  public async Task<SettingsListResponse> List(string? name = null, ReadCut? at = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
     var request = new SettingsListRequest
     {
-      At = at,
     };
-    var response = await context.CallAsync(HostContracts.SettingsList, request, policy, cancellationToken);
+    if (name is not null) request.Name = name;
+    if (at is not null) request.At = at;
+    var response = await context.CallAsync(HostContracts.PluginsSettingsList, request, policy, cancellationToken);
     return response;
   }
 }

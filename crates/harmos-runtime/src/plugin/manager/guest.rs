@@ -15,14 +15,19 @@
 
 /* === Imports === */
 
-use harmos_protocol::client::{PluginDescription, PluginEntry, PluginGuest, PluginPlacement, PluginState, PluginValue};
+use harmos_protocol::host::PluginDescription;
+use harmos_protocol::host::PluginEntry;
+use harmos_protocol::host::PluginGuest;
+use harmos_protocol::host::PluginPlacement;
+use harmos_protocol::host::PluginState;
+use harmos_protocol::host::PluginValue;
 
 use super::{
     Error,
     actor::{Actor, changed, is_guest, unavailable},
     persistence::{SavedEntry, problem},
 };
-use harmos_protocol::client as wire;
+use harmos_protocol::host as wire;
 use prost::Message;
 use std::collections::BTreeMap;
 

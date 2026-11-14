@@ -16,7 +16,7 @@
 // Standard Library Imports
 
 // Third Party Imports
-use harmos_protocol::client::status as wire;
+use harmos_protocol::host::status as wire;
 use tracing_subscriber::prelude::*;
 
 // Local Imports

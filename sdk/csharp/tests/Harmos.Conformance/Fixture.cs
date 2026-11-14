@@ -9,12 +9,15 @@ using System.Threading;
 using System;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Graph = Harmos.Conformance.Graph;
 using SdkContext = global::Harmos.Plugins.Context;
 using SdkPlugin = global::Harmos.Plugins.Plugin;
 using Value = Harmos.Conformance.Value;
+using InvocationsCreateRequest = Harmos.Conformance.Wire.InvocationsCreateRequest;
+using InvocationsCreateResponse = Harmos.Conformance.Wire.InvocationsCreateResponse;
 
 namespace Harmos.Conformance;
 
@@ -29,10 +32,11 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
   private readonly Operation<Value, Value> hostPending = new("conformance.host.pending", Visibility.Public);
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
+  private readonly Operation<InvocationsCreateRequest, InvocationsCreateResponse> createInvocation = new("harmos.host.v1.Invocations/Create", Visibility.Public);
 
   public SdkPlugin Build() => new SdkPlugin("conformance", "1.0.0")
-      .Message<Harmos.Conformance.PayloadOnly>()
-      .Message<Harmos.Conformance.PayloadOnly>()
+      .Message<PayloadOnly>()
+      .Message<PayloadOnly>()
       .Operation(local, Local)
       .Operation(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall)
       .Operation(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo)
@@ -55,6 +59,8 @@ public sealed class Fixture
       .Operation(new Operation<Value, Value>("conformance.peer_call", Visibility.Public), PeerCall)
       .Operation(new Operation<Value, Value>("conformance.settings_read", Visibility.Public), ReadSettings)
       .Operation(new Operation<Value, Value>("conformance.discover", Visibility.Public), Discover)
+      .Operation(new Operation<Value, Value>("conformance.caller_refusal", Visibility.Public), CallerRefusal)
+      .Requires(createInvocation)
       .Requires(peerPublic).Requires(peerProtected).Requires(peerLocal).Requires(ownProtected)
       .Requires(hostWatch)
       .Requires(hostEcho)
@@ -63,7 +69,7 @@ public sealed class Fixture
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
       .Requires(HostOperation.TimeSleep)
       .Requires(HostOperation.TimeGet)
-      .Requires(HostOperation.SettingsList)
+      .Requires(HostOperation.PluginsSettingsList)
       .Requires(HostOperation.OperationsList)
       .Requires(HostOperation.OperationsGet)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
@@ -74,6 +80,7 @@ public sealed class Fixture
       .Observer("conformance.tick_failure", new Duration { Seconds = 1 }, TickFailure)
       .Observer("conformance.tick_watch", new Duration { Seconds = 1 }, context => Watch(context, new Value { Value_ = ByteString.CopyFromUtf8("fixture") }))
       .Observer("conformance.tick_cancel", new Duration { Seconds = 1 }, TickCancel)
+      .Observer("conformance.tick_caller_refusal", new Duration { Seconds = 1 }, context => CallerRefusal(context, new Value()))
       .Section(new Graph { Interval = new Duration { Seconds = 2 } })
       .Setting("count", new SettingValue { Integer = 3 }, "count", "Conformance count")
       .Setting("enabled", new SettingValue { Flag = false }, "enabled", "Conformance enabled")
@@ -81,9 +88,23 @@ public sealed class Fixture
       .Setting("interval", new SettingValue { Duration = new Duration { Seconds = 2 } }, "interval", "Conformance interval")
       .Setting("label", new SettingValue { Text = "default" }, "label", "Conformance label");
 
+  private async Task<Value> CallerRefusal(SdkContext context, Value request)
+  {
+    try
+    {
+      var invocation = InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
+      await context.CallAsync(createInvocation, invocation);
+    }
+    catch (PluginFailureException error)
+    {
+      return new Value { Value_ = error.Failure.ToByteString() };
+    }
+    throw new InvalidOperationException("Create Invocation: Client-Only Operation Was Admitted");
+  }
+
   private static async Task<Value> ReadSettings(SdkContext context, Value request)
   {
-    var settings = await context.Host.Settings.List();
+    var settings = await context.Host.Plugins.Settings.List();
     return new Value { Value_ = settings.Value.ToByteString() };
   }
 
@@ -99,7 +120,7 @@ public sealed class Fixture
   {
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
-    var settings = await context.Host.Settings.List();
+    var settings = await context.Host.Plugins.Settings.List();
     using var value = new MemoryStream();
     foreach (var reply in new IMessage[] { echo, clock, settings })
     {

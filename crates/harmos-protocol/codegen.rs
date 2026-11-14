@@ -25,6 +25,7 @@ use std::{
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::host::InvocationsCreateRequest;
 
 /* === Constants === */
 
@@ -49,11 +50,26 @@ pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> 
     config.out_dir(output);
     config.skip_source_info();
     config.file_descriptor_set_path(output.join("conformance-descriptors.bin"));
-    config.compile_protos(&[proto.join("harmos/conformance/v1/fixture.proto")], &[proto, includes.into()])?;
+    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    config.compile_protos(
+        &[proto.join("conformance/model/v1/fixture.proto"), proto.join("conformance/host/v1/caller_probe.proto")],
+        &[proto, library, includes.into()],
+    )?;
     let descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("conformance-descriptors.bin"))?.as_slice())?;
+    let request = InvocationsCreateRequest {
+        operation: "conformance.host.v1.CallerProbe/Get".into(),
+        fingerprint: harmos_protocol::schema::fingerprint(
+            "conformance.host.v1.CallerProbe/Get",
+            &descriptors,
+            "conformance.host.v1.CallerProbeGetRequest",
+            "conformance.host.v1.CallerProbeGetResponse",
+        )?,
+        payload: Vec::new(),
+    };
+    std::fs::write(output.join("caller-request.bin"), prost::Message::encode_to_vec(&request))?;
     let descriptors =
-        harmos_protocol::schema::operation_types(&descriptors, &["harmos.conformance.v1.Graph", "harmos.conformance.v1.PayloadOnly"])?;
+        harmos_protocol::schema::operation_types(&descriptors, &["conformance.model.v1.Graph", "conformance.model.v1.PayloadOnly"])?;
     std::fs::write(output.join("conformance-descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
     Ok(())
 }
@@ -96,8 +112,8 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
     for (package, files) in &packages {
         let mut config = prost_build::Config::new();
         config.protoc_executable(compiler);
-        config.type_attribute(".harmos.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
-        config.type_attribute(".harmos.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.model.v1.Protobuf", "#[derive(serde::Serialize, serde::Deserialize)]");
+        config.type_attribute(".harmos.model.v1.StorageTransferSettings", "#[derive(serde::Serialize, serde::Deserialize)]");
         for external in packages.keys().filter(|external| *external != package) {
             let module = module_path(external)?;
             if package.starts_with(&format!("{external}.")) {
@@ -116,7 +132,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
                 config.extern_path(format!(".{external}"), format!("crate::{module}"));
             }
         }
-        let services = !package.starts_with("harmos.plugin.host.");
+        let services = package.starts_with("harmos.host.") || package.starts_with("harmos.plugin.");
         let package_output = output.join(package);
         std::fs::create_dir_all(&package_output)?;
         tonic_prost_build::configure()
@@ -139,18 +155,17 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
             let parent = module.rsplit("::").next().ok_or("missing parent module")?;
             source.push_str(&format!("\npub mod {name} {{ include!(\"{parent}/{name}.rs\"); }}\n"));
         }
-        if package == "harmos.plugin.v1" {
-            source.push_str("\npub mod host { include!(\"plugin/host.rs\"); }\n");
-        }
         std::fs::write(path, source)?;
     }
     // Source Locations Belong to Authoring, Not Runtime Descriptor Validation.
     for file in &mut descriptors.file {
         file.source_code_info = None;
     }
-    std::fs::write(output.join("descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
+    // Keep Protoc's Bytes: prost_types Would Discard Custom Method Options.
+    // Protoc Omits Source Info Unless Explicitly Requested.
     // Preproject Guest Graphs During Generation, Before Fuel-Bounded Registration.
-    let guest_types = harmos_protocol::schema::operation_types(&descriptors, &["harmos.v1.GuestInitialize", "harmos.v1.GuestShutdown"])?;
+    let guest_types =
+        harmos_protocol::schema::operation_types(&descriptors, &["harmos.plugin.v1.GuestInitialize", "harmos.plugin.v1.GuestShutdown"])?;
     std::fs::write(output.join("guest-descriptors.bin"), prost::Message::encode_to_vec(&guest_types))?;
     let options = prost_types::FileDescriptorSet {
         file: prost_reflect::DescriptorPool::global().files().map(|file| file.file_descriptor_proto().clone()).collect(),
@@ -179,13 +194,11 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         }
     }
     std::fs::write(output.join("message-options-descriptors.bin"), prost::Message::encode_to_vec(&options))?;
-    for (package, name) in [("harmos.plugin.host.v1", "clock-descriptors.bin"), ("harmos.client.v1", "client-clock-descriptors.bin")] {
-        let roots: Vec<_> =
-            ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("{package}.{name}")).into();
-        let names: Vec<_> = roots.iter().map(String::as_str).collect();
-        let types = harmos_protocol::schema::operation_types(&descriptors, &names)?;
-        std::fs::write(output.join(name), prost::Message::encode_to_vec(&types))?;
-    }
+    let clock_roots =
+        ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("harmos.host.v1.{name}"));
+    let clock_names: Vec<_> = clock_roots.iter().map(String::as_str).collect();
+    let clock_types = harmos_protocol::schema::operation_types(&descriptors, &clock_names)?;
+    std::fs::write(output.join("clock-descriptors.bin"), prost::Message::encode_to_vec(&clock_types))?;
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
     std::fs::create_dir_all(&sdk_types)?;
@@ -193,8 +206,8 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         let package = file.package.as_deref().unwrap_or_default();
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("missing message name")?;
-            if package != "harmos.plugin.host.v1"
-                && !(package == "harmos.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
+            if !package.starts_with("harmos.host.v1")
+                && !(package == "harmos.model.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
             {
                 continue;
             }
@@ -223,9 +236,7 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
 /* === Private Functions === */
 
 pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
-    for (prefix, root) in
-        [("harmos.plugin.host.v1", "plugin::host"), ("harmos.client.v1", "client"), ("harmos.plugin.v1", "plugin"), ("harmos.v1", "v1")]
-    {
+    for (prefix, root) in [("harmos.host.v1", "host"), ("harmos.plugin.v1", "plugin"), ("harmos.model.v1", "model")] {
         if package == prefix {
             return Ok(root.into());
         }
@@ -241,12 +252,15 @@ pub fn module_path(package: &str) -> Result<String, Box<dyn Error>> {
 /// Generate Independent Library and Product Contracts for SDK Composition Stories.
 pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
     let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files = ["application/v1/jobs.proto", "application/v1/jobs/progress.proto", "application/v1/plugins/annotations.proto"]
-        .map(|file| proto.join(file));
+    let files =
+        ["application/host/v1/jobs.proto", "application/host/v1/jobs/progress.proto", "application/host/v1/plugins/annotations.proto"]
+            .map(|file| proto.join(file));
     let mut config = prost_build::Config::new();
     config.protoc_executable(compiler);
+    config.extern_path(".harmos.model.v1", "::harmos_protocol::model");
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));
-    tonic_prost_build::configure().out_dir(output).compile_with_config(config, &files, &[proto, includes.into()])?;
+    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
+    tonic_prost_build::configure().out_dir(output).compile_with_config(config, &files, &[proto, library, includes.into()])?;
     let descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("client-descriptors.bin"))?.as_slice())?;
     let mut source = String::from(
@@ -254,8 +268,11 @@ pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) 
     );
     for file in &descriptors.file {
         let package = file.package.as_deref().ok_or("fixture package missing")?;
-        let suffix = package.split_once(".v1").ok_or("fixture version missing")?.1.trim_start_matches('.');
-        let module = if suffix.is_empty() { "crate::v1".to_owned() } else { format!("crate::v1::{}", suffix.replace('.', "::")) };
+        let Some(suffix) = package.strip_prefix("application.host.v1") else {
+            continue;
+        };
+        let suffix = suffix.trim_start_matches('.');
+        let module = if suffix.is_empty() { "crate::host".to_owned() } else { format!("crate::host::{}", suffix.replace('.', "::")) };
         for message in &file.message_type {
             let name = message.name.as_deref().ok_or("fixture message missing")?;
             source.push_str(&format!("impl ReflectMessage for {module}::{name} {{ fn descriptor(&self) -> MessageDescriptor {{ pool().get_message_by_name(\"{package}.{name}\").expect(\"generated fixture message\") }} }}\n"));

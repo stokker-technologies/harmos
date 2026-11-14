@@ -23,7 +23,8 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::support;
-use harmos_protocol::{schema, v1};
+use harmos_protocol::model;
+use harmos_protocol::schema;
 
 /* === Constants === */
 
@@ -101,7 +102,7 @@ fn fingerprints_follow_the_message_graph_instead_of_catalog_composition() {
     assert!(schema::message_types(&broken, "fixture.Value").is_err());
 
     // The Catalog Digest Covers Changes And Ignores Its Own Advertised Value
-    let mut catalog = v1::Declarations { types: Some(types), ..Default::default() };
+    let mut catalog = model::Declarations { types: Some(types), ..Default::default() };
     let digest = schema::declarations_digest(&catalog);
     catalog.digest = digest.clone();
     assert_eq!(schema::declarations_digest(&catalog), digest);

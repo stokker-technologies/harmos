@@ -17,7 +17,8 @@
 
 // Local Imports
 use super::support::{self, Remote};
-use harmos_protocol::{schema, v1};
+use harmos_protocol::model;
+use harmos_protocol::schema;
 use harmos_runtime::plugin::grpc::{Error, Placement};
 
 /* === Tests === */
@@ -30,7 +31,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
 
     // Private and Unspecified Visibility Never Enter the Wire Registry.
     let mut catalog = support::catalog();
-    catalog.operations[0].visibility = v1::Visibility::Private as i32;
+    catalog.operations[0].visibility = model::Visibility::Private as i32;
     catalog.digest = schema::declarations_digest(&catalog);
     remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
@@ -38,7 +39,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     assert!(runtime.operations.definition("fixture.echo").is_err());
 
     let mut catalog = support::catalog();
-    catalog.operations[0].visibility = v1::Visibility::Unspecified as i32;
+    catalog.operations[0].visibility = model::Visibility::Unspecified as i32;
     catalog.digest = schema::declarations_digest(&catalog);
     remote.declarations(catalog);
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
@@ -46,7 +47,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     assert!(runtime.operations.definition("fixture.echo").is_err());
 
     // Refuse A Catalog Whose Bytes Do Not Match Its Advertised Digest
-    remote.declarations(v1::Declarations::default());
+    remote.declarations(model::Declarations::default());
     let result = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await;
     assert!(matches!(result, Err(Error::Invalid(_))));
 
@@ -59,12 +60,12 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     assert!(matches!(result, Err(Error::Invalid(_))));
 
     // Refuse A Correctly Hashed Catalog With An Unresolved Operation Schema
-    let mut catalog = v1::Declarations {
-        operations: vec![v1::OperationContract {
+    let mut catalog = model::Declarations {
+        operations: vec![model::OperationContract {
             id: "fixture.echo".into(),
             request: "fixture.Missing".into(),
             response: "fixture.Missing".into(),
-            visibility: v1::Visibility::Public as i32,
+            visibility: model::Visibility::Public as i32,
             ..Default::default()
         }],
         ..Default::default()
@@ -76,7 +77,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
 
     // Refuse An Invalid Cadence Without Leaving Operations Admitted
     let mut catalog = support::catalog();
-    catalog.streams.push(v1::StreamDeclaration {
+    catalog.streams.push(model::StreamDeclaration {
         id: "fixture.ticks".into(),
         row: "fixture.Value".into(),
         interval: Some(prost_types::Duration { seconds: 0, nanos: 0 }),
@@ -90,7 +91,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
 
     // Refuse An Unresolved Interval Setting
     let mut catalog = support::catalog();
-    catalog.streams.push(v1::StreamDeclaration {
+    catalog.streams.push(model::StreamDeclaration {
         id: "fixture.ticks".into(),
         row: "fixture.Value".into(),
         interval_setting: "fixture.Settings.interval".into(),

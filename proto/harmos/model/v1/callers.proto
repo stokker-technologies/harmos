@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Callers
+//
+// Operation Callers
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "google/protobuf/descriptor.proto";
+
+// === Options === //
+
+// Required on every host wire operation; products may only narrow the declared audience.
+extend google.protobuf.MethodOptions {
+  Callers callers = 51001;
+}
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //
+
+// Caller audiences, independent of operation visibility and resource grants.
+enum Callers {
+  CALLERS_UNSPECIFIED = 0;
+  CLIENTS = 1;
+  PLUGINS = 2;
+  ALL = 3;
+}

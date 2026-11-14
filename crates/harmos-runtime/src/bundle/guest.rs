@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::GuestRegistration as WireGuestRegistration;
+
 use super::{Error, invalid};
 use prost::Message as _;
 
@@ -26,7 +28,7 @@ use prost::Message as _;
 
 /* === Constants === */
 
-pub const METADATA_SECTION: &str = "harmos.v1.GuestRegistration";
+pub const METADATA_SECTION: &str = "harmos.plugin.v1.GuestRegistration";
 
 /* === Macros === */
 
@@ -42,7 +44,7 @@ pub const METADATA_SECTION: &str = "harmos.v1.GuestRegistration";
 
 /* === Public Functions === */
 
-pub fn registration(component: &[u8]) -> Result<harmos_protocol::v1::GuestRegistration, Error> {
+pub fn registration(component: &[u8]) -> Result<WireGuestRegistration, Error> {
     let mut bytes = component.strip_prefix(b"\0asm\x0d\0\x01\0").ok_or_else(|| invalid("guest executable is not a component"))?;
     let mut registration = None;
     while let Some((&section, rest)) = bytes.split_first() {
@@ -62,7 +64,7 @@ pub fn registration(component: &[u8]) -> Result<harmos_protocol::v1::GuestRegist
         if custom.len() > harmos_protocol::guest::COMMAND_BYTES {
             return Err(Error::Limit("guest registration bytes"));
         }
-        let value = harmos_protocol::v1::GuestRegistration::decode(custom).map_err(|error| invalid(error.to_string()))?;
+        let value = WireGuestRegistration::decode(custom).map_err(|error| invalid(error.to_string()))?;
         let declarations = value.declarations.as_ref().ok_or_else(|| invalid("guest declarations is missing"))?;
         if declarations.digest != harmos_protocol::schema::declarations_digest(declarations) {
             return Err(invalid("guest declarations digest differs"));

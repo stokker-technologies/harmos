@@ -53,8 +53,13 @@ budgets use `transfer` and `message_ceiling`; invalid limits refuse before diali
 Import Client, connection options, errors and shared vocabulary such as
 `SettingValue`, `Declarations`, `File`, `PageRequest` and `Position` from `harmos`.
 Client response types live in `harmos.client`; Context, Plugin, Operation, decorators,
-HostOperation and plugin-host response types live in `harmos.plugin`. Each type has
-one public path. Generated wire requests and transport carriers stay private.
+HostOperation and plugin response types live in `harmos.plugin`. Shared host replies
+are available from both audience barrels. Generated wire requests, version packages
+and transport carriers stay private.
+
+Host operations declare their callers. CLIENTS and ALL operations appear on Client;
+PLUGINS and ALL operations appear on Context.host. Plugin connection services never
+appear as host resources. SDK projection does not replace host authorization.
 
 Storage remains in-process. Applications supply their own operations for data,
 uploads and queries. Plugin observers answer ticks; publishers send device rows
@@ -70,18 +75,19 @@ plugin = Plugin(
     handlers,
     id="example",
     version="1.0.0",
-    requires=[HostOperation.SETTINGS_LIST],
+    requires=[HostOperation.PLUGINS_SETTINGS_LIST],
     settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
 )
 
 # Inside an operation handler or observer tick:
-settings = await context.host.settings.list()
+settings = await context.host.plugins.settings.list()
 prefix = settings.value.values["prefix"].text
 ```
 
-Host Settings.List selects the admitted calling entry without a plugin selector.
-Its response keeps complete values, revision and issued read cut; pass `at=cut` to
-reuse a cut. Client Settings.Set replaces the complete map and requires its expected
+Plugins.Settings.List selects the admitted calling entry when a plugin omits `name`.
+A plugin may name itself; the host refuses another entry. Clients supply the entry
+name. Both audiences receive declarations, complete values, revision and resolved
+read cut; pass `at=cut` to reuse a cut. Client Plugins.Settings.Set replaces the complete map and requires its expected
 revision. Preserve each declared key and value variant. Plugin replacement preserves
 the entry name and settings; failed replacement preserves the serving bundle.
 
@@ -106,12 +112,14 @@ Generate product protobuf modules and typed stubs into the product's private `_w
 package, with imports rewritten to that prefix. Then generate its composed root:
 
 ```sh
-mise run generate -- --sdk python --descriptors path/to/descriptors.bin --output path/to/application/_generated/client.py --namespace application
+mise run generate -- --sdk python --descriptors path/to/descriptors.bin --composition path/to/composition.toml --output path/to/application/_generated/client.py --namespace application
 ```
 
-The generator merges product and library descriptors, refuses conflicts and resource
-collisions, and writes the root and public response barrel. The product root inherits
-SDK connection ownership. Import `Client` from `application`; call `client.jobs.start(value)`
+The generator merges the composition's library descriptors with product descriptors,
+refuses conflicts, widening and resource collisions, and writes the root and public
+response barrel. The composition file may narrow ALL to CLIENTS or PLUGINS. Excluded
+methods are absent from the generated audience, including inherited library resources.
+The product root retains SDK connection ownership. Import `Client` from `application`; call `client.jobs.start(value)`
 and `client.plugins.annotations.get(name)` alongside ordinary library resources.
 The generated read-only properties retain complete nested parents and static types.
 No handwritten attribute grafting is needed. Commit and regenerate these outputs
@@ -131,8 +139,19 @@ The [client](../sdk/python/examples/client.py) discovers operations, reads statu
 consumes one status update and closes its stream and connection. The
 [plugin](../sdk/python/examples/plugin.py) serves a public echo operation with a typed
 prefix setting; its first stdout line announces its bound endpoint. Two integration
-stories drive these actual entry points through gRPC. The separate conformance fixture
-covers all 36 reference-host rules, including tick children, typed settings and discovery.
+stories drive these actual entry points through gRPC. They use library calls only.
+The separate [dynamic invocation example](../sdk/python/examples/invocation.py)
+discovers an operation's fingerprint and calls `client.invocations.create(...)` with
+encoded bytes; it returns the unwrapped response bytes and owns its connection:
+
+```sh
+uv run --locked --no-sync --project sdk/python python sdk/python/examples/invocation.py --address 127.0.0.1:53124 --operation example.echo --payload 0a0568656c6c6f
+```
+
+Application-specific typed calls belong in the application's own generated client.
+The separate conformance fixture
+covers the reference-host rules, including caller refusal from operations and ticks,
+tick children, typed settings and discovery.
 
 See [Python Plugin SDK](tooling.md#python-plugin-sdk) for declarations, child calls
 and packaging, and [Repository Tooling](tooling.md) for generation drift checks.

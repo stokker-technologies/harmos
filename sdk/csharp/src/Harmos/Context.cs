@@ -10,6 +10,7 @@ using System;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
 using Grpc.Core;
+using Harmos.Clients;
 using Harmos.Internal.Plugin;
 using Harmos;
 using Status = Grpc.Core.Status;
@@ -359,9 +360,6 @@ public sealed class Context
   });
 
   internal async Task SleepAsync(Duration duration) => await CallAsync(HostContracts.TimeSleep, new TimeSleepRequest { Duration = duration });
-
-  /// <summary>Read this plugin entry's complete library-stored settings.</summary>
-  internal Task<SettingsListResponse> SettingsAsync(ReadCut? at = null) => CallAsync(HostContracts.SettingsList, new SettingsListRequest { At = at?.Clone() });
 
   internal async Task<Timestamp> NowAsync()
   {

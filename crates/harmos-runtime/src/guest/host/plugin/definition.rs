@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Section;
+
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::fmt;
@@ -52,7 +54,7 @@ pub struct PluginContributions {
     pub streams: Vec<StreamDeclaration>,
     pub listeners: Vec<harmos_operations::listeners::Definition>,
     pub registrations: Vec<Registration>,
-    pub sections: Vec<harmos_protocol::v1::Section>,
+    pub sections: Vec<Section>,
 }
 
 /* === Enums === */
@@ -218,7 +220,7 @@ impl PluginDefinition {
         self.artifact.validate()?;
         harmos_operations::validate_config(&self.configuration)?;
 
-        operations::validate(&self.contributions.operations)?;
+        operations::validate(&self.contributions.operations, &self.contributions.wire_contracts)?;
         self.contributions.operations.sort_by(|a, b| a.id.cmp(&b.id));
 
         if self.contributions.wire_contracts.len() > self.contributions.operations.len() {

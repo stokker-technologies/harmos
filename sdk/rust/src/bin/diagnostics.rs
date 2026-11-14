@@ -23,9 +23,10 @@ use harmos::plugin::HostOperation;
 
 // Local Imports
 use harmos::plugin::HostInvocationsWatch;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
 use harmos::{Error, Message, Result, Visibility};
-use harmos_protocol::v1;
+use harmos_protocol::model::setting_value;
+
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, Timestamp};
 use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
@@ -99,16 +100,15 @@ fn main() -> Result<()> {
     .every(ProtoDuration { seconds: 1, nanos: 0 });
     let children = Stream::<SampleReading>::new("execution.children");
     let child_observer = Observer::new(&children, samples_children).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let device =
-        Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: harmos::plugin::Publisher<Isolation>| {
-            context.cancelled().await;
-            Ok(())
-        });
+    let device = Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: Publisher<Isolation>| {
+        context.cancelled().await;
+        Ok(())
+    });
     Plugin::new("execution", "1.0.0")
         .stream(children)
         .observer(child_observer)
         .stream(device)
-        .requires_host(HostOperation::SettingsList)
+        .requires_host(HostOperation::PluginsSettingsList)
         .requires_host(HostOperation::InvocationsWatch)
         .operation(Operation::new("execution.stale", stale_context).visibility(Visibility::Protected))
         .operation(Operation::new("execution.clock", clock_and_resource).visibility(Visibility::Protected))
@@ -146,14 +146,15 @@ async fn isolation(ctx: &Context, _: Input) -> Result<Isolation> {
 }
 
 async fn samples_children(context: &Context) -> Result<SampleReading> {
-    let (time, settings) = tokio::join!(context.now(), context.settings());
+    let settings = context.settings();
+    let (time, settings) = tokio::join!(context.now(), settings.list());
     let (seconds, failure) = match time {
         Ok(time) => (time.seconds, Vec::new()),
         Err(Error::Failure(failure)) => (-1, failure.encode_to_vec()),
         Err(error) => return Err(error),
     };
     let setting = match settings?.value.and_then(|values| values.values.get("threshold").cloned()).and_then(|value| value.value) {
-        Some(v1::setting_value::Value::Integer(value)) => value,
+        Some(setting_value::Value::Integer(value)) => value,
         _ => return Err(Error::Invalid("Read Samples: Integer Setting Required".into())),
     };
     let mut watching = context.host().invocations.watch(1, NonZeroUsize::new(4096).unwrap()).await?;
@@ -174,7 +175,7 @@ async fn stale_context(_: &Context, _: Input) -> Result<Isolation> {
         HELD.lock().unwrap().pop().ok_or_else(|| Error::Invalid("Check Samples Context: No Retained Context".into()))?;
     let refused = matches!(saved.now().await, Err(Error::Transport(status)) if status.code() == Code::InvalidArgument);
     let watch_refused = watch.next().await.is_err();
-    let settings_refused = saved.settings().await.is_err();
+    let settings_refused = saved.settings().list().await.is_err();
     let scope_preserved = saved.scope()? == "scope";
     Ok(Isolation {
         absent: refused && watch_refused && settings_refused && scope_preserved,

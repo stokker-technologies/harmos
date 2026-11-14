@@ -56,15 +56,16 @@ impl Grpc {
 
     pub fn validate(&self) -> Result<(), super::ContractError> {
         let id = format!("{}.{}/{}", self.package, self.service, self.method);
-        harmos_protocol::schema::operation_identity(&id).map_err(|_| super::ContractError::Grpc)?;
+        use harmos_protocol::schema::{Executor, operation_identity};
+        if operation_identity(&id).map_err(|_| super::ContractError::Grpc)? != Executor::Host {
+            return Err(super::ContractError::Grpc);
+        }
         if self.package.is_empty()
             || self.package.len() > 255
             || self.service.len() > 255
             || self.service.contains('.')
             || self.method.len() > 255
             || self.package.starts_with("grpc.")
-            || self.package.contains(".context.v")
-            || self.package.contains(".plugin.v")
         {
             return Err(super::ContractError::Grpc);
         }

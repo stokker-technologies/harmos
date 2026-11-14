@@ -20,7 +20,7 @@ use super::requests::{IndexDefinition, MutationId, ProjectionDefinition, ReadLim
 use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::columnar::Cancellation;
 use harmos_query::columnar::ColumnSource;
 use harmos_storage::StorageManager;
@@ -59,8 +59,8 @@ pub(super) fn revision(value: u64) -> Vec<u8> {
 }
 
 pub(super) async fn get_index(
-    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
-) -> Result<(IndexDefinition, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<model::ReadCut>,
+) -> Result<(IndexDefinition, Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -88,7 +88,7 @@ pub(super) async fn get_index(
 
 pub(super) async fn set_index(
     context: &ExecutionContext, input: SetIndexInput,
-) -> Result<(IndexDefinition, Vec<u8>, v1::Receipt), ServingError> {
+) -> Result<(IndexDefinition, Vec<u8>, model::Receipt), ServingError> {
     let SetIndexInput {
         definition,
         expected_revision,
@@ -132,8 +132,8 @@ pub(super) async fn set_index(
 }
 
 pub(super) async fn get_projection(
-    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<v1::ReadCut>,
-) -> Result<(ProjectionDefinition, Vec<u8>, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<model::ReadCut>,
+) -> Result<(ProjectionDefinition, Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -160,7 +160,7 @@ pub(super) async fn get_projection(
 pub(super) async fn set_projection(
     context: &ExecutionContext, definition: Option<ProjectionDefinition>, expected_revision: Vec<u8>, create_if_absent: bool,
     rebuild: bool, mutation: Option<MutationId>,
-) -> Result<(ProjectionDefinition, Vec<u8>, v1::Receipt), ServingError> {
+) -> Result<(ProjectionDefinition, Vec<u8>, model::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;

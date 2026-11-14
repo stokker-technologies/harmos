@@ -15,8 +15,11 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::setting_value::Value;
+
 use super::support::{self, Backends, Host};
-use harmos_protocol::client::{self as wire, plugins};
+use harmos_protocol::host as wire;
+use harmos_protocol::host::plugins;
 
 // Standard Library Imports
 
@@ -55,10 +58,10 @@ async fn replacement_keeps_the_entry_and_failed_staging_keeps_its_process() {
     let first = support::state(&mut watch, "managed", wire::PluginState::Ready, 1).await;
     let original = support::Process::observe(first.process.as_ref().unwrap().id).await;
     let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
-    let initial = settings.list(plugins::SettingsListRequest { name: first.name.clone(), at: None }).await.unwrap().into_inner();
+    let initial = settings.list(plugins::SettingsListRequest { name: Some(first.name.clone()), at: None }).await.unwrap().into_inner();
 
     let mut value = initial.value.unwrap();
-    value.values.get_mut("count").unwrap().value = Some(harmos_protocol::v1::setting_value::Value::Integer(9));
+    value.values.get_mut("count").unwrap().value = Some(Value::Integer(9));
     let before = settings
         .set(plugins::SettingsSetRequest {
             name: first.name.clone(),
@@ -105,7 +108,7 @@ async fn replacement_keeps_the_entry_and_failed_staging_keeps_its_process() {
     assert_eq!(host.client.replace(request.clone()).await.unwrap().into_inner(), replaced);
     assert!(original.exited().await.success());
     assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 1);
-    let after = settings.list(plugins::SettingsListRequest { name: next.name.clone(), at: None }).await.unwrap().into_inner();
+    let after = settings.list(plugins::SettingsListRequest { name: Some(next.name.clone()), at: None }).await.unwrap().into_inner();
     assert_eq!(after.value, before.value);
     assert_eq!(after.revision, before.revision);
     let mut changed = request;

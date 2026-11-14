@@ -29,6 +29,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import Server, ServicerContext
 
+from harmos._wire.model.v1.description_pb2 import Declarations
+from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
+from harmos._wire.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
 from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceGetRequest,
     InstanceGetResponse,
@@ -39,11 +42,8 @@ from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceStopRequest,
     InstanceStopResponse,
 )
-from harmos._wire.v1.description_pb2 import Declarations
-from harmos._wire.v1.invocation_pb2 import Request, Response
-from harmos._wire.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
-from harmos._wire.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
-from harmos._wire.v1.stream_pb2 import Sample
+from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
+from harmos._wire.plugin.v1.stream_pb2 import Sample
 
 from ._contracts import Operation, Stream, message_types
 from ._generated.host import HostOperation, host_requirement
@@ -51,7 +51,7 @@ from ._generated.host import HostOperation, host_requirement
 # Local Imports
 from ._invocation import Context, FailureError, Handler, ProtocolError, Publisher, validate_timestamp
 from ._transfer import message_bytes
-from ._wire.v1.transfer_pb2 import StorageTransferSettings
+from ._wire.model.v1.transfer_pb2 import StorageTransferSettings
 
 # Type Checking Imports
 

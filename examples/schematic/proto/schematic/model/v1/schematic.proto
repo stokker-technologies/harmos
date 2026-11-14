@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package schematic.model.v1;
+
+// === Imports === //
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Connects two symbol identities in a schematic snapshot.
+message Connection {
+  uint64 from = 1;
+  uint64 to = 2;
+}
+
+// Carries symbol identities and their connections for analysis.
+message Snapshot {
+  repeated uint64 symbols = 1;
+  repeated Connection connections = 2;
+}
+
+// Identifies a route point in integer schematic coordinates.
+message Point {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+// Carries one analysis finding.
+message Finding {
+  string text = 1;
+}
+
+// Carries an ordered record and its opaque payload.
+message Record {
+  uint64 sequence = 1;
+  bytes payload = 2;
+}
+
+// Carries an ordered timestamped scalar sample.
+message Sample {
+  uint64 sequence = 1;
+  uint64 timestamp_us = 2;
+  double value = 3;
+}
+
+// Groups transferred records, samples and file bytes.
+message Batch {
+  repeated Record records = 1;
+  repeated Sample samples = 2;
+  bytes bytes = 3;
+}
+
+// Retains the final result of a native streaming analysis.
+message AnalysisResult {
+  uint32 checked = 1;
+}
+
+// === Enums === //

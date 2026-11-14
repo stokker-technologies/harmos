@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Harmos.Internal.Plugin;
 using Harmos;
 
 namespace Harmos.Plugins;

@@ -19,6 +19,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Failure as WireFailure;
+
 // Standard Library Imports
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::collections::BTreeMap;
@@ -201,7 +203,7 @@ impl Failure {
         use prost::Message as _;
         self.0.diagnostics = None;
         if let Some(bytes) = &mut self.0.wire {
-            let mut wire = harmos_protocol::v1::Failure::decode(bytes.as_slice()).expect("retained protobuf failure was decoded");
+            let mut wire = WireFailure::decode(bytes.as_slice()).expect("retained protobuf failure was decoded");
             let mut current = &mut wire;
             loop {
                 current.diagnostics.clear();
@@ -276,9 +278,9 @@ impl Diagnostics {
     }
 }
 
-impl From<&Failure> for harmos_protocol::v1::Failure {
+impl From<&Failure> for WireFailure {
     fn from(failure: &Failure) -> Self {
-        use harmos_protocol::v1::Classification;
+        use harmos_protocol::model::Classification;
         use operations::FailureKind;
         use prost::Message as _;
         if let Some(bytes) = &failure.0.wire {
@@ -328,11 +330,11 @@ impl From<&Failure> for harmos_protocol::v1::Failure {
         }
     }
 }
-impl From<harmos_protocol::v1::Failure> for Failure {
-    fn from(mut wire: harmos_protocol::v1::Failure) -> Self {
+impl From<WireFailure> for Failure {
+    fn from(mut wire: WireFailure) -> Self {
         use prost::Message as _;
         let original = wire.encode_to_vec();
-        use harmos_protocol::v1::Classification;
+        use harmos_protocol::model::Classification;
         use operations::FailureKind;
         let code = match wire.details.remove("harmos.failure_kind").as_deref() {
             Some("ambiguous") => FailureKind::Ambiguous,
@@ -411,6 +413,7 @@ fn bounded(mut text: String, limit: usize) -> String {
 mod tests {
     use super::{Failure, Origin};
     use crate::{Refusal, operations::FailureKind};
+    use harmos_protocol::model::{Classification as WireClassification, Failure as WireFailure};
 
     #[derive(Debug, thiserror::Error)]
     #[error("{0}")]
@@ -434,14 +437,14 @@ mod tests {
         assert_eq!(received.context().operation(), Some("harmos.initialize"));
         assert_eq!(received.diagnostics().unwrap().origin(), Origin::Plugin);
         assert_eq!(received.diagnostics().unwrap().chain().len(), 1);
-        let wire = harmos_protocol::v1::Failure {
-            classification: harmos_protocol::v1::Classification::Transient as i32,
+        let wire = WireFailure {
+            classification: WireClassification::Transient as i32,
             code: "sensor_unavailable".into(),
             message: "sensor unavailable".into(),
             action: "Reconnect Sensor".into(),
             plugin: "sensor".into(),
             diagnostics: "plugin diagnostic".into(),
-            cause: Some(Box::new(harmos_protocol::v1::Failure {
+            cause: Some(Box::new(WireFailure {
                 message: "link closed".into(),
                 diagnostics: "cause diagnostic".into(),
                 ..Default::default()
@@ -452,7 +455,7 @@ mod tests {
         let remote = Remote(Box::new(received.clone()));
         assert_eq!(Failure::find(&remote), Some(&received));
         let retained = Failure::decode(&received.encode()).unwrap();
-        let encoded = harmos_protocol::v1::Failure::from(&retained);
+        let encoded = WireFailure::from(&retained);
         assert_eq!(encoded.code, wire.code);
         assert_eq!(encoded.action, wire.action);
         assert_eq!(encoded.cause, wire.cause);
@@ -463,7 +466,7 @@ mod tests {
         let redacted = retained.without_diagnostics();
         let redacted = Failure::decode(&redacted.encode()).unwrap();
         assert!(redacted.diagnostics().is_none());
-        let redacted = harmos_protocol::v1::Failure::from(&redacted);
+        let redacted = WireFailure::from(&redacted);
         assert!(redacted.diagnostics.is_empty());
         assert!(redacted.cause.unwrap().diagnostics.is_empty());
     }

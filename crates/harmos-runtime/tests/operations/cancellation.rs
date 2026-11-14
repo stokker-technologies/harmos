@@ -59,7 +59,7 @@ pub(crate) static FINISH_DESCRIPTION: harmos_runtime::operations::WireDeclaratio
         },
     )
     .visibility(harmos_runtime::operations::Visibility::Public)
-    .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.v1", "Operations", "Finish").managed());
+    .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.host.v1", "Operations", "Finish").managed());
 
 pub(crate) const FINISH_OPERATION: harmos_runtime::operations::OperationSpec<Finish> =
     harmos_runtime::operations::OperationSpec::<Finish>::new(&FINISH_DESCRIPTION);
@@ -74,7 +74,7 @@ pub(crate) struct Exchange {}
 pub(crate) static EXCHANGE_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<Exchange>("cancel.exchange", FINISH_OPERATION.entry().policy)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.v1", "Operations", "Exchange").managed());
+        .grpc(harmos_runtime::operations::Grpc::new("fixture.cancellation.host.v1", "Operations", "Exchange").managed());
 
 pub(crate) const EXCHANGE_OPERATION: harmos_runtime::operations::OperationSpec<Exchange> =
     harmos_runtime::operations::OperationSpec::<Exchange>::new(&EXCHANGE_DESCRIPTION);

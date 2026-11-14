@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import tomllib
 from argparse import ArgumentParser
 from pathlib import Path
 from subprocess import PIPE, STDOUT
@@ -120,6 +121,7 @@ def main() -> None:
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--preset", choices=("development", "release", "tests"))
+    parser.add_argument("--target", action="append", help="Build Only the Named CMake Target (Repeatable)")
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--format", action="store_true")
@@ -132,16 +134,21 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--fixture-client", type=Path)
     parser.add_argument("--fixture-descriptors", type=Path)
+    parser.add_argument("--fixture-composition", type=Path)
     options = parser.parse_args()
     if options.fixture_client:
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
+        from ..source.protocol import narrow_callers
         from .resource_roots import cpp, table
 
         if options.fixture_descriptors is None:
             parser.error("C++ fixture client requires --fixture-descriptors")
         library = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
         fixture = FileDescriptorSet.FromString(options.fixture_descriptors.read_bytes())
+        if options.fixture_composition:
+            composition = tomllib.loads(options.fixture_composition.read_text(encoding="utf-8"))
+            narrow_callers(library, composition.get("callers", {}))
         methods = table(library) + table(fixture)
         cpp(ROOT, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client)
         return
@@ -259,6 +266,8 @@ def main() -> None:
     command = ["cmake", "--build", "--preset", selected, "--parallel", "4"]
     if options.generate:
         command += ["--target", "harmos_cpp_protocol"]
+    elif options.target:
+        command += ["--target", *options.target]
     log = directory / "build.log"
     if log.exists():
         attempt = len(list(directory.glob("build-*.log"))) + 1

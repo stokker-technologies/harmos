@@ -54,7 +54,7 @@ using std::vector;
 /* === Types === */
 
 namespace harmos::plugin {
-namespace wire = ::harmos::v1;
+namespace wire = ::harmos::model::v1;
 namespace {
 using detail::Duplex;
 using Requirements = std::map<std::string, std::string>;
@@ -191,7 +191,7 @@ public:
           }
           auto watching = state_->watches.find(id);
           if (watching != state_->watches.end()) {
-            wire::ChildResponse terminal;
+            plugin::v1::ChildResponse terminal;
             terminal.set_call(id);
             *terminal.mutable_failure() = failure;
             watching->second->terminal = std::move(terminal);

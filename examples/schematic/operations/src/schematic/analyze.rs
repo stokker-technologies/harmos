@@ -27,16 +27,16 @@ pub struct AnalyzeSchematic;
 /* === Implementations === */
 
 impl ProtobufOperation for AnalyzeSchematic {
-    type Request = crate::protocol::AnalyzeSchematic;
-    type Response = crate::protocol::Analysis;
+    type Request = crate::protocol::SchematicAnalyzeRequest;
+    type Response = crate::protocol::AnalysisResult;
     type Endpoints = harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>;
-    const ID: &'static str = "schematic.analyze";
+    const ID: &'static str = "schematic.host.v1.Schematic/Analyze";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "Analyze"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "Analyze"));
     async fn run(_ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
             let schematic = request.schematic.ok_or(crate::Error::InvalidInput)?;
@@ -48,7 +48,7 @@ impl ProtobufOperation for AnalyzeSchematic {
             for text in findings {
                 endpoints.send(crate::protocol::Finding { text }).await?;
             }
-            Ok(crate::protocol::Analysis { checked: 3 })
+            Ok(crate::protocol::AnalysisResult { checked: 3 })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

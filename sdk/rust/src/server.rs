@@ -39,13 +39,19 @@ use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
 use crate::{Context, Error, Operation, Plugin, Result, context::ChildOutput, operation::Handler};
+use harmos_protocol::model::Declarations;
+use harmos_protocol::model::Visibility;
+use harmos_protocol::plugin::Request as InvocationRequest;
+use harmos_protocol::plugin::Response as InvocationResponse;
+use harmos_protocol::plugin::Sample;
+use harmos_protocol::plugin::response;
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse, instance_invoke_request, instance_invoke_response,
     instance_samples_request,
     instance_server::{Instance as Service, InstanceServer},
 };
-use harmos_protocol::v1::{self as v1, Declarations, response};
+
 use prost_types::Timestamp;
 use std::{
     env,
@@ -172,7 +178,7 @@ impl Service for Server {
         let observer = publication.observer.clone();
         let producer = publication.producer.clone();
         let mut context = Context::new(
-            v1::Request {
+            InvocationRequest {
                 scope: open.scope,
                 operation: open.stream,
                 ..Default::default()
@@ -249,14 +255,14 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
             plugin
                 .operations
                 .iter()
-                .filter(|operation| operation.contract.visibility == v1::Visibility::Private as i32)
+                .filter(|operation| operation.contract.visibility == Visibility::Private as i32)
                 .map(|operation| (operation.contract.id.clone(), Arc::new(operation.clone())))
                 .collect(),
         ),
         operations: plugin
             .operations
             .into_iter()
-            .filter(|operation| operation.contract.visibility != v1::Visibility::Private as i32)
+            .filter(|operation| operation.contract.visibility != Visibility::Private as i32)
             .map(|operation| (operation.contract.id, operation.handler))
             .collect(),
         streams,
@@ -375,7 +381,7 @@ async fn invoke(
     };
     output
         .send(Ok(InstanceInvokeResponse {
-            frame: Some(instance_invoke_response::Frame::Response(v1::Response { result: Some(result) })),
+            frame: Some(instance_invoke_response::Frame::Response(InvocationResponse { result: Some(result) })),
         }))
         .await
         .map_err(|_| Status::cancelled("Host Closed"))?;
@@ -411,7 +417,7 @@ async fn samples(
                         if observing.is_some() || sample.is_some() { return Err(Status::invalid_argument("Sample Tick: Previous Tick Is Unanswered")); }
                         let at = tick.at.ok_or_else(|| Status::invalid_argument("Sample Tick: Time Required"))?;
                         crate::stream::validate_timestamp(at)?;
-                        let mut tick_context = Context::new(v1::Request {
+                        let mut tick_context = Context::new(InvocationRequest {
                             operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
                         }, context.plugin.clone(), context.requires.clone());
                         tick_context.calls = context.calls.clone();
@@ -433,7 +439,7 @@ async fn samples(
                 let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
                 sequence += 1;
                 let (row, at) = sample.take().expect("Sample Ready");
-                permit.send(Ok(InstanceSamplesResponse { samples: vec![v1::Sample { at, row, sequence }], frame: None }));
+                permit.send(Ok(InstanceSamplesResponse { samples: vec![Sample { at, row, sequence }], frame: None }));
             }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
                 let (at, _) = observing.take().expect("Observer Active");

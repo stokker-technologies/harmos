@@ -9,6 +9,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Position;
+
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use harmos_operations::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
@@ -37,8 +39,7 @@ impl NativeOperation for GetSchema {
             let key = super::transfers::required(request.key)?;
             let read = snapshots.resolve(&storage, request.at).await?;
             let value = read.get_schema(&key).await?;
-            let revision =
-                value.as_ref().map(|value| harmos_protocol::v1::Position::from(value.position.clone()).encode_to_vec()).unwrap_or_default();
+            let revision = value.as_ref().map(|value| Position::from(value.position.clone()).encode_to_vec()).unwrap_or_default();
             let schema = value.map(|value| super::requests::SchemaInput {
                 key: Some(value.key),
                 graph: Some(value.schema.as_ref().clone()),

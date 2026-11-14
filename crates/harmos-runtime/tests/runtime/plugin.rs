@@ -9,6 +9,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Declarations;
+use harmos_protocol::plugin::GuestRegistration;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -50,9 +53,9 @@ fn executable(facility: Facility) -> Executable {
 }
 
 fn guest() -> Vec<u8> {
-    let mut catalog = harmos_protocol::v1::Declarations::default();
+    let mut catalog = Declarations::default();
     catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
-    let registration = harmos_protocol::v1::GuestRegistration {
+    let registration = GuestRegistration {
         id: "guest_fixture".into(),
         version: "1.0.0".into(),
         declarations: Some(catalog),

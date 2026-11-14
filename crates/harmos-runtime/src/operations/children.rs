@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::InstanceState;
+use harmos_protocol::plugin::GuestSubmitted;
+
 // Standard Library Imports
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -103,7 +106,7 @@ impl Children {
         if call.submit {
             let id = invocation.invocation.as_ref().expect("owned child").id();
             self.submitted.lock().expect("submitted child lock is healthy").insert(id.value(), invocation);
-            return Ok(harmos_protocol::v1::GuestSubmitted { instance: id.value() }.encode_to_vec());
+            return Ok(GuestSubmitted { instance: id.value() }.encode_to_vec());
         }
         drained(invocation, cancelled)
             .await
@@ -123,7 +126,7 @@ impl Children {
                     invocation.request_cancel();
                 }
                 let status = invocation.control.status().portable();
-                let state = harmos_protocol::v1::InstanceState {
+                let state = InstanceState {
                     phase: status.phase.as_str().into(),
                     outcome: status.outcome.map(|outcome| outcome.as_str()).unwrap_or_default().into(),
                     cancellation_requested: status.cancellation_requested,

@@ -30,18 +30,26 @@ use std::{
 };
 
 // Third Party Imports
+use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
 use prost::{
     DecodeError, Message as _,
     bytes::{Buf, BufMut},
     encoding::{DecodeContext, WireType},
 };
-use prost_reflect::DescriptorPool;
+use prost_reflect::{DescriptorPool, ReflectMessage};
 use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
 
 // Local Imports
-use harmos::plugin::{Context, Operation, Plugin};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, TimeGetResponse};
 use harmos::{Message, OperationRequest, Result, Visibility};
-use harmos_protocol::v1;
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_protocol::model::OperationPolicy;
+use harmos_protocol::model::RetryPolicy;
+use harmos_protocol::model::SettingDeclaration;
+use harmos_protocol::model::SettingValue;
+use harmos_protocol::model::SettingsDeclarations;
+use harmos_protocol::model::setting_value;
 
 /* === Constants === */
 
@@ -132,7 +140,8 @@ impl Message for HostInput {
         HOST.get().unwrap().1.clone()
     }
     fn types() -> FileDescriptorSet {
-        HOST.get().unwrap().0.clone()
+        let (types, request, ..) = HOST.get().unwrap();
+        harmos_protocol::schema::message_types(types, request).expect("projected host request descriptors")
     }
 }
 impl Message for HostOutput {
@@ -140,51 +149,75 @@ impl Message for HostOutput {
         HOST.get().unwrap().2.clone()
     }
     fn types() -> FileDescriptorSet {
-        HOST.get().unwrap().0.clone()
+        let (types, _, response, ..) = HOST.get().unwrap();
+        harmos_protocol::schema::message_types(types, response).expect("projected host response descriptors")
     }
 }
 #[derive(harmos::Message)]
-#[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct HostControl {}
 impl OperationRequest for HostControl {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "fixture.control";
 }
 
-#[derive(harmos::Message)]
-#[harmos(package = "harmos.client.v1", file = "harmos/client/v1/time.proto", name = "TimeGetRequest")]
-struct ClientTime {}
-#[derive(harmos::Message)]
-#[harmos(package = "harmos.client.v1", file = "harmos/client/v1/time.proto", name = "TimeGetResponse")]
-struct ClientTimeResponse {
-    now: Option<Timestamp>,
+// Adapt the Actual Client-Only Wire Types for a Deliberately Refused Plugin Call.
+#[derive(Debug, Default)]
+struct CallerProbe<T>(T);
+
+impl<T: prost::Message + Default> prost::Message for CallerProbe<T> {
+    fn encode_raw(&self, buf: &mut impl BufMut) {
+        self.0.encode_raw(buf);
+    }
+    fn merge_field(&mut self, tag: u32, wire: WireType, buf: &mut impl Buf, context: DecodeContext) -> StdResult<(), DecodeError> {
+        self.0.merge_field(tag, wire, buf, context)
+    }
+    fn encoded_len(&self) -> usize {
+        self.0.encoded_len()
+    }
+    fn clear(&mut self) {
+        self.0.clear();
+    }
 }
-impl OperationRequest for ClientTime {
-    type Response = ClientTimeResponse;
-    const ID: &'static str = "harmos.client.v1.Time/Get";
+
+impl<T: ReflectMessage + Default + 'static> Message for CallerProbe<T> {
+    fn name() -> String {
+        T::default().descriptor().full_name().into()
+    }
+    fn types() -> FileDescriptorSet {
+        let descriptors = T::default().descriptor().parent_pool().encode_to_vec();
+        let types = FileDescriptorSet::decode(descriptors.as_slice()).expect("generated caller probe descriptors");
+        let name = T::default().descriptor().full_name().to_owned();
+        harmos_protocol::schema::message_types(&types, &name).expect("projected caller probe descriptors")
+    }
+}
+
+impl OperationRequest for CallerProbe<StatusGetRequest> {
+    type Response = CallerProbe<StatusGetResponse>;
+    const ID: &'static str = "harmos.host.v1.Status/Get";
 }
 
 #[derive(harmos::Message)]
-#[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationContext {}
 impl OperationRequest for ApplicationContext {
-    type Response = harmos::plugin::TimeGetResponse;
-    const ID: &'static str = "example.plugin.host.v1.Prompts/Create";
+    type Response = TimeGetResponse;
+    const ID: &'static str = "example.host.v1.Prompts/Create";
 }
 
 #[derive(harmos::Message)]
-#[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationClient {}
 impl OperationRequest for ApplicationClient {
-    type Response = harmos::plugin::TimeGetResponse;
-    const ID: &'static str = "example.client.v1.Steps/Execute";
+    type Response = TimeGetResponse;
+    const ID: &'static str = "example.host.v1.Steps/Execute";
 }
 
 #[derive(harmos::Message)]
-#[harmos(package = "harmos.plugin.host.v1", file = "harmos/plugin/host/v1/time.proto", name = "TimeGetRequest")]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/time.proto", name = "TimeGetRequest")]
 struct ApplicationInstance {}
 impl OperationRequest for ApplicationInstance {
-    type Response = harmos::plugin::TimeGetResponse;
+    type Response = TimeGetResponse;
     const ID: &'static str = "example.plugin.v1.Control/Execute";
 }
 
@@ -263,17 +296,16 @@ fn main() -> Result<()> {
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "interval" {
-        let stream = harmos::plugin::Stream::<Value>::new("fixture.ticks");
-        let observer =
-            harmos::plugin::Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
+        let stream = Stream::<Value>::new("fixture.ticks");
+        let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
-            .settings(v1::SettingsDeclarations {
-                values: vec![v1::SettingDeclaration {
+            .settings(SettingsDeclarations {
+                values: vec![SettingDeclaration {
                     name: "interval".into(),
                     title: "Interval".into(),
                     description: String::new(),
-                    default: Some(v1::SettingValue {
-                        value: Some(v1::setting_value::Value::Duration(ProtoDuration { seconds: 1, nanos: 0 })),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Duration(ProtoDuration { seconds: 1, nanos: 0 })),
                     }),
                 }],
             })
@@ -282,8 +314,8 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
     } else if mode == "retry" {
         Plugin::new("retry", "1.0.0").operation(
-            Operation::new("fixture.retry", retry).visibility(Visibility::Protected).replay_safe().policy(v1::OperationPolicy {
-                retries: Some(v1::RetryPolicy {
+            Operation::new("fixture.retry", retry).visibility(Visibility::Protected).replay_safe().policy(OperationPolicy {
+                retries: Some(RetryPolicy {
                     total_attempts: 3,
                     initial: Some(ProtoDuration { seconds: 2, nanos: 0 }),
                     ..Default::default()
@@ -293,17 +325,17 @@ fn main() -> Result<()> {
         )
     } else if mode == "deadline" {
         Plugin::new("deadline", "1.0.0").requires_host(HostOperation::TimeGet).requires_host(HostOperation::TimeSleep).operation(
-            Operation::new("fixture.clock", clock).visibility(Visibility::Protected).policy(v1::OperationPolicy {
+            Operation::new("fixture.clock", clock).visibility(Visibility::Protected).policy(OperationPolicy {
                 timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
                 attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
                 ..Default::default()
             }),
         )
     } else if mode == "twins" {
-        let left = harmos::plugin::Stream::<Value>::new("fixture.left");
-        let right = harmos::plugin::Stream::<Value>::new("fixture.right");
-        let left_observer = harmos::plugin::Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
-        let right_observer = harmos::plugin::Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
+        let left = Stream::<Value>::new("fixture.left");
+        let right = Stream::<Value>::new("fixture.right");
+        let left_observer = Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let right_observer = Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -315,7 +347,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
             .on_stop(|| Err(harmos::Error::Invalid("Cleanup Failed".into())))
     } else if mode == "device" {
-        let stream = harmos::plugin::Stream::<Value>::new("fixture.device").publish_on(device);
+        let stream = Stream::<Value>::new("fixture.device").publish_on(device);
         Plugin::new("device", "1.0.0")
             .stream(stream)
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
@@ -335,22 +367,21 @@ fn main() -> Result<()> {
             .operation(Operation::new("example.plugin.v1.Steps/Execute", scope_identity).visibility(Visibility::Public))
     } else if mode == "values" {
         Plugin::new("values", "1.0.0")
-            .requires_host(HostOperation::SettingsList)
-            .message::<harmos::plugin::TimeGetResponse>()
-            .section(v1::SettingsDeclarations {
-                values: vec![v1::SettingDeclaration {
+            .requires_host(HostOperation::PluginsSettingsList)
+            .message::<TimeGetResponse>()
+            .section(SettingsDeclarations {
+                values: vec![SettingDeclaration {
                     name: "reading".into(),
                     title: "Reading".into(),
                     description: String::new(),
-                    default: Some(v1::SettingValue {
-                        value: Some(v1::setting_value::Value::Integer(0)),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Integer(0)),
                     }),
                 }],
             })
             .operation(Operation::new("fixture.value", setting_value).visibility(Visibility::Protected))
     } else if mode == "watch" {
         Plugin::new("watcher", "1.0.0")
-            .requires::<HostInput>()
             .requires_host(HostOperation::InvocationsWatch)
             .operation(Operation::new("fixture.watch", watch_invocation).visibility(Visibility::Protected))
     } else if mode == "provider" {
@@ -358,8 +389,13 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.step.0", echo).visibility(Visibility::Public))
             .requires::<HostInput>()
             .requires::<ProtectedInput>()
-            .operation(Operation::new("fixture.self", protected_self).visibility(Visibility::Protected))
-            .operation(Operation::new("fixture.peer", peer).visibility(Visibility::Public).policy(v1::OperationPolicy {
+            .operation(
+                Operation::new("fixture.self", async |context: &Context, input: Value| {
+                    context.call(ProtectedInput { value: input.value }).await
+                })
+                .visibility(Visibility::Protected),
+            )
+            .operation(Operation::new("fixture.peer", peer).visibility(Visibility::Public).policy(OperationPolicy {
                 cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
@@ -367,14 +403,14 @@ fn main() -> Result<()> {
             .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(Visibility::Protected))
     } else if mode == "incompatible" {
         Plugin::new("incompatible", "1.0.0")
-            .operation(Operation::new("example.plugin.v1.Steps/Execute", empty).visibility(Visibility::Public))
+            .operation(Operation::new("example.plugin.v1.Steps/Execute", async |_: &Context, _: ()| Ok(())).visibility(Visibility::Public))
     } else if mode == "duplicate" {
         Plugin::new("duplicate", "1.0.0").operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
     } else {
         Plugin::new("caller", "1.0.0")
             .requires::<HostInput>()
             .requires::<HostControl>()
-            .requires::<ClientTime>()
+            .requires::<CallerProbe<StatusGetRequest>>()
             .requires::<ApplicationContext>()
             .requires::<ApplicationClient>()
             .requires::<ApplicationInstance>()
@@ -382,7 +418,7 @@ fn main() -> Result<()> {
             .requires_host(HostOperation::TimeGet)
             .requires::<PublicInput>()
             .requires::<PeerInput>()
-            .operation(Operation::new("fixture.peer_forward", peer_forward).visibility(Visibility::Protected).policy(v1::OperationPolicy {
+            .operation(Operation::new("fixture.peer_forward", peer_forward).visibility(Visibility::Protected).policy(OperationPolicy {
                 cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
@@ -392,7 +428,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.echo", echo).visibility(Visibility::Protected))
             .operation(Operation::new("fixture.forward", forward).visibility(Visibility::Protected))
             .operation(Operation::new("fixture.failure", failure).visibility(Visibility::Protected))
-            .operation(Operation::new("fixture.wait", wait).visibility(Visibility::Protected).policy(v1::OperationPolicy {
+            .operation(Operation::new("fixture.wait", wait).visibility(Visibility::Protected).policy(OperationPolicy {
                 cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
@@ -410,7 +446,7 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
-async fn device(context: &Context, publisher: harmos::plugin::Publisher<Value>) -> Result<()> {
+async fn device(context: &Context, publisher: Publisher<Value>) -> Result<()> {
     DEVICE_ACTIVE.store(true, Ordering::SeqCst);
     let _demand = DeviceDemand;
     publisher.publish(Value { value: b"device".to_vec() }).await?;
@@ -426,10 +462,6 @@ async fn clock(context: &Context, _: Value) -> Result<Value> {
     Ok(Value {
         value: (after.seconds - before.seconds).to_le_bytes().to_vec(),
     })
-}
-
-async fn empty(_: &Context, _: ()) -> Result<()> {
-    Ok(())
 }
 
 async fn scope_identity(context: &Context, _: Value) -> Result<Value> {
@@ -457,27 +489,23 @@ async fn echo(_: &Context, input: Value) -> Result<Value> {
     Ok(input)
 }
 
-async fn protected_self(context: &Context, input: Value) -> Result<Value> {
-    context.call(ProtectedInput { value: input.value }).await
-}
-
 async fn retry(context: &Context, input: Value) -> Result<Value> {
     if context.attempt < 3 {
-        return Err(harmos::Error::failure(v1::Classification::Transient, "retry", "Retry", "Try Again"));
+        return Err(harmos::Error::failure(Classification::Transient, "retry", "Retry", "Try Again"));
     }
     Ok(input)
 }
 
 async fn failure(_: &Context, _: Value) -> Result<Value> {
-    Err(v1::Failure {
-        classification: v1::Classification::Permanent as i32,
+    Err(Failure {
+        classification: Classification::Permanent as i32,
         code: "fixture_failure".into(),
         message: "Fixture Failed".into(),
         action: "Use Another Input".into(),
         details: [("fixture".into(), "value".into())].into(),
         diagnostics: "Fixture Diagnostics".into(),
-        cause: Some(Box::new(v1::Failure {
-            classification: v1::Classification::Transient as i32,
+        cause: Some(Box::new(Failure {
+            classification: Classification::Transient as i32,
             code: "fixture_cause".into(),
             message: "Fixture Cause".into(),
             ..Default::default()
@@ -489,7 +517,7 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
 
 async fn forward(context: &Context, input: Value) -> Result<Value> {
     if input.value == b"client-only" {
-        context.call(ClientTime {}).await?;
+        context.call(CallerProbe(StatusGetRequest {})).await?;
         return Ok(input);
     }
     if input.value == b"control" {
@@ -536,16 +564,13 @@ async fn watch_invocation(context: &Context, request: Value) -> Result<Value> {
     while let Some(state) = watch.next().await? {
         phases.extend(state.phase.as_bytes());
         phases.push(b'|');
-        if !phases[..phases.len() - 1].contains(&b'|') {
-            context.call(HostInput { value: b"watch opened".to_vec() }).await?;
-        }
     }
     Ok(Value { value: phases })
 }
 
 async fn setting_value(context: &Context, request: Value) -> Result<Value> {
     let name = String::from_utf8(request.value).map_err(|error| harmos::Error::Invalid(format!("List Settings: {error}")))?;
-    let response = context.settings().await?;
+    let response = context.settings().list().await?;
     let value = response
         .value
         .and_then(|settings| settings.values.get(&name).cloned())
@@ -555,7 +580,7 @@ async fn setting_value(context: &Context, request: Value) -> Result<Value> {
 
 async fn peer_forward(context: &Context, input: Value) -> Result<Value> {
     match context.call(PeerInput { value: input.value.clone() }).await {
-        Err(harmos::Error::Failure(failure)) if failure.classification() == v1::Classification::Cancelled => Ok(input),
+        Err(harmos::Error::Failure(failure)) if failure.classification() == Classification::Cancelled => Ok(input),
         result => result,
     }
 }

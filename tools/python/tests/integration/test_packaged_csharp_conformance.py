@@ -13,6 +13,7 @@
 
 # Standard Library Imports
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -72,12 +73,14 @@ class PackagedCSharpConformance(unittest.TestCase):
             consumer.mkdir()
             project = consumer / "Consumer.csproj"
             project.write_text(
-                f'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="{version}" /><PackageReference Include="Grpc.Tools" Version="{grpc_tools}" PrivateAssets="All" /><Protobuf Include="proto/harmos/conformance/v1/fixture.proto" ProtoRoot="proto" GrpcServices="None" /></ItemGroup></Project>',
+                f'<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup><ItemGroup><PackageReference Include="Harmos" Version="{version}" /><PackageReference Include="Grpc.Tools" Version="{grpc_tools}" PrivateAssets="All" /><Protobuf Include="proto/conformance/model/v1/fixture.proto" ProtoRoot="proto" GrpcServices="None" /></ItemGroup></Project>',
                 encoding="utf-8",
             )
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/Fixture.cs", consumer / "Fixture.cs")
+            shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/CallerRequest.g.cs", consumer / "CallerRequest.g.cs")
+            shutil.copytree(root / "sdk/csharp/tests/Harmos.Conformance/Generated", consumer / "Generated")
             shutil.copytree(root / "sdk/tests/fixtures/conformance/proto", consumer / "proto")
-            (consumer / "Program.cs").write_text("await new Harmos.Conformance.Fixture().Build().ServeAsync();\n", encoding="utf-8")
+            (consumer / "Program.cs").write_text("using Harmos.Conformance;\nawait new Fixture().Build().ServeAsync();\n", encoding="utf-8")
             config = consumer / "NuGet.Config"
             config.write_text(
                 f'<configuration><packageSources><clear /><add key="fixture" value="{feed.as_posix()}" /><add key="nuget" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>',
@@ -130,7 +133,12 @@ class PackagedCSharpConformance(unittest.TestCase):
                 creationflags=spawn_flags(),
             )
             self.assertEqual(result.returncode, 0, result.stdout)
-            self.assertEqual(len([line for line in result.stdout.splitlines() if line.endswith("| PASS |")]), 36, result.stdout)
+            summary = re.search(r"(\d+)/(\d+) Cases Passed", result.stdout)
+            self.assertIsNotNone(summary, result.stdout)
+            assert summary is not None
+            self.assertEqual(int(summary[1]), int(summary[2]), result.stdout)
+            rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
+            self.assertEqual(len(rows), int(summary[2]), result.stdout)
 
 
 # === Public Functions === #

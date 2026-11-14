@@ -23,7 +23,9 @@ pub use harmos_domain::model::storage::{
     MutationWindow, ObjectEntry, ObjectValue, SchemaKey, StagedFile, StorageCursor, StoreHistory, StoredRecord, StoredRow,
 };
 use harmos_domain::schema::graph::Schema;
-use harmos_protocol::v1::{PageRequest, ReadCut, Receipt};
+use harmos_protocol::model::PageRequest;
+use harmos_protocol::model::ReadCut;
+use harmos_protocol::model::Receipt;
 pub use harmos_query::QueryOutput;
 pub use harmos_query::columnar::ArrowPage;
 pub use harmos_query::columnar::ColumnPredicate;

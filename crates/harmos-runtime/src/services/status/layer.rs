@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::status::Event as WireEvent;
+
 // Standard Library Imports
 use std::{collections::HashMap, sync::Weak};
 
@@ -68,7 +70,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for StatusLayer {
         let mut fields = Fields::default();
         event.record(&mut fields);
         let message = fields.0.remove("message").unwrap_or_default();
-        let value = harmos_protocol::client::status::Event {
+        let value = WireEvent {
             level: event.metadata().level().to_string(),
             target: event.metadata().target().into(),
             message,
@@ -87,7 +89,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for StatusLayer {
         attributes.record(&mut fields);
         fields.0.insert("span_id".into(), id.into_u64().to_string());
         fields.0.insert("event".into(), "span_open".into());
-        let _ = owner.record_trace(harmos_protocol::client::status::Event {
+        let _ = owner.record_trace(WireEvent {
             level: attributes.metadata().level().to_string(),
             target: attributes.metadata().target().into(),
             message: attributes.metadata().name().into(),
@@ -104,7 +106,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for StatusLayer {
         values.record(&mut fields);
         fields.0.insert("span_id".into(), id.into_u64().to_string());
         fields.0.insert("event".into(), "span_record".into());
-        let _ = owner.record_trace(harmos_protocol::client::status::Event { fields: fields.0, ..Default::default() });
+        let _ = owner.record_trace(WireEvent { fields: fields.0, ..Default::default() });
     }
 
     fn on_close(&self, id: Id, context: Context<'_, S>) {
@@ -114,7 +116,7 @@ impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for StatusLayer {
         let Some(span) = context.span(&id) else {
             return;
         };
-        let _ = owner.record_trace(harmos_protocol::client::status::Event {
+        let _ = owner.record_trace(WireEvent {
             level: span.metadata().level().to_string(),
             target: span.metadata().target().into(),
             message: span.metadata().name().into(),

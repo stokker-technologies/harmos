@@ -51,7 +51,7 @@ struct UnaryDeclaration {
 static UNARY_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<UnaryDeclaration>("dynamic.unary", POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("dynamic.v1", "External", "Unary"));
+        .grpc(harmos_runtime::operations::Grpc::new("dynamic.host.v1", "External", "Unary"));
 
 const UNARY_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<UnaryDeclaration> =
     harmos_runtime::operations::OperationSpec::<UnaryDeclaration>::new(&UNARY_DECLARATION_DESCRIPTION);
@@ -70,7 +70,7 @@ struct ExchangeDeclaration {
 static EXCHANGE_DECLARATION_DESCRIPTION: harmos_runtime::operations::WireDeclaration =
     harmos_runtime::operations::WireDeclaration::request::<ExchangeDeclaration>("dynamic.exchange", POLICY)
         .visibility(harmos_runtime::operations::Visibility::Public)
-        .grpc(harmos_runtime::operations::Grpc::new("dynamic.v1", "External", "Exchange"));
+        .grpc(harmos_runtime::operations::Grpc::new("dynamic.host.v1", "External", "Exchange"));
 
 const EXCHANGE_DECLARATION_OPERATION: harmos_runtime::operations::OperationSpec<ExchangeDeclaration> =
     harmos_runtime::operations::OperationSpec::<ExchangeDeclaration>::new(&EXCHANGE_DECLARATION_DESCRIPTION);
@@ -92,7 +92,7 @@ fn dynamic_wire_interop() {
             optional: Some(0)
         }
     );
-    assert_eq!(operation.path(), "/dynamic.v1.External/Unary");
+    assert_eq!(operation.path(), "/dynamic.host.v1.External/Unary");
     assert!(!operation.client_streaming());
     assert!(!operation.server_streaming());
     let Event::Completion(decoded) = operation

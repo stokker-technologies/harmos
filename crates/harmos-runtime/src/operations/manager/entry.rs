@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Callers as WireCallers;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -41,24 +43,28 @@ impl Entry {
             .is_some_and(|binding| binding.caller.name.as_deref() == Some(name))
     }
 
-    pub(super) fn client_visible(&self) -> bool {
-        use harmos_protocol::schema::{OperationFace, operation_identity};
-        let face = operation_identity(self.id());
-        let instance = matches!(face, Ok(OperationFace::Plugin)) && self.id().contains('/') && self.host_provided();
-        self.definition.visibility == crate::operations::Visibility::Public
-            && matches!(face, Ok(OperationFace::Client) | Ok(OperationFace::Plugin) if !instance)
+    pub(super) fn callers(&self) -> WireCallers {
+        self.callers
+            .get(self.id())
+            .copied()
+            .unwrap_or_else(|| self.contract.as_ref().map_or(WireCallers::All, crate::operations::Contract::callers))
     }
 
-    pub(super) fn context_visible(&self) -> bool {
-        use harmos_protocol::schema::{OperationFace, operation_identity};
-        let face = operation_identity(self.id());
-        let instance = matches!(face, Ok(OperationFace::Plugin)) && self.id().contains('/') && self.host_provided();
-        matches!(face, Ok(OperationFace::Context) | Ok(OperationFace::Plugin) if !instance)
-            && !self
-                .contract
-                .as_ref()
-                .and_then(|contract| contract.grpc())
-                .is_some_and(|grpc| grpc.package == "harmos.client.v1" || grpc.package.starts_with("harmos.client.v1."))
+    pub(super) fn client_visible(&self) -> bool {
+        use harmos_protocol::model::Callers;
+        self.definition.visibility == crate::operations::Visibility::Public
+            && matches!(self.callers(), Callers::Clients | Callers::All)
+            && !self.connection_operation()
+    }
+
+    pub(super) fn plugin_visible(&self) -> bool {
+        use harmos_protocol::model::Callers;
+        matches!(self.callers(), Callers::Plugins | Callers::All) && !self.connection_operation()
+    }
+
+    fn connection_operation(&self) -> bool {
+        use harmos_protocol::schema::{Executor, operation_identity};
+        matches!(operation_identity(self.id()), Ok(Executor::Plugin)) && self.id().contains('/') && self.host_provided()
     }
 
     // Move a resident control onto the unbounded resident lane.
@@ -188,8 +194,15 @@ impl Entry {
     }
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
+        if _origin.is_plugin() && !self.plugin_visible() {
+            return Err(Error::OperationUnauthorized {
+                caller: "plugin".into(),
+                owner: self.owner.to_string(),
+                operation: self.id().to_owned(),
+            });
+        }
         #[cfg(feature = "grpc")]
-        if matches!(_origin.identity, super::super::caller::Identity::External(_)) && !self.client_visible() {
+        if !_origin.is_plugin() && matches!(_origin.identity, super::super::caller::Identity::External(_)) && !self.client_visible() {
             return Err(Error::OperationUnauthorized {
                 caller: "external".to_owned(),
                 owner: self.owner.to_string(),
@@ -198,7 +211,7 @@ impl Entry {
         }
         #[cfg(feature = "plugin-guest")]
         if let Some(caller) = &_origin.scope {
-            if self.sdk.is_some() || !self.context_visible() {
+            if self.sdk.is_some() || !self.plugin_visible() {
                 return Err(Error::OperationUnauthorized {
                     caller: caller.owner().to_owned(),
                     owner: self.owner.to_string(),

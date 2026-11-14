@@ -1,19 +1,0 @@
-
-e
-google/protobuf/duration.protogoogle.protobuf"*
-Duration
-seconds (
-nanos (bproto3
-g
-google/protobuf/timestamp.protogoogle.protobuf"+
-	Timestamp
-seconds (
-nanos (bproto3
-œ
-harmos/client/v1/time.protoharmos.client.v1google/protobuf/duration.protogoogle/protobuf/timestamp.proto"
-TimeGetRequest":
-TimeGetResponse'
-now (2.google.protobuf.Timestamp"?
-TimeSleepRequest+
-duration (2.google.protobuf.Duration"
-TimeSleepResponsebproto3

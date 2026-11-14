@@ -13,6 +13,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::model::Callers;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -37,7 +39,7 @@ use super::*;
 impl Manager {
     pub(crate) fn new<A: crate::Application>(
         instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
-        schema_settings: Arc<crate::config::SchemaSettings>,
+        schema_settings: Arc<crate::config::SchemaSettings>, callers: BTreeMap<String, Callers>,
     ) -> Result<Self> {
         let status_started = instances.clock.date().into();
         let manager = Self {
@@ -48,6 +50,7 @@ impl Manager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                callers: Arc::new(callers),
                 access: Arc::new(harmos_operations::access::AccessAccess::default()),
                 status: Arc::new(harmos_operations::status::StatusAccess::default()),
                 status_owner: std::sync::Mutex::new(None),

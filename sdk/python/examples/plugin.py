@@ -30,7 +30,7 @@ from harmos.plugin import Context, HostOperation, Plugin, operation
 class Echo:
     @operation("example.echo", request=BytesValue, response=BytesValue, visibility=VISIBILITY_PUBLIC)
     async def echo(self, context: Context, request: BytesValue) -> BytesValue:
-        settings = await context.host.settings.list()
+        settings = await context.host.plugins.settings.list()
         prefix = settings.value.values["prefix"]
         if prefix.WhichOneof("value") != "text":
             raise ValueError("Echo: Prefix Setting Must Be Text")
@@ -45,7 +45,7 @@ async def run(address: str) -> None:
         Echo(),
         id="example",
         version="1.0.0",
-        requires=[HostOperation.SETTINGS_LIST],
+        requires=[HostOperation.PLUGINS_SETTINGS_LIST],
         settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
     )
     endpoint = await plugin.start(address)

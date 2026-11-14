@@ -13,6 +13,9 @@
 
 /* === Imports === */
 
+use harmos_protocol::host::InvocationsWatchRequest;
+use harmos_protocol::host::InvocationsWatchResponse;
+
 use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
@@ -35,11 +38,11 @@ pub struct Watch;
 /* === Implementations === */
 
 impl ProtobufOperation for Watch {
-    type Request = harmos_protocol::client::InvocationsWatchRequest;
-    type Response = harmos_protocol::client::InvocationsWatchResponse;
-    type Endpoints = ProtobufOutput<harmos_protocol::client::InvocationsWatchResponse>;
-    const ID: &'static str = "harmos.client.v1.Invocations/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.client.v1", "Invocations", "Watch"));
+    type Request = InvocationsWatchRequest;
+    type Response = InvocationsWatchResponse;
+    type Endpoints = ProtobufOutput<InvocationsWatchResponse>;
+    const ID: &'static str = "harmos.host.v1.Invocations/Watch";
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Watch"));
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
@@ -54,7 +57,7 @@ impl ProtobufOperation for Watch {
         drop(instance);
         loop {
             let status = changes.current();
-            let state = harmos_protocol::client::InvocationsWatchResponse { invocation: Some(super::state(status)) };
+            let state = InvocationsWatchResponse { invocation: Some(super::state(status)) };
             output.send(state.clone()).await.map_err(ServingError::Stream)?;
             if status.is_settled() || !changes.changed().await {
                 return Ok(state);
@@ -64,8 +67,8 @@ impl ProtobufOperation for Watch {
 }
 
 impl Watch {
-    pub fn of(instance: Id) -> harmos_protocol::client::InvocationsWatchRequest {
-        harmos_protocol::client::InvocationsWatchRequest { instance: instance.value() }
+    pub fn of(instance: Id) -> InvocationsWatchRequest {
+        InvocationsWatchRequest { instance: instance.value() }
     }
 }
 

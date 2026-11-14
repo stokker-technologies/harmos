@@ -1,84 +1,84 @@
 // @generated from protocol descriptors; do not edit.
 use harmos::client::{CallOptions, ClientTransport, Watching, action_error, request_id};
-use harmos_protocol::client::InvocationsCancelRequest;
-use harmos_protocol::client::InvocationsCancelResponse;
-use harmos_protocol::client::InvocationsGetRequest;
-use harmos_protocol::client::InvocationsGetResponse;
-use harmos_protocol::client::InvocationsInvokeRequest;
-use harmos_protocol::client::InvocationsInvokeResponse;
-use harmos_protocol::client::InvocationsWatchRequest;
-use harmos_protocol::client::InvocationsWatchResponse;
-use harmos_protocol::client::OperationsGetRequest;
-use harmos_protocol::client::OperationsGetResponse;
-use harmos_protocol::client::OperationsListRequest;
-use harmos_protocol::client::OperationsListResponse;
-use harmos_protocol::client::PluginEntry;
-use harmos_protocol::client::PluginPlacement;
-use harmos_protocol::client::PluginValue;
-use harmos_protocol::client::PluginsCreateRequest;
-use harmos_protocol::client::PluginsCreateResponse;
-use harmos_protocol::client::PluginsDeleteRequest;
-use harmos_protocol::client::PluginsDeleteResponse;
-use harmos_protocol::client::PluginsGetRequest;
-use harmos_protocol::client::PluginsGetResponse;
-use harmos_protocol::client::PluginsListRequest;
-use harmos_protocol::client::PluginsListResponse;
-use harmos_protocol::client::PluginsReplaceRequest;
-use harmos_protocol::client::PluginsReplaceResponse;
-use harmos_protocol::client::PluginsRestartRequest;
-use harmos_protocol::client::PluginsRestartResponse;
-use harmos_protocol::client::PluginsSetRequest;
-use harmos_protocol::client::PluginsSetResponse;
-use harmos_protocol::client::PluginsWatchRequest;
-use harmos_protocol::client::PluginsWatchResponse;
-use harmos_protocol::client::SchemaDescription;
-use harmos_protocol::client::SchemasListRequest;
-use harmos_protocol::client::SchemasListResponse;
-use harmos_protocol::client::StatusGetRequest;
-use harmos_protocol::client::StatusGetResponse;
-use harmos_protocol::client::StatusWatchRequest;
-use harmos_protocol::client::StatusWatchResponse;
-use harmos_protocol::client::StreamIdentity;
-use harmos_protocol::client::StreamsListRequest;
-use harmos_protocol::client::StreamsListResponse;
-use harmos_protocol::client::TimeGetRequest;
-use harmos_protocol::client::TimeGetResponse;
-use harmos_protocol::client::TimeSleepRequest;
-use harmos_protocol::client::TimeSleepResponse;
-use harmos_protocol::client::access::CertificatesCreateRequest;
-use harmos_protocol::client::access::CertificatesCreateResponse;
-use harmos_protocol::client::access::ListenerGetRequest;
-use harmos_protocol::client::access::ListenerGetResponse;
-use harmos_protocol::client::access::ListenerSetRequest;
-use harmos_protocol::client::access::ListenerSetResponse;
-use harmos_protocol::client::access::ListenerValue;
-use harmos_protocol::client::access::PairingsCreateRequest;
-use harmos_protocol::client::access::PairingsCreateResponse;
-use harmos_protocol::client::access::PairingsDeleteRequest;
-use harmos_protocol::client::access::PairingsDeleteResponse;
-use harmos_protocol::client::access::PairingsListRequest;
-use harmos_protocol::client::access::PairingsListResponse;
-use harmos_protocol::client::plugins::SettingsListRequest;
-use harmos_protocol::client::plugins::SettingsListResponse;
-use harmos_protocol::client::plugins::SettingsSetRequest;
-use harmos_protocol::client::plugins::SettingsSetResponse;
-use harmos_protocol::client::status::DiagnosticsGetRequest;
-use harmos_protocol::client::status::DiagnosticsGetResponse;
-use harmos_protocol::client::status::LogsListRequest;
-use harmos_protocol::client::status::LogsListResponse;
-use harmos_protocol::client::status::LogsWatchRequest;
-use harmos_protocol::client::status::LogsWatchResponse;
-use harmos_protocol::client::status::TraceEventsListRequest;
-use harmos_protocol::client::status::TraceEventsListResponse;
-use harmos_protocol::client::status::TraceEventsWatchRequest;
-use harmos_protocol::client::status::TraceEventsWatchResponse;
-use harmos_protocol::v1::DiscoveredOperation;
-use harmos_protocol::v1::InstanceState;
-use harmos_protocol::v1::PageRequest;
-use harmos_protocol::v1::Position;
-use harmos_protocol::v1::ReadCut;
-use harmos_protocol::v1::Receipt;
-use harmos_protocol::v1::SettingValues;
+use harmos_protocol::host::InvocationsCancelRequest;
+use harmos_protocol::host::InvocationsCancelResponse;
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::host::InvocationsCreateResponse;
+use harmos_protocol::host::InvocationsGetRequest;
+use harmos_protocol::host::InvocationsGetResponse;
+use harmos_protocol::host::InvocationsWatchRequest;
+use harmos_protocol::host::InvocationsWatchResponse;
+use harmos_protocol::host::OperationsGetRequest;
+use harmos_protocol::host::OperationsGetResponse;
+use harmos_protocol::host::OperationsListRequest;
+use harmos_protocol::host::OperationsListResponse;
+use harmos_protocol::host::PluginEntry;
+use harmos_protocol::host::PluginPlacement;
+use harmos_protocol::host::PluginValue;
+use harmos_protocol::host::PluginsCreateRequest;
+use harmos_protocol::host::PluginsCreateResponse;
+use harmos_protocol::host::PluginsDeleteRequest;
+use harmos_protocol::host::PluginsDeleteResponse;
+use harmos_protocol::host::PluginsGetRequest;
+use harmos_protocol::host::PluginsGetResponse;
+use harmos_protocol::host::PluginsListRequest;
+use harmos_protocol::host::PluginsListResponse;
+use harmos_protocol::host::PluginsReplaceRequest;
+use harmos_protocol::host::PluginsReplaceResponse;
+use harmos_protocol::host::PluginsRestartRequest;
+use harmos_protocol::host::PluginsRestartResponse;
+use harmos_protocol::host::PluginsSetRequest;
+use harmos_protocol::host::PluginsSetResponse;
+use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::PluginsWatchResponse;
+use harmos_protocol::host::SchemaDescription;
+use harmos_protocol::host::SchemasListRequest;
+use harmos_protocol::host::SchemasListResponse;
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::StatusGetResponse;
+use harmos_protocol::host::StatusWatchRequest;
+use harmos_protocol::host::StatusWatchResponse;
+use harmos_protocol::host::StreamIdentity;
+use harmos_protocol::host::StreamsListRequest;
+use harmos_protocol::host::StreamsListResponse;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::TimeSleepResponse;
+use harmos_protocol::host::access::CertificatesCreateRequest;
+use harmos_protocol::host::access::CertificatesCreateResponse;
+use harmos_protocol::host::access::ListenerGetRequest;
+use harmos_protocol::host::access::ListenerGetResponse;
+use harmos_protocol::host::access::ListenerSetRequest;
+use harmos_protocol::host::access::ListenerSetResponse;
+use harmos_protocol::host::access::ListenerValue;
+use harmos_protocol::host::access::PairingsCreateRequest;
+use harmos_protocol::host::access::PairingsCreateResponse;
+use harmos_protocol::host::access::PairingsDeleteRequest;
+use harmos_protocol::host::access::PairingsDeleteResponse;
+use harmos_protocol::host::access::PairingsListRequest;
+use harmos_protocol::host::access::PairingsListResponse;
+use harmos_protocol::host::plugins::SettingsListRequest;
+use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::host::plugins::SettingsSetRequest;
+use harmos_protocol::host::plugins::SettingsSetResponse;
+use harmos_protocol::host::status::DiagnosticsGetRequest;
+use harmos_protocol::host::status::DiagnosticsGetResponse;
+use harmos_protocol::host::status::LogsListRequest;
+use harmos_protocol::host::status::LogsListResponse;
+use harmos_protocol::host::status::LogsWatchRequest;
+use harmos_protocol::host::status::LogsWatchResponse;
+use harmos_protocol::host::status::TraceEventsListRequest;
+use harmos_protocol::host::status::TraceEventsListResponse;
+use harmos_protocol::host::status::TraceEventsWatchRequest;
+use harmos_protocol::host::status::TraceEventsWatchResponse;
+use harmos_protocol::model::DiscoveredOperation;
+use harmos_protocol::model::InstanceState;
+use harmos_protocol::model::PageRequest;
+use harmos_protocol::model::Position;
+use harmos_protocol::model::ReadCut;
+use harmos_protocol::model::Receipt;
+use harmos_protocol::model::SettingValues;
 use prost_reflect::ReflectMessage;
 use prost_types::Duration;
 use prost_types::Timestamp;
@@ -110,7 +110,7 @@ pub struct AccessPairingsDeleteOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
-pub struct InvocationsInvokeOptions {
+pub struct InvocationsCreateOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
@@ -291,7 +291,7 @@ impl AccessCertificates {
         let response = self
             .client
             .unary::<CertificatesCreateRequest, CertificatesCreateResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Certificates/Create"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Certificates/Create"),
                 request,
                 CertificatesCreateResponse::default().descriptor(),
             )
@@ -318,7 +318,7 @@ impl AccessListener {
         let response = self
             .client
             .unary::<ListenerGetRequest, ListenerGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Listener/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Listener/Get"),
                 request,
                 ListenerGetResponse::default().descriptor(),
             )
@@ -338,7 +338,7 @@ impl AccessListener {
         let response = self
             .client
             .unary::<ListenerSetRequest, ListenerSetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Listener/Set"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Listener/Set"),
                 request,
                 ListenerSetResponse::default().descriptor(),
             )
@@ -367,7 +367,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsCreateRequest, PairingsCreateResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Pairings/Create"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/Create"),
                 request,
                 PairingsCreateResponse::default().descriptor(),
             )
@@ -385,7 +385,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsListRequest, PairingsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Pairings/List"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/List"),
                 request,
                 PairingsListResponse::default().descriptor(),
             )
@@ -405,7 +405,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsDeleteRequest, PairingsDeleteResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.access.Pairings/Delete"),
+                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/Delete"),
                 request,
                 PairingsDeleteResponse::default().descriptor(),
             )
@@ -423,13 +423,13 @@ impl Invocations {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn invoke(&self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>) -> Result<Vec<u8>, RpcStatus> {
-        self.invoke_with(operation, fingerprint, payload, InvocationsInvokeOptions::default()).await
+    pub async fn create(&self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>) -> Result<Vec<u8>, RpcStatus> {
+        self.create_with(operation, fingerprint, payload, InvocationsCreateOptions::default()).await
     }
-    pub async fn invoke_with(
-        &self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>, options: InvocationsInvokeOptions,
+    pub async fn create_with(
+        &self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>, options: InvocationsCreateOptions,
     ) -> Result<Vec<u8>, RpcStatus> {
-        let value = InvocationsInvokeRequest {
+        let value = InvocationsCreateRequest {
             operation: operation.into(),
             fingerprint,
             payload,
@@ -437,13 +437,13 @@ impl Invocations {
         let request = options.context.request(value);
         let response = self
             .client
-            .unary::<InvocationsInvokeRequest, InvocationsInvokeResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Invocations/Invoke"),
+            .unary::<InvocationsCreateRequest, InvocationsCreateResponse>(
+                PathAndQuery::from_static("/harmos.host.v1.Invocations/Create"),
                 request,
-                InvocationsInvokeResponse::default().descriptor(),
+                InvocationsCreateResponse::default().descriptor(),
             )
             .await
-            .map_err(|error| action_error("invocations.invoke", error))?;
+            .map_err(|error| action_error("invocations.create", error))?;
         let response = response.into_inner();
         Ok(response.payload)
     }
@@ -456,7 +456,7 @@ impl Invocations {
         let response = self
             .client
             .unary::<InvocationsGetRequest, InvocationsGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Invocations/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.Invocations/Get"),
                 request,
                 InvocationsGetResponse::default().descriptor(),
             )
@@ -476,7 +476,7 @@ impl Invocations {
         let response = self
             .client
             .unary::<InvocationsCancelRequest, InvocationsCancelResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Invocations/Cancel"),
+                PathAndQuery::from_static("/harmos.host.v1.Invocations/Cancel"),
                 request,
                 InvocationsCancelResponse::default().descriptor(),
             )
@@ -494,7 +494,7 @@ impl Invocations {
         let response = self
             .client
             .watch_known::<InvocationsWatchRequest, InvocationsWatchResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Invocations/Watch"),
+                PathAndQuery::from_static("/harmos.host.v1.Invocations/Watch"),
                 request,
                 InvocationsWatchResponse::default().descriptor(),
             )
@@ -521,7 +521,7 @@ impl Operations {
         let response = self
             .client
             .unary::<OperationsListRequest, OperationsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Operations/List"),
+                PathAndQuery::from_static("/harmos.host.v1.Operations/List"),
                 request,
                 OperationsListResponse::default().descriptor(),
             )
@@ -539,7 +539,7 @@ impl Operations {
         let response = self
             .client
             .unary::<OperationsGetRequest, OperationsGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Operations/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.Operations/Get"),
                 request,
                 OperationsGetResponse::default().descriptor(),
             )
@@ -570,7 +570,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsGetRequest, PluginsGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Get"),
                 request,
                 PluginsGetResponse::default().descriptor(),
             )
@@ -588,7 +588,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsListRequest, PluginsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/List"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/List"),
                 request,
                 PluginsListResponse::default().descriptor(),
             )
@@ -606,7 +606,7 @@ impl Plugins {
         let response = self
             .client
             .watch_known::<PluginsWatchRequest, PluginsWatchResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Watch"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Watch"),
                 request,
                 PluginsWatchResponse::default().descriptor(),
             )
@@ -636,7 +636,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsCreateRequest, PluginsCreateResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Create"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Create"),
                 request,
                 PluginsCreateResponse::default().descriptor(),
             )
@@ -662,7 +662,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsSetRequest, PluginsSetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Set"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Set"),
                 request,
                 PluginsSetResponse::default().descriptor(),
             )
@@ -682,7 +682,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsDeleteRequest, PluginsDeleteResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Delete"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Delete"),
                 request,
                 PluginsDeleteResponse::default().descriptor(),
             )
@@ -702,7 +702,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsRestartRequest, PluginsRestartResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Restart"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Restart"),
                 request,
                 PluginsRestartResponse::default().descriptor(),
             )
@@ -732,7 +732,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsReplaceRequest, PluginsReplaceResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Plugins/Replace"),
+                PathAndQuery::from_static("/harmos.host.v1.Plugins/Replace"),
                 request,
                 PluginsReplaceResponse::default().descriptor(),
             )
@@ -754,12 +754,12 @@ impl PluginsSettings {
         self.list_with(name, PluginsSettingsListOptions::default()).await
     }
     pub async fn list_with(&self, name: impl Into<String>, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
-        let value = SettingsListRequest { name: name.into(), at: options.at };
+        let value = SettingsListRequest { name: Some(name.into()), at: options.at };
         let request = options.context.request(value);
         let response = self
             .client
             .unary::<SettingsListRequest, SettingsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.plugins.Settings/List"),
+                PathAndQuery::from_static("/harmos.host.v1.plugins.Settings/List"),
                 request,
                 SettingsListResponse::default().descriptor(),
             )
@@ -789,7 +789,7 @@ impl PluginsSettings {
         let response = self
             .client
             .unary::<SettingsSetRequest, SettingsSetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.plugins.Settings/Set"),
+                PathAndQuery::from_static("/harmos.host.v1.plugins.Settings/Set"),
                 request,
                 SettingsSetResponse::default().descriptor(),
             )
@@ -816,7 +816,7 @@ impl Schemas {
         let response = self
             .client
             .unary::<SchemasListRequest, SchemasListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Schemas/List"),
+                PathAndQuery::from_static("/harmos.host.v1.Schemas/List"),
                 request,
                 SchemasListResponse::default().descriptor(),
             )
@@ -851,7 +851,7 @@ impl Status {
         let response = self
             .client
             .unary::<StatusGetRequest, StatusGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Status/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.Status/Get"),
                 request,
                 StatusGetResponse::default().descriptor(),
             )
@@ -869,7 +869,7 @@ impl Status {
         let response = self
             .client
             .watch_known::<StatusWatchRequest, StatusWatchResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Status/Watch"),
+                PathAndQuery::from_static("/harmos.host.v1.Status/Watch"),
                 request,
                 StatusWatchResponse::default().descriptor(),
             )
@@ -898,7 +898,7 @@ impl StatusDiagnostics {
         let response = self
             .client
             .unary::<DiagnosticsGetRequest, DiagnosticsGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.status.Diagnostics/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.status.Diagnostics/Get"),
                 request,
                 DiagnosticsGetResponse::default().descriptor(),
             )
@@ -925,7 +925,7 @@ impl StatusLogs {
         let response = self
             .client
             .unary::<LogsListRequest, LogsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.status.Logs/List"),
+                PathAndQuery::from_static("/harmos.host.v1.status.Logs/List"),
                 request,
                 LogsListResponse::default().descriptor(),
             )
@@ -945,7 +945,7 @@ impl StatusLogs {
         let response = self
             .client
             .watch_known::<LogsWatchRequest, LogsWatchResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.status.Logs/Watch"),
+                PathAndQuery::from_static("/harmos.host.v1.status.Logs/Watch"),
                 request,
                 LogsWatchResponse::default().descriptor(),
             )
@@ -972,7 +972,7 @@ impl StatusTraceEvents {
         let response = self
             .client
             .unary::<TraceEventsListRequest, TraceEventsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.status.TraceEvents/List"),
+                PathAndQuery::from_static("/harmos.host.v1.status.TraceEvents/List"),
                 request,
                 TraceEventsListResponse::default().descriptor(),
             )
@@ -992,7 +992,7 @@ impl StatusTraceEvents {
         let response = self
             .client
             .watch_known::<TraceEventsWatchRequest, TraceEventsWatchResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.status.TraceEvents/Watch"),
+                PathAndQuery::from_static("/harmos.host.v1.status.TraceEvents/Watch"),
                 request,
                 TraceEventsWatchResponse::default().descriptor(),
             )
@@ -1019,7 +1019,7 @@ impl Streams {
         let response = self
             .client
             .unary::<StreamsListRequest, StreamsListResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Streams/List"),
+                PathAndQuery::from_static("/harmos.host.v1.Streams/List"),
                 request,
                 StreamsListResponse::default().descriptor(),
             )
@@ -1046,7 +1046,7 @@ impl Time {
         let response = self
             .client
             .unary::<TimeGetRequest, TimeGetResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Time/Get"),
+                PathAndQuery::from_static("/harmos.host.v1.Time/Get"),
                 request,
                 TimeGetResponse::default().descriptor(),
             )
@@ -1064,7 +1064,7 @@ impl Time {
         let response = self
             .client
             .unary::<TimeSleepRequest, TimeSleepResponse>(
-                PathAndQuery::from_static("/harmos.client.v1.Time/Sleep"),
+                PathAndQuery::from_static("/harmos.host.v1.Time/Sleep"),
                 request,
                 TimeSleepResponse::default().descriptor(),
             )

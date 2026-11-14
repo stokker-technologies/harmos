@@ -24,7 +24,8 @@ use tonic::Status;
 
 // Local Imports
 use crate::{Context, Message, Result, Visibility};
-use harmos_protocol::v1::{OperationContract, OperationPolicy};
+use harmos_protocol::model::OperationContract;
+use harmos_protocol::model::OperationPolicy;
 
 /* === Constants === */
 

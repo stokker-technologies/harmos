@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operation Policy
+//
+// Shared values exchanged by hosts, plugins and clients.
+
+syntax = "proto3";
+
+package harmos.model.v1;
+
+// === Imports === //
+
+import "google/protobuf/duration.proto";
+
+// === Options === //
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// Owns invocation, attempt and cancellation budgets; a child override applies only to that call.
+message OperationPolicy {
+  // Bound on the whole invocation including retries.
+  google.protobuf.Duration timeout = 1;
+  // Bound on one attempt.
+  google.protobuf.Duration attempt_timeout = 2;
+  // Grace after Cancel before the host abandons the attempt.
+  google.protobuf.Duration cancellation_timeout = 3;
+  // Absent means one attempt. Delays use the host's clock.
+  RetryPolicy retries = 4;
+}
+
+// Bounds attempts and host-clock backoff; enabled retries require an explicitly replay-safe operation.
+message RetryPolicy {
+  uint64 total_attempts = 1; // Includes the first attempt; must be positive.
+  // Initial host-clock backoff between attempts.
+  google.protobuf.Duration initial = 2;
+  google.protobuf.Duration maximum = 3; // Presence selects exponential backoff.
+  // Enables reproducible jitter in the retry backoff.
+  bool deterministic_jitter = 4;
+}
+
+// === Enums === //

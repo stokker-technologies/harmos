@@ -21,10 +21,14 @@ use std::{marker::PhantomData, sync::Arc};
 // Third Party Imports
 use prost::Message;
 use prost_reflect::ReflectMessage;
+use prost_types::FileDescriptorSet;
 use tonic::{Status, codegen::http::uri::PathAndQuery};
 
 // Local Imports
-use harmos_protocol::{schema, v1 as host};
+use harmos_protocol::{
+    model::{DiscoveredContract, Protobuf, Visibility},
+    schema,
+};
 
 /* === Constants === */
 
@@ -38,7 +42,7 @@ type Signature<Q, R, I, O> = fn(Q, I) -> (R, O);
 
 /// One Generated Application Contract, With Typed Request, Result And Stream Items.
 pub struct Method<Q, R, I = NoItems, O = NoItems> {
-    pub(super) contract: Arc<host::DiscoveredContract>,
+    pub(super) contract: Arc<DiscoveredContract>,
     pub(super) path: PathAndQuery,
     pub(super) input: bool,
     pub(super) output: bool,
@@ -69,9 +73,9 @@ impl<Q, R, I, O> Clone for Method<Q, R, I, O> {
 
 impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
     /// Bind Generated Types To An Authoritative Discovered Or Application Contract.
-    pub fn new(contract: host::DiscoveredContract) -> Result<Self, Status> {
+    pub fn new(contract: DiscoveredContract) -> Result<Self, Status> {
         schema::operation_identity(&contract.id).map_err(invalid)?;
-        if contract.visibility != host::Visibility::Public as i32 {
+        if contract.visibility != Visibility::Public as i32 {
             return Err(Status::permission_denied(format!("Bind {}: Public Visibility Required", contract.id)));
         }
         let protobuf = contract.protobuf.as_ref().ok_or_else(|| Status::invalid_argument("operation has no generated contract"))?;
@@ -86,8 +90,8 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
             return Err(Status::invalid_argument(format!("Bind {}: Invalid gRPC Service", contract.id)));
         }
         let method = format!("{}.{}/{}", grpc.package, grpc.service, grpc.method);
-        if schema::operation_identity(&method).map_err(invalid)? != schema::OperationFace::Client {
-            return Err(Status::permission_denied(format!("Bind {method}: Client Face Required")));
+        if schema::operation_identity(&method).map_err(invalid)? != schema::Executor::Host {
+            return Err(Status::permission_denied(format!("Bind {method}: Host Executor Required")));
         }
         let path = format!("/{method}").parse().map_err(invalid)?;
         Ok(Self {
@@ -101,7 +105,7 @@ impl<Q: ReflectMessage + Default, R: ReflectMessage + Default> Method<Q, R> {
 }
 
 impl<Q, R, I, O> Method<Q, R, I, O> {
-    pub fn contract(&self) -> &host::DiscoveredContract {
+    pub fn contract(&self) -> &DiscoveredContract {
         &self.contract
     }
 
@@ -144,13 +148,13 @@ impl<Q, R, I, O> Method<Q, R, I, O> {
 
 /* === Private Functions === */
 
-fn verify<T: ReflectMessage + Default>(name: &str, contract: &host::Protobuf) -> Result<(), Status> {
+fn verify<T: ReflectMessage + Default>(name: &str, contract: &Protobuf) -> Result<(), Status> {
     let descriptor = T::default().descriptor();
     if descriptor.full_name() != name {
         return Err(Status::invalid_argument("generated message name differs from operation contract"));
     }
-    let expected = prost_types::FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(invalid)?;
-    let actual = prost_types::FileDescriptorSet {
+    let expected = FileDescriptorSet::decode(contract.descriptors.as_slice()).map_err(invalid)?;
+    let actual = FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
     let expected = schema::message_types(&expected, name).map_err(invalid)?;

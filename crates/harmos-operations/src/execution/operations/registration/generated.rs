@@ -14,7 +14,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
 use std::{any::TypeId, future::Future, marker::PhantomData, ops::Deref};
 
 // Third Party Imports
@@ -467,25 +466,16 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
     let request = O::Request::default().descriptor();
     let response = O::Response::default().descriptor();
     let (input, output) = O::Endpoints::descriptors();
-    let mut files = BTreeMap::new();
+    let mut descriptors = prost_types::FileDescriptorSet::default();
     for message in [Some(&request), Some(&response), input.as_ref(), output.as_ref()].into_iter().flatten() {
-        for file in message.parent_pool().files() {
-            let file = file.file_descriptor_proto().clone();
-            if let Some(previous) = files.insert(file.name.clone(), file.clone())
-                && previous != file
-            {
-                return Err(super::super::ContractError::Protobuf("conflicting descriptor files".into()));
-            }
-        }
-    }
-    let roots: Vec<_> = [Some(&request), Some(&response), input.as_ref(), output.as_ref()]
-        .into_iter()
-        .flatten()
-        .map(|message| message.full_name())
-        .collect();
-    let descriptors =
-        harmos_protocol::schema::operation_types(&prost_types::FileDescriptorSet { file: files.into_values().collect() }, &roots)
+        let types = prost_types::FileDescriptorSet {
+            file: message.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        };
+        let projected = harmos_protocol::schema::message_types(&types, message.full_name())
             .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+        harmos_protocol::schema::merge_message_types(&mut descriptors, projected)
+            .map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+    }
     let protobuf = harmos_operations::operations::Protobuf {
         descriptors: descriptors.encode_to_vec(),
         request: request.full_name().into(),
@@ -501,8 +491,8 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         replay: O::REPLAY,
         fingerprint: crate::execution::Fingerprint([0; 32]),
     };
-    if matches!(O::ID, "harmos.client.v1.Time/Sleep" | "harmos.client.v1.Time/Get") {
-        let clock = Contract::clock(O::ID == "harmos.client.v1.Time/Sleep", O::POLICY, settings)?;
+    if matches!(O::ID, "harmos.host.v1.Time/Sleep" | "harmos.host.v1.Time/Get") {
+        let clock = Contract::clock(O::ID == "harmos.host.v1.Time/Sleep", O::POLICY, settings)?;
         let same_fingerprint = protobuf.fingerprint(O::ID)? == clock.fingerprint();
         let same_mapping = clock.grpc() == O::GRPC.as_ref();
         if !same_fingerprint || !same_mapping || operation.visibility != clock.operation().visibility {
@@ -510,7 +500,17 @@ fn contract<O: ProtobufOperation>(settings: &harmos_domain::config::SchemaSettin
         }
         return Ok(clock);
     }
-    Contract::from_protobuf(operation, protobuf, O::GRPC, settings)
+    let contract = Contract::from_protobuf(operation, protobuf, O::GRPC, settings)?;
+    let Some((service, method)) = O::ID.split_once('/') else {
+        return Ok(contract);
+    };
+    let service = request.parent_pool().get_service_by_name(service).ok_or_else(|| {
+        super::super::ContractError::Protobuf(format!("Declare {}: operation service and callers option are missing", O::ID))
+    })?;
+    let method = service.methods().find(|candidate| candidate.name() == method).ok_or(super::super::ContractError::Grpc)?;
+    let callers =
+        harmos_protocol::schema::method_callers(&method).map_err(|error| super::super::ContractError::Protobuf(error.to_string()))?;
+    Ok(contract.with_callers(callers))
 }
 
 pub(crate) fn memory<T: ReflectMessage + Default>(bytes: &[u8]) -> Result<usize, MessageError> {

@@ -5,21 +5,20 @@ from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 from google.protobuf.duration_pb2 import Duration
-from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import CallCredentials
 from grpc.aio import AioRpcError, Channel
 
-from harmos import Client as LibraryClient
 from harmos._client_transport import Metadata, call_error, stream, unary
-from harmos._wire.client.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
-from harmos._wire.client.v1.access.listener_pb2 import (
+from harmos._connection import Connection as LibraryConnection
+from harmos._wire.host.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
+from harmos._wire.host.v1.access.listener_pb2 import (
     ListenerGetRequest,
     ListenerGetResponse,
     ListenerSetRequest,
     ListenerSetResponse,
     ListenerValue,
 )
-from harmos._wire.client.v1.access.pairings_pb2 import (
+from harmos._wire.host.v1.access.pairings_pb2 import (
     PairingsCreateRequest,
     PairingsCreateResponse,
     PairingsDeleteRequest,
@@ -27,19 +26,19 @@ from harmos._wire.client.v1.access.pairings_pb2 import (
     PairingsListRequest,
     PairingsListResponse,
 )
-from harmos._wire.client.v1.invocations_pb2 import (
+from harmos._wire.host.v1.invocations_pb2 import (
     InvocationsCancelRequest,
     InvocationsCancelResponse,
+    InvocationsCreateRequest,
+    InvocationsCreateResponse,
     InvocationsGetRequest,
     InvocationsGetResponse,
-    InvocationsInvokeRequest,
-    InvocationsInvokeResponse,
     InvocationsWatchRequest,
     InvocationsWatchResponse,
 )
-from harmos._wire.client.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
-from harmos._wire.client.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse, SettingsSetRequest, SettingsSetResponse
-from harmos._wire.client.v1.plugins_pb2 import (
+from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
+from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse, SettingsSetRequest, SettingsSetResponse
+from harmos._wire.host.v1.plugins_pb2 import (
     PluginEntry,
     PluginPlacement,
     PluginsCreateRequest,
@@ -60,47 +59,31 @@ from harmos._wire.client.v1.plugins_pb2 import (
     PluginsWatchResponse,
     PluginValue,
 )
-from harmos._wire.client.v1.schemas_pb2 import SchemaDescription, SchemasListRequest, SchemasListResponse
-from harmos._wire.client.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
-from harmos._wire.client.v1.status.logs_pb2 import LogsListRequest, LogsListResponse, LogsWatchRequest, LogsWatchResponse
-from harmos._wire.client.v1.status.trace_events_pb2 import (
+from harmos._wire.host.v1.schemas_pb2 import SchemaDescription, SchemasListRequest, SchemasListResponse
+from harmos._wire.host.v1.status.diagnostics_pb2 import DiagnosticsGetRequest, DiagnosticsGetResponse
+from harmos._wire.host.v1.status.logs_pb2 import LogsListRequest, LogsListResponse, LogsWatchRequest, LogsWatchResponse
+from harmos._wire.host.v1.status.trace_events_pb2 import (
     TraceEventsListRequest,
     TraceEventsListResponse,
     TraceEventsWatchRequest,
     TraceEventsWatchResponse,
 )
-from harmos._wire.client.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
-from harmos._wire.client.v1.streams_pb2 import StreamIdentity, StreamsListRequest, StreamsListResponse
-from harmos._wire.client.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.v1.invocation_pb2 import InstanceState
-from harmos._wire.v1.operation_pb2 import DiscoveredOperation
-from harmos._wire.v1.page_pb2 import PageRequest
-from harmos._wire.v1.position_pb2 import Position, ReadCut
-from harmos._wire.v1.receipt_pb2 import Receipt
-from harmos._wire.v1.setting_pb2 import SettingValues
-from harmos.client import AccessCertificatesResource as LibraryAccessCertificatesResource
-from harmos.client import AccessListenerResource as LibraryAccessListenerResource
-from harmos.client import AccessPairingsResource as LibraryAccessPairingsResource
-from harmos.client import AccessResource as LibraryAccessResource
-from harmos.client import InvocationsResource as LibraryInvocationsResource
-from harmos.client import OperationsResource as LibraryOperationsResource
-from harmos.client import PluginsResource as LibraryPluginsResource
-from harmos.client import PluginsSettingsResource as LibraryPluginsSettingsResource
-from harmos.client import SchemasResource as LibrarySchemasResource
-from harmos.client import StatusDiagnosticsResource as LibraryStatusDiagnosticsResource
-from harmos.client import StatusLogsResource as LibraryStatusLogsResource
-from harmos.client import StatusResource as LibraryStatusResource
-from harmos.client import StatusTraceEventsResource as LibraryStatusTraceEventsResource
-from harmos.client import StreamsResource as LibraryStreamsResource
-from harmos.client import TimeResource as LibraryTimeResource
-from tests.fixtures.client._wire.application.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
-from tests.fixtures.client._wire.application.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
-from tests.fixtures.client._wire.application.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
+from harmos._wire.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
+from harmos._wire.host.v1.streams_pb2 import StreamIdentity, StreamsListRequest, StreamsListResponse
+from harmos._wire.host.v1.time_pb2 import TimeSleepRequest, TimeSleepResponse
+from harmos._wire.model.v1.invocation_pb2 import InstanceState
+from harmos._wire.model.v1.operation_pb2 import DiscoveredOperation
+from harmos._wire.model.v1.page_pb2 import PageRequest
+from harmos._wire.model.v1.position_pb2 import Position, ReadCut
+from harmos._wire.model.v1.receipt_pb2 import Receipt
+from harmos._wire.model.v1.setting_pb2 import SettingValues
+from tests.fixtures.client._wire.application.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
+from tests.fixtures.client._wire.application.host.v1.jobs_pb2 import JobsStartRequest, JobsStartResponse
+from tests.fixtures.client._wire.application.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
 
 
-class AccessCertificatesResource(LibraryAccessCertificatesResource):
+class AccessCertificatesResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def create(
@@ -109,7 +92,7 @@ class AccessCertificatesResource(LibraryAccessCertificatesResource):
         request = CertificatesCreateRequest()
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Certificates/Create",
+            "/harmos.host.v1.access.Certificates/Create",
             request,
             CertificatesCreateResponse,
             metadata=metadata,
@@ -120,9 +103,8 @@ class AccessCertificatesResource(LibraryAccessCertificatesResource):
         return response.certificate_pem
 
 
-class AccessListenerResource(LibraryAccessListenerResource):
+class AccessListenerResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def get(
@@ -131,7 +113,7 @@ class AccessListenerResource(LibraryAccessListenerResource):
         request = ListenerGetRequest()
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Listener/Get",
+            "/harmos.host.v1.access.Listener/Get",
             request,
             ListenerGetResponse,
             metadata=metadata,
@@ -153,7 +135,7 @@ class AccessListenerResource(LibraryAccessListenerResource):
         request = ListenerSetRequest(value=value, expected_revision=expected_revision)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Listener/Set",
+            "/harmos.host.v1.access.Listener/Set",
             request,
             ListenerSetResponse,
             metadata=metadata,
@@ -164,9 +146,8 @@ class AccessListenerResource(LibraryAccessListenerResource):
         return response
 
 
-class AccessPairingsResource(LibraryAccessPairingsResource):
+class AccessPairingsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def create(
@@ -175,7 +156,7 @@ class AccessPairingsResource(LibraryAccessPairingsResource):
         request = PairingsCreateRequest(label=label)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Pairings/Create",
+            "/harmos.host.v1.access.Pairings/Create",
             request,
             PairingsCreateResponse,
             metadata=metadata,
@@ -196,7 +177,7 @@ class AccessPairingsResource(LibraryAccessPairingsResource):
         request = PairingsListRequest(at=at)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Pairings/List",
+            "/harmos.host.v1.access.Pairings/List",
             request,
             PairingsListResponse,
             metadata=metadata,
@@ -212,7 +193,7 @@ class AccessPairingsResource(LibraryAccessPairingsResource):
         request = PairingsDeleteRequest(name=name)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.access.Pairings/Delete",
+            "/harmos.host.v1.access.Pairings/Delete",
             request,
             PairingsDeleteResponse,
             metadata=metadata,
@@ -233,7 +214,7 @@ class JobsProgressResource:
         request = ProgressWatchRequest(value=value)
         call = stream(
             self._channel,
-            "/application.v1.jobs.Progress/Watch",
+            "/application.host.v1.jobs.Progress/Watch",
             request,
             ProgressWatchResponse,
             metadata=metadata,
@@ -259,7 +240,7 @@ class PluginsAnnotationsResource:
         request = AnnotationsGetRequest(name=name)
         response = await unary(
             self._channel,
-            "/application.v1.plugins.Annotations/Get",
+            "/application.host.v1.plugins.Annotations/Get",
             request,
             AnnotationsGetResponse,
             metadata=metadata,
@@ -270,9 +251,8 @@ class PluginsAnnotationsResource:
         return response.value
 
 
-class PluginsSettingsResource(LibraryPluginsSettingsResource):
+class PluginsSettingsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -287,7 +267,7 @@ class PluginsSettingsResource(LibraryPluginsSettingsResource):
         request = SettingsListRequest(name=name, at=at)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.plugins.Settings/List",
+            "/harmos.host.v1.plugins.Settings/List",
             request,
             SettingsListResponse,
             metadata=metadata,
@@ -313,7 +293,7 @@ class PluginsSettingsResource(LibraryPluginsSettingsResource):
         )
         response = await unary(
             self._channel,
-            "/harmos.client.v1.plugins.Settings/Set",
+            "/harmos.host.v1.plugins.Settings/Set",
             request,
             SettingsSetResponse,
             metadata=metadata,
@@ -324,9 +304,8 @@ class PluginsSettingsResource(LibraryPluginsSettingsResource):
         return response
 
 
-class StatusDiagnosticsResource(LibraryStatusDiagnosticsResource):
+class StatusDiagnosticsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def get(
@@ -342,7 +321,7 @@ class StatusDiagnosticsResource(LibraryStatusDiagnosticsResource):
         request = DiagnosticsGetRequest(name=name, offset=offset, max_bytes=max_bytes)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.status.Diagnostics/Get",
+            "/harmos.host.v1.status.Diagnostics/Get",
             request,
             DiagnosticsGetResponse,
             metadata=metadata,
@@ -353,9 +332,8 @@ class StatusDiagnosticsResource(LibraryStatusDiagnosticsResource):
         return response
 
 
-class StatusLogsResource(LibraryStatusLogsResource):
+class StatusLogsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -370,7 +348,7 @@ class StatusLogsResource(LibraryStatusLogsResource):
         request = LogsListRequest(at=at, page=page)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.status.Logs/List",
+            "/harmos.host.v1.status.Logs/List",
             request,
             LogsListResponse,
             metadata=metadata,
@@ -393,7 +371,7 @@ class StatusLogsResource(LibraryStatusLogsResource):
         request = LogsWatchRequest(at=at, max_bytes=max_bytes, max_events=max_events)
         call = stream(
             self._channel,
-            "/harmos.client.v1.status.Logs/Watch",
+            "/harmos.host.v1.status.Logs/Watch",
             request,
             LogsWatchResponse,
             metadata=metadata,
@@ -409,9 +387,8 @@ class StatusLogsResource(LibraryStatusLogsResource):
             call.cancel()
 
 
-class StatusTraceEventsResource(LibraryStatusTraceEventsResource):
+class StatusTraceEventsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -426,7 +403,7 @@ class StatusTraceEventsResource(LibraryStatusTraceEventsResource):
         request = TraceEventsListRequest(at=at, page=page)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.status.TraceEvents/List",
+            "/harmos.host.v1.status.TraceEvents/List",
             request,
             TraceEventsListResponse,
             metadata=metadata,
@@ -449,7 +426,7 @@ class StatusTraceEventsResource(LibraryStatusTraceEventsResource):
         request = TraceEventsWatchRequest(at=at, max_bytes=max_bytes, max_events=max_events)
         call = stream(
             self._channel,
-            "/harmos.client.v1.status.TraceEvents/Watch",
+            "/harmos.host.v1.status.TraceEvents/Watch",
             request,
             TraceEventsWatchResponse,
             metadata=metadata,
@@ -465,9 +442,8 @@ class StatusTraceEventsResource(LibraryStatusTraceEventsResource):
             call.cancel()
 
 
-class AccessResource(LibraryAccessResource):
+class AccessResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
         self._composed_certificates = AccessCertificatesResource(channel)
         self._composed_listener = AccessListenerResource(channel)
@@ -486,12 +462,11 @@ class AccessResource(LibraryAccessResource):
         return self._composed_pairings
 
 
-class InvocationsResource(LibraryInvocationsResource):
+class InvocationsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
-    async def invoke(
+    async def create(
         self,
         operation: str,
         fingerprint: bytes,
@@ -501,16 +476,16 @@ class InvocationsResource(LibraryInvocationsResource):
         timeout: float | None = None,
         credentials: CallCredentials | None = None,
     ) -> bytes:
-        request = InvocationsInvokeRequest(operation=operation, fingerprint=fingerprint, payload=payload)
+        request = InvocationsCreateRequest(operation=operation, fingerprint=fingerprint, payload=payload)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Invocations/Invoke",
+            "/harmos.host.v1.Invocations/Create",
             request,
-            InvocationsInvokeResponse,
+            InvocationsCreateResponse,
             metadata=metadata,
             timeout=timeout,
             credentials=credentials,
-            action="invocations.invoke",
+            action="invocations.create",
         )
         return response.payload
 
@@ -520,7 +495,7 @@ class InvocationsResource(LibraryInvocationsResource):
         request = InvocationsGetRequest(instance=instance)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Invocations/Get",
+            "/harmos.host.v1.Invocations/Get",
             request,
             InvocationsGetResponse,
             metadata=metadata,
@@ -544,7 +519,7 @@ class InvocationsResource(LibraryInvocationsResource):
         request = InvocationsCancelRequest(instance=instance, reason=reason)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Invocations/Cancel",
+            "/harmos.host.v1.Invocations/Cancel",
             request,
             InvocationsCancelResponse,
             metadata=metadata,
@@ -562,7 +537,7 @@ class InvocationsResource(LibraryInvocationsResource):
         request = InvocationsWatchRequest(instance=instance)
         call = stream(
             self._channel,
-            "/harmos.client.v1.Invocations/Watch",
+            "/harmos.host.v1.Invocations/Watch",
             request,
             InvocationsWatchResponse,
             metadata=metadata,
@@ -595,7 +570,7 @@ class JobsResource:
         request = JobsStartRequest(value=value)
         response = await unary(
             self._channel,
-            "/application.v1.Jobs/Start",
+            "/application.host.v1.Jobs/Start",
             request,
             JobsStartResponse,
             metadata=metadata,
@@ -606,9 +581,8 @@ class JobsResource:
         return response.value
 
 
-class OperationsResource(LibraryOperationsResource):
+class OperationsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -617,7 +591,7 @@ class OperationsResource(LibraryOperationsResource):
         request = OperationsListRequest()
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Operations/List",
+            "/harmos.host.v1.Operations/List",
             request,
             OperationsListResponse,
             metadata=metadata,
@@ -633,7 +607,7 @@ class OperationsResource(LibraryOperationsResource):
         request = OperationsGetRequest(id=id)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Operations/Get",
+            "/harmos.host.v1.Operations/Get",
             request,
             OperationsGetResponse,
             metadata=metadata,
@@ -646,9 +620,8 @@ class OperationsResource(LibraryOperationsResource):
         return response.operation
 
 
-class PluginsResource(LibraryPluginsResource):
+class PluginsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
         self._composed_annotations = PluginsAnnotationsResource(channel)
         self._composed_settings = PluginsSettingsResource(channel)
@@ -673,7 +646,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsGetRequest(name=name, at=at)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Get",
+            "/harmos.host.v1.Plugins/Get",
             request,
             PluginsGetResponse,
             metadata=metadata,
@@ -694,7 +667,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsListRequest(at=at)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/List",
+            "/harmos.host.v1.Plugins/List",
             request,
             PluginsListResponse,
             metadata=metadata,
@@ -716,7 +689,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsWatchRequest(name=name, at=at)
         call = stream(
             self._channel,
-            "/harmos.client.v1.Plugins/Watch",
+            "/harmos.host.v1.Plugins/Watch",
             request,
             PluginsWatchResponse,
             metadata=metadata,
@@ -747,7 +720,7 @@ class PluginsResource(LibraryPluginsResource):
         )
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Create",
+            "/harmos.host.v1.Plugins/Create",
             request,
             PluginsCreateResponse,
             metadata=metadata,
@@ -770,7 +743,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsSetRequest(name=name, value=value, expected_revision=expected_revision)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Set",
+            "/harmos.host.v1.Plugins/Set",
             request,
             PluginsSetResponse,
             metadata=metadata,
@@ -792,7 +765,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsDeleteRequest(name=name, expected_revision=expected_revision)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Delete",
+            "/harmos.host.v1.Plugins/Delete",
             request,
             PluginsDeleteResponse,
             metadata=metadata,
@@ -816,7 +789,7 @@ class PluginsResource(LibraryPluginsResource):
         request = PluginsRestartRequest(name=name, expected_revision=expected_revision)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Restart",
+            "/harmos.host.v1.Plugins/Restart",
             request,
             PluginsRestartResponse,
             metadata=metadata,
@@ -847,7 +820,7 @@ class PluginsResource(LibraryPluginsResource):
         )
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Plugins/Replace",
+            "/harmos.host.v1.Plugins/Replace",
             request,
             PluginsReplaceResponse,
             metadata=metadata,
@@ -858,9 +831,8 @@ class PluginsResource(LibraryPluginsResource):
         return response
 
 
-class SchemasResource(LibrarySchemasResource):
+class SchemasResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -874,7 +846,7 @@ class SchemasResource(LibrarySchemasResource):
         request = SchemasListRequest(schema=schema)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Schemas/List",
+            "/harmos.host.v1.Schemas/List",
             request,
             SchemasListResponse,
             metadata=metadata,
@@ -885,9 +857,8 @@ class SchemasResource(LibrarySchemasResource):
         return list(response.schemas)
 
 
-class StatusResource(LibraryStatusResource):
+class StatusResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
         self._composed_diagnostics = StatusDiagnosticsResource(channel)
         self._composed_logs = StatusLogsResource(channel)
@@ -911,7 +882,7 @@ class StatusResource(LibraryStatusResource):
         request = StatusGetRequest()
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Status/Get",
+            "/harmos.host.v1.Status/Get",
             request,
             StatusGetResponse,
             metadata=metadata,
@@ -932,7 +903,7 @@ class StatusResource(LibraryStatusResource):
         request = StatusWatchRequest(at=at)
         call = stream(
             self._channel,
-            "/harmos.client.v1.Status/Watch",
+            "/harmos.host.v1.Status/Watch",
             request,
             StatusWatchResponse,
             metadata=metadata,
@@ -948,9 +919,8 @@ class StatusResource(LibraryStatusResource):
             call.cancel()
 
 
-class StreamsResource(LibraryStreamsResource):
+class StreamsResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -964,7 +934,7 @@ class StreamsResource(LibraryStreamsResource):
         request = StreamsListRequest(schema=schema)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Streams/List",
+            "/harmos.host.v1.Streams/List",
             request,
             StreamsListResponse,
             metadata=metadata,
@@ -975,28 +945,9 @@ class StreamsResource(LibraryStreamsResource):
         return list(response.streams)
 
 
-class TimeResource(LibraryTimeResource):
+class TimeResource:
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
         self._channel = channel
-
-    async def get(
-        self, *, metadata: Metadata | None = None, timeout: float | None = None, credentials: CallCredentials | None = None
-    ) -> Timestamp:
-        request = TimeGetRequest()
-        response = await unary(
-            self._channel,
-            "/harmos.client.v1.Time/Get",
-            request,
-            TimeGetResponse,
-            metadata=metadata,
-            timeout=timeout,
-            credentials=credentials,
-            action="time.get",
-        )
-        if not response.HasField("now"):
-            raise ValueError("Read Time.Get: Missing Payload")
-        return response.now
 
     async def sleep(
         self,
@@ -1009,7 +960,7 @@ class TimeResource(LibraryTimeResource):
         request = TimeSleepRequest(duration=duration)
         response = await unary(
             self._channel,
-            "/harmos.client.v1.Time/Sleep",
+            "/harmos.host.v1.Time/Sleep",
             request,
             TimeSleepResponse,
             metadata=metadata,
@@ -1020,7 +971,7 @@ class TimeResource(LibraryTimeResource):
         return response
 
 
-class ClientRoot(LibraryClient):
+class ClientRoot(LibraryConnection):
     def __init__(self, channel: Channel) -> None:
         super().__init__(channel)
         self._channel = channel

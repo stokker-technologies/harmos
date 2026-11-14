@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 // Third Party Imports
 
 // Local Imports
-use crate::operations::OperationDefinition;
+use crate::operations::{Contract, OperationDefinition};
 
 /* === Constants === */
 
@@ -48,10 +48,17 @@ pub enum Error {
 
 /* === Public Functions === */
 
-pub fn validate(operations: &[OperationDefinition]) -> Result<(), Error> {
+pub fn validate(operations: &[OperationDefinition], contracts: &[Contract]) -> Result<(), Error> {
     let mut ids = BTreeSet::new();
     for operation in operations {
-        operation.validate().map_err(|source| Error::Invalid { source })?;
+        if contracts.iter().any(|contract| contract.operation() == operation && contract.protobuf().is_some()) {
+            harmos_protocol::schema::plugin_operation_identity(operation.id.as_str()).map_err(|_| Error::Invalid {
+                source: crate::operations::Error::InvalidOperation { id: operation.id.to_string() },
+            })?;
+            operation.policy.validate().map_err(|source| Error::Invalid { source: source.into() })?;
+        } else {
+            operation.validate().map_err(|source| Error::Invalid { source })?;
+        }
         if !ids.insert(&operation.id) {
             return Err(Error::Invalid {
                 source: crate::operations::Error::DuplicateOperation { id: operation.id.as_str().to_owned() },
@@ -62,8 +69,8 @@ pub fn validate(operations: &[OperationDefinition]) -> Result<(), Error> {
 }
 
 pub fn validate_match(expected: &[OperationDefinition], actual: &[OperationDefinition]) -> Result<(), Error> {
-    validate(expected)?;
-    validate(actual)?;
+    validate(expected, &[])?;
+    validate(actual, &[])?;
     let expected: BTreeMap<_, _> = expected.iter().map(|entry| (&entry.id, entry)).collect();
     if expected.len() != actual.len() || actual.iter().any(|entry| expected.get(&entry.id).is_none_or(|declared| *declared != entry)) {
         return Err(Error::Mismatch);

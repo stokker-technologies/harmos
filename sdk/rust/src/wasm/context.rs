@@ -21,10 +21,6 @@ mod release_native;
 /* === Imports === */
 
 use crate::{Context, Error, Message, OperationRequest, Result, context::ChildTransport, operation::LocalFuture};
-use harmos_protocol::{
-    v1 as host,
-    v1::{self, GuestChildAction, guest_child},
-};
 use prost::Message as _;
 use std::{
     marker::PhantomData,
@@ -36,6 +32,16 @@ use std::{
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::model::InstanceState;
+use harmos_protocol::model::OperationPolicy;
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::GuestChild;
+use harmos_protocol::plugin::GuestChildControl;
+use harmos_protocol::plugin::GuestChildRequest;
+use harmos_protocol::plugin::GuestSubmitted;
+use harmos_protocol::plugin::GuestValue;
+use harmos_protocol::plugin::OperationAssignments;
+use harmos_protocol::plugin::{GuestChildAction, guest_child};
 
 /* === Constants === */
 
@@ -51,7 +57,7 @@ pub(crate) struct Transport {
     pub import: Arc<Import>,
     pub context: Vec<u8>,
     pub generation_context: Vec<u8>,
-    pub assignments: Arc<OnceLock<host::OperationAssignments>>,
+    pub assignments: Arc<OnceLock<OperationAssignments>>,
 }
 
 /// The original attempt owns the child until join, release or parent settlement.
@@ -70,7 +76,7 @@ pub struct Child<R: Message> {
 /* === Implementations === */
 
 impl ChildTransport for Transport {
-    fn call<'a>(&'a self, request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>> {
+    fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>> {
         Box::pin(async move {
             let request = self.request(request, values, submit)?;
             self.exchange(request).await
@@ -79,10 +85,10 @@ impl ChildTransport for Transport {
 }
 
 impl Transport {
-    pub(super) fn exchange(&self, request: v1::GuestChild) -> LocalFuture<'_, Result<Vec<u8>>> {
+    pub(super) fn exchange(&self, request: GuestChild) -> LocalFuture<'_, Result<Vec<u8>>> {
         (self.import)(request.encode_to_vec())
     }
-    pub fn request(&self, mut request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool) -> Result<v1::GuestChild> {
+    pub fn request(&self, mut request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> Result<GuestChild> {
         let assignment = self
             .assignments
             .get()
@@ -97,8 +103,8 @@ impl Transport {
             return Err(Error::Invalid(format!("Assigned Fingerprint Differs: {}", request.operation)));
         }
         request.operation = assignment.operation.clone();
-        Ok(v1::GuestChild {
-            action: Some(guest_child::Action::Call(v1::GuestChildRequest {
+        Ok(GuestChild {
+            action: Some(guest_child::Action::Call(GuestChildRequest {
                 context: self.context.clone(),
                 generation_context: self.generation_context.clone(),
                 request: Some(request),
@@ -123,7 +129,7 @@ impl Context {
         let mut context = self.clone();
         let key = T::name();
         context.values.retain(|entry| entry.key != key);
-        context.values.push(v1::GuestValue { key, payload: value.encode_to_vec() });
+        context.values.push(GuestValue { key, payload: value.encode_to_vec() });
         context
     }
     pub fn value<T: Message>(&self) -> Result<Option<T>> {
@@ -136,7 +142,7 @@ impl Context {
     pub async fn submit<Q: OperationRequest>(&self, request: Q) -> Result<Child<Q::Response>> {
         self.submit_with(request, None).await
     }
-    pub async fn submit_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Child<Q::Response>> {
+    pub async fn submit_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Child<Q::Response>> {
         let transport = self.guest_transport()?;
         let fingerprint = crate::message::request_fingerprint::<Q>()?;
         if self.requires.get(Q::ID) != Some(&fingerprint) {
@@ -144,7 +150,7 @@ impl Context {
         }
         let bytes = transport
             .call(
-                v1::ChildRequest {
+                ChildRequest {
                     call: 0,
                     operation: Q::ID.into(),
                     payload: request.encode_to_vec(),
@@ -156,7 +162,7 @@ impl Context {
                 true,
             )
             .await?;
-        let admitted = v1::GuestSubmitted::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))?;
+        let admitted = GuestSubmitted::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))?;
         Ok(Child {
             context: self.clone(),
             instance: admitted.instance,
@@ -166,8 +172,8 @@ impl Context {
     }
     async fn child_control(&self, instance: u64, action: GuestChildAction) -> Result<Vec<u8>> {
         let transport = self.guest_transport()?;
-        let request = v1::GuestChild {
-            action: Some(guest_child::Action::Control(v1::GuestChildControl {
+        let request = GuestChild {
+            action: Some(guest_child::Action::Control(GuestChildControl {
                 context: transport.context.clone(),
                 instance,
                 action: action as i32,
@@ -181,9 +187,9 @@ impl<R: Message> Child<R> {
     pub fn id(&self) -> u64 {
         self.instance
     }
-    pub async fn status(&self) -> Result<host::InstanceState> {
+    pub async fn status(&self) -> Result<InstanceState> {
         let bytes = self.context.child_control(self.instance, GuestChildAction::Status).await?;
-        host::InstanceState::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))
+        InstanceState::decode(bytes.as_slice()).map_err(|error| Error::Invalid(error.to_string()))
     }
     pub async fn request_cancel(&self) -> Result<()> {
         self.context.child_control(self.instance, GuestChildAction::Cancel).await?;

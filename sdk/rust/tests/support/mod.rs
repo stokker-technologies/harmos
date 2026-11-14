@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error as StdError;
 use std::{
     path::{Path, PathBuf},
     process::Stdio,
@@ -31,8 +32,21 @@ use tokio::{
 use tonic::{Streaming, transport::Channel};
 
 // Local Imports
-use harmos_protocol::v1::{self as v1, child_response};
-use harmos_protocol::plugin::{instance_invoke_request, instance_client::InstanceClient, instance_invoke_response};
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::Request;
+use harmos_protocol::plugin::Response;
+use harmos_protocol::plugin::SamplesSelection;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::instance_samples_request;
+use harmos_protocol::plugin::response;
+use harmos_protocol::plugin::{
+    InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest, InstanceSamplesResponse,
+};
+use prost::Message as ProstMessage;
+use tonic::Status;
+
+use harmos_protocol::plugin::{instance_client::InstanceClient, instance_invoke_request, instance_invoke_response};
 
 /* === Constants === */
 
@@ -55,7 +69,7 @@ pub struct Process {
 /* === Implementations === */
 
 impl Process {
-    pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn start(cleanup: &Path) -> Result<Self, Box<dyn StdError>> {
         let path = binary("harmos-sdk-diagnostics-plugin");
         let mut child = Command::new(path)
             .arg(cleanup)
@@ -72,11 +86,11 @@ impl Process {
         Ok(Self { client, child, events })
     }
 
-    pub async fn event(&mut self) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn event(&mut self) -> Result<String, Box<dyn StdError>> {
         self.events.next_line().await?.ok_or_else(|| "Plugin Closed Before Event".into())
     }
 
-    pub async fn close(mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn close(mut self) -> Result<(), Box<dyn StdError>> {
         self.child.kill().await?;
         self.child.wait().await?;
         Ok(())
@@ -107,19 +121,23 @@ pub fn binary(name: &str) -> PathBuf {
     std::env::var_os(format!("NEXTEST_BIN_EXE_{}", name.replace('-', "_")))
         .or_else(|| std::env::var_os(format!("CARGO_BIN_EXE_{name}")))
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into())).join("../../target/debug").join(format!("{name}{extension}")))
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| env!("CARGO_MANIFEST_DIR").into()))
+                .join("../../target/debug")
+                .join(format!("{name}{extension}"))
+        })
 }
 
-pub async fn describe(client: &mut InstanceClient<Channel>) -> Result<harmos_protocol::plugin::InstanceGetResponse, tonic::Status> {
-    Ok(client.get(harmos_protocol::plugin::InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner())
+pub async fn describe(client: &mut InstanceClient<Channel>) -> Result<InstanceGetResponse, Status> {
+    Ok(client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner())
 }
 
 pub async fn invoke(
     client: &mut InstanceClient<Channel>, operation: &str,
-) -> Result<(mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, Streaming<harmos_protocol::plugin::InstanceInvokeResponse>), Box<dyn std::error::Error>> {
+) -> Result<(mpsc::Sender<InstanceInvokeRequest>, Streaming<InstanceInvokeResponse>), Box<dyn StdError>> {
     let (send, receive) = mpsc::channel(1);
-    send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Request(v1::Request {
+    send.send(InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Request(Request {
             operation: operation.into(),
             invocation: "execution-story".into(),
             attempt: 1,
@@ -133,16 +151,16 @@ pub async fn invoke(
     Ok((send, output))
 }
 
-pub async fn child(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<v1::ChildRequest, Box<dyn std::error::Error>> {
+pub async fn child(input: &mut Streaming<InstanceInvokeResponse>) -> Result<ChildRequest, Box<dyn StdError>> {
     match input.message().await?.and_then(|frame| frame.frame) {
         Some(instance_invoke_response::Frame::Child(child)) => Ok(child),
         _ => Err("Expected Host Child Call".into()),
     }
 }
 
-pub async fn reply<T: prost::Message>(send: &mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn std::error::Error>> {
-    send.send(harmos_protocol::plugin::InstanceInvokeRequest {
-        frame: Some(instance_invoke_request::Frame::Child(v1::ChildResponse {
+pub async fn reply<T: ProstMessage>(send: &mpsc::Sender<InstanceInvokeRequest>, call: u64, reply: T) -> Result<(), Box<dyn StdError>> {
+    send.send(InstanceInvokeRequest {
+        frame: Some(instance_invoke_request::Frame::Child(ChildResponse {
             call,
             result: Some(child_response::Result::Payload(reply.encode_to_vec())),
         })),
@@ -151,10 +169,10 @@ pub async fn reply<T: prost::Message>(send: &mpsc::Sender<harmos_protocol::plugi
     Ok(())
 }
 
-pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<harmos_protocol::plugin::InstanceInvokeResponse>) -> Result<T, Box<dyn std::error::Error>> {
+pub async fn terminal<T: ProstMessage + Default>(input: &mut Streaming<InstanceInvokeResponse>) -> Result<T, Box<dyn StdError>> {
     match input.message().await?.and_then(|frame| frame.frame) {
-        Some(instance_invoke_response::Frame::Response(v1::Response {
-            result: Some(v1::response::Result::Payload(payload)),
+        Some(instance_invoke_response::Frame::Response(Response {
+            result: Some(response::Result::Payload(payload)),
         })) => Ok(T::decode(payload.as_slice())?),
         _ => Err("Expected Successful Terminal Response".into()),
     }
@@ -164,10 +182,10 @@ pub async fn terminal<T: prost::Message + Default>(input: &mut Streaming<harmos_
 
 pub async fn publish(
     client: &mut InstanceClient<Channel>, id: &str,
-) -> Result<(mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>, Streaming<harmos_protocol::plugin::InstanceSamplesResponse>), Box<dyn std::error::Error>> {
+) -> Result<(mpsc::Sender<InstanceSamplesRequest>, Streaming<InstanceSamplesResponse>), Box<dyn StdError>> {
     let (send, receive) = mpsc::channel(1);
-    send.send(harmos_protocol::plugin::InstanceSamplesRequest {
-        frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Open(v1::SamplesSelection { stream: id.into(), scope: "scope".into() })),
+    send.send(InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Open(SamplesSelection { stream: id.into(), scope: "scope".into() })),
     })
     .await?;
     let input = stream::unfold(receive, |mut receive| async { receive.recv().await.map(|frame| (frame, receive)) });

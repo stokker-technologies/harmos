@@ -18,7 +18,7 @@
 use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::follow::Follower;
 use harmos_storage::query::Source;
 use harmos_storage::{ObjectEntry, StorageCursor, StorageManager, StoredRecord, StoredRow};
@@ -28,7 +28,7 @@ use std::future::Future;
 
 #[derive(Clone)]
 pub(super) struct Frame {
-    pub(super) at: v1::ReadCut,
+    pub(super) at: model::ReadCut,
     pub(super) event: Event,
 }
 
@@ -73,7 +73,7 @@ impl Rows {
 /* === Public Functions === */
 
 pub(super) async fn run<F, Fut>(
-    context: &ExecutionContext, source: Option<Source>, at: Option<v1::ReadCut>, mut emit: F,
+    context: &ExecutionContext, source: Option<Source>, at: Option<model::ReadCut>, mut emit: F,
 ) -> Result<Frame, ServingError>
 where
     F: FnMut(Frame) -> Fut,

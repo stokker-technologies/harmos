@@ -15,6 +15,9 @@ pub mod codec;
 
 /* === Imports === */
 
+use harmos_protocol::model::History;
+use harmos_protocol::model::Position;
+
 // Standard Library Imports
 
 // Third Party Imports
@@ -91,7 +94,7 @@ impl RecoveryPosition {
     }
 }
 
-impl From<StoreHistory> for harmos_protocol::v1::History {
+impl From<StoreHistory> for History {
     fn from(value: StoreHistory) -> Self {
         Self {
             store: value.store.to_string(),
@@ -100,7 +103,7 @@ impl From<StoreHistory> for harmos_protocol::v1::History {
     }
 }
 
-impl From<StorageCursor> for harmos_protocol::v1::Position {
+impl From<StorageCursor> for Position {
     fn from(value: StorageCursor) -> Self {
         Self {
             history: Some(value.history.into()),
@@ -109,9 +112,9 @@ impl From<StorageCursor> for harmos_protocol::v1::Position {
     }
 }
 
-impl TryFrom<harmos_protocol::v1::History> for StoreHistory {
+impl TryFrom<History> for StoreHistory {
     type Error = Error;
-    fn try_from(value: harmos_protocol::v1::History) -> Result<Self> {
+    fn try_from(value: History) -> Result<Self> {
         Ok(Self {
             store: Identifier::new(value.store)?,
             epoch: Identifier::new(value.epoch)?,
@@ -119,9 +122,9 @@ impl TryFrom<harmos_protocol::v1::History> for StoreHistory {
     }
 }
 
-impl TryFrom<harmos_protocol::v1::Position> for StorageCursor {
+impl TryFrom<Position> for StorageCursor {
     type Error = Error;
-    fn try_from(value: harmos_protocol::v1::Position) -> Result<Self> {
+    fn try_from(value: Position) -> Result<Self> {
         Ok(Self {
             history: value.history.ok_or(Error::InvalidInput { field: "history", reason: "required" })?.try_into()?,
             sequence: value.sequence,

@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Host Operations
+//
+// Operations executed by the host for admitted callers.
+
+syntax = "proto3";
+
+package harmos.host.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+import "harmos/model/v1/operation.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Discovers admitted operation contracts under the calling party's visibility and grants.
+service Operations {
+  // Return the complete admitted operation inventory; Private and unavailable operations are excluded.
+  rpc List(OperationsListRequest) returns (OperationsListResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+  // Read one admitted operation contract; an unavailable or unauthorized identity refuses.
+  rpc Get(OperationsGetRequest) returns (OperationsGetResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
+}
+
+// === List === //
+
+// Requests the calling party's complete admitted operation inventory.
+message OperationsListRequest {}
+
+// Returns typed admitted operations and their owner, generation, projections and caller-specific grants.
+message OperationsListResponse {
+  repeated harmos.model.v1.DiscoveredOperation operations = 1;
+}
+
+// === Get === //
+
+// Selects one complete operation identity from the admitted registry.
+message OperationsGetRequest {
+  string id = 1;
+}
+
+// Returns the selected operation's contract and caller-specific discovery metadata.
+message OperationsGetResponse {
+  harmos.model.v1.DiscoveredOperation operation = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

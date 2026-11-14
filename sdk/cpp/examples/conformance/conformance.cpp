@@ -15,8 +15,10 @@
 
 // Local Imports
 #include "conformance.hpp"
+#include "_wire/caller.hpp"
 #include "_wire/contracts.hpp"
 #include "generated/types.hpp"
+#include "harmos/host/v1/invocations.pb.h"
 
 namespace authoring = harmos::plugin;
 namespace fixture_types = harmos::conformance;
@@ -40,6 +42,8 @@ using harmos::conformance::detail::steps_operation;
 using Graph = harmos::conformance::Graph;
 using Value = harmos::conformance::Value;
 using ValueOperation = harmos::plugin::Operation<Value, Value>;
+using harmos::host::v1::InvocationsCreateRequest;
+using harmos::host::v1::InvocationsCreateResponse;
 using harmos::plugin::Context;
 
 /* === Classes === */
@@ -198,7 +202,7 @@ authoring::Plugin fixture_types::plugin() {
                    }).visibility(sdk::VISIBILITY_PUBLIC));
 
   plugin.requires_operation(authoring::HostOperation::TimeSleep).requires_operation(authoring::HostOperation::TimeGet);
-  plugin.requires_operation(authoring::HostOperation::SettingsList);
+  plugin.requires_operation(authoring::HostOperation::PluginsSettingsList);
   plugin.requires_operation(authoring::HostOperation::OperationsList).requires_operation(authoring::HostOperation::OperationsGet);
   plugin.operation(ValueOperation("conformance.clock", sdk::VISIBILITY_PUBLIC, [](Context &ctx, Value) {
                      const auto before = ctx.host().time.get();
@@ -268,7 +272,7 @@ authoring::Plugin fixture_types::plugin() {
       .requires_operation(peer_local)
       .requires_operation(own_protected);
   plugin.operation(ValueOperation("conformance.settings_read", sdk::VISIBILITY_PUBLIC, [](Context &context, Value) {
-    return value(authoring::detail::encode(context.host().settings.list().value()));
+    return value(authoring::detail::encode(context.host().plugins.settings.list().value()));
   }));
   plugin.operation(ValueOperation("conformance.discover", sdk::VISIBILITY_PUBLIC, [](Context &context, Value) {
     const auto listed = context.host().operations.list();
@@ -332,9 +336,9 @@ authoring::Plugin fixture_types::plugin() {
   authoring::Stream<Value> calls("conformance.tick_context");
   authoring::Observer<Value> call_observer(calls, [echo](Context &context) {
     const auto echoed = context.call(echo, value(context.scope())).get();
-    authoring::TimeGetResponse time;
+    sdk::TimeGetResponse time;
     *time.mutable_now() = context.host().time.get();
-    const auto settings = context.host().settings.list();
+    const auto settings = context.host().plugins.settings.list();
     string bytes;
     for (const auto &reply : {authoring::detail::encode(echoed), authoring::detail::encode(time), authoring::detail::encode(settings)}) {
       const auto length = static_cast<uint32_t>(reply.size());
@@ -376,6 +380,27 @@ authoring::Plugin fixture_types::plugin() {
     return value("cancelled");
   });
   plugin.stream(cancellations).observer(cancel_observer.every(interval));
+
+  const authoring::Operation<InvocationsCreateRequest, InvocationsCreateResponse> create("harmos.host.v1.Invocations/Create",
+                                                                                         sdk::VISIBILITY_PUBLIC);
+  const auto refuse = [create](Context &context, Value) {
+    InvocationsCreateRequest request;
+    if (!request.ParseFromArray(fixture_types::caller_request.data(), static_cast<int>(fixture_types::caller_request.size()))) {
+      throw runtime_error("Create Invocation: Invalid Generated Probe Request");
+    }
+    try {
+      context.call(create, request).get();
+    } catch (const sdk::Failure &failure) {
+      return value(authoring::detail::encode(failure.value));
+    }
+    throw runtime_error("Create Invocation: Client-Only Operation Was Admitted");
+  };
+  plugin.operation(ValueOperation("conformance.caller_refusal", sdk::VISIBILITY_PUBLIC, refuse)).requires_operation(create);
+  authoring::Stream<Value> refusals("conformance.tick_caller_refusal");
+  authoring::Observer<Value> refusal_observer(refusals, [refuse](Context &context) {
+    return refuse(context, Value{});
+  });
+  plugin.stream(refusals).observer(refusal_observer.every(interval));
 
   return plugin;
 }

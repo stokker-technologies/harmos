@@ -15,6 +15,16 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::Cancel as WireCancel;
+use harmos_protocol::plugin::ChildResponse;
+use harmos_protocol::plugin::InstanceInvokeRequest;
+use harmos_protocol::plugin::InstanceInvokeResponse;
+use harmos_protocol::plugin::InstanceSamplesRequest;
+use harmos_protocol::plugin::Request;
+use harmos_protocol::plugin::child_response::Result as WireResult;
+use harmos_protocol::plugin::instance_samples_request::Frame as WireFrame;
+use harmos_protocol::plugin::response::Result as WireWireResult;
+
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,8 +33,10 @@ use std::{
 
 // Third Party Imports
 use futures_util::{StreamExt, stream};
-use harmos_protocol::plugin::{instance_invoke_request, instance_invoke_response};
-use harmos_protocol::v1::{self};
+use harmos_protocol::plugin::instance_invoke_request;
+use harmos_protocol::plugin::instance_invoke_response;
+
+use harmos_protocol::model;
 use tokio::sync::mpsc;
 
 // Local Imports
@@ -41,7 +53,7 @@ use crate::operations::{ErasedResponse, FailureKind, HostContext, NativeInstance
 
 #[derive(Clone)]
 pub(crate) struct Binding {
-    pub(crate) contract: v1::OperationContract,
+    pub(crate) contract: model::OperationContract,
     pub(crate) caller: super::CallingPlugin,
     connection: Arc<Connection>,
 }
@@ -55,8 +67,8 @@ struct Invocation {
 
 #[derive(Clone)]
 pub(super) enum ChildReplies {
-    Invoke(mpsc::Sender<harmos_protocol::plugin::InstanceInvokeRequest>),
-    Samples(mpsc::Sender<harmos_protocol::plugin::InstanceSamplesRequest>),
+    Invoke(mpsc::Sender<InstanceInvokeRequest>),
+    Samples(mpsc::Sender<InstanceSamplesRequest>),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -76,27 +88,22 @@ pub enum CallError {
 /* === Implementations === */
 
 impl ChildReplies {
-    pub(super) async fn send(&self, child: v1::ChildResponse) -> crate::Result<()> {
+    pub(super) async fn send(&self, child: ChildResponse) -> crate::Result<()> {
         let result = match self {
             Self::Invoke(output) => output
-                .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                .send(InstanceInvokeRequest {
                     frame: Some(instance_invoke_request::Frame::Child(child)),
                 })
                 .await
                 .map_err(|_| ()),
-            Self::Samples(output) => output
-                .send(harmos_protocol::plugin::InstanceSamplesRequest {
-                    frame: Some(harmos_protocol::plugin::instance_samples_request::Frame::Child(child)),
-                })
-                .await
-                .map_err(|_| ()),
+            Self::Samples(output) => output.send(InstanceSamplesRequest { frame: Some(WireFrame::Child(child)) }).await.map_err(|_| ()),
         };
         result.map_err(|()| crate::Error::Closing { domain: "child response carrier" })
     }
 }
 
 impl Binding {
-    pub(crate) fn new(activation: &Activation, contract: v1::OperationContract) -> Self {
+    pub(crate) fn new(activation: &Activation, contract: model::OperationContract) -> Self {
         Self {
             contract,
             caller: super::CallingPlugin {
@@ -115,17 +122,17 @@ impl Binding {
 }
 
 impl CallError {
-    pub fn classification(&self) -> v1::Classification {
+    pub fn classification(&self) -> model::Classification {
         match self {
-            Self::Remote(failure) => v1::Failure::from(failure.as_ref()).classification(),
+            Self::Remote(failure) => model::Failure::from(failure.as_ref()).classification(),
             Self::Transport(status) => match status.code() {
-                tonic::Code::Cancelled => v1::Classification::Cancelled,
-                tonic::Code::DeadlineExceeded => v1::Classification::TimedOut,
-                tonic::Code::Unavailable | tonic::Code::Unknown | tonic::Code::Internal => v1::Classification::Transient,
-                tonic::Code::NotFound | tonic::Code::PermissionDenied | tonic::Code::FailedPrecondition => v1::Classification::Refused,
-                _ => v1::Classification::Permanent,
+                tonic::Code::Cancelled => model::Classification::Cancelled,
+                tonic::Code::DeadlineExceeded => model::Classification::TimedOut,
+                tonic::Code::Unavailable | tonic::Code::Unknown | tonic::Code::Internal => model::Classification::Transient,
+                tonic::Code::NotFound | tonic::Code::PermissionDenied | tonic::Code::FailedPrecondition => model::Classification::Refused,
+                _ => model::Classification::Permanent,
             },
-            Self::Protocol(_) => v1::Classification::Permanent,
+            Self::Protocol(_) => model::Classification::Permanent,
         }
     }
 }
@@ -133,9 +140,9 @@ impl CallError {
 impl NativeInstance for Invocation {
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
         match error.downcast_ref::<CallError>().map(CallError::classification) {
-            Some(v1::Classification::Transient) => FailureKind::Transient,
-            Some(v1::Classification::Cancelled) => FailureKind::Cancelled,
-            Some(v1::Classification::Refused) => FailureKind::Unauthorized,
+            Some(model::Classification::Transient) => FailureKind::Transient,
+            Some(model::Classification::Cancelled) => FailureKind::Cancelled,
+            Some(model::Classification::Refused) => FailureKind::Unauthorized,
             _ => FailureKind::Permanent,
         }
     }
@@ -179,7 +186,7 @@ async fn invoke(
     let closed = connection.closed.subscribe();
     let work = async {
         let (output, input) = mpsc::channel(1);
-        let request = v1::Request {
+        let request = Request {
             operation: binding.contract.id.clone(),
             payload,
             invocation: host.borrow().id().to_string(),
@@ -187,7 +194,7 @@ async fn invoke(
             scope: host.borrow().context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
         };
         output
-            .send(harmos_protocol::plugin::InstanceInvokeRequest {
+            .send(InstanceInvokeRequest {
                 frame: Some(instance_invoke_request::Frame::Request(request)),
             })
             .await
@@ -200,12 +207,13 @@ async fn invoke(
         >::new();
         let mut controls = BTreeMap::new();
         let mut seen = BTreeSet::new();
+        let mut ended = BTreeSet::new();
         let mut cancelled = false;
         let mut cancelled_children = BTreeSet::new();
         enum Event {
             Cancel,
             Child(u64, String, crate::Result<Vec<u8>>),
-            Frame(Result<Option<harmos_protocol::plugin::InstanceInvokeResponse>, tonic::Status>),
+            Frame(Result<Option<InstanceInvokeResponse>, tonic::Status>),
         }
         loop {
             let has_children = !children.is_empty();
@@ -224,27 +232,28 @@ async fn invoke(
             match event {
                 Event::Cancel => {
                     cancelled = true;
-                    let cancel = v1::Cancel {
+                    let cancel = WireCancel {
                         reason: format!("Operation {} Cancelled", binding.contract.id),
                     };
                     let _ = output
-                        .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                        .send(InstanceInvokeRequest {
                             frame: Some(instance_invoke_request::Frame::Cancel(cancel)),
                         })
                         .await;
                 }
                 Event::Child(call, operation, result) => {
                     controls.remove(&call);
+                    ended.insert(call);
                     if cancelled_children.remove(&call) {
                         continue;
                     }
                     let result = match result {
-                        Ok(payload) => v1::child_response::Result::Payload(payload),
-                        Err(error) => v1::child_response::Result::Failure(failure(&error, &operation, "host")),
+                        Ok(payload) => WireResult::Payload(payload),
+                        Err(error) => WireResult::Failure(failure(&error, &operation, "host")),
                     };
-                    let child = v1::ChildResponse { call, result: Some(result) };
+                    let child = ChildResponse { call, result: Some(result) };
                     let _ = output
-                        .send(harmos_protocol::plugin::InstanceInvokeRequest {
+                        .send(InstanceInvokeRequest {
                             frame: Some(instance_invoke_request::Frame::Child(child)),
                         })
                         .await;
@@ -255,8 +264,8 @@ async fn invoke(
                             return Err(CallError::Protocol("Frame After Terminal Response".into()));
                         }
                         return match response.result {
-                            Some(v1::response::Result::Payload(payload)) => Ok(payload),
-                            Some(v1::response::Result::Failure(failure)) => Err(CallError::Remote(Box::new(failure.into()))),
+                            Some(WireWireResult::Payload(payload)) => Ok(payload),
+                            Some(WireWireResult::Failure(failure)) => Err(CallError::Remote(Box::new(failure.into()))),
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
@@ -295,6 +304,10 @@ async fn invoke(
                         }
                     }
                     Some(instance_invoke_response::Frame::ChildDemand(demand)) => {
+                        // Demand Can Cross the Terminal Child Response on the Carrier.
+                        if ended.contains(&demand.call) {
+                            continue;
+                        }
                         let Some((_, _, Some(credits))) = controls.get(&demand.call) else {
                             return Err(CallError::Protocol(format!("Watch {}: Unknown Child Demand", demand.call)));
                         };
@@ -338,21 +351,21 @@ pub(super) async fn watch_child(
             };
         };
         output
-            .send(v1::ChildResponse {
+            .send(ChildResponse {
                 call,
-                result: Some(v1::child_response::Result::Item(payload)),
+                result: Some(WireResult::Item(payload)),
             })
             .await?;
     }
 }
 
-pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> v1::Failure {
+pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> model::Failure {
     if let crate::Error::OperationFailed { source, .. } = error {
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
-            return v1::Failure::from(failure.as_ref());
+            return model::Failure::from(failure.as_ref());
         }
         if let Some(error) = source.downcast_ref::<CallError>() {
-            return v1::Failure {
+            return model::Failure {
                 classification: error.classification() as i32,
                 code: "transport".into(),
                 message: error.to_string(),
@@ -364,19 +377,19 @@ pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> v1
         }
     }
     if let Some(failure) = error.failure() {
-        return v1::Failure::from(failure);
+        return model::Failure::from(failure);
     }
     let classification = match error {
         crate::Error::NotRegistered { .. }
         | crate::Error::OperationUnauthorized { .. }
         | crate::Error::PermissionDenied
-        | crate::Error::InvalidInput { .. } => v1::Classification::Refused,
-        crate::Error::OperationRefused(crate::Refusal::Cancelled { .. }) => v1::Classification::Cancelled,
-        crate::Error::OperationRefused(crate::Refusal::TimedOut { .. }) => v1::Classification::TimedOut,
-        crate::Error::OperationRefused(crate::Refusal::Unavailable) => v1::Classification::Transient,
-        _ => v1::Classification::Permanent,
+        | crate::Error::InvalidInput { .. } => model::Classification::Refused,
+        crate::Error::OperationRefused(crate::Refusal::Cancelled { .. }) => model::Classification::Cancelled,
+        crate::Error::OperationRefused(crate::Refusal::TimedOut { .. }) => model::Classification::TimedOut,
+        crate::Error::OperationRefused(crate::Refusal::Unavailable) => model::Classification::Transient,
+        _ => model::Classification::Permanent,
     };
-    v1::Failure {
+    model::Failure {
         classification: classification as i32,
         code: "refused".into(),
         message: error.to_string(),

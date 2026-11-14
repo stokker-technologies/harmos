@@ -40,7 +40,7 @@ internal static class InstallItself
     var contract = ready.Description.Declarations.Operations.Single(operation => operation.Id == "example.echo");
     var data = new byte[checked((int)transfer.ChunkBytes)];
     "hello"u8.CopyTo(data);
-    var reply = await client.Invocations.Invoke(contract.Id, contract.Fingerprint, new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString());
+    var reply = await client.Invocations.Create(contract.Id, contract.Fingerprint, new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString());
     if (!Value.Parser.ParseFrom(reply).Value_.Span.SequenceEqual(data))
       throw new InvalidOperationException("Invoke example.echo: payload changed");
     Console.WriteLine("hello");

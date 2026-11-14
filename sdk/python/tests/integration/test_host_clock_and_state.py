@@ -20,14 +20,18 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
-from harmos import SamplesSelection, Tick
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceStopRequest
+from harmos import CLASSIFICATION_REFUSED
+from harmos import FailureValue as WireFailure
+from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
+from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
+from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
 
 # Local Imports
 from harmos.plugin import HostOperation, Plugin
-from tests.fixtures.conformance import Value
+from tests.fixtures.conformance import Value, plugin
 from tests.support import calls
 from tests.support.author import Author
 
@@ -43,6 +47,52 @@ from tests.support.author import Author
 
 
 class HostClockAndState(IsolatedAsyncioTestCase):
+    async def test_fixture_reports_wrong_caller_failures_from_invocations_and_ticks(self) -> None:
+        # Serve the Contributions Used by the Reference Host's Caller Refusal Journey.
+        endpoint = await plugin().start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.close)
+        channel = grpc.aio.insecure_channel(endpoint.address)
+        self.addAsyncCleanup(channel.close)
+        client = InstanceStub(channel)
+        failure = WireFailure(
+            classification=CLASSIFICATION_REFUSED,
+            operation="harmos.host.v1.Invocations/Create",
+            code="caller_not_allowed",
+            details={"caller": "PLUGINS"},
+        )
+
+        # Preserve the Structured Refusal From an Ordinary Operation's Child Call.
+        call = await calls.invoke(client, "conformance.caller_refusal", Value())
+        child = (await call.read()).child
+        self.assertEqual(child.operation, failure.operation)
+        selected = InvocationsCreateRequest.FromString(child.payload)
+        self.assertEqual(selected.operation, "conformance.host.v1.CallerProbe/Get")
+        self.assertTrue(selected.fingerprint)
+        await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
+        terminal = await call.read()
+        value = Value.FromString(terminal.response.payload)
+        self.assertEqual(WireFailure.FromString(value.value), failure)
+        self.assertIs(await call.read(), EOF)
+
+        # Preserve the Same Refusal From an Unanswered Tick at Controlled Host Time.
+        stream = client.Samples()
+        self.addCleanup(stream.cancel)
+        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.tick_caller_refusal")))
+        await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=101))))
+        child = (await stream.read()).child
+        self.assertEqual(child.operation, failure.operation)
+        await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
+        row = (await stream.read()).samples[0]
+        value = Value.FromString(row.row)
+        self.assertEqual(WireFailure.FromString(value.value), failure)
+        stream.cancel()
+
+        # Keep the Plugin Connection Usable After Both Refusals.
+        call = await calls.invoke(client, "conformance.step.0", Value(value=b"after refusal"))
+        terminal = await call.read()
+        self.assertEqual(Value.FromString(terminal.response.payload).value, b"after refusal")
+        self.assertIs(await call.read(), EOF)
+
     async def test_host_clock_and_state(self) -> None:
         # Serve an Instance with Clock Requirements and a Typed Settings Section.
         author = Author()
@@ -65,14 +115,14 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
-        self.assertEqual(sleep.operation, "harmos.plugin.host.v1.Time/Sleep")
+        self.assertEqual(sleep.operation, "harmos.host.v1.Time/Sleep")
         self.assertEqual(TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
         self.assertEqual(sleep.fingerprint, description.declarations.requires[0].fingerprint)
         await calls.reply(call, sleep, TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
-        self.assertEqual(now.operation, "harmos.plugin.host.v1.Time/Get")
+        self.assertEqual(now.operation, "harmos.host.v1.Time/Get")
         at = Timestamp(seconds=12345, nanos=67890)
         await calls.reply(call, now, TimeGetResponse(now=at))
         result = (await call.read()).response

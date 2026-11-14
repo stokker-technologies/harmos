@@ -20,6 +20,7 @@
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::plugin::GuestRegistration;
 
 /* === Constants === */
 
@@ -37,7 +38,7 @@
 
 /* === Public Functions === */
 
-pub fn inspect(bytes: &[u8]) -> Result<harmos_protocol::v1::GuestRegistration, crate::Error> {
+pub fn inspect(bytes: &[u8]) -> Result<GuestRegistration, crate::Error> {
     std::thread::scope(|threads| {
         threads
             .spawn(|| {

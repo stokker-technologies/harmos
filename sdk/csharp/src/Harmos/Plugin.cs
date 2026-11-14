@@ -41,7 +41,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     if (contract.Visibility is not (Visibility.Private or Visibility.Protected or Visibility.Public))
       throw new ArgumentException($"Register {contract.Id}: Explicit Visibility Is Required");
     if (!operations.TryAdd(contract.Id, new Handler(
-        payload => Harmos.Plugins.Operation<TRequest, TResponse>.Decode(payload),
+        payload => operation.Decode(payload),
         async (context, request) => (await handler(context, (TRequest)request)).ToByteString(), contract)))
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
     if (contract.Visibility != Visibility.Private)

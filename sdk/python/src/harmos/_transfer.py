@@ -16,7 +16,7 @@
 # Third Party Imports
 
 # Local Imports
-from ._wire.v1.transfer_pb2 import TRANSFER_FRAMING_BYTES, MessageSettings, StorageTransferSettings
+from ._wire.model.v1.transfer_pb2 import TRANSFER_FRAMING_BYTES, MessageSettings, StorageTransferSettings
 
 # Type Checking Imports
 

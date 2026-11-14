@@ -71,6 +71,8 @@ bench = false
 # Local
 harmos = { workspace = true }
 harmos-protocol = { workspace = true }
+harmos-operations = { workspace = true, features = ["grpc", "streaming"] }
+harmos-runtime = { workspace = true, features = ["grpc"] }
 
 # Git
 
@@ -101,6 +103,7 @@ tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "
 
 # Networking
 tonic = { workspace = true, features = ["codegen", "router", "transport"] }
+tonic-prost = { workspace = true }
 
 # Storage
 
@@ -109,6 +112,10 @@ tonic = { workspace = true, features = ["codegen", "router", "transport"] }
 # Testing
 
 # === Build Dependencies === #
+
+[build-dependencies]
+prost-build = { workspace = true }
+protoc-bin-vendored = { workspace = true }
 
 # === Dev Dependencies === #
 

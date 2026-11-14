@@ -26,7 +26,7 @@ from unittest import IsolatedAsyncioTestCase
 from grpc.aio import ServicerContext
 
 from tests.fixtures.client import Client
-from tests.fixtures.client._wire.application.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
+from tests.fixtures.client._wire.application.host.v1.jobs.progress_pb2 import ProgressWatchRequest, ProgressWatchResponse
 
 # Third Party Imports
 
@@ -61,7 +61,7 @@ class CallerContext(IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "application.v1.jobs.Progress",
+                    "application.host.v1.jobs.Progress",
                     {
                         "Watch": grpc.unary_stream_rpc_method_handler(
                             watch,
@@ -75,25 +75,26 @@ class CallerContext(IsolatedAsyncioTestCase):
         port = server.add_insecure_port("127.0.0.1:0")
         await server.start()
         try:
-            async with grpc.aio.insecure_channel(f"127.0.0.1:{port}") as native:
-                # Record the Deadline Option at the Transport Boundary Without Sampling Wall Time.
-                client = Client(native)
-                # Supply All Three Controls to One Generated Resource Call.
-                with patch("tests.fixtures.client._generated.client.stream", wraps=stream) as dispatch:
-                    call = client.jobs.progress.watch("selection", metadata=(("authorization", "Bearer fixture"),), timeout=17)
-                    self.assertEqual(await anext(call), "Bearer fixture")
-                    self.assertEqual(dispatch.call_args.kwargs["timeout"], 17)
-                await call.aclose()
-                await stopped.wait()
-                # A Following Call Keeps Its Own Default Options.
-                stopped.clear()
-                with patch("tests.fixtures.client._generated.client.stream", wraps=stream) as dispatch:
-                    following = client.jobs.progress.watch("selection")
-                    self.assertEqual(await anext(following), "")
-                    self.assertIsNone(dispatch.call_args.kwargs["timeout"])
-                    self.assertIsNone(dispatch.call_args.kwargs["metadata"])
-                await following.aclose()
-                await stopped.wait()
+            native = grpc.aio.insecure_channel(f"127.0.0.1:{port}")
+            self.addAsyncCleanup(native.close)
+            # Record the Deadline Option at the Transport Boundary Without Sampling Wall Time.
+            client = Client(native)
+            # Supply All Three Controls to One Generated Resource Call.
+            with patch("tests.fixtures.client._generated.client.stream", wraps=stream) as dispatch:
+                call = client.jobs.progress.watch("selection", metadata=(("authorization", "Bearer fixture"),), timeout=17)
+                self.assertEqual(await anext(call), "Bearer fixture")
+                self.assertEqual(dispatch.call_args.kwargs["timeout"], 17)
+            await call.aclose()
+            await stopped.wait()
+            # A Following Call Keeps Its Own Default Options.
+            stopped.clear()
+            with patch("tests.fixtures.client._generated.client.stream", wraps=stream) as dispatch:
+                following = client.jobs.progress.watch("selection")
+                self.assertEqual(await anext(following), "")
+                self.assertIsNone(dispatch.call_args.kwargs["timeout"])
+                self.assertIsNone(dispatch.call_args.kwargs["metadata"])
+            await following.aclose()
+            await stopped.wait()
         finally:
             await server.stop(None)
 

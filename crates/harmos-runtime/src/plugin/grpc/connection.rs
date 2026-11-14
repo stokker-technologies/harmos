@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos_protocol::plugin::instance_client::InstanceClient;
+
 // Standard Library Imports
 use std::{
     future::Future,
@@ -64,8 +66,8 @@ struct Socket {
 /* === Implementations === */
 
 impl Connection {
-    pub(super) fn client(&self) -> harmos_protocol::plugin::instance_client::InstanceClient<Channel> {
-        harmos_protocol::plugin::instance_client::InstanceClient::new(self.channel.clone())
+    pub(super) fn client(&self) -> InstanceClient<Channel> {
+        InstanceClient::new(self.channel.clone())
             .max_decoding_message_size(self.message_bytes)
             .max_encoding_message_size(self.message_bytes)
     }

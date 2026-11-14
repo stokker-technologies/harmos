@@ -87,11 +87,13 @@ Plugin and client authors depend on `harmos`: import Client and shared messages 
 `harmos`, client response/options from `harmos::client`, and authoring types from
 `harmos::plugin`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
-Clients bind `client::Method` to generated application types, then use `Client::call`,
-`Client::watch` for watches, or `Client::start` for an explicitly declared cooperative final result; see the [Rust client example](sdk/rust/examples/client.rs).
+Use generated resource calls such as `client.operations.list().await?`. Products
+generate their own typed client from application descriptors and composition; see
+the [Schematic client](examples/schematic/protocol/examples/client.rs). The separate
+[Rust client example](sdk/rust/examples/client.rs) discovers and invokes an operation dynamically.
 The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
 and reads its calling entry through `Context::settings`. Discover contracts through
-`client.operations.list`; client wrappers live in `harmos_protocol::client`.
+`client.operations.list()`; public client response types live in `harmos::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.

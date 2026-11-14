@@ -2,7 +2,7 @@
 pub use crate::connection::resources::{
     Access, AccessCertificates, AccessCertificatesCreateOptions, AccessListener, AccessListenerGetOptions, AccessListenerSetOptions,
     AccessPairings, AccessPairingsCreateOptions, AccessPairingsDeleteOptions, AccessPairingsListOptions, Invocations,
-    InvocationsCancelOptions, InvocationsGetOptions, InvocationsInvokeOptions, InvocationsWatchOptions, Operations, OperationsGetOptions,
+    InvocationsCancelOptions, InvocationsCreateOptions, InvocationsGetOptions, InvocationsWatchOptions, Operations, OperationsGetOptions,
     OperationsListOptions, Plugins, PluginsCreateOptions, PluginsDeleteOptions, PluginsGetOptions, PluginsListOptions,
     PluginsReplaceOptions, PluginsRestartOptions, PluginsSetOptions, PluginsSettings, PluginsSettingsListOptions,
     PluginsSettingsSetOptions, PluginsWatchOptions, Root, Schemas, SchemasListOptions, Status, StatusDiagnostics,

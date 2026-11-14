@@ -43,8 +43,13 @@ use harmos_operations::operations::Contract;
 // Reuse the Projection's Service Envelopes with Authoritative Payload Descriptors.
 pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> Result<ServiceDescriptor, DescriptorError> {
     let projected = super::projection::descriptor(package, name, methods)?;
+    let callers = methods.iter().map(|(method, contract)| (format!("{package}.{name}/{method}"), contract.callers())).collect();
     if methods.iter().all(|(_, contract)| contract.protobuf().is_none()) {
-        return Ok(projected);
+        let types = FileDescriptorSet {
+            file: projected.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+        };
+        let pool = harmos_protocol::schema::with_method_callers(types, &callers)?;
+        return Ok(pool.get_service_by_name(projected.full_name()).expect("declared service"));
     }
     let service_file = projected.parent_file().name().to_owned();
     let mut imports = prost_types::FileDescriptorSet::default();
@@ -115,7 +120,7 @@ pub fn descriptor(package: &str, name: &str, methods: &[(&str, &Contract)]) -> R
             return Err(DescriptorError::Name);
         }
     }
-    let pool = DescriptorPool::from_file_descriptor_set(FileDescriptorSet { file: files.into_values().collect() })?;
+    let pool = harmos_protocol::schema::with_method_callers(FileDescriptorSet { file: files.into_values().collect() }, &callers)?;
     Ok(pool.get_service_by_name(projected.full_name()).expect("declared service"))
 }
 

@@ -1,24 +1,24 @@
 // @generated from protocol descriptors; do not edit.
 use crate::{Context, Error, OperationPolicy, Plugin, Result};
-use harmos_protocol::plugin::host::InvocationsCancelRequest;
-use harmos_protocol::plugin::host::InvocationsCancelResponse;
-use harmos_protocol::plugin::host::InvocationsGetRequest;
-use harmos_protocol::plugin::host::InvocationsGetResponse;
-use harmos_protocol::plugin::host::InvocationsWatchRequest;
-use harmos_protocol::plugin::host::InvocationsWatchResponse;
-use harmos_protocol::plugin::host::OperationsGetRequest;
-use harmos_protocol::plugin::host::OperationsGetResponse;
-use harmos_protocol::plugin::host::OperationsListRequest;
-use harmos_protocol::plugin::host::OperationsListResponse;
-use harmos_protocol::plugin::host::SettingsListRequest;
-use harmos_protocol::plugin::host::SettingsListResponse;
-use harmos_protocol::plugin::host::TimeGetRequest;
-use harmos_protocol::plugin::host::TimeGetResponse;
-use harmos_protocol::plugin::host::TimeSleepRequest;
-use harmos_protocol::plugin::host::TimeSleepResponse;
-use harmos_protocol::v1::DiscoveredOperation;
-use harmos_protocol::v1::InstanceState;
-use harmos_protocol::v1::ReadCut;
+use harmos_protocol::host::InvocationsCancelRequest;
+use harmos_protocol::host::InvocationsCancelResponse;
+use harmos_protocol::host::InvocationsGetRequest;
+use harmos_protocol::host::InvocationsGetResponse;
+use harmos_protocol::host::InvocationsWatchRequest;
+use harmos_protocol::host::InvocationsWatchResponse;
+use harmos_protocol::host::OperationsGetRequest;
+use harmos_protocol::host::OperationsGetResponse;
+use harmos_protocol::host::OperationsListRequest;
+use harmos_protocol::host::OperationsListResponse;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::TimeSleepResponse;
+use harmos_protocol::host::plugins::SettingsListRequest;
+use harmos_protocol::host::plugins::SettingsListResponse;
+use harmos_protocol::model::DiscoveredOperation;
+use harmos_protocol::model::InstanceState;
+use harmos_protocol::model::ReadCut;
 use prost_types::Duration;
 use prost_types::Timestamp;
 use std::num::NonZeroUsize;
@@ -28,7 +28,7 @@ pub enum HostOperation {
     InvocationsWatch,
     OperationsList,
     OperationsGet,
-    SettingsList,
+    PluginsSettingsList,
     TimeGet,
     TimeSleep,
 }
@@ -40,7 +40,7 @@ impl Plugin {
             HostOperation::InvocationsWatch => self.requires::<InvocationsWatchRequest>(),
             HostOperation::OperationsList => self.requires::<OperationsListRequest>(),
             HostOperation::OperationsGet => self.requires::<OperationsGetRequest>(),
-            HostOperation::SettingsList => self.requires::<SettingsListRequest>(),
+            HostOperation::PluginsSettingsList => self.requires::<SettingsListRequest>(),
             HostOperation::TimeGet => self.requires::<TimeGetRequest>(),
             HostOperation::TimeSleep => self.requires::<TimeSleepRequest>(),
         }
@@ -55,16 +55,16 @@ impl Context {
 pub struct HostRoot {
     pub invocations: HostInvocationsResource,
     pub operations: HostOperationsResource,
-    pub settings: HostSettingsResource,
+    pub plugins: HostPluginsResource,
     pub time: HostTimeResource,
 }
 impl HostRoot {
     fn new(context: Context) -> Self {
         Self {
-            invocations: HostInvocationsResource { context: context.clone() },
-            operations: HostOperationsResource { context: context.clone() },
-            settings: HostSettingsResource { context: context.clone() },
-            time: HostTimeResource { context: context.clone() },
+            invocations: HostInvocationsResource::new(context.clone()),
+            operations: HostOperationsResource::new(context.clone()),
+            plugins: HostPluginsResource::new(context.clone()),
+            time: HostTimeResource::new(context.clone()),
         }
     }
 }
@@ -98,7 +98,8 @@ pub struct HostOperationsGetOptions {
     pub policy: Option<OperationPolicy>,
 }
 #[derive(Default)]
-pub struct HostSettingsListOptions {
+pub struct HostPluginsSettingsListOptions {
+    pub name: Option<String>,
     pub at: Option<ReadCut>,
     pub policy: Option<OperationPolicy>,
 }
@@ -115,6 +116,9 @@ pub struct HostInvocationsResource {
     context: Context,
 }
 impl HostInvocationsResource {
+    fn new(context: Context) -> Self {
+        Self { context }
+    }
     pub async fn get(&self, instance: u64) -> Result<InstanceState> {
         self.get_with(instance, HostInvocationsGetOptions::default()).await
     }
@@ -149,6 +153,9 @@ pub struct HostOperationsResource {
     context: Context,
 }
 impl HostOperationsResource {
+    fn new(context: Context) -> Self {
+        Self { context }
+    }
     pub async fn list(&self) -> Result<Vec<DiscoveredOperation>> {
         self.list_with(HostOperationsListOptions::default()).await
     }
@@ -167,15 +174,29 @@ impl HostOperationsResource {
     }
 }
 #[derive(Clone)]
-pub struct HostSettingsResource {
+pub struct HostPluginsResource {
+    pub settings: HostPluginsSettingsResource,
+}
+impl HostPluginsResource {
+    fn new(context: Context) -> Self {
+        Self {
+            settings: HostPluginsSettingsResource::new(context.clone()),
+        }
+    }
+}
+#[derive(Clone)]
+pub struct HostPluginsSettingsResource {
     context: Context,
 }
-impl HostSettingsResource {
-    pub async fn list(&self) -> Result<SettingsListResponse> {
-        self.list_with(HostSettingsListOptions::default()).await
+impl HostPluginsSettingsResource {
+    fn new(context: Context) -> Self {
+        Self { context }
     }
-    pub async fn list_with(&self, options: HostSettingsListOptions) -> Result<SettingsListResponse> {
-        let request = SettingsListRequest { at: options.at };
+    pub async fn list(&self) -> Result<SettingsListResponse> {
+        self.list_with(HostPluginsSettingsListOptions::default()).await
+    }
+    pub async fn list_with(&self, options: HostPluginsSettingsListOptions) -> Result<SettingsListResponse> {
+        let request = SettingsListRequest { name: options.name, at: options.at };
         let response: SettingsListResponse = self.context.call_with(request, options.policy).await?;
         Ok(response)
     }
@@ -185,6 +206,9 @@ pub struct HostTimeResource {
     context: Context,
 }
 impl HostTimeResource {
+    fn new(context: Context) -> Self {
+        Self { context }
+    }
     pub async fn get(&self) -> Result<Timestamp> {
         self.get_with(HostTimeGetOptions::default()).await
     }

@@ -83,6 +83,7 @@ prost-build = { workspace = true, features = ["format"] }
 protoc-bin-vendored = { workspace = true }
 
 # Configuration
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 
 # Filesystem
 tempfile = { workspace = true, default-features = true }

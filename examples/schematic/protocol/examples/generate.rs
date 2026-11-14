@@ -52,9 +52,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         output.path(),
     )?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    for (source, target) in
-        [("schematic.v1.rs", "messages.rs"), ("schematic.reflection.rs", "reflection.rs"), ("schematic.descriptors.bin", "descriptors.bin")]
-    {
+    for (source, target) in [
+        ("schematic.host.v1.rs", "host.rs"),
+        ("schematic.model.v1.rs", "model.rs"),
+        ("schematic.plugin.v1.rs", "plugin.rs"),
+        ("schematic.reflection.rs", "reflection.rs"),
+        ("schematic.descriptors.bin", "descriptors.bin"),
+        ("schematic.client.rs", "client.rs"),
+    ] {
         fs::copy(output.path().join(source), destination.join(target))?;
     }
     Ok(())

@@ -449,8 +449,24 @@ fn with_failure(status: Status, error: &Error) -> Status {
     Status::with_details_and_metadata(status.code(), status.message(), details.into(), status.metadata().clone())
 }
 
+fn caller_refusal(mut error: &Error) -> Option<&str> {
+    for _ in 0..32 {
+        match error {
+            Error::OperationUnauthorized { operation, .. } => return Some(operation),
+            Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
+                error = source.downcast_ref::<Error>().or_else(|| ungranted(source.as_ref()))?;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 pub(super) fn status(error: Error) -> Status {
-    let status = explicit_status(&error).unwrap_or_else(|| Status::new(code(&error), "operation request failed"));
+    let status = explicit_status(&error).unwrap_or_else(|| match caller_refusal(&error) {
+        Some(operation) => Status::permission_denied(format!("Call {operation}: caller is not allowed")),
+        None => Status::new(code(&error), "operation request failed"),
+    });
     let mut status = with_failure(status, &error);
     status.set_source(Arc::new(error));
     status

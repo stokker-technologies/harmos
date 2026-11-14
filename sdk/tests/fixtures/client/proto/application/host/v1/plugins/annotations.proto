@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Application Plugin Annotations
+//
+// An application-owned resource composed under the library Plugins parent.
+
+syntax = "proto3";
+
+package application.host.v1.plugins;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Stores application-owned per-plugin data outside the library settings owner.
+service Annotations {
+  // Read the application's annotation for one plugin entry.
+  rpc Get(AnnotationsGetRequest) returns (AnnotationsGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// Selects one application annotation by library plugin entry name.
+message AnnotationsGetRequest {
+  string name = 1;
+}
+
+// Returns the application's per-plugin annotation.
+message AnnotationsGetResponse {
+  string value = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

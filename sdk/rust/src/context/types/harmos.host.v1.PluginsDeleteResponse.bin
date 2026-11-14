@@ -1,0 +1,22 @@
+
+π
+harmos/host/v1/plugins.protoharmos.host.v1harmos/model/v1/position.protoharmos/model/v1/receipt.proto"B
+PluginsDeleteResponse)
+receipt (2.harmos.model.v1.Receiptbproto3
+´
+harmos/model/v1/position.protoharmos.model.v1"'
+History
+store (	
+epoch (	"G
+Position)
+history (2.harmos.model.v1.History
+sequence (bproto3
+Í
+harmos/model/v1/receipt.protoharmos.model.v1harmos/model/v1/position.proto"è
+Receipt
+
+request_id (	.
+accepted_at (2.harmos.model.v1.Position-
+
+durable_at (2.harmos.model.v1.Position
+	completed (bproto3

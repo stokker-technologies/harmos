@@ -15,7 +15,7 @@ use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_domain::model::storage::query::Query;
 use harmos_operations::storage::{ListRows, ListRowsRequest};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_query::QueryArrow;
 use harmos_query::transform::Transform;
 use harmos_query::transform::filter::Clause;
@@ -117,7 +117,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
     let schema = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
     assert!(matches!(QueryArrow::try_from(schema.rows[0].clone()).unwrap(), QueryArrow::Schema(_)));
     assert_eq!(fixture.data.control.record_rows_examined.load(Ordering::Relaxed), 0);
-    request.page = Some(v1::PageRequest {
+    request.page = Some(model::PageRequest {
         page_token: schema.next_page_token,
         ..Default::default()
     });

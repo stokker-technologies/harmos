@@ -7,7 +7,7 @@
  * ***
  */
 
-// Plugin Observes a Running Invocation Through Its Host Context.
+// Plugin Cannot Observe an Invocation Owned by Another Caller.
 
 /* === Modules === */
 
@@ -45,7 +45,7 @@ use harmos_runtime::plugin::grpc::Placement;
 /* === Tests === */
 
 #[tokio::test]
-async fn context_watch_delivers_running_and_settled_states_on_the_parent_carrier() {
+async fn context_watch_refuses_an_invocation_owned_by_another_caller() {
     let host = HostFixture::new().await;
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
     let worker = host.sdk("caller").await;
@@ -57,19 +57,13 @@ async fn context_watch_delivers_running_and_settled_states_on_the_parent_carrier
     let target = host.runtime.operations.submit_encoded("fixture.wait", payload(b"target")).unwrap();
     host.signals.entered.notified().await;
     let watching = host.runtime.operations.submit_encoded("fixture.watch", payload(&target.id().value().to_le_bytes())).unwrap();
-    // The Watcher Acknowledges Its First Received State Through a Host Operation.
-    host.signals.entered.notified().await;
+    let error = watching.await.unwrap_err();
+    let harmos_runtime::plugin::grpc::CallError::Remote(failure) = call_error(&error) else {
+        panic!("Expected an Invocation Ownership Refusal: {error:?}");
+    };
+    assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent, "{failure:?}");
+    assert_eq!(failure.context().operation(), Some("harmos.host.v1.Invocations/Watch"), "{failure:?}");
     target.request_cancel();
     assert_eq!(target.await.unwrap(), payload(b"target"));
-    let response = watching.await.unwrap();
-    #[derive(prost::Message)]
-    struct Value {
-        #[prost(bytes = "vec", tag = "1")]
-        value: Vec<u8>,
-    }
-    let response = <Value as prost::Message>::decode(response.as_slice()).unwrap();
-    let phases = String::from_utf8(response.value).unwrap();
-    assert!(phases.starts_with("running|"), "{phases}");
-    assert!(phases.ends_with("settled|"), "{phases}");
     host.runtime.shutdown().await.unwrap();
 }

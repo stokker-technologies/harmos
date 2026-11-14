@@ -33,7 +33,7 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use harmos_protocol::v1::GuestRegistration;
+use harmos_protocol::plugin::GuestRegistration;
 
 /* === Constants === */
 

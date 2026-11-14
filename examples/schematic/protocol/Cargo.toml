@@ -16,7 +16,7 @@ version = { workspace = true }
 
 [features]
 default = []
-sdk = ["dep:harmos"]
+sdk = ["dep:harmos", "dep:tonic"]
 
 # === Dependencies === #
 
@@ -27,6 +27,7 @@ harmos = { workspace = true, optional = true }
 prost = { workspace = true }
 prost-reflect = { workspace = true }
 prost-types = { workspace = true }
+tonic = { version = "0.14.9", default-features = false, features = ["codegen"], optional = true }
 
 # Git
 
@@ -61,6 +62,8 @@ prost-types = { workspace = true }
 # === Dev Dependencies === #
 
 [dev-dependencies]
+toml_edit = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Serialization
 prost-build = { workspace = true, features = ["format"] }
 protoc-bin-vendored = { workspace = true }
@@ -79,6 +82,10 @@ path = "tests/integration/main.rs"
 # === Bench Targets === #
 
 # === Example Targets === #
+
+[[example]]
+name = "client"
+required-features = ["sdk"]
 
 # === Workspace Lints === #
 

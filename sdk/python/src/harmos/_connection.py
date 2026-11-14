@@ -29,11 +29,11 @@ from ._transfer import message_bytes
 # === Classes === #
 
 
-class Client(ClientRoot):
-    """Library Resources, With an Optional Owned Connection."""
+class Connection:
+    """Connection Ownership Shared by Library and Composed Resource Roots."""
 
     def __init__(self, channel: Channel) -> None:
-        super().__init__(channel)
+        self._channel = channel
         self._owned_channel: Channel | None = None
 
     @classmethod
@@ -50,6 +50,14 @@ class Client(ClientRoot):
     async def close(self) -> None:
         if self._owned_channel is not None:
             await self._owned_channel.close()
+
+
+class Client(Connection, ClientRoot):
+    """Library Resources, With an Optional Owned Connection."""
+
+    def __init__(self, channel: Channel) -> None:
+        ClientRoot.__init__(self, channel)
+        Connection.__init__(self, channel)
 
 
 # === Public Functions === #

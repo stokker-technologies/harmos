@@ -20,7 +20,7 @@ use super::requests::required;
 
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::{FileCapture, FileRead, FileSource, StorageManager};
 use prost::Message;
 use ring::digest;
@@ -52,8 +52,8 @@ pub(super) enum Data {
 /* === Public Functions === */
 
 pub(super) async fn production(
-    context: &ExecutionContext, file: Option<StagedFile>, at: Option<v1::ReadCut>,
-) -> Result<(Production, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, file: Option<StagedFile>, at: Option<model::ReadCut>,
+) -> Result<(Production, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
@@ -97,8 +97,8 @@ pub(super) async fn production(
 }
 
 pub(super) async fn hash(
-    context: &ExecutionContext, source: Option<FileSource>, range: Option<ByteRange>, at: Option<v1::ReadCut>,
-) -> Result<(FileHash, v1::ReadCut), ServingError> {
+    context: &ExecutionContext, source: Option<FileSource>, range: Option<ByteRange>, at: Option<model::ReadCut>,
+) -> Result<(FileHash, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
 
@@ -140,7 +140,7 @@ pub(super) async fn hash(
 pub(super) async fn capture(
     context: &ExecutionContext, source: Option<FileSource>, range: Option<ByteRange>, metadata: Option<FileMetadata>,
     consistency: CaptureConsistency,
-) -> Result<(FileReference, v1::Receipt), ServingError> {
+) -> Result<(FileReference, model::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
 
@@ -159,7 +159,7 @@ pub(super) async fn capture(
             .await?;
         let cut = snapshots.composite(&storage, super::transfers::cut(file.position.clone())).await?;
         let position = cut.positions.into_iter().next().expect("one published position");
-        let receipt = v1::Receipt {
+        let receipt = model::Receipt {
             request_id: format!("capture:{}:{}:{}", file.position.history.store, file.position.history.epoch, file.position.sequence),
             accepted_at: Some(position.clone()),
             durable_at: Some(position),
@@ -172,7 +172,7 @@ pub(super) async fn capture(
 }
 
 pub(super) async fn directory(
-    context: &ExecutionContext, selection: Option<DirectorySelection>, at: Option<v1::ReadCut>, page: Option<v1::PageRequest>,
+    context: &ExecutionContext, selection: Option<DirectorySelection>, at: Option<model::ReadCut>, page: Option<model::PageRequest>,
 ) -> Result<ListDirectoryEntriesResponse, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;

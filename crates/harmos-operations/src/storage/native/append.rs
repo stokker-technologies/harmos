@@ -21,7 +21,7 @@ use super::requests::required;
 
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::v1;
+use harmos_protocol::model;
 use harmos_storage::StorageManager;
 
 /* === Enums === */
@@ -36,7 +36,7 @@ pub(super) enum Kind {
 
 pub(super) async fn append(
     context: &ExecutionContext, id: &'static str, kind: Kind, mutation: Option<MutationId>, scope: Option<String>, batch: Option<DataBatch>,
-) -> Result<v1::Receipt, ServingError> {
+) -> Result<model::Receipt, ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
 
     let result: crate::Result<_> = async {
