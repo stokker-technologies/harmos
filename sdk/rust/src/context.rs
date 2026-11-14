@@ -52,7 +52,8 @@ use harmos_protocol::plugin::host::{
     SettingsListRequest, SettingsListResponse, TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse,
 };
 use harmos_protocol::plugin::instance_invoke_response;
-use harmos_protocol::v1;
+use harmos_protocol::policy::RetryPolicy;
+use harmos_protocol::v1::{ChildCancel, ChildDemand, ChildRequest, Classification, Failure, GuestValue, OperationPolicy, Request};
 
 /* === Constants === */
 
@@ -116,7 +117,7 @@ pub struct Context {
     group: Arc<()>,
     pub(crate) call_changes: Arc<Notify>,
     pub(crate) child: Option<Arc<dyn ChildTransport>>,
-    pub(crate) values: Vec<v1::GuestValue>,
+    pub(crate) values: Vec<GuestValue>,
     pub(crate) samples: Option<mpsc::Sender<(Vec<u8>, Option<Timestamp>)>>,
 }
 
@@ -133,13 +134,13 @@ pub(crate) struct Calls {
 /* === Traits === */
 
 pub(crate) trait ChildTransport: Send + Sync + Any {
-    fn call<'a>(&'a self, request: v1::ChildRequest, values: Vec<v1::GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
+    fn call<'a>(&'a self, request: ChildRequest, values: Vec<GuestValue>, submit: bool) -> LocalFuture<'a, Result<Vec<u8>>>;
 }
 
 /* === Implementations === */
 
 impl Context {
-    pub(crate) fn new(request: v1::Request, plugin: String, requires: Arc<HashMap<String, Vec<u8>>>) -> Self {
+    pub(crate) fn new(request: Request, plugin: String, requires: Arc<HashMap<String, Vec<u8>>>) -> Self {
         Self {
             invocation: request.invocation,
             attempt: request.attempt,
@@ -171,8 +172,8 @@ impl Context {
     /// Require a Caller-Bound Scope for This Invocation.
     pub fn scope(&self) -> Result<&str> {
         if self.scope.is_empty() {
-            return Err(v1::Failure {
-                classification: v1::Classification::Refused as i32,
+            return Err(Failure {
+                classification: Classification::Refused as i32,
                 code: "scope_required".into(),
                 message: "Invocation Scope Is Required: the caller must bind a scope".into(),
                 ..Default::default()
@@ -217,7 +218,7 @@ impl Context {
         self.call_with(request, None).await
     }
 
-    pub async fn call_with<Q: OperationRequest>(&self, request: Q, policy: Option<v1::OperationPolicy>) -> Result<Q::Response> {
+    pub async fn call_with<Q: OperationRequest>(&self, request: Q, policy: Option<OperationPolicy>) -> Result<Q::Response> {
         if Q::WATCH {
             return Err(Error::Invalid(format!("Call {}: Use Watch for a Streaming Contract", Q::ID)));
         }
@@ -278,7 +279,7 @@ impl Context {
         };
         let limit = self.calls.lock().expect("Child Calls Poisoned").watches[&call].limit;
         output
-            .send(instance_invoke_response::Frame::Child(v1::ChildRequest {
+            .send(instance_invoke_response::Frame::Child(ChildRequest {
                 call,
                 operation: Q::ID.into(),
                 payload: request.encode_to_vec(),
@@ -294,7 +295,7 @@ impl Context {
         Ok(watching)
     }
 
-    async fn invoke_local(&self, operation: &Operation, payload: Vec<u8>, override_policy: Option<v1::OperationPolicy>) -> Result<Vec<u8>> {
+    async fn invoke_local(&self, operation: &Operation, payload: Vec<u8>, override_policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
         use harmos_protocol::policy::{FailureKind, OperationPolicy, ReplaySafety, UNBOUNDED};
         let policy = OperationPolicy::try_from(override_policy.as_ref().or(operation.contract.policy.as_ref()))
             .map_err(|error| Error::Invalid(format!("Invoke {}: {error}", operation.contract.id)))?;
@@ -303,7 +304,7 @@ impl Context {
         } else {
             ReplaySafety::Unknown
         };
-        if replay == ReplaySafety::Unknown && !matches!(policy.retries, harmos_protocol::policy::RetryPolicy::Never) {
+        if replay == ReplaySafety::Unknown && !matches!(policy.retries, RetryPolicy::Never) {
             return Err(Error::Invalid(format!("Invoke {}: Retry Requires Replay Safety", operation.contract.id)));
         }
         let mut context = self.clone();
@@ -336,7 +337,7 @@ impl Context {
             };
             if remaining.is_zero() {
                 return Err(Error::failure(
-                    v1::Classification::TimedOut,
+                    Classification::TimedOut,
                     "deadline",
                     format!("Invoke {}: Deadline Reached", operation.contract.id),
                     "Invoke Again If Safe",
@@ -350,15 +351,15 @@ impl Context {
                 tokio::pin!(deadline);
                 let (classification, reason) = tokio::select! {
                     result = &mut executing => return result,
-                    reason = self.cancelled() => (v1::Classification::Cancelled, reason),
+                    reason = self.cancelled() => (Classification::Cancelled, reason),
                     result = &mut deadline, if bound < UNBOUNDED => {
                         result?;
-                        (v1::Classification::TimedOut, "Deadline Reached".into())
+                        (Classification::TimedOut, "Deadline Reached".into())
                     }
                 };
                 context.cancellation.send_replace(Some(reason.clone()));
                 context.cancel_calls(true, &reason, false).await?;
-                if classification == v1::Classification::Cancelled && !policy.cancellation_timeout.is_zero() {
+                if classification == Classification::Cancelled && !policy.cancellation_timeout.is_zero() {
                     tokio::select! {
                         result = &mut executing => return result,
                         _ = guard.sleep(policy.cancellation_timeout) => {},
@@ -376,7 +377,7 @@ impl Context {
             guard.cancel_calls(true, "Policy Guard Settled", false).await?;
             context.cancel_calls(true, "Local Attempt Settled", false).await?;
             let kind = match &result {
-                Err(Error::Failure(failure)) if failure.classification() == v1::Classification::Transient => FailureKind::Transient,
+                Err(Error::Failure(failure)) if failure.classification() == Classification::Transient => FailureKind::Transient,
                 _ => return result,
             };
             let Some(mut delay) = policy.retries.retry_after(attempt as usize, kind, replay, 0) else {
@@ -423,13 +424,11 @@ impl Context {
         self.send_call(id, payload, fingerprint, None).await
     }
 
-    async fn send_call(
-        &self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<v1::OperationPolicy>,
-    ) -> Result<Vec<u8>> {
+    async fn send_call(&self, operation: &str, payload: Vec<u8>, fingerprint: Vec<u8>, policy: Option<OperationPolicy>) -> Result<Vec<u8>> {
         if let Some(child) = &self.child {
             return child
                 .call(
-                    v1::ChildRequest {
+                    ChildRequest {
                         call: 0,
                         operation: operation.into(),
                         payload,
@@ -468,7 +467,7 @@ impl Context {
             call
         };
         let _pending = PendingDrop { context: self.clone(), call };
-        let child = v1::ChildRequest {
+        let child = ChildRequest {
             call,
             operation: operation.into(),
             payload,
@@ -488,7 +487,7 @@ impl Context {
         let cancelled = mem::take(&mut self.calls.lock().expect("Child Calls Poisoned").cancel_queue);
         if let Some(output) = &self.output {
             for call in cancelled {
-                output.send(instance_invoke_response::Frame::ChildCancel(v1::ChildCancel { call })).await?;
+                output.send(instance_invoke_response::Frame::ChildCancel(ChildCancel { call })).await?;
             }
         }
         Ok(())
@@ -539,8 +538,8 @@ impl Context {
     }
 
     pub(crate) fn cancel_failure(&self, reason: String) -> Error {
-        v1::Failure {
-            classification: v1::Classification::Cancelled as i32,
+        Failure {
+            classification: Classification::Cancelled as i32,
             code: "cancelled".into(),
             message: reason,
             action: "Retry If Needed".into(),
@@ -567,7 +566,7 @@ impl<R: Message> Watching<R> {
             return Ok(None);
         }
         let output = self.context.output.as_ref().expect("Native Watch");
-        output.send(instance_invoke_response::Frame::ChildDemand(v1::ChildDemand { call: self.call })).await?;
+        output.send(instance_invoke_response::Frame::ChildDemand(ChildDemand { call: self.call })).await?;
         match self.receiver.recv().await {
             Some(Ok(Some(bytes))) => R::decode(bytes.as_slice()).map(Some).map_err(|error| Error::Invalid(format!("Watch: {error}"))),
             Some(Ok(None)) => {

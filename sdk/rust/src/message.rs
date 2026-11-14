@@ -18,7 +18,8 @@
 // Standard Library Imports
 
 // Third Party Imports
-use prost_types::FileDescriptorSet;
+use prost_types::{DescriptorProto, FileDescriptorProto, FileDescriptorSet};
+use std::collections::HashSet;
 
 // Local Imports
 use crate::{Error, Result};
@@ -61,11 +62,11 @@ impl Message for () {
     }
     fn types() -> FileDescriptorSet {
         FileDescriptorSet {
-            file: vec![prost_types::FileDescriptorProto {
+            file: vec![FileDescriptorProto {
                 name: Some("google/protobuf/empty.proto".into()),
                 package: Some("google.protobuf".into()),
                 syntax: Some("proto3".into()),
-                message_type: vec![prost_types::DescriptorProto {
+                message_type: vec![DescriptorProto {
                     name: Some("Empty".into()),
                     ..Default::default()
                 }],
@@ -134,8 +135,8 @@ pub fn merge_descriptor_types(target: &mut FileDescriptorSet, source: FileDescri
 
 pub(crate) fn merge_types(target: &mut FileDescriptorSet, source: FileDescriptorSet) -> Result<()> {
     merge_descriptor_types(target, source);
-    let mut files = std::collections::HashSet::new();
-    let mut names = std::collections::HashSet::new();
+    let mut files = HashSet::new();
+    let mut names = HashSet::new();
     for file in &target.file {
         if !files.insert(&file.name) {
             return Err(Error::Invalid(format!("Conflicting Protobuf File: {:?}", file.name)));

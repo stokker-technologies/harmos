@@ -22,6 +22,7 @@ use harmos::plugin::HostOperation;
 // Third Party Imports
 
 // Local Imports
+use harmos::plugin::HostInvocationsWatch;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
 use harmos::{Error, Message, Result, Visibility};
 use harmos_protocol::v1;
@@ -29,10 +30,11 @@ use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, Timestamp};
 use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
 use tokio::sync::Notify;
+use tonic::Code;
 
 /* === Constants === */
 
-static HELD: Mutex<Vec<(Context, harmos::plugin::HostInvocationsWatch)>> = Mutex::new(Vec::new());
+static HELD: Mutex<Vec<(Context, HostInvocationsWatch)>> = Mutex::new(Vec::new());
 
 static READING_RELEASED: Notify = Notify::const_new();
 
@@ -170,7 +172,7 @@ async fn samples_children(context: &Context) -> Result<SampleReading> {
 async fn stale_context(_: &Context, _: Input) -> Result<Isolation> {
     let (saved, mut watch) =
         HELD.lock().unwrap().pop().ok_or_else(|| Error::Invalid("Check Samples Context: No Retained Context".into()))?;
-    let refused = matches!(saved.now().await, Err(Error::Transport(status)) if status.code() == tonic::Code::InvalidArgument);
+    let refused = matches!(saved.now().await, Err(Error::Transport(status)) if status.code() == Code::InvalidArgument);
     let watch_refused = watch.next().await.is_err();
     let settings_refused = saved.settings().await.is_err();
     let scope_preserved = saved.scope()? == "scope";

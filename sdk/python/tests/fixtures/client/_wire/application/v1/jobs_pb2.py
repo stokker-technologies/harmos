@@ -24,13 +24,14 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x61pplication/v1/jobs.proto\x12\x0e\x61pplication.v1\"!\n\x10JobsStartRequest\x12\r\n\x05value\x18\x01 \x01(\t\"\"\n\x11JobsStartResponse\x12\r\n\x05value\x18\x01 \x01(\t2T\n\x04Jobs\x12L\n\x05Start\x12 .application.v1.JobsStartRequest\x1a!.application.v1.JobsStartResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19\x61pplication/v1/jobs.proto\x12\x0e\x61pplication.v1\"!\n\x10JobsStartRequest\x12\r\n\x05value\x18\x01 \x01(\t\"\"\n\x11JobsStartResponse\x12\r\n\x05value\x18\x01 \x01(\t2T\n\x04Jobs\x12L\n\x05Start\x12 .application.v1.JobsStartRequest\x1a!.application.v1.JobsStartResponseB\x16\xaa\x02\x13\x41pplication.Clientsb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'tests.fixtures.client._wire.application.v1.jobs_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  DESCRIPTOR._loaded_options = None
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'\252\002\023Application.Clients'
   _globals['_JOBSSTARTREQUEST']._serialized_start=45
   _globals['_JOBSSTARTREQUEST']._serialized_end=78
   _globals['_JOBSSTARTRESPONSE']._serialized_start=80

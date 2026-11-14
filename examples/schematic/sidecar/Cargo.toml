@@ -26,7 +26,6 @@ version.workspace = true
 [dependencies]
 # Local
 harmos = { workspace = true }
-harmos-protocol = { workspace = true }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
 schematic-domain = { path = "../domain" }
 

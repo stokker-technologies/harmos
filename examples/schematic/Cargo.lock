@@ -2345,7 +2345,6 @@ name = "schematic-guest"
 version = "0.1.14"
 dependencies = [
  "harmos",
- "harmos-protocol",
  "schematic-domain",
  "schematic-protocol",
  "serde_json",
@@ -2382,7 +2381,6 @@ name = "schematic-sidecar"
 version = "0.1.14"
 dependencies = [
  "harmos",
- "harmos-protocol",
  "schematic-domain",
  "schematic-protocol",
  "tempfile",

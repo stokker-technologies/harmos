@@ -34,6 +34,7 @@ use tokio::{
     net::TcpListener,
     sync::{Mutex, mpsc, oneshot},
 };
+use tonic::transport::Server as RpcServer;
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
@@ -272,7 +273,7 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
     println!("harmos listening {address}");
     io::stdout().flush()?;
     tracing::info!(%address, "Plugin Listening");
-    let result = tonic::transport::Server::builder()
+    let result = RpcServer::builder()
         .add_service(InstanceServer::new(server).max_decoding_message_size(message_bytes).max_encoding_message_size(message_bytes))
         .serve_with_incoming_shutdown(incoming, async move {
             if plugin.remote {

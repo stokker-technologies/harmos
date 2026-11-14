@@ -22,7 +22,6 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos._wire.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.plugin.v1 import instance_pb2 as carrier
 from harmos._wire.v1.failure_pb2 import CLASSIFICATION_CANCELLED, CLASSIFICATION_REFUSED, CLASSIFICATION_TIMED_OUT, CLASSIFICATION_TRANSIENT
 from harmos._wire.v1.failure_pb2 import Failure as WireFailure
 from harmos._wire.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
@@ -41,7 +40,7 @@ if TYPE_CHECKING:
 from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
 
 from harmos._wire.plugin.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
-from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse
+from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 
 from ._generated.host import HostRoot
 
@@ -75,7 +74,7 @@ class ProtocolError(Exception):
 
 
 class _Output(Protocol):
-    async def put(self, frame: "carrier.InstanceInvokeResponse | _FaultError", /) -> None: ...
+    async def put(self, frame: "InstanceInvokeResponse | _FaultError", /) -> None: ...
 
 
 class Context:
@@ -433,7 +432,7 @@ class Context:
 
 
 class Publisher:
-    def __init__(self, row: type[Message], output: "asyncio.Queue[Sample | carrier.InstanceSamplesResponse | _FaultError | None]") -> None:
+    def __init__(self, row: type[Message], output: "Queue[Sample | InstanceSamplesResponse | _FaultError | None]") -> None:
         self._row = row
         self._output = output
 

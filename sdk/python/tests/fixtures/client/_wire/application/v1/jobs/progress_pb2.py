@@ -24,13 +24,14 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"application/v1/jobs/progress.proto\x12\x13\x61pplication.v1.jobs\"%\n\x14ProgressWatchRequest\x12\r\n\x05value\x18\x01 \x01(\t\"&\n\x15ProgressWatchResponse\x12\r\n\x05value\x18\x01 \x01(\t2l\n\x08Progress\x12`\n\x05Watch\x12).application.v1.jobs.ProgressWatchRequest\x1a*.application.v1.jobs.ProgressWatchResponse0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"application/v1/jobs/progress.proto\x12\x13\x61pplication.v1.jobs\"%\n\x14ProgressWatchRequest\x12\r\n\x05value\x18\x01 \x01(\t\"&\n\x15ProgressWatchResponse\x12\r\n\x05value\x18\x01 \x01(\t2l\n\x08Progress\x12`\n\x05Watch\x12).application.v1.jobs.ProgressWatchRequest\x1a*.application.v1.jobs.ProgressWatchResponse0\x01\x42\x16\xaa\x02\x13\x41pplication.Clientsb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'tests.fixtures.client._wire.application.v1.jobs.progress_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  DESCRIPTOR._loaded_options = None
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'\252\002\023Application.Clients'
   _globals['_PROGRESSWATCHREQUEST']._serialized_start=59
   _globals['_PROGRESSWATCHREQUEST']._serialized_end=96
   _globals['_PROGRESSWATCHRESPONSE']._serialized_start=98

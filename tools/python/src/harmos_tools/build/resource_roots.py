@@ -872,25 +872,22 @@ def rust_context(root: Path, methods: list[Method]) -> None:
         | {"harmos.v1.SettingDeclaration", "harmos.v1.SettingsDeclarations"}
     )
 
-    def path(name: str) -> str:
-        parts = name.split(".")
-        if parts[1] == "v1":
-            return "harmos_protocol::v1::" + "::".join(parts[2:])
-        return "harmos_protocol::plugin::host::" + "::".join(parts[4:])
+    lines += ["use prost::Message as _;", "use prost_types::FileDescriptorSet;"]
+    lines += [f"use {rust_message(message)};" for message in messages]
 
     for message in messages:
         lines += [
-            f"impl Message for {path(message)} {{",
+            f"impl Message for {message.rsplit('.', 1)[-1]} {{",
             f'    fn name() -> String {{ "{message}".into() }}',
-            "    fn types() -> prost_types::FileDescriptorSet {",
-            f'        prost::Message::decode(&include_bytes!("types/{message}.bin")[..]).expect("generated context wrapper")',
+            "    fn types() -> FileDescriptorSet {",
+            f'        FileDescriptorSet::decode(&include_bytes!("types/{message}.bin")[..]).expect("generated context wrapper")',
             "    }",
             "}",
         ]
     for method in methods:
         lines += [
-            f"impl OperationRequest for {path(method['request'])} {{",
-            f"    type Response = {path(method['response'])};",
+            f"impl OperationRequest for {method['request'].rsplit('.', 1)[-1]} {{",
+            f"    type Response = {method['response'].rsplit('.', 1)[-1]};",
             f'    const ID: &\'static str = "{method["package"]}.{method["service"]}/{method["method"]}";',
             f"    const WATCH: bool = {str(method['server_streaming']).lower()};",
             "}",

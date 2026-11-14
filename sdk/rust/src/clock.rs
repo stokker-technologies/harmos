@@ -19,7 +19,7 @@
 
 // Third Party Imports
 use harmos_protocol::clock::declarations_types;
-use prost_types::FileDescriptorSet;
+use prost_types::{Duration, FileDescriptorSet, Timestamp};
 
 // Local Imports
 use crate::Message;
@@ -38,7 +38,7 @@ use crate::Message;
 
 /* === Implementations === */
 
-impl Message for prost_types::Duration {
+impl Message for Duration {
     fn name() -> String {
         "google.protobuf.Duration".into()
     }
@@ -47,7 +47,7 @@ impl Message for prost_types::Duration {
     }
 }
 
-impl Message for prost_types::Timestamp {
+impl Message for Timestamp {
     fn name() -> String {
         "google.protobuf.Timestamp".into()
     }
