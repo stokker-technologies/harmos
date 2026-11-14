@@ -23,6 +23,7 @@ use std::path::Path;
 // Third Party Imports
 
 // Local Imports
+use self::sidecar::Running;
 use crate::app::{Runtime, SchematicEditor};
 use harmos::{OperationRequest, encoding::Message as _};
 use harmos_runtime::guest::Loaded;
@@ -39,7 +40,7 @@ use harmos_runtime::guest::Loaded;
 
 pub enum Plugin {
     Guest { manager: harmos_runtime::guest::PluginHost<SchematicEditor> },
-    Sidecar { attached: sidecar::Running },
+    Sidecar { attached: Box<Running> },
 }
 
 /* === Traits === */
@@ -54,7 +55,7 @@ impl Plugin {
 
     pub async fn sidecar(runtime: &Runtime, path: &Path, directory: &Path) -> harmos_runtime::Result<Self> {
         let attached = sidecar::start(runtime, path, directory).await?;
-        Ok(Self::Sidecar { attached })
+        Ok(Self::Sidecar { attached: Box::new(attached) })
     }
 
     pub async fn stop(self) -> harmos_runtime::Result<()> {
