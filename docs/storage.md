@@ -646,8 +646,9 @@ Fourteen disk/backend-only stories were removed for product ownership:
 | `state/index_open_cancellation_preserves_the_durable_journal.rs` | `index_open_cancellation_preserves_the_durable_journal` |
 | Runtime `storage/state/files.rs` | `corruption_refused_preserved`; `state_root_exclusive`; `limits_bound_records`; `unsupported_format_refused` |
 
-Implementation-local unit tests leave with the deleted SQLite and journal
-implementations. The schematic example's separate JSONL storage crate, format
+Two implementation-local unit stories also leave with their implementations:
+`sqlite/files.rs::resumable_upload_reopens_at_the_checkpoint_and_fences_abandoned_writers`
+and `state/file/format.rs::complete_corruption_refused`. The schematic example's separate JSONL storage crate, format
 fixtures and disk-format stories are also removed. Its application storage
 stories exercise the public memory adapter; manual document Save/Open remains
 application-owned file serialization. Library tests do not claim disk durability.
