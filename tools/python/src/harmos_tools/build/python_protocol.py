@@ -25,7 +25,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
 from ..process import spawn_flags
-from .resource_roots import python, python_exports, python_host, table
+from .resource_roots import compose, python, python_exports, python_host, table
 
 # Type Checking Imports
 
@@ -114,6 +114,10 @@ def generate_client_fixture(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     wire = output / "_wire"
     wire.mkdir(parents=True, exist_ok=True)
+    generated = {name.removesuffix(".proto") + suffix for name in inputs for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")}
+    for path in wire.rglob("*_pb2*"):
+        if path.is_file() and path.name.endswith((".py", ".pyi")) and path.relative_to(wire).as_posix() not in generated:
+            path.unlink()
     for path in (output / "application").rglob("*_pb2*"):
         if path.is_file() and path.name.endswith((".py", ".pyi")):
             path.unlink()
@@ -126,6 +130,8 @@ def generate_client_fixture(output: Path) -> None:
                 "-m",
                 "grpc_tools.protoc",
                 f"-I{proto}",
+                f"-I{ROOT / 'proto'}",
+                f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
                 f"--python_out={wire}",
                 f"--pyi_out={wire}",
                 f"--grpc_python_out={wire}",
@@ -142,14 +148,15 @@ def generate_client_fixture(output: Path) -> None:
                 continue
             source = path.read_text(encoding="utf-8").replace("from application.", "from tests.fixtures.client._wire.application.")
             source = source.replace("'application.", "'tests.fixtures.client._wire.application.")
+            source = source.replace("from harmos.model.", "from harmos._wire.model.")
             path.write_text(source, encoding="utf-8", newline="\n")
-        descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        descriptors.file.extend(FileDescriptorSet.FromString(descriptor_path.read_bytes()).file)
-        python(
+        compose(
+            ROOT,
+            [descriptor_path],
             output / "_generated/client.py",
-            [method for method in table(descriptors) if method["face"] == "client"],
-            descriptors,
-            module_prefixes={"application": "tests.fixtures.client._wire.application"},
+            "tests.fixtures.client",
+            language="python",
+            composition=proto.parent / "composition.toml",
         )
     finally:
         shutil.rmtree(scratch)
@@ -157,6 +164,7 @@ def generate_client_fixture(output: Path) -> None:
 
 def generate_conformance(output: Path) -> None:
     proto = ROOT / "sdk/tests/fixtures/conformance/proto"
+    inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
     scratch = tempfile.mkdtemp()
     try:
         subprocess.run(
@@ -169,24 +177,29 @@ def generate_conformance(output: Path) -> None:
                 f"--python_out={scratch}",
                 f"--pyi_out={scratch}",
                 f"--grpc_python_out={scratch}",
-                "harmos/conformance/v1/fixture.proto",
+                f"--descriptor_set_out={Path(scratch) / 'descriptors.bin'}",
+                "--include_imports",
+                *inputs,
             ],
             check=True,
             cwd=ROOT,
             creationflags=spawn_flags(),
         )
         output.mkdir(parents=True, exist_ok=True)
-        for source in (Path(scratch) / "harmos/conformance/v1").iterdir():
-            shutil.copyfile(source, output / source.name)
-        schema = FileDescriptorSet.FromString((ROOT / "sdk/rust/tests/fixtures/conformance/descriptors.bin").read_bytes())
-        names = sorted(message.name for file in schema.file if file.package == "harmos.conformance.v1" for message in file.message_type)
-        package = output.parent.parent
-        for obsolete in (package / "v1").glob("*_pb2*"):
-            if obsolete.is_file():
-                obsolete.unlink()
+        for name in inputs:
+            for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
+                source = Path(scratch) / (name.removesuffix(".proto") + suffix)
+                shutil.copyfile(source, output / source.name)
+        schema = FileDescriptorSet.FromString((Path(scratch) / "descriptors.bin").read_bytes())
+        names = sorted(message.name for file in schema.file if file.name in inputs for message in file.message_type)
+        package = output.parents[2]
+        for folder in (package / "v1", package / "_wire/v1"):
+            for obsolete in folder.glob("*_pb2*"):
+                if obsolete.is_file():
+                    obsolete.unlink()
         types = [
             "# @generated from protocol descriptors; do not edit.",
-            *[f"from ._wire.v1.fixture_pb2 import {name} as {name}" for name in names],
+            *[f"from ._wire.model.v1.fixture_pb2 import {name} as {name}" for name in names],
         ]
         (package / "_types.py").write_text("\n".join(types) + "\n", encoding="utf-8", newline="\n")
     finally:
@@ -201,7 +214,7 @@ def main() -> None:
     if not options.check:
         generate(committed)
         generate_client_fixture(ROOT / "sdk/python/tests/fixtures/client")
-        generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/_wire/v1")
+        generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/_wire/model/v1")
         return
 
     scratch = tempfile.mkdtemp()
@@ -242,10 +255,10 @@ def main() -> None:
                 or not filecmp.cmp(path, client / path.relative_to(generated_client), shallow=False)
             )
         ]
-        fixture = ROOT / "sdk/python/tests/fixtures/conformance/_wire/v1"
-        generated_fixture = output / "conformance/_wire/v1"
+        fixture = ROOT / "sdk/python/tests/fixtures/conformance/_wire/model/v1"
+        generated_fixture = output / "conformance/_wire/model/v1"
         generate_conformance(generated_fixture)
-        types = generated_fixture.parent.parent / "_types.py"
+        types = generated_fixture.parents[2] / "_types.py"
         committed_types = ROOT / "sdk/python/tests/fixtures/conformance/_types.py"
         if not committed_types.is_file() or types.read_bytes() != committed_types.read_bytes():
             changed.append("conformance/_types.py")

@@ -406,6 +406,13 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
 
 def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
     """Generate Content Arguments and Exactly-One-Field Response Projection."""
+    selected: list[Method] = []
+    for method in methods:
+        method = method.copy()
+        if method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
+            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
+        selected.append(method)
+    methods = selected
     nodes: set[tuple[str, ...]] = {()}
     leaves: set[tuple[str, ...]] = set()
     for method in methods:
@@ -420,6 +427,10 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         raise ValueError("Generate Python Client: Resource Collides With a Method")
     names = {node: "ClientRoot" if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     composed = any(method["owner"] != "harmos" for method in methods)
+    library = Path(__file__).resolve().parents[5] / "crates/harmos-protocol/src/descriptors.bin"
+    library_methods = table(FileDescriptorSet.FromString(library.read_bytes()))
+    library_leaves = {tuple(method["path"]) for method in library_methods if method["face"] == "client"}
+    narrowed = not library_leaves <= leaves
     library_nodes: set[tuple[str, ...]] = {()}
     for method in methods:
         if method["owner"] == "harmos":
@@ -472,7 +483,9 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         "from grpc.aio import AioRpcError, Channel",
         "from harmos._client_transport import Metadata, call_error, stream, unary",
     ]
-    if composed:
+    if narrowed:
+        lines += ["from harmos._connection import Connection as LibraryConnection"]
+    elif composed:
         lines += ["from harmos import Client as LibraryClient"]
         lines += [f"from harmos.client import {names[node]} as Library{names[node]}" for node in sorted(library_nodes) if node]
     for full in sorted(used):
@@ -485,7 +498,15 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
             lines += [f"from {module} import {name}" + (f" as {aliases[full]}" if aliases[full] != name else "")]
     for node in sorted(nodes, key=lambda value: (-len(value), value)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
-        parent = "LibraryClient" if composed and not node else "Library" + names[node] if composed and node in library_nodes else ""
+        parent = ""
+        if narrowed:
+            if not node:
+                parent = "LibraryConnection"
+        elif composed:
+            if not node:
+                parent = "LibraryClient"
+            elif node in library_nodes:
+                parent = "Library" + names[node]
         lines += ["", f"class {names[node]}" + (f"({parent})" if parent else "") + ":", "    def __init__(self, channel: Channel) -> None:"]
         if parent:
             lines += ["        super().__init__(channel)"]
@@ -625,6 +646,8 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
     ]
     lines += [f"from {modules[full]} import {full.rsplit('.', 1)[-1]}" for full in sorted(used)]
     lines += ["if TYPE_CHECKING:", "    from harmos._invocation import Context", "class HostOperation(Enum):"]
+    if not methods:
+        lines += ["    pass"]
     for method in methods:
         name = "_".join(method["path"]).upper()
         lines += [f'    {name} = "{method["package"]}.{method["service"]}/{method["method"]}"']
@@ -634,7 +657,9 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
         lines += [
             f"_{name} = Operation(HostOperation.{name}.value, {q}, {r}, visibility=VISIBILITY_PUBLIC, watch={method['server_streaming']})"
         ]
-    lines += ["def host_requirement(operation: HostOperation) -> Operation[Message, Message]:", "    match operation:"]
+    lines += ["def host_requirement(operation: HostOperation) -> Operation[Message, Message]:"]
+    if methods:
+        lines += ["    match operation:"]
     for method in methods:
         name = "_".join(method["path"]).upper()
         lines += [f"        case HostOperation.{name}:", f"            return cast(Operation[Message, Message], _{name})"]
@@ -644,6 +669,8 @@ def python_host(target: Path, methods: list[Method], descriptors: FileDescriptor
         "    def __init__(self, context: 'Context') -> None:",
     ]
     lines += [f"        self.{node[-1]} = {names[node]}(context)" for node in nodes if len(node) == 1]
+    if not nodes:
+        lines += ["        pass"]
     for node in nodes:
         lines += [
             f"class {names[node]}:",
