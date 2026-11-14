@@ -193,14 +193,14 @@ The plugin manager needs conditional objects and content, not query execution.
 Gating only the engine while preserving storage and batch admission needs more
 than an optional runtime manifest entry. The relevant storage query directory is
 8 files / about 1,810 lines; its supporting backend, snapshot, definition, memory,
-write-admission, error and export files total about 3,775 lines across 12 files.
+write-admission, error and export files total about 4,565 lines across 13 files.
 These counts describe the affected surface, not lines to delete. The concrete
 owners are `crates/harmos-storage/src/{query.rs,query/**,backend.rs,snapshot.rs,
-definitions.rs,memory/mod.rs,manager/{mod,arrow}.rs,writes.rs,writes/{decoded,convert}.rs,
+definitions.rs,memory/mod.rs,manager/{mod,arrow}.rs,worker.rs,writes.rs,writes/{decoded,convert}.rs,
 error.rs,lib.rs}`, `crates/harmos-operations/src/{storage/native/**,native/error.rs}`,
 `crates/harmos-runtime/src/error.rs` and their three manifests.
 
-A rough implementation is 30–40 production files, 500–1,000 edited gating and
+A rough implementation is 40–50 production files, 500–1,000 edited gating and
 boundary lines, plus moving approximately 588 lines of `harmos-query/src/arrow.rs`
 and `arrow/{ipc,retention}.rs` into a lower shared Arrow owner (or equivalently
 changing the engine to accept the storage-owned wrapper's raw Arrow values).
@@ -209,8 +209,9 @@ query-only cancellation/index contracts and catalogs must be separated from
 core backend methods and exports. Native query operations and error conversions
 need matching gates; tests, benches and example feature selections also change.
 A shared lower owner must preserve the acyclic dependency order. Arrow array,
-buffer, data, schema and IPC would remain for batch admission; removing query
-execution alone therefore would not make the runtime Arrow-free. This is an
+buffer, data, schema and IPC would remain for batch admission. IPC itself depends
+on select, which depends on cmp, so all seven Arrow crates would still compile;
+removing query execution alone would not make the runtime Arrow-free. This is an
 estimate for the owner's decision, with no feature gate landed.
 
 ### One Ordered Time Merge

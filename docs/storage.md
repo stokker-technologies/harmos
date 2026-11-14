@@ -501,6 +501,114 @@ their backend and durability mode. The million-row temporal merge cases live in
 `harmos-query/benches/merge/`; existing transform cases live in the query and
 storage query benches.
 
+## Local Merge and Query Measurements
+
+Measured on Windows x86_64 on 2026-11-14 with Rust 1.99.1 and Cargo's `bench`
+profile. The benchmark executables were built from `650dd330`; subsequent Schematic
+assembly edits do not enter either benchmark. Values below are Criterion median
+point estimates from one invocation per suite, with ten samples after a one-second
+warmup. Merge cases request ten seconds of measurement; query cases request one
+second and may need longer to collect ten samples. These are local measurements,
+not hosted baselines or timing assertions. Native Criterion evidence is under
+`target/benchmarks/storage/criterion/`.
+
+### Ordered Merge
+
+`mise run bench -- --storage --filter time_merge` starts with two prebuilt,
+immutable in-memory Arrow batches of 1,000,000 rows each. Each timed iteration
+constructs fresh readers and drains all merged output in 16,384-row pages. It
+includes pairing and output allocation; input generation, storage admission,
+payload decoding and grouped aggregation are outside this boundary. The process
+and inputs are warm. No persistent adapter or filesystem is used.
+
+| Case | Rows per Input | Median |
+| --- | --- | --- |
+| Record Range | 1,000,000 | 183.67 ms |
+| Value at Record | 1,000,000 | 100.08 ms |
+| Record Intervals | 1,000,000 | 157.10 ms |
+| Stream Against Stream | 1,000,000 | 98.71 ms |
+
+### Query Cases
+
+`mise run bench -- --storage --filter query` produced the medians below. These
+cases use the in-memory adapter where storage is involved. Engine spill cases
+still use temporary files; removing backend disk management does not remove
+engine spill I/O.
+
+Order statistics start a fresh accumulator per iteration in a warm process.
+`push` times only pushing all N descending scalar values; `finish` times only
+finishing that accumulator. Creation, the other phase and answer checks are
+outside the reported phase. Quantiles have a 64 KiB scratch budget: Median and
+Percentile at N = 2,049 cross its 1,638-value capacity and include temporary-file
+spill work. Other statistics do not use quantile scratch.
+
+| Statistic / Phase | N = 2 | 3 | 4 | 11 | 13 | 45 | 100 | 2,049 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Median / push | 126.90 ns | 173.67 ns | 257.25 ns | 416.03 ns | 406.14 ns | 957.06 ns | 1.862 µs | 2.503 ms |
+| Median / finish | 103.59 ns | 147.63 ns | 210.76 ns | 895.77 ns | 1.245 µs | 6.777 µs | 18.839 µs | 249.366 ms |
+| Percentile(95) / push | 137.07 ns | 184.01 ns | 187.01 ns | 381.70 ns | 401.84 ns | 957.80 ns | 1.822 µs | 3.957 ms |
+| Percentile(95) / finish | 105.65 ns | 156.04 ns | 209.02 ns | 893.70 ns | 1.192 µs | 7.067 µs | 19.145 µs | 229.723 ms |
+| Percentile(99) / push | 125.64 ns | 183.49 ns | 270.30 ns | 395.95 ns | 400.78 ns | 953.41 ns | 1.844 µs | 2.440 ms |
+| Percentile(99) / finish | 105.59 ns | 149.28 ns | 214.19 ns | 901.87 ns | 1.192 µs | 6.672 µs | 19.931 µs | 211.173 ms |
+| Count / push | 43.62 ns | 53.58 ns | 61.37 ns | 121.57 ns | 145.82 ns | 408.97 ns | 869.08 ns | 18.972 µs |
+| Count / finish | 40.21 ns | 46.15 ns | 41.09 ns | 40.51 ns | 39.84 ns | 38.61 ns | 38.77 ns | 44.34 ns |
+| Min / push | 50.69 ns | 71.27 ns | 77.07 ns | 180.58 ns | 209.52 ns | 664.41 ns | 1.463 µs | 30.524 µs |
+| Min / finish | 41.35 ns | 45.12 ns | 47.14 ns | 44.89 ns | 42.61 ns | 45.27 ns | 43.30 ns | 46.90 ns |
+| Max / push | 46.14 ns | 67.66 ns | 72.98 ns | 169.22 ns | 190.57 ns | 591.71 ns | 1.369 µs | 26.076 µs |
+| Max / finish | 44.68 ns | 46.79 ns | 49.14 ns | 45.06 ns | 42.24 ns | 42.25 ns | 43.85 ns | 45.75 ns |
+| Mean / push | 50.88 ns | 126.16 ns | 90.06 ns | 171.19 ns | 205.90 ns | 609.91 ns | 1.349 µs | 27.799 µs |
+| Mean / finish | 45.70 ns | 52.34 ns | 45.83 ns | 43.28 ns | 42.15 ns | 40.73 ns | 40.97 ns | 43.18 ns |
+| Std / push | 54.79 ns | 83.02 ns | 86.16 ns | 183.16 ns | 204.35 ns | 696.98 ns | 1.469 µs | 30.464 µs |
+| Std / finish | 42.10 ns | 44.07 ns | 43.07 ns | 42.69 ns | 42.46 ns | 40.17 ns | 40.89 ns | 44.78 ns |
+| Rms / push | 54.50 ns | 73.45 ns | 85.60 ns | 183.80 ns | 205.27 ns | 648.51 ns | 1.768 µs | 28.926 µs |
+| Rms / finish | 43.71 ns | 46.85 ns | 46.54 ns | 45.00 ns | 47.04 ns | 44.16 ns | 46.73 ns | 45.92 ns |
+| Sum / push | 50.18 ns | 63.76 ns | 80.65 ns | 165.64 ns | 186.79 ns | 588.68 ns | 1.334 µs | 27.372 µs |
+| Sum / finish | 43.26 ns | 43.02 ns | 45.24 ns | 42.77 ns | 42.22 ns | 40.02 ns | 41.33 ns | 43.10 ns |
+
+The remaining cases time complete iterations, including the following work:
+
+- **Spill workloads:** fresh generated input, Arrow table construction, temporary
+  table/spill I/O, transforms and complete result drain. Hourly pages contain
+  168 × 20,000 rows; percentiles run five exact ranks over 10,080 values with
+  zero scratch memory; downsampling builds 10,080 rows and runs all four
+  algorithms to 40 rows. Inputs and tables are fresh; the process is warm.
+- **Opened files:** a memory manager and 256 KiB local file are prepared outside
+  timing. Each iteration opens and concurrently drains two independent 100,000-byte
+  ranges at offsets 0 and 128,000. The process/file are warm; local file I/O is
+  included, with no claim of persistent adapter durability.
+- **Storage projection:** seed and flush the memory adapter outside timing. Time
+  query/snapshot admission, payload decoding, projection, complete collection and
+  completion. Full scans collect all rows; windows start at one third and collect
+  4,096 rows. Manager and retained inputs are warm; response limits are 16,384 rows
+  and 8 MiB. Setup and teardown are outside timing.
+- **Quantile spill:** fresh accumulator, generation/push of 4,101 values and all
+  101 percentiles are timed. Zero bytes forces temporary files; 65,616 bytes keeps
+  the values in memory. The process is warm; accumulator state is fresh.
+- **Journal recovery:** fresh memory recovery owner, open, append/flush 10,080
+  entries, read them in 31-row pages, publish/flush a memory snapshot and read its
+  tail are timed. There is no host state replay, persistent journal or manager
+  overhead. The process is warm; recovery state is fresh.
+- **Mutation receipts:** fresh memory manager/worker with 4,096 receipt slots,
+  2,048 empty-file create/finish pairs, per-file flush, replay of the final finish,
+  checks and close are timed. The Tokio executor is outside timing. The process is
+  warm; backend state is fresh. There is no file payload or filesystem durability.
+
+| Case | Median |
+| --- | --- |
+| `journal_recovery/seven_days` | 9.928 ms |
+| `mutation_receipts/2048_files` | 214.056 ms |
+| `opened_files/independent_100000_byte_ranges` | 249.718 µs |
+| `quantile_spill/0` | 10.506 ms |
+| `quantile_spill/65616` | 1.013 ms |
+| `spill_workloads/merge_33768_rows_from_37_row_pages` | 4934.886 ms |
+| `spill_workloads/seven_days_of_downsampling` | 17.172 ms |
+| `spill_workloads/seven_days_of_hourly_pages` | 43.010 ms |
+| `spill_workloads/seven_days_of_percentiles` | 1624.842 ms |
+| `storage_projection/full/1000000` | 265.264 ms |
+| `storage_projection/full/40000` | 8.374 ms |
+| `storage_projection/window/1000000` | 736.523 µs |
+| `storage_projection/window/40000` | 754.496 µs |
+
 ## Durable-Lag Benchmark
 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
