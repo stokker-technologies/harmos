@@ -15,7 +15,9 @@ use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
 use harmos_protocol::v1;
-use harmos_storage::query::{QueryOutput, RecordSelection, Source};
+use harmos_query::QueryOutput;
+use harmos_storage::query::RecordSelection;
+use harmos_storage::query::Source;
 use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
 use std::{
     num::{NonZeroU32, NonZeroUsize},

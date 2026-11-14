@@ -21,8 +21,13 @@ use std::num::{NonZeroU32, NonZeroUsize};
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::columnar::{Cancellation, ColumnKind, ColumnSource};
-use harmos_storage::query::index::{IndexDefinition, IndexRead, encode_key, list_index_entries};
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexRead;
+use harmos_query::index::encode_key;
+use harmos_storage::query::index::list_index_entries;
 use harmos_storage::query::scalar::ScalarValue;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;

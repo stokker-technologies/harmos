@@ -23,10 +23,13 @@ use super::snapshot::{SavedSnapshots, SnapshotRead};
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
-use harmos_storage::{
-    Query, StorageManager,
-    query::{QueryReader, QueryStep, RowSlice, Source, columnar::Cancellation},
-};
+use harmos_domain::model::storage::query::Query;
+use harmos_storage::StorageManager;
+use harmos_storage::QueryReader;
+use harmos_query::QueryStep;
+use harmos_storage::query::RowSlice;
+use harmos_storage::query::Source;
+use harmos_query::columnar::Cancellation;
 use prost::Message;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},

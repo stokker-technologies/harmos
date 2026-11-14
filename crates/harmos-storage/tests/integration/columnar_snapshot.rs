@@ -25,7 +25,13 @@ use arrow_array::{Float64Array, UInt64Array};
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnPredicate, ColumnSource, TimeBounds, list_column_rows};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnPredicate;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::columnar::TimeBounds;
+use harmos_storage::query::columnar::list_column_rows;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 

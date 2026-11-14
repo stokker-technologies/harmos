@@ -11,8 +11,8 @@
 
 mod admissions;
 
-mod aggregate;
-pub mod arrow;
+
+
 mod backend;
 mod batch;
 mod batching;
@@ -43,10 +43,10 @@ mod opened_capture;
 mod persistence_work;
 pub mod query;
 mod queue;
-mod read_batch;
+
 mod receipts;
 mod record_view;
-mod schema_encoding;
+
 mod schema_sets;
 mod selection;
 mod snapshot;
@@ -54,7 +54,7 @@ mod snapshot;
 pub mod sqlite;
 mod staging;
 pub mod state;
-mod statistics;
+
 mod worker;
 pub mod writes;
 
@@ -63,7 +63,7 @@ pub mod writes;
 pub use backend::{BackendSnapshot, ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageFuture, StorageWork};
 pub use batch::{FileChunk, StorageBatch};
 pub use config::{
-    StorageAccumulatorSettings, StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
+    StorageFilesystemSettings, StoragePolicy, StorageRequestSettings, StorageResponseSettings, StorageSettings,
 };
 pub use content::{ContentLease, ContentRead, ContentSource};
 pub use definitions::{DefinitionInput, DefinitionKind, DefinitionOutcome, DefinitionRefusal};
@@ -88,18 +88,19 @@ pub use manager::{StorageManager, StorageMetrics, WorkerOwner, encoded_size};
 pub use objects::{CompareExchange, ObjectExchange, ObjectGroup};
 pub use opened_capture::OpenedCapture;
 pub use persistence_work::{PersistenceWork, StageWork};
-pub use query::{ObjectRead, ObjectReader, Query, QueryReader, RecordRead, RecordReader, StreamRead, StreamReader};
-pub use read_batch::{ReadBatch, ReadPages};
+
+pub use harmos_domain::model::storage::{ReadBatch, ReadPages};
 pub use receipts::{MutationHeader, MutationReceipt, MutationValue};
 pub use record_view::RecordView;
 pub use schema_sets::{SchemaExchange, SchemaWrite, SchemaWriteReceipt};
 pub use snapshot::Snapshot;
+pub use query::QueryReader;
 pub use staging::{FileProductionStatus, StorageFile};
 
 pub use harmos_domain::{Aggregate, Identifier, MemorySize, Message, btree_map_memory, schema};
 pub use staging::checkpoint::FileSave;
 pub use worker::Worker;
-pub use writes::StorageSchema;
+pub use harmos_domain::model::storage::StorageSchema;
 
 /* === Imports === */
 
@@ -112,7 +113,7 @@ extern crate self as harmos_storage;
 
 // Local Imports
 // Internal Paths Refer To This Crate's One Canonical Engine Namespace.
-use crate as storage;
+
 
 /* === Constants === */
 

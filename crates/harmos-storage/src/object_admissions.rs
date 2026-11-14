@@ -24,7 +24,7 @@ use super::admissions::Mutation;
 use super::objects::invalid;
 use super::{ObjectReceipt, ObjectValue, StorageManager};
 use crate::Result;
-use crate::storage::MutationId;
+use crate::MutationId;
 
 /* === Constants === */
 

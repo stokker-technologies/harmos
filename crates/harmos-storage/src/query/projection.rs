@@ -21,7 +21,9 @@ use arrow_array::RecordBatch;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
-use super::columnar::{self, ArrowScan, Cancellation, ColumnSource};
+use super::columnar;
+use harmos_query::columnar::{ArrowScan, Cancellation, ColumnSource};
+use harmos_query::time_buckets;
 use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend, StorageCursor};
 
 /* === Constants === */
@@ -104,7 +106,7 @@ struct CancelWork(Cancellation);
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ProjectionTransform {
     Select(Vec<String>),
-    TimeBuckets(super::time_buckets::TimeBucketPlan),
+    TimeBuckets(time_buckets::TimeBucketPlan),
 }
 
 /* === Traits === */
@@ -142,7 +144,7 @@ impl ProjectionDefinition {
                 bytes: std::num::NonZeroUsize::MIN,
             },
         }
-        .validate()
+        .validate().map_err(Into::into)
     }
 }
 
@@ -166,7 +168,7 @@ impl ProjectionPublication {
         self.previous.as_ref()
     }
     pub fn check_cancelled(&self) -> Result<()> {
-        self.cancel.check()
+        Ok(self.cancel.check()?)
     }
 }
 
@@ -369,8 +371,8 @@ pub async fn advance_projection(
             let plan = plan.clone();
             let context = crate::execution::Context::current();
             let output = tokio::task::spawn_blocking(move || {
-                context.blocking(|| {
-                    let mut accumulator = super::time_buckets::Accumulator::new(&plan, batches[0].schema())?;
+                context.blocking(|| -> Result<RecordBatch> {
+                    let mut accumulator = time_buckets::Accumulator::new(&plan, batches[0].schema())?;
                     for batch in &batches {
                         accumulator.push(batch, &mut || worker_cancel.check())?;
                         if bytes.saturating_add(retained).saturating_add(accumulator.memory_bytes()) > work.bytes.get() {
@@ -378,7 +380,7 @@ pub async fn advance_projection(
                         }
                     }
                     drop(batches);
-                    accumulator.finish(&mut || worker_cancel.check())
+                    Ok(accumulator.finish(&mut || worker_cancel.check())?)
                 })
             })
             .await
@@ -386,7 +388,7 @@ pub async fn advance_projection(
             drop(guard);
             let free = work.bytes.get().saturating_sub(bytes).saturating_sub(output.get_array_memory_size());
             let budget = free / 4;
-            let current = super::time_buckets::fingerprints(&output, budget)?;
+            let current = time_buckets::fingerprints(&output, budget)?;
             let mut prior = BTreeMap::new();
             let mut prior_key_bytes = 0usize;
             if let Some(frontier) = &previous {
@@ -404,7 +406,7 @@ pub async fn advance_projection(
                 loop {
                     cancel.check()?;
                     let page = backend.list_projection_rows(&read).await?;
-                    for (key, value) in super::time_buckets::fingerprints(&page.batch, budget)? {
+                    for (key, value) in time_buckets::fingerprints(&page.batch, budget)? {
                         prior_key_bytes = prior_key_bytes.saturating_add(key.capacity());
                         prior.insert(key, value);
                         let used = crate::btree_map_memory::<Vec<u8>, [u8; 32]>(prior.len()).saturating_add(prior_key_bytes);
@@ -477,8 +479,8 @@ pub(crate) fn page(
     while low < high {
         let count = low + (high - low).div_ceil(2);
         let indices = (offset..offset + count.min(batch.num_rows() - offset)).map(|row| row as u64).collect::<Vec<_>>();
-        let candidate = columnar::take(batch, &indices)?;
-        let bytes = columnar::page_bytes(&candidate)?
+        let candidate = harmos_query::columnar::take(batch, &indices)?;
+        let bytes = harmos_query::columnar::page_bytes(&candidate)?
             .saturating_add(keys[..count.min(keys.len())].iter().map(|key| key.capacity() + std::mem::size_of::<Vec<u8>>()).sum::<usize>());
         if bytes <= read.limits.bytes.get() {
             low = count;
@@ -490,7 +492,7 @@ pub(crate) fn page(
         return Err(columnar::exhausted());
     }
     let indices = (offset..offset + low.min(batch.num_rows() - offset)).map(|row| row as u64).collect::<Vec<_>>();
-    let batch = columnar::take(batch, &indices)?;
+    let batch = harmos_query::columnar::take(batch, &indices)?;
     let changed_keys = keys[..low.min(keys.len())].to_vec();
     let next = (read.after.saturating_add(low) < total_rows.max(total_keys)).then_some(read.after + low);
     Ok(ProjectionPage {
@@ -514,7 +516,7 @@ pub(crate) fn check_retired(retired: Option<u64>, requested: u64) -> Result<()> 
 
     Ok(())
 }
-fn bucket_columns(plan: &super::time_buckets::TimeBucketPlan) -> Vec<String> {
+fn bucket_columns(plan: &time_buckets::TimeBucketPlan) -> Vec<String> {
     let mut columns = plan.group.clone();
     columns.extend([plan.time.clone(), plan.value.clone(), plan.identity.clone(), "_storage.position".into()]);
     columns.sort();

@@ -22,15 +22,20 @@ use arrow_array::{BinaryArray, Float64Array, Int64Array, ListArray, RecordBatch,
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::{
-    TableWriter,
-    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource, list_column_rows},
-    index::encode_key,
-    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection},
-    scalar::ScalarValue,
-    time_buckets::TimeBucketPlan,
-    transform::Transform,
-};
+use harmos_query::TableWriter;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_storage::query::columnar::list_column_rows;
+use harmos_query::index::encode_key;
+use harmos_storage::query::projection::ProjectionDefinition;
+use harmos_storage::query::projection::ProjectionRead;
+use harmos_storage::query::projection::ProjectionTransform;
+use harmos_storage::query::projection::advance_projection;
+use harmos_storage::query::scalar::ScalarValue;
+use harmos_query::time_buckets::TimeBucketPlan;
+use harmos_query::transform::Transform;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 

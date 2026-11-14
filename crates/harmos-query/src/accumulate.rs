@@ -22,7 +22,7 @@ use std::{cmp::Ordering, num::NonZeroU128};
 use super::order_stats::Values;
 use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
 use crate::aggregate;
-use crate::config::StorageAccumulatorSettings;
+use crate::config::QueryAccumulatorSettings;
 use crate::statistics::Summary;
 use crate::{Aggregate, Error, Result};
 
@@ -54,10 +54,10 @@ pub struct Accumulator {
 
 impl Accumulator {
     pub fn new(agg: Agg) -> Self {
-        Self::with_settings(agg, StorageAccumulatorSettings::default())
+        Self::with_settings(agg, QueryAccumulatorSettings::default())
     }
 
-    pub fn with_settings(agg: Agg, settings: StorageAccumulatorSettings) -> Self {
+    pub fn with_settings(agg: Agg, settings: QueryAccumulatorSettings) -> Self {
         Self {
             agg,
             rows: 0,
@@ -316,7 +316,7 @@ mod tests {
     }
     #[test]
     fn spilled_statistics_preserve_exact_values_percentiles_and_clone_branches() {
-        let settings = StorageAccumulatorSettings { memory_bytes: 0 };
+        let settings = QueryAccumulatorSettings { memory_bytes: 0 };
         let mut median = Accumulator::with_settings(Agg::Of(Aggregate::Median), settings);
         median.push(0, &ScalarValue::Unsigned(9_007_199_254_740_993)).unwrap();
         median.push(1, &ScalarValue::Unsigned(9_007_199_254_740_995)).unwrap();

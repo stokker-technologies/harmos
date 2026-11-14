@@ -15,7 +15,7 @@ pub use harmos_domain::model::storage::query::transform::project::{Project, Proj
 
 /* === Imports === */
 
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports

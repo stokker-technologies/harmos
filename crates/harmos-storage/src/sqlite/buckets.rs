@@ -27,11 +27,16 @@ use rusqlite::{OptionalExtension, params};
 
 // Local Imports
 use super::*;
-use crate::query::{
-    columnar::{ArrowScan, Cancellation, ColumnKind},
-    projection::{ProjectionPage, ProjectionRead, ProjectionTransform},
-    time_buckets::{self, Accumulator, Bucket, Sample},
-};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use crate::query::projection::ProjectionPage;
+use crate::query::projection::ProjectionRead;
+use crate::query::projection::ProjectionTransform;
+use harmos_query::time_buckets::self;
+use harmos_query::time_buckets::Accumulator;
+use harmos_query::time_buckets::Bucket;
+use harmos_query::time_buckets::Sample;
 
 /* === Constants === */
 
@@ -180,7 +185,7 @@ pub(super) fn advance(
     }
     drop(insert);
     drop(lookup);
-    let input = crate::query::columnar::empty(&schema, definition.source.kind)?.schema();
+    let input = crate::query::harmos_query::columnar::empty(&schema, definition.source.kind)?.schema();
     let mut total = previous
         .as_ref()
         .map(|frontier| projection::status(state, name, revision, frontier))

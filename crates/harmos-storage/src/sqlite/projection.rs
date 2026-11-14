@@ -225,10 +225,6 @@ pub(super) fn publish(state: &mut State, publication: &ProjectionPublication) ->
     )
     .map_err(db)?;
     // A Generic Publication Replaces The Incremental Predecessor.
-    if matches!(&definition.transform, execution::ProjectionTransform::TimeBuckets(_)) {
-        tx.execute("DELETE FROM projection_bucket_state WHERE name=?1 AND revision=?2", params![name, integer(revision)?]).map_err(db)?;
-        tx.execute("DELETE FROM projection_bucket_members WHERE name=?1 AND revision=?2", params![name, integer(revision)?]).map_err(db)?;
-    }
     publication.check_cancelled()?;
     tx.commit().map_err(db)
 }
@@ -247,7 +243,7 @@ pub(super) fn read(state: &State, read: &ProjectionRead) -> Result<ProjectionPag
         .optional()
         .map_err(db)?;
     let (total_rows, total_keys, schema_bytes) = metadata.ok_or(Error::NotReady { domain: "projection frontier" })?;
-    let bucket_cut: bool = state
+    let _bucket_cut: bool = state
         .connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM projection_bucket_cuts WHERE name=?1 AND revision=?2 AND frontier=?3)",
@@ -255,9 +251,7 @@ pub(super) fn read(state: &State, read: &ProjectionRead) -> Result<ProjectionPag
             |row| row.get(0),
         )
         .map_err(db)?;
-    if bucket_cut {
-        return super::buckets::read(state, read, total_rows, total_keys);
-    }
+
     let page=state.connection.query_row("SELECT first_row,rows,length(data) FROM projection_pages WHERE name=?1 AND revision=?2 AND frontier=?3 AND first_row<=?4 AND first_row+rows>?4 ORDER BY first_row DESC LIMIT 1",params![read.name.as_str(),integer(read.revision)?,integer(read.frontier.sequence)?,integer(read.after as u64)?],|row|Ok((size(row,0)?,size(row,1)?,size(row,2)?))).optional().map_err(db)?;
     let (batch, start) = if let Some((start, rows, bytes)) = page {
         if rows > read.work.rows.get() || bytes.saturating_mul(4) > read.work.bytes.get() {

@@ -30,6 +30,7 @@ use super::{
     ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 use crate::{Error, Result};
+pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
@@ -47,11 +48,7 @@ pub struct StorageBackends {
     pub state: Arc<dyn super::state::StateBackend>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BackendSnapshot {
-    pub at: StorageCursor,
-    pub token: Vec<u8>,
-}
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScanPage {
@@ -60,11 +57,7 @@ pub struct ScanPage {
     pub bytes: NonZeroUsize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ReadLimits {
-    pub rows: NonZeroUsize,
-    pub bytes: NonZeroUsize,
-}
+
 
 /// Cumulative physical work on one backend owner; differences describe an isolated operation.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
@@ -114,7 +107,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// None Retains The Shared Executor; Expected Revision Is Checked Atomically.
     fn advance_projection<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _name: &'a crate::Identifier, _expected_revision: Option<u64>, _work: ReadLimits,
-        _cancel: &'a crate::query::columnar::Cancellation,
+        _cancel: &'a harmos_query::columnar::Cancellation,
     ) -> StorageFuture<'a, Option<u64>> {
         Box::pin(async { Ok(None) })
     }
@@ -165,20 +158,20 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     fn set_index_definition<'a>(
-        &'a self, _definition: &'a crate::query::index::IndexDefinition, _expected: Option<u64>, _rebuild: bool, _work: ReadLimits,
-        _cancel: &'a crate::query::columnar::Cancellation, _mutation: Option<&'a crate::MutationHeader>,
+        &'a self, _definition: &'a harmos_query::index::IndexDefinition, _expected: Option<u64>, _rebuild: bool, _work: ReadLimits,
+        _cancel: &'a harmos_query::columnar::Cancellation, _mutation: Option<&'a crate::MutationHeader>,
     ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         unsupported("storage index registration")
     }
 
-    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (harmos_query::index::IndexDefinition, u64)> {
         Box::pin(async move { Err(Error::IndexNotFound { name: name.clone() }) })
     }
 
     fn list_index_entries<'a>(
-        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::index::IndexRead,
-        _cancel: &'a crate::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, crate::query::index::IndexPage> {
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a harmos_query::index::IndexRead,
+        _cancel: &'a harmos_query::columnar::Cancellation,
+    ) -> StorageFuture<'a, harmos_query::index::IndexPage> {
         unsupported("native index scan")
     }
 
@@ -187,9 +180,9 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     fn list_column_rows<'a>(
-        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a crate::query::columnar::ArrowScan,
-        _cancel: &'a crate::query::columnar::Cancellation,
-    ) -> StorageFuture<'a, crate::query::columnar::ArrowPage> {
+        &'a self, _snapshot: &'a BackendSnapshot, _read: &'a harmos_query::columnar::ArrowScan,
+        _cancel: &'a harmos_query::columnar::Cancellation,
+    ) -> StorageFuture<'a, harmos_query::columnar::ArrowPage> {
         unsupported("native Arrow scan")
     }
 
@@ -295,17 +288,7 @@ pub trait StorageBackend: Send + Sync + 'static {
 
 /* === Implementations === */
 
-impl ReadLimits {
-    pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
-        if rows > self.rows.get() || bytes > self.bytes.get() {
-            return Err(Error::InvalidInput {
-                field: "read page",
-                reason: "row or byte bound exceeded",
-            });
-        }
-        Ok(())
-    }
-}
+
 
 /* === Public Functions === */
 
@@ -322,9 +305,3 @@ fn unsupported<'a, T>(field: &'static str) -> StorageFuture<'a, T> {
 }
 
 /* === Tests === */
-
-impl crate::MemorySize for ReadLimits {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-    }
-}

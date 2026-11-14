@@ -60,7 +60,7 @@ pub struct TableReader {
 
 impl TableWriter {
     pub fn new(schema: Arc<Schema>) -> Result<Self> {
-        crate::storage::arrow::validate_schema(&schema)?;
+        crate::arrow::validate_schema(&schema)?;
         let builder = Builder::new(schema.clone())?;
         Ok(Self { builder, schema })
     }
@@ -95,7 +95,7 @@ impl Table {
     pub fn transform(&self, transform: &Transform, check: &mut impl FnMut() -> Result<()>) -> Result<Self> {
         check()?;
         let schema = transform.output_schema(&self.spool.schema)?;
-        crate::storage::arrow::validate_schema(&schema)?;
+        crate::arrow::validate_schema(&schema)?;
         let spool = super::reduction::transform(self.spool.clone(), transform, check)?;
         Ok(Self { spool })
     }

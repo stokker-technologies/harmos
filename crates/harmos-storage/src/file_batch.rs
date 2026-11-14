@@ -54,25 +54,6 @@ pub struct FileReadSlice {
 
 /* === Implementations === */
 
-impl FileReadEvent {
-    pub fn event(&self) -> &FileEvent {
-        self.as_ref()
-    }
-
-    pub fn data(&self) -> Option<&[u8]> {
-        match self.event() {
-            FileEvent::Data(batch) => Some(&batch.bytes),
-            _ => None,
-        }
-    }
-
-    pub fn offset(&self) -> Option<u64> {
-        match self.event() {
-            FileEvent::Data(batch) => Some(batch.offset),
-            _ => None,
-        }
-    }
-}
 
 impl FileReadBatch {
     pub(crate) fn new(batch: FileBatch) -> Self {
@@ -84,7 +65,7 @@ impl FileReadBatch {
     #[tracing::instrument(name = "storage.file_batch.try_map", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_map<U, E>(self, map: impl FnOnce(FileBatch) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
     where
-        E: From<Error>,
+        E: From<Error> + From<harmos_domain::Error>,
     {
         let result: std::result::Result<ReadBatch<U>, E> = self.owner.try_map(map);
         tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });

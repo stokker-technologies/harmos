@@ -22,9 +22,15 @@ use std::sync::atomic::Ordering;
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{self, Experiment, Sample, objects_catalog};
 use harmos_storage::Error;
-use harmos_storage::Query;
+use harmos_domain::model::storage::query::Query;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
-use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
+use harmos_query::typed::ObjectRead;
+use harmos_storage::ObjectReceipt;
+use harmos_storage::ObjectVersion;
+use harmos_query::typed::RecordRead;
+use harmos_storage::StorageBackends;
+use harmos_storage::StorageManager;
+use harmos_storage::StorageSettings;
 
 /* === Private Functions === */
 

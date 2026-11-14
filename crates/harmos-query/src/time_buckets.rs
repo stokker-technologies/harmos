@@ -9,8 +9,7 @@
 
 /* === Modules === */
 
-#[cfg(feature = "sqlite")]
-mod native;
+
 
 /* === Re-Exports === */
 
@@ -419,7 +418,7 @@ pub(crate) fn output(buckets: &[Bucket]) -> Result<RecordBatch> {
     RecordBatch::try_from_iter(columns).map_err(|_| columnar::invalid("invalid time bucket output"))
 }
 
-pub(crate) fn fingerprints(batch: &RecordBatch, budget: usize) -> Result<BTreeMap<Vec<u8>, [u8; 32]>> {
+pub fn fingerprints(batch: &RecordBatch, budget: usize) -> Result<BTreeMap<Vec<u8>, [u8; 32]>> {
     let keys = batch
         .column_by_name("key")
         .and_then(|array| array.as_any().downcast_ref::<BinaryArray>())

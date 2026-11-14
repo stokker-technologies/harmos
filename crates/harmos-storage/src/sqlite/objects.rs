@@ -20,7 +20,9 @@ use rusqlite::{OptionalExtension, params};
 
 // Local Imports
 use super::*;
-use crate::query::columnar::{self, ColumnKind, ColumnSource};
+use crate::query::columnar::self;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 use crate::{CompareExchange, ObjectExchange, ObjectReceipt};
 
 /* === Constants === */
@@ -96,7 +98,7 @@ pub(super) fn exchange(state: &mut State, exchange: &ObjectExchange) -> Result<C
                 data: encode(value)?,
             },
         )?;
-        let batch = columnar::objects(&exchange.schema, std::slice::from_ref(value))?;
+        let batch = harmos_query::columnar::objects(&exchange.schema, std::slice::from_ref(value))?;
         columns::store(
             &tx,
             &ColumnSource {

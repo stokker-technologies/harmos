@@ -16,17 +16,17 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_storage::query::{
-    Accumulator,
-    scalar::{Agg, ScalarValue},
-};
-use harmos_storage::{Aggregate, Error, StorageAccumulatorSettings};
+use harmos_query::Accumulator;
+use harmos_domain::model::storage::query::scalar::Agg;
+use harmos_domain::model::storage::query::scalar::ScalarValue;
+use harmos_domain::Aggregate;
+use harmos_query::{Error, config::QueryAccumulatorSettings};
 
 /* === Tests === */
 
 #[test]
 fn capture_statistics() {
-    let settings = StorageAccumulatorSettings { memory_bytes: 4_000 };
+    let settings = QueryAccumulatorSettings { memory_bytes: 4_000 };
     for n in [2, 3, 4, 11, 13, 45, 100, 101] {
         for (statistic, fraction) in [(Aggregate::Median, 0.5), (Aggregate::Percentile(95), 0.95), (Aggregate::Percentile(99), 0.99)] {
             let mut memory = Accumulator::new(Agg::Of(statistic));
@@ -55,7 +55,7 @@ fn capture_statistics() {
 fn cancellation_and_finiteness() {
     for memory_bytes in [0, 4_000] {
         for statistic in [Aggregate::Median, Aggregate::Percentile(95), Aggregate::Percentile(99)] {
-            let mut accumulator = Accumulator::with_settings(Agg::Of(statistic), StorageAccumulatorSettings { memory_bytes });
+            let mut accumulator = Accumulator::with_settings(Agg::Of(statistic), QueryAccumulatorSettings { memory_bytes });
             for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
                 assert!(accumulator.push(0, &ScalarValue::Float(value)).is_err());
             }

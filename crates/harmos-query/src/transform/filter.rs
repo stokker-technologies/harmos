@@ -25,7 +25,7 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 // Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 
 /* === Constants === */
 

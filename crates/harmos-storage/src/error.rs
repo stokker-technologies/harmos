@@ -112,6 +112,32 @@ impl Error {
     }
 }
 
+
+impl From<harmos_query::Error> for Error {
+    fn from(error: harmos_query::Error) -> Self {
+        match error {
+            harmos_query::Error::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            harmos_query::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
+            harmos_query::Error::Closing { domain } => Self::Closing { domain },
+            harmos_query::Error::NotReady { domain } => Self::NotReady { domain },
+            harmos_query::Error::Domain(error) => Self::Domain(error),
+            harmos_query::Error::Backend { operation, kind, source } => {
+                let source = match source.downcast::<Self>() { Ok(error) => return *error, Err(source) => source };
+                Self::Backend {
+                operation, source, kind: match kind {
+                    harmos_query::BackendFailure::Transient => BackendFailure::Transient,
+                    harmos_query::BackendFailure::Permanent => BackendFailure::Permanent,
+                    harmos_query::BackendFailure::Corrupt => BackendFailure::Corrupt,
+                    harmos_query::BackendFailure::Conflict => BackendFailure::Conflict,
+                    harmos_query::BackendFailure::Unsupported => BackendFailure::Unsupported,
+                },
+            }
+            },
+            other => Self::backend("execute query", BackendFailure::Permanent, other),
+        }
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

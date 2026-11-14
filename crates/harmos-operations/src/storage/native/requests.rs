@@ -24,10 +24,16 @@ pub use harmos_domain::model::storage::{
 };
 use harmos_domain::schema::graph::Schema;
 use harmos_protocol::v1::{PageRequest, ReadCut, Receipt};
-pub use harmos_storage::query::columnar::{ArrowPage, ColumnPredicate, ColumnSource, StorageCapabilities, TimeBounds};
-pub use harmos_storage::query::index::{IndexDefinition, IndexPage};
+pub use harmos_query::columnar::ArrowPage;
+pub use harmos_query::columnar::ColumnPredicate;
+pub use harmos_query::columnar::ColumnSource;
+pub use harmos_storage::query::columnar::StorageCapabilities;
+pub use harmos_query::columnar::TimeBounds;
+pub use harmos_query::index::IndexDefinition;
+pub use harmos_query::index::IndexPage;
 pub use harmos_storage::query::projection::{ProjectionDefinition, ProjectionPage, ProjectionStatus};
-pub use harmos_storage::query::{QueryOutput, Source};
+pub use harmos_query::QueryOutput;
+pub use harmos_storage::query::Source;
 pub use harmos_storage::{FileProducer, ReadLimits};
 use prost::Message;
 

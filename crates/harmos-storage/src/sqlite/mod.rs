@@ -9,7 +9,7 @@
 
 /* === Modules === */
 
-mod buckets;
+
 mod columns;
 mod definition_mutations;
 mod files;
@@ -30,7 +30,10 @@ use rusqlite::{Connection, OptionalExtension, params};
 use tokio::sync::Mutex;
 
 // Local Imports
-use crate::query::columnar::{ArrowPage, ArrowScan, Cancellation, StorageCapabilities};
+use harmos_query::columnar::ArrowPage;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use crate::query::columnar::StorageCapabilities;
 use crate::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use crate::{
     BackendFailure, BackendSnapshot, Error, FileCheckpoint, FileChunk, FileMetadata, FilePhase, FileProgress, FileReference, Identifier,
@@ -201,14 +204,6 @@ impl State {
 }
 
 impl StorageBackend for SqliteBackend {
-    fn advance_projection<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, name: &'a crate::Identifier, expected_revision: Option<u64>, work: ReadLimits,
-        cancel: &'a Cancellation,
-    ) -> StorageFuture<'a, Option<u64>> {
-        let (snapshot, name, cancel) = (snapshot.clone(), name.clone(), cancel.clone());
-        Box::pin(self.call(move |state| buckets::advance(state, &snapshot, &name, expected_revision, work, &cancel)))
-    }
-
     fn get_work(&self) -> StorageFuture<'_, crate::StorageWork> {
         Box::pin(self.call(|state| Ok(state.work.get())))
     }
@@ -365,14 +360,14 @@ impl StorageBackend for SqliteBackend {
     }
 
     fn set_index_definition<'a>(
-        &'a self, definition: &'a crate::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits,
+        &'a self, definition: &'a harmos_query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits,
         cancel: &'a Cancellation, mutation: Option<&'a crate::MutationHeader>,
     ) -> StorageFuture<'a, crate::DefinitionOutcome> {
         let mutation = mutation.cloned();
         let (definition, cancel) = (definition.clone(), cancel.clone());
         Box::pin(self.call(move |state| index::register(state, &definition, expected, rebuild, work, &cancel, mutation.as_ref())))
     }
-    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (crate::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a crate::Identifier) -> StorageFuture<'a, (harmos_query::index::IndexDefinition, u64)> {
         let name = name.clone();
         Box::pin(self.call(move |state| {
             state.check()?;
@@ -380,8 +375,8 @@ impl StorageBackend for SqliteBackend {
         }))
     }
     fn list_index_entries<'a>(
-        &'a self, snapshot: &'a BackendSnapshot, read: &'a crate::query::index::IndexRead, cancel: &'a Cancellation,
-    ) -> StorageFuture<'a, crate::query::index::IndexPage> {
+        &'a self, snapshot: &'a BackendSnapshot, read: &'a harmos_query::index::IndexRead, cancel: &'a Cancellation,
+    ) -> StorageFuture<'a, harmos_query::index::IndexPage> {
         let (snapshot, read, cancel) = (snapshot.clone(), read.clone(), cancel.clone());
         Box::pin(self.call(move |state| index::scan(state, &snapshot, &read, &cancel)))
     }

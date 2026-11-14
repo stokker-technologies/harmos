@@ -17,7 +17,7 @@ async fn seeded_projection_matches_stored_values_and_order() {
     // Store Enough Rows To Cross A Write Page
     let rows = 4099;
 
-    use harmos_storage::query::transform::{
+    use harmos_query::transform::{
         FieldPath, Transform,
         project::{Project, Projection},
     };

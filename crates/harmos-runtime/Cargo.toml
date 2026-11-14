@@ -48,6 +48,7 @@ simulation = []
 
 [dependencies]
 # Local
+harmos-query = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-sdk-derive = { workspace = true, default-features = true }
 harmos-operations = { workspace = true, features = ["lifecycle", "streaming", "grpc"] }

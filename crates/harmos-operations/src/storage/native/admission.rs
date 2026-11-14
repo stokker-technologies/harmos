@@ -11,7 +11,8 @@
 
 use crate::execution::operations::{ExecutionContext, ServingError};
 
-use harmos_storage::query::columnar::{Cancellation, ColumnSource};
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnSource;
 use std::future::Future;
 
 /* === Structs === */

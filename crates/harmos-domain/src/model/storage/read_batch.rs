@@ -50,7 +50,6 @@ impl<T> ReadBatch<T> {
     }
 
     // Moves A Unique Batch Through A Fallible Projection.
-    #[tracing::instrument(name = "storage.read_batch.try_map", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub fn try_map<U, E>(self, map: impl FnOnce(T) -> std::result::Result<U, E>) -> std::result::Result<ReadBatch<U>, E>
     where
         E: From<crate::Error>,
@@ -62,7 +61,6 @@ impl<T> ReadBatch<T> {
             })
         })?;
         let value = map(owner)?;
-        tracing::Span::current().record("outcome", "completed");
         Ok(ReadBatch::new(value))
     }
 
@@ -147,5 +145,25 @@ mod tests {
         let projected = alias.try_map(|bytes| Ok::<_, crate::Error>(vec![bytes])).unwrap();
         assert_eq!(projected[0].as_ptr(), pointer);
         assert_eq!(projected[0], [1, 2, 3]);
+    }
+}
+
+impl ReadBatch<super::files::FileEvent> {
+    pub fn event(&self) -> &super::files::FileEvent {
+        self.as_ref()
+    }
+
+    pub fn data(&self) -> Option<&[u8]> {
+        match self.event() {
+            super::files::FileEvent::Data(batch) => Some(&batch.bytes),
+            _ => None,
+        }
+    }
+
+    pub fn offset(&self) -> Option<u64> {
+        match self.event() {
+            super::files::FileEvent::Data(batch) => Some(batch.offset),
+            _ => None,
+        }
     }
 }

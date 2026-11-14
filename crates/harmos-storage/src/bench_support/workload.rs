@@ -21,12 +21,14 @@ use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 // Third Party Imports
 
 // Local Imports
-use crate::query::{
-    columnar::{ArrowScan, ColumnKind, ColumnSource},
-    index::{IndexDefinition, IndexRead},
-    projection::{ProjectionDefinition, ProjectionTransform},
-    time_buckets::TimeBucketPlan,
-};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexRead;
+use crate::query::projection::ProjectionDefinition;
+use crate::query::projection::ProjectionTransform;
+use harmos_query::time_buckets::TimeBucketPlan;
 use crate::*;
 use harmos_domain::schema::Described;
 

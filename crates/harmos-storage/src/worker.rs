@@ -586,7 +586,7 @@ impl Operation {
                 exchange.schema.encoded_bytes()?;
                 super::manager::encoded_size(exchange.as_ref())
             }
-            Self::SetSchema(exchange) => exchange.value.encoded_bytes(),
+            Self::SetSchema(exchange) => Ok(exchange.value.encoded_bytes()?),
             Self::Schema(values) => values.as_slice().iter().try_fold(0usize, |bytes, value| {
                 bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
                     field: "storage admission",

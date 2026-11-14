@@ -21,8 +21,15 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 // Local Imports
 use super::*;
-use crate::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource};
-use crate::query::index::{self as execution, IndexDefinition, IndexEntry, IndexPage, IndexRead};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index as execution;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexEntry;
+use harmos_query::index::IndexPage;
+use harmos_query::index::IndexRead;
 
 /* === Constants === */
 
@@ -265,7 +272,7 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &IndexRead, 
     counters.index_steps += query.get_status(rusqlite::StatementStatus::VmStep) as u64;
     counters.index_prepares += 1;
     state.work.set(counters);
-    execution::finish(snapshot, read, &definition, revision, candidates)
+    Ok(execution::finish(snapshot, read, &definition, revision, candidates)?)
 }
 
 /* === Private Functions === */

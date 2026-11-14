@@ -59,7 +59,7 @@ async fn file_roundtrip_recovers() {
         assert_eq!(f.storage.status().saved.sequence, 0);
         let mut durable = f
             .storage
-            .query(harmos_storage::Query {
+            .query(harmos_domain::model::storage::query::Query {
                 at: f.storage.get_saved_position(),
                 source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
                 transforms: Vec::new(),
@@ -67,7 +67,7 @@ async fn file_roundtrip_recovers() {
             })
             .await
             .unwrap();
-        assert!(matches!(durable.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
+        assert!(matches!(durable.next().await.unwrap(), Some(harmos_query::QueryArrow::Schema(_))));
         assert!(durable.next().await.unwrap().is_none());
         f.storage.flush().await.unwrap();
         assert_eq!(f.storage.status().saved.sequence, reference.position.sequence);

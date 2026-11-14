@@ -36,7 +36,7 @@ use std::{
 use tokio::sync::Mutex;
 // Local Imports
 use super::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StateBackend, StorageStateSettings};
-use crate::storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
+use crate::{ReadLimits, RecoveryPosition, StorageBatch, StorageFuture, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 use files::JournalOpener;
 use journal::StateLog;

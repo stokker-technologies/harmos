@@ -25,7 +25,9 @@ use arrow_array::Float64Array;
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::columnar::{Cancellation, ColumnKind, ColumnSource};
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 use harmos_storage::query::projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection};
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;

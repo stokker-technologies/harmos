@@ -31,7 +31,7 @@ use super::scalar::{ExactNumber, ScalarValue};
 use super::spill::io;
 use super::transform::invalid;
 use crate::Result;
-use crate::config::StorageAccumulatorSettings;
+use crate::config::QueryAccumulatorSettings;
 
 /* === Constants === */
 
@@ -59,7 +59,7 @@ pub(super) struct Values {
 /* === Implementations === */
 
 impl Values {
-    pub fn new(settings: StorageAccumulatorSettings) -> Self {
+    pub fn new(settings: QueryAccumulatorSettings) -> Self {
         Self {
             file: None,
             memory: Vec::new(),
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn budget_transition() {
-        let settings = StorageAccumulatorSettings { memory_bytes: 100 * SLOT };
+        let settings = QueryAccumulatorSettings { memory_bytes: 100 * SLOT };
         let mut values = Values::new(settings);
         for value in (0..100).rev() {
             values.push(&ScalarValue::Unsigned(value)).unwrap();

@@ -513,8 +513,8 @@ impl StorageBackend for Data {
     }
 
     fn set_index_definition<'a>(
-        &'a self, definition: &'a harmos_storage::query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
-        cancel: &'a harmos_storage::query::columnar::Cancellation, mutation: Option<&'a harmos_storage::MutationHeader>,
+        &'a self, definition: &'a harmos_query::index::IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits,
+        cancel: &'a harmos_query::columnar::Cancellation, mutation: Option<&'a harmos_storage::MutationHeader>,
     ) -> StorageFuture<'a, harmos_storage::DefinitionOutcome> {
         Box::pin(async move {
             if self.control.block_definition.load(Ordering::Acquire) {
@@ -550,7 +550,7 @@ impl StorageBackend for Data {
             Ok(outcome)
         })
     }
-    fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_storage::query::index::IndexDefinition, u64)> {
+    fn get_index_definition<'a>(&'a self, name: &'a Identifier) -> StorageFuture<'a, (harmos_query::index::IndexDefinition, u64)> {
         Box::pin(async move { self.indexes.lock().unwrap().definition(name) })
     }
 

@@ -16,7 +16,7 @@ mod retention;
 
 /* === Re-Exports === */
 
-pub use super::writes::convert::encode_payloads;
+
 
 /* === Imports === */
 

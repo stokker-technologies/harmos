@@ -98,7 +98,7 @@ async fn cancelled_query_releases() {
     super::fixture::start(&storage).await;
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
-    let query = || harmos_storage::Query {
+    let query = || harmos_domain::model::storage::query::Query {
         at: accepted.clone(),
         source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],
@@ -112,7 +112,7 @@ async fn cancelled_query_releases() {
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();
-    assert!(matches!(following.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
+    assert!(matches!(following.next().await.unwrap(), Some(harmos_query::QueryArrow::Schema(_))));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);
     drop(following);

@@ -1198,6 +1198,7 @@ dependencies = [
  "harmos-domain",
  "harmos-packaging",
  "harmos-protocol",
+ "harmos-query",
  "harmos-sdk-derive",
  "harmos-storage",
  "postcard",
@@ -1260,6 +1261,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "harmos-query"
+version = "0.1.14"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-ipc",
+ "arrow-schema",
+ "arrow-select",
+ "criterion",
+ "flatbuffers",
+ "futures-util",
+ "harmos-domain",
+ "postcard",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "harmos-runtime"
 version = "0.1.14"
 dependencies = [
@@ -1276,6 +1302,7 @@ dependencies = [
  "harmos-operations",
  "harmos-packaging",
  "harmos-protocol",
+ "harmos-query",
  "harmos-sdk-derive",
  "harmos-storage",
  "heck",
@@ -1342,6 +1369,7 @@ dependencies = [
  "globset",
  "harmos-domain",
  "harmos-protocol",
+ "harmos-query",
  "harmos-storage",
  "notify",
  "postcard",

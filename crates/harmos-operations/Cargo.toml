@@ -27,6 +27,7 @@ streaming = []
 
 [dependencies]
 # Local
+harmos-query = { workspace = true }
 harmos-protocol = { workspace = true }
 harmos-domain = { workspace = true, features = ["derive"] }
 harmos-sdk-derive = { workspace = true }

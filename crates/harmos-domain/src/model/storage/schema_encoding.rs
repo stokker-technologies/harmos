@@ -20,7 +20,7 @@ use serde::de::{DeserializeSeed, Error as _, IntoDeserializer, MapAccess, Visito
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // Local Imports
-use super::manager::encoded_size;
+
 use super::{SchemaKey, StorageCursor, StorageSchema};
 use crate::{Error, Result};
 
@@ -54,9 +54,19 @@ enum Encoding {
 /* === Implementations === */
 
 impl StorageSchema {
-    pub(super) fn encoded_bytes(&self) -> Result<usize> {
-        self.schema.preparation(&harmos_domain::config::SchemaSettings::default()).map_err(|_| invalid())?;
-        encoded_size(self)
+    pub fn encoded_bytes(&self) -> Result<usize> {
+        self.schema.preparation(&crate::config::SchemaSettings::default()).map_err(|_| invalid())?;
+        struct Counter(usize);
+        impl std::io::Write for Counter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 = self.0.checked_add(bytes.len()).ok_or_else(|| std::io::Error::other("measure schema size: overflow"))?;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+        }
+        let mut counter = Counter(0);
+        serde_json::to_writer(&mut counter, self).map_err(|_| invalid())?;
+        Ok(counter.0)
     }
 }
 
@@ -70,10 +80,10 @@ impl Serialize for StorageSchema {
         output.serialize_field("definitions", &self.schema.definitions)?;
         if !self.schema.representations.is_empty() {
             // Use The Graph's Bounded Representation Encoding For Stored Definitions.
-            struct Representations<'a>(&'a harmos_domain::schema::graph::Schema);
+            struct Representations<'a>(&'a crate::schema::graph::Schema);
             impl Serialize for Representations<'_> {
                 fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-                    harmos_domain::schema::wire::serialize(&self.0.representations, serializer)
+                    crate::schema::wire::serialize(&self.0.representations, serializer)
                 }
             }
             output.serialize_field("representations", &Representations(&self.schema))?;
@@ -105,7 +115,7 @@ impl<'de> Visitor<'de> for StorageVisitor {
         // Forward Only the Graph Fields to the Canonical Seed Without Buffering
         // The JSON Object Or Allocating A Second Representation Of Its Fields.
         let schema = crate::schema::graph::Seed {
-            settings: &harmos_domain::config::SchemaSettings::default(),
+            settings: &crate::config::SchemaSettings::default(),
         }
         .deserialize(serde::de::value::MapAccessDeserializer::new(&mut input))?;
         let Encoding::GraphV1 = input.encoding.ok_or_else(|| A::Error::missing_field("encoding"))?;
@@ -166,10 +176,10 @@ fn invalid() -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use harmos_domain::config::SchemaSettings;
-    use harmos_domain::model::storage::StoreHistory;
-    use harmos_domain::schema::{graph::Schema, identity, json::JsonCodec};
-    use harmos_domain::{Described, Identifier};
+    use crate::config::SchemaSettings;
+    use crate::model::storage::StoreHistory;
+    use crate::schema::{graph::Schema, identity, json::JsonCodec};
+    use crate::{Described, Identifier};
 
     #[derive(Serialize, Described)]
     #[harmos_path(::harmos_domain)]
@@ -181,7 +191,7 @@ mod tests {
     #[test]
     fn stored_schema_retains_serde_representation() {
         let schema =
-            Schema::from_declaration(<Stored as harmos_domain::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
+            Schema::from_declaration(<Stored as crate::schema::Described>::DEFINITION, &SchemaSettings::default()).unwrap();
         let revision = identity::revision(&schema).unwrap();
         let position = StorageCursor {
             history: StoreHistory {

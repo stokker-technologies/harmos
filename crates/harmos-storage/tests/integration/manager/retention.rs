@@ -12,12 +12,15 @@
 use super::backend::{Data, Recovery, history, storage_settings};
 use super::waveforms::{Experiment, objects_catalog};
 use harmos_storage::Identifier;
-use harmos_storage::Query;
-use harmos_storage::query::transform::{
-    Transform,
-    project::{Project, Projection},
-};
-use harmos_storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
+use harmos_domain::model::storage::query::Query;
+use harmos_query::transform::Transform;
+use harmos_query::transform::project::Project;
+use harmos_query::transform::project::Projection;
+use harmos_storage::query::ObjectSelection;
+use harmos_storage::query::ObjectVersions;
+use harmos_query::QueryArrow;
+use harmos_storage::query::RowSlice;
+use harmos_storage::query::Source;
 use harmos_storage::*;
 use std::num::NonZeroUsize;
 use std::sync::Arc;

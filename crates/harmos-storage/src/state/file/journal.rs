@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use super::files::{Files, JournalOpener};
 use super::format::{self, Read, corrupt, invalid, io};
-use crate::storage::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
-use crate::storage::{ReadLimits, RecoveryPosition, StoreHistory};
+use crate::state::{RecoveryEntry, RecoveryPage, RecoverySnapshot, StorageStateSettings};
+use crate::{ReadLimits, RecoveryPosition, StoreHistory};
 use crate::{BackendFailure, Error, Result};
 
 /* === Constants === */
@@ -220,7 +220,7 @@ impl StateLog {
             if entry.position.sequence > through.sequence {
                 break;
             }
-            let size = crate::storage::manager::encoded_size(&entry)?;
+            let size = crate::manager::encoded_size(&entry)?;
             if entries.len() == limits.rows.get() || size > limits.bytes.get().saturating_sub(bytes) {
                 if entries.is_empty() {
                     return Err(invalid("state entry exceeds requested page size"));
@@ -237,7 +237,7 @@ impl StateLog {
             sequence: last,
         });
         let page = RecoveryPage { entries, next };
-        page.check(after, through, limits, |entry| crate::storage::manager::encoded_size(entry).unwrap_or(usize::MAX))?;
+        page.check(after, through, limits, |entry| crate::manager::encoded_size(entry).unwrap_or(usize::MAX))?;
         Ok(page)
     }
 

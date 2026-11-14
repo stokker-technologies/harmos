@@ -13,7 +13,7 @@
 
 mod columns;
 #[cfg(any(test, feature = "testing"))]
-pub(super) mod testing;
+pub mod testing;
 
 /* === Re-Exports === */
 
@@ -34,7 +34,7 @@ use arrow_schema::{DataType, Field, Fields, Schema, TimeUnit};
 // Local Imports
 use super::transform::project::Project;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
-use crate::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
+use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -55,21 +55,21 @@ const MAX_DEPTH: usize = 32;
 
 /* === Public Functions === */
 
-pub(super) fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
+pub fn payload_fields(schema: &graph::Schema) -> Result<Fields> {
     fields(schema, schema.root, 0, &mut 0)
 }
 
-pub(super) fn records<'a>(schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>) -> Result<RecordBatch> {
+pub fn records<'a>(schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>) -> Result<RecordBatch> {
     let refs = rows.collect::<Vec<_>>();
     record_batch(schema, &refs, None)
 }
 
-pub(super) fn stream(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch> {
+pub fn stream(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch> {
     let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
     record_batch(schema, &refs, Some(rows))
 }
 
-pub(super) fn projected<'a>(
+pub fn projected<'a>(
     schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>, project: &Project, output: Arc<Schema>,
 ) -> Result<RecordBatch> {
     let settings = harmos_domain::config::SchemaSettings::default();
@@ -205,7 +205,7 @@ pub(super) fn projected<'a>(
     RecordBatch::try_new(output, columns).map_err(|_| invalid("projected payload batch mismatch"))
 }
 
-pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBatch> {
+pub fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBatch> {
     // The caller resolves every selected schema and establishes compatibility.
     // Equivalent payload graphs may have different logical schema identifiers.
 
@@ -229,7 +229,7 @@ pub(super) fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<Re
     assemble(columns, payload)
 }
 
-pub(super) fn files(rows: &[FileReference]) -> Result<RecordBatch> {
+pub fn files(rows: &[FileReference]) -> Result<RecordBatch> {
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
     columns.extend([
         (Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.metadata.id.as_str())))),
@@ -257,7 +257,7 @@ pub(super) fn files(rows: &[FileReference]) -> Result<RecordBatch> {
     flat(columns)
 }
 
-pub(super) fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
+pub fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
     let mut encoded = Vec::with_capacity(rows.len());
     for row in rows {
         encoded.push(crate::Message::encode(row.schema.as_ref()));
@@ -324,7 +324,7 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
     }
     let definition = schema.definitions.get(root).ok_or_else(|| invalid("missing schema definition"))?;
     *count = count.checked_add(definition.len() + 1).ok_or_else(exhausted)?;
-    if *count > super::super::arrow::MAX_FIELDS {
+    if *count > crate::arrow::MAX_FIELDS {
         return Err(invalid("expanded Arrow schema exceeds field limit"));
     }
     let mut output = Vec::with_capacity(definition.len() + 1);
@@ -376,16 +376,16 @@ fn cursor_columns<'a>(rows: impl Iterator<Item = &'a StorageCursor> + Clone) -> 
     ]
 }
 
-fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &crate::storage::SchemaKey, rows: usize) -> Result<()> {
+fn append_schema_columns(columns: &mut Vec<(Field, ArrayRef)>, key: &crate::SchemaKey, rows: usize) -> Result<()> {
     columns.push((Field::new("schema_id", DataType::Utf8, false), strings((0..rows).map(|_| Some(key.id.as_str())))));
     columns.push((Field::new("schema_version", DataType::UInt32, false), Arc::new(UInt32Array::from(vec![key.version.get(); rows]))));
     columns.push((Field::new("payload_encoding", DataType::Utf8, false), strings((0..rows).map(|_| Some(encoding(key))))));
     Ok(())
 }
 
-fn encoding(key: &crate::storage::SchemaKey) -> &'static str {
+fn encoding(key: &crate::SchemaKey) -> &'static str {
     match key.payload_encoding {
-        crate::storage::PayloadEncoding::PostcardV1 => "postcard_v1",
+        crate::PayloadEncoding::PostcardV1 => "postcard_v1",
     }
 }
 
@@ -538,7 +538,7 @@ mod tests {
         assert_eq!(decoder.decode(&[]).unwrap().to_data(), decoder.reference(&[]).unwrap().to_data());
         assert!(decoder.decode(&[&[255]]).is_err());
 
-        use crate::query::transform::{
+        use crate::transform::{
             FieldPath, ProjectExecution,
             project::{Project, Projection},
         };
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn numeric_projection_still_validates_unselected_fields() {
-        use crate::query::transform::{
+        use crate::transform::{
             FieldPath, ProjectExecution,
             project::{Project, Projection},
         };

@@ -20,7 +20,7 @@
 // Local Imports
 use super::DataBatch;
 use crate::Result;
-use crate::arrow::ArrowBatch;
+use harmos_query::arrow::ArrowBatch;
 
 /* === Constants === */
 
@@ -33,7 +33,7 @@ use crate::arrow::ArrowBatch;
 // A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
 pub struct DecodedBatch {
     pub destination: crate::Identifier,
-    pub schema: crate::storage::SchemaKey,
+    pub schema: crate::SchemaKey,
     pub data: ArrowBatch,
 }
 

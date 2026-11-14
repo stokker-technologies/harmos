@@ -21,11 +21,11 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-use harmos_storage::query::{
-    columnar::Cancellation,
-    index::{IndexSeek, list_index_entries},
-    projection::{ProjectionRead, advance_projection},
-};
+use harmos_query::columnar::Cancellation;
+use harmos_query::index::IndexSeek;
+use harmos_storage::query::index::list_index_entries;
+use harmos_storage::query::projection::ProjectionRead;
+use harmos_storage::query::projection::advance_projection;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::{
     bench_support::workload::{Workload, sample},

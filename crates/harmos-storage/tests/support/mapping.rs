@@ -15,8 +15,11 @@ pub(crate) use std::num::{NonZeroU32, NonZeroUsize};
 
 // Third Party Imports
 pub(crate) use arrow_array::{Array, Float64Array, ListArray, StructArray, UInt32Array};
-pub(crate) use harmos_storage::Query;
-pub(crate) use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+pub(crate) use harmos_domain::model::storage::query::Query;
+pub(crate) use harmos_query::QueryArrow;
+pub(crate) use harmos_storage::query::RecordSelection;
+pub(crate) use harmos_storage::query::RowSlice;
+pub(crate) use harmos_storage::query::Source;
 pub(crate) use harmos_storage::*;
 pub(crate) use harmos_storage::{Identifier, Message};
 

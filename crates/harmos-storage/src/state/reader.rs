@@ -21,8 +21,8 @@ use tokio::sync::{RwLockReadGuard, watch};
 
 // Local Imports
 use super::{RecoveryPage, RecoverySnapshot};
-use crate::storage::manager::{Lifecycle, encoded_size, recovery_encoded_bound};
-use crate::storage::{ReadLimits, RecoveryPosition, StorageManager};
+use crate::manager::{Lifecycle, encoded_size, recovery_encoded_bound};
+use crate::{ReadLimits, RecoveryPosition, StorageManager};
 use crate::{Error, Result};
 use harmos_domain::state::Position;
 

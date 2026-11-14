@@ -35,13 +35,10 @@ use std::time::{Duration, Instant};
 use criterion::{BenchmarkId, Criterion};
 
 // Local Imports
-use harmos_storage::{
-    Aggregate,
-    query::{
-        Accumulator,
-        scalar::{Agg, ScalarValue},
-    },
-};
+use harmos_storage::Aggregate;
+use harmos_query::Accumulator;
+use harmos_storage::query::scalar::Agg;
+use harmos_storage::query::scalar::ScalarValue;
 
 /* === Constants === */
 
@@ -128,7 +125,7 @@ fn main() {
     for memory in [0, 4101 * 16] {
         group.bench_with_input(BenchmarkId::from_parameter(memory), &memory, |b, &memory| {
             b.iter(|| {
-                let mut values = harmos_storage::query::quantiles::Quantiles::new(memory);
+                let mut values = harmos_query::quantiles::Quantiles::new(memory);
                 for index in 0..4096 {
                     values.push(black_box(((index * 7919) % 4093) as f64 - 2046.0)).unwrap();
                 }

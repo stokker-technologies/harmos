@@ -16,7 +16,7 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_storage::query::quantiles::Quantiles;
+use harmos_query::quantiles::Quantiles;
 
 /* === Tests === */
 
@@ -51,7 +51,7 @@ fn exact_quantile_spill() {
         let result = values.values(&[50], 65536, &mut || {
             checks += 1;
             if checks == 4 {
-                Err(harmos_storage::Error::InvalidInput {
+                Err(harmos_query::Error::InvalidInput {
                     field: "cancelled",
                     reason: "test cancellation",
                 })
@@ -59,7 +59,7 @@ fn exact_quantile_spill() {
                 Ok(())
             }
         });
-        assert!(matches!(result, Err(harmos_storage::Error::InvalidInput { field: "cancelled", .. })));
+        assert!(matches!(result, Err(harmos_query::Error::InvalidInput { field: "cancelled", .. })));
     }
     let mut values = Quantiles::new(0);
     values.push(1.0).unwrap();

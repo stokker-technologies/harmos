@@ -10,7 +10,10 @@
 /* === Imports === */
 
 use crate::manager::{backend, fixture};
-use harmos_storage::query::columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 use harmos_storage::*;
 use std::{
     num::{NonZeroU32, NonZeroUsize},

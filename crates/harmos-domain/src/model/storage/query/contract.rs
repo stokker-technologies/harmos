@@ -21,6 +21,7 @@ use std::time::SystemTime;
 // Third Party Imports
 
 // Local Imports
+use super::transform::Transform;
 use crate::model::storage::{ObjectKey, SchemaKey, StorageCursor};
 use crate::{Identifier, MemorySize, Result};
 
@@ -31,6 +32,14 @@ use crate::{Identifier, MemorySize, Result};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct Query {
+    pub at: StorageCursor,
+    pub source: Source,
+    pub transforms: Vec<Transform>,
+    pub slice: RowSlice,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowSlice {
@@ -103,6 +112,26 @@ pub enum Source {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Query {
+    pub fn validate(&self) -> crate::Result<()> {
+        self.source.validate()?;
+        if self.transforms.len() > 64 {
+            return Err(super::transform::invalid("too many query transforms"));
+        }
+        Ok(())
+    }
+}
+
+impl MemorySize for Query {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.at.memory_size().saturating_sub(std::mem::size_of_val(&self.at)))
+            .saturating_add(self.source.memory_size().saturating_sub(std::mem::size_of_val(&self.source)))
+            .saturating_add(self.transforms.memory_size().saturating_sub(std::mem::size_of_val(&self.transforms)))
+            .saturating_add(self.slice.memory_size().saturating_sub(std::mem::size_of_val(&self.slice)))
+    }
+}
 
 impl ObjectSelection {
     pub fn follows_revisions(&self) -> bool {

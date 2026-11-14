@@ -982,7 +982,7 @@ async fn retained_observer_traced() {
             let saved = f.storage.flush().await.unwrap();
             let session = f.storage.clone();
             let mut reader = session
-                .list_records::<TracedRow>(harmos_storage::RecordRead {
+                .list_records::<TracedRow>(harmos_query::typed::RecordRead {
                     at: saved.clone(),
                     selection: harmos_storage::query::RecordSelection {
                         schema: key,

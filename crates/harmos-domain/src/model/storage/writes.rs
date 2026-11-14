@@ -14,12 +14,16 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
+use std::num::NonZeroUsize;
 
 // Third Party Imports
 
 // Local Imports
-use super::{ArrowIpc, SchemaKey};
-use crate::{Identifier, MemorySize};
+use crate::schema::graph::Schema;
+use super::{SchemaKey, StorageCursor};
+use super::ArrowIpc;
+use crate::{Identifier, MemorySize, Result};
 
 /* === Constants === */
 
@@ -28,6 +32,27 @@ use crate::{Identifier, MemorySize};
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BackendSnapshot {
+    pub at: StorageCursor,
+    pub token: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReadLimits {
+    pub rows: NonZeroUsize,
+    pub bytes: NonZeroUsize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageSchema {
+    pub position: StorageCursor,
+    pub key: SchemaKey,
+    pub schema: Arc<Schema>,
+}
+
+
 
 #[derive(Clone, Debug)]
 pub struct DataBatch {
@@ -43,6 +68,35 @@ pub struct DataBatch {
 
 /* === Implementations === */
 
+impl ReadLimits {
+    pub fn check(&self, rows: usize, bytes: usize) -> Result<()> {
+        if rows > self.rows.get() || bytes > self.bytes.get() {
+            return Err(crate::Error::InvalidInput {
+                field: "read page",
+                reason: "row or byte bound exceeded",
+            });
+        }
+        Ok(())
+    }
+}
+
+impl MemorySize for StorageSchema {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.position.memory_size().saturating_sub(std::mem::size_of::<StorageCursor>()))
+            .saturating_add(self.key.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
+            .saturating_add(self.schema.memory_size().saturating_add(2 * std::mem::size_of::<usize>()))
+    }
+}
+
+impl StorageSchema {
+    pub fn new(position: StorageCursor, key: SchemaKey, schema: impl Into<Arc<Schema>>) -> Self {
+        Self { position, key, schema: schema.into() }
+    }
+}
+
+
+
 impl MemorySize for DataBatch {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
@@ -57,3 +111,9 @@ impl MemorySize for DataBatch {
 /* === Private Functions === */
 
 /* === Tests === */
+
+impl crate::MemorySize for ReadLimits {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}

@@ -24,10 +24,10 @@ use arrow_array::Float64Array;
 // Local Imports
 use crate::manager::backend;
 use harmos_storage::bench_support::workload::{CHUNK_ROWS, Workload, sample};
-use harmos_storage::query::{
-    columnar::{Cancellation, list_column_rows},
-    projection::{ProjectionRead, advance_projection},
-};
+use harmos_query::columnar::Cancellation;
+use harmos_storage::query::columnar::list_column_rows;
+use harmos_storage::query::projection::ProjectionRead;
+use harmos_storage::query::projection::advance_projection;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 

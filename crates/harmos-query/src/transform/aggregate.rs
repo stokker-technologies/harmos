@@ -17,7 +17,7 @@ pub use harmos_domain::model::storage::query::transform::aggregate::{Aggregate, 
 
 /* === Imports === */
 
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ use arrow_schema::{DataType, Field, Schema};
 // Local Imports
 use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::Result;
-use crate::storage::query::accumulate::Accumulator;
+use crate::accumulate::Accumulator;
 use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
 /* === Constants === */

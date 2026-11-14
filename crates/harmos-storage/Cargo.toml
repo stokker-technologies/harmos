@@ -21,7 +21,7 @@ version = { workspace = true }
 
 [features]
 default = []
-testing = ["harmos-domain/derive"]
+testing = ["harmos-domain/derive", "harmos-query/testing"]
 sqlite = ["dep:rusqlite"]
 
 # === Dependencies === #
@@ -30,6 +30,7 @@ sqlite = ["dep:rusqlite"]
 # Local
 harmos-domain = { workspace = true }
 harmos-protocol = { workspace = true }
+harmos-query = { workspace = true }
 
 # Git
 

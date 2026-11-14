@@ -27,7 +27,7 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 // Local Imports
 use super::{invalid, numeric_type};
 use crate::Result;
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 
 /* === Constants === */
 
@@ -83,9 +83,9 @@ impl DownsampleExecution for Downsample {
         if input.num_rows() <= self.max_rows {
             return Ok(input.clone());
         }
-        let mut spool = crate::query::spill::Builder::new(input.schema())?;
+        let mut spool = crate::spill::Builder::new(input.schema())?;
         spool.push(input, check)?;
-        let output = crate::query::reduction::downsample(spool.finish()?, self, check)?;
+        let output = crate::reduction::downsample(spool.finish()?, self, check)?;
         let mut pages = output.pages()?;
         let mut batches = Vec::new();
         while let Some(batch) = pages.next()? {
@@ -101,7 +101,7 @@ impl DownsampleExecution for Downsample {
 
 /* === Private Functions === */
 
-pub(in crate::query) fn number(value: &ScalarValue) -> Result<f64> {
+pub(crate) fn number(value: &ScalarValue) -> Result<f64> {
     match value {
         ScalarValue::Float(value) => Ok(*value),
         value => {

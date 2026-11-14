@@ -26,7 +26,9 @@ use rusqlite::{Connection, OptionalExtension, params, types::Value};
 // Local Imports
 use super::*;
 use crate::query::ObjectVersions;
-use crate::query::columnar::{self, ColumnKind, ColumnSource};
+use crate::query::columnar::self;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 
 /* === Constants === */
 
@@ -237,7 +239,7 @@ pub(super) fn append_records(state: &mut State, values: &[StoredRecord]) -> Resu
         for values in groups.values() {
             let first = &values[0];
             let schema = schema(&tx, &first.schema, first.position.sequence)?;
-            let batch = columnar::records(&schema, values)?;
+            let batch = harmos_query::columnar::records(&schema, values)?;
             columns::store(
                 &tx,
                 &ColumnSource {
@@ -294,7 +296,7 @@ pub(super) fn append_samples(state: &mut State, values: &[StoredRow]) -> Result<
         for values in groups.values() {
             let first = &values[0].record;
             let schema = schema(&tx, &first.schema, first.position.sequence)?;
-            let batch = columnar::streams(&schema, values)?;
+            let batch = harmos_query::columnar::streams(&schema, values)?;
             columns::store(
                 &tx,
                 &ColumnSource {
@@ -350,7 +352,7 @@ pub(super) fn append_object_revisions(state: &mut State, values: &[ObjectEntry])
         for values in groups.values() {
             let first = &values[0];
             let schema = schema(&tx, &first.value.schema, first.position.sequence)?;
-            let batch = columnar::objects(&schema, values)?;
+            let batch = harmos_query::columnar::objects(&schema, values)?;
             columns::store(
                 &tx,
                 &ColumnSource {

@@ -33,7 +33,8 @@ use harmos_runtime::{
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
     },
 };
-use harmos_storage::{ReadLimits, query::columnar::ColumnKind};
+use harmos_storage::ReadLimits;
+use harmos_query::columnar::ColumnKind;
 use schematic_app::operations::transfer::{
     FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
 };

@@ -15,7 +15,7 @@ pub use harmos_domain::model::storage::query::transform::sort::{Sort, SortKey};
 
 /* === Imports === */
 
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::cmp::Ordering;
 // Third Party Imports
@@ -24,7 +24,7 @@ use arrow_schema::Schema;
 // Local Imports
 use super::{invalid, scalar_type, take};
 use crate::Result;
-use crate::storage::query::accumulate::sort_values;
+use crate::accumulate::sort_values;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
 /* === Constants === */
@@ -111,7 +111,7 @@ impl SortExecution for Sort {
 
 #[cfg(test)]
 mod tests {
-    use crate::query::transform::{
+    use crate::transform::{
         FieldPath, Transform, TransformExecution,
         project::{Project, Projection},
         sort::{Sort, SortKey},

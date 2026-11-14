@@ -16,7 +16,6 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -24,15 +23,17 @@ use std::sync::Arc;
 use tokio::sync::OwnedSemaphorePermit;
 
 // Local Imports
+use harmos_query::typed::{ObjectRead, ObjectReader, RecordRead, RecordReader, StreamRead, StreamReader, PageSource};
+use harmos_query::batches::QueryFuture;
 use super::reader::query_slot;
-use super::{ObjectSelection, ObjectVersions, RecordSelection, StreamSelection};
-use crate::storage::backend::ScanPage;
-use crate::storage::manager::Inner;
-use crate::storage::selection::Entry;
-use crate::storage::snapshot::Snapshot;
-use crate::storage::{ObjectEntry, ObjectRevision, SchemaKey, StorageCursor, StorageManager, StoredObject, StoredRecord, StoredRow};
-use crate::{BackendFailure, Error, MemorySize, Message, ReadBatch, Result};
-use harmos_domain::model::storage::catalog::{decode_admitted, object_schema};
+use super::ObjectSelection;
+use crate::backend::ScanPage;
+use crate::manager::Inner;
+use crate::selection::Entry;
+use crate::snapshot::Snapshot;
+use crate::{StorageCursor, StorageManager, StoredObject};
+use crate::{ Error, MemorySize, Message, ReadBatch, Result};
+use harmos_domain::model::storage::catalog::{object_schema};
 use harmos_domain::model::storage::object_key;
 
 /* === Constants === */
@@ -42,38 +43,6 @@ use harmos_domain::model::storage::object_key;
 /* === Type Aliases === */
 
 /* === Structs === */
-
-pub struct ObjectRead<'a, T: StoredObject> {
-    pub at: StorageCursor,
-    pub key: Option<&'a T::Key>,
-    pub versions: ObjectVersions,
-}
-
-pub struct RecordRead {
-    pub at: StorageCursor,
-    pub selection: RecordSelection,
-    pub after: u64,
-}
-
-pub struct StreamRead {
-    pub at: StorageCursor,
-    pub selection: StreamSelection,
-}
-
-pub struct StreamReader {
-    pages: Pages<StoredRow>,
-}
-
-pub struct ObjectReader<T> {
-    pages: Pages<ObjectEntry>,
-    schema: SchemaKey,
-    _value: PhantomData<fn() -> T>,
-}
-
-pub struct RecordReader<T> {
-    pages: Pages<StoredRecord>,
-    _payload: PhantomData<fn() -> T>,
-}
 
 // Scan State Shared By Both Readers. The Active Slot And Snapshot Release Once
 // The Source Is Exhausted; Dropping An In-Progress `next` Poisons The Reader.
@@ -107,7 +76,7 @@ impl StorageManager {
             versions: read.versions,
         };
         let pages = Pages::open(self, read.at, selection).await?;
-        Ok(ObjectReader { pages, schema, _value: PhantomData })
+        Ok(ObjectReader::new(Box::new(pages), schema))
     }
 }
 
@@ -118,7 +87,7 @@ impl StorageManager {
 
         let mut pages = Pages::open(self, read.at, read.selection).await?;
         pages.after = read.after;
-        Ok(RecordReader { pages, _payload: PhantomData })
+        Ok(RecordReader::new(Box::new(pages)))
     }
 }
 
@@ -129,70 +98,15 @@ impl StorageManager {
         let after = read.selection.after;
         let mut pages = Pages::open(self, read.at, read.selection).await?;
         pages.after = after;
-        Ok(StreamReader { pages })
+        Ok(StreamReader::new(Box::new(pages)))
     }
 }
 
-impl StreamReader {
-    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRow>>>> {
-        self.pages.next(Ok).await
-    }
-}
 
-impl<T: StoredObject> ObjectReader<T> {
-    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
-    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<ObjectRevision<T>>>>> {
-        let schema = &self.schema;
-        self.pages
-            .next(|entry| {
-                Ok(ObjectRevision {
-                    value: decode_admitted::<T>(&entry.value, schema)?,
-                    position: entry.position,
-                    version: entry.version,
-                })
-            })
-            .await
-    }
 
-    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
-    pub async fn collect(mut self) -> Result<crate::ReadPages<ObjectRevision<T>>> {
-        let mut pages = Vec::new();
-        while let Some(page) = self.next().await? {
-            pages.try_reserve(1).map_err(|_| Error::ResourceExhausted { resource: "typed page collection" })?;
-            pages.push(page);
-        }
-        Ok(ReadBatch::new(pages))
-    }
-}
 
-impl<T: Message + MemorySize> RecordReader<T> {
-    #[tracing::instrument(name = "storage.query.typed.next", level = "trace", skip_all)]
-    pub async fn next(&mut self) -> Result<Option<ReadBatch<Vec<StoredRecord<T>>>>> {
-        self.pages
-            .next(|record| {
-                Ok(StoredRecord {
-                    payload: T::decode(&record.payload).map_err(|error| Error::backend("decode record", BackendFailure::Corrupt, error))?,
-                    position: record.position,
-                    schema: record.schema,
-                    scope: record.scope,
-                    item: record.item,
-                    source: record.source,
-                    source_time: record.source_time,
-                })
-            })
-            .await
-    }
 
-    #[tracing::instrument(name = "storage.query.typed.collect", level = "trace", skip_all)]
-    pub async fn collect(mut self) -> Result<crate::ReadPages<StoredRecord<T>>> {
-        let mut pages = Vec::new();
-        while let Some(page) = self.next().await? {
-            pages.try_reserve(1).map_err(|_| Error::ResourceExhausted { resource: "typed page collection" })?;
-            pages.push(page);
-        }
-        Ok(ReadBatch::new(pages))
-    }
-}
+
 
 impl<E: Entry> Pages<E>
 where
@@ -291,3 +205,11 @@ impl<E: Entry> Pages<E> {
 /* === Private Functions === */
 
 /* === Tests === */
+
+impl<E: Entry + MemorySize> PageSource<E> for Pages<E> {
+    fn next(&mut self) -> QueryFuture<'_, Option<ReadBatch<Vec<E>>>> {
+        Box::pin(async move {
+            Pages::next(self, Ok).await.map_err(|error| harmos_query::Error::backend("read typed source", harmos_query::BackendFailure::Permanent, error))
+        })
+    }
+}

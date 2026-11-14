@@ -17,7 +17,7 @@ pub use harmos_domain::model::storage::query::transform::histogram::Histogram;
 
 /* === Imports === */
 
-use crate::storage::query::transform::FieldPathExecution;
+use crate::transform::FieldPathExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports

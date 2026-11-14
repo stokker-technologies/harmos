@@ -26,12 +26,19 @@ use std::{
 use crate::manager::{backend, fixture};
 use harmos_domain::model::storage::{catalog::object_schema, object_key};
 use harmos_domain::{Identified, Message, schema::Described};
-use harmos_storage::query::{
-    ObjectSelection, ObjectVersions, SchemaSelection,
-    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource},
-    index::{IndexDefinition, IndexRead, list_index_entries},
-    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform},
-};
+use harmos_storage::query::ObjectSelection;
+use harmos_storage::query::ObjectVersions;
+use harmos_storage::query::SchemaSelection;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexRead;
+use harmos_storage::query::index::list_index_entries;
+use harmos_storage::query::projection::ProjectionDefinition;
+use harmos_storage::query::projection::ProjectionRead;
+use harmos_storage::query::projection::ProjectionTransform;
 use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 

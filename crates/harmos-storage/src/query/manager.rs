@@ -18,9 +18,9 @@
 // Third Party Imports
 
 // Local Imports
+use harmos_query::{columnar::Cancellation, index::IndexDefinition};
 use super::{
-    columnar::{Cancellation, StorageCapabilities},
-    index::IndexDefinition,
+    columnar::StorageCapabilities,
     projection::{ProjectionDefinition, ProjectionPage, ProjectionRead, ProjectionStatus},
 };
 use crate::{Identifier, ReadLimits, Result, StorageCursor, StorageManager};

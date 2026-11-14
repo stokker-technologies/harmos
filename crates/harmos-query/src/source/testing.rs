@@ -50,7 +50,7 @@ macro_rules! scalar_array {
 /* === Structs === */
 
 // Decodes postcard payloads of one message declaration into one Arrow column.
-pub struct PayloadDecoder(pub(in crate::query) StorageSchema);
+pub struct PayloadDecoder(pub(crate) StorageSchema);
 
 /* === Enums === */
 

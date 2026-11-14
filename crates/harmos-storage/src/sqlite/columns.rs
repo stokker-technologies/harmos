@@ -24,7 +24,9 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 // Local Imports
 use super::*;
-use crate::query::columnar::{self, ColumnKind, ColumnSource};
+use crate::query::columnar::self;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 
 /* === Constants === */
 
@@ -53,11 +55,11 @@ pub(super) fn store(connection: &Connection, source: &ColumnSource, batch: &Reco
     while let Some(range) = pending.pop() {
         let original = range.start == 0 && range.end == batch.num_rows();
         let mut part =
-            if original { batch.clone() } else { columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())? };
+            if original { batch.clone() } else { harmos_query::columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())? };
         let mut data = prepare(&part, settings)?;
         if data.is_none() && original {
             // Builder spare capacity is not a physical chunk. Compact before splitting.
-            part = columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())?;
+            part = harmos_query::columnar::take(batch, &(range.start as u64..range.end as u64).collect::<Vec<_>>())?;
             data = prepare(&part, settings)?;
         }
         if let Some(data) = data {
@@ -137,7 +139,7 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
     state.snapshot(snapshot)?;
     let after = read.position(snapshot)?;
     let schema = rows::schema(&state.connection, &read.source.schema, snapshot.at.sequence)?;
-    let empty = columnar::empty(&schema, read.source.kind)?;
+    let empty = harmos_query::columnar::empty(&schema, read.source.kind)?;
     let required = read.required_columns();
     for name in &required {
         if empty.column_by_name(name).is_none() {
@@ -155,18 +157,18 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         .optional()
         .map_err(db)?;
     let Some((chunk, _first, last, count)) = chunk else {
-        return columnar::finish_page(
+        return Ok(harmos_query::columnar::finish_page(
             snapshot,
             read,
             &empty,
-            columnar::ScanEvidence {
+            harmos_query::columnar::ScanEvidence {
                 complete: true,
                 bytes: 0,
                 columns: Vec::new(),
                 payload_rows: 0,
             },
             cancel,
-        );
+        )?);
     };
     let complete = last >= snapshot.at.sequence
         || !state
@@ -198,11 +200,11 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
         pruned |= maximum.is_some_and(|maximum| maximum < time.lower_ns) || minimum.is_some_and(|minimum| minimum >= time.upper_ns);
     }
     if pruned {
-        let mut page = columnar::finish_page(
+        let mut page = harmos_query::columnar::finish_page(
             snapshot,
             read,
             &empty,
-            columnar::ScanEvidence {
+            harmos_query::columnar::ScanEvidence {
                 complete,
                 bytes: 0,
                 columns: Vec::new(),
@@ -267,14 +269,14 @@ pub(super) fn scan(state: &State, snapshot: &BackendSnapshot, read: &ArrowScan, 
             .enumerate()
             .filter_map(|(index, position)| retained.contains(position).then_some(index as u64))
             .collect::<Vec<_>>();
-        batch = columnar::take(&batch, &indices)?;
+        batch = harmos_query::columnar::take(&batch, &indices)?;
     }
     let final_position = positions(&batch)?.values().iter().copied().filter(|position| *position <= snapshot.at.sequence).max();
-    let mut page = columnar::finish_page(
+    let mut page = harmos_query::columnar::finish_page(
         snapshot,
         read,
         &batch,
-        columnar::ScanEvidence {
+        harmos_query::columnar::ScanEvidence {
             complete,
             bytes: bytes_read,
             columns: required,

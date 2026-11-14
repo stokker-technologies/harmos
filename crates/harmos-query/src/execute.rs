@@ -30,7 +30,7 @@ use crate::Result;
 
 /* === Constants === */
 
-pub(super) const MAX_TRANSFORMS: usize = 64;
+pub const MAX_TRANSFORMS: usize = 64;
 
 /* === Macros === */
 
@@ -38,7 +38,7 @@ pub(super) const MAX_TRANSFORMS: usize = 64;
 
 /* === Structs === */
 
-pub(super) struct Plan {
+pub struct Plan {
     input: Arc<Schema>,
     output: Arc<Schema>,
     prefix: Vec<Transform>,
@@ -58,8 +58,8 @@ pub(super) struct Plan {
 
 impl Plan {
     #[tracing::instrument(name = "storage.query.execute.new", level = "trace", skip_all)]
-    pub(super) fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
-        crate::storage::arrow::validate_schema(&input)?;
+    pub fn new(input: Arc<Schema>, transforms: Vec<Transform>, slice: RowSlice) -> Result<Self> {
+        crate::arrow::validate_schema(&input)?;
         if transforms.len() > MAX_TRANSFORMS {
             return Err(invalid("too many query transforms"));
         }
@@ -70,7 +70,7 @@ impl Plan {
                 stage = Some((index, Arc::new(schema.clone())));
             }
             schema = transform.output_schema(&schema)?;
-            crate::storage::arrow::validate_schema(&schema)?;
+            crate::arrow::validate_schema(&schema)?;
         }
         let mut prefix = transforms;
         let (global, spool) = match stage {
@@ -90,27 +90,27 @@ impl Plan {
         })
     }
 
-    pub(super) fn output_schema(&self) -> Arc<Schema> {
+    pub fn output_schema(&self) -> Arc<Schema> {
         Arc::clone(&self.output)
     }
 
-    pub(super) fn is_satisfied(&self) -> bool {
+    pub fn is_satisfied(&self) -> bool {
         self.slice.limit.is_some_and(|limit| self.emitted >= limit)
     }
 
-    pub(super) fn source_limit(&self) -> Option<u64> {
+    pub fn source_limit(&self) -> Option<u64> {
         if !self.global.is_empty() || !self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_))) {
             return None;
         }
         self.slice.limit.map(|limit| self.slice.offset.saturating_sub(self.skipped).saturating_add(limit.saturating_sub(self.emitted)))
     }
 
-    pub(super) fn is_inline(&self) -> bool {
+    pub fn is_inline(&self) -> bool {
         self.global.is_empty() && self.prefix.iter().all(|transform| matches!(transform, Transform::Project(_)))
     }
 
     #[tracing::instrument(name = "storage.query.execute.page", level = "trace", skip_all)]
-    pub(super) fn page(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
+    pub fn page(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         if input.schema() != self.input {
             return Err(invalid("source batch schema changed"));
         }
@@ -124,7 +124,7 @@ impl Plan {
     }
 
     #[tracing::instrument(name = "storage.query.execute.finish", level = "trace", skip_all)]
-    pub(super) fn finish(&mut self, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
+    pub fn finish(&mut self, check: &mut impl FnMut() -> Result<()>) -> Result<Option<RecordBatch>> {
         if let Some(spool) = self.spool.take() {
             let mut input = spool.finish()?;
             // Each Global Transform Sees The Complete Previous Result In Paged Form.
@@ -189,7 +189,7 @@ fn apply(transforms: &[Transform], mut current: RecordBatch, check: &mut impl Fn
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::query::transform::{
+    use crate::transform::{
         FieldPath,
         downsample::{Algorithm, Downsample},
         sort::{Sort, SortKey},
