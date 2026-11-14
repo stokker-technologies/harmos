@@ -132,12 +132,19 @@ combined source closure and hosted validation are not claimed here.
 - [x] 5.2.2 Preserve native listener payload encoding independently from public protobuf calls. Record and stream listeners use their retained callback contract's codec; public encoded calls and SDK lifecycle envelopes retain protobuf. Existing listener and wire-codec journeys guard both paths. Replace the removed guest's inert JSON-fragment story with its component registration metadata journey.
 - [x] 5.3 Review affected README, docs/product-guide.md, docs/storage.md, language guides, generators and capability contracts with each owning source change; verify no stale boundary or compound-resource naming claims.
 - [ ] 5.4 Verify every locked implementation item is closed in the combined candidate, all writers have handed off, and focused tests plus owned format/language checks pass before declaring source closure. Source closure is not full validation or delivery.
-  - [ ] Migrate Schematic hosting to entry-backed settings. The direct sidecar attachment
-    is refused by `harmos.plugin.host.v1.Settings/List` because it has no management
-    entry. Guest registration also lacks explicit host-operation grants and a stored
-    entry; frozen `harmos.client.v1.PluginPlacement` has managed native and remote
+  - [x] Migrate native Schematic hosting to a library-managed remote entry with
+    durable typed settings; retain the application's process ownership and awaited
+    readiness/cleanup. Native advice, streaming and application storage journeys pass.
+  - [x] Route product plugin-host publication assignments by canonical identity and
+    convert the fixture's protobuf rows into the native stream codec before staging.
+    Retain publication rollback, replacement, revocation and retention proof.
+  - [ ] Complete guest entry-backed settings. Explicit host-operation grants are
+    supplied, but the guest has no stored entry; frozen
+    `harmos.client.v1.PluginPlacement` has managed native and remote
     gRPC placements only. Resolve the guest placement contract before adding a
     settings fallback or a second settings owner.
+  - [x] Delete the retired Storage wire-export acceptance story, its empty test target
+    and its deadline override. Native storage coverage remains at its in-process owner.
 
 ## 6. Final Validation
 

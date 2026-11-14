@@ -774,8 +774,9 @@ Decision: retain the existing assembly registration; application and library ope
 - **Schematic:** Application Files/Uploads wrap Private native storage operations.
   Native and wasm plugins share regenerated concept messages and typed settings.
   Root Buf checks its independent product module.
-  Hosting migration remains open: direct sidecar attachments have no managed entry
-  for `Settings.List`, and guest registration has no entry-backed settings owner.
+  The native example launches its process and creates a remote library entry;
+  the library persists that entry and its typed settings. Guest registration has
+  explicit host-operation grants but no entry-backed settings owner.
   The frozen `PluginPlacement` declares only managed native bundles and remote gRPC
   endpoints; it has no guest placement. Preserve the refusal rather than inventing
   guest settings or allowing a plugin to select another entry.
@@ -784,6 +785,9 @@ Decision: retain the existing assembly registration; application and library ope
   `example.plugin.host.v1.Progress/Publish` with `{stream, payload} -> ()`; no library
   publication wire service is recreated. Generation rebuilds the Rust producer and
   emits the Schematic bindings and nested Plugins composition for every language.
+  Guest assignments route canonical product service/method identities as well as
+  library identities. The product publication handler converts its protobuf row
+  into the native stream codec before staging it under the caller's generation.
 
 ### Next Pin for Products That Vendor the Protocol
 

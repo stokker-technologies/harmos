@@ -17,11 +17,16 @@ target/build/dev/linux-x86_64/bin/schematic-cli --guest
 Read [walkthrough.rs](../examples/schematic/cli/src/walkthrough.rs) alongside the output. It creates a
 fresh temporary document, places and connects two symbols, moves one, validates
 the schematic, applies a proposed right-angle route, undoes/redoes it, then saves
-and reopens it. Both backends produce the same shared results. The final line is:
+and reopens it. The native walkthrough's final line is:
 
 ```text
 Reopened: 2 symbols, 1 net, 3 route points
 ```
+
+The guest compiles, but its walkthrough currently refuses `Settings.List`: the
+frozen library `PluginPlacement` supports native bundles and remote endpoints,
+with no entry-backed guest placement. It cannot obtain another plugin's settings
+or replace the library store with an application fallback.
 
 Startup emits `schematic.plugin.initializing` and `schematic.plugin.ready` on
 stderr for both backends. Guest component compilation finishes before
@@ -49,6 +54,11 @@ Both plugins declare the typed `horizontal_first` flag, defaulting to true, and
 read its effective library-stored value through plugin-host `Settings.List` when
 routing. A client updates complete plugin settings through
 `client.plugins.settings.{list,set}`; the plugin's caller identity scopes its read.
+The native host launches its own sidecar process and creates a remote entry through
+the library manager. The manager stores typed settings in the example's SQLite
+registry beside its recovery files. Entry deletion settles the activation before
+the application reaps its process. `LaunchConfig.plugins` selects this management
+assembly; focused storage hosts can supply their own storage assembly instead.
 Its `generate` Cargo example owns regeneration from `examples/schematic/proto/`,
 and its `generated_code_matches_proto` test checks source and descriptor drift.
 Buf formats and lints the example contracts alongside `proto/harmos/`. The operations

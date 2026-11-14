@@ -193,6 +193,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let snapshot = snapshot?;
     Document::save(&path, snapshot, &checkpoint)?;
     let document = Document::open(&path)?;
+    drop(runtime);
     let reopened = app::launch(document, &config).await?;
     let saved = reopened.state.state().read(Clone::clone).await;
     reopened.shutdown().await?;

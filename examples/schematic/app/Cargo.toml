@@ -26,6 +26,7 @@ simulation = ["harmos-runtime/simulation"]
 # Local
 harmos-runtime = { workspace = true, default-features = true, features = ["plugin-guest"] }
 harmos = { workspace = true }
+harmos-protocol = { workspace = true }
 harmos-storage = { workspace = true, features = ["sqlite"] }
 schematic-domain = { path = "../domain" }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
@@ -56,6 +57,7 @@ tempfile = { workspace = true, default-features = true }
 # Concurrency
 
 # Async
+tokio = { workspace = true, features = ["io-util", "process"] }
 
 # Networking
 
@@ -71,7 +73,6 @@ tempfile = { workspace = true, default-features = true }
 
 [dev-dependencies]
 sha2 = { workspace = true }
-harmos-protocol = { workspace = true }
 arrow-array = { workspace = true }
 futures-util = { workspace = true, features = ["async-await-macro"] }
 harmos-packaging = { workspace = true, features = ["sidecar"] }

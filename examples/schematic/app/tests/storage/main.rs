@@ -116,6 +116,7 @@ async fn saved_preview_survives_atomic_replacement() {
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
+        plugins: false,
     };
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
@@ -255,6 +256,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
+        plugins: false,
     };
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {

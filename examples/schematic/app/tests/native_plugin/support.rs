@@ -16,11 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
 use std::{num::NonZeroUsize, path::Path};
 
 // Third Party Imports
 
 // Local Imports
+use harmos_runtime::plugin::manager::Manager;
+use schematic_app::config::{LaunchConfig, Settings};
 use schematic_app::{app::Runtime, document::Document};
 
 /* === Constants === */
@@ -39,13 +42,25 @@ use schematic_app::{app::Runtime, document::Document};
 
 /* === Public Functions === */
 
-pub async fn host(directory: &Path) -> Runtime {
+pub async fn host(directory: &Path) -> Arc<Runtime> {
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
-    Runtime::launch_with(Document::new(directory.join("schematic.json")).into_origin(), None, |setup| {
-        setup.settings().clock(clock);
-    })
-    .await
-    .unwrap()
+    let document = Document::new(directory.join("schematic.json"));
+    let recordings = tempfile::tempdir().unwrap();
+    let config = LaunchConfig {
+        document: document.clone(),
+        settings: Settings::new(recordings.path()),
+        plugins: true,
+    };
+    let runtime = Arc::new(
+        Runtime::launch_with(document.into_origin(), Some(config), |setup| {
+            setup.settings().clock(clock);
+            setup.resource(recordings);
+        })
+        .await
+        .unwrap(),
+    );
+    runtime.operations.context().resource::<Manager>().unwrap().start(&runtime).await.unwrap();
+    runtime
 }
 
 pub fn binary() -> std::path::PathBuf {

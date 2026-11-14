@@ -66,6 +66,9 @@ target/build/dev/linux-x86_64/bin/schematic-cli
 target/build/dev/linux-x86_64/bin/schematic-cli --guest
 ```
 
+The native walkthrough runs end to end. The guest walkthrough currently refuses
+settings reads pending entry-backed guest placement; see [Schematic](docs/schematic.md).
+
 ### Python
 
 Install `harmos-sdk` (import `harmos`) for plugin authoring and the host client root.

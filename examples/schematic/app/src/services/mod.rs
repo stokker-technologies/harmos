@@ -39,7 +39,7 @@ use harmos_runtime::guest::Loaded;
 
 pub enum Plugin {
     Guest { manager: harmos_runtime::guest::PluginHost<SchematicEditor> },
-    Sidecar { attached: harmos_runtime::plugin::grpc::Attached },
+    Sidecar { attached: sidecar::Running },
 }
 
 /* === Traits === */
@@ -60,10 +60,7 @@ impl Plugin {
     pub async fn stop(self) -> harmos_runtime::Result<()> {
         match self {
             Self::Guest { manager } => manager.stop(guest::NAME).await,
-            Self::Sidecar { attached } => attached
-                .stop("Example Complete")
-                .await
-                .map_err(|source| harmos_runtime::Error::OperationFailed { operation: sidecar::NAME.into(), source }),
+            Self::Sidecar { attached } => attached.stop().await,
         }
     }
 }
