@@ -12,6 +12,7 @@
 //! ```no_run
 //! use harmos::{Message, Result, Visibility};
 //! use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
+//! use prost_types::Duration;
 //!
 //! #[derive(Message)]
 //! struct SetTemperature { target: f64 }
@@ -31,7 +32,7 @@
 //! fn main() -> Result<()> {
 //!     let set = Operation::new("thermal.set", set_temperature).visibility(Visibility::Public);
 //!     let temperature = Stream::<Temperature>::new("thermal.temperature");
-//!     let observer = Observer::new(&temperature, read_temperature).every(prost_types::Duration { seconds: 1, nanos: 0 });
+//!     let observer = Observer::new(&temperature, read_temperature).every(Duration { seconds: 1, nanos: 0 });
 //!     Plugin::new("thermal", "1.0.0").operation(set).stream(temperature).observer(observer).serve()
 //! }
 //! ```

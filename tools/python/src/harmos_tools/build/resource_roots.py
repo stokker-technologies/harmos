@@ -1523,6 +1523,41 @@ def cpp_host(root: Path, methods: list[Method]) -> None:
         )
         source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
     source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
+    boundary = source.index("namespace harmos::plugin {")
+    body = "\n".join(source[boundary:])
+    named = {cpp_message(method["response"]) for method in methods if method["payload_field"] is None}
+    named.update(
+        cpp_message(field["type"])
+        for method in methods
+        for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
+        if field["type"]
+    )
+    named.update(
+        f"std::{name}"
+        for name in (
+            "string",
+            "vector",
+            "optional",
+            "size_t",
+            "uint64_t",
+            "uint32_t",
+            "int64_t",
+            "int32_t",
+            "runtime_error",
+            "invalid_argument",
+        )
+    )
+    imported = {method[key].rsplit(".", 1)[-1] for method in methods for key in ("request", "response")}
+    declarations = []
+    for qualified in sorted(named, key=len, reverse=True):
+        if qualified not in body:
+            continue
+        name = qualified.rsplit("::", 1)[-1]
+        body = re.sub(re.escape(qualified) + r"\b", name, body)
+        if name not in imported:
+            declarations.append(f"using {qualified};")
+            imported.add(name)
+    source = [*source[:boundary], *sorted(declarations), body]
     folder = root / "sdk/cpp/include/harmos/_generated"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "host.hpp").write_text("\n".join(header) + "\n", encoding="utf-8", newline="\n")
