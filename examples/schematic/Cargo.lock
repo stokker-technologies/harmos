@@ -1225,7 +1225,6 @@ dependencies = [
  "harmos-protocol",
  "notify",
  "postcard",
- "prost",
  "rusqlite",
  "same-file",
  "serde",
