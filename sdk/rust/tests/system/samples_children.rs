@@ -21,7 +21,7 @@
 
 // Local Imports
 use super::support;
-use harmos::Message;
+use harmos::{InstanceState, Message};
 use harmos_protocol::plugin::host::{InvocationsWatchResponse, SettingsListResponse, TimeGetResponse};
 use harmos_protocol::plugin::{InstanceSamplesRequest, instance_samples_request, instance_samples_response};
 use harmos_protocol::v1;
@@ -144,7 +144,15 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         send.send(InstanceSamplesRequest {
             frame: Some(instance_samples_request::Frame::Child(v1::ChildResponse {
                 call: watch.call,
-                result: Some(v1::child_response::Result::Item(InvocationsWatchResponse::default().encode_to_vec())),
+                result: Some(v1::child_response::Result::Item(
+                    InvocationsWatchResponse {
+                        invocation: Some(InstanceState {
+                            phase: "running".into(),
+                            ..Default::default()
+                        }),
+                    }
+                    .encode_to_vec(),
+                )),
             })),
         })
         .await
