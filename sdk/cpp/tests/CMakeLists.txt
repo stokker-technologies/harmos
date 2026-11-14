@@ -29,5 +29,5 @@ add_executable(harmos-cpp-tests unit/catalog.cpp unit/client_root.cpp unit/clien
     "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp")
 target_include_directories(harmos-cpp-tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_include_directories(harmos-cpp-tests PRIVATE "${PROJECT_SOURCE_DIR}/src")
-target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol Catch2::Catch2WithMain)
+target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol Catch2::Catch2)
 catch_discover_tests(harmos-cpp-tests PROPERTIES TIMEOUT 30)

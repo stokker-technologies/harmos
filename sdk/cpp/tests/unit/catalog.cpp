@@ -13,6 +13,8 @@
 
 // Third Party Imports
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_session.hpp>
+#include <grpc/grpc.h>
 #include <google/protobuf/descriptor_database.h>
 
 // Local Imports
@@ -115,4 +117,11 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
 /* === Private Functions === */
 
 /* === Entry Point === */
+
+int main(int argc, char** argv) {
+    grpc_init();
+    const auto result = Catch::Session{}.run(argc, argv);
+    grpc_shutdown_blocking();
+    return result;
+}
 
