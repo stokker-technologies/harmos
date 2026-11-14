@@ -120,7 +120,7 @@ impl Adapter {
 impl Session {
     async fn operate(&self, owner: &str, bytes: &[u8]) -> Result<Vec<u8>> {
         if bytes.len() as u64 > self.metadata.message_bytes {
-            return Err(invalid("Operate Guest: command exceeds StorageSettings.transfer.chunk_bytes plus framing"));
+            return Err(invalid("Operate Guest: Command Exceeds MessageSettings.message_bytes"));
         }
         let command = harmos_protocol::guest::decode_command(bytes).map_err(|error| invalid(error.to_string()))?;
         {

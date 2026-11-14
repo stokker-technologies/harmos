@@ -114,7 +114,7 @@ impl ClientSettings {
         let message_bytes =
             harmos_protocol::transfer::message_bytes(&transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
                 Status::invalid_argument(
-                    "Configure Client: MessageSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                    "Configure Client: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
                 )
             })?;
         Ok(Self {
@@ -131,7 +131,7 @@ impl Client {
     pub fn new(channel: Channel, settings: ClientSettings) -> Result<Self, Status> {
         if harmos_protocol::transfer::required_message_bytes(&settings.transfer).is_none_or(|required| settings.message_bytes < required) {
             return Err(Status::invalid_argument(
-                "Configure Client: ClientSettings.message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing",
+                "Configure Client: ClientSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
             ));
         }
         if settings.retained_bytes.get() > Semaphore::MAX_PERMITS
