@@ -113,14 +113,15 @@ impl StorageManager {
             source.after = after;
             query.slice.offset = 0;
         }
-        if query.merge.is_none() && query.transforms.iter().all(|transform| matches!(transform, Transform::Project(_))) {
-            if let Some(limit) = query.slice.limit {
-                let rows = query.slice.offset.saturating_add(limit).min(source.rows.get() as u64) as usize;
-                if let Some(rows) = NonZeroUsize::new(rows) {
-                    source.rows = rows;
-                } else {
-                    source.done = true;
-                }
+        if query.merge.is_none()
+            && query.transforms.iter().all(|transform| matches!(transform, Transform::Project(_)))
+            && let Some(limit) = query.slice.limit
+        {
+            let rows = query.slice.offset.saturating_add(limit).min(source.rows.get() as u64) as usize;
+            if let Some(rows) = NonZeroUsize::new(rows) {
+                source.rows = rows;
+            } else {
+                source.done = true;
             }
         }
         let output = QueryResponse {
