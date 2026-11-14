@@ -71,7 +71,7 @@ class PackagedConformance(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result.returncode, 0, result.stdout)
             python = scratch / "env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             result = subprocess.run(
-                ["uv", "pip", "install", "--offline", "--python", str(python), str(wheel)],
+                ["uv", "pip", "install", "--python", str(python), str(wheel)],
                 env=environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
