@@ -204,10 +204,10 @@ impl Instance for Forward {
         let incoming = self.client.clone().samples(frames).await?.into_inner();
         let sample = self.sample.clone();
         let frames = incoming.map(move |frame| {
-            if let Ok(frame) = &frame {
-                if let Some(row) = frame.samples.first() {
-                    *sample.lock().expect("caller sample lock") = Some(row.row.clone());
-                }
+            if let Ok(frame) = &frame
+                && let Some(row) = frame.samples.first()
+            {
+                *sample.lock().expect("caller sample lock") = Some(row.row.clone());
             }
             frame
         });

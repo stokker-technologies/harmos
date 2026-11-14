@@ -25,6 +25,7 @@ use std::{
 // Third Party Imports
 
 // Local Imports
+use harmos_protocol::host::InvocationsCreateRequest;
 
 /* === Constants === */
 
@@ -56,7 +57,7 @@ pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> 
     )?;
     let descriptors: prost_types::FileDescriptorSet =
         prost::Message::decode(std::fs::read(output.join("conformance-descriptors.bin"))?.as_slice())?;
-    let request = harmos_protocol::host::InvocationsCreateRequest {
+    let request = InvocationsCreateRequest {
         operation: "conformance.host.v1.CallerProbe/Get".into(),
         fingerprint: harmos_protocol::schema::fingerprint(
             "conformance.host.v1.CallerProbe/Get",
@@ -193,13 +194,11 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         }
     }
     std::fs::write(output.join("message-options-descriptors.bin"), prost::Message::encode_to_vec(&options))?;
-    for (package, name) in [("harmos.host.v1", "clock-descriptors.bin")] {
-        let roots: Vec<_> =
-            ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("{package}.{name}")).into();
-        let names: Vec<_> = roots.iter().map(String::as_str).collect();
-        let types = harmos_protocol::schema::operation_types(&descriptors, &names)?;
-        std::fs::write(output.join(name), prost::Message::encode_to_vec(&types))?;
-    }
+    let clock_roots =
+        ["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"].map(|name| format!("harmos.host.v1.{name}"));
+    let clock_names: Vec<_> = clock_roots.iter().map(String::as_str).collect();
+    let clock_types = harmos_protocol::schema::operation_types(&descriptors, &clock_names)?;
+    std::fs::write(output.join("clock-descriptors.bin"), prost::Message::encode_to_vec(&clock_types))?;
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
     std::fs::create_dir_all(&sdk_types)?;
