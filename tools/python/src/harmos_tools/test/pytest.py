@@ -74,10 +74,20 @@ def run(
 
 
 def coverage(project: Path, cobertura: Path) -> list[str]:
-    """Coverage arguments measuring the authored sources of the project."""
-    source = project / "src"
-    measured = source if source.is_dir() else project
-    return [f"--cov={measured}", f"--cov-report=xml:{cobertura}"]
+    """Coverage arguments whose measured sources the project's own coverage configuration declares.
+
+    The project's `pyproject.toml` names what is measured and maps installed packages back to
+    their source tree, so tests that import an installed wheel still report authored modules.
+    """
+    configuration = project / "pyproject.toml"
+    if not configuration.is_file():
+        raise policy.TestError(f"missing coverage configuration {configuration}")
+    return [
+        "--cov",
+        f"--cov-config={configuration}",
+        "--cov-report=term",
+        f"--cov-report=xml:{cobertura}",
+    ]
 
 
 def bench(project: Path, category: str, output: Path, arguments: Sequence[str]) -> list[str]:
