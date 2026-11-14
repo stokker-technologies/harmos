@@ -27,7 +27,7 @@ pub struct AnalyzeUpload;
 /* === Implementations === */
 
 impl ProtobufOperation for AnalyzeUpload {
-    type Request = crate::protocol::SchematicAnalyzeUploadRequest;
+    type Request = crate::protocol::SchematicAnalyzeUploadHeader;
     type Response = crate::protocol::SchematicAnalyzeUploadResponse;
     type Endpoints = harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>;
     const ID: &'static str = "schematic.analyze.upload";

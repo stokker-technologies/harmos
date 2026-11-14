@@ -50,3 +50,8 @@ pub struct Batch {
     #[prost(bytes = "vec", tag = "3")]
     pub bytes: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct AnalysisResult {
+    #[prost(uint32, tag = "1")]
+    pub checked: u32,
+}

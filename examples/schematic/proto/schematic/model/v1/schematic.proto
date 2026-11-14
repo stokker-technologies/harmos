@@ -57,4 +57,9 @@ message Batch {
   bytes bytes = 3;
 }
 
+// Retains the final result of a native streaming analysis.
+message AnalysisResult {
+  uint32 checked = 1;
+}
+
 // === Enums === //

@@ -33,8 +33,8 @@ use schematic_app::{
         transfer::{Download as DownloadTransfer, Put as PutTransfer, Take as TakeTransfer, Upload as UploadTransfer},
     },
     protocol::{
-        Batch, Connection, Download, Point, Put, Record, Sample, SchematicAnalyzeExchangeRequest, SchematicAnalyzeRequest,
-        SchematicAnalyzeUploadRequest, Snapshot, Take, Upload,
+        Batch, Connection, Download, Point, Put, Record, Sample, SchematicAnalyzeExchangeHeader, SchematicAnalyzeRequest,
+        SchematicAnalyzeUploadHeader, Snapshot, Take, Upload,
         plugin::{SchematicListDirectoriesRequest, SchematicProposeRouteRequest, SchematicValidateRequest},
     },
     services::{call, sidecar},
@@ -70,8 +70,8 @@ async fn native_advice_and_host_streaming_share_one_document() {
         inspection.operations,
         [
             "schematic.plugin.v1.Schematic/Validate",
-            "schematic.plugin.v1.Schematic/SchematicProposeRouteRequest",
-            "schematic.plugin.v1.Schematic/SchematicListDirectoriesRequest"
+            "schematic.plugin.v1.Schematic/ProposeRoute",
+            "schematic.plugin.v1.Schematic/ListDirectories"
         ]
     );
     let bundle = support::package(binary);
@@ -115,7 +115,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
 
     // Upload Analysis and Observe Host-Owned Progress
     let mut progress = runtime.streams.watch::<AnalysisProgress>();
-    let request = SchematicAnalyzeUploadRequest { title: "Board".into() };
+    let request = SchematicAnalyzeUploadHeader { title: "Board".into() };
     let mut upload = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     upload.send(support::snapshot().into()).await.unwrap();
     upload.finish_input().unwrap();
@@ -124,7 +124,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Exchange Snapshots and Findings in the Host
-    let request = SchematicAnalyzeExchangeRequest { title: "Board".into() };
+    let request = SchematicAnalyzeExchangeHeader { title: "Board".into() };
     let mut exchange =
         runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
     exchange.send(support::snapshot().into()).await.unwrap();
@@ -136,16 +136,16 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Reject Invalid Analysis and Settle Cancellation Before Reusing Its Permit
-    let request = SchematicAnalyzeUploadRequest { title: String::new() };
+    let request = SchematicAnalyzeUploadHeader { title: String::new() };
     let invalid = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     invalid.finish_input().unwrap();
     let failure = invalid.join().await.unwrap_err();
     let RuntimeError::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
     assert!(matches!(source.downcast_ref::<OperationError>(), Some(OperationError::InvalidInput)));
-    let request = SchematicAnalyzeUploadRequest { title: "Cancelled".into() };
+    let request = SchematicAnalyzeUploadHeader { title: "Cancelled".into() };
     let cancelled = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     cancelled.cancel_and_settle().await.unwrap();
-    let request = SchematicAnalyzeUploadRequest { title: "Resumed".into() };
+    let request = SchematicAnalyzeUploadHeader { title: "Resumed".into() };
     let mut resumed = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     resumed.send(support::snapshot().into()).await.unwrap();
     resumed.finish_input().unwrap();
@@ -154,12 +154,12 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!(row.value.title, "Resumed");
 
     // Hold the Shared Permit Until Upload Cancellation Settles
-    let request = SchematicAnalyzeUploadRequest { title: "Held".into() };
+    let request = SchematicAnalyzeUploadHeader { title: "Held".into() };
     let mut held = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     held.send(support::snapshot().into()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
     assert_eq!(row.value.title, "Held");
-    let request = SchematicAnalyzeExchangeRequest { title: "Waiting".into() };
+    let request = SchematicAnalyzeExchangeHeader { title: "Waiting".into() };
     let mut waiting = runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
     waiting.send(support::snapshot().into()).await.unwrap();
     {

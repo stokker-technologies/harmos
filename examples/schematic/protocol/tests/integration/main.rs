@@ -63,7 +63,7 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         ("schematic.descriptors.bin", "descriptors.bin"),
         ("schematic.client.rs", "client.rs"),
     ] {
-        assert_eq!(fs::read(output.path().join(source))?, fs::read(destination.join(target))?, "generated {target} drifted");
+        assert!(fs::read(output.path().join(source))? == fs::read(destination.join(target))?, "generated {target} drifted");
     }
     Ok(())
 }

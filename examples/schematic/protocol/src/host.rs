@@ -85,20 +85,40 @@ pub struct SchematicAnalyzeRequest {
     #[prost(message, optional, tag = "1")]
     pub schematic: ::core::option::Option<super::super::model::v1::Snapshot>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchematicAnalyzeResponse {
-    #[prost(uint32, tag = "1")]
-    pub checked: u32,
+    #[prost(string, tag = "1")]
+    pub text: ::prost::alloc::string::String,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchematicAnalyzeUploadRequest {
-    #[prost(string, tag = "1")]
-    pub title: ::prost::alloc::string::String,
+    #[prost(oneof = "schematic_analyze_upload_request::Frame", tags = "1, 2")]
+    pub frame: ::core::option::Option<schematic_analyze_upload_request::Frame>,
 }
-#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+/// Nested message and enum types in `SchematicAnalyzeUploadRequest`.
+pub mod schematic_analyze_upload_request {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Frame {
+        #[prost(message, tag = "1")]
+        Request(super::SchematicAnalyzeUploadHeader),
+        #[prost(message, tag = "2")]
+        Item(super::super::super::model::v1::Snapshot),
+    }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SchematicAnalyzeExchangeRequest {
-    #[prost(string, tag = "1")]
-    pub title: ::prost::alloc::string::String,
+    #[prost(oneof = "schematic_analyze_exchange_request::Frame", tags = "1, 2")]
+    pub frame: ::core::option::Option<schematic_analyze_exchange_request::Frame>,
+}
+/// Nested message and enum types in `SchematicAnalyzeExchangeRequest`.
+pub mod schematic_analyze_exchange_request {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Frame {
+        #[prost(message, tag = "1")]
+        Request(super::SchematicAnalyzeExchangeHeader),
+        #[prost(message, tag = "2")]
+        Item(super::super::super::model::v1::Snapshot),
+    }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Upload {
@@ -150,10 +170,20 @@ pub struct SchematicAnalyzeUploadResponse {
     #[prost(uint32, tag = "1")]
     pub checked: u32,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SchematicAnalyzeExchangeResponse {
-    #[prost(uint32, tag = "1")]
-    pub checked: u32,
+    #[prost(string, tag = "1")]
+    pub text: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchematicAnalyzeUploadHeader {
+    #[prost(string, tag = "1")]
+    pub title: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SchematicAnalyzeExchangeHeader {
+    #[prost(string, tag = "1")]
+    pub title: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UploadsCreateRequest {

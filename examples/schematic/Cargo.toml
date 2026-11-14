@@ -50,6 +50,7 @@ serde = { version = "1.0.229", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.154", default-features = false }
 
 # Configuration
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 clap = { version = "4.6.7", default-features = false }
 
 # Filesystem

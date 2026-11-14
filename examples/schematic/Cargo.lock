@@ -2356,6 +2356,7 @@ dependencies = [
  "protoc-bin-vendored",
  "tempfile",
  "tokio",
+ "toml_edit",
  "tonic",
 ]
 

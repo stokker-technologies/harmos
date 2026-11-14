@@ -62,6 +62,7 @@ tonic = { version = "0.14.9", default-features = false, features = ["codegen"], 
 # === Dev Dependencies === #
 
 [dev-dependencies]
+toml_edit = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Serialization
 prost-build = { workspace = true, features = ["format"] }

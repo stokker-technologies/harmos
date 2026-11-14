@@ -27,8 +27,8 @@ pub struct AnalyzeExchange;
 /* === Implementations === */
 
 impl ProtobufOperation for AnalyzeExchange {
-    type Request = crate::protocol::SchematicAnalyzeExchangeRequest;
-    type Response = crate::protocol::SchematicAnalyzeExchangeResponse;
+    type Request = crate::protocol::SchematicAnalyzeExchangeHeader;
+    type Response = crate::protocol::AnalysisResult;
     type Endpoints = (
         harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>,
         harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>,
@@ -63,7 +63,7 @@ impl ProtobufOperation for AnalyzeExchange {
                 resources
                     .publish(schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked })?;
             }
-            Ok(crate::protocol::SchematicAnalyzeExchangeResponse { checked })
+            Ok(crate::protocol::AnalysisResult { checked })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

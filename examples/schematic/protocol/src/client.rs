@@ -1,9 +1,4 @@
 // @generated from schematic protocol descriptors; do not edit.
-use crate::{
-    Point, SchematicListDirectoriesRequest, SchematicListDirectoriesResponse,
-    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest,
-    SchematicValidateResponse, Snapshot,
-};
 use harmos::client::{CallOptions, ClientTransport, action_error};
 use prost_reflect::ReflectMessage;
 use tonic::{Status, codegen::http::uri::PathAndQuery};
@@ -72,3 +67,8 @@ impl Schematic {
         Ok(response.into_inner().directories)
     }
 }
+use crate::{
+    Point, SchematicListDirectoriesRequest, SchematicListDirectoriesResponse,
+    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest,
+    SchematicValidateResponse, Snapshot,
+};

@@ -29,15 +29,15 @@ service Schematic {
     option (harmos.model.v1.callers) = ALL;
   }
   // Run Analyze against the application.
-  rpc Analyze(.schematic.host.v1.SchematicAnalyzeRequest) returns (.schematic.host.v1.SchematicAnalyzeResponse) {
+  rpc Analyze(.schematic.host.v1.SchematicAnalyzeRequest) returns (stream .schematic.host.v1.SchematicAnalyzeResponse) {
     option (harmos.model.v1.callers) = ALL;
   }
   // Run AnalyzeUpload against the application.
-  rpc AnalyzeUpload(.schematic.host.v1.SchematicAnalyzeUploadRequest) returns (.schematic.host.v1.SchematicAnalyzeUploadResponse) {
+  rpc AnalyzeUpload(stream .schematic.host.v1.SchematicAnalyzeUploadRequest) returns (.schematic.host.v1.SchematicAnalyzeUploadResponse) {
     option (harmos.model.v1.callers) = ALL;
   }
   // Run AnalyzeExchange against the application.
-  rpc AnalyzeExchange(.schematic.host.v1.SchematicAnalyzeExchangeRequest) returns (.schematic.host.v1.SchematicAnalyzeExchangeResponse) {
+  rpc AnalyzeExchange(stream .schematic.host.v1.SchematicAnalyzeExchangeRequest) returns (stream .schematic.host.v1.SchematicAnalyzeExchangeResponse) {
     option (harmos.model.v1.callers) = ALL;
   }
 }
@@ -78,19 +78,25 @@ message SchematicAnalyzeRequest {
   schematic.model.v1.Snapshot schematic = 1;
 }
 
-// Reports the number of symbols checked during analysis.
+// Reports one streamed analysis finding.
 message SchematicAnalyzeResponse {
-  uint32 checked = 1;
+  string text = 1;
 }
 
 // Starts snapshot upload analysis under a nonblank bounded title.
 message SchematicAnalyzeUploadRequest {
-  string title = 1;
+  oneof frame {
+    SchematicAnalyzeUploadHeader request = 1;
+    schematic.model.v1.Snapshot item = 2;
+  }
 }
 
 // Starts bidirectional snapshot analysis under a nonblank bounded title.
 message SchematicAnalyzeExchangeRequest {
-  string title = 1;
+  oneof frame {
+    SchematicAnalyzeExchangeHeader request = 1;
+    schematic.model.v1.Snapshot item = 2;
+  }
 }
 
 // Starts a batch upload for a transfer identity.
@@ -138,11 +144,21 @@ message SchematicAnalyzeUploadResponse {
   uint32 checked = 1;
 }
 
-// Reports the number of exchanged snapshots checked.
+// Reports one streamed exchange finding.
 message SchematicAnalyzeExchangeResponse {
-  uint32 checked = 1;
+  string text = 1;
 }
 
 // === Resources === //
+
+// Starts a native snapshot upload under a bounded title.
+message SchematicAnalyzeUploadHeader {
+  string title = 1;
+}
+
+// Starts a native snapshot exchange under a bounded title.
+message SchematicAnalyzeExchangeHeader {
+  string title = 1;
+}
 
 // === Enums === //

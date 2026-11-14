@@ -28,7 +28,7 @@ pub struct AnalyzeSchematic;
 
 impl ProtobufOperation for AnalyzeSchematic {
     type Request = crate::protocol::SchematicAnalyzeRequest;
-    type Response = crate::protocol::SchematicAnalyzeResponse;
+    type Response = crate::protocol::AnalysisResult;
     type Endpoints = harmos_operations::execution::operations::ProtobufOutput<crate::protocol::Finding>;
     const ID: &'static str = "schematic.analyze";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
@@ -48,7 +48,7 @@ impl ProtobufOperation for AnalyzeSchematic {
             for text in findings {
                 endpoints.send(crate::protocol::Finding { text }).await?;
             }
-            Ok(crate::protocol::SchematicAnalyzeResponse { checked: 3 })
+            Ok(crate::protocol::AnalysisResult { checked: 3 })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))
