@@ -2303,6 +2303,7 @@ dependencies = [
  "schematic-storage",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tempfile",
  "thiserror",
  "tokio",
@@ -2354,6 +2355,7 @@ name = "schematic-operations"
 version = "0.1.14"
 dependencies = [
  "harmos-operations",
+ "harmos-protocol",
  "schematic-domain",
  "schematic-protocol",
  "thiserror",
@@ -2379,6 +2381,7 @@ name = "schematic-sidecar"
 version = "0.1.14"
 dependencies = [
  "harmos",
+ "harmos-protocol",
  "schematic-domain",
  "schematic-protocol",
  "tempfile",

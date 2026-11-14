@@ -51,5 +51,6 @@ pub fn attach(
     )?;
     setup.settings().storage(&storage);
     setup.catalog(harmos_runtime::builtins::storage_catalog(), harmos_runtime::operations::Lane::default());
+    setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
     Ok(storage)
 }

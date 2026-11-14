@@ -11,9 +11,16 @@
 
 /* === Imports === */
 
-use harmos::storage as wire;
-use harmos_protocol::v1;
+use arrow_array::UInt64Array;
+use harmos_protocol::v1::{FileMetadata, PageRequest, UploadState};
+use harmos_runtime::Identifier;
 use harmos_runtime::builtins::storage as operations;
+use harmos_runtime::builtins::storage::{
+    ColumnSelection, ColumnSource, CreateSnapshotRequest, DeleteSnapshotRequest, GetObjectRequest, ListColumnRowsRequest, MutationId,
+    SchemaInput, SetObjectRequest, set_object_response::Outcome,
+};
+use harmos_runtime::clock::Clock;
+use harmos_runtime::operations::NativeHost;
 use harmos_runtime::{
     Identified, Message,
     storage::{
@@ -21,13 +28,25 @@ use harmos_runtime::{
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
     },
 };
+use harmos_storage::{ReadLimits, query::columnar::ColumnKind};
+use schematic_app::operations::transfer::{
+    FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
+};
+use schematic_app::protocol::{
+    FilesHashRequest, FilesReadRequest, UploadMutation, UploadsAppendRequest, UploadsCreateRequest, UploadsDeleteRequest,
+    UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
+};
 use schematic_app::{
     app::Runtime,
     config::{LaunchConfig, Settings},
     document::Document,
     services,
 };
-use std::{num::NonZeroUsize, time::Duration};
+use sha2::{Digest, Sha256};
+use std::{
+    num::NonZeroUsize,
+    time::{Duration, SystemTime},
+};
 
 /* === Structs === */
 
@@ -58,15 +77,15 @@ async fn saved_preview_survives_atomic_replacement() {
     let directory = tempfile::tempdir().unwrap();
     let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Preview>());
     let history = StoreHistory {
-        store: harmos_runtime::Identifier::new("schematic-example").unwrap(),
-        epoch: harmos_runtime::Identifier::new("first").unwrap(),
+        store: Identifier::new("schematic-example").unwrap(),
+        epoch: Identifier::new("first").unwrap(),
     };
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
         request: StorageRequestSettings {
-            max_file_productions: std::num::NonZeroUsize::new(256).unwrap(),
-            max_mutation_receipts: std::num::NonZeroUsize::new(1024).unwrap(),
+            max_file_productions: NonZeroUsize::new(256).unwrap(),
+            max_mutation_receipts: NonZeroUsize::new(1024).unwrap(),
             max_pending_queries: NonZeroUsize::new(4).unwrap(),
             max_active_queries: NonZeroUsize::new(2).unwrap(),
             max_pending_write_batches: NonZeroUsize::new(4).unwrap(),
@@ -93,7 +112,9 @@ async fn saved_preview_survives_atomic_replacement() {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
     };
+    let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
+        setup.settings().clock(clock);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
@@ -106,11 +127,10 @@ async fn saved_preview_survives_atomic_replacement() {
     .unwrap();
     let storage = manager.unwrap();
 
-    // Retain a Saved Preview Through the Client-Face Contract.
+    // Retain a Saved Preview Through the Private Native Operations.
     let first = storage.write_object(&Preview { id: "board".into(), symbols: 2 }).await.unwrap();
     storage.flush().await.unwrap();
-    let retained =
-        runtime.operations.call_protobuf::<operations::CreateSnapshot>(v1::StorageCreateSnapshotRequest { at: None }).await.unwrap();
+    let retained = runtime.operations.call_native::<operations::CreateSnapshot>(CreateSnapshotRequest { at: None }).await.unwrap();
     let saved_cut = retained.resolved_at.unwrap();
     let saved = retained.snapshot.unwrap();
     assert_eq!(saved.at.as_ref().unwrap().sequence, first.position.sequence);
@@ -120,75 +140,283 @@ async fn saved_preview_survives_atomic_replacement() {
     )
     .unwrap();
     let encoded = catalog.encode(&Preview { id: "board".into(), symbols: 3 }, NonZeroUsize::new(4096).unwrap()).unwrap();
-    let source = wire::ColumnSource {
-        kind: wire::ColumnKind::Objects as i32,
-        schema: Some(encoded.schema.clone().into()),
+    let source = ColumnSource {
+        kind: ColumnKind::Objects,
+        schema: encoded.schema.clone(),
     };
     let mutation = storage.mutation_window().unwrap();
     let current = runtime
         .operations
-        .call_protobuf::<operations::GetObject>(v1::StorageGetObjectRequest {
-            schema: Some(encoded.schema.clone().into()),
+        .call_native::<operations::GetObject>(GetObjectRequest {
+            schema: Some(encoded.schema.clone()),
             item: "board".into(),
             at: None,
         })
         .await
         .unwrap();
-    let request = v1::StorageSetObjectRequest {
-        mutation: Some(wire::MutationId {
-            window: mutation.id.to_string(),
-            key: "preview-update".into(),
+    let request = SetObjectRequest {
+        mutation: Some(MutationId {
+            window: mutation.id,
+            key: Identifier::new("preview-update").unwrap(),
         }),
         expected_revision: current.revision,
         create_if_absent: false,
-        schema: Some(wire::SchemaInput {
-            key: Some(encoded.schema.clone().into()),
-            graph: Some(schema.into()),
+        schema: Some(SchemaInput {
+            key: Some(encoded.schema.clone()),
+            graph: Some(schema),
         }),
-        value: Some(encoded.into()),
+        value: Some(encoded),
     };
 
     // Replace the Live Preview and Refuse a Stale Writer.
     assert!(matches!(
-        runtime.operations.call_protobuf::<operations::SetObject>(request.clone()).await.unwrap().outcome,
-        Some(v1::storage_set_object_response::Outcome::Applied(_))
+        runtime.operations.call_native::<operations::SetObject>(request.clone()).await.unwrap().outcome,
+        Some(Outcome::Applied(_))
     ));
     let mut stale = request;
-    stale.mutation.as_mut().unwrap().key = "stale-update".into();
-    assert!(matches!(
-        runtime.operations.call_protobuf::<operations::SetObject>(stale).await.unwrap().outcome,
-        Some(v1::storage_set_object_response::Outcome::Conflict(_))
-    ));
+    stale.mutation.as_mut().unwrap().key = Identifier::new("stale-update").unwrap();
+    assert!(matches!(runtime.operations.call_native::<operations::SetObject>(stale).await.unwrap().outcome, Some(Outcome::Conflict(_))));
 
     // Read the Saved Value and Release Its Cut.
-    let limits = wire::ReadLimits { rows: 8, bytes: 65536 };
+    let limits = ReadLimits {
+        rows: NonZeroUsize::new(8).unwrap(),
+        bytes: NonZeroUsize::new(65536).unwrap(),
+    };
     let page = runtime
         .operations
-        .call_protobuf::<operations::ListColumnRows>(v1::StorageListColumnRowsRequest {
+        .call_native::<operations::ListColumnRows>(ListColumnRowsRequest {
             at: Some(saved_cut),
-            page: Some(v1::PageRequest {
+            page: Some(PageRequest {
                 page_size: 8,
                 max_bytes: 65536,
                 page_token: String::new(),
             }),
-            selection: Some(wire::ColumnSelection {
+            selection: Some(ColumnSelection {
                 source: Some(source),
                 columns: vec!["payload.symbols".into()],
                 work: Some(limits),
-                ..Default::default()
+                predicate: None,
+                time: None,
+                start: 0,
             }),
         })
         .await
         .unwrap()
         .page
         .unwrap();
-    let batch = harmos_storage::query::protobuf::decode_batch(page.ipc, limits.try_into().unwrap()).unwrap();
-    let value = batch.as_record_batch().column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+    let value = page.batch.column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
     assert_eq!(value.values().as_ref(), &[2]);
-    runtime
+    runtime.operations.call_native::<operations::DeleteSnapshot>(DeleteSnapshotRequest { snapshot: Some(saved) }).await.unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn application_upload_fences_writers_and_publishes_readable_content() {
+    // Compose the Query Backend Beside the Document Adapter.
+    let directory = tempfile::tempdir().unwrap();
+    let catalog = ObjectCatalog::new();
+    let history = StoreHistory {
+        store: Identifier::new("schematic-example").unwrap(),
+        epoch: Identifier::new("first").unwrap(),
+    };
+    let settings = StorageSettings {
+        transfer: Default::default(),
+        policy: Default::default(),
+        request: StorageRequestSettings {
+            max_file_productions: NonZeroUsize::new(256).unwrap(),
+            max_mutation_receipts: NonZeroUsize::new(1024).unwrap(),
+            max_pending_queries: NonZeroUsize::new(4).unwrap(),
+            max_active_queries: NonZeroUsize::new(2).unwrap(),
+            max_pending_write_batches: NonZeroUsize::new(4).unwrap(),
+            max_active_file_operations: NonZeroUsize::new(2).unwrap(),
+            max_pending_write_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+        },
+        response: StorageResponseSettings {
+            batch_rows: NonZeroUsize::new(64).unwrap(),
+            batch_bytes: NonZeroUsize::new(65536).unwrap(),
+        },
+        filesystem: StorageFilesystemSettings {
+            poll_interval: Duration::from_secs(1),
+            max_entries: NonZeroUsize::new(64).unwrap(),
+            event_capacity: NonZeroUsize::new(64).unwrap(),
+        },
+    };
+    let recovery = harmos_runtime::storage::state::StorageStateSettings {
+        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
+        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
+    };
+    let mut manager = None;
+    let document = Document::new(directory.path().join("document.json"));
+    let launch = LaunchConfig {
+        document: document.clone(),
+        settings: Settings::new(directory.path().join("recordings")),
+    };
+    let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
+        setup.settings().clock(clock);
+        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+            preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
+            ..Default::default()
+        });
+        manager = Some(
+            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
+        );
+    })
+    .await
+    .unwrap();
+    let _storage = manager.unwrap();
+
+    // Read the Storage-Owned Replay Window Through the Application Resource.
+    let info = runtime.operations.call_protobuf::<UploadsGet>(UploadsGetRequest { upload: None }).await.unwrap();
+    let window = info.mutations.unwrap().id;
+    let payload = b"schematic file";
+    let sha256 = Sha256::digest(payload).to_vec();
+
+    // Create an Upload and Append Its First Accepted Prefix.
+    let created = runtime
         .operations
-        .call_protobuf::<operations::DeleteSnapshot>(v1::StorageDeleteSnapshotRequest { snapshot: Some(saved) })
+        .call_protobuf::<UploadsCreate>(UploadsCreateRequest {
+            metadata: Some(FileMetadata {
+                id: "schematic-file".into(),
+                scope: None,
+                media_type: "application/octet-stream".into(),
+                expected_length: Some(payload.len() as u64),
+                expected_sha256: Some(sha256.clone()),
+            }),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "create-file".into(),
+            }),
+        })
         .await
         .unwrap();
+    let original = created.upload.unwrap();
+    let appended = runtime
+        .operations
+        .call_protobuf::<UploadsAppend>(UploadsAppendRequest {
+            upload: Some(original.clone()),
+            offset: 0,
+            bytes: payload.to_vec(),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "append-file".into(),
+            }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(appended.accepted_length, payload.len() as u64);
+
+    // Read Current Progress and Fence the Original Writer.
+    let current = runtime.operations.call_protobuf::<UploadsGet>(UploadsGetRequest { upload: Some(original.clone()) }).await.unwrap();
+    let mut writer = current.upload.unwrap();
+    assert_eq!(writer.accepted_length, payload.len() as u64);
+    let resumed = runtime
+        .operations
+        .call_protobuf::<UploadsResume>(UploadsResumeRequest {
+            upload: Some(writer.clone()),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "resume-file".into(),
+            }),
+        })
+        .await
+        .unwrap();
+    assert_ne!(resumed.writer_generation, writer.writer_generation);
+    writer.writer_generation = resumed.writer_generation;
+    let stale = runtime
+        .operations
+        .call_protobuf::<UploadsAppend>(UploadsAppendRequest {
+            upload: Some(original),
+            offset: payload.len() as u64,
+            bytes: b"stale".to_vec(),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "stale-append".into(),
+            }),
+        })
+        .await;
+    assert!(stale.is_err());
+
+    // Publish Immutable Content and Keep Its Durable Receipt.
+    let published = runtime
+        .operations
+        .call_protobuf::<UploadsPublish>(UploadsPublishRequest {
+            upload: Some(writer),
+            length: payload.len() as u64,
+            sha256: sha256.clone(),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "publish-file".into(),
+            }),
+        })
+        .await
+        .unwrap();
+    assert!(published.receipt.unwrap().durable_at.is_some());
+    let file = published.file.unwrap();
+
+    // Read Bounded Ranges and Hash the Published File Through Application Calls.
+    let prefix = runtime
+        .operations
+        .call_protobuf::<FilesRead>(FilesReadRequest {
+            file: Some(file.clone()),
+            offset: 0,
+            max_bytes: 4,
+            at: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(prefix.bytes, &payload[..4]);
+    assert!(!prefix.complete);
+    let suffix = runtime
+        .operations
+        .call_protobuf::<FilesRead>(FilesReadRequest {
+            file: Some(file.clone()),
+            offset: 4,
+            max_bytes: payload.len() as u64,
+            at: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(suffix.bytes, &payload[4..]);
+    assert!(suffix.complete);
+    let hashed = runtime
+        .operations
+        .call_protobuf::<FilesHash>(FilesHashRequest {
+            source: Some(Source::File(file)),
+            offset: 0,
+            length: None,
+            at: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(hashed.read_bytes, payload.len() as u64);
+    assert_eq!(hashed.sha256, sha256);
+
+    // Abandon an Unfinished Upload Without Publishing a File.
+    let unfinished = runtime
+        .operations
+        .call_protobuf::<UploadsCreate>(UploadsCreateRequest {
+            metadata: Some(FileMetadata {
+                id: "unfinished-file".into(),
+                ..Default::default()
+            }),
+            mutation: Some(UploadMutation {
+                window: window.clone(),
+                key: "create-unfinished".into(),
+            }),
+        })
+        .await
+        .unwrap()
+        .upload
+        .unwrap();
+    let deleted = runtime
+        .operations
+        .call_protobuf::<UploadsDelete>(UploadsDeleteRequest {
+            upload: Some(unfinished),
+            mutation: Some(UploadMutation { window, key: "abandon-file".into() }),
+        })
+        .await
+        .unwrap();
+    assert_eq!(deleted.state, UploadState::Abandoned as i32);
     runtime.shutdown().await.unwrap();
 }

@@ -48,10 +48,12 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
     let mut config = Config::new();
     config.protoc_executable(compiler);
     config.out_dir(output);
-    config.extern_path(".harmos.storage.v1", "::harmos_protocol::storage");
-    config.extern_path(".harmos.context.v1", "::harmos_protocol::context");
+    config.extern_path(".harmos.v1", "::harmos_protocol::v1");
     config.file_descriptor_set_path(output.join("schematic.descriptors.bin"));
-    config.compile_protos(&[proto.join("schematic/v1/operations.proto")], &[proto, core, includes.into()])?;
+    config.compile_protos(
+        &[proto.join("schematic/v1/operations.proto"), proto.join("schematic/v1/files.proto"), proto.join("schematic/v1/uploads.proto")],
+        &[proto, core, includes.into()],
+    )?;
     let mut descriptors: FileDescriptorSet = Message::decode(fs::read(output.join("schematic.descriptors.bin"))?.as_slice())?;
     for file in &mut descriptors.file {
         file.source_code_info = None;
