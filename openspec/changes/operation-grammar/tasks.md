@@ -360,4 +360,4 @@ No push or specification lifecycle command is authorized.
 - [x] I.2 Refresh lockfiles, repair generators and regenerate all four SDKs and fixtures without obsolete packages.
 - [x] I.3 Repair C++ linking/installed consumers, rebuild the componentizer and integrate conformance and Schematic consumers.
 - [x] I.4 Update architecture mappings, consumer work lists and README client guidance for the landed tree.
-- [ ] I.5 On the committed head run the requested checks, stories, four SDK builds/tests, conformance, Schematic and packaging; repeat generation without drift.
+- [x] I.5 On the committed head run the requested checks, stories, four SDK builds/tests, conformance, Schematic and packaging; repeat generation without drift.
