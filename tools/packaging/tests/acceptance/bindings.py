@@ -396,7 +396,7 @@ def _reserved(package: types.ModuleType, operation: Any) -> None:
 
 
 def _graph(pool: descriptor_pool.DescriptorPool, schema: dict[str, Any]) -> None:
-    namespace = "test.v1.ShapesMessages.Checkpoint"
+    namespace = "test.host.v1.ShapesMessages.Checkpoint"
 
     def row(index: int) -> Descriptor:
         root = schema["root"]
