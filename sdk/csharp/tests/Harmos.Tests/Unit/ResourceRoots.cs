@@ -22,9 +22,9 @@ public sealed class ResourceRoots
     var invoker = new Invoker();
     var client = new FixtureClient(invoker);
     var status = await client.Status.Get();
-    Assert.Equal("harmos.client.v1.Status/Get:selection", status.Status.Identity.ApplicationName);
+    Assert.Equal("harmos.host.v1.Status/Get:selection", status.Status.Identity.ApplicationName);
     var diagnostics = await client.Status.Diagnostics.Get("selection", 0, 512);
-    Assert.Equal("harmos.client.v1.status.Diagnostics/Get:selection", diagnostics.Name);
+    Assert.Equal("harmos.host.v1.status.Diagnostics/Get:selection", diagnostics.Name);
     var started = await client.Jobs.Start("selection");
     Assert.Equal("application.v1.Jobs/Start:selection", started);
     var progress = new List<string>();

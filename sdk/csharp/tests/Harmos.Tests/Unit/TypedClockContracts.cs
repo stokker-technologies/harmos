@@ -6,6 +6,7 @@ using System;
 using Google.Protobuf.Reflection;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Xunit;
@@ -39,7 +40,7 @@ public sealed class TypedClockContracts
   {
     var plugin = new SdkPlugin("clock_client", "1.0.0").Requires(HostOperation.TimeSleep).Requires(HostOperation.TimeGet);
     var declarations = plugin.Declarations();
-    var clock = Assert.Single(declarations.Types_.File, file => file.Name == "harmos/plugin/host/v1/time.proto");
+    var clock = Assert.Single(declarations.Types_.File, file => file.Name == "harmos/host/v1/time.proto");
     Assert.Equal(["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"], clock.MessageType.Select(message => message.Name));
     Assert.Equal(["google/protobuf/duration.proto", "google/protobuf/timestamp.proto"], clock.Dependency);
     Assert.Empty(clock.Service);
@@ -58,7 +59,7 @@ public sealed class TypedClockContracts
       {
         duration, new FileDescriptorProto
         {
-          Name = "harmos/plugin/host/v1/time.proto", Package = "harmos.plugin.host.v1", Syntax = "proto3", Dependency = { duration.Name },
+          Name = "harmos/host/v1/time.proto", Package = "harmos.host.v1", Syntax = "proto3", Dependency = { duration.Name },
           MessageType =
           {
             new DescriptorProto
@@ -80,11 +81,11 @@ public sealed class TypedClockContracts
     {
       File = { new FileDescriptorProto
       {
-        Name = "harmos/plugin/host/v1/time.proto", Package = "harmos.plugin.host.v1", Syntax = "proto3",
+        Name = "harmos/host/v1/time.proto", Package = "harmos.host.v1", Syntax = "proto3",
         MessageType = { new DescriptorProto { Name = "TimeSleepResponse" } }
       } }
     };
-    var bytes = System.Text.Encoding.UTF8.GetBytes("harmos.plugin.host.v1.Time/Sleep\0")
+    var bytes = System.Text.Encoding.UTF8.GetBytes("harmos.host.v1.Time/Sleep\0")
       .Concat(request.ToByteArray()).Concat(response.ToByteArray()).ToArray();
     var fingerprint = ByteString.CopyFrom(System.Security.Cryptography.SHA256.HashData(bytes));
     Assert.Equal(fingerprint, declarations.Requires[0].Fingerprint);

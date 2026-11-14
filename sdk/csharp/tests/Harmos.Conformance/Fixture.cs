@@ -9,6 +9,7 @@ using System.Threading;
 using System;
 using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Graph = Harmos.Conformance.Graph;
@@ -63,7 +64,7 @@ public sealed class Fixture
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
       .Requires(HostOperation.TimeSleep)
       .Requires(HostOperation.TimeGet)
-      .Requires(HostOperation.SettingsList)
+      .Requires(HostOperation.PluginsSettingsList)
       .Requires(HostOperation.OperationsList)
       .Requires(HostOperation.OperationsGet)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
@@ -83,7 +84,7 @@ public sealed class Fixture
 
   private static async Task<Value> ReadSettings(SdkContext context, Value request)
   {
-    var settings = await context.Host.Settings.List();
+    var settings = await context.Host.Plugins.Settings.List();
     return new Value { Value_ = settings.Value.ToByteString() };
   }
 
@@ -99,7 +100,7 @@ public sealed class Fixture
   {
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
-    var settings = await context.Host.Settings.List();
+    var settings = await context.Host.Plugins.Settings.List();
     using var value = new MemoryStream();
     foreach (var reply in new IMessage[] { echo, clock, settings })
     {

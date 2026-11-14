@@ -10,6 +10,7 @@ using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
 using Grpc.Core;
 using Harmos.Internal.Plugin;
+using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Microsoft.Extensions.Hosting;
@@ -77,7 +78,7 @@ public sealed class SamplesCalls
     var service = Service(async context =>
     {
       var now = await context.Host.Time.Get();
-      var settings = await context.Host.Settings.List();
+      var settings = await context.Host.Plugins.Settings.List();
       var result = settings.Value.Values["prefix"].Text + now.Seconds;
       await foreach (var item in context.WatchAsync(Watch, new StringValue(), 4096))
       {
@@ -93,7 +94,7 @@ public sealed class SamplesCalls
     Assert.Equal(HostContracts.TimeGet.Contract.Id, clock.Operation);
     await call.Reply(clock.Call, new TimeGetResponse { Now = new Timestamp { Seconds = 7 } });
     var settings = (await call.Read()).Child;
-    Assert.Equal(HostContracts.SettingsList.Contract.Id, settings.Operation);
+    Assert.Equal(HostContracts.PluginsSettingsList.Contract.Id, settings.Operation);
     await call.Reply(settings.Call, new SettingsListResponse { Value = new SettingValues { Values = { ["prefix"] = new SettingValue { Text = "tick" } } } });
     var watch = (await call.Read()).Child;
     Assert.True(watch.Watch);
@@ -186,7 +187,7 @@ public sealed class SamplesCalls
 
   private static PluginService Service(Func<SdkContext, Task<StringValue>> observer, bool device = false)
   {
-    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.SettingsList);
+    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.PluginsSettingsList);
     var publication = device
         ? new Publication(null, async (context, rows) => { await context.CancelledAsync(); })
         : new Publication(async context => (await observer(context)).ToByteString(), null);
