@@ -89,7 +89,7 @@ pub struct Watching<O> {
 }
 
 /// Overrides for One Call; Absent Deadlines Leave Policy With the Operation.
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CallOptions {
     pub metadata: MetadataMap,
     pub timeout: Option<Duration>,

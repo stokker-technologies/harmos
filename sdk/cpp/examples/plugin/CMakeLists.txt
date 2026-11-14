@@ -6,4 +6,5 @@ endif()
 
 add_executable(harmos-cpp-plugin main.cpp)
 target_link_libraries(harmos-cpp-plugin PRIVATE Harmos::Cpp)
+target_compile_options(harmos-cpp-plugin PRIVATE ${HARMOS_CXX_WARNINGS})
 set_target_properties(harmos-cpp-plugin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

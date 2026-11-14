@@ -120,8 +120,9 @@ impl EncodedInvocation {
     }
 
     #[tracing::instrument(target = "harmos::operations", name = "operations.settle", level = "debug", skip_all)]
-    pub async fn settle(&self) -> Result<()> {
-        self.control.settle().await.map_err(|source| Error::OperationSettlement { source })
+    pub fn settle(&self) -> impl Future<Output = Result<()>> + Send + 'static + use<> {
+        let control = Arc::clone(&self.control);
+        async move { control.settle().await.map_err(|source| Error::OperationSettlement { source }) }
     }
 }
 

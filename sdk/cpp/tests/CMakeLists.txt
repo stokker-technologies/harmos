@@ -4,7 +4,11 @@ include(Catch)
 add_library(harmos_client_fixture STATIC)
 harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/client/proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" SYNC_SERVER
-    application/host/v1/jobs.proto application/host/v1/jobs/progress.proto application/host/v1/plugins/annotations.proto
+    application/host/v1/jobs.proto application/host/v1/plugins/annotations.proto
+    IMPORT_DIRS "${PROJECT_SOURCE_DIR}/../../proto")
+# Callback-Only Progress Services Must Not Generate Disabled Synchronous Overrides.
+harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures/client/proto"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" application/host/v1/jobs/progress.proto
     IMPORT_DIRS "${PROJECT_SOURCE_DIR}/../../proto")
 target_link_libraries(harmos_client_fixture PUBLIC Harmos::Cpp)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -39,4 +43,5 @@ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.cpp" P
 target_include_directories(harmos-cpp-tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_include_directories(harmos-cpp-tests PRIVATE "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/examples/conformance")
 target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol Catch2::Catch2)
+target_compile_options(harmos-cpp-tests PRIVATE ${HARMOS_CXX_WARNINGS})
 catch_discover_tests(harmos-cpp-tests PROPERTIES TIMEOUT 30)

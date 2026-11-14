@@ -8,6 +8,24 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(cmake/Protocol.cmake)
 
+# Keep Authored SDK, Example and Test Diagnostics Identical.
+if(MSVC)
+    set(HARMOS_CXX_WARNINGS /W4 /WX /EHsc /Zc:preprocessor /permissive-)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        list(APPEND HARMOS_CXX_WARNINGS /clang:-Wshadow-all)
+    endif()
+else()
+    set(HARMOS_CXX_WARNINGS -Wall -Wextra -Wshadow -Werror)
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag(-Wchanges-meaning HARMOS_HAS_CHANGES_MEANING)
+    if(HARMOS_HAS_CHANGES_MEANING)
+        list(APPEND HARMOS_CXX_WARNINGS -Wchanges-meaning)
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        list(APPEND HARMOS_CXX_WARNINGS -Wshadow-all)
+    endif()
+endif()
+
 add_library(harmos_cpp_protocol STATIC)
 harmos_protocol(harmos_cpp_protocol "${CMAKE_CURRENT_SOURCE_DIR}/../../proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" ${HARMOS_PROTOCOLS})
@@ -21,11 +39,7 @@ target_include_directories(harmos_cpp PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(harmos_cpp PUBLIC harmos_cpp_protocol PRIVATE OpenSSL::Crypto)
-if(MSVC)
-    target_compile_options(harmos_cpp PRIVATE /W4 /WX /EHsc /Zc:preprocessor)
-else()
-    target_compile_options(harmos_cpp PRIVATE -Wall -Wextra -Werror)
-endif()
+target_compile_options(harmos_cpp PRIVATE ${HARMOS_CXX_WARNINGS})
 
 install(TARGETS harmos_cpp harmos_cpp_protocol EXPORT HarmosTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})

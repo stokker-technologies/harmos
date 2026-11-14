@@ -310,13 +310,13 @@ void Plugin::serve(string address) const {
   service.cleanup = cleanup_;
   for (const auto &[requirement, types] : requirements_)
     service.requirements[requirement.id()] = requirement.fingerprint();
-  mutex mutex;
+  mutex stop_mutex;
   condition_variable changed;
   bool stopped = false;
   service.stop = [&] {
     if (remote)
       return;
-    lock_guard lock(mutex);
+    lock_guard lock(stop_mutex);
     stopped = true;
     changed.notify_all();
   };
@@ -336,7 +336,7 @@ void Plugin::serve(string address) const {
     return;
   }
   {
-    unique_lock lock(mutex);
+    unique_lock lock(stop_mutex);
     changed.wait(lock, [&] {
       return stopped;
     });

@@ -17,6 +17,7 @@
 
 // Standard Library Imports
 use std::{
+    future::Future,
     num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
@@ -24,7 +25,9 @@ use std::{
 
 // Third Party Imports
 use futures_core::Stream;
+use prost_reflect::MessageDescriptor;
 use tokio::sync::oneshot;
+use tonic::codegen::http::uri::PathAndQuery;
 use tonic::{Request, Response, Status};
 
 // Local Imports
@@ -32,8 +35,10 @@ use super::{
     client::{JobsProgressWatchOptions, Root},
     host as app_host,
 };
-use harmos::client::CallOptions;
+use harmos::client::{CallOptions, ClientTransport, Input, Method, NoItems, Running, Watching as ClientWatching};
+use harmos::plugin::{Context as PluginContext, Watching as PluginWatching};
 use harmos::{Client, ClientSettings};
+use harmos_protocol::host::InvocationsWatchRequest;
 
 /* === Constants === */
 
@@ -116,12 +121,15 @@ async fn one_call_preserves_metadata_deadline_override_and_cancellation() {
     // Bind Metadata and a Per-Call Deadline to the Generated Root Request.
     let mut metadata = tonic::metadata::MetadataMap::new();
     metadata.insert("authorization", "Bearer fixture".parse().unwrap());
-    let options = JobsProgressWatchOptions {
-        context: CallOptions {
-            metadata,
-            timeout: Some(std::time::Duration::from_secs(17)),
-        },
+    let context = CallOptions {
+        metadata,
+        timeout: Some(std::time::Duration::from_secs(17)),
     };
+    let copied = context.clone();
+    assert_eq!(copied.metadata.get("authorization"), context.metadata.get("authorization"));
+    assert_eq!(copied.timeout, context.timeout);
+    let _diagnostic = format!("{copied:?}");
+    let options = JobsProgressWatchOptions { context: copied };
     let mut watching = client.jobs.progress.watch_with("selection", options).await.unwrap();
     assert_eq!(watching.next().await.unwrap().unwrap(), "selection");
     // Dropping This Call Cancels Its Transport and Releases the Server Stream.
@@ -129,4 +137,48 @@ async fn one_call_preserves_metadata_deadline_override_and_cancellation() {
     cancelled.await.unwrap();
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
+}
+
+#[test]
+fn public_client_futures_are_send() {
+    fn assert_send(_: impl Future + Send) {}
+
+    // Type-Check Futures Without Connecting or Polling Them.
+    let _ = |client: Client, unary: Method<(), ()>, managed: Method<(), (), (), ()>, watch: Method<(), (), NoItems, ()>| {
+        assert_send(client.call(&unary, ()));
+        assert_send(client.call_with(&unary, (), CallOptions::default()));
+        assert_send(client.start(&managed, ()));
+        assert_send(client.start_with(&managed, (), CallOptions::default()));
+        assert_send(client.watch(&watch, ()));
+        assert_send(client.watch_with(&watch, (), CallOptions::default()));
+    };
+    let _ = |mut call: Running<(), (), ()>| {
+        assert_send(call.send(()));
+        assert_send(call.finish_input());
+        assert_send(call.next());
+        assert_send(call.request_cancel());
+        assert_send(call.join());
+    };
+    let _ = |call: Running<(), (), ()>| assert_send(call.cancel());
+    let _ = |mut input: Input<()>| {
+        assert_send(input.send(()));
+        assert_send(input.finish());
+    };
+    let _ = |mut watch: ClientWatching<()>| assert_send(watch.next());
+    let _ = |transport: ClientTransport, response: MessageDescriptor| {
+        assert_send(transport.unary::<(), ()>(PathAndQuery::from_static("/fixture/Call"), Request::new(()), response.clone()));
+        assert_send(transport.watch_known::<(), ()>(PathAndQuery::from_static("/fixture/Watch"), Request::new(()), response));
+    };
+    let _ = |root: Root| {
+        assert_send(root.status.get());
+        assert_send(root.jobs.start("selection"));
+    };
+    let _ = |context: PluginContext| {
+        assert_send(context.cancelled());
+        assert_send(context.watch(InvocationsWatchRequest::default(), NonZeroUsize::MIN));
+    };
+    let _ = |mut watch: PluginWatching<()>| assert_send(watch.next());
+    let maximum = harmos_protocol::transfer::default_message_bytes();
+    let settings = ClientSettings::for_storage(Default::default(), maximum.checked_mul(NonZeroUsize::new(6).unwrap()).unwrap()).unwrap();
+    assert_send(Client::connect("127.0.0.1:1", settings));
 }

@@ -11,6 +11,7 @@
 
 // Standard Library Imports
 use std::{
+    future::Future,
     num::NonZeroUsize,
     sync::{
         Arc, OnceLock,
@@ -26,9 +27,11 @@ use tonic::codegen::http::uri::PathAndQuery;
 // Local Imports
 use super::app::App;
 use harmos_operations::execution::operations::{
-    ExecutionContext, Grpc, ProtobufDependency, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
+    ExecutionContext, Grpc, ProtobufDependency, ProtobufInput, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
 };
-use harmos_runtime::operations::{OperationPolicy, Registration, RetryPolicy};
+use harmos_runtime::operations::{
+    EncodedInvocation, OperationPolicy, ProtobufDownload, ProtobufExchange, ProtobufUpload, Registration, RetryPolicy,
+};
 use harmos_runtime::storage::{ObjectCatalog, StorageManager};
 
 /* === Constants === */
@@ -50,6 +53,8 @@ use messages::{Reply, Request};
 pub(super) struct Echo;
 struct Forward;
 pub(super) struct Watch;
+struct Upload;
+struct Exchange;
 struct Access(AtomicBool);
 
 /* === Implementations === */
@@ -107,6 +112,28 @@ impl ProtobufOperation for Watch {
     }
 }
 
+impl ProtobufOperation for Upload {
+    type Request = Request;
+    type Response = Reply;
+    type Endpoints = ProtobufInput<Reply>;
+    const ID: &'static str = "generated.upload";
+    const POLICY: OperationPolicy = POLICY;
+    async fn run(_: ExecutionContext, request: Request, _: &Self::Endpoints) -> Result<Reply, ServingError> {
+        Ok(reply(request))
+    }
+}
+
+impl ProtobufOperation for Exchange {
+    type Request = Request;
+    type Response = Reply;
+    type Endpoints = (ProtobufInput<Reply>, ProtobufOutput<Reply>);
+    const ID: &'static str = "generated.exchange";
+    const POLICY: OperationPolicy = POLICY;
+    async fn run(_: ExecutionContext, request: Request, _: &Self::Endpoints) -> Result<Reply, ServingError> {
+        Ok(reply(request))
+    }
+}
+
 impl harmos_runtime::operations::authorization::Authorizer for Access {
     fn authorize(
         &self, _: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
@@ -139,6 +166,36 @@ fn request() -> Request {
 }
 
 /* === Tests === */
+
+#[test]
+fn public_protobuf_session_futures_are_send() {
+    fn assert_send(_: impl Future + Send) {}
+    fn assert_spawnable(_: impl Future + Send + 'static) {}
+
+    // Type-Check Every Session Direction Without Submitting Work.
+    let _ = |mut download: ProtobufDownload<Watch>| {
+        assert_send(download.next());
+        assert_send(download.join());
+    };
+    let _ = |download: ProtobufDownload<Watch>| assert_spawnable(download.cancel_and_settle());
+    let _ = |mut upload: ProtobufUpload<Upload>| {
+        assert_send(upload.send(reply(request())));
+        assert_send(upload.finish());
+    };
+    let _ = |upload: ProtobufUpload<Upload>| assert_send(upload.join());
+    let _ = |upload: ProtobufUpload<Upload>| assert_spawnable(upload.cancel_and_settle());
+    let _ = |mut exchange: ProtobufExchange<Exchange>| {
+        assert_send(exchange.send(reply(request())));
+        assert_send(exchange.next());
+        assert_send(exchange.join());
+    };
+    let _ = |exchange: ProtobufExchange<Exchange>| assert_spawnable(exchange.cancel_and_settle());
+    let _ = |invocation: EncodedInvocation| {
+        assert_spawnable(invocation.settle());
+        assert_send(invocation.cancel());
+    };
+    let _ = |invocation: EncodedInvocation| assert_send(invocation.join());
+}
 
 #[tokio::test]
 async fn generated_messages_are_registered_reflected_and_admitted() {
