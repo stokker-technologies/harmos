@@ -18,6 +18,7 @@ use harmos_protocol::client::{
     operations_client::OperationsClient,
 };
 use harmos_protocol::v1::{FileMetadata, PageRequest, UploadState};
+use harmos_query::columnar::ColumnKind;
 use harmos_runtime::Identifier;
 use harmos_runtime::builtins::storage as operations;
 use harmos_runtime::builtins::storage::{
@@ -29,11 +30,11 @@ use harmos_runtime::operations::NativeHost;
 use harmos_runtime::{
     Identified, Message,
     storage::{
-        ObjectCatalog, ObjectDefinition, ObjectRetention, StoreHistory, StoredObject,
+        ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject,
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
     },
 };
-use harmos_storage::{ReadLimits, query::columnar::ColumnKind};
+use harmos_storage::ReadLimits;
 use schematic_app::operations::transfer::{
     FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
 };
@@ -81,10 +82,6 @@ async fn saved_preview_survives_atomic_replacement() {
     // Compose the Query Backend Beside the Document Adapter.
     let directory = tempfile::tempdir().unwrap();
     let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Preview>());
-    let history = StoreHistory {
-        store: Identifier::new("schematic-example").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
-    };
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
@@ -107,12 +104,8 @@ async fn saved_preview_survives_atomic_replacement() {
             event_capacity: NonZeroUsize::new(64).unwrap(),
         },
     };
-    let recovery = harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
-        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
-    };
     let mut manager = None;
-    let document = Document::new(directory.path().join("document.json"));
+    let document = Document::new();
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
@@ -125,9 +118,7 @@ async fn saved_preview_survives_atomic_replacement() {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
-        manager = Some(
-            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
-        );
+        manager = Some(services::queries::attach(setup, catalog.clone(), settings).unwrap());
     })
     .await
     .unwrap();
@@ -221,10 +212,6 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     // Compose the Query Backend Beside the Document Adapter.
     let directory = tempfile::tempdir().unwrap();
     let catalog = ObjectCatalog::new();
-    let history = StoreHistory {
-        store: Identifier::new("schematic-example").unwrap(),
-        epoch: Identifier::new("first").unwrap(),
-    };
     let settings = StorageSettings {
         transfer: Default::default(),
         policy: Default::default(),
@@ -247,12 +234,8 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
             event_capacity: NonZeroUsize::new(64).unwrap(),
         },
     };
-    let recovery = harmos_runtime::storage::state::StorageStateSettings {
-        max_entry_bytes: NonZeroUsize::new(65536).unwrap(),
-        max_checkpoint_bytes: NonZeroUsize::new(65536).unwrap(),
-    };
     let mut manager = None;
-    let document = Document::new(directory.path().join("document.json"));
+    let document = Document::new();
     let launch = LaunchConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
@@ -265,9 +248,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
-        manager = Some(
-            services::queries::attach(setup, &directory.path().join("queries"), history, catalog.clone(), settings, recovery).unwrap(),
-        );
+        manager = Some(services::queries::attach(setup, catalog.clone(), settings).unwrap());
     })
     .await
     .unwrap();

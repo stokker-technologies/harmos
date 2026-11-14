@@ -19,6 +19,214 @@ Library-history references keep their saved-storage path; no application bytes o
 metadata enter library persistence. Diagnostics and bundle installation use the
 same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
 
+## Storage and Query Ownership
+
+**Locked direction, 2026-11-14:** the dependency order is
+`harmos-domain <- harmos-query <- harmos-storage <- harmos-operations <- harmos-runtime`.
+The domain contracts, query engine and storage layers are implemented in their
+named crates. `harmos-storage::memory::{Backend, RecoveryBackend}` provides the
+public process-lifetime implementation. `StorageBackends::in_memory` composes it;
+`harmos_runtime::storage::StorageManager::in_memory(catalog, settings)` supplies
+the runtime clock. Consumers still supply their budgets.
+
+**Runtime composition, 2026-11-14:** storage remains always present. The plugin
+manager deliberately persists entries and settings and reads bundle content
+through storage. Before setup validation, a runtime without a registered manager
+selects independent in-memory primary and recovery adapters, including the plugin
+registry object catalog. Registering a manager with `setup.settings().storage(&storage)`
+selects that manager instead. Storage workers share startup ownership and shutdown
+with the runtime; a different manager cannot replace an already running owner.
+The owner closed the feature-isolation proposal on 2026-11-14: storage and the
+query engine remain unconditional, with no feature gate for either.
+
+### Inventory Before the Split
+
+This is the required pre-move inventory. Every path is relative to `crates/harmos-storage/src/`.
+The categories describe responsibility, not the current module visibility.
+
+| Responsibility | Current Modules |
+| --- | --- |
+| Interface | `backend.rs`, `batch.rs`, `config.rs`, `content.rs`, `definitions.rs`, `error.rs`, `file_batch.rs`, `file_checkpoint.rs`, `persistence_work.rs`, `read_batch.rs`, `receipts.rs`, `record_view.rs`, `schema_sets.rs`, `writes.rs` |
+| Recovery Interface | `state/mod.rs`, `state/config.rs`, `state/reader.rs`, `state/segments.rs`; the snapshot payload is immutable memory-backed data |
+| Manager Composition | `lib.rs`, `manager/**`, `local.rs`, `worker.rs` |
+| Manager Admission and Persistence | `admissions.rs`, `batching.rs`, `capacity.rs`, `deletion.rs`, `object_admissions.rs`, `objects.rs`, `queue.rs`, `state/admission.rs` |
+| Manager Files and Follows | `directory/**`, `file_capture.rs`, `file_follow.rs`, `file_hash.rs`, `file_production.rs`, `file_reads.rs`, `follow.rs`, `frozen_file.rs`, `opened_capture.rs`, `staging/**` |
+| Manager Encoding and Execution | `execution.rs`, `execution/**`, `schema_encoding.rs`, `selection.rs`, `snapshot.rs`, `writes/**` |
+| Manager Query Integration | `query/manager.rs`; snapshot retention, admission, schema resolution, source conversion and backend dispatch currently embedded in `query/{reader,typed,object_schemas,columnar,index,projection}.rs` |
+| Engine | `aggregate.rs`, `arrow.rs`, `arrow/**`, `statistics/**`, `query.rs`, `query/{accumulate,execute,order_stats,ordering,quantiles,reduction,source,spill,table,time_buckets}.rs`, their descendant modules and `query/transform/**`; engine parts of the six mixed modules above |
+| Backend | `memory/**`; primary data and recovery remain process-lifetime state |
+| Benchmark Fixtures | `bench_support/**`; migrate workloads to the in-memory adapter |
+
+The in-memory implementation previously lived in `tests/support/{storage,read_backend,
+file_backend,record_store}.rs`. Its data, recovery and deterministic control state now live in `src/memory/`;
+fixture settings remain under test support. The snapshot payload is immutable
+`Arc<[u8]>` with the existing segmented digest checks, without a temporary file.
+
+### Query Import Inventory
+
+The original 27 `use crate::storage...` declarations are listed below. Line numbers
+refer to the tree before the split. Self-imports are included so the count is
+reproducible; they are not all dependencies on manager state.
+
+| Query File | Lines and Imported Responsibility |
+| --- | --- |
+| `reader.rs` | 34 Arrow wrappers; 35 scan page; 36 scan policy; 37 manager `Inner`; 38 selection `Entry`; 39 retained `Snapshot`; 40 manager and stored values |
+| `typed.rs` | 29 scan page; 30 manager `Inner`; 31 selection `Entry`; 32 retained `Snapshot`; 33 manager and stored values |
+| `object_schemas.rs` | 18 project execution; 29 scan page; 30 scan policy; 31 manager `Inner`; 32 retained `Snapshot`; 33 object/schema values |
+| `source.rs` | 37 file/object/record/stream/schema values |
+| `transform/aggregate.rs` | 20 field execution; 30 accumulator |
+| `transform/filter.rs` | 28 field execution |
+| `transform/downsample.rs` | 30 field execution |
+| `transform/histogram.rs` | 20 field execution |
+| `transform/project.rs` | 18 field execution |
+| `transform/sort.rs` | 18 field execution; 27 scalar ordering |
+
+Other direct imports also need migration: `columnar.rs:38-39` imports schema,
+backend, snapshot, page and work-limit types; `index.rs:27` and `projection.rs:25`
+import backend/snapshot/work-limit contracts; `manager.rs:26` imports the manager.
+`reader.rs` and `typed.rs` additionally name execution context and response settings
+in fields. `accumulate.rs` and `order_stats.rs` import accumulator settings;
+`accumulate.rs` imports aggregate/statistics implementations. Shared domain values
+move to direct domain imports, engine self-imports become local imports, and the
+engine gets its own errors and work limits. None of those require a storage edge.
+
+### Manager and Backend Calls Into Query
+
+| Caller | Current Calls or State |
+| --- | --- |
+| `manager/arrow.rs` | `query::schema_at` resolves the admitted schema at a cut |
+| `snapshot.rs` | `columnar::list_column_rows`, `index::list_index_entries`, `projection::advance_projection` |
+| `query/manager.rs` | index/projection registration, definition/status lookup, publication reads and retention delegate to the primary backend |
+| `query/reader.rs` | `NormalizedObjects::resolve`, `source::{records,stream,projected,objects,files,schemas}`, project execution and `Plan::{new,page,finish,source_limit,is_inline,is_satisfied,output_schema}` |
+| `query/typed.rs` | schema lookup and typed decoding coupled to `Entry`, admission and retained snapshots |
+| `query/columnar.rs` | native capability dispatch, stored-row fallback, flattening, filtering, projection and page continuation validation |
+| `query/index.rs` | native capability dispatch, fallback columnar scans, index key encoding and bounded candidate sorting; `IndexCatalog` owns definition revisions |
+| `query/projection.rs` | native advancement dispatch, definition/status lookup, columnar scans, bucket accumulator and fingerprints, previous-output reads and atomic publication; `ProjectionCatalog` owns revisions and retained outputs |
+| `tests/support/storage.rs` | `IndexCatalog` and `ProjectionCatalog` registration/read/publication; promote these catalogs with the in-memory backend, not into the engine |
+
+The catalog and publication orchestration belongs in storage. Its public engine
+calls operate on batches, transforms, bucket accumulators and fingerprints.
+No engine API exposes `Sample` or storage catalog state.
+
+### Batch Source at a Cut
+
+The implemented seam is in `harmos-query/src/batches.rs`. `Source`,
+`StorageCursor`, filters and projections are domain contracts. `BatchScan`,
+`BatchPage`, `QueryFuture` and the two traits belong to `harmos-query`.
+
+```rust
+pub trait BatchSource: Send + Sync {
+    fn open<'a>(
+        &'a self, selection: &'a Source, at: &'a StorageCursor,
+        scan: &'a BatchScan,
+    ) -> QueryFuture<'a, Box<dyn BatchReader>>;
+}
+
+pub trait BatchReader: Send {
+    fn schema(&self) -> SchemaRef;
+    fn at(&self) -> &StorageCursor;
+    fn next(&mut self) -> QueryFuture<'_, BatchPage>;
+}
+```
+
+`BatchScan` carries bounded row/byte work limits, an optional payload projection
+and a pruning filter; selection carries the time bounds. Opening fixes the cut and output schema. Source
+implementations must honor selection and cut, may prune false rows, and must
+produce exactly the requested projected schema. Residual engine filters preserve
+correctness when pruning is declined. A page carries a batch and an explicit
+completion bit: an empty pruned page can make progress without completing.
+Dropping the reader releases its cut. The source owns seek positions and snapshot
+tokens; neither is interpreted by the engine.
+
+The storage implementation owns snapshot validation/retention, active query
+admission, object schema normalization, bounded backend calls and row-to-batch
+conversion. Manager readers own admission while a page is active; operation pagination releases
+it between pages. Standalone batch sources acquire admission while opening and
+reading each page, so a two-input engine reader also works with one active slot.
+Cancellation releases owned work.
+A backend with native batches can implement the same source, including projection
+and pruning, without exposing its persistence model. Engine readers own plans,
+transforms, reductions, ordering, spill and typed batch decoding. The manager calls
+their public constructors and transforms; the engine never imports manager,
+session, receipt, staging, executor or recovery types. This admits the crate split.
+
+### Implemented Crate Boundaries
+
+`harmos-domain` owns selections, cursors, `Query`, `TimeMerge`, shared read limits
+and payload schema contracts. `harmos-query` owns Arrow wrappers, the batch-source
+traits, execution plans, transforms, reductions, statistics, ordering, spill,
+typed readers, columnar execution helpers and index key encoding. It has no
+storage dependency. Storage owns admission, snapshots, source decoding and
+backend calls, index/projection catalogs and atomic publication. The disk backend and file recovery journal are removed. Arrow in storage is used
+for admitted-batch conversion and manager query integration.
+
+Products implement `StorageBackend` and `state::StateBackend`, register their
+object catalog and pass `StorageBackends { primary, state }` to runtime
+`StorageManager::with_catalog(catalog, backends, settings)`. Register that manager
+with `setup.settings().storage(&storage)`. The two backend owners have separate
+flush/session contracts; the library promises no cross-owner transaction. The
+in-memory adapters retain saved cuts, receipts, files and recovery only for the
+lifetime of their shared instances. Process restart durability is a product
+backend responsibility. See [Storage Interfaces](storage.md#backend-registration).
+
+### Unconditional Arrow Dependencies
+
+A normal `harmos-runtime` dependency tree, including `--no-default-features`, still
+contains these Arrow 60.1.0 crates. Disabling gRPC does not disable storage or query.
+
+| Crate | Code That Retains It |
+| --- | --- |
+| `arrow-array` | Query batches/transforms/merge; storage `manager/arrow.rs`, `writes/convert.rs`, `query/{batches,object_schemas,projection}.rs` |
+| `arrow-buffer` | Query `source/columns.rs` builds nullable/list arrays; transitive array/data/select buffers |
+| `arrow-data` | Query `arrow/retention.rs` accounts array allocations; storage `query/object_schemas.rs` rebuilds normalized arrays |
+| `arrow-schema` | Query schemas and validation; storage batch-source schemas and object normalization |
+| `arrow-ipc` | Query `arrow/ipc.rs` validates/decodes admitted IPC and `spill.rs` serializes spill tables; storage `writes/decoded.rs` calls that wrapper |
+| `arrow-select` | Query take/concat/merge execution; storage `query/object_schemas.rs` concatenates normalized batches |
+| `arrow-cmp` | Transitive dependency of `arrow-select`, not directly imported by this repository |
+
+There are no production Arrow imports in runtime or native operations themselves.
+Their unconditional `harmos-query` edges retain engine errors and query results;
+native storage operations also expose engine-owned columnar/index contracts.
+The plugin manager needs conditional objects and content, not query execution.
+
+### One Ordered Time Merge
+
+`Query.merge: Option<TimeMerge>` names one secondary stream at the query's exact
+cut. Both inputs must be nondecreasing by their named Int64 or nanosecond timestamp
+fields. The engine refuses descending input. Output nests complete rows under
+`left` and `right`; ordinary transforms then project, group or aggregate it.
+`TimeMerge.work` bounds retained rows and Arrow bytes; output follows the ordinary
+page limits. The same sweep operator implements all four uses:
+
+```rust,ignore
+let merge = |mode| TimeMerge {
+    source: samples.clone(),
+    primary_time: FieldPath::from("payload.time"),
+    secondary_time: FieldPath::from("payload.time"),
+    mode,
+    work,
+};
+// Record [start, end) windows, including overlapping windows.
+query.source = records.clone();
+query.merge = Some(merge(TimeMergeMode::Range { end: FieldPath::from("payload.end") }));
+// Latest stream value at or before each record; absent values are null.
+query.merge = Some(merge(TimeMergeMode::AtOrBefore));
+// Rows in [record time, next record time), then existing grouped aggregates.
+query.merge = Some(merge(TimeMergeMode::Intervals));
+query.transforms = vec![grouped_aggregate];
+// The same at-or-before operation with a stream as the primary input.
+query.source = another_stream;
+query.merge = Some(merge(TimeMergeMode::AtOrBefore));
+```
+
+At-or-before ties select the last secondary row at that time. Interval ties select
+the last primary record; rows before the first record are omitted and the final
+interval extends to the end of the stream. Range output follows secondary time
+then primary record order. This is an ordered temporal operation, not a general
+join. In-process `ListRowsRequest.merge` uses this domain shape without a wire
+change. Four adapter stories live in `tests/integration/time_merge.rs`; the query
+crate's `integration-time-merge` bench measures each use over 1,000,000 rows.
+
 ## How to Use This Document
 
 Python client resources are committed generated classes derived from protocol
@@ -340,7 +548,7 @@ and caller-face authorization remain independent checks.
     and atomic conditional object replacement; preserve backend durability guarantees.
     **Why:** one generic read/write label would erase consistency and conflict behavior.
     **Where:** `crates/harmos-storage/src/snapshot.rs`,
-    `crates/harmos-storage/src/backend.rs`, `crates/harmos-storage/src/sqlite/mod.rs`,
+    `crates/harmos-storage/src/backend.rs`, `crates/harmos-storage/src/memory/`,
     `docs/storage.md`; requirement: Distinct Storage Guarantees in
     `openspec/changes/operation-grammar/specs/storage-mutations/spec.md`.
     **Proof:** `saved_windows_match_fallback_while_live_writes_and_cancellation_advance`
@@ -351,8 +559,9 @@ and caller-face authorization remain independent checks.
     `crates/harmos-storage/tests/integration/projection_replay.rs`;
     `conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_restart`
     in `crates/harmos-storage/tests/integration/conditional_objects.rs`.
-    SQLite uses WAL with synchronous FULL; changing flush cadence is not permission
-    to weaken durability. New durable Watch semantics remain invariant 11's direction.
+    The memory adapter saves within its instance lifetime; a product backend owns
+    durable media. Changing flush cadence never weakens a registered backend's
+    guarantees. New durable Watch semantics remain invariant 11's direction.
     **Status:** landed.
 
 14. **Refuse Incompatible Roots.** Incompatible host state definitions or corrupt
@@ -389,7 +598,7 @@ and caller-face authorization remain independent checks.
     **Status:** landed for storage and invocation policy (task A.8).
 
 16. **Crate Dependency Direction.** Runtime composes operations, storage, domain and
-    protocol; operations depends on storage/domain/protocol, storage on domain/protocol,
+    protocol; operations depends on storage/query/domain/protocol, storage on query/domain/protocol,
     domain on protocol; the standalone Rust SDK depends on protocol/derive, never
     runtime, and lower crates and SDKs must not depend on runtime or a consuming product.
     **Why:** contracts and plugin/client authoring must work without host machinery;
@@ -724,8 +933,8 @@ New calls have no former identity:
 
 `harmos-operations/src/storage` owns one Private in-process declaration and native
 request/result pair per storage capability. Domain storage values remain in
-`harmos-domain/src/model/storage`; query, column, index, projection and storage
-backend values remain in `harmos-storage`. Native mutation, cursor and revision
+`harmos-domain/src/model/storage`; engine query, column and index values live in
+`harmos-query`, while manager projection and backend values live in `harmos-storage`. Native mutation, cursor and revision
 encodings preserve persisted data and original outcomes. Neither boundary exposes
 storage methods or an object registry. Product handlers call the native operation
 through `ExecutionContext::call_native` with their own policy and typed wire values.

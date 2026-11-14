@@ -2,7 +2,7 @@
 
 [package]
 name = "harmos-storage"
-description = "Harmos storage: durable journals, snapshots and Arrow-backed stream storage."
+description = "Storage backend contracts, admission, saved queries and an in-memory adapter."
 autotests = false
 edition.workspace = true
 rust-version.workspace = true
@@ -10,9 +10,6 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
-# The authoring attributes, on by default the way serde ships its derives. Every
-# trait beneath them is an ordinary public contract, so a crate that turns this
-# off writes the implementations by hand and links no proc-macro chain at all.
 version = { workspace = true }
 
 # === Package Targets === #
@@ -21,8 +18,7 @@ version = { workspace = true }
 
 [features]
 default = []
-testing = ["harmos-domain/derive"]
-sqlite = ["dep:rusqlite"]
+testing = ["harmos-domain/derive", "harmos-query/testing"]
 
 # === Dependencies === #
 
@@ -30,6 +26,7 @@ sqlite = ["dep:rusqlite"]
 # Local
 harmos-domain = { workspace = true }
 harmos-protocol = { workspace = true }
+harmos-query = { workspace = true }
 
 # Git
 
@@ -46,13 +43,10 @@ sha2 = { workspace = true, default-features = true }
 
 # Serialization
 arrow-array = { workspace = true }
-arrow-buffer = { workspace = true }
 arrow-data = { workspace = true }
-arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
 arrow-select = { workspace = true }
 base64 = { workspace = true }
-flatbuffers = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true, default-features = true }
 serde_json = { workspace = true, default-features = true }
@@ -76,7 +70,6 @@ tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 # Networking
 
 # Storage
-rusqlite = { workspace = true, optional = true }
 
 # UI
 
@@ -89,7 +82,7 @@ rusqlite = { workspace = true, optional = true }
 [dev-dependencies]
 # Local
 harmos-domain = { path = "../harmos-domain", default-features = false, features = ["derive"] }
-harmos-storage = { path = ".", features = ["testing", "sqlite"] }
+harmos-storage = { path = ".", features = ["testing"] }
 
 # Git
 

@@ -19,7 +19,9 @@ use sha2::{Digest, Sha256};
 use tokio::{sync::Mutex, task::JoinHandle};
 
 // Local Imports
-use super::manager::backend::{Data, Recovery, history};
+use super::manager::backend::Backend;
+use super::manager::backend::RecoveryBackend;
+use super::manager::backend::history;
 use harmos_domain::model::storage::files::{CaptureConsistency, FileEvent, FileSource, FollowStart};
 use harmos_storage::*;
 
@@ -45,7 +47,7 @@ impl WorkerOwner for Task {
 
 /* === Private Functions === */
 
-pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
+pub(super) async fn storage(primary: &Arc<Backend>) -> StorageManager {
     let pending = NonZeroUsize::new(1024 * 1024).unwrap();
     let batch = NonZeroUsize::new(4096).unwrap();
     let settings = StorageSettings {
@@ -74,7 +76,7 @@ pub(super) async fn storage(primary: &Arc<Data>) -> StorageManager {
 
     let backends = StorageBackends {
         primary: primary.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::new(backends, settings).unwrap();
     storage
@@ -121,7 +123,7 @@ async fn contents(storage: &StorageManager, source: FileSource, range: ByteRange
 
 #[tokio::test]
 async fn local_file_transfer() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("outside-backend.bin");
     let expected: Vec<_> = (0..20_000).map(|value| (value % 251) as u8).collect();
@@ -181,7 +183,7 @@ async fn local_file_transfer() {
 
 #[tokio::test]
 async fn capture_rejects_mutation() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     use std::future::{Future, poll_fn};
     use std::task::Poll;
     let directory = tempfile::tempdir().unwrap();
@@ -214,7 +216,7 @@ async fn capture_rejects_mutation() {
 
 #[tokio::test]
 async fn local_follow_changes() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     use std::io::Write;
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("growing.bin");
@@ -256,7 +258,7 @@ async fn local_follow_changes() {
 #[cfg(unix)]
 #[tokio::test]
 async fn native_path_rules() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     use std::os::unix::{ffi::OsStringExt, fs::symlink};
     let directory = tempfile::tempdir().unwrap();
     let name = std::ffi::OsString::from_vec(vec![b'n', 0xff]);
@@ -296,7 +298,7 @@ async fn native_path_rules() {
 
 #[tokio::test]
 async fn sessions_survive_reopen() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let expected: &[u8] = b"prefix and suffix";
     let prefix: &[u8] = b"prefix";
     let suffix: &[u8] = b" and suffix";
@@ -396,7 +398,7 @@ async fn sessions_survive_reopen() {
 
 #[tokio::test]
 async fn immutable_reader_survives_deletion_and_stops_after_snapshot_release() {
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let storage = storage(&data).await;
     let bytes = (0..20_000).map(|i| (i % 251) as u8).collect::<Vec<_>>();
     let mut producer = storage.create_file(metadata("leased-reader")).await.unwrap();

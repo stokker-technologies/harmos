@@ -10,19 +10,18 @@
 /* === Modules === */
 
 mod admission;
-pub mod config;
-pub mod file;
 mod reader;
 mod segments;
 
 /* === Re-Exports === */
 
 pub use admission::Permit;
-pub use config::StorageStateSettings;
 pub use reader::RecoveryReader;
 pub use segments::{Segment, SnapshotManifest, SnapshotPayload, SnapshotWriter};
 
 /* === Imports === */
+
+use std::num::NonZeroUsize;
 
 // Standard Library Imports
 
@@ -71,7 +70,8 @@ pub struct RecoveryPage {
 pub trait StateBackend: Send + Sync + 'static {
     fn get_history(&self) -> &StoreHistory;
     fn create_recovery_session(&self) -> StorageFuture<'_, RecoveryPosition>;
-    fn get_recovery_snapshot(&self, max_bytes: std::num::NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
+    /// Bounds Each Snapshot Segment; A Snapshot May Contain Multiple Segments.
+    fn get_recovery_snapshot(&self, max_bytes: NonZeroUsize) -> StorageFuture<'_, Option<RecoverySnapshot>>;
     fn set_recovery_snapshot(&self, snapshot: StorageBatch<RecoverySnapshot>) -> StorageFuture<'_, ()>;
     fn list_recovery_entries<'a>(
         &'a self, after: &'a RecoveryPosition, through: &'a RecoveryPosition, limits: ReadLimits,

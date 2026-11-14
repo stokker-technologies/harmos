@@ -34,13 +34,17 @@ use arrow_array::{BinaryArray, Float64Array, RecordBatch, UInt64Array};
 use serde::Serialize;
 
 // Local Imports
-use crate::query::{
-    columnar::{ArrowScan, Cancellation, ColumnPredicate, TimeBounds, list_column_rows},
-    index::{encode_key, list_index_entries},
-    projection::{ProjectionRead, advance_projection},
-    scalar::ScalarValue,
-};
+use crate::query::columnar::list_column_rows;
+use crate::query::index::list_index_entries;
+use crate::query::projection::ProjectionRead;
+use crate::query::projection::advance_projection;
+use crate::query::scalar::ScalarValue;
 use crate::*;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnPredicate;
+use harmos_query::columnar::TimeBounds;
+use harmos_query::index::encode_key;
 use workload::{CHUNK_ROWS, CONTENTION_ROUNDS, SAMPLES, WINDOW_ROWS, WRITERS, Workload, sample};
 
 /* === Constants === */
@@ -84,7 +88,9 @@ pub struct ScanResult {
 /* === Public Functions === */
 
 /// Run every case, including owner disposal and restart, with a backend-owned opener.
-pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> Box<dyn StorageBackend>) {
+pub fn run_with_reopen(
+    runtime: &tokio::runtime::Runtime, workload: &Workload, mut open: impl FnMut() -> std::sync::Arc<dyn StorageBackend>,
+) {
     let mut owner = Some(open());
     let completed = run(runtime, owner.as_deref().unwrap(), workload);
     measure("storage.stop.2m", 1, || drop(owner.take()));
@@ -93,7 +99,7 @@ pub fn run_with_reopen(runtime: &tokio::runtime::Runtime, workload: &Workload, m
 }
 
 /// A full, isolated run on an initially empty backend. Setup and result checks are untimed.
-/// The reference fixture uses WAL/FULL; consumers must disclose their durability mode.
+/// The reference adapter retains committed state for its in-process lifetime.
 pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, workload: &Workload) -> Completed {
     // Populate Identical Source Batches.
     assert_eq!(workload.rows, workload::ROWS, "published case names require the locked two-million-row workload");
@@ -229,7 +235,7 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
         page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(),
         expected[..WINDOW_ROWS].iter().map(|entry| entry.1).collect::<Vec<_>>()
     );
-    let next = crate::query::index::IndexRead { after: page.next, ..read.clone() };
+    let next = harmos_query::index::IndexRead { after: page.next, ..read.clone() };
     let page =
         measure("storage.index.next.2m", SAMPLES, || runtime.block_on(list_index_entries(backend, &snapshot, &next, &cancel)).unwrap());
     let before = runtime.block_on(backend.get_work()).unwrap();
@@ -239,14 +245,14 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
         page.entries.iter().map(|entry| entry.position).collect::<Vec<_>>(),
         expected[WINDOW_ROWS..2 * WINDOW_ROWS].iter().map(|entry| entry.1).collect::<Vec<_>>()
     );
-    let seek = crate::query::index::IndexSeek {
+    let seek = harmos_query::index::IndexSeek {
         snapshot: snapshot.token.clone(),
         plan: read.identity(&index).unwrap(),
         revision: 1,
         key: encode_key(&[ScalarValue::Float(expected[workload.rows / 2 - 1].0 as f64)]).unwrap(),
         position: expected[workload.rows / 2 - 1].1,
     };
-    let deep = crate::query::index::IndexRead { after: Some(seek), ..read };
+    let deep = harmos_query::index::IndexRead { after: Some(seek), ..read };
     let page =
         measure("storage.index.deep.2m", SAMPLES, || runtime.block_on(list_index_entries(backend, &snapshot, &deep, &cancel)).unwrap());
     let before = runtime.block_on(backend.get_work()).unwrap();

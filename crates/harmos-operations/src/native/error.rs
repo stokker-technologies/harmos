@@ -69,6 +69,12 @@ pub enum Error {
 
 /* === Implementations === */
 
+impl From<harmos_query::Error> for Error {
+    fn from(error: harmos_query::Error) -> Self {
+        Self::Storage(error.into())
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

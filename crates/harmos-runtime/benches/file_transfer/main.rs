@@ -58,8 +58,8 @@ use std::{num::NonZeroUsize, sync::Arc};
 async fn main() {
     for repetition in 1..=3 {
         // Compose an Isolated Host With the Reference Backend and Consumer Budgets.
-        let data = Arc::new(backend::Data::new(backend::history()));
-        let recovery = Arc::new(backend::Recovery::new(backend::history()));
+        let data = Arc::new(backend::Backend::new(backend::history()));
+        let recovery = Arc::new(backend::RecoveryBackend::new(backend::history()));
         let settings = backend::storage_settings();
         let chunk_bytes = settings.transfer_chunk_bytes();
         let storage = StorageManager::new(StorageBackends { primary: data, state: recovery }, settings).unwrap();

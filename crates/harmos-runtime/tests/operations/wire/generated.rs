@@ -29,6 +29,7 @@ use harmos_operations::execution::operations::{
     ExecutionContext, Grpc, ProtobufDependency, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
 };
 use harmos_runtime::operations::{OperationPolicy, Registration, RetryPolicy};
+use harmos_runtime::storage::{ObjectCatalog, StorageManager};
 
 /* === Constants === */
 
@@ -158,7 +159,11 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
     assert_eq!(std::fs::read(output.path().join("operations.bin")).unwrap(), include_bytes!("../../fixtures/protobuf/operations.bin"));
 
     // Register Generated Handlers and the Product Authorization Hook.
+    let mut storage_settings = crate::storage::fixture::config();
+    storage_settings.transfer.chunk_bytes = Some(1024);
+    let storage = StorageManager::in_memory(ObjectCatalog::new(), storage_settings).unwrap();
     let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+        setup.settings().storage(&storage);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(256 * 1024),
             ..Default::default()

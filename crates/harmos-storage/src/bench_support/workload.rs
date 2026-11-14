@@ -21,14 +21,16 @@ use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 // Third Party Imports
 
 // Local Imports
-use crate::query::{
-    columnar::{ArrowScan, ColumnKind, ColumnSource},
-    index::{IndexDefinition, IndexRead},
-    projection::{ProjectionDefinition, ProjectionTransform},
-    time_buckets::TimeBucketPlan,
-};
+use crate::query::projection::ProjectionDefinition;
+use crate::query::projection::ProjectionTransform;
 use crate::*;
 use harmos_domain::schema::Described;
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexRead;
+use harmos_query::time_buckets::TimeBucketPlan;
 
 /* === Constants === */
 
@@ -65,6 +67,17 @@ pub struct Workload {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl harmos_domain::Identified for Sample {
+    const ID: &'static str = "sample";
+}
+impl StoredObject for Sample {
+    type Key = u32;
+    const RETENTION: ObjectRetention = ObjectRetention::Latest;
+    fn key(&self) -> &u32 {
+        &self.plot
+    }
+}
 
 impl Workload {
     pub fn new(rows: usize) -> Self {
@@ -190,7 +203,7 @@ impl Workload {
                 position,
                 value: ObjectValue {
                     schema: self.source.schema.clone(),
-                    item: ObjectKey::new("counter", self.page().bytes).unwrap(),
+                    item: harmos_domain::model::storage::object_key(&0_u32, self.page().bytes).unwrap(),
                     payload: Sample { value: value as f64, ..sample(0) }.encode(),
                 },
             },

@@ -163,8 +163,8 @@ impl Snapshot {
     }
 
     pub async fn list_column_rows(
-        &self, read: &crate::query::columnar::ArrowScan, cancel: &crate::query::columnar::Cancellation,
-    ) -> Result<crate::query::columnar::ArrowPage> {
+        &self, read: &harmos_query::columnar::ArrowScan, cancel: &harmos_query::columnar::Cancellation,
+    ) -> Result<harmos_query::columnar::ArrowPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let future = crate::query::columnar::list_column_rows(self.inner.primary.as_ref(), &self.backend, read, cancel);
@@ -174,8 +174,8 @@ impl Snapshot {
     }
 
     pub async fn list_index_entries(
-        &self, read: &crate::query::index::IndexRead, cancel: &crate::query::columnar::Cancellation,
-    ) -> Result<crate::query::index::IndexPage> {
+        &self, read: &harmos_query::index::IndexRead, cancel: &harmos_query::columnar::Cancellation,
+    ) -> Result<harmos_query::index::IndexPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let future = crate::query::index::list_index_entries(self.inner.primary.as_ref(), &self.backend, read, cancel);
@@ -186,7 +186,7 @@ impl Snapshot {
 
     pub async fn advance_projection(
         &self, name: &crate::Identifier, expected_revision: Option<u64>, work: super::ReadLimits,
-        cancel: &crate::query::columnar::Cancellation,
+        cancel: &harmos_query::columnar::Cancellation,
     ) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;

@@ -25,9 +25,10 @@ use arrow_array::Float64Array;
 // Local Imports
 use crate::manager::backend;
 use harmos_domain::{Message, schema::Described};
-use harmos_storage::query::columnar::{Cancellation, ColumnKind, ColumnSource};
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
 use harmos_storage::query::projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform, advance_projection};
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
 use harmos_storage::*;
 
 /* === Constants === */
@@ -62,17 +63,9 @@ fn nz(value: usize) -> NonZeroUsize {
 #[tokio::test]
 async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restart() {
     // Open Exclusive Storage And Register A Versioned Projection.
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("projection.sqlite");
     let history = backend::history();
-    let policy = backend::storage_settings();
-    let settings = SqliteSettings {
-        chunk_rows: nz(2),
-        chunk_bytes: policy.response.batch_bytes,
-    };
-    let native = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    assert!(SqliteBackend::new(&path, history.clone(), settings).is_err());
-    let fallback = backend::Data::new(history.clone());
+    let primary = backend::Backend::new(history.clone());
+    let fallback = backend::Backend::new(history.clone());
     let key = SchemaKey {
         id: Identifier::new("sample").unwrap(),
         version: NonZeroU32::MIN,
@@ -104,7 +97,7 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     };
     let work = ReadLimits { rows: nz(32), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.create_session().await.unwrap();
         backend.append_schemas(StorageBatch::new(vec![descriptor.clone()]).into()).await.unwrap();
         backend.append_records(StorageBatch::new(records[..2].to_vec())).await.unwrap();
@@ -122,9 +115,9 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
         );
     }
     let first_cut = StorageCursor { history: history.clone(), sequence: 3 };
-    let first_native = native.create_snapshot(&first_cut).await.unwrap();
+    let first_primary = primary.create_snapshot(&first_cut).await.unwrap();
     let first_fallback = fallback.create_snapshot(&first_cut).await.unwrap();
-    let revision = advance_projection(&native, &first_native, &definition.name, None, work, &cancel).await.unwrap();
+    let revision = advance_projection(&primary, &first_primary, &definition.name, None, work, &cancel).await.unwrap();
     advance_projection(&fallback, &first_fallback, &definition.name, None, work, &cancel).await.unwrap();
     let old_read = ProjectionRead {
         name: definition.name.clone(),
@@ -136,41 +129,36 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     };
 
     // Inject A Failure After The First Output Page Has Been Written In The Transaction.
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         backend.append_records(StorageBatch::new(records[2..].to_vec())).await.unwrap();
     }
     let next_cut = StorageCursor { history: history.clone(), sequence: 6 };
-    let next_native = native.create_snapshot(&next_cut).await.unwrap();
+    let next_primary = primary.create_snapshot(&next_cut).await.unwrap();
     let next_fallback = fallback.create_snapshot(&next_cut).await.unwrap();
-    let fault = rusqlite::Connection::open(&path).unwrap();
-    fault.execute_batch("CREATE TRIGGER interrupt_projection BEFORE INSERT ON projection_pages WHEN NEW.first_row>0 BEGIN SELECT RAISE(ABORT,'injected projection interruption'); END;").unwrap();
-    assert!(advance_projection(&native, &next_native, &definition.name, None, work, &cancel).await.is_err());
+    primary.control.fail_projection.store(true, Ordering::SeqCst);
+    assert!(advance_projection(&primary, &next_primary, &definition.name, None, work, &cancel).await.is_err());
     fallback.control.fail_projection.store(true, Ordering::SeqCst);
     assert!(advance_projection(&fallback, &next_fallback, &definition.name, None, work, &cancel).await.is_err());
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         assert!(backend.get_projection_status(&definition.name, revision, Some(&next_cut)).await.unwrap().is_none());
         assert_eq!(
             backend.get_projection_status(&definition.name, revision, None).await.unwrap().map(|status| status.frontier),
             Some(first_cut.clone())
         );
     }
-    let partial: i64 = fault.query_row("SELECT count(*) FROM projection_pages WHERE frontier=6", [], |row| row.get(0)).unwrap();
-    assert_eq!(partial, 0);
-    native.delete_session().await.unwrap();
-    drop(native);
+    primary.delete_session().await.unwrap();
 
     // Reopen, Keep The Published Cut, And Replay The Interrupted Candidate Once.
-    let native = SqliteBackend::new(&path, history.clone(), settings).unwrap();
-    native.create_session().await.unwrap();
-    let old = native.list_projection_rows(&old_read).await.unwrap();
+    primary.create_session().await.unwrap();
+    let old = primary.list_projection_rows(&old_read).await.unwrap();
     assert_eq!(old.batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap().values().as_ref(), &[0.0, 1.0]);
-    fault.execute_batch("DROP TRIGGER interrupt_projection;").unwrap();
+    primary.control.fail_projection.store(false, Ordering::SeqCst);
     fallback.control.fail_projection.store(false, Ordering::SeqCst);
-    let fresh = native.create_snapshot(&next_cut).await.unwrap();
-    assert_eq!(advance_projection(&native, &fresh, &definition.name, None, work, &cancel).await.unwrap(), revision);
-    assert_eq!(advance_projection(&native, &fresh, &definition.name, None, work, &cancel).await.unwrap(), revision);
+    let fresh = primary.create_snapshot(&next_cut).await.unwrap();
+    assert_eq!(advance_projection(&primary, &fresh, &definition.name, None, work, &cancel).await.unwrap(), revision);
+    assert_eq!(advance_projection(&primary, &fresh, &definition.name, None, work, &cancel).await.unwrap(), revision);
     advance_projection(&fallback, &next_fallback, &definition.name, None, work, &cancel).await.unwrap();
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         assert_eq!(backend.get_projection_status(&definition.name, revision, Some(&next_cut)).await.unwrap().unwrap().rows, records.len());
         let mut read = ProjectionRead {
             frontier: next_cut.clone(),
@@ -198,7 +186,7 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
     let mut rebuilt = definition.clone();
     rebuilt.version += 1;
     rebuilt.transform = ProjectionTransform::Select(vec!["_storage.position".into(), "payload.value".into()]);
-    for backend in [&native as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
+    for backend in [&primary as &dyn StorageBackend, &fallback as &dyn StorageBackend] {
         assert!(
             backend
                 .set_projection_definition(&rebuilt, Some(1), false, None)
@@ -238,8 +226,8 @@ async fn projection_frontiers_survive_interrupted_publication_rebuild_and_restar
         };
         assert!(backend.list_projection_rows(&preserved).await.is_ok());
     }
-    native.delete_snapshot(&fresh).await.unwrap();
-    native.delete_session().await.unwrap();
+    primary.delete_snapshot(&fresh).await.unwrap();
+    primary.delete_session().await.unwrap();
     fallback.delete_snapshot(&first_fallback).await.unwrap();
     fallback.delete_snapshot(&next_fallback).await.unwrap();
     fallback.delete_session().await.unwrap();

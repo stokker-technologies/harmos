@@ -171,8 +171,8 @@ jobs:
       uses: ./.github/actions/setup
       with:
         platform: ${{ matrix.platform }}
-    - name: Measure SQLite Storage
-      run: mise run bench -- --storage --filter native
+    - name: Measure Memory Storage
+      run: mise run bench -- --storage --filter interface
     - name: Measure Durable Lag
       run: mise run bench -- --storage --filter durable_lag
     - if: always()

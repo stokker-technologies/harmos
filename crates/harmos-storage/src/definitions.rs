@@ -14,11 +14,13 @@
 /* === Imports === */
 
 use crate::manager::{Inner, State, Target};
-use crate::query::{columnar::Cancellation, index::IndexDefinition, projection::ProjectionDefinition};
+use crate::query::projection::ProjectionDefinition;
 use crate::receipts::ReceiptState;
 use crate::{
     BackendFailure, Error, Identifier, MutationHeader, MutationId, MutationReceipt, MutationValue, ReadLimits, Result, StorageManager,
 };
+use harmos_query::columnar::Cancellation;
+use harmos_query::index::IndexDefinition;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;

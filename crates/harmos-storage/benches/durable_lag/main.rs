@@ -7,7 +7,7 @@
  * ***
  */
 
-// Measure Durable Lag With SQLite WAL/FULL And A Native Worker.
+// Measure Saved-Position Lag Through The In-Memory Adapter.
 
 /* === Modules === */
 
@@ -27,7 +27,6 @@ use tokio::{sync::Mutex, task::JoinHandle};
 // Local Imports
 use harmos_storage::{
     bench_support::durable_lag::{self, Load},
-    sqlite::{SqliteBackend, SqliteSettings},
     *,
 };
 
@@ -72,30 +71,12 @@ fn main() {
     {
         // Open An Isolated WAL/FULL Backend For Each Load.
         let activity_before = activity();
-        let root = tempfile::Builder::new().prefix(&format!("harmos-storage-durable-lag-{}-", std::process::id())).tempdir().unwrap();
         let history = StoreHistory {
             store: Identifier::new("durable-lag").unwrap(),
             epoch: Identifier::new("benchmark").unwrap(),
         };
-        let primary = Arc::new(
-            SqliteBackend::new(
-                root.path().join("data.sqlite"),
-                history.clone(),
-                SqliteSettings {
-                    chunk_rows: nz(16384),
-                    chunk_bytes: nz(8 * 1024 * 1024),
-                },
-            )
-            .unwrap(),
-        );
-        let recovery = Arc::new(state::file::FileBackend::new(
-            root.path().join("recovery"),
-            history,
-            state::StorageStateSettings {
-                max_entry_bytes: nz(16 * 1024 * 1024),
-                max_checkpoint_bytes: nz(16 * 1024 * 1024),
-            },
-        ));
+        let primary = Arc::new(memory::Backend::new(history.clone()));
+        let recovery = Arc::new(memory::RecoveryBackend::new(history));
         let settings = StorageSettings {
             transfer: Default::default(),
             policy: Default::default(),
@@ -158,9 +139,7 @@ fn main() {
                 serde_json::json!({
                     "case": format!("integration/durable_lag/{}", load.name()),
                 "repetition": repetition, "activity_before": activity_before, "activity_after": activity(),
-                "data_volume": root.path().ancestors().last().map(|path| path.display().to_string()),
-                "dataset": root.path().file_name().map(|name| name.to_string_lossy()),
-                "measurement": result, "durability": "sqlite WAL synchronous=FULL",
+                "measurement": result, "backend": "memory",
                     "synchronous_commits": after.synchronous_commits - before.synchronous_commits,
                     "synchronous_commit_ms": (after.synchronous_commit_ns - before.synchronous_commit_ns) as f64 / 1_000_000.0,
                     "maximum_synchronous_commit_ms": after.maximum_synchronous_commit_ns as f64 / 1_000_000.0,

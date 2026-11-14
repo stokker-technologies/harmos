@@ -38,7 +38,7 @@ async fn segmented_snapshot_matches_full_replay() {
     }
     crate::support::app::shutdown(&runtime).await.unwrap();
     let snapshot = store.snapshot();
-    assert_eq!(snapshot.payload.manifest().position, Some(Position(12)));
+    assert_eq!(snapshot.payload.manifest().position, Position(12));
     assert!(snapshot.payload.manifest().count > 3);
     assert!(snapshot.payload.manifest().segments.iter().all(|segment| segment.bytes <= policy.max_bytes.get()));
     // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.

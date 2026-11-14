@@ -47,9 +47,9 @@ async fn cpp_installs_itself() {
         super::support::language_binary(
             "harmos-cpp-conformance",
             if cfg!(target_os = "windows") {
-                "target/cpp/dev/Debug/harmos-cpp-conformance.exe"
+                "target/cpp/tests/harmos-cpp-conformance.exe"
             } else {
-                "target/cpp/dev/harmos-cpp-conformance"
+                "target/cpp/tests/harmos-cpp-conformance"
             },
         )
     });

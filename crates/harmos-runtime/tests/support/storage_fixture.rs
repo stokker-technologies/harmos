@@ -15,7 +15,7 @@ mod shared;
 
 /* === Re-Exports === */
 
-pub(crate) use shared::{config, record, schema, state_settings, write};
+pub(crate) use shared::{config, record, schema, write};
 
 /* === Imports === */
 
@@ -28,7 +28,7 @@ pub(crate) use std::time::Duration;
 
 // Local Imports
 use super::{backend, operations, support};
-pub(crate) use backend::{Data, Recovery, history, storage_settings};
+pub(crate) use backend::{Backend, RecoveryBackend, history, storage_settings};
 pub(crate) use harmos_runtime::storage::state::RecoverySnapshot;
 pub(crate) use harmos_runtime::storage::*;
 pub(crate) use harmos_runtime::{BackendFailure, Error, Identifier, Runtime};
@@ -44,7 +44,7 @@ pub(crate) struct Fixture {
 /* === Implementations === */
 
 impl Fixture {
-    pub(crate) fn from_parts(runtime: Runtime<Bank>, storage: StorageManager, data: Arc<Data>, recovery: Arc<Recovery>) -> Self {
+    pub(crate) fn from_parts(runtime: Runtime<Bank>, storage: StorageManager, data: Arc<Backend>, recovery: Arc<RecoveryBackend>) -> Self {
         Self {
             runtime,
             storage_fixture: shared::Fixture { storage, data, recovery },
@@ -55,8 +55,7 @@ impl Fixture {
         let storage_fixture = shared::Fixture::build_with(config, |backends, config| StorageManager::new(backends, config).unwrap());
         let storage = &storage_fixture.storage;
         let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-            setup.resource(std::ops::Deref::deref(storage).clone());
-            setup.resource(harmos_operations::storage::SavedSnapshots::new(storage.query_capacity()));
+            setup.settings().storage(storage);
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(
                     harmos_protocol::transfer::default_message_bytes().checked_mul(std::num::NonZeroUsize::new(6).unwrap()).unwrap(),
@@ -87,9 +86,11 @@ impl std::ops::Deref for Fixture {
 /* === Public Functions === */
 
 pub(crate) async fn saved_records(storage: &StorageManager, schema: &SchemaKey) -> Vec<(u64, Identifier)> {
-    use harmos_runtime::storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
+    use harmos_query::QueryArrow;
+    use harmos_runtime::storage::query::{RecordSelection, RowSlice, Source};
     let mut reader = storage
-        .query(harmos_runtime::storage::Query {
+        .query(harmos_domain::model::storage::query::Query {
+            merge: None,
             at: storage.get_saved_position(),
             source: Source::Records(RecordSelection {
                 schema: schema.clone(),

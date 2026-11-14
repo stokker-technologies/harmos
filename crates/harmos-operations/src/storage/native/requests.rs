@@ -24,10 +24,16 @@ pub use harmos_domain::model::storage::{
 };
 use harmos_domain::schema::graph::Schema;
 use harmos_protocol::v1::{PageRequest, ReadCut, Receipt};
-pub use harmos_storage::query::columnar::{ArrowPage, ColumnPredicate, ColumnSource, StorageCapabilities, TimeBounds};
-pub use harmos_storage::query::index::{IndexDefinition, IndexPage};
+pub use harmos_query::QueryOutput;
+pub use harmos_query::columnar::ArrowPage;
+pub use harmos_query::columnar::ColumnPredicate;
+pub use harmos_query::columnar::ColumnSource;
+pub use harmos_query::columnar::TimeBounds;
+pub use harmos_query::index::IndexDefinition;
+pub use harmos_query::index::IndexPage;
+pub use harmos_storage::query::Source;
+pub use harmos_storage::query::columnar::StorageCapabilities;
 pub use harmos_storage::query::projection::{ProjectionDefinition, ProjectionPage, ProjectionStatus};
-pub use harmos_storage::query::{QueryOutput, Source};
 pub use harmos_storage::{FileProducer, ReadLimits};
 use prost::Message;
 
@@ -36,6 +42,7 @@ use prost::Message;
 // Third Party Imports
 
 // Local Imports
+use harmos_domain::model::storage::query::TimeMerge;
 
 /* === Constants === */
 
@@ -334,6 +341,7 @@ pub struct SetObjectResponse {
 
 #[derive(Clone, Debug)]
 pub struct ListRowsRequest {
+    pub merge: Option<TimeMerge>,
     pub source: Option<Source>,
     pub at: Option<ReadCut>,
     pub transforms: Vec<Transform>,
@@ -933,6 +941,7 @@ impl MemorySize for ListRowsRequest {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
             .saturating_add(self.source.memory_size())
+            .saturating_add(self.merge.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.transforms.memory_size())
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))

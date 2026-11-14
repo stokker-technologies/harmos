@@ -24,8 +24,8 @@ mod end;
 // Local Imports
 use super::*;
 use crate::MemorySize;
-use crate::storage::receipts::ReceiptState;
-use crate::storage::{FileProducer, MutationId, MutationValue};
+use crate::receipts::ReceiptState;
+use crate::{FileProducer, MutationId, MutationValue};
 
 /* === Constants === */
 

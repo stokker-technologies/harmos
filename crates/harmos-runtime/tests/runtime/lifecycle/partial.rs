@@ -19,7 +19,12 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Notify;
 
 // Local Imports
-use crate::storage::fixture::{Data, Recovery, StorageBackends, StorageManager, config, history};
+use crate::storage::fixture::Backend;
+use crate::storage::fixture::RecoveryBackend;
+use crate::storage::fixture::StorageBackends;
+use crate::storage::fixture::StorageManager;
+use crate::storage::fixture::config;
+use crate::storage::fixture::history;
 use harmos_runtime::runtime::{BootstrapCleanup, BootstrapStatus};
 use harmos_runtime::services::ServiceContext;
 use harmos_runtime::{Application, Lifecycle, Runtime, Setup, Startup, StartupError};
@@ -155,8 +160,8 @@ impl Drop for State {
 #[tokio::test]
 async fn partial_cleanup_retry() {
     let probe = Arc::new(Probe::default());
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
@@ -194,8 +199,8 @@ async fn partial_cleanup_retry() {
 #[tokio::test]
 async fn logical_failure_settles() {
     let probe = Arc::new(Probe::default());
-    let data = Arc::new(Data::new(history()));
-    let recovery = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let recovery = Arc::new(RecoveryBackend::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),

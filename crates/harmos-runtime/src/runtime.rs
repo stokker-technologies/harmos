@@ -40,6 +40,7 @@ use tracing::Instrument;
 use crate::services::{Once as DeclaredService, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
+use crate::storage::StorageManager;
 use crate::storage::attachments::{Attachments, Consumers, Horizon, Payload, Source, declare};
 use crate::storage::consumer::{JournalConsumer, StreamConsumer};
 use crate::streams::{Definition, Holding, StreamManager, Table};
@@ -719,6 +720,13 @@ impl<A: Application> Builder<A> {
     }
 
     fn validate_configuration(&mut self) -> Result<(), StartupError> {
+        if self.startup_storage.is_none() {
+            let storage = {
+                let _clock = crate::clock::enter(self.clock.clone());
+                StorageManager::default_in_memory().map_err(|source| StartupError::Runtime { source: Box::new(source) })?
+            };
+            self.storage(&storage);
+        }
         if self
             .initializers
             .iter()

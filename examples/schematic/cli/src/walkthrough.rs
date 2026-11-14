@@ -54,11 +54,10 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     // Create a Document and Its Recovery Journal
     let scratch = tempfile::tempdir()?;
     let path = scratch.path().join("schematic.json");
-    let document = Document::new(&path);
+    let document = Document::new();
     let recordings = scratch.path().join("streams");
     let config = Settings::new(recordings);
     let runtime = app::launch(document, &config).await?;
-    let checkpoint = runtime.operations.context().resource::<schematic_app::storage::Sidecar>().map_err(std::io::Error::other)?;
 
     // Choose a Backend for the Same Operations
     let plugin = async {
@@ -191,7 +190,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
 
     // Save and Reopen the Settled Document
     let snapshot = snapshot?;
-    Document::save(&path, snapshot, &checkpoint)?;
+    Document::save(&path, snapshot)?;
     let document = Document::open(&path)?;
     drop(runtime);
     let reopened = app::launch(document, &config).await?;

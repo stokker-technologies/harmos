@@ -16,14 +16,20 @@ use std::time::Duration;
 // Third Party Imports
 // Local Imports
 use super::metadata;
-use crate::storage::{Bank, Data, Fixture, Ledger, Recovery, catalog, config};
+use crate::storage::Backend;
+use crate::storage::Bank;
+use crate::storage::Fixture;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::catalog;
+use crate::storage::config;
 use harmos_runtime::storage::{StagedFile, StorageBackends, StorageManager};
 
 /* === Private Functions === */
 
 // Copy A Crash Image Without Letting The Original Manager's Close Save Its Tail.
-fn crash_image(source: &Fixture) -> Arc<Data> {
-    let data = Data::new(source.data.history.clone());
+fn crash_image(source: &Fixture) -> Arc<Backend> {
+    let data = Backend::new(source.data.history.clone());
     let data = Arc::new(data);
     *data.saved_productions.lock().unwrap() = source.data.saved_productions.lock().unwrap().clone();
     *data.file_generations.lock().unwrap() = source.data.file_generations.lock().unwrap().clone();
@@ -59,12 +65,7 @@ fn crash_image(source: &Fixture) -> Arc<Data> {
 
 pub(super) async fn restart(source: &Fixture) -> Fixture {
     let data = crash_image(source);
-    let recovery = Arc::new(Recovery::new(source.data.history.clone()));
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-        setup.settings().register(catalog());
-    })
-    .await
-    .unwrap();
+    let recovery = Arc::new(RecoveryBackend::new(source.data.history.clone()));
     let settings = config();
     let storage = StorageManager::new(
         StorageBackends {
@@ -74,7 +75,11 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         settings,
     )
     .unwrap();
-    storage.start(&runtime).await.unwrap();
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&storage).register(catalog());
+    })
+    .await
+    .unwrap();
     Fixture::from_parts(runtime, storage, data, recovery)
 }
 
@@ -187,11 +192,16 @@ async fn close_retains_production() {
         config(),
     )
     .unwrap();
-    restored.start(&f.runtime).await.unwrap();
+    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        setup.settings().storage(&restored).register(catalog());
+    })
+    .await
+    .unwrap();
     let mut resumed = restored.resume_file(&token).await.unwrap();
     assert_eq!(resumed.length(), 17);
     resumed.abort().await.unwrap();
-    restored.close().await.unwrap();
+    crate::support::app::shutdown(&runtime).await.unwrap();
     f.finish().await;
 }
 
@@ -219,24 +229,24 @@ async fn failed_recovery_releases() {
     source.storage.flush().await.unwrap();
     for failure in 1..3 {
         let data = crash_image(&source);
-        let recovery = Arc::new(Recovery::new(data.history.clone()));
+        let recovery = Arc::new(RecoveryBackend::new(data.history.clone()));
         let settings = config();
         match failure {
             1 => data.saved_productions.lock().unwrap().get_mut("first").unwrap().0.length += 1,
             // File Restoration Succeeded Before The Recovery Owner Failed.
             _ => recovery.control.fail_open.store(true, Ordering::SeqCst),
         }
-        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
-            setup.settings().register(catalog());
-        })
-        .await
-        .unwrap();
         let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, settings).unwrap();
-        assert!(storage.start(&runtime).await.is_err());
+        assert!(
+            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+                setup.settings().storage(&storage).register(catalog());
+            })
+            .await
+            .is_err()
+        );
         storage.close().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(data.saved_productions.lock().unwrap().len(), 2);
-        crate::support::app::shutdown(&runtime).await.unwrap();
     }
     drop((first, second));
     source.finish().await;

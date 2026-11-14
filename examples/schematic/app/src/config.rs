@@ -35,7 +35,6 @@ use std::time::Duration;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 pub struct Settings {
-    pub journal_sync_entries: NonZeroUsize,
     recordings: PathBuf,
 }
 
@@ -56,10 +55,7 @@ pub struct LaunchConfig {
 
 impl Settings {
     pub fn new(recordings: impl Into<PathBuf>) -> Self {
-        Self {
-            journal_sync_entries: NonZeroUsize::new(1).unwrap(),
-            recordings: recordings.into(),
-        }
+        Self { recordings: recordings.into() }
     }
 
     pub fn recordings(&self) -> &Path {

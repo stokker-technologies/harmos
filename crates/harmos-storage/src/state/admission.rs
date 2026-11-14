@@ -13,16 +13,16 @@
 
 /* === Imports === */
 
-use crate::storage::manager::RecordWriteBytes;
+use crate::manager::RecordWriteBytes;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
 use super::{RecoveryEntry, RecoverySnapshot, SnapshotPayload};
-use crate::storage::manager::{Inner, Operation, Pending, Target, recovery_encoded_bound};
-use crate::storage::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
+use crate::manager::{Inner, Operation, Pending, Target, recovery_encoded_bound};
 use crate::{Error, Result};
+use crate::{ReadLimits, RecordInput, StorageCursor, StorageManager, StoredRecord};
 use harmos_domain::state::Position;
 
 /* === Constants === */
@@ -310,7 +310,7 @@ impl Permit {
                 )));
                 self.target.index += 1; // Both slots were checked before mutation.
             }
-            let position = crate::storage::RecoveryPosition {
+            let position = crate::RecoveryPosition {
                 history: state.status.recovery_accepted.history.clone(),
                 sequence: self.target.sequence,
             };

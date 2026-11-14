@@ -14,10 +14,12 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::path::Path;
+use harmos_domain::model::storage::query::StreamSelection;
+use harmos_query::typed::StreamRead;
+use harmos_runtime::{Message, storage::StorageManager};
+use std::io;
 
 // Third Party Imports
-use serde::Deserialize;
 
 // Local Imports
 
@@ -35,12 +37,6 @@ pub struct Columns {
     pub gap_missed: Vec<Option<u64>>,
 }
 
-#[derive(Deserialize)]
-struct Witnessed {
-    position: u64,
-    gap_missed: Option<u64>,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -49,18 +45,33 @@ struct Witnessed {
 
 /* === Public Functions === */
 
-pub fn read(directory: &Path) -> std::io::Result<Columns> {
-    let rows: Vec<Witnessed> = schematic_storage::streams::read_rows(directory.join("net_voltage.jsonl"))?;
+pub async fn read(storage: &StorageManager) -> io::Result<Columns> {
+    let mut reader = storage
+        .list_samples(StreamRead {
+            at: storage.get_saved_position(),
+            selection: StreamSelection {
+                schema: crate::storage::voltage_schema(),
+                scope: None,
+                item: None,
+                stream: None,
+                source_start: None,
+                source_end: None,
+                after: 0,
+            },
+        })
+        .await
+        .map_err(io::Error::other)?;
     let mut columns = Columns {
-        position: Vec::with_capacity(rows.len()),
-        gap_missed: Vec::with_capacity(rows.len()),
+        position: Vec::new(),
+        gap_missed: Vec::new(),
     };
-
-    for row in rows {
-        columns.position.push(row.position);
-        columns.gap_missed.push(row.gap_missed);
+    while let Some(page) = reader.next().await.map_err(io::Error::other)? {
+        for row in page.iter() {
+            let value = crate::storage::SavedVoltage::decode(&row.record.payload).map_err(io::Error::other)?;
+            columns.position.push(value.position);
+            columns.gap_missed.push(value.gap_missed);
+        }
     }
-
     Ok(columns)
 }
 

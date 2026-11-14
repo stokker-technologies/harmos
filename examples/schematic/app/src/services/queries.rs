@@ -7,50 +7,26 @@
  * ***
  */
 
-// Compose Query Persistence Alongside the Document's JSONL Recovery Adapter.
+// Compose The In-Memory Storage Adapter With Native Operations.
 
 /* === Imports === */
 
 use crate::app::SchematicEditor;
+use harmos_runtime::builtins;
+use harmos_runtime::operations::Lane;
 use harmos_runtime::{
-    Setup,
-    storage::{ObjectCatalog, StorageBackends, StorageManager, StoreHistory, config::StorageSettings},
+    Result, Setup,
+    storage::{ObjectCatalog, StorageManager, StorageSettings},
 };
-use harmos_storage::{
-    sqlite::{SqliteBackend, SqliteSettings},
-    state::{StorageStateSettings, file::FileBackend},
-};
-use std::{path::Path, sync::Arc};
+use schematic_operations::transfer;
 
 /* === Public Functions === */
 
-pub fn attach(
-    setup: &mut Setup<SchematicEditor>, root: &Path, history: StoreHistory, catalog: ObjectCatalog, settings: StorageSettings,
-    recovery: StorageStateSettings,
-) -> harmos_runtime::Result<StorageManager> {
-    std::fs::create_dir_all(root).map_err(|source| harmos_runtime::Error::OperationFailed {
-        operation: "create query storage".into(),
-        source: Arc::new(source),
-    })?;
-    let primary = SqliteBackend::new(
-        root.join("queries.sqlite"),
-        history.clone(),
-        SqliteSettings {
-            chunk_rows: settings.response.batch_rows,
-            chunk_bytes: settings.response.batch_bytes,
-        },
-    )?;
-    let state = FileBackend::new(root.join("recovery"), history, recovery);
-    let storage = StorageManager::with_catalog(
-        catalog,
-        StorageBackends {
-            primary: Arc::new(primary),
-            state: Arc::new(state),
-        },
-        settings,
-    )?;
+pub fn attach(setup: &mut Setup<SchematicEditor>, catalog: ObjectCatalog, settings: StorageSettings) -> Result<StorageManager> {
+    let storage = StorageManager::in_memory(catalog, settings)?;
     setup.settings().storage(&storage);
-    setup.catalog(harmos_runtime::builtins::storage_catalog(), harmos_runtime::operations::Lane::default());
-    setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
+    crate::storage::recordings(setup, storage.clone());
+    setup.catalog(builtins::storage_catalog(), Lane::default());
+    setup.catalog(transfer::files_catalog(), Lane::default());
     Ok(storage)
 }

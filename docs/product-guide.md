@@ -300,7 +300,7 @@ native filesystem access.
 
 The [advanced follow-on](../examples/schematic/cli/src/advanced.rs) demonstrates
 bounded streaming, cancellation with settlement, and native directory access.
-The example's [JSONL storage adapter](../examples/schematic/storage/) shows how an
+The example's [document serialization](../examples/schematic/app/src/document.rs) shows how an
 application owns its persistence format. The example is a separate Cargo workspace
 under `examples/schematic/` and is also the system fixture of the Harmos test suite.
 
@@ -768,12 +768,11 @@ batch returns its original receipt; changed or retired identities refuse. Admitt
 completion survives lost delivery, and durable completion includes replay-ledger
 persistence.
 Finished-file reads are separate from producing-file follow/resume operations.
-The built-in `storage::state::file::FileBackend` persists checksummed JSON checkpoints
-and a JSONL journal, bounded by the storage batch ceiling.
-`FileBackend::with_journal_opener` accepts a caller-owned journal opener for
-controlled file access, including fault testing. The opener receives the journal
-path under the exclusive root lease and must preserve its existing bytes; it is
-also used when reopening after checkpoint replacement.
+The built-in `harmos_storage::memory::RecoveryBackend` retains integrity-checked
+snapshot bytes and bounded recovery entries in memory. Share its instance to
+reopen within the process. A product implements `StateBackend` for durable media;
+there is no built-in file journal or database backend. See
+[Backend Registration](storage.md#backend-registration).
 
 State persistence uses `storage::state::StateBackend`; the state manager owns
 transactions and replay while the storage manager owns admission and durability.
@@ -1334,8 +1333,8 @@ status payloads use `Harmos.V1.StatusResources` while `client.Status` retains it
 - [Schematic Walkthrough](schematic.md) — the example application, its crates and backends.
 - [Public Rust API](../sdk/rust/src/lib.rs) — the standalone protocol SDK.
 - [Cargo Features](../crates/harmos-runtime/Cargo.toml) — select the facilities your application needs.
-- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and the optional SQLite backend.
-- [Storage Adapter](../examples/schematic/storage/) — own your persistence format.
+- [Storage Interfaces](storage.md) — saved Arrow reads, indexes, projections, conditional objects and backend registration.
+- [Document Serialization](../examples/schematic/app/src/document.rs) — explicit Save/Open.
 
 
 ## Built-In Operation Ownership
@@ -1392,7 +1391,7 @@ schema-derived revision. Replay restores that payload and applies it without
 running admission checks again. Undo computes the inverse against the pre-state
 and admits it through the existing check/apply path. Snapshot consumers receive
 their restoration catalog by value; see the
-[snapshot adapter](../examples/schematic/storage/src/snapshot.rs).
+[managed storage composition](../examples/schematic/app/src/services/queries.rs).
 
 ## Plugin Source Layout
 
@@ -1460,11 +1459,12 @@ The listener's bind address, admission, middleware and shutdown ownership do not
 
 ## Saved Storage Queries
 
-The built-in storage catalog exposes bounded Arrow scans, ordered indexes, exact-frontier
-projections and atomic conditional object updates through generated SDK contracts. Compose the
-backend explicitly and retain/release saved cuts; see [Generated Storage Clients](storage.md#generated-storage-clients)
-for requests, grants, outcomes and the Schematic query-storage journey. The ordinary query,
-streamed write receipts, files and recovery interfaces remain available.
+The Private in-process storage catalog exposes bounded Arrow scans, ordered indexes,
+exact-frontier projections and atomic conditional object updates. A runtime automatically
+selects in-memory primary and recovery adapters. Register a product manager during setup
+to replace them; see [Backend Registration](storage.md#backend-registration). Products own
+their wire operations and retain/release saved cuts; the library storage catalog has no
+generated SDK storage surface.
 
 ## Access and Host Status
 
