@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Google.Protobuf;
+using System.Security.Cryptography;
+using System.Text;
+using System;
 using Google.Protobuf.Reflection;
-using Harmos.V1;
+using Google.Protobuf;
+using Harmos;
 
-namespace Harmos.Sdk;
+namespace Harmos.Plugins;
 
 /// <summary>A typed operation contract shared by providers and callers.</summary>
 public sealed class Operation<TRequest, TResponse>
@@ -29,8 +32,8 @@ public sealed class Operation<TRequest, TResponse>
     if (watch)
     {
       var item = Descriptors.Fingerprint(id, new TResponse().Descriptor, new TResponse().Descriptor);
-      using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(System.Security.Cryptography.HashAlgorithmName.SHA256);
-      hash.AppendData(System.Text.Encoding.UTF8.GetBytes("harmos.protobuf.stream.v1\0"));
+      using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+      hash.AppendData(Encoding.UTF8.GetBytes("harmos.protobuf.stream.v1\0"));
       hash.AppendData(Contract.Fingerprint.Span);
       hash.AppendData([0, 1]);
       hash.AppendData(item.Span);
@@ -38,18 +41,18 @@ public sealed class Operation<TRequest, TResponse>
     }
   }
 
-  public OperationContract Contract { get; }
-  public bool IsWatch { get; }
+  public OperationContract Contract
+  {
+    get;
+  }
+  public bool IsWatch
+  {
+    get;
+  }
 
   internal FileDescriptorSet Types => Descriptors.Merge(Descriptors.Types(new TRequest().Descriptor), Descriptors.Types(new TResponse().Descriptor));
 
   internal static TRequest Decode(ByteString payload) => (TRequest)new TRequest().Descriptor.Parser.ParseFrom(payload);
 
   internal static TResponse DecodeResponse(ByteString payload) => (TResponse)new TResponse().Descriptor.Parser.ParseFrom(payload);
-}
-
-/// <summary>An application failure, distinct from a gRPC transport error.</summary>
-public sealed class PluginFailureException(Failure failure) : Exception(failure.Message)
-{
-  public Failure Failure { get; } = failure.Clone();
 }

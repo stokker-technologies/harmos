@@ -1,0 +1,6 @@
+[*.cs]
+# Keep statements and blocks on separate lines.
+csharp_preserve_single_line_statements = false
+csharp_preserve_single_line_blocks = false
+# Use one file-scoped namespace per authored source file.
+csharp_style_namespace_declarations = file_scoped:warning

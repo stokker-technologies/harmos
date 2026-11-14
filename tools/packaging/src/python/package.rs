@@ -99,17 +99,43 @@ pub(super) fn export(
     // Isolate Runtime Descriptors And Retain Standard Generated Typing Stubs.
     let runtime = isolate(&source, &settings.module)?;
     fs::write(wire.join("_pool.py"), include_str!("pool.py"))?;
-    let operation = include_str!("operation.py")
+    let operation = include_str!("_operation.py")
         .replace("__HARMOS_OWNER_INITIAL__", harmos_domain::identity::SEGMENT_INITIAL)
         .replace("__HARMOS_OWNER_EXTRA__", harmos_domain::identity::SEGMENT_EXTRA);
-    fs::write(module.join("operation.py"), operation)?;
+    fs::write(module.join("_operation.py"), operation)?;
     fs::write(module.join("dynamic.py"), include_str!("dynamic.py"))?;
     fs::write(module.join("py.typed"), "")?;
     fs::write(module.join("contracts.json"), artifacts.contracts())?;
     fs::write(module.join("descriptors.bin"), artifacts.descriptors())?;
     let (bindings, stub) = bindings(&pool, contracts, &settings.module)?;
-    fs::write(module.join("__init__.py"), &bindings)?;
-    fs::write(module.join("__init__.pyi"), &stub)?;
+    fs::write(module.join("_bindings.py"), &bindings)?;
+    fs::write(module.join("_bindings.pyi"), &stub)?;
+    let mut exports = BTreeSet::from([
+        "Invoker".to_owned(),
+        "Operation".to_owned(),
+        "OperationError".to_owned(),
+        "OperationHandle".to_owned(),
+        "ResponseStream".to_owned(),
+    ]);
+    for contract in contracts.iter().filter(|contract| contract.grpc().is_some()) {
+        let prefix = contract.operation().id.as_str().to_upper_camel_case();
+        exports.insert(contract.operation().id.as_str().to_shouty_snake_case());
+        exports.insert(format!("{prefix}Request"));
+        exports.insert(format!("{prefix}Response"));
+        if contract.input().is_some() {
+            exports.insert(format!("{prefix}Input"));
+        }
+        if contract.output().is_some() {
+            exports.insert(format!("{prefix}Output"));
+        }
+    }
+    let mut public = String::from(HEADER);
+    public.push_str("# @generated public SDK exports.\n");
+    for name in exports {
+        writeln!(public, "from ._bindings import {name} as {name}").expect("String writer");
+    }
+    fs::write(module.join("__init__.py"), &public)?;
+    fs::write(module.join("__init__.pyi"), &public)?;
     package_metadata(staging.path(), settings, &runtime)?;
     bounded_files(staging.path())?;
 
@@ -313,13 +339,22 @@ fn bindings(pool: &DescriptorPool, contracts: &[Contract], module: &str) -> Resu
         writeln!(body, "\n{constant}: Operation[{request}, {response}, {input_type}, {output_type}] = Operation(\n    id={},\n    generation=0,\n    mode={},\n    codec=\"protobuf\",\n    request={request},\n    response={response},\n    input={},\n    output={},\n    grpc_path={},\n    rpc_request={rpc_request},\n    rpc_response={rpc_response},\n    managed={},\n    contract={},\n    fingerprint={},\n)\n", quoted(contract.operation().id.as_str())?, quoted(mode)?, input.map_or("None", String::as_str), output.map_or("None", String::as_str), quoted(&grpc.path())?, if grpc.managed { "True" } else { "False" }, quoted(&encoded)?, quoted(&fingerprint)?).expect("String writer");
     }
     let mut result = String::from(HEADER);
-    result.push_str("\"\"\"Generated Operation Bindings From The Selected Producer Catalog\"\"\"\n\n# === Imports === #\n\n# Standard Library Imports\n\n# Third Party Imports\nfrom google.protobuf.message import Message\n\n# Local Imports\nfrom .operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, OperationHandle as OperationHandle, ResponseStream as ResponseStream\n");
+    result.push_str("\"\"\"Generated Operation Bindings From The Selected Producer Catalog\"\"\"\n\n# === Imports === #\n\n# Standard Library Imports\n\n# Third Party Imports\nfrom google.protobuf.message import Message\n\n# Local Imports\nfrom ._operation import Invoker as Invoker, Operation as Operation, OperationError as OperationError, OperationHandle as OperationHandle, ResponseStream as ResponseStream\n");
     let mut stub = result.clone();
     for (name, alias) in &imports {
-        writeln!(result, "import {name} as {alias}").expect("String writer");
-        // RPC Envelopes Exist Only At Run Time; The Stub Imports What Its Annotations Name.
-        if stub_body.contains(&format!("{alias}.")) {
-            writeln!(stub, "import {name} as {alias}").expect("String writer");
+        let (module, local) = name.split_once(':').expect("generated message import");
+        let (parent, nested) = local.split_once('.').unwrap_or((local, ""));
+        let source = if nested.is_empty() { alias.clone() } else { format!("{alias}Source") };
+        writeln!(result, "from {module} import {parent} as {source}").expect("String writer");
+        if !nested.is_empty() {
+            writeln!(result, "{alias} = {source}.{nested}").expect("String writer");
+        }
+        // RPC Envelopes Stay in the Runtime Adapter; Stubs Import Their Named Data Types.
+        if stub_body.contains(&format!("= {alias}\n")) {
+            writeln!(stub, "from {module} import {parent} as {source}").expect("String writer");
+            if !nested.is_empty() {
+                writeln!(stub, "{alias} = {source}.{nested}").expect("String writer");
+            }
         }
     }
     let sections = "\n# Type Checking Imports\n\n# === Public Exports === #\n\n# === Constants === #\n\n# === Types === #\n\n";
@@ -337,16 +372,16 @@ fn message_expression(message: &MessageDescriptor, module: &str, imports: &mut B
     let file = message.parent_file();
     let stem = file.name().strip_suffix(".proto").ok_or_else(|| Error::Unsupported("message file suffix".into()))?;
     let name = format!("{module}._wire.{}_pb2", stem.replace('/', "."));
-    let index = imports.len();
-    let alias = imports.entry(name).or_insert_with(|| format!("_wire_{index}"));
     let local = message
         .full_name()
         .strip_prefix(&format!("{}.", file.package_name()))
         .ok_or_else(|| Error::Unsupported("message outside its package".into()))?;
+    let index = imports.len();
+    let alias = imports.entry(format!("{name}:{local}")).or_insert_with(|| format!("_Message{index}"));
     if !local.split('.').all(identifier) {
         return Err(Error::Unsupported("message Python identifier".into()));
     }
-    Ok(format!("{alias}.{local}"))
+    Ok(alias.clone())
 }
 
 fn package_metadata(root: &Path, settings: &Settings, runtime: &str) -> Result<(), Error> {

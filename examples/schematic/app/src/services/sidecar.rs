@@ -139,7 +139,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
     let address = clock.timeout(settings.placement.connect_timeout, endpoint).await.map_err(|_| Error::NotReady {
         domain: "Start Schematic Plugin: Endpoint Timed Out",
     })??;
-    let mut watch = manager.watch(PluginsWatchRequest { name: NAME.into(), at: None }).await.map_err(failed)?;
+    let mut watch = manager.watch(PluginsWatchRequest { name: Some(NAME.into()), at: None }).await.map_err(failed)?;
     manager
         .create(PluginsCreateRequest {
             request_id: "schematic-tools".into(),

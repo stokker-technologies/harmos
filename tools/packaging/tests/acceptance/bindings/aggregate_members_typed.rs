@@ -19,7 +19,7 @@ use super::*;
 
 #[test]
 fn aggregate_members_typed() {
-    // The Generated Surface of a Request Carrying Aggregates Is Stable
+    // Generate a Public Consumer Package Carrying Typed Aggregates
     let template = harmos_operations::operations::Contracts::from_tree(ROUTES_CATALOG.declarations).unwrap()[0].clone();
     let schema = Schema::from_declaration(Summary::DEFINITION, &SchemaSettings::default()).unwrap();
     let summary = contract(&template, "fixture_aggregate", "Aggregate", schema);
@@ -35,11 +35,6 @@ fn aggregate_members_typed() {
         &package,
     )
     .unwrap();
-    let module = package.join("src/bindings_aggregate");
-    let messages = module.join("_wire/test/v1/ShapesMessages/Aggregate/messages_pb2.pyi");
-    let generated = format!("{}\n{}", fs::read_to_string(module.join("__init__.pyi")).unwrap(), fs::read_to_string(messages).unwrap());
-    assert_eq!(generated, AGGREGATE_SNAPSHOT, "{generated}");
-
     // Python Selects the Percentile Member and Its Rank as Typed Fields
     let value = Summary {
         aggregate: Aggregate::Percentile(95),

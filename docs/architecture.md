@@ -925,7 +925,7 @@ New calls have no former identity:
 - Operations.Get selects one operation by its complete ID and returns the same `DiscoveredOperation` metadata used in List. Discovery has no invented read cut: the current handler issues none.
 - Schemas.List preserves the actual `StorageSchema` position/key/graph; Streams.List preserves `StoredIdentity::Stream` schema/scope/item/stream/first. The shared schema graph is registry vocabulary, not storage operations. Object identities have no library wire listing. No SDK reads persisted schemas or streams today, so neither service is added to the plugin-host boundary.
 - `FileReference.position` now uses shared `Position`/`History`, preserving the position fields and encoding. `File` wraps the immutable reference. `Upload` carries production ID/history, writer generation, accepted/durable lengths and state; product wrappers supply operations and policy. Shared proto2 transfer defaults remain in `transfer.proto` because all SDK carriers use the previously locked chunk, message and framing declarations.
-- Python client wire modules use `harmos._wire.client.v1` to avoid the authored `harmos.client` module. Wire identities remain `harmos.client.v1`; shared and plugin module paths follow the proto folders. The SDK handler keeps the name context.
+- Python generated wire modules are private; the public client and plugin boundaries export only consumer types. Wire identities stay unchanged. The SDK handler keeps the name context.
 - Access remains a generated parent node of Listener, Pairings and Certificates, with no new empty root service. Nested C# namespaces use `AccessResources`, `StatusResources` and `PluginsResources`.
 - Root Buf checks the library and Schematic as independent modules. Schematic owns its file/upload wrappers and imports only shared vocabulary. Library lint rules remain unchanged. The only remaining exceptions are service suffixes, persisted schema enum prefixes/zero names, and version suffixes on nested resource packages.
 
@@ -963,18 +963,16 @@ Decision: retain the existing assembly registration; application and library ope
   settings, managed replacement and atomic settings deletion use their existing
   runtime owners. Product cleanup follows the entry watch and startup reconciliation
   and remains eventual. Private storage has no wire projection.
-- **Rust SDK:** Client wrappers use `harmos_protocol::client`; shared vocabulary uses
-  `v1`; plugin-host wrappers use `plugin::host`. The handler remains `Context`.
-  Composition includes application `plugins.Annotations` beneath library Plugins.
-- **Python SDK:** Client wire modules use `harmos._wire.client.v1`; shared and
-  plugin-host modules follow proto folders. The handler remains `Context`; generated
-  composition includes application Plugins children.
-- **C# SDK:** Client wrappers use `Harmos.Client.V1`, shared vocabulary `Harmos.V1`,
-  and plugin-host wrappers `Harmos.Plugin.Host.V1`. Generated client composition
-  includes application Plugins children.
-- **C++ SDK:** Client headers use `harmos/client/v1`, plugin-host headers
-  `harmos/plugin/host/v1`, and shared concept headers `harmos/v1`. Generated resource
-  composition includes application Plugins children.
+- **Rust SDK:** `harmos` owns Client, connection options, errors and shared messages;
+  `harmos::client` owns client response/options types; `harmos::plugin` owns authoring
+  and plugin-host response/options types.
+- **Python SDK:** `harmos`, `harmos.client` and `harmos.plugin` provide those same
+  boundaries. Generated protocol modules stay beneath the private `_wire` package.
+- **C# SDK:** `Harmos`, `Harmos.Clients` and `Harmos.Plugins` provide those boundaries.
+  Plural boundary names avoid colliding with the root `Client` class. Requests,
+  carrier messages and native gRPC stubs are internal.
+- **C++ SDK:** `harmos`, `harmos::client` and `harmos::plugin` provide those boundaries
+  through `harmos/harmos.hpp`. Private generated headers adapt wire messages.
 - **All SDKs:** Observer contexts carry tick-scoped child calls on Instance.Samples,
   correlate replies across ticks, preserve failures, support demand-bounded Watch,
   cancel open work at tick/stream end and refuse outside-tick traffic (rules 30–32).
@@ -1035,3 +1033,39 @@ There is no Catalog alias. Fields retain their numbers. The four SDK builders us
 packaging registries retain catalog terminology; they do not name this wire payload.
 Consumers must regenerate bindings, rename the reported message/fields and SDK
 builder calls, and configure the entry manager before registering guest modules.
+
+## SDK Call Contracts
+
+All four typed client generators flatten request fields in declaration order. Required
+fields are positional; definition-level optional fields and retry identity are optional.
+Python uses keyword-only arguments; C# uses optional parameters. Rust exposes a plain
+method and a `_with` method taking one generated options value; C++ defaults that options
+value. A missing request identity is generated once per call. Explicit identities are
+preserved for retry safety. Request messages belong only to private wire code; generic
+operation dispatch remains message-based for application operations.
+
+Calls create their transport context. Options permit metadata, cancellation and deadline
+overrides. No SDK invents a default deadline; operation policy owns it. Plugin handlers
+use `Context.host` (`host()` in Rust/C++) for typed Time, Settings, Operations and
+Invocations calls, declaring their requirements with `HostOperation`.
+
+A response with exactly one declared field returns that field, including a repeated
+collection. Streaming calls project every item by the same rule. Missing singular message
+payloads refuse the read. Empty and multiple-field responses retain their response type:
+
+- Client: Access.Listener.Get/Set; Access.Pairings.Create/List/Delete; Plugins.Get/List/
+  Watch/Create/Set/Replace; Plugins.Settings.List/Set; Status.Get/Watch; Status.Diagnostics.Get;
+  Status.Logs.List/Watch; Status.TraceEvents.List/Watch; Time.Sleep.
+- Plugin host: Settings.List and Time.Sleep.
+
+Status.Get and Status.Watch retain both status and resolved read-cut metadata. The direct
+HostStatus return shown in the requested example requires an owner decision about that
+metadata; the single-field rule currently preserves it. Optional read cuts and pages are
+marked in the protocol definitions rather than inferred by parameter name. The optional
+Plugins.Watch name selects all entries when absent.
+
+Product generators merge descriptors, keep their own protocol modules private and export
+response types through a client barrel. The shared composition fixture proves a product
+Annotations resource beneath library Plugins alongside the sibling Jobs.Progress root.
+Python composed roots inherit Client connection ownership and preserve typed resource
+properties. No application-side resource grafting is required.

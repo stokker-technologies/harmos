@@ -53,7 +53,9 @@ pub(super) fn declare(item: &Item, sdk: &HarmosPath) -> TokenStream {
     let mut sizes = Vec::new();
     let mut memories = Vec::new();
     let mut reads = Vec::new();
-    let Item::Enum(item) = item else { unreachable!("validated message shape") };
+    let Item::Enum(item) = item else {
+        unreachable!("validated message shape")
+    };
     let name = &item.ident;
     for (index, variant) in item.variants.iter().enumerate() {
         let name = &variant.ident;

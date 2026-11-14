@@ -18,6 +18,13 @@
 // Local Imports
 #include "harmos/harmos.hpp"
 
+using google::protobuf::StringValue;
+using harmos::VISIBILITY_PUBLIC;
+using harmos::plugin::Context;
+using harmos::plugin::Operation;
+using harmos::plugin::Plugin;
+using std::exception;
+
 /* === Macros === */
 
 /* === Constants === */
@@ -35,11 +42,14 @@
 /* === Entry Point === */
 
 int main() {
-    using google::protobuf::StringValue;
-    try {
-        harmos::Operation<StringValue, StringValue> echo("example.plugin.v1.Echo/Call", harmos::wire::VISIBILITY_PUBLIC,
-            [](harmos::Context&, StringValue request) { return request; });
-        harmos::Plugin("example", "1.0.0").operation(echo).serve();
-        return 0;
-    } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+  try {
+    Operation<StringValue, StringValue> echo("example.echo", VISIBILITY_PUBLIC, [](Context &, StringValue request) {
+      return request;
+    });
+    Plugin("example", "1.0.0").operation(echo).serve();
+    return 0;
+  } catch (const exception &error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
 }

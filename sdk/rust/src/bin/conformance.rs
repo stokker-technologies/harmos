@@ -41,7 +41,11 @@ fn main() -> harmos::Result<()> {
         return install_itself::run(&arguments[1..]);
     }
     let plugin = conformance::plugin();
-    if arguments.iter().any(|argument| argument == "--remote") { plugin.remote().serve() } else { plugin.serve() }
+    if arguments.iter().any(|argument| argument == "--remote") {
+        plugin.remote().serve()
+    } else {
+        plugin.serve()
+    }
 }
 
 /* === Tests === */

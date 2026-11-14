@@ -7,23 +7,20 @@
  * ***
  */
 
-
 #pragma once
 
 /* === Imports === */
 
+#include "harmos/messages.hpp"
 #include <limits>
 #include <optional>
 #include <stdexcept>
-#include "harmos/v1/transfer.pb.h"
-
 
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-
 
 /* === Macros === */
 
@@ -38,14 +35,14 @@
 /* === Public Declarations === */
 
 namespace harmos {
-inline int transfer_message_bytes(const ::harmos::v1::StorageTransferSettings& settings = {}, std::optional<int> ceiling = {}) {
-    const auto framing = static_cast<std::uint64_t>(::harmos::v1::TRANSFER_FRAMING_BYTES);
-    if (settings.chunk_bytes() == 0 || settings.chunk_bytes() > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) - framing)
-        throw std::invalid_argument("Configure Transfer: transfer.chunk_bytes exceeds transport capacity");
-    const auto required = static_cast<int>(settings.chunk_bytes() + framing);
-    const auto maximum = ceiling.value_or(static_cast<int>(::harmos::v1::MessageSettings().message_bytes()));
-    if (maximum < required) throw std::invalid_argument("Configure Transfer: message_bytes cannot carry transfer.chunk_bytes plus framing");
-    return maximum;
+inline int transfer_message_bytes(const StorageTransferSettings &settings = {}, std::optional<int> ceiling = {}) {
+  const auto framing = static_cast<std::uint64_t>(TRANSFER_FRAMING_BYTES);
+  if (settings.chunk_bytes() == 0 || settings.chunk_bytes() > static_cast<std::uint64_t>(std::numeric_limits<int>::max()) - framing)
+    throw std::invalid_argument("Configure Transfer: transfer.chunk_bytes exceeds transport capacity");
+  const auto required = static_cast<int>(settings.chunk_bytes() + framing);
+  const auto maximum = ceiling.value_or(static_cast<int>(MessageSettings().message_bytes()));
+  if (maximum < required)
+    throw std::invalid_argument("Configure Transfer: message_bytes cannot carry transfer.chunk_bytes plus framing");
+  return maximum;
 }
-}
-
+} // namespace harmos

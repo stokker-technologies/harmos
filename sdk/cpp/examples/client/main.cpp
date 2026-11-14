@@ -17,6 +17,9 @@
 // Local Imports
 #include "harmos/harmos.hpp"
 
+using harmos::Client;
+using std::exception;
+
 /* === Macros === */
 
 /* === Constants === */
@@ -33,14 +36,18 @@
 
 /* === Entry Point === */
 
-int main(int argc, char** argv) {
-    if (argc != 2) { std::cerr << "Usage: harmos-cpp-client HOST:PORT\n"; return 2; }
-    try {
-        auto client = harmos::Client::connect(argv[1]);
-        grpc::ClientContext context;
-        harmos::client::v1::StatusGetRequest request;
-        const auto response = client.status.get(context, request);
-        std::cout << response.status().identity().application_name() << '\n';
-        return 0;
-    } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    std::cerr << "Usage: harmos-cpp-client HOST:PORT\n";
+    return 2;
+  }
+  try {
+    auto client = Client::connect(argv[1]);
+    const auto status = client.status.get();
+    std::cout << status.status().identity().application_name() << '\n';
+    return 0;
+  } catch (const exception &error) {
+    std::cerr << error.what() << '\n';
+    return 1;
+  }
 }

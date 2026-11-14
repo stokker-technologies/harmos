@@ -1,0 +1,5 @@
+# Match the shared source line width.
+ColumnLimit: 140
+# Put function and lambda statements on their own lines; empty functions remain compact.
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: None

@@ -15,24 +15,26 @@
 
 /* === Imports === */
 
+use harmos::plugin::HostOperation;
+
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Error, Message, Observer, Operation, Plugin, Result, Stream, Visibility, clock};
-use harmos_protocol::{
-    plugin::host::{InvocationsWatchRequest, InvocationsWatchResponse, SettingsListRequest},
-    v1,
-};
+use harmos::plugin::HostInvocationsWatch;
+use harmos::plugin::{Context, Observer, Operation, Plugin, Stream};
+use harmos::{Error, Message, Result, Visibility};
+use harmos_protocol::v1;
 use prost::Message as _;
 use prost_types::{Duration as ProtoDuration, Timestamp};
 use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
 use tokio::sync::Notify;
+use tonic::Code;
 
 /* === Constants === */
 
-static HELD: Mutex<Vec<(Context, harmos::Watching<InvocationsWatchResponse>)>> = Mutex::new(Vec::new());
+static HELD: Mutex<Vec<(Context, HostInvocationsWatch)>> = Mutex::new(Vec::new());
 
 static READING_RELEASED: Notify = Notify::const_new();
 
@@ -97,24 +99,25 @@ fn main() -> Result<()> {
     .every(ProtoDuration { seconds: 1, nanos: 0 });
     let children = Stream::<SampleReading>::new("execution.children");
     let child_observer = Observer::new(&children, samples_children).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let device = Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: harmos::Publisher<Isolation>| {
-        context.cancelled().await;
-        Ok(())
-    });
+    let device =
+        Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: harmos::plugin::Publisher<Isolation>| {
+            context.cancelled().await;
+            Ok(())
+        });
     Plugin::new("execution", "1.0.0")
         .stream(children)
         .observer(child_observer)
         .stream(device)
-        .requires::<SettingsListRequest>()
-        .requires::<InvocationsWatchRequest>()
+        .requires_host(HostOperation::SettingsList)
+        .requires_host(HostOperation::InvocationsWatch)
         .operation(Operation::new("execution.stale", stale_context).visibility(Visibility::Protected))
         .operation(Operation::new("execution.clock", clock_and_resource).visibility(Visibility::Protected))
         .operation(Operation::new("execution.isolation", isolation).visibility(Visibility::Protected))
         .operation(Operation::new("execution.reading_released", reading_released).visibility(Visibility::Protected))
         .stream(reading)
         .observer(observer)
-        .requires::<clock::TimeSleepRequest>()
-        .requires::<clock::TimeGetRequest>()
+        .requires_host(HostOperation::TimeSleep)
+        .requires_host(HostOperation::TimeGet)
         .on_stop(move || {
             fs::write(&cleanup, b"cleaned")?;
             Ok(())
@@ -153,7 +156,7 @@ async fn samples_children(context: &Context) -> Result<SampleReading> {
         Some(v1::setting_value::Value::Integer(value)) => value,
         _ => return Err(Error::Invalid("Read Samples: Integer Setting Required".into())),
     };
-    let mut watching = context.watch(InvocationsWatchRequest { instance: 1 }, NonZeroUsize::new(4096).unwrap()).await?;
+    let mut watching = context.host().invocations.watch(1, NonZeroUsize::new(4096).unwrap()).await?;
     if watching.next().await?.is_none() {
         return Err(Error::Invalid("Read Samples: Watch Ended Before Item".into()));
     }
@@ -169,7 +172,7 @@ async fn samples_children(context: &Context) -> Result<SampleReading> {
 async fn stale_context(_: &Context, _: Input) -> Result<Isolation> {
     let (saved, mut watch) =
         HELD.lock().unwrap().pop().ok_or_else(|| Error::Invalid("Check Samples Context: No Retained Context".into()))?;
-    let refused = matches!(saved.now().await, Err(Error::Transport(status)) if status.code() == tonic::Code::InvalidArgument);
+    let refused = matches!(saved.now().await, Err(Error::Transport(status)) if status.code() == Code::InvalidArgument);
     let watch_refused = watch.next().await.is_err();
     let settings_refused = saved.settings().await.is_err();
     let scope_preserved = saved.scope()? == "scope";

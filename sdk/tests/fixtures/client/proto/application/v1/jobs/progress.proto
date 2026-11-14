@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 syntax = "proto3";
 package application.v1.jobs;
+option csharp_namespace = "Application.Clients";
 service Progress { rpc Watch(ProgressWatchRequest) returns (stream ProgressWatchResponse); }
 message ProgressWatchRequest { string value = 1; }
 message ProgressWatchResponse { string value = 1; }

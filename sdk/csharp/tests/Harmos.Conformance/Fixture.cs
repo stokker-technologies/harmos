@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Google.Protobuf;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Google.Protobuf.WellKnownTypes;
-using Harmos.Sdk;
-using Harmos.V1;
-using Harmos.Plugin.Host.V1;
-using Graph = Harmos.Conformance.V1.Graph;
-using Value = Harmos.Conformance.V1.Value;
-using SdkPlugin = global::Harmos.Sdk.Plugin;
-using SdkContext = global::Harmos.Sdk.Context;
-using Settings = Harmos.Sdk.Settings;
+using Google.Protobuf;
+using Harmos.Plugins;
+using Harmos;
+using Graph = Harmos.Conformance.Graph;
+using SdkContext = global::Harmos.Plugins.Context;
+using SdkPlugin = global::Harmos.Plugins.Plugin;
+using Value = Harmos.Conformance.Value;
 
 namespace Harmos.Conformance;
 
@@ -25,12 +29,10 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
   private readonly Operation<Value, Value> hostPending = new("conformance.host.pending", Visibility.Public);
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
-  private readonly Operation<OperationsListRequest, OperationsListResponse> listOperations = new("harmos.plugin.host.v1.Operations/List", Visibility.Public);
-  private readonly Operation<OperationsGetRequest, OperationsGetResponse> getOperation = new("harmos.plugin.host.v1.Operations/Get", Visibility.Public);
 
   public SdkPlugin Build() => new SdkPlugin("conformance", "1.0.0")
-      .Message<Harmos.Conformance.V1.PayloadOnly>()
-      .Message<Harmos.Conformance.V1.PayloadOnly>()
+      .Message<Harmos.Conformance.PayloadOnly>()
+      .Message<Harmos.Conformance.PayloadOnly>()
       .Operation(local, Local)
       .Operation(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall)
       .Operation(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo)
@@ -59,11 +61,11 @@ public sealed class Fixture
       .Requires(hostPending)
       .Requires(hostFail)
       .Requires(new Operation<Graph, Value>("conformance.host.schema", Visibility.Public))
-      .Requires(Clock.Sleep)
-      .Requires(Clock.GetTime)
-      .Requires(Settings.List)
-      .Requires(listOperations)
-      .Requires(getOperation)
+      .Requires(HostOperation.TimeSleep)
+      .Requires(HostOperation.TimeGet)
+      .Requires(HostOperation.SettingsList)
+      .Requires(HostOperation.OperationsList)
+      .Requires(HostOperation.OperationsGet)
       .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
       .Stream<Value>("conformance.device", Device)
       .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "interval")
@@ -81,23 +83,23 @@ public sealed class Fixture
 
   private static async Task<Value> ReadSettings(SdkContext context, Value request)
   {
-    var settings = await context.SettingsAsync();
+    var settings = await context.Host.Settings.List();
     return new Value { Value_ = settings.Value.ToByteString() };
   }
 
   private async Task<Value> Discover(SdkContext context, Value request)
   {
-    var operations = await context.CallAsync(listOperations, new OperationsListRequest());
-    var id = operations.Operations[0].Contract.Id;
-    var operation = await context.CallAsync(getOperation, new OperationsGetRequest { Id = id });
-    return new Value { Value_ = ByteString.CopyFromUtf8(operation.Operation.Contract.Id) };
+    var operations = await context.Host.Operations.List();
+    var id = operations[0].Contract.Id;
+    var operation = await context.Host.Operations.Get(id);
+    return new Value { Value_ = ByteString.CopyFromUtf8(operation.Contract.Id) };
   }
 
   private async Task<Value> TickContext(SdkContext context)
   {
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
-    var clock = await context.CallAsync(Clock.GetTime, new TimeGetRequest());
-    var settings = await context.SettingsAsync();
+    var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
+    var settings = await context.Host.Settings.List();
     using var value = new MemoryStream();
     foreach (var reply in new IMessage[] { echo, clock, settings })
     {
@@ -112,7 +114,10 @@ public sealed class Fixture
 
   private async Task<Value> TickFailure(SdkContext context)
   {
-    try { return await context.CallAsync(hostFail, new Value()); }
+    try
+    {
+      return await context.CallAsync(hostFail, new Value());
+    }
     catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
 
@@ -123,7 +128,10 @@ public sealed class Fixture
     _ = pending.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
     await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("release") });
     await cancelled.CancelAsync();
-    try { await pending; }
+    try
+    {
+      await pending;
+    }
     catch (OperationCanceledException) { }
     var automatic = context.CallAsync(hostPending, new Value());
     _ = automatic.ContinueWith(task => _ = task.Exception, TaskContinuationOptions.OnlyOnFaulted);
@@ -140,10 +148,20 @@ public sealed class Fixture
 
   private async Task<Value> Local(SdkContext context, Value request)
   {
-    if (request.Value_.ToStringUtf8() is "deadline" or "overall") { await context.SleepAsync(new Duration { Seconds = 3600 }); return request; }
-    if (request.Value_ == ByteString.CopyFromUtf8("cancel")) { await context.CallAsync(hostEcho, request); return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) }; }
-    if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound")) return request;
-    if (context.Attempt == 1) throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
+    if (request.Value_.ToStringUtf8() is "deadline" or "overall")
+    {
+      await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
+      return request;
+    }
+    if (request.Value_ == ByteString.CopyFromUtf8("cancel"))
+    {
+      await context.CallAsync(hostEcho, request);
+      return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
+    }
+    if (request.Value_.ToStringUtf8() is not ("retry" or "retry-bound"))
+      return request;
+    if (context.Attempt == 1)
+      throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
     return new Value { Value_ = ByteString.CopyFromUtf8(context.Attempt.ToString()) };
   }
   private Task<Value> LocalCall(SdkContext context, Value request)
@@ -166,7 +184,8 @@ public sealed class Fixture
     await foreach (var item in context.WatchAsync(hostWatch, request, 4096))
     {
       value.AddRange(item.Value_);
-      if (request.Value_ == ByteString.CopyFromUtf8("cancel")) break;
+      if (request.Value_ == ByteString.CopyFromUtf8("cancel"))
+        break;
     }
     return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
   }
@@ -186,9 +205,9 @@ public sealed class Fixture
 
   private async Task<Value> ClockCall(SdkContext context, Value request)
   {
-    var before = await context.NowAsync();
-    await context.SleepAsync(new Duration { Seconds = 3600 });
-    var after = await context.NowAsync();
+    var before = await context.Host.Time.Get();
+    await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
+    var after = await context.Host.Time.Get();
     var bytes = new byte[sizeof(long)];
     BinaryPrimitives.WriteInt64LittleEndian(bytes, after.Seconds - before.Seconds);
     return new Value { Value_ = ByteString.CopyFrom(bytes) };

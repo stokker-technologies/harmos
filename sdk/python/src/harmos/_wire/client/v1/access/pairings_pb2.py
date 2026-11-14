@@ -22,10 +22,10 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
+from harmos._wire.v1 import position_pb2 as harmos_dot_v1_dot_position__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&harmos/client/v1/access/pairings.proto\x12\x17harmos.client.v1.access\x1a\x18harmos/v1/position.proto\"&\n\x15PairingsCreateRequest\x12\r\n\x05label\x18\x01 \x01(\t\"\x91\x01\n\x16PairingsCreateResponse\x12\x31\n\x07pairing\x18\x01 \x01(\x0b\x32 .harmos.client.v1.access.Pairing\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x1e\n\x16pinned_certificate_pem\x18\x03 \x01(\t\x12\x12\n\ncredential\x18\x04 \x01(\t\"6\n\x13PairingsListRequest\x12\x1f\n\x02\x61t\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"t\n\x14PairingsListResponse\x12\x32\n\x08pairings\x18\x01 \x03(\x0b\x32 .harmos.client.v1.access.Pairing\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"%\n\x15PairingsDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x18\n\x16PairingsDeleteResponse\"$\n\x07Pairing\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t2\xc5\x02\n\x08Pairings\x12i\n\x06\x43reate\x12..harmos.client.v1.access.PairingsCreateRequest\x1a/.harmos.client.v1.access.PairingsCreateResponse\x12\x63\n\x04List\x12,.harmos.client.v1.access.PairingsListRequest\x1a-.harmos.client.v1.access.PairingsListResponse\x12i\n\x06\x44\x65lete\x12..harmos.client.v1.access.PairingsDeleteRequest\x1a/.harmos.client.v1.access.PairingsDeleteResponseB#\xaa\x02 Harmos.Client.V1.AccessResourcesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n&harmos/client/v1/access/pairings.proto\x12\x17harmos.client.v1.access\x1a\x18harmos/v1/position.proto\"&\n\x15PairingsCreateRequest\x12\r\n\x05label\x18\x01 \x01(\t\"\x91\x01\n\x16PairingsCreateResponse\x12\x31\n\x07pairing\x18\x01 \x01(\x0b\x32 .harmos.client.v1.access.Pairing\x12\x10\n\x08\x65ndpoint\x18\x02 \x01(\t\x12\x1e\n\x16pinned_certificate_pem\x18\x03 \x01(\t\x12\x12\n\ncredential\x18\x04 \x01(\t\"B\n\x13PairingsListRequest\x12$\n\x02\x61t\x18\x02 \x01(\x0b\x32\x13.harmos.v1.PositionH\x00\x88\x01\x01\x42\x05\n\x03_at\"t\n\x14PairingsListResponse\x12\x32\n\x08pairings\x18\x01 \x03(\x0b\x32 .harmos.client.v1.access.Pairing\x12(\n\x0bresolved_at\x18\x02 \x01(\x0b\x32\x13.harmos.v1.Position\"%\n\x15PairingsDeleteRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x18\n\x16PairingsDeleteResponse\"$\n\x07Pairing\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05label\x18\x02 \x01(\t2\xc5\x02\n\x08Pairings\x12i\n\x06\x43reate\x12..harmos.client.v1.access.PairingsCreateRequest\x1a/.harmos.client.v1.access.PairingsCreateResponse\x12\x63\n\x04List\x12,.harmos.client.v1.access.PairingsListRequest\x1a-.harmos.client.v1.access.PairingsListResponse\x12i\n\x06\x44\x65lete\x12..harmos.client.v1.access.PairingsDeleteRequest\x1a/.harmos.client.v1.access.PairingsDeleteResponseB#\xaa\x02 Harmos.Client.V1.AccessResourcesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,15 +38,15 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_PAIRINGSCREATERESPONSE']._serialized_start=134
   _globals['_PAIRINGSCREATERESPONSE']._serialized_end=279
   _globals['_PAIRINGSLISTREQUEST']._serialized_start=281
-  _globals['_PAIRINGSLISTREQUEST']._serialized_end=335
-  _globals['_PAIRINGSLISTRESPONSE']._serialized_start=337
-  _globals['_PAIRINGSLISTRESPONSE']._serialized_end=453
-  _globals['_PAIRINGSDELETEREQUEST']._serialized_start=455
-  _globals['_PAIRINGSDELETEREQUEST']._serialized_end=492
-  _globals['_PAIRINGSDELETERESPONSE']._serialized_start=494
-  _globals['_PAIRINGSDELETERESPONSE']._serialized_end=518
-  _globals['_PAIRING']._serialized_start=520
-  _globals['_PAIRING']._serialized_end=556
-  _globals['_PAIRINGS']._serialized_start=559
-  _globals['_PAIRINGS']._serialized_end=884
+  _globals['_PAIRINGSLISTREQUEST']._serialized_end=347
+  _globals['_PAIRINGSLISTRESPONSE']._serialized_start=349
+  _globals['_PAIRINGSLISTRESPONSE']._serialized_end=465
+  _globals['_PAIRINGSDELETEREQUEST']._serialized_start=467
+  _globals['_PAIRINGSDELETEREQUEST']._serialized_end=504
+  _globals['_PAIRINGSDELETERESPONSE']._serialized_start=506
+  _globals['_PAIRINGSDELETERESPONSE']._serialized_end=530
+  _globals['_PAIRING']._serialized_start=532
+  _globals['_PAIRING']._serialized_end=568
+  _globals['_PAIRINGS']._serialized_start=571
+  _globals['_PAIRINGS']._serialized_end=896
 # @@protoc_insertion_point(module_scope)

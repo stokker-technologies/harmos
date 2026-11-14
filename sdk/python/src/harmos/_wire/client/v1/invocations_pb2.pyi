@@ -1,4 +1,4 @@
-from harmos.v1 import invocation_pb2 as _invocation_pb2
+from harmos._wire.v1 import invocation_pb2 as _invocation_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
 from collections.abc import Mapping as _Mapping

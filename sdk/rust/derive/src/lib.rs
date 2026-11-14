@@ -236,7 +236,11 @@ fn expand(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                 quote!(if #default { #encoding::encoded_len(#tag, &self.#ident) } else { 0 }),
             )
         };
-        let label = if repeated { 3 } else { 1 };
+        let label = if repeated {
+            3
+        } else {
+            1
+        };
         let (proto3_optional, oneof_index) = if optional && scalar.is_some() {
             let index = oneofs.len() as i32;
             let oneof_name = format!("_{field_name}");

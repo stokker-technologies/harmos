@@ -39,13 +39,18 @@ class PythonClients(unittest.TestCase):
         output = Path(scratch.name) / "client.py"
         library = FileDescriptorSet.FromString(LIBRARY.read_bytes())
         python(output, [method for method in table(library) if method["face"] == "client"], library)
-        self.assertEqual(output.read_bytes(), (ROOT / "sdk/python/src/harmos/generated/client.py").read_bytes())
+        self.assertEqual(output.read_bytes(), (ROOT / "sdk/python/src/harmos/_generated/client.py").read_bytes())
 
         compose(ROOT, [APPLICATION], output, "application", language="python")
         composed = FileDescriptorSet.FromString(LIBRARY.read_bytes())
         composed.file.extend(FileDescriptorSet.FromString(APPLICATION.read_bytes()).file)
         expected = Path(scratch.name) / "fixture.py"
-        python(expected, [method for method in table(composed) if method["face"] == "client"], composed)
+        python(
+            expected,
+            [method for method in table(composed) if method["face"] == "client"],
+            composed,
+            module_prefixes={"application": "application._wire.application"},
+        )
         self.assertEqual(output.read_bytes(), expected.read_bytes())
 
     def test_generation_refuses_collisions_faces_and_client_streams(self) -> None:
@@ -87,7 +92,7 @@ class PythonClients(unittest.TestCase):
         output = Path(scratch.name) / "client.py"
         python(output, table(descriptors), descriptors)
         source = ast.parse(output.read_text())
-        imports = [alias.name for node in ast.walk(source) if isinstance(node, ast.Import) for alias in node.names]
+        imports = [node.module for node in ast.walk(source) if isinstance(node, ast.ImportFrom)]
         self.assertIn("example.v1.messages_pb2", imports)
         self.assertNotIn("example.v1.jobs_pb2", imports)
         compile(source, str(output), "exec")

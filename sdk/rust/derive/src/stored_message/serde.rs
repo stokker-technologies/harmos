@@ -126,7 +126,9 @@ pub(super) fn shape(item: &syn::Item, harmos: &HarmosPath) -> Result<TokenStream
         }
         return Ok(declare(name, shape, harmos));
     }
-    let syn::Item::Enum(item) = item else { unreachable!() };
+    let syn::Item::Enum(item) = item else {
+        unreachable!()
+    };
     if attributes.transparent {
         return Err(refused(name.span(), "transparent", &owner, "requires a struct"));
     }
@@ -337,7 +339,13 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
             "camelCase" => name
                 .chars()
                 .enumerate()
-                .map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character })
+                .map(|(index, character)| {
+                    if index == 0 {
+                        character.to_ascii_lowercase()
+                    } else {
+                        character
+                    }
+                })
                 .collect(),
             "snake_case" => snake(),
             "SCREAMING_SNAKE_CASE" => snake().to_ascii_uppercase(),
@@ -354,7 +362,11 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
                     capitalize = true;
                     continue;
                 }
-                output.push(if capitalize { character.to_ascii_uppercase() } else { character });
+                output.push(if capitalize {
+                    character.to_ascii_uppercase()
+                } else {
+                    character
+                });
                 capitalize = false;
             }
             output
@@ -365,7 +377,13 @@ fn serialized_name(ident: &syn::Ident, explicit: Option<String>, rule: Option<&s
             "camelCase" => pascal()
                 .chars()
                 .enumerate()
-                .map(|(index, character)| if index == 0 { character.to_ascii_lowercase() } else { character })
+                .map(|(index, character)| {
+                    if index == 0 {
+                        character.to_ascii_lowercase()
+                    } else {
+                        character
+                    }
+                })
                 .collect(),
             "kebab-case" => name.replace('_', "-"),
             "SCREAMING-KEBAB-CASE" => name.to_ascii_uppercase().replace('_', "-"),
@@ -445,7 +463,9 @@ fn fields(
         let (_, mut kind, mut cardinality) = stored_encoding(ty, harmos)
             .map_err(|error| Error::new(field.span(), format!("Described type `{owner}` field `{name}`: {error}")))?;
         if omissions.get(&name).is_some_and(|rule| rule == "none") {
-            let Type::Path(path) = ty else { unreachable!() };
+            let Type::Path(path) = ty else {
+                unreachable!()
+            };
             let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
                 return Err(super::unsupported(ty));
             };
@@ -474,7 +494,11 @@ fn fields(
         if form == "value" {
             value_encoding = Some((kind.clone(), cardinality.clone()));
         }
-        let tag = if form == "value" { quote!(1) } else { quote!(#harmos::schema::field_tag(#name)) };
+        let tag = if form == "value" {
+            quote!(1)
+        } else {
+            quote!(#harmos::schema::field_tag(#name))
+        };
         output.push(quote!(#harmos::schema::graph::Field {
             name: ::std::borrow::Cow::Borrowed(#name), tag: #tag, kind: #kind, cardinality: #cardinality,
         }));
@@ -498,7 +522,9 @@ fn fields(
 
 fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream, TokenStream), Error> {
     if matches!(super::type_name(ty).as_deref(), Some("BTreeSet" | "HashSet")) {
-        let Type::Path(path) = ty else { unreachable!() };
+        let Type::Path(path) = ty else {
+            unreachable!()
+        };
         let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
             return Err(super::unsupported(ty));
         };
@@ -512,9 +538,15 @@ fn stored_encoding(ty: &Type, harmos: &HarmosPath) -> Result<(bool, TokenStream,
     }
     let encoding = super::encoding(ty, harmos)?;
     if matches!(super::type_name(ty).as_deref(), Some("Option" | "Vec")) && !super::is_bytes(ty) {
-        let Type::Path(path) = ty else { unreachable!() };
-        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else { unreachable!() };
-        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else { unreachable!() };
+        let Type::Path(path) = ty else {
+            unreachable!()
+        };
+        let syn::PathArguments::AngleBracketed(arguments) = &path.path.segments.last().unwrap().arguments else {
+            unreachable!()
+        };
+        let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+            unreachable!()
+        };
         let kind = quote!(const { match <#inner as #harmos::schema::Described>::FIELD_CARDINALITY {
             #harmos::schema::Cardinality::Required => <#inner as #harmos::schema::Described>::FIELD_KIND,
             _ => #harmos::schema::graph::Kind::Message { definition: <#inner as #harmos::schema::Described>::DEFINITION },
@@ -540,8 +572,11 @@ fn declare(name: &syn::Ident, shape: Shape, harmos: &HarmosPath) -> TokenStream 
             const FIELD_CARDINALITY: #harmos::schema::Cardinality = #cardinality;
         }
     });
-    let representation =
-        if shape.representation.is_empty() { String::new() } else { Value::Object(shape.representation.clone()).to_string() };
+    let representation = if shape.representation.is_empty() {
+        String::new()
+    } else {
+        Value::Object(shape.representation.clone()).to_string()
+    };
     let object =
         shape.representation.get("form").and_then(Value::as_str).is_none_or(|form| matches!(form, "object" | "internal" | "adjacent"));
     let tag = shape

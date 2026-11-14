@@ -13,6 +13,8 @@
 
 #[path = "../catalog/main.rs"]
 mod catalog;
+// The Runtime Crate Owns Formatting of This Shared Fixture.
+#[rustfmt::skip]
 #[path = "../../../../../crates/harmos-runtime/tests/support/fixtures.rs"]
 mod fixtures;
 #[path = "../path/main.rs"]

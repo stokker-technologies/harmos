@@ -26,7 +26,10 @@ use harmos_protocol::{
     v1::{self, GuestChildAction, guest_child},
 };
 use prost::Message as _;
-use std::{marker::PhantomData, sync::Arc};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, OnceLock},
+};
 
 // Standard Library Imports
 
@@ -48,7 +51,7 @@ pub(crate) struct Transport {
     pub import: Arc<Import>,
     pub context: Vec<u8>,
     pub generation_context: Vec<u8>,
-    pub assignments: Arc<std::sync::OnceLock<host::OperationAssignments>>,
+    pub assignments: Arc<OnceLock<host::OperationAssignments>>,
 }
 
 /// The original attempt owns the child until join, release or parent settlement.

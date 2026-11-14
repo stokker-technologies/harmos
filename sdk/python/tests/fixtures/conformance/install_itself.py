@@ -11,13 +11,11 @@
 
 # === Imports === #
 
-from harmos import Client, Context, Plugin, operation
-from harmos._wire.client.v1 import invocations_pb2 as invocations
-from harmos._wire.client.v1 import plugins_pb2 as plugins
-from harmos.v1.operation_pb2 import VISIBILITY_PUBLIC
-from harmos.v1.transfer_pb2 import StorageTransferSettings
+from harmos import VISIBILITY_PUBLIC, Client, StorageTransferSettings
+from harmos.client import PLUGIN_STATE_READY, PluginPlacement, PluginRemote, PluginValue
+from harmos.plugin import Context, Plugin, operation
 
-from .v1.fixture_pb2 import Value
+from . import Value
 
 # === Public Exports === #
 
@@ -46,36 +44,25 @@ async def run(arguments: list[str]) -> None:
     transfer = StorageTransferSettings()
     client = Client.connect(arguments[0], transfer=transfer)
     # Install and Start This Codebase's Running Instance
-    await client.plugins.create(
-        plugins.PluginsCreateRequest(
-            request_id="self-install",
-            name="example",
-            placement=plugins.PluginPlacement(remote=plugins.PluginRemote(url=arguments[1])),
-            value=plugins.PluginValue(enabled=True),
-        )
-    )
-    watch = client.plugins.watch(plugins.PluginsWatchRequest(name="example"))
+    await client.plugins.create("example", PluginPlacement(remote=PluginRemote(url=arguments[1])), PluginValue(enabled=True))
+    watch = client.plugins.watch(name="example")
     ready = None
     async for event in watch:
         entries = event.snapshot.entries if event.HasField("snapshot") else [event.change.entry]
-        ready = next((entry for entry in entries if entry.state == plugins.PLUGIN_STATE_READY), None)
+        ready = next((entry for entry in entries if entry.state == PLUGIN_STATE_READY), None)
         if ready is not None:
             break
-    watch.cancel()
+    await watch.aclose()
     if ready is None:
         raise RuntimeError("Watch Plugins: closed before Ready")
     # Invoke Its Public Operation Through the Host
     contract = next(operation for operation in ready.description.declarations.operations if operation.id == "example.echo")
     data = b"hello" + bytes(transfer.chunk_bytes - len(b"hello"))
-    reply = await client.invocations.invoke(
-        invocations.InvocationsInvokeRequest(
-            operation=contract.id, fingerprint=contract.fingerprint, payload=Value(value=data).SerializeToString()
-        )
-    )
-    if Value.FromString(reply.payload).value != data:
+    reply = await client.invocations.invoke(contract.id, contract.fingerprint, Value(value=data).SerializeToString())
+    if Value.FromString(reply).value != data:
         raise RuntimeError("Invoke example.echo: payload changed")
     print("hello", flush=True)
-    await client.plugins.delete(plugins.PluginsDeleteRequest(name="example", expected_revision=ready.revision))
+    await client.plugins.delete("example", ready.revision)
     await client.close()
 
 

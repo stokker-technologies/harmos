@@ -15,15 +15,18 @@
 
 /* === Imports === */
 
+use harmos::plugin::HostOperation;
+
 // Standard Library Imports
 use std::path::PathBuf;
 
 // Third Party Imports
 
 // Local Imports
-use harmos::{Context, Error, Operation, OperationRequest, Plugin, Result, Visibility};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Error, OperationRequest, Result, Visibility};
 
-use harmos_protocol::{plugin::host::SettingsListRequest, v1::setting_value::Value};
+use harmos::setting_value::Value;
 
 /* === Constants === */
 
@@ -62,7 +65,7 @@ pub fn plugin(directory: PathBuf) -> Plugin {
     .visibility(Visibility::Public);
     Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
         .settings(schematic_protocol::settings_declarations())
-        .requires::<SettingsListRequest>()
+        .requires_host(HostOperation::SettingsList)
         .operation(validate)
         .operation(route)
         .operation(directories)
@@ -79,7 +82,7 @@ async fn validate(_: &Context, request: ValidateSchematic) -> Result<Validation>
 async fn route(context: &Context, request: ProposeRoute) -> Result<Route> {
     let from = request.from.ok_or_else(|| Error::Invalid("Propose Route: Missing From Point".into()))?;
     let to = request.to.ok_or_else(|| Error::Invalid("Propose Route: Missing To Point".into()))?;
-    let settings = context.settings().await?.value.ok_or_else(|| Error::Invalid("Route: Missing Settings".into()))?;
+    let settings = context.host().settings.list().await?.value.ok_or_else(|| Error::Invalid("Route: Missing Settings".into()))?;
     let Some(Value::Flag(horizontal_first)) = settings.values.get("horizontal_first").and_then(|value| value.value.as_ref()) else {
         return Err(Error::Invalid("Route: Missing Horizontal First Flag".into()));
     };

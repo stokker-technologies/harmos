@@ -20,8 +20,9 @@ pub mod contract;
 /* === Imports === */
 
 use contract::*;
+use harmos::plugin::{Context, Operation, Plugin, Stream};
 use harmos::wasm::Registration;
-use harmos::{Classification, Context, Error, Operation, OperationPolicy, OperationRequest, Plugin, Result, Stream, Visibility};
+use harmos::{Classification, Error, OperationPolicy, OperationRequest, Result, Visibility};
 use std::{
     collections::HashMap,
     sync::{

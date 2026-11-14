@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.V1;
+using System;
 
-namespace Harmos.Sdk;
+namespace Harmos;
 
 public static class Transfer
 {
@@ -14,7 +14,8 @@ public static class Transfer
       throw new ArgumentException("Configure Transfer: chunk_bytes exceeds transport capacity");
     var required = checked((int)(settings.ChunkBytes + framing));
     var maximum = ceiling ?? checked((int)new MessageSettings().MessageBytes);
-    if (maximum < required) throw new ArgumentException("Configure Transfer: message_bytes cannot carry chunk_bytes plus framing");
+    if (maximum < required)
+      throw new ArgumentException("Configure Transfer: message_bytes cannot carry chunk_bytes plus framing");
     return maximum;
   }
 }

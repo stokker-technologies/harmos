@@ -649,39 +649,14 @@ The instance owns author state; `Context` owns invocation resources and host clo
 ### C# Authoring
 
 C# uses a typed builder registering async instance methods. The class owns its state;
-requests, replies and rows are generated protobuf message classes. `Grpc.Tools` generates
-code at build time; generated C# is not checked in. C# and C++ authoring use the builder
-shapes below; Python uses the linked decorated-method example.
+requests, replies and rows are generated protobuf message classes. The generation task
+checks in private wire bindings and typed client/host adapters. Transport requests are
+internal; consumer messages live at the root and client/plugin boundary namespaces.
 
-```csharp
-using Harmos.Sdk;
-using Harmos.V1;
-using Google.Protobuf.WellKnownTypes;
-// SetTemperature, Temperature and ReadSensor are generated from the product's .proto files.
+Import shared types from `Harmos` and authoring types from `Harmos.Plugins`.
+The maintained [plugin example](../../../sdk/csharp/examples/Plugin/Program.cs)
+shows the builder and unary handler using only those public paths.
 
-await new ThermalPlugin().Build().ServeAsync();
-
-sealed class ThermalPlugin
-{
-    private readonly Chamber chamber = new();
-    private readonly Operation<ReadSensor, Temperature> read = new("thermal.read", Visibility.Public);
-
-    public Harmos.Sdk.Plugin Build() => new Harmos.Sdk.Plugin("thermal", "1.0.0")
-        .Operation(new Operation<SetTemperature, Temperature>("thermal.set", Visibility.Public), SetAsync)
-        .Requires(read)
-        .Observer("thermal.temperature", new Duration { Seconds = 1 }, ObserveAsync)
-        .OnStop(chamber.CloseAsync);
-
-    private async Task<Temperature> SetAsync(Context context, SetTemperature request)
-    {
-        await context.CallAsync(read, new ReadSensor());
-        await chamber.SetAsync(request.Target, context.CancellationToken);
-        return await ObserveAsync(context);
-    }
-
-    private Task<Temperature> ObserveAsync(Context context) => chamber.ReadAsync(context.CancellationToken);
-}
-```
 
 `ServeAsync(address: "127.0.0.1:53124", remote: true)` serves an explicitly chosen remote
 endpoint and remains alive after Stop. `HARMOS_ADDRESS` overrides the address in either
@@ -690,10 +665,12 @@ mode. Managed mode defaults to a dynamically bound loopback port and announces r
 closing demand cancels the context and ends publication. `Section` carries typed product
 contributions, including product settings definitions. `Context.Scope` remains opaque.
 
-Declare `Requires(Clock.Sleep)` or `Requires(Clock.Now)` before using `context.SleepAsync`
-or `context.NowAsync`. These are child calls on the invocation, never local timers.
+Declare `Requires(HostOperation.TimeSleep)` or `Requires(HostOperation.TimeGet)` before
+using `context.Host.Time.Sleep` or `context.Host.Time.Get`; the clock convenience methods
+use the same requirements. These are child calls on the invocation, never local timers.
 Observers receive the host tick in `Context.At` and the per-demand `Context.Sequence`;
-they cannot call operations or sleep. Background work outside these host-visible waits
+they may call declared operations, watches, settings and the clock while the tick is
+unanswered. Returning the row cancels outstanding children. Background work outside these host-visible waits
 is outside virtual-time accounting and runs in real time. Instance state shared by
 concurrent calls must use the application's normal synchronization.
 ### C++ Authoring
@@ -704,27 +681,14 @@ application failure. `ctx.call` starts a child call and returns a typed future;
 `ctx.operation` waits for that future. C++20 reserves `requires`, so the builder
 spells the dependency method `requires_operation`.
 
-```cpp
-const harmos::Operation<thermal::v1::ReadSensor, thermal::v1::Reading>
-    read_sensor("sensor.read");
-harmos::Operation<thermal::v1::SetTemperature, thermal::v1::Reading>
-    set("thermal.set", set_temperature);
-set.visibility(harmos::wire::VISIBILITY_PUBLIC);
-harmos::Stream<thermal::v1::Reading> temperature("thermal.temperature");
-harmos::Observer<thermal::v1::Reading> observer(temperature, read_temperature);
-google::protobuf::Duration interval;
-interval.set_seconds(1);
-observer.every(interval);
-harmos::Plugin("thermal", "1.0.0")
-    .operation(set).requires_operation(read_sensor)
-    .stream(temperature).observer(observer)
-    .serve();
-```
+Import shared types from `harmos` and authoring types from `harmos::plugin`.
+The maintained [plugin example](../../../sdk/cpp/examples/plugin/main.cpp)
+shows named imports, a typed operation and managed serving.
+
 
 `serve()` selects managed lifecycle and reads `HARMOS_ADDRESS`, defaulting to an
 ephemeral loopback port. `serve("127.0.0.1:53124")` selects remote lifecycle and
-keeps serving after Stop. Both announce the bound address. Observer callbacks
-cannot make child calls or clock waits. Device producers use
+keeps serving after Stop. Both announce the bound address. Observer callbacks may make declared child calls and clock waits during their unanswered tick. Device producers use
 `Stream<Row>::publish_on` with a typed `Publisher<Row>`, ending when demand closes.
 `section(message)` carries typed settings/contributions; `on_stop(callback)` owns
 cleanup. Invocation resources use `ctx.set(value)` and `ctx.get<Type>()`; shared
@@ -770,7 +734,9 @@ Plugin(author, id="example", version="1.0.0", messages=[RecordPayload])
 new Plugin("example", "1.0.0").Message<RecordPayload>();
 ```
 ```cpp
-harmos::Plugin("example", "1.0.0").message<RecordPayload>();
+using harmos::plugin::Plugin;
+
+Plugin("example", "1.0.0").message<RecordPayload>();
 ```
 
 All four message-registration APIs use their existing descriptor-closure merge and validation;
@@ -861,3 +827,35 @@ Guest migration (7.1) follows Guest Lifecycle and Child Control above. Windows g
 
 The built-in visibility mapping awaits confirmation in `operation-visibility`; retaining the
 hand-maintained downsampling kernels awaits confirmation in `facility-trim`.
+
+## SDK Call-Style Source Inventory
+
+The call-style replacement owns all four SDKs, their generators and conformance/client
+fixtures, example client/plugin consumers and SDK guides. Its protocol edits mark optional
+read cuts/pages and the Plugins.Watch selector. Regeneration also updates protocol output.
+Minimal non-storage runtime consumers adapt that selector and the generated SDK calls;
+storage/query implementations remain with their separate owner. Manifests, locks, formatter
+configuration and generated-file inventories are included. Commits remain local.
+
+Required fields flatten positionally; optional fields and retry identity use optional
+arguments/options. Exactly one response field projects its payload; empty/multiple-field
+responses retain their envelope and metadata. Status.Get contains both status and resolved_at.
+It therefore stays wrapped under that rule pending the owner's decision about a direct
+HostStatus return. Public type ownership is root/shared, client and plugin; C# names its
+boundary namespaces Clients and Plugins to avoid the root Client class collision.
+
+The optional-marker edits are:
+
+| Protocol Input | Fields |
+| --- | --- |
+| `proto/harmos/client/v1/access/pairings.proto` | PairingsListRequest.at |
+| `proto/harmos/client/v1/plugins.proto` | Get/List/Watch read cuts; Watch.name |
+| `proto/harmos/client/v1/plugins/settings.proto` | SettingsListRequest.at |
+| `proto/harmos/client/v1/status.proto` | Get/Watch read cuts |
+| `proto/harmos/client/v1/status/logs.proto` | List.at/page; Watch.at |
+| `proto/harmos/client/v1/status/trace_events.proto` | List.at/page; Watch.at |
+| `proto/harmos/plugin/host/v1/settings.proto` | SettingsListRequest.at |
+
+Product binding acceptance retains static consumer typing and aggregate round-trip proof;
+the superseded snapshot of a public module's private wire imports is removed. Wire modules
+and their request aliases now stay behind the generated private binding module.

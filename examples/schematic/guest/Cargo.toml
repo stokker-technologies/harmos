@@ -33,7 +33,6 @@ benchmark = []
 [dependencies]
 # Local
 harmos = { workspace = true, features = ["wasm"] }
-harmos-protocol = { workspace = true }
 schematic-domain = { path = "../domain" }
 schematic-protocol = { path = "../protocol", features = ["sdk"] }
 

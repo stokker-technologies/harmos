@@ -13,6 +13,7 @@
 # Standard Library Imports
 import asyncio
 import os
+from asyncio.subprocess import PIPE
 from pathlib import Path
 
 # Third Party Imports
@@ -47,8 +48,8 @@ async def run(address: str, *, binary: Path | None = None) -> tuple[int, str, st
         str(binary),
         "--address",
         address,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
         creationflags=spawn_flags(),
     )
     try:

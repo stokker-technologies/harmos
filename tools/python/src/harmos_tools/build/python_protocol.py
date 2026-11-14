@@ -11,12 +11,12 @@
 # === Imports === #
 
 # Standard Library Imports
-import argparse
 import filecmp
 import shutil
 import subprocess
 import sys
 import tempfile
+from argparse import ArgumentParser
 from pathlib import Path
 
 # Third Party Imports
@@ -25,7 +25,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
 from ..process import spawn_flags
-from .resource_roots import python, table
+from .resource_roots import python, python_exports, python_host, table
 
 # Type Checking Imports
 
@@ -43,7 +43,7 @@ PROTOCOLS = tuple(
     )
 )
 GENERATED = tuple(
-    name.removesuffix(".proto").replace("harmos/client/", "harmos/_wire/client/", 1) + suffix
+    name.removesuffix(".proto").replace("harmos/", "harmos/_wire/", 1) + suffix
     for name in PROTOCOLS
     for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
 )
@@ -73,19 +73,24 @@ def generate(output: Path) -> None:
         *PROTOCOLS,
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
-    # Keep Generated Client Modules Separate From the Authored harmos.client Module.
-    client = output / "harmos/client"
-    destination = output / "harmos/_wire/client"
-    if client.is_dir():
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(client, destination, dirs_exist_ok=True)
-        shutil.rmtree(client)
+    # All Protocol Packages Are Private Implementation Modules.
+    for face in ("v1", "client", "plugin"):
+        source = output / "harmos" / face
+        destination = output / "harmos/_wire" / face
+        if source.is_dir():
+            for path in source.rglob("*_pb2*"):
+                if not path.is_file() or not path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")):
+                    continue
+                target = destination / path.relative_to(source)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(path), target)
     for name in GENERATED:
         path = output / name
         source = path.read_text(encoding="utf-8")
-        source = source.replace("from harmos.client", "from harmos._wire.client")
-        source = source.replace("import harmos.client.", "import harmos._wire.client.")
-        source = source.replace("'harmos.client.v1.", "'harmos._wire.client.v1.")
+        for face in ("v1", "client", "plugin"):
+            source = source.replace(f"from harmos.{face}", f"from harmos._wire.{face}")
+            source = source.replace(f"import harmos.{face}.", f"import harmos._wire.{face}.")
+            source = source.replace(f"'harmos.{face}.", f"'harmos._wire.{face}.")
         path.write_text(source, encoding="utf-8", newline="\n")
     # Generated Convenience Calls Require the Experimental Submodule Explicitly.
     for name in GENERATED:
@@ -97,13 +102,20 @@ def generate(output: Path) -> None:
                     source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1), encoding="utf-8", newline="\n"
                 )
     descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    python(output / "harmos/generated/client.py", [method for method in table(descriptors) if method["face"] == "client"], descriptors)
+    python_exports(output / "harmos/_generated", descriptors)
+    python_host(output / "harmos/_generated/host.py", [method for method in table(descriptors) if method["face"] == "context"], descriptors)
+    python(output / "harmos/_generated/client.py", [method for method in table(descriptors) if method["face"] == "client"], descriptors)
 
 
 def generate_client_fixture(output: Path) -> None:
     proto = ROOT / "sdk/tests/fixtures/client/proto"
     inputs = sorted(path.relative_to(proto).as_posix() for path in proto.rglob("*.proto"))
     output.mkdir(parents=True, exist_ok=True)
+    wire = output / "_wire"
+    wire.mkdir(parents=True, exist_ok=True)
+    for path in (output / "application").rglob("*_pb2*"):
+        if path.is_file() and path.name.endswith((".py", ".pyi")):
+            path.unlink()
     scratch = Path(tempfile.mkdtemp())
     try:
         descriptor_path = scratch / "client-descriptors.bin"
@@ -113,9 +125,9 @@ def generate_client_fixture(output: Path) -> None:
                 "-m",
                 "grpc_tools.protoc",
                 f"-I{proto}",
-                f"--python_out={output}",
-                f"--pyi_out={output}",
-                f"--grpc_python_out={output}",
+                f"--python_out={wire}",
+                f"--pyi_out={wire}",
+                f"--grpc_python_out={wire}",
                 f"--descriptor_set_out={descriptor_path}",
                 "--include_imports",
                 *inputs,
@@ -124,13 +136,19 @@ def generate_client_fixture(output: Path) -> None:
             cwd=ROOT,
             creationflags=spawn_flags(),
         )
+        for path in wire.rglob("*_pb2*"):
+            if not path.is_file() or not path.name.endswith((".py", ".pyi")):
+                continue
+            source = path.read_text(encoding="utf-8").replace("from application.", "from tests.fixtures.client._wire.application.")
+            source = source.replace("'application.", "'tests.fixtures.client._wire.application.")
+            path.write_text(source, encoding="utf-8", newline="\n")
         descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
         descriptors.file.extend(FileDescriptorSet.FromString(descriptor_path.read_bytes()).file)
         python(
-            output / "client.py",
+            output / "_generated/client.py",
             [method for method in table(descriptors) if method["face"] == "client"],
             descriptors,
-            module_prefixes={"application": "tests.fixtures.client.application"},
+            module_prefixes={"application": "tests.fixtures.client._wire.application"},
         )
     finally:
         shutil.rmtree(scratch)
@@ -159,19 +177,30 @@ def generate_conformance(output: Path) -> None:
         output.mkdir(parents=True, exist_ok=True)
         for source in (Path(scratch) / "harmos/conformance/v1").iterdir():
             shutil.copyfile(source, output / source.name)
+        schema = FileDescriptorSet.FromString((ROOT / "sdk/rust/tests/fixtures/conformance/descriptors.bin").read_bytes())
+        names = sorted(message.name for file in schema.file if file.package == "harmos.conformance.v1" for message in file.message_type)
+        package = output.parent.parent
+        for obsolete in (package / "v1").glob("*_pb2*"):
+            if obsolete.is_file():
+                obsolete.unlink()
+        types = [
+            "# @generated from protocol descriptors; do not edit.",
+            *[f"from ._wire.v1.fixture_pb2 import {name} as {name}" for name in names],
+        ]
+        (package / "_types.py").write_text("\n".join(types) + "\n", encoding="utf-8", newline="\n")
     finally:
         shutil.rmtree(scratch)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     options = parser.parse_args()
     committed = ROOT / "sdk/python/src"
     if not options.check:
         generate(committed)
         generate_client_fixture(ROOT / "sdk/python/tests/fixtures/client")
-        generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/v1")
+        generate_conformance(ROOT / "sdk/python/tests/fixtures/conformance/_wire/v1")
         return
 
     scratch = tempfile.mkdtemp()
@@ -180,7 +209,17 @@ def main() -> None:
         generate(output)
         changed = [
             name
-            for name in (*GENERATED, "harmos/generated/client.py")
+            for name in (
+                *GENERATED,
+                "harmos/_generated/client.py",
+                "harmos/_generated/shared.py",
+                "harmos/_generated/client_types.py",
+                "harmos/_generated/plugin_types.py",
+                "harmos/_generated/host.py",
+                "harmos/__init__.py",
+                "harmos/client.py",
+                "harmos/plugin/__init__.py",
+            )
             if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
         ]
         changed += [
@@ -202,9 +241,13 @@ def main() -> None:
                 or not filecmp.cmp(path, client / path.relative_to(generated_client), shallow=False)
             )
         ]
-        fixture = ROOT / "sdk/python/tests/fixtures/conformance/v1"
-        generated_fixture = output / "conformance"
+        fixture = ROOT / "sdk/python/tests/fixtures/conformance/_wire/v1"
+        generated_fixture = output / "conformance/_wire/v1"
         generate_conformance(generated_fixture)
+        types = generated_fixture.parent.parent / "_types.py"
+        committed_types = ROOT / "sdk/python/tests/fixtures/conformance/_types.py"
+        if not committed_types.is_file() or types.read_bytes() != committed_types.read_bytes():
+            changed.append("conformance/_types.py")
         changed += [
             str(path.relative_to(output))
             for path in generated_fixture.iterdir()

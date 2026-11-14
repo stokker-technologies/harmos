@@ -11,7 +11,6 @@
 # === Imports === #
 
 # Standard Library Imports
-import argparse
 import json
 import os
 import shutil
@@ -19,7 +18,9 @@ import subprocess
 import sys
 import tarfile
 import time
+from argparse import ArgumentParser
 from pathlib import Path
+from subprocess import PIPE, STDOUT
 
 # Third Party Imports
 # Local Imports
@@ -116,11 +117,12 @@ def environment() -> dict[str, str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     parser.add_argument("--preset", choices=("development", "release", "tests"))
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--format", action="store_true")
     parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--generate", action="store_true")
     parser.add_argument("--test", action="store_true")
@@ -146,6 +148,16 @@ def main() -> None:
     selected = options.preset or ("release" if options.profile == "release" else "tests")
     directory = ROOT / "target/cpp" / selected
     sdk = ROOT / "sdk/cpp"
+    if options.format:
+        sources = sorted(
+            path
+            for folder in ("src", "include", "examples", "tests")
+            for path in (sdk / folder).rglob("*")
+            if path.suffix in (".cpp", ".hpp")
+        )
+        arguments = ["clang-format", *(["--dry-run", "--Werror"] if options.check else ["-i"]), *map(str, sources)]
+        subprocess.run(arguments, check=True, creationflags=spawn_flags())
+        return
     child_environment = environment()
     if options.prepare:
         print(f"vcpkg: {child_environment['VCPKG_ROOT']}")
@@ -153,14 +165,12 @@ def main() -> None:
     if options.generate:
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-        from .resource_roots import cpp, table
+        from .resource_roots import cpp, cpp_exports, cpp_host, table
 
         descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        generated = ROOT / "target/generated/cpp/client"
-        cpp(generated, [method for method in table(descriptors) if method["face"] == "client"])
-        header = Path("sdk/cpp/include/harmos/generated/client.hpp")
-        if (generated / header).read_bytes() != (ROOT / header).read_bytes():
-            raise RuntimeError("Generate C++ Client: Frozen Header Differs from the Descriptor Table")
+        cpp_exports(ROOT, descriptors)
+        cpp(ROOT, [method for method in table(descriptors) if method["face"] == "client"])
+        cpp_host(ROOT, [method for method in table(descriptors) if method["face"] == "context"])
 
     # Tests Consume Existing Producer Outputs.
     if options.test:
@@ -237,9 +247,7 @@ def main() -> None:
     configure = ["cmake", "--preset", selected, f"-DPython3_EXECUTABLE={sys.executable}"]
     if options.fresh:
         configure.append("--fresh")
-    result = subprocess.run(
-        configure, cwd=sdk, env=child_environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=spawn_flags()
-    )
+    result = subprocess.run(configure, cwd=sdk, env=child_environment, stdout=PIPE, stderr=STDOUT, text=True, creationflags=spawn_flags())
     sys.stdout.write(result.stdout)
     (directory / "configure.log").write_text(result.stdout, encoding="utf-8")
     result.check_returncode()
@@ -258,9 +266,7 @@ def main() -> None:
     print(f"C++ Build Log: {log}", flush=True)
     output = log.open("w", encoding="utf-8")
     try:
-        result = subprocess.run(
-            command, cwd=sdk, env=child_environment, stdout=output, stderr=subprocess.STDOUT, creationflags=spawn_flags()
-        )
+        result = subprocess.run(command, cwd=sdk, env=child_environment, stdout=output, stderr=STDOUT, creationflags=spawn_flags())
     finally:
         output.close()
     lines = log.read_text(encoding="utf-8", errors="replace").splitlines()

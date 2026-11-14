@@ -366,7 +366,8 @@ impl Actor {
 
     fn watch(&mut self, request: PluginsWatchRequest) -> Result<mpsc::Receiver<PluginsWatchResponse>, Error> {
         let snapshot = self.snapshot(request.at.as_ref())?.clone();
-        let entries = snapshot.entries.values().filter(|entry| request.name.is_empty() || entry.name == request.name).cloned().collect();
+        let name = request.name.unwrap_or_default();
+        let entries = snapshot.entries.values().filter(|entry| name.is_empty() || entry.name == name).cloned().collect();
         let opening = PluginsWatchResponse {
             resolved_at: Some(snapshot.cut.clone()),
             event: Some(wire::plugins_watch_response::Event::Snapshot(PluginSnapshot { entries })),
@@ -398,7 +399,6 @@ impl Actor {
             .collect::<Vec<_>>();
         let mut changes = self.changes.subscribe();
         let (sender, receiver) = mpsc::channel(self.settings.watch_capacity.get());
-        let name = request.name;
         let response_bytes = self.settings.response_bytes.get();
         tokio::spawn(async move {
             let mut resolved_at = opening.resolved_at.clone();

@@ -1122,6 +1122,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "getrandom 0.4.3",
  "harmos-protocol",
  "harmos-sdk-derive",
  "prost",

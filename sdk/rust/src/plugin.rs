@@ -11,7 +11,15 @@
 
 /* === Modules === */
 
+include!("plugin/types.rs");
+mod host;
+include!("plugin/host_exports.rs");
+
 /* === Re-Exports === */
+
+pub use crate::context::{Context, Watching};
+pub use crate::operation::Operation;
+pub use crate::stream::{Observer, Publisher, Stream};
 
 /* === Imports === */
 
@@ -24,10 +32,16 @@ use std::{
 // Third Party Imports
 
 // Local Imports
-use crate::{Error, Message, Observer, Operation, OperationRequest, Result, Stream, message::merge_types, stream::StreamDefinition};
+#[cfg(test)]
+use crate::setting_value::Value as SettingKind;
+use crate::{Error, Message, OperationRequest, Result, message::merge_types, stream::StreamDefinition};
+use harmos_protocol::v1::{Declarations, Protobuf, Requirement, Section, Visibility};
+#[cfg(test)]
+use harmos_protocol::v1::{SettingDeclaration, SettingValue};
 use harmos_protocol::v1::{SettingsDeclarations, StorageTransferSettings};
-use harmos_protocol::{v1, v1::Declarations};
 use prost_reflect::DescriptorPool;
+#[cfg(test)]
+use prost_types::Duration;
 use prost_types::FileDescriptorSet;
 
 /* === Constants === */
@@ -45,7 +59,7 @@ pub struct Plugin {
     pub(crate) streams: Vec<StreamDefinition>,
     pub(crate) observers: Vec<Observer>,
     pub(crate) requirements: Vec<Required>,
-    sections: Vec<(v1::Section, FileDescriptorSet)>,
+    sections: Vec<(Section, FileDescriptorSet)>,
     messages: Vec<(String, FileDescriptorSet)>,
     pub(crate) cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     pub(crate) remote: bool,
@@ -108,7 +122,7 @@ impl Plugin {
 
     pub fn section<T: Message>(mut self, value: T) -> Self {
         self.sections.push((
-            v1::Section {
+            Section {
                 r#type: T::name(),
                 payload: value.encode_to_vec(),
             },
@@ -164,9 +178,9 @@ impl Plugin {
             if operation.contract.id.is_empty() || !ids.insert(&operation.contract.id) {
                 return Err(Error::Invalid(format!("Duplicate or Empty Operation: {}", operation.contract.id)));
             }
-            if operation.contract.visibility != v1::Visibility::Private as i32
-                && operation.contract.visibility != v1::Visibility::Protected as i32
-                && operation.contract.visibility != v1::Visibility::Public as i32
+            if operation.contract.visibility != Visibility::Private as i32
+                && operation.contract.visibility != Visibility::Protected as i32
+                && operation.contract.visibility != Visibility::Public as i32
             {
                 return Err(Error::Invalid(format!("Invalid Visibility: {}", operation.contract.id)));
             }
@@ -174,7 +188,7 @@ impl Plugin {
             contract.fingerprint =
                 harmos_protocol::schema::fingerprint(&contract.id, &operation.types, &contract.request, &contract.response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
-            if contract.visibility == v1::Visibility::Private as i32 {
+            if contract.visibility == Visibility::Private as i32 {
                 continue;
             }
             harmos_protocol::schema::plugin_operation_identity(&contract.id).map_err(|error| Error::Invalid(error.to_string()))?;
@@ -187,7 +201,7 @@ impl Plugin {
             if self
                 .operations
                 .iter()
-                .any(|operation| operation.contract.id == requirement.id && operation.contract.visibility == v1::Visibility::Private as i32)
+                .any(|operation| operation.contract.id == requirement.id && operation.contract.visibility == Visibility::Private as i32)
             {
                 return Err(Error::Invalid(format!("Require {}: Private Calls Are Local", requirement.id)));
             }
@@ -196,7 +210,7 @@ impl Plugin {
             }
             let fingerprint = harmos_protocol::schema::host_fingerprint(
                 &requirement.id,
-                &v1::Protobuf {
+                &Protobuf {
                     descriptors: prost::Message::encode_to_vec(&requirement.types),
                     request: requirement.request.clone(),
                     response: requirement.response.clone(),
@@ -205,7 +219,7 @@ impl Plugin {
                 },
             )
             .map_err(|error| Error::Invalid(error.to_string()))?;
-            declarations.requires.push(v1::Requirement { id: requirement.id.clone(), fingerprint });
+            declarations.requires.push(Requirement { id: requirement.id.clone(), fingerprint });
             merge_types(&mut types, requirement.types.clone())?;
         }
         let mut streams = HashSet::new();
@@ -322,7 +336,7 @@ mod tests {
     #[test]
     fn declarations_describes_values_without_running_handlers_or_cleanup() {
         let plugin = Plugin::new("declarations_fixture", "1.0.0")
-            .operation(Operation::new("declarations.read", not_called).visibility(v1::Visibility::Protected))
+            .operation(Operation::new("declarations.read", not_called).visibility(Visibility::Protected))
             .section(Settings { interval_ms: 250 })
             .on_stop(|| panic!("Declarations Inspection Entered Cleanup"));
         let declarations = plugin.declarations().unwrap();
@@ -337,17 +351,15 @@ mod tests {
     fn typed_settings_preserve_presence_and_reject_invalid_declarations() {
         let declarations = SettingsDeclarations {
             values: vec![
-                v1::SettingDeclaration {
+                SettingDeclaration {
                     name: "flag".into(),
-                    default: Some(v1::SettingValue {
-                        value: Some(v1::setting_value::Value::Flag(false)),
-                    }),
+                    default: Some(SettingValue { value: Some(SettingKind::Flag(false)) }),
                     ..Default::default()
                 },
-                v1::SettingDeclaration {
+                SettingDeclaration {
                     name: "text".into(),
-                    default: Some(v1::SettingValue {
-                        value: Some(v1::setting_value::Value::Text(String::new())),
+                    default: Some(SettingValue {
+                        value: Some(SettingKind::Text(String::new())),
                     }),
                     ..Default::default()
                 },
@@ -363,9 +375,9 @@ mod tests {
         missing.values[0].default = None;
         assert!(Plugin::new("settings", "1.0.0").settings(missing).declarations().is_err());
         let unset = SettingsDeclarations {
-            values: vec![v1::SettingDeclaration {
+            values: vec![SettingDeclaration {
                 name: "unset".into(),
-                default: Some(v1::SettingValue { value: None }),
+                default: Some(SettingValue { value: None }),
                 ..Default::default()
             }],
         };
@@ -375,18 +387,18 @@ mod tests {
     #[test]
     fn duplicate_operations_are_rejected_at_declarations_construction() {
         let plugin = Plugin::new("test", "1.0.0")
-            .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected))
-            .operation(Operation::new("test.duplicate", empty).visibility(v1::Visibility::Protected));
+            .operation(Operation::new("test.duplicate", empty).visibility(Visibility::Protected))
+            .operation(Operation::new("test.duplicate", empty).visibility(Visibility::Protected));
         assert!(plugin.declarations().is_err());
     }
 
     #[test]
     fn observer_must_own_one_declared_stream() {
         let stream = Stream::<()>::new("test.samples");
-        let observer = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
+        let observer = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
         assert!(Plugin::new("test", "1.0.0").observer(observer).declarations().is_err());
-        let first = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
-        let second = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
+        let first = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
+        let second = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
         assert!(Plugin::new("test", "1.0.0").stream(stream).observer(first).observer(second).declarations().is_err());
     }
 }

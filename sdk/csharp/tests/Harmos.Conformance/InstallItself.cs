@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Linq;
+using System.Threading.Tasks;
+using System;
 using Google.Protobuf;
 using Grpc.Core;
-using Harmos.Sdk;
-using Harmos.V1;
-using Harmos.Client.V1;
-using Value = Harmos.Conformance.V1.Value;
+using Harmos.Clients;
+using Harmos.Plugins;
+using Harmos;
+using Value = Harmos.Conformance.Value;
 
 internal static class InstallItself
 {
@@ -21,35 +24,26 @@ internal static class InstallItself
     var transfer = new StorageTransferSettings();
     using var client = Client.Connect(arguments[0], transfer);
     // Install and Start This Codebase's Running Instance
-    await client.Plugins.Create(new PluginsCreateRequest
-    {
-      RequestId = "self-install",
-      Name = "example",
-      Placement = new PluginPlacement { Remote = new PluginRemote { Url = arguments[1] } },
-      Value = new PluginValue { Enabled = true }
-    });
-    using var watch = client.Plugins.Watch(new PluginsWatchRequest { Name = "example" });
+    await client.Plugins.Create("example", new PluginPlacement { Remote = new PluginRemote { Url = arguments[1] } },
+        new PluginValue { Enabled = true });
+    await using var watch = client.Plugins.Watch(name: "example").GetAsyncEnumerator();
     PluginEntry? ready = null;
-    while (ready is null && await watch.ResponseStream.MoveNext(CancellationToken.None))
+    while (ready is null && await watch.MoveNextAsync())
     {
-      var current = watch.ResponseStream.Current;
+      var current = watch.Current;
       var entries = current.Snapshot?.Entries.AsEnumerable() ?? new[] { current.Change?.Entry }.OfType<PluginEntry>();
       ready = entries.FirstOrDefault(entry => entry.State == PluginState.Ready);
     }
-    if (ready is null) throw new InvalidOperationException("Watch Plugins: closed before Ready");
+    if (ready is null)
+      throw new InvalidOperationException("Watch Plugins: closed before Ready");
     // Invoke Its Public Operation Through the Host
     var contract = ready.Description.Declarations.Operations.Single(operation => operation.Id == "example.echo");
     var data = new byte[checked((int)transfer.ChunkBytes)];
     "hello"u8.CopyTo(data);
-    var reply = await client.Invocations.Invoke(new InvocationsInvokeRequest
-    {
-      Operation = contract.Id,
-      Fingerprint = contract.Fingerprint,
-      Payload = new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString()
-    });
-    if (!Value.Parser.ParseFrom(reply.Payload).Value_.Span.SequenceEqual(data))
+    var reply = await client.Invocations.Invoke(contract.Id, contract.Fingerprint, new Value { Value_ = ByteString.CopyFrom(data) }.ToByteString());
+    if (!Value.Parser.ParseFrom(reply).Value_.Span.SequenceEqual(data))
       throw new InvalidOperationException("Invoke example.echo: payload changed");
     Console.WriteLine("hello");
-    await client.Plugins.Delete(new PluginsDeleteRequest { Name = "example", ExpectedRevision = ready.Revision });
+    await client.Plugins.Delete("example", ready.Revision);
   }
 }

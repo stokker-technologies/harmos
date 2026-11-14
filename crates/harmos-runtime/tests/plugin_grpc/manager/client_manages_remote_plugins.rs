@@ -13,8 +13,10 @@
 
 use super::support::{self, Backends, Host, Peer};
 use crate::plugin_grpc::invoke_support::payload;
-use harmos_protocol::v1 as wire;
+use harmos::client::PluginsGetOptions;
+use harmos::{Client, ClientSettings, StorageTransferSettings};
 use harmos_runtime::plugin::manager::Management;
+use std::num::NonZeroUsize;
 
 /* === Tests === */
 
@@ -56,48 +58,30 @@ async fn client_manages_remote_plugins() {
     assert_eq!(listed.resolved_at, got.resolved_at);
 
     // Call the Same Contract Through the Rust SDK Client
-    let factory = harmos_runtime::operations::OperationFactory::protobuf::<harmos_operations::plugins::Get>().unwrap();
-    let contract = factory.contract().unwrap();
-    let binding = contract.grpc().unwrap();
-    let declaration = wire::DiscoveredContract {
-        id: contract.operation().id.to_string(),
-        visibility: wire::Visibility::Public as i32,
-        protobuf: contract.protobuf().cloned(),
-        fingerprint: contract.fingerprint().0.to_vec(),
-        grpc: Some(wire::Grpc {
-            package: binding.package.to_string(),
-            service: binding.service.to_string(),
-            method: binding.method.to_string(),
-            managed: binding.managed,
-        }),
-        ..Default::default()
-    };
-    let method =
-        harmos::client::Method::<harmos_protocol::client::PluginsGetRequest, harmos_protocol::client::PluginsGetResponse>::new(declaration)
-            .unwrap();
-    let capacity = std::num::NonZeroUsize::new(1024 * 1024).unwrap();
-    let sdk = harmos::client::Client::new(
+    let capacity = NonZeroUsize::new(1024 * 1024).unwrap();
+    let sdk = Client::new(
         host.channel.clone(),
-        harmos::client::ClientSettings {
-            transfer: harmos_protocol::v1::StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
+        ClientSettings {
+            transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
             retained_bytes: capacity,
             message_bytes: capacity,
-            input_items: std::num::NonZeroUsize::new(1).unwrap(),
+            input_items: NonZeroUsize::new(1).unwrap(),
             input_bytes: capacity,
         },
     )
     .unwrap();
     let sdk_response = sdk
-        .call(
-            &method,
-            tonic::Request::new(harmos_protocol::client::PluginsGetRequest {
-                name: "remote".into(),
+        .plugins
+        .get_with(
+            "remote",
+            PluginsGetOptions {
                 at: got.resolved_at,
-            }),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
-    assert_eq!(sdk_response.into_inner().entry, Some(ready.clone()));
+    assert_eq!(sdk_response.entry, Some(ready.clone()));
 
     // Invoke Through the Existing Scoped Host Dispatcher
     let operations = host.runtime.operations.with_scope("opaque-unit").unwrap();

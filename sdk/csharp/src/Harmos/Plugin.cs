@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using Harmos.Plugin.V1;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Threading.Channels;
-using Google.Protobuf;
+using System.Threading.Tasks;
+using System.Threading;
+using System;
 using Google.Protobuf.WellKnownTypes;
-using Harmos.V1;
+using Google.Protobuf;
+using Harmos.Internal.Plugin;
+using Harmos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -14,7 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Harmos.Sdk;
+namespace Harmos.Plugins;
 
 /// <summary>A plugin assembled from typed async methods, including instance methods with shared state.</summary>
 public sealed class Plugin(string id, string version, StorageTransferSettings? transfer = null)
@@ -36,7 +41,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     if (contract.Visibility is not (Visibility.Private or Visibility.Protected or Visibility.Public))
       throw new ArgumentException($"Register {contract.Id}: Explicit Visibility Is Required");
     if (!operations.TryAdd(contract.Id, new Handler(
-        payload => Sdk.Operation<TRequest, TResponse>.Decode(payload),
+        payload => Harmos.Plugins.Operation<TRequest, TResponse>.Decode(payload),
         async (context, request) => (await handler(context, (TRequest)request)).ToByteString(), contract)))
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
     if (contract.Visibility != Visibility.Private)
