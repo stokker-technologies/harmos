@@ -435,8 +435,11 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     let drive = controller.advance_until(Duration::from_secs(10), || {
         signals.answered.load(Ordering::SeqCst) >= 4 && signals.refusals.load(Ordering::SeqCst) == 5
     });
-    let ((), result) = tokio::join!(collect, drive);
-    result.unwrap();
+    let collected = async {
+        collect.await;
+        Ok(())
+    };
+    tokio::try_join!(collected, drive).unwrap();
     assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick_owner") && reported == "remote"));
     host.close().await;
 }
