@@ -50,8 +50,13 @@ int install_itself(int argc, char** argv) {
     harmos::client::v1::PluginsWatchResponse event;
     while (watch->Read(&event)) {
         if (event.has_snapshot()) {
-            for (const auto& entry : event.snapshot().entries()) if (entry.state() == harmos::client::v1::PLUGIN_STATE_READY) ready = entry;
-        } else if (event.has_change() && event.change().has_entry() && event.change().entry().state() == harmos::client::v1::PLUGIN_STATE_READY) {
+            for (const auto& entry : event.snapshot().entries()) {
+                if (entry.has_failure()) throw std::runtime_error("Start Installed Plugin: " + entry.failure().DebugString());
+                if (entry.state() == harmos::client::v1::PLUGIN_STATE_READY) ready = entry;
+            }
+        } else if (event.has_change() && event.change().has_entry()) {
+            if (event.change().entry().has_failure()) throw std::runtime_error("Start Installed Plugin: " + event.change().entry().failure().DebugString());
+            if (event.change().entry().state() != harmos::client::v1::PLUGIN_STATE_READY) continue;
             ready = event.change().entry();
         }
         if (ready.state() == harmos::client::v1::PLUGIN_STATE_READY) break;

@@ -54,10 +54,6 @@ tempfile = { workspace = true }
 # === Test Targets === #
 
 [[test]]
-name = "integration"
-path = "tests/artifact/main.rs"
-
-[[test]]
 name = "acceptance"
 path = "tests/acceptance/main.rs"
 

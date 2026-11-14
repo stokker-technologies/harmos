@@ -25,7 +25,7 @@ use harmos_protocol::{
     v1::{self, guest_child, guest_command, response},
 };
 use prost::Message as _;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
@@ -223,6 +223,11 @@ async fn component_authoring_preserves_lifecycle_and_child_handles() {
     assert_eq!(world(&sandbox), world(&schematic));
     let example = Session::new(&schematic).await;
     assert_eq!(example.metadata.id, "schematic_tools");
+    let catalog = example.metadata.catalog.as_ref().unwrap();
+    let operations = catalog.operations.iter().map(|operation| operation.id.as_str()).collect::<BTreeSet<_>>();
+    assert_eq!(operations, BTreeSet::from(["schematic.route", "schematic.validate"]));
+    assert!(catalog.types.as_ref().is_some_and(|types| !types.file.is_empty()));
+    assert!(example.metadata.requirements.iter().any(|requirement| requirement.id == "harmos.plugin.host.v1.Settings/List"));
 
     // Register Inert Metadata Before Initializing Any Authored State
     let mut session = Session::new(&sandbox).await;

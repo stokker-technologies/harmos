@@ -149,7 +149,7 @@ def run(
 ) -> int:
     selectors = ["--manifest-path", str(manifest)] if manifest else []
     selected: dict[str, list[str]]
-    if target is not None and package is not None:
+    if target is not None and package is not None and manifest is None:
         selected = {package: [target]}
     else:
         result = subprocess.run(
@@ -172,13 +172,27 @@ def run(
             candidates = {item["name"]: item for item in metadata["packages"]}
             if package is None or package not in candidates:
                 raise policy.TestError(f"unknown Rust package: {package}")
-            selected = {package: _targets(candidates[package])}
+            selected = {package: [target] if target is not None else _targets(candidates[package])}
     if not selected or not any(selected.values()):
         raise policy.TestError("selection contains no Rust test targets")
 
     rules = policy.load(directory)
     names = sorted({name for targets in selected.values() for name in targets if name != "lib"})
     overrides = nextest.overrides(rules, None, coverage=False, binaries={name: name for name in names})
+    if manifest is not None:
+        # A Separate Workspace Cannot Match The Root Workspace's Binary IDs.
+        packages = {item["name"] for item in metadata["packages"]}
+        overrides = [
+            (
+                re.sub(
+                    r"binary_id\(=([^:()]+)::[^()]+\)",
+                    lambda match: match[0] if match[1] in packages else "none()",
+                    expression,
+                ),
+                seconds,
+            )
+            for expression, seconds in overrides
+        ]
     composite = target is None
     executed = 0
     output = report.native_directory(directory, Path("target/tests/focused"))
