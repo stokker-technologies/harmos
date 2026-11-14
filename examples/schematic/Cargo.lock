@@ -2320,6 +2320,7 @@ dependencies = [
  "schematic-app",
  "schematic-domain",
  "schematic-operations",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",

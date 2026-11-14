@@ -17,6 +17,7 @@
 use std::num::NonZeroUsize;
 
 // Third Party Imports
+use serde_json::{Value, json};
 
 // Local Imports
 use crate::Result;
@@ -40,7 +41,7 @@ use schematic_app::domain::model::Snapshot;
 
 /* === Public Functions === */
 
-pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<()> {
+pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result<Value> {
     // Drain a Bounded Streaming Analysis
     let settings = StreamSettings {
         items: NonZeroUsize::MIN,
@@ -50,7 +51,9 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
         schematic: Some(schematic.clone().into()),
     };
     let mut analysis = runtime.operations.download_protobuf::<schematic_app::operations::AnalyzeSchematic>(request, settings)?;
+    let mut findings = 0;
     while let Some(finding) = analysis.next().await? {
+        findings += 1;
         println!("Analysis: {}", finding.text);
     }
     let response = analysis.join().await?;
@@ -60,12 +63,15 @@ pub async fn run(runtime: &Runtime, schematic: Snapshot, native: bool) -> Result
     println!("Cancelled analysis and waited for settlement");
 
     // Only the Native Sidecar Has Filesystem Access
-    if native {
+    let directories = if native {
         let request = schematic_app::protocol::ListDirectories {};
         let response = schematic_app::services::call(runtime, request).await?;
         println!("Native directories: {:?}", response.directories);
-    }
-    Ok(())
+        Some(response.directories)
+    } else {
+        None
+    };
+    Ok(json!({"findings": findings, "checked": response.checked, "cancelled": true, "directories": directories}))
 }
 
 /* === Private Functions === */

@@ -228,7 +228,9 @@ def prepare(profile: str) -> None:
     staging.verify(stamp["profile"], profile, "test fixtures belong to another profile")
     staging.verify(stamp["target"], paths.target(), "test fixtures belong to another native target")
     catalog = json.loads((export / "product/examples/catalog.json").read_text(encoding="utf-8"))
-    files = {**stamp["files"], **catalog["files"]}
+    product = (export / "product").relative_to(ROOT).as_posix() + "/"
+    files = {name: digest for name, digest in stamp["files"].items() if not name.startswith(product)}
+    files.update(catalog["files"])
     for relative, expected in files.items():
         staging.verify(staging.digest(ROOT / relative), expected, f"fixture bytes differ from their producer: {relative}")
 

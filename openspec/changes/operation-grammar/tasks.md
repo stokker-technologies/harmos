@@ -131,6 +131,12 @@ combined source closure and hosted validation are not claimed here.
 - [x] 5.2.1 Amended by the owner on 2026-11-13: delete streaming file-transfer handlers, proto requests, bindings, SDK surfaces, streaming-only stories and benchmark cases after the measured comparison; retain unary transfers with the storage-owned 4 MiB default.
 - [x] 5.3 Review affected README, docs/product-guide.md, docs/storage.md, language guides, generators and capability contracts with each owning source change; verify no stale boundary or compound-resource naming claims.
 - [ ] 5.4 Verify every locked implementation item is closed in the combined candidate, all writers have handed off, and focused tests plus owned format/language checks pass before declaring source closure. Source closure is not full validation or delivery.
+  - [ ] Migrate Schematic hosting to entry-backed settings. The direct sidecar attachment
+    is refused by `harmos.plugin.host.v1.Settings/List` because it has no management
+    entry. Guest registration also lacks explicit host-operation grants and a stored
+    entry; frozen `harmos.client.v1.PluginPlacement` has managed native and remote
+    gRPC placements only. Resolve the guest placement contract before adding a
+    settings fallback or a second settings owner.
 
 ## 6. Final Validation
 

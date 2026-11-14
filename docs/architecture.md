@@ -770,6 +770,11 @@ Decision: retain the existing assembly registration; application and library ope
 - **Schematic:** Application Files/Uploads wrap Private native storage operations.
   Native and wasm plugins share regenerated concept messages and typed settings.
   Root Buf checks its independent product module.
+  Hosting migration remains open: direct sidecar attachments have no managed entry
+  for `Settings.List`, and guest registration has no entry-backed settings owner.
+  The frozen `PluginPlacement` declares only managed native bundles and remote gRPC
+  endpoints; it has no guest placement. Preserve the refusal rather than inventing
+  guest settings or allowing a plugin to select another entry.
 - **Conformance and Fixtures:** All numbered cases remain, including tick children
   and typed settings/registry discovery. Product publication uses
   `example.plugin.host.v1.Progress/Publish` with `{stream, payload} -> ()`; no library

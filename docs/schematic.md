@@ -180,3 +180,7 @@ The host benchmarks transfer 10,000 records, 30 MiB of file bytes and 1,000,000
 samples in both directions, running the datasets concurrently on one reused
 host/guest instance. Setup and verification are outside timing.
 The transfer store is in memory; storage benchmarks separately measure disk I/O.
+
+The CLI writes a structured `schematic-walkthrough-<pid>.json` document and analysis result
+when `STKR_TEST_REPORT_DIR` is set. System and packaged journeys inspect this data alongside
+the existing traces. Normal CLI output remains readable walkthrough prose.
