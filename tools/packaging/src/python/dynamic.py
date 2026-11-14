@@ -105,10 +105,18 @@ def from_contract(
         chunks.append(chunk)
     encoded = "".join(chunks)
     if (
-        set(contract) != {"operation", "fingerprint", "codec", "schema", "grpc"}
+        set(contract)
+        != {"operation", "callers", "fingerprint", "codec", "schema", "grpc"}
         or contract.get("codec") != "protobuf"
     ):
         raise ValueError("invalid canonical operation contract")
+    callers = contract.get("callers")
+    if (
+        not isinstance(callers, int)
+        or isinstance(callers, bool)
+        or callers not in (1, 2, 3)
+    ):
+        raise ValueError("Project Operation: Invalid Callers")
     grpc = contract.get("grpc")
     if not isinstance(grpc, Mapping) or set(grpc) != {
         "package",

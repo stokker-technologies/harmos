@@ -1141,7 +1141,7 @@ from their source definitions; generated files have no independent ownership.
 | --- | --- |
 | Core Crates | Model/host/plugin imports, one host declaration and handler per operation, caller admission on direct/encoded/child paths, composition narrowing, trusted settings selectors and effective callers in discovery. Storage remains Private and in-process. |
 | Rust SDK | Public barrels, flattened client roots, shared plugin context resources, product fixture bindings and host method identities. The SDK client example is dynamic; the Schematic client is generated from application descriptors. |
-| Python SDK | Typed public payloads, generated client/context resources and internal executor wire modules, migrated example and fixture imports. |
+| Python SDK | Typed public payloads, generated client/context resources and internal executor wire modules, migrated example and fixture imports. The packaged finite-schema projector validates the mandatory callers field in canonical contracts. |
 | C# SDK | Public payload namespaces, shared client/context reply types, generated roots and fixture bindings, caller-owned call context. |
 | C++ SDK | Public payload barrel, generated client/context methods, native protocol inventory, conformance fixture barrel, installed-package consumers. |
 | Conformance | Both wrong-caller directions use the real runtime, including direct and managed invocation admission; all 38 rules apply to each SDK fixture. |

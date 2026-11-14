@@ -281,6 +281,13 @@ def refusals(target: Path, alpha: Path, beta: Path) -> None:
     wrong = _contract()
     wrong["fingerprint"] = "ab" * 32
     _raises(ValueError, loader, wrong)
+    missing_callers = _contract()
+    del missing_callers["callers"]
+    _raises(ValueError, loader, missing_callers)
+    for callers in (0, 4, True, "ALL"):
+        wrong_callers = _contract()
+        wrong_callers["callers"] = callers
+        _raises(ValueError, loader, wrong_callers)
     for generation in (-1, True, 18446744073709551616):
         _raises(
             ValueError, lambda value: loader(_contract(), generation=value), generation
@@ -494,7 +501,7 @@ def _run(command: list[str], *, env: dict[str, str], cwd: Path | None = None) ->
 
 def _graph_projection(projector: Callable[..., Any]) -> None:
     operation = projector(_contract())
-    assert operation.grpc_path == "/external.v1.Plugin/Exchange"
+    assert operation.grpc_path == "/external.host.v1.Plugin/Exchange"
     assert operation.mode == "bidi"
     value = operation.request()
     json_format.ParseDict(
@@ -508,7 +515,8 @@ def _graph_projection(projector: Callable[..., Any]) -> None:
     assert request.WhichOneof("value") == "request"
     assert operation.rpc_request.FromString(request.SerializeToString()) == request
     assert (
-        operation.rpc_request.DESCRIPTOR.full_name == "external.v1.PluginExchangeInput"
+        operation.rpc_request.DESCRIPTOR.full_name
+        == "external.host.v1.PluginExchangeInput"
     )
     item = operation.output(node=value)
     output = operation.rpc_response(node=value)
@@ -537,7 +545,7 @@ def _unary_projection(projector: Callable[..., Any]) -> None:
         operation = projector(contract)
         assert operation.mode == mode
         service = operation.request.DESCRIPTOR.file.pool.FindServiceByName(
-            "external.v1.Plugin"
+            "external.host.v1.Plugin"
         )
         method = service.methods_by_name["Exchange"]
         assert method.client_streaming == (direction == "input")
@@ -605,11 +613,12 @@ def _contract() -> dict[str, Any]:
                 "visibility": "public",
                 "replay": "idempotent",
             },
+            "callers": 3,
             "fingerprint": "01" * 32,
             "codec": "protobuf",
             "grpc": {
                 "managed": False,
-                "package": "external.v1",
+                "package": "external.host.v1",
                 "service": "Plugin",
                 "method": "Exchange",
             },
