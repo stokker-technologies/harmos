@@ -26,8 +26,8 @@ from unittest.mock import patch
 # Local Imports
 from harmos_tools.build import cargo, paths
 from harmos_tools.ci import artifacts, tasks
-from harmos_tools.release import review
 from harmos_tools.prepare.tests import fixtures as fixture_join
+from harmos_tools.release import review
 from harmos_tools.test import archive as archives
 
 # Type Checking Imports
