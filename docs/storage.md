@@ -99,9 +99,9 @@ loses their data; they provide no process-restart durability. The
 `durable_projections` capability names the publication contract within the
 backend's lifetime, not a disk guarantee. Products own explicit budgets and policy; the automatic runtime fallback uses
 the defaults above. Storage remains always present because the plugin manager
-uses it for entries, settings and content. The owner has not closed the earlier
-feature-isolation proposal. See the [query-only assessment](architecture.md#query-only-feature-assessment)
-for remaining Arrow dependencies and the unimplemented engine gate.
+uses it for entries, settings and content. The owner closed the feature-isolation
+proposal on 2026-11-14: storage and query remain unconditional. See
+[Unconditional Arrow Dependencies](architecture.md#unconditional-arrow-dependencies).
 
 ## Saved Reads and Capabilities
 

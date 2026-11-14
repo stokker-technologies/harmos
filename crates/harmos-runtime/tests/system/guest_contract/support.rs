@@ -15,19 +15,30 @@
 
 /* === Imports === */
 
+use crate::backend::{Backend, RecoveryBackend};
+use crate::support::Bank;
+use harmos::OperationRequest;
+use harmos_operations::plugin::Grant;
 use harmos_runtime::plugin::{
     grpc::PlacementSettings,
     manager::{self, Manager, PluginManagerSettings},
 };
 use harmos_runtime::storage::{StorageBackends, StorageManager};
+use harmos_runtime::{
+    Error, Result as RuntimeResult,
+    clock::Clock,
+    config::{PluginGuestSettings, PluginSettings},
+    guest::Host,
+};
 use tempfile::TempDir;
 
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_runtime::{
     MessageError, Runtime,
-    operations::{ExecutionContext, ProtobufOperation, Resource, ServingError, Visibility},
+    operations::{ComponentError, ExecutionContext, Lane, OperationManager, ProtobufOperation, Resource, ServingError, Visibility},
 };
 use prost::Message as _;
+use prost_reflect::{DescriptorPool, MessageDescriptor};
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -72,7 +83,7 @@ impl Drop for Cancelled {
         self.0.notify_one();
     }
 }
-fn descriptors() -> &'static prost_reflect::DescriptorPool {
+fn descriptors() -> &'static DescriptorPool {
     static POOL: std::sync::OnceLock<prost_reflect::DescriptorPool> = std::sync::OnceLock::new();
     POOL.get_or_init(|| {
         let mut types = <ProviderEchoOperation as harmos::Message>::types();
@@ -82,12 +93,12 @@ fn descriptors() -> &'static prost_reflect::DescriptorPool {
     })
 }
 impl prost_reflect::ReflectMessage for ProviderEchoOperation {
-    fn descriptor(&self) -> prost_reflect::MessageDescriptor {
+    fn descriptor(&self) -> MessageDescriptor {
         descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
     }
 }
 impl prost_reflect::ReflectMessage for Echoed {
-    fn descriptor(&self) -> prost_reflect::MessageDescriptor {
+    fn descriptor(&self) -> MessageDescriptor {
         descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
     }
 }
@@ -104,8 +115,8 @@ impl ProtobufOperation for Provider {
     };
     const VISIBILITY: Visibility = Visibility::Public;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ProviderOwner>(), Resource::of::<harmos_runtime::operations::HostContext>()];
-    fn grant(request: &Self::Request) -> Result<Option<harmos_operations::plugin::Grant>, harmos_runtime::MessageError> {
-        Ok(request.say.strip_prefix("scope:").map(|scope| harmos_operations::plugin::Grant::of(Self::ID, scope.to_owned())))
+    fn grant(request: &Self::Request) -> Result<Option<Grant>, MessageError> {
+        Ok(request.say.strip_prefix("scope:").map(|scope| Grant::of(Self::ID, scope.to_owned())))
     }
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let owner = context.resource::<ProviderOwner>().map_err(|error| ServingError::Native(Arc::new(error)))?;
@@ -127,7 +138,7 @@ impl ProtobufOperation for Provider {
     }
 }
 impl prost_reflect::ReflectMessage for PublishProgress {
-    fn descriptor(&self) -> prost_reflect::MessageDescriptor {
+    fn descriptor(&self) -> MessageDescriptor {
         descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
     }
 }
@@ -143,7 +154,7 @@ impl ProtobufOperation for Publisher {
         let host = context.resource::<harmos_runtime::operations::HostContext>().map_err(|error| ServingError::Native(Arc::new(error)))?;
         let context = host.borrow();
         let scope = context.caller_scope().ok_or_else(|| {
-            ServingError::Native(Arc::new(harmos_runtime::Error::<std::convert::Infallible>::InvalidInput {
+            ServingError::Native(Arc::new(Error::<std::convert::Infallible>::InvalidInput {
                 field: "guest publication",
                 reason: "requires the original generation scope",
             }))
@@ -173,10 +184,10 @@ impl harmos_runtime::Message for Stage {
     fn encoded_size(&self) -> usize {
         self.encoded_len()
     }
-    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <Self as prost::Message>::decode(bytes).map_err(|error| harmos_runtime::MessageError::new(error.to_string()))
+    fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
+        <Self as prost::Message>::decode(bytes).map_err(|error| MessageError::new(error.to_string()))
     }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
         Ok(bytes.len() + std::mem::size_of::<Self>())
     }
 }
@@ -191,10 +202,10 @@ impl harmos_runtime::Message for RetryChoice {
     fn encoded_size(&self) -> usize {
         self.encoded_len()
     }
-    fn decode(bytes: &[u8]) -> Result<Self, harmos_runtime::MessageError> {
-        <Self as prost::Message>::decode(bytes).map_err(|error| harmos_runtime::MessageError::new(error.to_string()))
+    fn decode(bytes: &[u8]) -> Result<Self, MessageError> {
+        <Self as prost::Message>::decode(bytes).map_err(|error| MessageError::new(error.to_string()))
     }
-    fn decoding_memory(bytes: &[u8]) -> Result<usize, harmos_runtime::MessageError> {
+    fn decoding_memory(bytes: &[u8]) -> Result<usize, MessageError> {
         Ok(bytes.len() + std::mem::size_of::<Self>())
     }
 }
@@ -204,11 +215,9 @@ impl harmos_runtime::operations::ContextValue for RetryChoice {
 
 /* === Public Functions === */
 
-pub async fn runtime(
-    owner: Arc<ProviderOwner>, lane: harmos_runtime::operations::Lane, clock: harmos_runtime::clock::Clock,
-) -> Arc<Runtime<crate::support::Bank>> {
+pub async fn runtime(owner: Arc<ProviderOwner>, lane: Lane, clock: Clock) -> Arc<Runtime<Bank>> {
     let (storage, entries, root) = entries();
-    let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = Runtime::<Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<ProviderOwner>(owner);
         setup.resource(root);
         setup.settings().storage(&storage).plugins(entries.clone());
@@ -238,8 +247,8 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
     let storage = StorageManager::with_catalog(
         catalog.clone(),
         StorageBackends {
-            primary: Arc::new(crate::backend::Data::with_catalog(catalog, crate::backend::history())),
-            state: Arc::new(crate::backend::Recovery::new(crate::backend::history())),
+            primary: Arc::new(Backend::with_catalog(catalog, crate::backend::history())),
+            state: Arc::new(RecoveryBackend::new(crate::backend::history())),
         },
         crate::backend::storage_settings(),
     )
@@ -267,18 +276,18 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
     (storage, manager, root)
 }
 
-pub fn host(runtime: &Runtime<crate::support::Bank>) -> harmos_runtime::guest::Host<crate::support::Bank> {
-    harmos_runtime::guest::Host::with_settings(
+pub fn host(runtime: &Runtime<Bank>) -> Host<Bank> {
+    Host::with_settings(
         runtime,
-        harmos_runtime::config::PluginGuestSettings {
+        PluginGuestSettings {
             stream_window: NonZeroUsize::new(4),
             ..Default::default()
         },
     )
     .unwrap()
 }
-pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
-    harmos_runtime::config::PluginSettings {
+pub fn settings(configuration: &str) -> PluginSettings {
+    PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
         host_operations: ["example.plugin.host.v1.Progress/Publish", "provider.echo"]
             .into_iter()
@@ -290,17 +299,15 @@ pub fn settings(configuration: &str) -> harmos_runtime::config::PluginSettings {
 pub fn sandbox() -> Vec<u8> {
     crate::support::fixtures::component("harmos-sandbox-guest")
 }
-pub async fn call<Q: harmos::OperationRequest>(
-    runtime: &harmos_runtime::operations::OperationManager, request: Q,
-) -> harmos_runtime::Result<Q::Response> {
+pub async fn call<Q: OperationRequest>(runtime: &OperationManager, request: Q) -> RuntimeResult<Q::Response> {
     let bytes = runtime.call_encoded(Q::ID, request.encode_to_vec()).await?;
-    <Q::Response as prost::Message>::decode(bytes.as_slice()).map_err(|source| harmos_runtime::Error::OperationPayload {
+    <Q::Response as prost::Message>::decode(bytes.as_slice()).map_err(|source| Error::OperationPayload {
         operation: Q::ID.into(),
-        source: harmos_runtime::MessageError::new(source.to_string()),
+        source: MessageError::new(source.to_string()),
     })
 }
-pub fn component_error(error: &harmos_runtime::Error) -> &harmos_runtime::operations::ComponentError {
-    let harmos_runtime::Error::OperationFailed { source, .. } = error else { panic!("expected the component failure, got {error:?}") };
+pub fn component_error(error: &Error) -> &ComponentError {
+    let Error::OperationFailed { source, .. } = error else { panic!("expected the component failure, got {error:?}") };
     source.downcast_ref().expect("component error retains its type")
 }
 

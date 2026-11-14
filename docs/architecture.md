@@ -36,9 +36,8 @@ selects independent in-memory primary and recovery adapters, including the plugi
 registry object catalog. Registering a manager with `setup.settings().storage(&storage)`
 selects that manager instead. Storage workers share startup ownership and shutdown
 with the runtime; a different manager cannot replace an already running owner.
-The off-by-default storage proposal remains open for the owner's decision; no
-storage feature gate is implemented. Query-only feature isolation is assessed
-below, not implemented.
+The owner closed the feature-isolation proposal on 2026-11-14: storage and the
+query engine remain unconditional, with no feature gate for either.
 
 ### Inventory Before the Split
 
@@ -170,7 +169,7 @@ in-memory adapters retain saved cuts, receipts, files and recovery only for the
 lifetime of their shared instances. Process restart durability is a product
 backend responsibility. See [Storage Interfaces](storage.md#backend-registration).
 
-### Query-Only Feature Assessment
+### Unconditional Arrow Dependencies
 
 A normal `harmos-runtime` dependency tree, including `--no-default-features`, still
 contains these Arrow 60.1.0 crates. Disabling gRPC does not disable storage or query.
@@ -189,30 +188,6 @@ There are no production Arrow imports in runtime or native operations themselves
 Their unconditional `harmos-query` edges retain engine errors and query results;
 native storage operations also expose engine-owned columnar/index contracts.
 The plugin manager needs conditional objects and content, not query execution.
-
-Gating only the engine while preserving storage and batch admission needs more
-than an optional runtime manifest entry. The relevant storage query directory is
-8 files / about 1,810 lines; its supporting backend, snapshot, definition, memory,
-write-admission, error and export files total about 4,565 lines across 13 files.
-These counts describe the affected surface, not lines to delete. The concrete
-owners are `crates/harmos-storage/src/{query.rs,query/**,backend.rs,snapshot.rs,
-definitions.rs,memory/mod.rs,manager/{mod,arrow}.rs,worker.rs,writes.rs,writes/{decoded,convert}.rs,
-error.rs,lib.rs}`, `crates/harmos-operations/src/{storage/native/**,native/error.rs}`,
-`crates/harmos-runtime/src/error.rs` and their three manifests.
-
-A rough implementation is 40–50 production files, 500–1,000 edited gating and
-boundary lines, plus moving approximately 588 lines of `harmos-query/src/arrow.rs`
-and `arrow/{ipc,retention}.rs` into a lower shared Arrow owner (or equivalently
-changing the engine to accept the storage-owned wrapper's raw Arrow values).
-Batch decoding, conversion and schema lookup must remain available independently;
-query-only cancellation/index contracts and catalogs must be separated from
-core backend methods and exports. Native query operations and error conversions
-need matching gates; tests, benches and example feature selections also change.
-A shared lower owner must preserve the acyclic dependency order. Arrow array,
-buffer, data, schema and IPC would remain for batch admission. IPC itself depends
-on select, which depends on cmp, so all seven Arrow crates would still compile;
-removing query execution alone would not make the runtime Arrow-free. This is an
-estimate for the owner's decision, with no feature gate landed.
 
 ### One Ordered Time Merge
 

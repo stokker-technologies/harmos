@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::Error as IoError;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::result::Result;
@@ -29,6 +30,8 @@ use crate::records::{Records, records_registry};
 use crate::state::Schematic;
 use crate::streams;
 use crate::transactions::{Transactions, transactions_state_catalog};
+#[cfg(feature = "simulation")]
+use harmos_runtime::StartupError;
 use harmos_runtime::plugin::manager::{self, Manager};
 use harmos_runtime::prelude::*;
 
@@ -61,22 +64,20 @@ pub struct SchematicEditor;
 
 impl Lifecycle for SchematicEditor {
     type Config = Option<LaunchConfig>;
-    type Error = std::io::Error;
-    type Context = harmos_runtime::Startup<Self>;
+    type Error = IoError;
+    type Context = Startup<Self>;
 
-    async fn prepare(config: Self::Config, setup: &mut harmos_runtime::Setup<Self>) -> Result<Self, Self::Error> {
+    async fn prepare(config: Self::Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
         if let Some(config) = config
             && config.plugins
         {
             std::fs::create_dir_all(config.settings.recordings())?;
             let root = std::fs::canonicalize(config.settings.recordings())?;
-            let storage =
-                crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(std::io::Error::other)?;
+            let storage = crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(IoError::other)?;
             let settings = config.settings.plugins(root.join("plugins"));
             setup.resource(settings.clone());
-            let manager = Manager::new(storage, settings).map_err(std::io::Error::other)?;
+            let manager = Manager::new(storage, settings).map_err(IoError::other)?;
             setup.settings().plugins(manager.clone());
-            setup.resource::<Manager>(manager);
         }
 
         let settings = harmos_runtime::operations::Settings {
@@ -86,7 +87,7 @@ impl Lifecycle for SchematicEditor {
         setup
             .settings()
             .operation_settings(settings)
-            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(std::io::Error::other)?);
+            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(IoError::other)?);
 
         setup.settings().register(transactions_state_catalog()).register(records_registry()).register(streams::stream_definitions());
         setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
@@ -112,17 +113,17 @@ pub async fn launch(document: Document, config: &Settings) -> Result<Arc<Runtime
         plugins: true,
     };
     let runtime = Arc::new(Runtime::launch(origin, Some(config)).await?);
-    let manager = runtime.operations.deref().context().resource::<Manager>().map_err(std::io::Error::other)?;
+    let manager = runtime.operations.deref().context().resource::<Manager>().map_err(IoError::other)?;
     if let Err(error) = Box::pin(manager.start(&runtime)).await {
-        runtime.shutdown().await.map_err(std::io::Error::other)?;
-        return Err(std::io::Error::other(error).into());
+        runtime.shutdown().await.map_err(IoError::other)?;
+        return Err(IoError::other(error).into());
     }
     Ok(runtime)
 }
 
 #[cfg(feature = "simulation")]
 #[tracing::instrument(level = "debug", skip_all, fields(seed))]
-pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, harmos_runtime::StartupError> {
+pub fn simulate(origin: impl Into<Origin>, seed: u64) -> Result<Simulated, StartupError> {
     Runtime::simulate(origin, None, seed)
 }
 
