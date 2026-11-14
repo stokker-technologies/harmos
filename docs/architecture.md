@@ -121,7 +121,7 @@ test compares the committed Rust sources and descriptor projections byte for byt
 Wire operation admission uses the protocol-owned validator in
 `crates/harmos-protocol/src/schema.rs`, independently of native dotted identities.
 The [wire identity contract](../openspec/changes/operation-grammar/design.md#wire-operation-identity-admission)
-covers numeric template bindings and application-owned face packages. Catalog admission,
+covers numeric template bindings and application-owned face packages. Declaration admission,
 guest admission and host protobuf declarations share it; visibility, descriptor fingerprints
 and caller-face authorization remain independent checks.
 
@@ -154,7 +154,7 @@ and caller-face authorization remain independent checks.
    **Status:** landed with focused native proof.
 
 3. **Three-Level Visibility.** Private is callable only inside the declaring plugin
-   process, absent from its catalog, invisible to the host, never on any wire
+   process, absent from its declarations, invisible to the host, never on any wire
    (including the host/plugin carrier), without a gRPC method; the SDK runs it
    locally with ordinary policy, retries, deadlines and cancellation. Protected is
    catalogued and callable by the plugin and host, with host calls using only that
@@ -168,7 +168,7 @@ and caller-face authorization remain independent checks.
    Decided Built-In Visibility Mapping in `openspec/changes/operation-grammar/design.md`.
    Host-only requests of a plugin must be Protected; Private dispatch stays inside
    the declaring SDK process.
-   **Proof:** common conformance case 24 guards local dispatch, catalog omission
+   **Proof:** common conformance case 24 guards local dispatch, declaration omission
    and direct carrier refusal in all four SDKs. Rust uses its local operation map;
    Python, C# and C++ use their registered typed handlers without a child frame.
    Cases 26–28 additionally guard host-clock retry, attempt deadlines, child cleanup,
@@ -445,7 +445,7 @@ and caller-face authorization remain independent checks.
     such as invariant 23 do not establish it for every suite.
     **Status:** locked direction (`operation-grammar`, retaining the agreed `test-stories` rule).
 
-19. **Catalog Integrity Before Activation.** Validate catalog digest, descriptors,
+19. **Declaration Integrity Before Activation.** Validate declarations digest, descriptors,
     schema fingerprints and requirements before admitting operations; refuse
     ambiguous providers instead of choosing by arrival order.
     **Why:** opaque bytes are safe to route only under the admitted contract, and
@@ -709,8 +709,8 @@ New calls have no former identity:
 
 ### Definition Decisions
 
-- Keep `harmos.v1.Catalog` and the `catalog` fields as the plugin-reported description. `Instance.Get`, guest registration and managed-entry `PluginDescription` still report operations, requirements, streams, opaque product sections, digest and reachable types (fields 1–6 unchanged). The removed resource was registry browsing, not this activation admission payload. Handlers in `plugin/grpc`, SDK authoring and `schema::catalog_digest` consume all these fields.
-- Keep `SettingsDeclarations` as the typed contribution section in `Catalog.sections`; its declarations now contain name, title, description and typed default. No second direct settings inventory is added to Catalog or its digest. Settings are library-owned; secrets remain product sections and product operations.
+- Use `harmos.v1.Declarations` and the `declarations` fields as the plugin-reported description. `Instance.Get`, guest registration and managed-entry `PluginDescription` still report operations, requirements, streams, opaque product sections, digest and reachable types (fields 1–6 unchanged). The removed resource was registry browsing, not this activation admission payload. Handlers in `plugin/grpc`, SDK authoring and `schema::declarations_digest` consume all these fields.
+- Keep `SettingsDeclarations` as the typed contribution section in `Declarations.sections`; its declarations now contain name, title, description and typed default. No second direct settings inventory is added to Declarations or its digest. Settings are library-owned; secrets remain product sections and product operations.
 - `Settings.Set` replaces one complete `SettingValues` map for the named plugin entry. List returns the complete map, with defaults materialized; all declared names and their value variants must match. Settings have their own opaque revision and issued read cut. Plugin-host List has no plugin selector and no change notification. Replay lifetime and persistence use the existing manager receipt policy.
 - Replace takes `PluginPlacement`, constrained to managed-to-managed replacement. It preserves entry name, settings and product data; failed staging preserves the previous serving bundle. `PluginChange.deleted` remains the sole wire deletion signal. Deleting an entry removes its settings atomically; product cleanup follows the in-process watch and startup reconciliation and is eventual.
 - Operations.Get selects one operation by its complete ID and returns the same `DiscoveredOperation` metadata used in List. Discovery has no invented read cut: the current handler issues none.
@@ -804,3 +804,25 @@ Compose Plugins, settings, access, status, invocations, operations and time dire
 do not wrap the complete library services. Keep product secrets in product resources
 and publish declared needs in product sections. Native storage encodings and persisted
 data must remain compatible even though the library wire storage surface is removed.
+
+## Guest Entries and Reported Declarations
+
+Every host-registered WebAssembly plugin has a durable `PluginEntry` keyed by its
+registered identity with `PluginPlacement { guest: PluginGuest {} }`. Configure and
+start the plugin entry manager before `PluginHost.register_guest`. Registration
+materializes typed settings before guest initialization; the plugin-host
+`Settings.List` uses the admitted guest generation's owner, without a selector.
+Client `Plugins.List/Get` and `Plugins.Settings.List/Set` use that same entry.
+Deleting it removes settings in the same registry commit and retires the guest.
+The product supplies and re-registers its module after host restart; guest placement
+is a marker, not a second module store. `Plugins.Create` refuses guest placement
+and directs the host to register the loaded module in-process. `Plugins.Replace`
+remains managed-only; native guest reload keeps its existing entry and settings.
+
+`Instance.Get`, `GuestRegistration` and `PluginDescription` report `Declarations`
+through `declarations`; `PluginEntry.declarations_digest` identifies those bytes.
+There is no Catalog alias. Fields retain their numbers. The four SDK builders use
+`declarations()` (`Declarations()` in C#). Internal operation, object, state and
+packaging registries retain catalog terminology; they do not name this wire payload.
+Consumers must regenerate bindings, rename the reported message/fields and SDK
+builder calls, and configure the entry manager before registering guest modules.

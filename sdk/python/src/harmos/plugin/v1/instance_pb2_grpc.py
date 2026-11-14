@@ -71,7 +71,7 @@ class InstanceServicer:
     """
 
     def Get(self, request, context):
-        """Identity, start time and catalog. Called once per connection, first.
+        """Identity, start time and declarations. Called once per connection, first.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

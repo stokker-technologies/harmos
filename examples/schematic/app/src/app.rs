@@ -97,7 +97,6 @@ impl Lifecycle for SchematicEditor {
                 setup.resource(settings.clone());
                 let manager = Manager::new(storage, settings).map_err(std::io::Error::other)?;
                 setup.settings().plugins(manager.clone());
-                setup.resource::<Manager>(manager);
             }
             Some(checkpoint)
         } else {

@@ -16,7 +16,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     Dictionary<string, Publication> streams, Func<Task>[] cleanup, bool remote, IHostApplicationLifetime lifetime)
     : Harmos.Plugin.V1.Instance.InstanceBase
 {
-  private readonly Dictionary<string, ByteString> requires = description.Catalog.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
+  private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
 
   public override Task<InstanceGetResponse> Get(InstanceGetRequest request, ServerCallContext context)
   {

@@ -23,11 +23,11 @@ class InstanceGetRequest(_message.Message):
     def __init__(self, revision: _Optional[int] = ..., host: _Optional[str] = ..., host_version: _Optional[str] = ...) -> None: ...
 
 class InstanceGetResponse(_message.Message):
-    __slots__ = ("id", "version", "started_at", "catalog", "revision", "sdk", "sdk_version", "message_bytes")
+    __slots__ = ("id", "version", "started_at", "declarations", "revision", "sdk", "sdk_version", "message_bytes")
     ID_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     STARTED_AT_FIELD_NUMBER: _ClassVar[int]
-    CATALOG_FIELD_NUMBER: _ClassVar[int]
+    DECLARATIONS_FIELD_NUMBER: _ClassVar[int]
     REVISION_FIELD_NUMBER: _ClassVar[int]
     SDK_FIELD_NUMBER: _ClassVar[int]
     SDK_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -35,12 +35,12 @@ class InstanceGetResponse(_message.Message):
     id: str
     version: str
     started_at: _timestamp_pb2.Timestamp
-    catalog: _description_pb2.Catalog
+    declarations: _description_pb2.Declarations
     revision: int
     sdk: str
     sdk_version: str
     message_bytes: int
-    def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., catalog: _Optional[_Union[_description_pb2.Catalog, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ..., message_bytes: _Optional[int] = ...) -> None: ...
+    def __init__(self, id: _Optional[str] = ..., version: _Optional[str] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., declarations: _Optional[_Union[_description_pb2.Declarations, _Mapping]] = ..., revision: _Optional[int] = ..., sdk: _Optional[str] = ..., sdk_version: _Optional[str] = ..., message_bytes: _Optional[int] = ...) -> None: ...
 
 class InstanceInvokeRequest(_message.Message):
     __slots__ = ("request", "child", "cancel")

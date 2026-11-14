@@ -7,7 +7,7 @@
  * ***
  */
 
-// Read Native Catalogs Through the Plugin Protocol.
+// Read Native Declarationss Through the Plugin Protocol.
 
 /* === Modules === */
 
@@ -48,7 +48,7 @@ const TRANSPORT_GUARD: Duration = Duration::from_secs(30);
 
 pub(crate) fn describe(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetResponse, Error> {
     std::thread::scope(|scope| {
-        scope.spawn(|| collect(path, cancellation)).join().map_err(|_| std::io::Error::other("Plugin Catalog Worker Panicked"))?
+        scope.spawn(|| collect(path, cancellation)).join().map_err(|_| std::io::Error::other("Plugin Declarations Worker Panicked"))?
     })
 }
 
@@ -91,7 +91,7 @@ fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetR
         Ok::<_, std::io::Error>(())
     });
 
-    // Get The Catalog, Then Stop Before Closing The Managed Process
+    // Get The Declarations, Then Stop Before Closing The Managed Process
     let result = (|| {
         let address = receiver.recv_timeout(TRANSPORT_GUARD).map_err(|error| Error::Settings(error.to_string()))??;
         let address: std::net::SocketAddr = address.parse().map_err(|_| Error::Settings("Invalid Plugin Address".into()))?;
@@ -112,21 +112,21 @@ fn collect(path: &Path, cancellation: &BuildCancellation) -> Result<InstanceGetR
                 };
                 let description = client.get(request).await.map_err(|error| Error::Settings(error.to_string()))?.into_inner();
                 client
-                    .stop(InstanceStopRequest { reason: "Catalog Collected".into() })
+                    .stop(InstanceStopRequest { reason: "Declarations Collected".into() })
                     .await
                     .map_err(|error| Error::Settings(error.to_string()))?;
-                if description.revision < 1 || description.id.is_empty() || description.catalog.is_none() {
-                    return Err(Error::Settings("Get Plugin returned incomplete identity or catalog".into()));
+                if description.revision < 1 || description.id.is_empty() || description.declarations.is_none() {
+                    return Err(Error::Settings("Get Plugin returned incomplete identity or declarations".into()));
                 }
                 semver::Version::parse(&description.version).map_err(|error| Error::Settings(error.to_string()))?;
-                let catalog = description.catalog.as_ref().unwrap();
-                if catalog.digest != harmos_protocol::schema::catalog_digest(catalog) {
-                    return Err(Error::Settings("Invalid Plugin Catalog Digest".into()));
+                let declarations = description.declarations.as_ref().unwrap();
+                if declarations.digest != harmos_protocol::schema::declarations_digest(declarations) {
+                    return Err(Error::Settings("Invalid Plugin Declarations Digest".into()));
                 }
                 Ok(description)
             })
             .await
-            .map_err(|_| Error::Settings("Plugin Catalog Timed Out".into()))?
+            .map_err(|_| Error::Settings("Plugin Declarations Timed Out".into()))?
         })
     })();
 

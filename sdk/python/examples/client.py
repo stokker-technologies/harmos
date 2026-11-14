@@ -32,8 +32,8 @@ async def run(address: str) -> tuple[OperationsListResponse, StatusGetResponse, 
     client = Client.connect(address)
     try:
         # Discover Operations
-        catalog = await client.operations.list(OperationsListRequest())
-        print(catalog)
+        declarations = await client.operations.list(OperationsListRequest())
+        print(declarations)
 
         # Read Typed Host Status
         status = await client.status.get(StatusGetRequest())
@@ -44,7 +44,7 @@ async def run(address: str) -> tuple[OperationsListResponse, StatusGetResponse, 
         try:
             async for update in updates:
                 print(update)
-                return catalog, status, update
+                return declarations, status, update
         finally:
             updates.cancel()
         raise RuntimeError("Watch Status: Host Closed Without an Update")

@@ -30,7 +30,7 @@ default = ["grpc"]
 benchmark-fixtures = ["grpc"]
 # Focused Storage Transfer Measurements Use the Reusable Test Workload Only.
 storage-benchmarks = ["grpc", "harmos-storage/testing"]
-plugin-guest = ["dep:wasmtime"]
+plugin-guest = ["dep:wasmtime", "grpc"]
 grpc = [
   "dep:heck",
   "harmos-operations/grpc",

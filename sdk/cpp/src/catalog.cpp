@@ -178,9 +178,9 @@ Plugin& Plugin::setting(wire::SettingDeclaration declaration) {
     return *this;
 }
 
-wire::Catalog Plugin::catalog() const {
-    wire::Catalog catalog;
-    *catalog.mutable_types() = messages_;
+wire::Declarations Plugin::declarations() const {
+    wire::Declarations declarations;
+    *declarations.mutable_types() = messages_;
     std::set<std::string> operations;
     std::set<std::string> requirements;
     std::set<std::string> streams;
@@ -194,13 +194,13 @@ wire::Catalog Plugin::catalog() const {
         if (visibility != wire::VISIBILITY_PRIVATE && visibility != wire::VISIBILITY_PROTECTED && visibility != wire::VISIBILITY_PUBLIC)
             throw std::invalid_argument("Register " + operation.contract.id() + ": Explicit Visibility Is Required");
         if (visibility == wire::VISIBILITY_PRIVATE) continue;
-        *catalog.add_operations() = operation.contract;
-        detail::merge(*catalog.mutable_types(), operation.types);
+        *declarations.add_operations() = operation.contract;
+        detail::merge(*declarations.mutable_types(), operation.types);
     }
     for (const auto& [requirement, types] : requirements_) {
         if (!requirements.insert(requirement.id()).second) throw std::invalid_argument("Duplicate Requirement");
-        *catalog.add_requires_() = requirement;
-        detail::merge(*catalog.mutable_types(), types);
+        *declarations.add_requires_() = requirement;
+        detail::merge(*declarations.mutable_types(), types);
     }
     for (const auto& stream : streams_) {
         if (!streams.insert(stream.declaration.id()).second) throw std::invalid_argument("Duplicate Stream");
@@ -213,24 +213,24 @@ wire::Catalog Plugin::catalog() const {
             if (duration.seconds() < 0 || duration.seconds() > 315576000000LL || duration.nanos() < 0 || duration.nanos() >= 1000000000
                 || (duration.seconds() == 0 && duration.nanos() == 0)) throw std::invalid_argument("Invalid Observer Interval");
         }
-        *catalog.add_streams() = stream.declaration;
-        detail::merge(*catalog.mutable_types(), stream.types);
+        *declarations.add_streams() = stream.declaration;
+        detail::merge(*declarations.mutable_types(), stream.types);
     }
     for (const auto& [section, types] : sections_) {
         if (!sections.insert(section.type()).second) throw std::invalid_argument("Duplicate Section");
-        *catalog.add_sections() = section;
-        detail::merge(*catalog.mutable_types(), types);
+        *declarations.add_sections() = section;
+        detail::merge(*declarations.mutable_types(), types);
     }
     if (!settings_.values().empty()) {
         const std::string type(wire::SettingsDeclarations::descriptor()->full_name());
         if (!sections.insert(type).second) throw std::invalid_argument("Declare Settings: Duplicate Section");
-        auto* section = catalog.add_sections();
+        auto* section = declarations.add_sections();
         section->set_type(type);
         section->set_payload(detail::encode(settings_));
-        detail::merge(*catalog.mutable_types(), detail::types(wire::SettingsDeclarations::descriptor()));
+        detail::merge(*declarations.mutable_types(), detail::types(wire::SettingsDeclarations::descriptor()));
     }
-    catalog.set_digest(detail::sha256(detail::encode(catalog)));
-    return catalog;
+    declarations.set_digest(detail::sha256(detail::encode(declarations)));
+    return declarations;
 }
 }
 

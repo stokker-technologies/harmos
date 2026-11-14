@@ -45,7 +45,7 @@ service Plugins {
 
 // Carries the resource name and read boundary for Plugins.Get.
 message PluginsGetRequest {
-  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 1;
   // Unset selects the latest manager snapshot; otherwise use an issued retained manager cut. Foreign, expired and unissued cuts refuse.
   harmos.v1.ReadCut at = 2;
@@ -97,7 +97,7 @@ message PluginsWatchResponse {
 message PluginsCreateRequest {
   // Nonempty caller-chosen identity for Create replay. Identical input returns its original response; reuse with changed input refuses.
   string request_id = 1;
-  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 2;
   PluginPlacement placement = 3;
   PluginValue value = 4;
@@ -111,7 +111,7 @@ message PluginsCreateResponse {
 
 // Carries the resource name, replacement value and expected revision for Plugins.Set.
 message PluginsSetRequest {
-  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 1;
   PluginValue value = 2;
   // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
@@ -126,7 +126,7 @@ message PluginsSetResponse {
 
 // Carries the resource name and expected revision for Plugins.Delete.
 message PluginsDeleteRequest {
-  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 1;
   // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
   bytes expected_revision = 2;
@@ -139,7 +139,7 @@ message PluginsDeleteResponse {
 
 // Carries the resource name and expected revision for Plugins.Restart.
 message PluginsRestartRequest {
-  // Persisted management entry identity, distinct from an advertised plugin/catalog ID.
+  // Persisted management entry identity, distinct from an advertised plugin/declarations ID.
   string name = 1;
   // Exact revision returned by the corresponding read. A mismatch refuses; read again before retrying with changed input.
   bytes expected_revision = 2;
@@ -174,7 +174,7 @@ message PluginValue {
   bool enabled = 1;
 }
 
-// Captures the running plugin's advertised identity, process start, negotiated revision and catalog.
+// Captures the running plugin's advertised identity, process start, negotiated revision and declarations.
 message PluginDescription {
   // Plugin-advertised identity, distinct from the persisted management entry name.
   string id = 1;
@@ -182,7 +182,7 @@ message PluginDescription {
   string version = 2;
   // Plugin process startup timestamp, stable across connections to that process.
   google.protobuf.Timestamp started_at = 3;
-  harmos.v1.Catalog catalog = 4;
+  harmos.v1.Declarations declarations = 4;
   // Negotiated protocol revision, not a conditional management revision.
   uint32 revision = 5;
   string sdk = 6;
@@ -201,12 +201,16 @@ message PluginManaged {
   bytes sha256 = 2;
 }
 
-// Chooses managed uploaded content or a remote process; exactly one placement is required for creation.
+// Marks a WebAssembly module registered in-process by the host. The host owns module loading and re-registration after restart.
+message PluginGuest {}
+
+// Chooses managed uploaded content, a remote process or a host-registered WebAssembly guest.
 message PluginPlacement {
   // Selects one variant; an unset discriminator carries no selected value.
   oneof kind {
     PluginManaged managed = 1;
     PluginRemote remote = 2;
+    PluginGuest guest = 3;
   }
 }
 
@@ -222,7 +226,7 @@ message PluginProcess {
 
 // Combines persisted management state with observed activation, process and failure information.
 message PluginEntry {
-  // Persisted management entry identity, distinct from the plugin's advertised catalog ID.
+  // Persisted management entry identity, distinct from the plugin's advertised declarations ID.
   string name = 1;
   PluginPlacement placement = 2;
   PluginValue value = 3;
@@ -233,8 +237,8 @@ message PluginEntry {
   harmos.v1.Failure failure = 6;
   // Advertised description when an activation has supplied it; absent before discovery is available.
   PluginDescription description = 7;
-  // Digest of the catalog observed for this entry's activation.
-  bytes catalog_digest = 8;
+  // Digest of the declarations observed for this entry's activation.
+  bytes declarations_digest = 8;
   // Managed process metadata when available; remote placement does not supply managed process metadata.
   PluginProcess process = 9;
   // Generation of the entry's activation; old calls and handles do not follow its replacement.

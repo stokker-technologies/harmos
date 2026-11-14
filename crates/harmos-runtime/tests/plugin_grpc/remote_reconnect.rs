@@ -46,7 +46,7 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     let second = support::activation(&mut status, 2).await;
     assert_eq!(second.description.started_at, first.description.started_at);
     assert_eq!(second.previous_started_at, first.description.started_at);
-    assert_eq!(second.description.catalog, first.description.catalog);
+    assert_eq!(second.description.declarations, first.description.declarations);
     assert!(first.get().await.is_err());
     assert!(second.get().await.is_ok());
 

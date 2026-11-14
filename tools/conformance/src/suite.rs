@@ -55,7 +55,7 @@ use harmos_protocol::v1::{RetryPolicy, StorageTransferSettings, TransferFraming}
 /* === Constants === */
 
 pub const CASES: &[&str] = &[
-    "Get and Catalog",
+    "Get and Declarations",
     "Activation and Started At",
     "Invoke Result and EOF",
     "Invoke Frame Validation",
@@ -481,8 +481,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     match rule {
         30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
         35 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("List Settings: Missing Catalog".into()))?;
-            let section = catalog
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
+            let section = declarations
                 .sections
                 .iter()
                 .find(|section| section.r#type == "harmos.v1.SettingsDeclarations")
@@ -548,8 +548,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
         }
         33 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Declare: Missing Catalog".into()))?;
-            for operation in &catalog.operations {
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declare: Missing Declarations".into()))?;
+            for operation in &declarations.operations {
                 harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
             }
             for (id, visibility) in [
@@ -557,7 +557,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected),
                 ("example.plugin.v1.Steps/Execute", Visibility::Public),
             ] {
-                let operation = catalog
+                let operation = declarations
                     .operations
                     .iter()
                     .find(|operation| operation.id == id)
@@ -586,16 +586,19 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && !description.sdk_version.is_empty(),
                 "Plugin Identity Missing",
             )?;
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let expected = fixture::catalog();
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let expected = fixture::declarations();
             require(
-                expected.operations.iter().all(|entry| catalog.operations.iter().find(|actual| actual.id == entry.id) == Some(entry))
-                    && catalog.requires.len() == expected.requires.len()
-                    && expected.requires.iter().all(|entry| catalog.requires.iter().find(|actual| actual.id == entry.id) == Some(entry))
-                    && catalog.streams.get(..2) == expected.streams.get(..2),
-                "Fixed Fixture Catalog Differs",
+                expected.operations.iter().all(|entry| declarations.operations.iter().find(|actual| actual.id == entry.id) == Some(entry))
+                    && declarations.requires.len() == expected.requires.len()
+                    && expected
+                        .requires
+                        .iter()
+                        .all(|entry| declarations.requires.iter().find(|actual| actual.id == entry.id) == Some(entry))
+                    && declarations.streams.get(..2) == expected.streams.get(..2),
+                "Fixed Fixture Declarations Differs",
             )?;
-            require(catalog.digest == harmos_protocol::schema::catalog_digest(&catalog), "Catalog Digest Differs")?;
+            require(declarations.digest == harmos_protocol::schema::declarations_digest(&declarations), "Declarations Digest Differs")?;
         }
         2 => {
             let first = description;
@@ -606,7 +609,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 at.nanos >= 0 && at.nanos < 1_000_000_000 && (-62_135_596_800..=253_402_300_799).contains(&at.seconds),
                 "Invalid Started At",
             )?;
-            require(second.started_at == Some(at) && second.catalog == first.catalog, "Reconnect Changed Process Identity or Catalog")?;
+            require(
+                second.started_at == Some(at) && second.declarations == first.declarations,
+                "Reconnect Changed Process Identity or Declarations",
+            )?;
         }
         3 => {
             for value in [vec![], vec![0, 255, 1, 128]] {
@@ -856,12 +862,12 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         17 => {
             // Schema Fingerprints / Check Both Roots Against the Shared General Rule.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
-            let expected = fixture::catalog();
-            require(catalog.operations == expected.operations, "Schema Operation Order or Contracts Differ")?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let types = declarations.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let expected = fixture::declarations();
+            require(declarations.operations == expected.operations, "Schema Operation Order or Contracts Differ")?;
             for operation in &expected.operations[6..] {
-                let actual = catalog
+                let actual = declarations
                     .operations
                     .iter()
                     .find(|item| item.id == operation.id)
@@ -893,15 +899,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         18 => {
             // Host Stream Settings / Advertise the Setting and Its Overridden Default.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let expected = fixture::catalog();
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let expected = fixture::declarations();
             require(
-                catalog
+                declarations
                     .sections
                     .iter()
                     .filter(|section| section.r#type != "harmos.v1.SettingsDeclarations")
                     .eq(expected.sections.iter().filter(|section| section.r#type != "harmos.v1.SettingsDeclarations"))
-                    && catalog.streams == expected.streams,
+                    && declarations.streams == expected.streams,
                 "Interval Setting or Section Differs",
             )?;
             // Host Stream Settings / Answer Only the Host's Resolved Ticks.
@@ -913,20 +919,20 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         19 => {
             // Check Both Advertised Clock Requirements Against Fixed Fingerprints.
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
-            let types = catalog.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
+            let types = declarations.types.as_ref().ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             for (id, (request, response)) in fixture::CLOCK_OPERATIONS.into_iter().zip([
                 ("harmos.plugin.host.v1.TimeSleepRequest", "harmos.plugin.host.v1.TimeSleepResponse"),
                 ("harmos.plugin.host.v1.TimeGetRequest", "harmos.plugin.host.v1.TimeGetResponse"),
             ]) {
-                let requirement = catalog
+                let requirement = declarations
                     .requires
                     .iter()
                     .find(|item| item.id == id)
                     .ok_or_else(|| Error::Invalid(format!("Missing Clock Requirement: {id}")))?;
                 let actual = harmos_protocol::schema::fingerprint(id, types, request, response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
-                let host = harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::catalog_types(), request, response)
+                let host = harmos_protocol::schema::fingerprint(id, &harmos_protocol::clock::declarations_types(), request, response)
                     .map_err(|error| Error::Invalid(error.to_string()))?;
                 let expected = fixture::fingerprint(id);
                 require(requirement.fingerprint == expected && actual == expected && host == expected, "Clock Fingerprint Differs")?;
@@ -948,15 +954,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )?;
         }
         20 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             let name = "harmos.conformance.v1.PayloadOnly";
             require(
-                !catalog.operations.iter().any(|item| item.request == name || item.response == name)
-                    && !catalog.streams.iter().any(|item| item.row == name)
-                    && !catalog.sections.iter().any(|item| item.r#type == name),
+                !declarations.operations.iter().any(|item| item.request == name || item.response == name)
+                    && !declarations.streams.iter().any(|item| item.row == name)
+                    && !declarations.sections.iter().any(|item| item.r#type == name),
                 "Payload Has An Executable Declaration",
             )?;
-            let types = catalog.types.ok_or_else(|| Error::Invalid("Missing Types".into()))?;
+            let types = declarations.types.ok_or_else(|| Error::Invalid("Missing Types".into()))?;
             let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types).map_err(|error| Error::Invalid(error.to_string()))?;
             let descriptor =
                 pool.get_message_by_name(name).ok_or_else(|| Error::Invalid("Missing Independent Payload Descriptor".into()))?;
@@ -966,13 +972,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(value.encode_to_vec() == bytes, "Independent Payload Round Trip Differs")?;
         }
         21 => {
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Missing Catalog".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Missing Declarations".into()))?;
             for (id, visibility, replay_safe) in [
                 ("example.plugin.v1.Lifecycle/Initialize", Visibility::Protected, false),
                 ("example.plugin.v1.Steps/Execute", Visibility::Public, true),
                 ("conformance.step.0", Visibility::Public, false),
             ] {
-                let operation = catalog
+                let operation = declarations
                     .operations
                     .iter()
                     .find(|operation| operation.id == id)
@@ -1013,14 +1019,14 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         24 => {
             let description = client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await?.into_inner();
-            let catalog = description.catalog.ok_or_else(|| Error::Invalid("Catalog Missing".into()))?;
+            let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declarations Missing".into()))?;
             require(
-                !catalog.operations.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Operation Leaked Into Catalog",
+                !declarations.operations.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Operation Leaked Into Declarations",
             )?;
             require(
-                !catalog.requires.iter().any(|operation| operation.id == "conformance.local"),
-                "Private Requirement Leaked Into Catalog",
+                !declarations.requires.iter().any(|operation| operation.id == "conformance.local"),
+                "Private Requirement Leaked Into Declarations",
             )?;
             let payload = fixture::payload(b"local payload");
             let (_send, mut input) = invoke(&mut client, "conformance.local_call", payload.clone()).await?;
@@ -1066,7 +1072,11 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     failure.classification = Classification::Refused as i32;
                     failure.message = format!(
                         "Invoke {operation}: {}",
-                        if mode == b"protected" { "Protected Peer Operation" } else { "Operation Is Not Declared in the Peer Catalog" }
+                        if mode == b"protected" {
+                            "Protected Peer Operation"
+                        } else {
+                            "Operation Is Not Declared in the Peer Declarations"
+                        }
                     );
                     send_child(&send, 1, child_response::Result::Failure(failure.clone())).await?;
                     require(terminal(&mut input).await? == response::Result::Failure(failure), "Peer Refusal Lost Its Action or Cause")?;

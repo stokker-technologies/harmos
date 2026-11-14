@@ -10,15 +10,15 @@ or credentials. The host is always the client.
 
 Operations served by a plugin over `harmos.v1` are unary (one request and one response per `Invoke`); request and result streaming remains supported for operations implemented natively in the host process.
 
-1. **Get and Catalog.** Instance.Get MUST be the first RPC on each connection.
+1. **Get and Declarations.** Instance.Get MUST be the first RPC on each connection.
    Peers advertise their highest revision (at least 1); their minimum applies.
    InstanceGetResponse MUST identify the plugin, semantic version, SDK and SDK version
-   and supply its complete catalog. Catalog message names MUST resolve in types;
+   and supply its complete declarations. Declarations message names MUST resolve in types;
    operation IDs MUST be unique. Protected operations admit their owner and host;
    Public operations admit declared peers and authorized clients. Private operations
-   are local and absent from the catalog and every wire. The host MUST refuse
+   are local and absent from the declarations and every wire. The host MUST refuse
    duplicate providers and incompatible requirements during admission. The fixture
-   catalog MUST equal the catalog defined below, including order and hashes.
+   declarations MUST equal the declarations defined below, including order and hashes.
    Operation identifiers are complete routing keys, with no provider prefix or
    provider selection. Duplicate admission MUST name the identifier and both
    owners, including when one owner is the host. A requirement whose operation
@@ -26,12 +26,12 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
    is present, its fingerprint MUST match. Disconnected or replaced activations
    MUST remove their operations from the registry before replacement admission.
 2. **Activation and Started At.** Every connection creates a new host activation
-   after Instance.Get and catalog admission. started_at MUST be a valid protobuf
+   after Instance.Get and declarations admission. started_at MUST be a valid protobuf
    Timestamp captured once at process startup, unchanged across connections to
    that process. A restarted process captures a new start time. The host exposes
    both activation start times; an old call or handle MUST NOT follow a replacement
    connection. The case reconnects to the same process and compares started_at and
-   the catalog; restart detection and host activation bookkeeping belong to host
+   the declarations; restart detection and host activation bookkeeping belong to host
    validation, not the fixture plugin.
 3. **Invoke Result and EOF.** Each Invoke serves exactly one operation attempt.
    Its first InstanceInvokeRequest MUST be Request with a nonempty invocation and attempt >= 1;
@@ -157,7 +157,7 @@ Operations served by a plugin over `harmos.v1` are unary (one request and one re
 ## Host Stream Settings and Evidence
 
 For runtime attachments, `interval_setting` names a fully qualified section field
-(`fixture.Settings.interval`) in `Catalog.sections`. The field MUST contain a
+(`fixture.Settings.interval`) in `Declarations.sections`. The field MUST contain a
 positive `google.protobuf.Duration`; an unresolved or invalid setting MUST refuse
 admission. It overrides `interval` when both are present.
 
@@ -174,7 +174,7 @@ File options do not participate, including in imported well-known types. All
 operations, including host operations and required operations, MUST use it. `crates/harmos-protocol/src/schema.rs` is the shared Rust
 implementation; other language implementations MUST produce the same bytes.
 
-For each request and response message, independently, project `Catalog.types`
+For each request and response message, independently, project `Declarations.types`
 into a data-only FileDescriptorSet as follows:
 
 - Resolve the fully qualified message name (an optional leading dot is ignored).
@@ -199,17 +199,17 @@ into a data-only FileDescriptorSet as follows:
 
 The fingerprint is SHA-256 of the UTF-8 operation ID, one zero byte, the encoded
 request projection, then the encoded response projection. No other separator or
-length prefix is added. Thus unrelated operations added to a catalog do not
+length prefix is added. Thus unrelated operations added to a declarations do not
 change existing fingerprints. A root nested in a message intentionally includes
 its enclosing declaration, so changing that declaration changes the fingerprint.
 
-Catalog digest remains SHA-256 of the entire Catalog with digest empty/omitted;
+Declarations digest remains SHA-256 of the entire Declarations with digest empty/omitted;
 its repeated declaration order is preserved and its types are not projected.
 The host MUST verify the advertised digest and each operation fingerprint before
-admitting the catalog. Message names in operations, streams and sections MUST
+admitting the declarations. Message names in operations, streams and sections MUST
 resolve in its types. This validation does not decode operation payloads.
 
-## Fixed Fixture Catalog
+## Fixed Fixture Declarations
 
 All SDK conformance plugins MUST expose id conformance, version 1.0.0, revision 1,
 a nonempty SDK name/version, and a process startup Timestamp. All fixture request,
@@ -221,7 +221,7 @@ package harmos.conformance.v1;
 message Value { bytes value = 1; }
 ```
 
-Catalog.types MUST contain one FileDescriptorProto with name
+Declarations.types MUST contain one FileDescriptorProto with name
 harmos/conformance/v1/fixture.proto, package harmos.conformance.v1, syntax proto3,
 one DescriptorProto named Value, and one FieldDescriptorProto with name value,
 number 1, label LABEL_OPTIONAL (1), type TYPE_BYTES (12). All other optional fields
@@ -229,10 +229,10 @@ MUST be absent; all other repeated fields empty. This minimal descriptor deliber
 omits source info, json_name and compiler-specific metadata; SDKs normalize it or
 construct it directly rather than sending their compiler's complete output.
 
-Catalog.operations MUST contain, in this order, conformance.echo,
+Declarations.operations MUST contain, in this order, conformance.echo,
 conformance.children, conformance.cancel, conformance.failure,
 conformance.child_failure. Each uses Value for request/response, Public visibility,
-absent policy and empty description. Catalog.requires MUST contain, in order,
+absent policy and empty description. Declarations.requires MUST contain, in order,
 conformance.host.echo, conformance.host.pending, conformance.host.fail.
 
 For these fixtures only, fingerprint is SHA-256 of UTF-8 operation ID, one zero
@@ -242,10 +242,10 @@ field order; repeated order is as declared. Each requirement uses its operation'
 fingerprint. This defines reproducible fixture hashes; generic schema graph
 canonicalization is outside these cases.
 
-Catalog.streams MUST contain conformance.ticks then conformance.device, each with
+Declarations.streams MUST contain conformance.ticks then conformance.device, each with
 row harmos.conformance.v1.Value, empty description and interval_setting. Only ticks
 has interval, Duration(seconds=1, nanos=0). Sections are empty. Digest is SHA-256
-of Catalog serialized in numeric field order with digest empty/omitted. Default
+of Declarations serialized in numeric field order with digest empty/omitted. Default
 scalar fields are omitted; repeated entries retain the order above.
 
 The failure fixture has PERMANENT classification, code fixture_failure, message
@@ -256,11 +256,11 @@ fixture_cause, message Fixture Cause, action Retry, operation conformance.host.f
 plugin host, absent cause, empty details and diagnostics. The host's child-failure
 fixture uses operation conformance.host.fail and is otherwise identical.
 
-## Additional Fixture Catalog
+## Additional Fixture Declarations
 
-The Fixed Fixture Catalog section defines the original subset and its minimal
+The Fixed Fixture Declarations section defines the original subset and its minimal
 Value projection; its original five operations, three requirements and two streams
-retain their order and fingerprints. Catalog.types is extended with the following
+retain their order and fingerprints. Declarations.types is extended with the following
 messages in the same fixture.proto and the imported google/protobuf/duration.proto.
 One `sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto` generates the fixture messages in
 all four SDKs’ test/conformance targets. The Rust test fixture retains its generated descriptor closure;
@@ -298,14 +298,14 @@ Append Public operations with empty descriptions and absent policies, in order:
 Append `conformance.clock` (Value to Value, Public, absent policy and empty
 description) after these operations. Append requirements `harmos.v1.Time/Sleep`
 then `harmos.v1.Time/Get` after `conformance.host.schema`. Include their reachable
-clock types from `harmos/context/v1/time.proto`, Duration and Timestamp in Catalog.types.
+clock types from `harmos/context/v1/time.proto`, Duration and Timestamp in Declarations.types.
 
 Append conformance.settings after the original streams, with row Value, default
 interval one second and interval_setting harmos.conformance.v1.Graph.interval.
 Its rows follow conformance.ticks. The single section has type
 harmos.conformance.v1.Graph and payload Graph(interval=Duration(seconds=2)).
 It overrides the default. Append requirement conformance.host.schema, using the Graph-to-Value fingerprint.
-Catalog digest
+Declarations digest
 covers this complete extended inventory; only fingerprint projections discard
 unrelated declarations. Case 5 also checks the policy fixture; case 14 checks
 invalid timestamp ranges as well as missing timestamps.
@@ -314,7 +314,7 @@ Rules 1, 5 and 7 also constrain host registry admission, opaque routing, visibil
 clock-driven policy enforcement, activation replacement and connection-loss
 isolation. A fixture plugin cannot observe those host internals. Their proof lives
 in host-runtime validation; the reference-host cases check the plugin-visible
-frames, catalog and per-call policy preservation without reimplementing that runtime.
+frames, declarations and per-call policy preservation without reimplementing that runtime.
 
 The fixture appends `conformance.protected`, `conformance.resources` and
 `conformance.cancel_reason`, in that order, after `conformance.clock`. Each maps
@@ -446,9 +446,9 @@ concurrency and response sizes. Native streaming handlers remain in process and 
 same client-facing gRPC streaming/control envelopes.
 
 An assignment names an owner-qualified operation, contains exactly 32 fingerprint bytes and
-a nonzero provider generation. Local operation identifiers must be unique within a catalog.
-The first valid catalog freezes an activation's assignments; reinstalling identical entries
-is permitted, and changing an entry or its order is refused. This catalog is protobuf even
+a nonzero provider generation. Local operation identifiers must be unique within a declarations.
+The first valid declarations freezes an activation's assignments; reinstalling identical entries
+is permitted, and changing an entry or its order is refused. This declarations is protobuf even
 inside `harmos.v1.GuestInitialize`.
 
 File SHA-256 values contain exactly 32 bytes. A finished file reference has a positive stored

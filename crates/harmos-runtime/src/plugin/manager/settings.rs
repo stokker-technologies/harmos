@@ -22,7 +22,7 @@ use super::{
 };
 use harmos_protocol::{
     client::{PluginEntry, plugins as wire},
-    v1::{Catalog, SettingDeclaration, SettingValue, SettingValues, SettingsDeclarations, setting_value::Value},
+    v1::{Declarations, SettingDeclaration, SettingValue, SettingValues, SettingsDeclarations, setting_value::Value},
 };
 use prost::Message;
 use std::collections::{BTreeMap, BTreeSet};
@@ -144,8 +144,8 @@ impl Actor {
 
 /* === Public Functions === */
 
-pub(crate) fn declarations(catalog: &Catalog) -> Result<Vec<SettingDeclaration>, Error> {
-    let Some(section) = catalog.sections.iter().find(|section| section.r#type == "harmos.v1.SettingsDeclarations") else {
+pub(crate) fn declarations_from(declarations: &Declarations) -> Result<Vec<SettingDeclaration>, Error> {
+    let Some(section) = declarations.sections.iter().find(|section| section.r#type == "harmos.v1.SettingsDeclarations") else {
         return Ok(Vec::new());
     };
     let values = SettingsDeclarations::decode(section.payload.as_slice())
@@ -171,10 +171,10 @@ pub(super) fn materialize(registry: &mut Registry) -> Result<(), Error> {
     for name in names {
         let saved = registry.entries.get(&name).expect("listed entry exists");
         let entry = PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Read Plugin Settings", error))?;
-        let Some(catalog) = entry.description.as_ref().and_then(|description| description.catalog.as_ref()) else {
+        let Some(declarations) = entry.description.as_ref().and_then(|description| description.declarations.as_ref()) else {
             continue;
         };
-        let declarations = declarations(catalog)?;
+        let declarations = declarations_from(declarations)?;
         let mut value = if saved.settings.is_empty() {
             SettingValues::default()
         } else {
@@ -196,8 +196,8 @@ pub(super) fn materialize(registry: &mut Registry) -> Result<(), Error> {
     Ok(())
 }
 
-pub(crate) fn select(catalog: &Catalog, overrides: Option<SettingValues>) -> Result<SettingValues, Error> {
-    let declarations = declarations(catalog)?;
+pub(crate) fn select(declarations: &Declarations, overrides: Option<SettingValues>) -> Result<SettingValues, Error> {
+    let declarations = declarations_from(declarations)?;
     let mut value = overrides.unwrap_or_default();
     for declaration in &declarations {
         value.values.entry(declaration.name.clone()).or_insert_with(|| declaration.default.clone().expect("validated default"));
@@ -210,10 +210,10 @@ pub(super) fn snapshots(registry: &Registry) -> Result<BTreeMap<String, Snapshot
     let mut output = BTreeMap::new();
     for (name, saved) in &registry.entries {
         let entry = PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Read Plugin Settings", error))?;
-        let Some(catalog) = entry.description.and_then(|description| description.catalog) else {
+        let Some(declarations) = entry.description.and_then(|description| description.declarations) else {
             continue;
         };
-        let declarations = declarations(&catalog)?;
+        let declarations = declarations_from(&declarations)?;
         let value = SettingValues::decode(saved.settings.as_slice()).map_err(|error| problem("Restore Plugin Settings", error))?;
         validate_values(&declarations, &value)?;
         output.insert(

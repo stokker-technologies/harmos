@@ -67,7 +67,7 @@ and runs every host rule. Test consumers use existing SDK and host builds;
 For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
 Windows) explicitly with that variable; otherwise stories prefer the native
 Product export when it exists.
-Native catalog tests run through CTest before the managed-plugin and installed-package
+Native declaration tests run through CTest before the managed-plugin and installed-package
 stories. Both check every reference-host case, including cleanup and successful
 process exit after Stop.
 
@@ -129,7 +129,7 @@ plugin.setting(setting).requires_operation(harmos::LIST_SETTINGS);
 ```
 
 `Plugin::setting` contributes one `SettingsDeclarations` section and its reachable
-types to the catalog. It refuses duplicate names and declarations without a name
+types to `Declarations`. It refuses duplicate names and declarations without a name
 or selected default. Value variants are flag, integer, number, text and duration.
 Inside an operation or tick observer, `context.settings()` calls
 `harmos.plugin.host.v1.Settings/List` and returns the calling entry's complete typed
@@ -154,3 +154,8 @@ stream wakes pending handlers and settles their workers. Child traffic before a 
 after its answer, on device streams, or with unknown or duplicate terminal IDs refuses
 the Samples RPC. Separate Samples calls and Invoke calls keep independent identities.
 Device-driven publication remains on `Publisher::publish` under active stream demand.
+
+The reported message is `harmos.v1.Declarations`; the SDK builder is
+`declarations()`. Regenerate client/plugin bindings when adopting this revision.
+Guest settings use the same library entry and settings services as other placements;
+see [WebAssembly Guests](plugin-manager.md#webassembly-guests).

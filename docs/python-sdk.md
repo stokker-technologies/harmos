@@ -85,7 +85,7 @@ prefix = settings.value.values["prefix"].text
 ```
 
 `settings` contributes one typed `SettingsDeclarations` section to the reported
-catalog. Each declaration requires a name and a selected typed default: flag,
+`Declarations`. Each declaration requires a name and a selected typed default: flag,
 integer, number, text or duration. False flags and empty text retain their
 selected variant. The library stores overrides; `context.settings()` calls
 plugin-host `Settings.List` for the admitted calling plugin, without a plugin
@@ -188,3 +188,8 @@ the reference-host rules, including tick children, typed settings and operation 
 Plugin declarations, child calls, host-clock waits, streams and packaging are
 described in [Python Plugin SDK](tooling.md#python-plugin-sdk). Repository tasks
 and generation drift checks are documented in [Repository Tooling](tooling.md).
+
+The reported message is `harmos.v1.Declarations`; the SDK builder is
+`declarations()`. Regenerate client/plugin bindings when adopting this revision.
+Guest settings use the same library entry and settings services as other placements;
+see [WebAssembly Guests](plugin-manager.md#webassembly-guests).

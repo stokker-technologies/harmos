@@ -192,9 +192,11 @@ impl<A: Application> Runtime<A> {
             )
             .await?;
             activation.entry_name = Some(name);
-            activation.settings =
-                crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
-                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            activation.settings = crate::plugin::manager::settings::select(
+                activation.description.declarations.as_ref().expect("admitted description"),
+                values,
+            )
+            .map_err(|error| Error::Invalid(error.to_string()))?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
             let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
@@ -322,9 +324,11 @@ impl Attached {
                 activation.entry_name = Some(entry.name);
                 entry.values
             });
-            activation.settings =
-                crate::plugin::manager::settings::select(activation.description.catalog.as_ref().expect("admitted description"), values)
-                    .map_err(|error| Error::Invalid(error.to_string()))?;
+            activation.settings = crate::plugin::manager::settings::select(
+                activation.description.declarations.as_ref().expect("admitted description"),
+                values,
+            )
+            .map_err(|error| Error::Invalid(error.to_string()))?;
             activation.process_id = process.as_ref().and_then(|process| process.child.id());
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
@@ -454,14 +458,14 @@ async fn connect(
         || description.sdk_version.is_empty()
         || semver::Version::parse(&description.version).is_err()
         || !valid_time
-        || description.catalog.is_none()
+        || description.declarations.is_none()
     {
         return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
     }
-    catalog::verify(description.catalog.as_ref().expect("description catalog was checked"))?;
+    catalog::verify(description.declarations.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
         number,
-        settings: crate::plugin::manager::settings::select(description.catalog.as_ref().expect("admitted description"), None)
+        settings: crate::plugin::manager::settings::select(description.declarations.as_ref().expect("admitted description"), None)
             .map_err(|error| Error::Invalid(error.to_string()))?,
         entry_name: None,
         provider: connection.owner.clone(),
@@ -603,7 +607,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                     next.entry_name = activation.entry_name.clone();
                     next.provider = activation.provider.clone();
                     next.settings = crate::plugin::manager::settings::select(
-                        next.description.catalog.as_ref().expect("admitted description"),
+                        next.description.declarations.as_ref().expect("admitted description"),
                         Some(activation.settings.clone()),
                     )
                     .map_err(|error| Arc::new(Error::Invalid(error.to_string())))?;

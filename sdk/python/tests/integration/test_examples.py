@@ -21,7 +21,7 @@ from google.protobuf.wrappers_pb2 import BytesValue
 from harmos_tools.process import spawn_flags
 
 from examples.client import run
-from harmos._wire.client.v1 import operations_pb2 as catalog
+from harmos._wire.client.v1 import operations_pb2 as declarations
 from harmos._wire.client.v1 import status_pb2 as status
 from harmos.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
 from harmos.plugin.v1 import instance_pb2 as carrier
@@ -48,8 +48,10 @@ class Examples(unittest.IsolatedAsyncioTestCase):
         server = grpc.aio.server()
         identity = status.HostIdentity(host_id="fixture")
 
-        async def discover(request: catalog.OperationsListRequest, context: grpc.aio.ServicerContext) -> catalog.OperationsListResponse:
-            return catalog.OperationsListResponse(operations=[DiscoveredOperation(owner="fixture", grpc_available=True)])
+        async def discover(
+            request: declarations.OperationsListRequest, context: grpc.aio.ServicerContext
+        ) -> declarations.OperationsListResponse:
+            return declarations.OperationsListResponse(operations=[DiscoveredOperation(owner="fixture", grpc_available=True)])
 
         async def get(request: status.StatusGetRequest, context: grpc.aio.ServicerContext) -> status.StatusGetResponse:
             return status.StatusGetResponse(status=status.HostStatus(identity=identity))
@@ -69,8 +71,8 @@ class Examples(unittest.IsolatedAsyncioTestCase):
                     {
                         "List": grpc.unary_unary_rpc_method_handler(
                             discover,
-                            request_deserializer=catalog.OperationsListRequest.FromString,
-                            response_serializer=catalog.OperationsListResponse.SerializeToString,
+                            request_deserializer=declarations.OperationsListRequest.FromString,
+                            response_serializer=declarations.OperationsListResponse.SerializeToString,
                         )
                     },
                 ),
@@ -126,9 +128,9 @@ class Examples(unittest.IsolatedAsyncioTestCase):
             self.addAsyncCleanup(channel.close)
             host = InstanceStub(channel)
             description = await host.Get(carrier.InstanceGetRequest(revision=1))
-            self.assertEqual(len(description.catalog.operations), 1)
-            self.assertEqual(description.catalog.operations[0].id, "example.echo")
-            declarations = SettingsDeclarations.FromString(description.catalog.sections[0].payload)
+            self.assertEqual(len(description.declarations.operations), 1)
+            self.assertEqual(description.declarations.operations[0].id, "example.echo")
+            declarations = SettingsDeclarations.FromString(description.declarations.sections[0].payload)
             self.assertEqual(declarations.values[0].default.WhichOneof("value"), "text")
 
             request = BytesValue(value=b"example")

@@ -74,6 +74,33 @@ impl<A: Application> PluginHost<A> {
     async fn guest(&self, loaded: Loaded<A>, settings: PluginSettings, lane: Lane, replace: bool) -> Result<()> {
         settings.validate()?;
         loaded.validate_publications().map_err(|source| failed(&loaded.declaration().id, source))?;
+        if !replace && self.status(&loaded.declaration().id).is_some() {
+            return Err(Error::AlreadyRegistered {
+                domain: "plugin",
+                name: loaded.declaration().id.clone(),
+            });
+        }
+        let manager = self.shared.operations.resources().resource::<crate::plugin::manager::Manager>().map_err(|_| Error::NotReady {
+            domain: "Register Guest Plugin: configure and start the plugin entry manager",
+        })?;
+        let declaration = loaded.declaration();
+        let entry = manager
+            .register_guest(harmos_protocol::client::PluginDescription {
+                id: declaration.id.clone(),
+                version: declaration.version.to_string(),
+                started_at: None,
+                declarations: declaration.registration.declarations.clone(),
+                revision: 1,
+                sdk: "rust".into(),
+                sdk_version: String::new(),
+            })
+            .await
+            .map_err(|source| failed(&declaration.id, source))?;
+        if replace && !entry.value.is_some_and(|value| value.enabled) {
+            return Err(Error::NotReady {
+                domain: "Reload Guest Plugin: enable the entry before replacing its module",
+            });
+        }
         let mut definition = PluginDefinition::guest(&loaded, settings.configuration.clone())
             .map_err(|source| failed(loaded.declaration().id.as_str(), source))?;
         definition.requires = settings.requires.clone();

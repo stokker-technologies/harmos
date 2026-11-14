@@ -56,9 +56,9 @@ public:
         if (device) stream.producer = [observer](Context& context, auto) { observer(context); };
         else stream.observer = std::move(observer);
         streams.push_back(std::move(stream));
-        const auto catalog = harmos::Plugin("example", "1.0.0").requires_operation(echo).requires_operation(watching)
-            .requires_operation(harmos::GET_TIME).requires_operation(harmos::LIST_SETTINGS).catalog();
-        for (const auto& requirement : catalog.requires_()) requirements[requirement.id()] = requirement.fingerprint();
+        const auto declarations = harmos::Plugin("example", "1.0.0").requires_operation(echo).requires_operation(watching)
+            .requires_operation(harmos::GET_TIME).requires_operation(harmos::LIST_SETTINGS).declarations();
+        for (const auto& requirement : declarations.requires_()) requirements[requirement.id()] = requirement.fingerprint();
         grpc::ServerBuilder builder;
         int port = 0;
         builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);

@@ -21,7 +21,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
 {
   private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
   private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
-  private readonly Catalog catalog = new() { Types_ = new() };
+  private readonly Declarations declarations = new() { Types_ = new() };
   private readonly Dictionary<string, Handler> operations = [];
   private readonly Dictionary<string, Publication> streams = [];
   private readonly List<Func<Task>> cleanup = [];
@@ -41,8 +41,8 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       throw new ArgumentException($"Duplicate Operation: {contract.Id}");
     if (contract.Visibility != Visibility.Private)
     {
-      catalog.Operations.Add(contract);
-      Descriptors.Merge(catalog.Types_, operation.Types);
+      declarations.Operations.Add(contract);
+      Descriptors.Merge(declarations.Types_, operation.Types);
     }
     return this;
   }
@@ -50,7 +50,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   /// <summary>Register a payload descriptor independently of executable declarations.</summary>
   public Plugin Message<T>() where T : IMessage<T>, new()
   {
-    Descriptors.Merge(catalog.Types_, Descriptors.Types(new T().Descriptor));
+    Descriptors.Merge(declarations.Types_, Descriptors.Types(new T().Descriptor));
     return this;
   }
 
@@ -60,10 +60,10 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   {
     if (operation.Contract.Visibility == Visibility.Private)
       throw new ArgumentException($"Require {operation.Contract.Id}: Private Calls Are Local");
-    if (catalog.Requires.Any(item => item.Id == operation.Contract.Id))
+    if (declarations.Requires.Any(item => item.Id == operation.Contract.Id))
       throw new ArgumentException($"Duplicate Requirement: {operation.Contract.Id}");
-    catalog.Requires.Add(new Requirement { Id = operation.Contract.Id, Fingerprint = operation.Contract.Fingerprint });
-    Descriptors.Merge(catalog.Types_, operation.Types);
+    declarations.Requires.Add(new Requirement { Id = operation.Contract.Id, Fingerprint = operation.Contract.Fingerprint });
+    Descriptors.Merge(declarations.Types_, operation.Types);
     return this;
   }
 
@@ -94,10 +94,10 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   public Plugin Section<T>(T value) where T : IMessage<T>
   {
     var name = value.Descriptor.FullName;
-    if (catalog.Sections.Any(item => item.Type == name))
+    if (declarations.Sections.Any(item => item.Type == name))
       throw new ArgumentException($"Duplicate Section: {name}");
-    catalog.Sections.Add(new Section { Type = name, Payload = value.ToByteString() });
-    Descriptors.Merge(catalog.Types_, Descriptors.Types(value.Descriptor));
+    declarations.Sections.Add(new Section { Type = name, Payload = value.ToByteString() });
+    Descriptors.Merge(declarations.Types_, Descriptors.Types(value.Descriptor));
     return this;
   }
 
@@ -108,11 +108,11 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     ArgumentNullException.ThrowIfNull(defaultValue);
     if (defaultValue.ValueCase == SettingValue.ValueOneofCase.None)
       throw new ArgumentException($"Declare Setting {name}: Select a Typed Default", nameof(defaultValue));
-    var section = catalog.Sections.SingleOrDefault(item => item.Type == SettingsDeclarations.Descriptor.FullName);
-    var declarations = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
-    if (declarations.Values.Any(item => item.Name == name))
+    var section = declarations.Sections.SingleOrDefault(item => item.Type == SettingsDeclarations.Descriptor.FullName);
+    var settings = section is null ? new SettingsDeclarations() : SettingsDeclarations.Parser.ParseFrom(section.Payload);
+    if (settings.Values.Any(item => item.Name == name))
       throw new ArgumentException($"Declare Setting {name}: Duplicate Name", nameof(name));
-    declarations.Values.Add(new SettingDeclaration
+    settings.Values.Add(new SettingDeclaration
     {
       Name = name,
       Title = title,
@@ -120,8 +120,8 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       Default = defaultValue.Clone()
     });
     if (section is null)
-      return Section(declarations);
-    section.Payload = declarations.ToByteString();
+      return Section(settings);
+    section.Payload = settings.ToByteString();
     return this;
   }
 
@@ -131,11 +131,11 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     return this;
   }
 
-  public Catalog Catalog()
+  public Declarations Declarations()
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(id);
     ArgumentException.ThrowIfNullOrWhiteSpace(version);
-    var result = catalog.Clone();
+    var result = declarations.Clone();
     result.Digest = ByteString.CopyFrom(SHA256.HashData(result.ToByteArray()));
     return result;
   }
@@ -143,7 +143,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   /// <summary>Serve plain gRPC. HARMOS_ADDRESS overrides address; remote mode remains alive after Stop.</summary>
   public async Task ServeAsync(string? address = null, bool remote = false, CancellationToken cancellationToken = default)
   {
-    var snapshot = Catalog();
+    var snapshot = Declarations();
     var endpoint = IPEndPoint.Parse(Environment.GetEnvironmentVariable("HARMOS_ADDRESS") ?? address ?? "127.0.0.1:0");
     if (!remote && !IPAddress.IsLoopback(endpoint.Address))
       throw new ArgumentException("Managed Address Must Be Loopback");
@@ -159,7 +159,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       Id = id,
       Version = version,
       StartedAt = StartedAt.Clone(),
-      Catalog = snapshot,
+      Declarations = snapshot,
       Revision = 1,
       Sdk = "harmos_csharp",
       SdkVersion = "0.1.0",
@@ -181,8 +181,8 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     if (!streams.TryAdd(declaration.Id, publication))
       throw new ArgumentException($"Duplicate Stream: {declaration.Id}");
     declaration.Row = new TRow().Descriptor.FullName;
-    catalog.Streams.Add(declaration);
-    Descriptors.Merge(catalog.Types_, Descriptors.Types(new TRow().Descriptor));
+    declarations.Streams.Add(declaration);
+    Descriptors.Merge(declarations.Types_, Descriptors.Types(new TRow().Descriptor));
     return this;
   }
 }

@@ -33,7 +33,7 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
             .activation()
             .unwrap()
             .description
-            .catalog
+            .declarations
             .as_ref()
             .unwrap()
             .operations

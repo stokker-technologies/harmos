@@ -13,10 +13,19 @@
 
 /* === Imports === */
 
+use harmos_protocol::{
+    client::{
+        PluginsDeleteRequest, PluginsGetRequest, PluginsListRequest, PluginsReplaceRequest,
+        plugin_placement::Kind,
+        plugins::{SettingsListRequest, SettingsSetRequest},
+    },
+    v1::{SettingValue, setting_value::Value},
+};
+use harmos_runtime::plugin::manager::Management;
 use harmos_runtime::{Identifier, Runtime, guest::PluginState};
 use prost::Message as _;
 use schematic_operations::protocol::{Connection, Point, ProposeRoute, Route, Snapshot, ValidateSchematic, Validation};
-use std::{num::NonZeroUsize, time::SystemTime};
+use std::{num::NonZeroUsize, sync::Arc, time::SystemTime};
 
 /* === Constants === */
 
@@ -43,8 +52,10 @@ async fn guest_composition_walks() {
     let _report = crate::report::system();
     // Boot Without a Guest Operation
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let (storage, entries, root) = super::guest_contract::support::entries();
     let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
-        setup.settings().clock(clock);
+        setup.resource(root);
+        setup.settings().clock(clock).storage(&storage).plugins(entries.clone());
         setup.settings().register(crate::support::catalog());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: NonZeroUsize::new(4096),
@@ -53,6 +64,8 @@ async fn guest_composition_walks() {
     })
     .await
     .unwrap();
+    let runtime = Arc::new(runtime);
+    entries.start(&runtime).await.unwrap();
     let route = ProposeRoute {
         from: Some(Point { x: 0, y: 0 }),
         to: Some(Point { x: 3, y: 4 }),
@@ -96,13 +109,67 @@ async fn guest_composition_walks() {
     let bytes = runtime.operations.call_encoded("schematic.validate", request.encode_to_vec()).await.unwrap();
     assert_eq!(Validation::decode(bytes.as_slice()).unwrap().diagnostics.len(), 2);
 
+    // Read and Change the Guest's Stored Typed Settings Through Its Entry
+    let name = "schematic_tools".to_owned();
+    let listed = entries.list(PluginsListRequest { at: None }).await.unwrap();
+    assert_eq!(listed.entries.len(), 1);
+    assert!(matches!(listed.entries[0].placement.as_ref().unwrap().kind, Some(Kind::Guest(_))));
+    let before = entries.settings_list(SettingsListRequest { name: name.clone(), at: None }).await.unwrap();
+    let old_cut = before.resolved_at.clone();
+    let mut value = before.value.unwrap();
+    value.values.insert("horizontal_first".into(), SettingValue { value: Some(Value::Flag(false)) });
+    entries
+        .settings_set(SettingsSetRequest {
+            name: name.clone(),
+            value: Some(value.clone()),
+            expected_revision: before.revision.clone(),
+            request_id: "guest-settings".into(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        entries
+            .settings_set(SettingsSetRequest {
+                name: name.clone(),
+                value: Some(value),
+                expected_revision: before.revision,
+                request_id: "guest-stale-settings".into(),
+            })
+            .await
+            .is_err()
+    );
+    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
+    assert_eq!(Route::decode(answer.as_slice()).unwrap().points, [Point { x: 0, y: 0 }, Point { x: 0, y: 4 }, Point { x: 3, y: 4 }]);
+
     // Replace the Activation and Keep Answering the Same Contract
     runtime.plugin.reload("schematic_tools").await.unwrap();
     let reloaded = runtime.plugin.status("schematic_tools").unwrap();
     assert_eq!(reloaded.state, PluginState::Ready);
     assert_ne!(reloaded.generation, original.generation);
     assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_ok());
-    runtime.plugin.stop("schematic_tools").await.unwrap();
+    let answer = runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.unwrap();
+    assert_eq!(Route::decode(answer.as_slice()).unwrap().points[1], Point { x: 0, y: 4 });
+    let entry = entries.get(PluginsGetRequest { name: name.clone(), at: None }).await.unwrap().entry.unwrap();
+    let refusal = entries
+        .replace(PluginsReplaceRequest {
+            name: name.clone(),
+            expected_revision: entry.revision.clone(),
+            request_id: "guest-replace".into(),
+            placement: entry.placement.clone(),
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(refusal.0.code, "managed_required");
+    entries
+        .delete(PluginsDeleteRequest {
+            name: name.clone(),
+            expected_revision: entry.revision,
+        })
+        .await
+        .unwrap();
+    assert!(entries.list(PluginsListRequest { at: None }).await.unwrap().entries.is_empty());
+    assert!(entries.settings_list(SettingsListRequest { name, at: old_cut }).await.is_err());
+    assert!(runtime.plugin.status("schematic_tools").is_none());
     assert!(runtime.operations.call_encoded("schematic.route", route.encode_to_vec()).await.is_err());
     runtime.shutdown().await.unwrap();
 }

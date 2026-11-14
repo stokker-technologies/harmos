@@ -81,8 +81,15 @@ pub fn run(arguments: &[String]) -> Result<()> {
             }
         };
         // Invoke Its Public Operation Through the Host
-        let contract =
-            ready.description.unwrap().catalog.unwrap().operations.into_iter().find(|operation| operation.id == "example.echo").unwrap();
+        let contract = ready
+            .description
+            .unwrap()
+            .declarations
+            .unwrap()
+            .operations
+            .into_iter()
+            .find(|operation| operation.id == "example.echo")
+            .unwrap();
         let mut data = b"hello".to_vec();
         data.resize(transfer.chunk_bytes() as usize, 0);
         let payload = Value { value: data.clone() }.encode_to_vec();

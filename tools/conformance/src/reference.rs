@@ -81,7 +81,7 @@ impl Instance for Reference {
             id: "conformance".into(),
             version: "1.0.0".into(),
             started_at: Some(self.started_at),
-            catalog: Some(fixture::catalog()),
+            declarations: Some(fixture::declarations()),
             revision: 1,
             sdk: "hand_written_tonic".into(),
             sdk_version: "1.0.0".into(),

@@ -292,16 +292,16 @@ pub struct OperationContract {
     /// "example.set".
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
-    /// Fully qualified message names found in Catalog.types.
+    /// Fully qualified message names found in Declarations.types.
     #[prost(string, tag = "2")]
     pub request: ::prost::alloc::string::String,
-    /// Fully qualified response message name resolved in Catalog.types.
+    /// Fully qualified response message name resolved in Declarations.types.
     #[prost(string, tag = "3")]
     pub response: ::prost::alloc::string::String,
-    /// Wire catalogs admit Public or Protected; Private remains process-local and Unspecified is invalid.
+    /// Wire declarationss admit Public or Protected; Private remains process-local and Unspecified is invalid.
     #[prost(enumeration = "Visibility", tag = "4")]
     pub visibility: i32,
-    /// Callee-owned execution budgets; the admitted catalog must provide a valid policy.
+    /// Callee-owned execution budgets; the admitted declarations must provide a valid policy.
     #[prost(message, optional, tag = "5")]
     pub policy: ::core::option::Option<OperationPolicy>,
     /// SHA-256 over the id and the request and response definitions.
@@ -442,7 +442,7 @@ pub struct DiscoveredOperation {
 #[repr(i32)]
 pub enum Visibility {
     Unspecified = 0,
-    /// Process-local only; invalid in any wire catalog.
+    /// Process-local only; invalid in any wire declarations.
     Private = 1,
     /// Everyone connected: other plugins and the host's clients.
     Public = 2,
@@ -553,7 +553,7 @@ pub struct StreamDeclaration {
     /// Stream identity unique within its admitted provider inventory.
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
-    /// Fully qualified message name of one row, found in Catalog.types.
+    /// Fully qualified message name of one row, found in Declarations.types.
     #[prost(string, tag = "2")]
     pub row: ::prost::alloc::string::String,
     #[prost(string, tag = "3")]
@@ -604,7 +604,7 @@ pub struct Sample {
 /// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Catalog {
+pub struct Declarations {
     /// Operations the plugin serves.
     #[prost(message, repeated, tag = "1")]
     pub operations: ::prost::alloc::vec::Vec<OperationContract>,
@@ -620,7 +620,7 @@ pub struct Catalog {
     /// SHA-256 over the serialized fields 1 to 4 and 6, in field order.
     #[prost(bytes = "vec", tag = "5")]
     pub digest: ::prost::alloc::vec::Vec<u8>,
-    /// Definitions of every message named in this catalog.
+    /// Definitions of every message named in this declarations.
     #[prost(message, optional, tag = "6")]
     pub types: ::core::option::Option<::prost_types::FileDescriptorSet>,
 }
@@ -1021,7 +1021,7 @@ pub struct GuestRegistration {
     #[prost(string, tag = "2")]
     pub version: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]
-    pub catalog: ::core::option::Option<Catalog>,
+    pub declarations: ::core::option::Option<Declarations>,
     /// Execution policy for the guest initialization lifecycle operation.
     #[prost(message, optional, tag = "4")]
     pub initialization: ::core::option::Option<OperationPolicy>,

@@ -75,7 +75,7 @@ pub struct Remote {
 
 #[derive(Clone)]
 struct Fixture {
-    catalog: Arc<Mutex<v1::Catalog>>,
+    catalog: Arc<Mutex<v1::Declarations>>,
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
@@ -137,8 +137,8 @@ impl Remote {
     pub async fn start() -> Self {
         let service = Fixture {
             catalog: Arc::new(Mutex::new({
-                let mut catalog = v1::Catalog::default();
-                catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+                let mut catalog = v1::Declarations::default();
+                catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
                 catalog
             })),
             started_at: Arc::new(AtomicI64::new(100)),
@@ -218,7 +218,7 @@ impl Remote {
         *self.service.samples.lock().unwrap() = Some(Arc::new(handler));
     }
 
-    pub fn catalog(&self, catalog: v1::Catalog) {
+    pub fn declarations(&self, catalog: v1::Declarations) {
         *self.service.catalog.lock().unwrap() = catalog;
     }
 
@@ -268,7 +268,7 @@ impl Instance for Fixture {
                 seconds: self.started_at.load(Ordering::SeqCst),
                 nanos: 0,
             }),
-            catalog: Some(self.catalog.lock().unwrap().clone()),
+            declarations: Some(self.catalog.lock().unwrap().clone()),
         }))
     }
     type InvokeStream = Output<harmos_protocol::plugin::InstanceInvokeResponse>;
@@ -299,7 +299,7 @@ impl Instance for Fixture {
 
 /* === Public Functions === */
 
-pub fn catalog() -> v1::Catalog {
+pub fn catalog() -> v1::Declarations {
     let types = prost_types::FileDescriptorSet {
         file: vec![prost_types::FileDescriptorProto {
             name: Some("fixture.proto".into()),
@@ -313,7 +313,7 @@ pub fn catalog() -> v1::Catalog {
         }],
     };
     let fingerprint = harmos_protocol::schema::fingerprint("fixture.echo", &types, "fixture.Value", "fixture.Value").unwrap();
-    let mut catalog = v1::Catalog {
+    let mut catalog = v1::Declarations {
         types: Some(types),
         operations: vec![v1::OperationContract {
             id: "fixture.echo".into(),
@@ -325,7 +325,7 @@ pub fn catalog() -> v1::Catalog {
         }],
         ..Default::default()
     };
-    catalog.digest = harmos_protocol::schema::catalog_digest(&catalog);
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
     catalog
 }
 

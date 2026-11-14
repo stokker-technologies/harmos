@@ -68,19 +68,22 @@ impl Declaration {
             return Err(invalid("Invalid Guest Identity".into()));
         }
         let version = semver::Version::parse(&registration.version).map_err(|error| invalid(error.to_string()))?;
-        let catalog = registration.catalog.as_ref().ok_or_else(|| invalid("Guest Catalog Is Required".into()))?;
-        if catalog.digest != harmos_protocol::schema::catalog_digest(catalog) {
-            return Err(invalid("Guest Catalog Digest Differs".into()));
+        let declarations = registration.declarations.as_ref().ok_or_else(|| invalid("Guest Declarations Is Required".into()))?;
+        if declarations.digest != harmos_protocol::schema::declarations_digest(declarations) {
+            return Err(invalid("Guest Declarations Digest Differs".into()));
         }
-        if catalog.operations.len() > 4096 || catalog.requires.len() > 4096 || catalog.streams.len() > 4096 || catalog.sections.len() > 256
+        if declarations.operations.len() > 4096
+            || declarations.requires.len() > 4096
+            || declarations.streams.len() > 4096
+            || declarations.sections.len() > 256
         {
-            return Err(invalid("Guest Catalog Exceeds Its Bound".into()));
+            return Err(invalid("Guest Declarations Exceeds Its Bound".into()));
         }
-        let types = catalog.types.as_ref().ok_or_else(|| invalid("Guest Descriptor Set Is Required".into()))?;
+        let types = declarations.types.as_ref().ok_or_else(|| invalid("Guest Descriptor Set Is Required".into()))?;
         let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(types.clone()).map_err(|error| invalid(error.to_string()))?;
         let mut ids = std::collections::BTreeSet::new();
         let mut provides = Vec::new();
-        for operation in &catalog.operations {
+        for operation in &declarations.operations {
             harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| invalid(error.to_string()))?;
             if !ids.insert(&operation.id) {
                 return Err(invalid("Duplicate Guest Operation".into()));
@@ -91,14 +94,14 @@ impl Declaration {
             }
             provides.push(contract);
         }
-        if registration.requirements.len() != catalog.requires.len() {
+        if registration.requirements.len() != declarations.requires.len() {
             return Err(invalid("Guest Requirements Differ".into()));
         }
         ids.clear();
         let mut requires = Vec::new();
         for required in &registration.requirements {
             if !ids.insert(&required.id)
-                || !catalog.requires.iter().any(|entry| entry.id == required.id && entry.fingerprint == required.fingerprint)
+                || !declarations.requires.iter().any(|entry| entry.id == required.id && entry.fingerprint == required.fingerprint)
             {
                 return Err(invalid("Invalid or Duplicate Guest Requirement".into()));
             }
@@ -125,7 +128,7 @@ impl Declaration {
         }
         ids.clear();
         let mut streams = Vec::new();
-        for stream in &catalog.streams {
+        for stream in &declarations.streams {
             if !ids.insert(&stream.id) || stream.interval.is_some() || !stream.interval_setting.is_empty() {
                 return Err(invalid("Invalid or Unsupported Guest Stream".into()));
             }
@@ -145,7 +148,7 @@ impl Declaration {
             });
         }
         ids.clear();
-        for section in &catalog.sections {
+        for section in &declarations.sections {
             if !ids.insert(&section.r#type) {
                 return Err(invalid("Duplicate Guest Section".into()));
             }
@@ -166,7 +169,7 @@ impl Declaration {
             operations: provides.iter().map(|contract| contract.operation().clone()).collect(),
             contracts: Contracts { provides, requires, lifecycle },
             streams,
-            sections: catalog.sections.clone(),
+            sections: declarations.sections.clone(),
             registration,
         })
     }
