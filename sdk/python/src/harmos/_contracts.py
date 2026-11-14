@@ -22,9 +22,9 @@ from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorProto,
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 
-from harmos._wire.v1.operation_pb2 import OperationContract, Visibility
-from harmos._wire.v1.policy_pb2 import OperationPolicy
-from harmos._wire.v1.stream_pb2 import StreamDeclaration
+from harmos._wire.model.v1.operation_pb2 import OperationContract, Visibility
+from harmos._wire.model.v1.policy_pb2 import OperationPolicy
+from harmos._wire.model.v1.stream_pb2 import StreamDeclaration
 
 # Local Imports
 

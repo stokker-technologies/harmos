@@ -28,20 +28,20 @@ from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
     Failure,
-    SamplesSelection,
+    Position,
+    ReadCut,
     SettingDeclaration,
     SettingsDeclarations,
     SettingValue,
     SettingValues,
-    Tick,
 )
 from harmos import FailureValue as WireFailure
-from harmos._wire.plugin.host.v1.settings_pb2 import SettingsListResponse
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.v1.invocation_pb2 import ChildResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, publisher
+from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
+from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 
 # Type Checking Imports
 
@@ -62,6 +62,7 @@ class Reader:
         self.answer = Event()
         self.pending: Task[BytesValue] | None = None
         self.escaped: Context | None = None
+        self.settings: SettingsListResponse | None = None
 
     @observer("example.readings", row=BytesValue, interval=Duration(seconds=1))
     async def read(self, context: Context) -> BytesValue:
@@ -72,7 +73,8 @@ class Reader:
             )
             return BytesValue(value=first.value + second.value + context.scope().encode())
         if context.sequence == 2:
-            settings = await context.host.settings.list()
+            settings = await context.host.plugins.settings.list()
+            self.settings = settings
             now = await context.host.time.get()
             await context.host.time.sleep(settings.value.values["interval"].duration)
             result = b""
@@ -108,7 +110,7 @@ class TickChildren(IsolatedAsyncioTestCase):
             reader,
             id="example",
             version="1.0.0",
-            requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.SETTINGS_LIST],
+            requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.PLUGINS_SETTINGS_LIST],
             settings=[declaration],
         )
         endpoint = await plugin.start("127.0.0.1:0")
@@ -142,17 +144,24 @@ class TickChildren(IsolatedAsyncioTestCase):
         await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=101))))
         child = (await stream.read()).child
         self.assertGreater(child.call, max(first.call, second.call))
-        self.assertEqual(child.operation, HostOperation.SETTINGS_LIST.value)
+        self.assertEqual(child.operation, HostOperation.PLUGINS_SETTINGS_LIST.value)
+        settings = SettingsListResponse(
+            declarations=[declaration],
+            value=SettingValues(values={"interval": declaration.default}),
+            revision=b"settings-revision",
+            resolved_at=ReadCut(positions=[Position(sequence=7)]),
+        )
         await stream.write(
             InstanceSamplesRequest(
                 child=ChildResponse(
                     call=child.call,
-                    payload=SettingsListResponse(value=SettingValues(values={"interval": declaration.default})).SerializeToString(),
+                    payload=settings.SerializeToString(),
                 )
             )
         )
         child = (await stream.read()).child
         self.assertEqual(child.operation, HostOperation.TIME_GET.value)
+        self.assertEqual(reader.settings, settings)
         await stream.write(
             InstanceSamplesRequest(child=ChildResponse(call=child.call, payload=TimeGetResponse(now=at).SerializeToString()))
         )

@@ -17,7 +17,7 @@ from grpc.aio import StreamStreamCall
 
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeRequest, InstanceInvokeResponse
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
-from harmos._wire.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
+from harmos._wire.plugin.v1.invocation_pb2 import ChildRequest, ChildResponse, Request
 
 # Local Imports
 

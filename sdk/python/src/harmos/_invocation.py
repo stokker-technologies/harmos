@@ -21,14 +21,19 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
-from harmos._wire.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.v1.failure_pb2 import CLASSIFICATION_CANCELLED, CLASSIFICATION_REFUSED, CLASSIFICATION_TIMED_OUT, CLASSIFICATION_TRANSIENT
-from harmos._wire.v1.failure_pb2 import Failure as WireFailure
-from harmos._wire.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
-from harmos._wire.v1.operation_pb2 import VISIBILITY_PUBLIC
-from harmos._wire.v1.policy_pb2 import OperationPolicy
-from harmos._wire.v1.position_pb2 import ReadCut
-from harmos._wire.v1.stream_pb2 import Sample
+from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse
+from harmos._wire.model.v1.failure_pb2 import (
+    CLASSIFICATION_CANCELLED,
+    CLASSIFICATION_REFUSED,
+    CLASSIFICATION_TIMED_OUT,
+    CLASSIFICATION_TRANSIENT,
+)
+from harmos._wire.model.v1.failure_pb2 import Failure as WireFailure
+from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC
+from harmos._wire.model.v1.policy_pb2 import OperationPolicy
+from harmos._wire.model.v1.position_pb2 import ReadCut
+from harmos._wire.plugin.v1.invocation_pb2 import ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request
+from harmos._wire.plugin.v1.stream_pb2 import Sample
 
 # Local Imports
 from ._contracts import Operation
@@ -39,7 +44,7 @@ if TYPE_CHECKING:
 
 from asyncio import FIRST_COMPLETED, CancelledError, Event, Future, Queue
 
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceInvokeResponse, InstanceSamplesResponse
 
 from ._generated.host import HostRoot
@@ -48,10 +53,9 @@ from ._generated.host import HostRoot
 
 # === Constants === #
 
-SLEEP = Operation("harmos.plugin.host.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
-GET_TIME = Operation("harmos.plugin.host.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
+SLEEP = Operation("harmos.host.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
+GET_TIME = Operation("harmos.host.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
 
-SETTINGS = Operation("harmos.plugin.host.v1.Settings/List", SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC)
 
 # === Types === #
 
@@ -351,7 +355,7 @@ class Context:
 
     async def settings(self, *, at: ReadCut | None = None) -> SettingsListResponse:
         """Read the Calling Plugin's Complete Settings and Revision."""
-        return await self.call(SETTINGS, SettingsListRequest(at=at))
+        return await self.host.plugins.settings.list(at=at)
 
     async def sleep(self, duration: Duration) -> None:
         await self.call(SLEEP, TimeSleepRequest(duration=duration))

@@ -20,10 +20,10 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
-from harmos import SamplesSelection, Tick
-from harmos._wire.plugin.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
+from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
 
 # Local Imports
 from harmos.plugin import HostOperation, Plugin
@@ -65,14 +65,14 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
-        self.assertEqual(sleep.operation, "harmos.plugin.host.v1.Time/Sleep")
+        self.assertEqual(sleep.operation, "harmos.host.v1.Time/Sleep")
         self.assertEqual(TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
         self.assertEqual(sleep.fingerprint, description.declarations.requires[0].fingerprint)
         await calls.reply(call, sleep, TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
-        self.assertEqual(now.operation, "harmos.plugin.host.v1.Time/Get")
+        self.assertEqual(now.operation, "harmos.host.v1.Time/Get")
         at = Timestamp(seconds=12345, nanos=67890)
         await calls.reply(call, now, TimeGetResponse(now=at))
         result = (await call.read()).response

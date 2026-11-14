@@ -201,7 +201,7 @@ class Fixture:
 
     @operation("conformance.settings_read", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def settings_read(self, context: Context, request: Value) -> Value:
-        settings = await context.host.settings.list()
+        settings = await context.host.plugins.settings.list()
         return Value(value=settings.value.SerializeToString())
 
     @operation("conformance.discover", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
@@ -237,7 +237,7 @@ class Fixture:
     async def tick_context(self, context: Context) -> Value:
         echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
         clock = TimeGetResponse(now=await context.host.time.get())
-        settings = await context.host.settings.list()
+        settings = await context.host.plugins.settings.list()
         value = b""
         for reply in (echo, clock, settings):
             payload = reply.SerializeToString()
@@ -313,7 +313,7 @@ def plugin() -> Plugin:
             HOST_SCHEMA,
             HostOperation.TIME_SLEEP,
             HostOperation.TIME_GET,
-            HostOperation.SETTINGS_LIST,
+            HostOperation.PLUGINS_SETTINGS_LIST,
             HostOperation.OPERATIONS_LIST,
             HostOperation.OPERATIONS_GET,
         ],

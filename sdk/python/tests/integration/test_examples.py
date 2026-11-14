@@ -24,9 +24,12 @@ from grpc.aio import EOF, ServicerContext
 from harmos_tools.process import spawn_flags
 
 from examples.client import run
-from harmos import DiscoveredOperation, Position, SettingsDeclarations, SettingValue, SettingValues
-from harmos._wire.client.v1.operations_pb2 import OperationsListRequest, OperationsListResponse
-from harmos._wire.client.v1.status_pb2 import (
+from examples.invocation import run as invoke
+from harmos import DiscoveredContract, DiscoveredOperation, Position, SettingsDeclarations, SettingValue, SettingValues
+from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
+from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
+from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
+from harmos._wire.host.v1.status_pb2 import (
     HostIdentity,
     HostStatus,
     StatusGetRequest,
@@ -34,7 +37,6 @@ from harmos._wire.client.v1.status_pb2 import (
     StatusWatchRequest,
     StatusWatchResponse,
 )
-from harmos._wire.plugin.host.v1.settings_pb2 import SettingsListRequest, SettingsListResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from tests.support import calls
@@ -49,6 +51,52 @@ from tests.support import calls
 
 
 class Examples(IsolatedAsyncioTestCase):
+    async def test_dynamic_example_discovers_the_fingerprint_and_creates_an_invocation(self) -> None:
+        server = grpc.aio.server()
+        contract = DiscoveredContract(id="example.echo", fingerprint=b"expected-contract")
+
+        async def discover(request: OperationsGetRequest, context: ServicerContext) -> OperationsGetResponse:
+            self.assertEqual(request.id, contract.id)
+            return OperationsGetResponse(operation=DiscoveredOperation(contract=contract))
+
+        async def create(request: InvocationsCreateRequest, context: ServicerContext) -> InvocationsCreateResponse:
+            self.assertEqual(request.operation, contract.id)
+            self.assertEqual(request.fingerprint, contract.fingerprint)
+            payload = BytesValue.FromString(request.payload)
+            response = BytesValue(value=b"accepted:" + payload.value)
+            return InvocationsCreateResponse(payload=response.SerializeToString())
+
+        server.add_generic_rpc_handlers(
+            (
+                grpc.method_handlers_generic_handler(
+                    "harmos.host.v1.Operations",
+                    {
+                        "Get": grpc.unary_unary_rpc_method_handler(
+                            discover,
+                            request_deserializer=OperationsGetRequest.FromString,
+                            response_serializer=OperationsGetResponse.SerializeToString,
+                        )
+                    },
+                ),
+                grpc.method_handlers_generic_handler(
+                    "harmos.host.v1.Invocations",
+                    {
+                        "Create": grpc.unary_unary_rpc_method_handler(
+                            create,
+                            request_deserializer=InvocationsCreateRequest.FromString,
+                            response_serializer=InvocationsCreateResponse.SerializeToString,
+                        )
+                    },
+                ),
+            )
+        )
+        port = server.add_insecure_port("127.0.0.1:0")
+        await server.start()
+        self.addAsyncCleanup(server.stop, None)
+        payload = BytesValue(value=b"dynamic")
+        response = await invoke(f"127.0.0.1:{port}", contract.id, payload.SerializeToString())
+        self.assertEqual(BytesValue.FromString(response).value, b"accepted:" + payload.value)
+
     async def test_client_example_discovers_calls_and_streams_from_host(self) -> None:
         # The Host Fixture Owns the Sequence and Completes on Demand Cancellation.
         requested = Event()
@@ -73,7 +121,7 @@ class Examples(IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "harmos.client.v1.Operations",
+                    "harmos.host.v1.Operations",
                     {
                         "List": grpc.unary_unary_rpc_method_handler(
                             discover,
@@ -83,7 +131,7 @@ class Examples(IsolatedAsyncioTestCase):
                     },
                 ),
                 grpc.method_handlers_generic_handler(
-                    "harmos.client.v1.Status",
+                    "harmos.host.v1.Status",
                     {
                         "Get": grpc.unary_unary_rpc_method_handler(
                             get,
@@ -142,7 +190,7 @@ class Examples(IsolatedAsyncioTestCase):
             request = BytesValue(value=b"example")
             call = await calls.invoke(host, "example.echo", request)
             child = (await call.read()).child
-            self.assertEqual(child.operation, "harmos.plugin.host.v1.Settings/List")
+            self.assertEqual(child.operation, "harmos.host.v1.plugins.Settings/List")
             self.assertEqual(SettingsListRequest.FromString(child.payload), SettingsListRequest())
             await calls.reply(call, child, SettingsListResponse(value=SettingValues(values={"prefix": SettingValue(text="typed:")})))
             response = await call.read()

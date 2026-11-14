@@ -58,7 +58,7 @@ async def run(arguments: list[str]) -> None:
     # Invoke Its Public Operation Through the Host
     contract = next(operation for operation in ready.description.declarations.operations if operation.id == "example.echo")
     data = b"hello" + bytes(transfer.chunk_bytes - len(b"hello"))
-    reply = await client.invocations.invoke(contract.id, contract.fingerprint, Value(value=data).SerializeToString())
+    reply = await client.invocations.create(contract.id, contract.fingerprint, Value(value=data).SerializeToString())
     if Value.FromString(reply).value != data:
         raise RuntimeError("Invoke example.echo: payload changed")
     print("hello", flush=True)
