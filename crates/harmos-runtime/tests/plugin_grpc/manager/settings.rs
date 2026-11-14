@@ -238,6 +238,7 @@ async fn unmanaged_reported_identity_cannot_select_a_stored_entry() {
     let mut watch = host.client.watch(client::PluginsWatchRequest::default()).await.unwrap().into_inner();
     host.client.create(support::remote("remote", &victim.address)).await.unwrap();
     support::state(&mut watch, "remote", client::PluginState::Ready, 1).await;
+    drop(watch);
 
     let descriptor = SettingsListRequest::default().descriptor();
     let types = prost_types::FileDescriptorSet {

@@ -91,7 +91,7 @@ impl Connection {
         let channel = endpoint.connect_with_connector(connector).await.map_err(|error| Error::Transport(error.to_string()))?;
         let mut identity = [0; 16];
         getrandom::fill(&mut identity).map_err(|error| Error::Invalid(format!("Name Plugin Attachment: {error}")))?;
-        let owner = format!("attachment.{}", u128::from_le_bytes(identity));
+        let owner = format!("attachment_{}", u128::from_le_bytes(identity));
         Ok(Self { owner, channel, closed, message_bytes })
     }
 }

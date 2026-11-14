@@ -24,12 +24,11 @@ mod writes;
 /* === Imports === */
 
 // Standard Library Imports
-use std::num::NonZeroUsize;
 
 // Third Party Imports
 
 // Local Imports
-use super::{Fixture, config, write};
+use super::{Fixture, config};
 use harmos_operations::storage::storage_catalog;
 
 /* === Private Functions === */

@@ -93,9 +93,19 @@ impl Manager {
                             || previous.binding.is::<crate::plugin::grpc::invoke::Binding>()
                     })
                 }) {
+                    let previous_owner = previous
+                        .binding
+                        .downcast_ref::<crate::plugin::grpc::invoke::Binding>()
+                        .map_or(previous.owner.as_str(), |binding| {
+                            binding.caller.name.as_deref().unwrap_or(&binding.caller.description.id)
+                        });
+                    let next_owner = entry
+                        .binding
+                        .downcast_ref::<crate::plugin::grpc::invoke::Binding>()
+                        .map_or(entry.owner.as_str(), |binding| binding.caller.name.as_deref().unwrap_or(&binding.caller.description.id));
                     return Err(Error::AlreadyRegistered {
                         domain: "operation",
-                        name: format!("{} (owners {} and {})", entry.id(), previous.owner, entry.owner),
+                        name: format!("{} (owners {} and {})", entry.id(), previous_owner, next_owner),
                     });
                 }
             }
@@ -117,9 +127,11 @@ impl Manager {
                     // Absent Callees Do Not Impose An Arrival Order.
                     let Some(target) = target else { continue };
                     if plugin_grpc::fingerprint(target)? != required.fingerprint {
-                        return Err(Error::InvalidInput {
-                            field: "plugin requirement",
-                            reason: "callee fingerprint differs from the declared requirement",
+                        return Err(Error::OperationPayload {
+                            operation: required.id.clone(),
+                            source: crate::MessageError::borrowed(
+                                "Admit Plugin Requirement: Callee Fingerprint Differs from the Declaration",
+                            ),
                         });
                     }
                 }

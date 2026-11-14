@@ -18,7 +18,6 @@ use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 use harmos_protocol::client::access;
-use harmos_protocol::v1::{self};
 
 // Local Imports
 use super::support::*;

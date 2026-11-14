@@ -16,7 +16,6 @@ use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
 use harmos::{Client, ClientSettings, client::Method};
-use harmos_protocol::v1 as host;
 use tonic::{Request as RpcRequest, transport::Endpoint};
 
 // Local Imports
@@ -126,11 +125,7 @@ impl ProtobufOperation for Wait {
 #[tokio::test]
 async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     // Register The Application's Generated Contracts And Start Its Listener.
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
-        setup.resource::<Option<std::sync::Arc<harmos_storage::StorageManager>>>(None);
-    })
-    .await
-    .unwrap();
+    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |_| {}).await.unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
         .protobuf::<harmos_operations::host::List>()
         .unwrap()

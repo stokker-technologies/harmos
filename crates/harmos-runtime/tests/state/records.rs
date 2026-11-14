@@ -206,7 +206,15 @@ async fn record_registration_uses_runtime_schema_settings() {
     }
 
     let defaults = harmos_runtime::config::SchemaSettings::default();
-    let graph = harmos_runtime::schema::graph::Schema::from_declaration(ConfiguredRow::DEFINITION, &defaults).unwrap();
+    let mut graph = harmos_runtime::schema::graph::Schema::from_declaration(ConfiguredRow::DEFINITION, &defaults).unwrap();
+    // Leave Room for Built-In Operation Schemas While Rejecting the Larger Record.
+    let field = graph.definitions[0][0].clone();
+    graph.definitions[0] = (1..=2048).map(|tag| {
+        let mut field = field.clone();
+        field.name = format!("value_{tag}").into();
+        field.tag = tag;
+        field
+    }).collect();
     let key = harmos_runtime::storage::SchemaKey {
         payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
         id: harmos_runtime::Identifier::new("configured.record").unwrap(),
@@ -215,7 +223,7 @@ async fn record_registration_uses_runtime_schema_settings() {
     for accepted in [true, false] {
         let mut settings = defaults;
         if !accepted {
-            settings.preparation_bytes = NonZeroUsize::new(1).unwrap();
+            settings.preparation_bytes = NonZeroUsize::new(64 * 1024).unwrap();
         }
         let runtime = crate::support::app::launch::<Model>((), (), |setup| {
             setup.settings().schema_settings(settings);
@@ -223,7 +231,7 @@ async fn record_registration_uses_runtime_schema_settings() {
         .await
         .unwrap();
         let result = runtime.records.register("configured", key.clone(), graph.clone()).await;
-        assert_eq!(result.is_ok(), accepted);
+        assert_eq!(result.is_ok(), accepted, "{result:?}");
         assert_eq!(runtime.records.definition(&key).is_some(), accepted);
         crate::support::app::shutdown(&runtime).await.unwrap();
     }

@@ -209,6 +209,7 @@ impl Manager {
             .clone();
         resources.replace(self.registry.access.clone());
         resources.replace(self.registry.status.clone());
+        resources.replace(Arc::new(self.resources().resource::<harmos_storage::StorageManager>().ok()));
         resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
         resources
     }

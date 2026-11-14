@@ -20,7 +20,7 @@ use std::sync::Arc;
 // Local Imports
 use super::super::{Bank, Data, Ledger, Recovery, catalog, config, history};
 use harmos_runtime::storage::{MutationId, ObjectRetention, ObjectValue, StorageBackends, StorageManager, StoredObject};
-use harmos_runtime::{Identified, Identifier, Runtime};
+use harmos_runtime::{Identified, Identifier};
 
 /* === Structs === */
 

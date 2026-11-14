@@ -752,8 +752,8 @@ mod tests {
         for id in [
             "example.step.0",
             "example.plugin.v1.Lifecycle/Initialize",
-            "example.context.v1.Prompts/Create",
-            "example.v1.jobs.Progress/Get",
+            "example.plugin.host.v1.Prompts/Create",
+            "example.client.v1.jobs.Progress/Get",
         ] {
             let mut operation = template.operation().clone();
             operation.id = harmos_domain::Identifier::new(id).unwrap();

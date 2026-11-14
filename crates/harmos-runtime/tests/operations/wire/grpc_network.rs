@@ -132,13 +132,7 @@ async fn builtin_grpc_roundtrip() {
 
 #[tokio::test]
 async fn external_authority_parity() {
-    use harmos_storage::StorageManager;
-
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
-        setup.resource::<Option<Arc<StorageManager>>>(None);
-    })
-    .await
-    .unwrap();
+    let runtime = crate::support::app::launch::<App>((), (), |_| {}).await.unwrap();
     runtime
         .operations
         .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())

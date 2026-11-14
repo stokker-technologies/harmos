@@ -53,8 +53,8 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
         "example..step.0",
         "example.plugin.v1.Steps/",
         "harmos.plugin.v1.Instance/Invoke",
-        "example.context.v1.Prompts/Create",
-        "example.v1.Steps/Execute",
+        "example.plugin.host.v1.Prompts/Create",
+        "example.client.v1.Steps/Execute",
     ] {
         let mut catalog = support::catalog();
         let operation = &mut catalog.operations[0];

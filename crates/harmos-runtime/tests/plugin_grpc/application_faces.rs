@@ -21,7 +21,9 @@
 
 // Local Imports
 use super::{invoke_support::*, support};
+use harmos_operations::OperationPolicy;
 use harmos_operations::execution::operations::{ExecutionContext, OperationFactory, ProtobufOperation, ServingError, Visibility};
+use harmos_protocol::plugin::host::{TimeGetRequest, TimeGetResponse};
 use harmos_runtime::plugin::grpc::Placement;
 use prost::Message as _;
 
@@ -44,11 +46,11 @@ struct Control;
 /* === Implementations === */
 
 impl ProtobufOperation for Prompts {
-    type Request = harmos_protocol::plugin::host::TimeGetRequest;
-    type Response = harmos_protocol::plugin::host::TimeGetResponse;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "example.context.v1.Prompts/Create";
-    const POLICY: harmos_operations::OperationPolicy = harmos_operations::lifecycle::POLICY;
+    const ID: &'static str = "example.plugin.host.v1.Prompts/Create";
+    const POLICY: OperationPolicy = harmos_operations::lifecycle::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         Ok(Self::Response {
@@ -58,11 +60,11 @@ impl ProtobufOperation for Prompts {
 }
 
 impl ProtobufOperation for Steps {
-    type Request = harmos_protocol::plugin::host::TimeGetRequest;
-    type Response = harmos_protocol::plugin::host::TimeGetResponse;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "example.v1.Steps/Execute";
-    const POLICY: harmos_operations::OperationPolicy = harmos_operations::lifecycle::POLICY;
+    const ID: &'static str = "example.client.v1.Steps/Execute";
+    const POLICY: OperationPolicy = harmos_operations::lifecycle::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         Ok(Self::Response {
@@ -72,11 +74,11 @@ impl ProtobufOperation for Steps {
 }
 
 impl ProtobufOperation for Control {
-    type Request = harmos_protocol::plugin::host::TimeGetRequest;
-    type Response = harmos_protocol::plugin::host::TimeGetResponse;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
     type Endpoints = ();
     const ID: &'static str = "example.plugin.v1.Control/Execute";
-    const POLICY: harmos_operations::OperationPolicy = harmos_operations::lifecycle::POLICY;
+    const POLICY: OperationPolicy = harmos_operations::lifecycle::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(_: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         Ok(Self::Response {
@@ -150,7 +152,7 @@ async fn application_faces_admit_context_calls_and_refuse_other_audiences() {
             })
             .await;
         if contract.operation().id.as_str() == Steps::ID {
-            let response = harmos_protocol::plugin::host::TimeGetResponse::decode(result.unwrap().into_inner().payload.as_slice()).unwrap();
+            let response = TimeGetResponse::decode(result.unwrap().into_inner().payload.as_slice()).unwrap();
             assert_eq!(response.now.unwrap().seconds, 17);
         } else {
             assert!(result.unwrap_err().to_string().contains(contract.operation().id.as_str()));

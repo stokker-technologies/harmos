@@ -18,7 +18,6 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use super::metadata;
 use super::production::{fixture, key};
-use harmos_runtime::Identifier;
 use harmos_runtime::storage::StagedFile;
 use sha2::Digest;
 
