@@ -29,6 +29,7 @@ mod spill;
 
 // Standard Library Imports
 use std::hint::black_box;
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
 // Third Party Imports
@@ -153,7 +154,6 @@ fn main() {
 async fn journal_recovery() {
     use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, SnapshotPayload, StateBackend};
     use harmos_storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageCursor};
-    use std::num::NonZeroUsize;
     let history = backend::history();
     let journal = harmos_storage::memory::RecoveryBackend::new(history.clone());
     journal.create_recovery_session().await.unwrap();
@@ -201,7 +201,10 @@ async fn journal_recovery() {
 
 async fn mutation_receipts() {
     use harmos_storage::{FileMetadata, Identifier, MutationId};
-    let f = fixture::Fixture::new(fixture::config()).await;
+    let mut settings = fixture::config();
+    // Retain Both Mutation Identities for Every File in This Workload.
+    settings.request.max_mutation_receipts = NonZeroUsize::new(2 * 2048).unwrap();
+    let f = fixture::Fixture::new(settings).await;
     let window = f.storage.mutation_window().unwrap().id;
     let mut last = None;
     for index in 0..2048 {
