@@ -27,8 +27,8 @@ pub struct AnalyzeUpload;
 /* === Implementations === */
 
 impl ProtobufOperation for AnalyzeUpload {
-    type Request = crate::protocol::AnalyzeUpload;
-    type Response = crate::protocol::Analysis;
+    type Request = crate::protocol::SchematicAnalyzeUploadRequest;
+    type Response = crate::protocol::SchematicAnalyzeUploadResponse;
     type Endpoints = harmos_operations::execution::operations::ProtobufInput<crate::protocol::Snapshot>;
     const ID: &'static str = "schematic.analyze.upload";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
@@ -36,7 +36,7 @@ impl ProtobufOperation for AnalyzeUpload {
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "AnalyzeUpload"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "AnalyzeUpload"));
     const RESOURCES: &'static [harmos_operations::Resource] = &[harmos_operations::Resource::of::<super::upload::AnalysisResources>()];
     async fn run(ctx: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
@@ -55,7 +55,7 @@ impl ProtobufOperation for AnalyzeUpload {
                 resources
                     .publish(schematic_domain::model::schematic::progress::AnalysisProgress { title: request.title.clone(), checked })?;
             }
-            Ok(crate::protocol::Analysis { checked })
+            Ok(crate::protocol::SchematicAnalyzeUploadResponse { checked })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

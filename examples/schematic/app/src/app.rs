@@ -80,6 +80,8 @@ impl Lifecycle for SchematicEditor {
             setup.settings().plugins(manager.clone());
         }
 
+        setup.composition(include_str!("../../protocol/composition.toml")).map_err(IoError::other)?;
+
         let settings = harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
             ..Default::default()

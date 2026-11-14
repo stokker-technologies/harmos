@@ -27,15 +27,15 @@ pub struct ListDirectories;
 /* === Implementations === */
 
 impl ProtobufOperation for ListDirectories {
-    type Request = crate::protocol::ListDirectories;
-    type Response = crate::protocol::Directories;
+    type Request = crate::protocol::SchematicListDirectoriesRequest;
+    type Response = crate::protocol::SchematicListDirectoriesResponse;
     type Endpoints = ();
     const ID: &'static str = "schematic.list.directories";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const REPLAY: harmos_operations::execution::operations::ReplaySafety = harmos_operations::execution::operations::ReplaySafety::Unknown;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "ListDirectories"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "ListDirectories"));
     async fn run(_ctx: ExecutionContext, request: Self::Request, _endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
             let _ = request;
@@ -47,7 +47,7 @@ impl ProtobufOperation for ListDirectories {
                 }
             }
             directories.sort();
-            Ok(crate::protocol::Directories { directories })
+            Ok(crate::protocol::SchematicListDirectoriesResponse { directories })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

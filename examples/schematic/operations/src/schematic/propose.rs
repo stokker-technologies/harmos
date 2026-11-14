@@ -27,8 +27,8 @@ pub struct ProposeRoute;
 /* === Implementations === */
 
 impl ProtobufOperation for ProposeRoute {
-    type Request = crate::protocol::ProposeRoute;
-    type Response = crate::protocol::Route;
+    type Request = crate::protocol::SchematicProposeRouteRequest;
+    type Response = crate::protocol::SchematicProposeRouteResponse;
     type Endpoints = ();
     const ID: &'static str = "schematic.route";
     const POLICY: harmos_operations::execution::operations::OperationPolicy = POLICY;
@@ -36,7 +36,7 @@ impl ProtobufOperation for ProposeRoute {
     const REPLAY: harmos_operations::execution::operations::ReplaySafety =
         harmos_operations::execution::operations::ReplaySafety::Idempotent;
     const GRPC: Option<harmos_operations::execution::operations::Grpc> =
-        Some(harmos_operations::execution::operations::Grpc::new("schematic.v1", "Schematic", "ProposeRoute"));
+        Some(harmos_operations::execution::operations::Grpc::new("schematic.host.v1", "Schematic", "ProposeRoute"));
     async fn run(_ctx: ExecutionContext, request: Self::Request, _endpoints: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let result: Result<Self::Response, crate::Error> = async {
             let from = request.from.ok_or(crate::Error::InvalidInput)?;
@@ -44,7 +44,7 @@ impl ProtobufOperation for ProposeRoute {
             let corner = crate::protocol::Point { x: to.x, y: from.y };
             let mut points = vec![from, corner, to];
             points.dedup();
-            Ok(crate::protocol::Route { points })
+            Ok(crate::protocol::SchematicProposeRouteResponse { points })
         }
         .await;
         result.map_err(|error| ServingError::Native(std::sync::Arc::new(error)))

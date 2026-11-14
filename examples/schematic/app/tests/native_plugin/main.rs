@@ -33,8 +33,9 @@ use schematic_app::{
         transfer::{Download as DownloadTransfer, Put as PutTransfer, Take as TakeTransfer, Upload as UploadTransfer},
     },
     protocol::{
-        AnalyzeExchange, AnalyzeSchematic, AnalyzeUpload, Batch, Connection, Download, ListDirectories, Point, ProposeRoute, Put, Record,
-        Sample, Snapshot, Take, Upload, ValidateSchematic,
+        Batch, Connection, Download, Point, Put, Record, Sample, SchematicAnalyzeExchangeRequest, SchematicAnalyzeRequest,
+        SchematicAnalyzeUploadRequest, Snapshot, Take, Upload,
+        plugin::{SchematicListDirectoriesRequest, SchematicProposeRouteRequest, SchematicValidateRequest},
     },
     services::{call, sidecar},
 };
@@ -65,7 +66,14 @@ async fn native_advice_and_host_streaming_share_one_document() {
     let binary = support::binary();
     let inspection = harmos_packaging::inspect(&binary).unwrap();
     assert_eq!(inspection.id, "schematic_tools");
-    assert_eq!(inspection.operations, ["schematic.validate", "schematic.route", "schematic.list.directories"]);
+    assert_eq!(
+        inspection.operations,
+        [
+            "schematic.plugin.v1.Schematic/Validate",
+            "schematic.plugin.v1.Schematic/SchematicProposeRouteRequest",
+            "schematic.plugin.v1.Schematic/SchematicListDirectoriesRequest"
+        ]
+    );
     let bundle = support::package(binary);
     assert_eq!(bundle.manifest().identity.name, "schematic_tools");
     assert!(bundle.manifest().files[0].executable.as_ref().unwrap().registrations.is_empty());
@@ -78,27 +86,27 @@ async fn native_advice_and_host_streaming_share_one_document() {
     fs::create_dir(directory.path().join("zeta")).unwrap();
     fs::create_dir(directory.path().join("alpha")).unwrap();
     fs::write(directory.path().join("notes.txt"), b"Not a Directory").unwrap();
-    let runtime = support::host(directory.path()).await;
+    let runtime = support::host().await;
     let plugin = sidecar::start(&runtime, &binary, directory.path()).await.unwrap();
 
     // List Only Directories Through the Plugin
-    let directories = call(&runtime, ListDirectories {}).await.unwrap();
+    let directories = call(&runtime, SchematicListDirectoriesRequest {}).await.unwrap();
     assert_eq!(directories.directories, ["alpha", "zeta"]);
 
     // Validate and Route the Document Through Unary Calls
-    let request = ValidateSchematic {
+    let request = SchematicValidateRequest {
         schematic: Some(support::snapshot().into()),
     };
     let validation = call(&runtime, request).await.unwrap();
     assert!(validation.diagnostics.is_empty());
-    let request = ValidateSchematic {
+    let request = SchematicValidateRequest {
         schematic: Some(Snapshot {
             symbols: vec![1],
             connections: vec![Connection { from: 1, to: 2 }],
         }),
     };
     assert!(!call(&runtime, request).await.unwrap().diagnostics.is_empty());
-    let request = ProposeRoute {
+    let request = SchematicProposeRouteRequest {
         from: Some(Point { x: 0, y: 0 }),
         to: Some(Point { x: 3, y: 4 }),
     };
@@ -107,7 +115,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
 
     // Upload Analysis and Observe Host-Owned Progress
     let mut progress = runtime.streams.watch::<AnalysisProgress>();
-    let request = AnalyzeUpload { title: "Board".into() };
+    let request = SchematicAnalyzeUploadRequest { title: "Board".into() };
     let mut upload = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     upload.send(support::snapshot().into()).await.unwrap();
     upload.finish_input().unwrap();
@@ -116,7 +124,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Exchange Snapshots and Findings in the Host
-    let request = AnalyzeExchange { title: "Board".into() };
+    let request = SchematicAnalyzeExchangeRequest { title: "Board".into() };
     let mut exchange =
         runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
     exchange.send(support::snapshot().into()).await.unwrap();
@@ -128,16 +136,16 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!((row.value.title.as_str(), row.value.checked), ("Board", 1));
 
     // Reject Invalid Analysis and Settle Cancellation Before Reusing Its Permit
-    let request = AnalyzeUpload { title: String::new() };
+    let request = SchematicAnalyzeUploadRequest { title: String::new() };
     let invalid = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     invalid.finish_input().unwrap();
     let failure = invalid.join().await.unwrap_err();
     let RuntimeError::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
     assert!(matches!(source.downcast_ref::<OperationError>(), Some(OperationError::InvalidInput)));
-    let request = AnalyzeUpload { title: "Cancelled".into() };
+    let request = SchematicAnalyzeUploadRequest { title: "Cancelled".into() };
     let cancelled = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     cancelled.cancel_and_settle().await.unwrap();
-    let request = AnalyzeUpload { title: "Resumed".into() };
+    let request = SchematicAnalyzeUploadRequest { title: "Resumed".into() };
     let mut resumed = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     resumed.send(support::snapshot().into()).await.unwrap();
     resumed.finish_input().unwrap();
@@ -146,12 +154,12 @@ async fn native_advice_and_host_streaming_share_one_document() {
     assert_eq!(row.value.title, "Resumed");
 
     // Hold the Shared Permit Until Upload Cancellation Settles
-    let request = AnalyzeUpload { title: "Held".into() };
+    let request = SchematicAnalyzeUploadRequest { title: "Held".into() };
     let mut held = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
     held.send(support::snapshot().into()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
     assert_eq!(row.value.title, "Held");
-    let request = AnalyzeExchange { title: "Waiting".into() };
+    let request = SchematicAnalyzeExchangeRequest { title: "Waiting".into() };
     let mut waiting = runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
     waiting.send(support::snapshot().into()).await.unwrap();
     {
@@ -209,8 +217,8 @@ async fn native_advice_and_host_streaming_share_one_document() {
 
     // Stop Withdraws Plugin Advice While Host Analysis Remains Available
     plugin.stop().await.unwrap();
-    assert!(call(&runtime, ListDirectories {}).await.is_err());
-    let request = AnalyzeSchematic {
+    assert!(call(&runtime, SchematicListDirectoriesRequest {}).await.is_err());
+    let request = SchematicAnalyzeRequest {
         schematic: Some(support::snapshot().into()),
     };
     let mut analysis = runtime.operations.download_protobuf::<AnalyzeOperation>(request, support::settings()).unwrap();

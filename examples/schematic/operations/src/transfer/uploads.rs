@@ -30,7 +30,7 @@ use harmos_operations::storage::{
     Info, InfoRequest, MutationId, PublishFileProduction, PublishFileProductionRequest, StagedFile,
 };
 use harmos_operations::{Failure, Identifier};
-use harmos_protocol::v1::{File, Upload as UploadProgress, UploadState};
+use harmos_protocol::model::{File, Upload as UploadProgress, UploadState};
 use schematic_protocol::{
     UploadMutation, UploadWindow, UploadsAppendRequest, UploadsAppendResponse, UploadsCreateRequest, UploadsCreateResponse,
     UploadsDeleteRequest, UploadsDeleteResponse, UploadsGetRequest, UploadsGetResponse, UploadsPublishRequest, UploadsPublishResponse,
@@ -62,8 +62,8 @@ impl ProtobufOperation for UploadsCreate {
     type Request = UploadsCreateRequest;
     type Response = UploadsCreateResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Create";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Create"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Create";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Create"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY
@@ -101,8 +101,8 @@ impl ProtobufOperation for UploadsGet {
     type Request = UploadsGetRequest;
     type Response = UploadsGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Get"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Get";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Get"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY
@@ -155,8 +155,8 @@ impl ProtobufOperation for UploadsResume {
     type Request = UploadsResumeRequest;
     type Response = UploadsResumeResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Resume";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Resume"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Resume";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Resume"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY
@@ -183,8 +183,8 @@ impl ProtobufOperation for UploadsAppend {
     type Request = UploadsAppendRequest;
     type Response = UploadsAppendResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Append";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Append"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Append";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Append"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY
@@ -212,8 +212,8 @@ impl ProtobufOperation for UploadsPublish {
     type Request = UploadsPublishRequest;
     type Response = UploadsPublishResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Publish";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Publish"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Publish";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Publish"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY
@@ -241,8 +241,8 @@ impl ProtobufOperation for UploadsDelete {
     type Request = UploadsDeleteRequest;
     type Response = UploadsDeleteResponse;
     type Endpoints = ();
-    const ID: &'static str = "schematic.v1.Uploads/Delete";
-    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.v1", "Uploads", "Delete"));
+    const ID: &'static str = "schematic.host.v1.Uploads/Delete";
+    const GRPC: Option<Grpc> = Some(Grpc::new("schematic.host.v1", "Uploads", "Delete"));
     const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..storage::POLICY

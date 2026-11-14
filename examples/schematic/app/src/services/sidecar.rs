@@ -25,7 +25,7 @@ use tokio::task::JoinHandle;
 
 // Local Imports
 use crate::app::Runtime;
-use harmos_protocol::client::{
+use harmos_protocol::host::{
     PluginPlacement, PluginRemote, PluginState, PluginValue, PluginsCreateRequest, PluginsDeleteRequest, PluginsGetRequest,
     PluginsWatchRequest, plugin_change::Kind, plugin_placement, plugins_watch_response::Event,
 };

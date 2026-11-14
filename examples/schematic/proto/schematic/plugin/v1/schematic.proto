@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package schematic.plugin.v1;
+
+// === Imports === //
+
+import "harmos/model/v1/callers.proto";
+import "schematic/model/v1/schematic.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Implements schematic advice using the authoritative operation payloads.
+service Schematic {
+  // Run Validate on the plugin.
+  rpc Validate(.schematic.plugin.v1.SchematicValidateRequest) returns (.schematic.plugin.v1.SchematicValidateResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Run ProposeRoute on the plugin.
+  rpc ProposeRoute(.schematic.plugin.v1.SchematicProposeRouteRequest) returns (.schematic.plugin.v1.SchematicProposeRouteResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Run ListDirectories on the plugin.
+  rpc ListDirectories(.schematic.plugin.v1.SchematicListDirectoriesRequest) returns (.schematic.plugin.v1.SchematicListDirectoriesResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// Requests validation of the supplied schematic snapshot.
+message SchematicValidateRequest {
+  schematic.model.v1.Snapshot schematic = 1;
+}
+
+// Returns validation diagnostics.
+message SchematicValidateResponse {
+  repeated string diagnostics = 1;
+}
+
+// Requests a route between the supplied points.
+message SchematicProposeRouteRequest {
+  schematic.model.v1.Point from = 1;
+  schematic.model.v1.Point to = 2;
+}
+
+// Returns ordered route points.
+message SchematicProposeRouteResponse {
+  repeated schematic.model.v1.Point points = 1;
+}
+
+// Requests the native plugin's immediate subdirectories.
+message SchematicListDirectoriesRequest {}
+
+// Returns sorted directory names.
+message SchematicListDirectoriesResponse {
+  repeated string directories = 1;
+}
+
+// === Resources === //
+
+// === Enums === //

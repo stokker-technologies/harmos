@@ -19,10 +19,10 @@ use `stage_plugin_observers(resources, scope, backends)` and
 `submit_resident_in(id, resources)` to retain plugin scope and resource identity;
 generation retirement stops these observers with the plugin.
 
-Built-in host operations use generated `harmos_protocol::{v1, context, storage}` messages
+Built-in host operations use generated `harmos_protocol::{model, host, plugin}` messages
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
-`harmos_protocol::v1::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
+`harmos_protocol::model::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
 `operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
 native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
@@ -313,11 +313,11 @@ Use `Plugin`, `Operation`, `Stream` and `Observer` builder values and finish a p
 with `serve()`. Messages derive protobuf descriptors with `#[derive(Message)]`.
 
 Host embedders depend explicitly on `harmos-runtime`. Managed and remote
-`harmos.v1` placement is always available on native targets.
+`harmos.plugin.v1` placement is always available on native targets.
 
 | Runtime Feature | Enables |
 | --- | --- |
-| `plugin-guest` | Wasmtime guest hosting with `harmos.v1` lifecycle and child-control messages. |
+| `plugin-guest` | Wasmtime guest hosting with `harmos.plugin.v1` lifecycle and child-control messages. |
 | `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
 | `simulation` | Deterministic runtime simulation. |
 
@@ -368,7 +368,7 @@ checks run both backends from an isolated extraction. Examples and fixtures rema
 
 Stable releases attach these downloads:
 
-- `harmos-proto-<version>.zip`: definitions under `harmos/v1/` and their behaviour specification.
+- `harmos-proto-<version>.zip`: definitions under `harmos/model/v1/`, `harmos/host/v1/` and `harmos/plugin/v1/`, with the plugin behaviour specification.
 - `harmos-conformance-<version>-<platform>.zip|tar.gz`: reference host and reference plugin;
   platform names are Rust target triples. Windows uses ZIP; Linux uses tar.gz.
 - `harmos-compliance-<version>.zip`: locked Cargo source SBOMs under `crates/<triple>/`,
@@ -434,7 +434,7 @@ contract. Protobuf payloads and RPC paths remain unchanged.
 
 Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
 runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
-Status, Cancel and Watch operations (gRPC `/harmos.client.v1.Invocations/Get`, `/Cancel`
+Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Invocations/Get`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
@@ -442,7 +442,7 @@ from the moment it starts until the instance stops or settles. Plugins reach the
 so they must declare them as requirements.
 
 Register `harmos_operations::host_catalog()` on a chosen lane to serve typed
-`harmos.client.v1.Operations.List/Get`, `Schemas.List` and `Streams.List`.
+`harmos.host.v1.Operations.List/Get`, `Schemas.List` and `Streams.List`.
 Operations returns the complete admitted registry, including application operations
 registered with `setup.operation(...)` or `setup.catalog(...)`. Each entry contains
 its contract, request/response descriptors, provider, generation, operation policy,
@@ -928,7 +928,7 @@ interruption remain physical mechanisms.
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
-`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.client.v1.Invocations/Cancel`, `harmos.initialize`
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.host.v1.Invocations/Cancel`, `harmos.initialize`
 and `storage.append_file`. A manual native message codec remains an ordinary trait implementation.
 
 Started operations return the same typed `Response<T>` from `join()` and
@@ -988,9 +988,9 @@ Portable projection machinery serves native stored message values.
 `operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
 Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
 typed native declarations. Assignment catalogs use the generated
-`harmos.v1.OperationAssignments` messages, with frozen identity validation.
+`harmos.plugin.v1.OperationAssignments` messages, with frozen identity validation.
 
-Guest commands, answers and child controls use authoritative `harmos.v1` protobuf
+Guest commands, answers and child controls use authoritative `harmos.plugin.v1` protobuf
 messages. Guests call application-owned publication and storage contracts;
 Harmos storage operations stay private and in-process. Fingerprints, provider
 generations and host grants remain checked. Stored data encoding and schema
@@ -998,10 +998,12 @@ revisions are unchanged.
 
 ### Generated Rust Clients
 
-Generated roots follow call boundaries: `harmos_protocol::client` contains client
-requests and resources, `harmos_protocol::plugin` contains the implemented Instance
-service, and `harmos_protocol::plugin::host` contains host calls available to a
-plugin. Shared values remain in `harmos_protocol::v1`. Managed bundle replacement
+Protocol roots follow their executor: `harmos_protocol::host` contains host operations,
+`harmos_protocol::plugin` contains plugin operations and connection carriers, and
+`harmos_protocol::model` contains shared values. Each host operation declares its
+callers. Public SDK code imports values from `harmos`, responses and client options
+from `harmos::client`, and plugin authoring types from `harmos::plugin`.
+Managed bundle replacement
 uses `client.plugins.replace`; library-stored settings use
 `client.plugins.settings.list` and `.set`. Product operations expose any required
 storage access; the SDK has no library storage wire root.
@@ -1023,19 +1025,23 @@ across client clones and calls. Repeated, map and nested values are accounted be
 decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
-Discover contracts with `client.operations.list` or `client.operations.get` using
-`harmos_protocol::client::{OperationsListRequest, OperationsGetRequest}`. Typed
-`client.schemas.list` and `client.streams.list` expose their registries. Each List
-returns the complete authorized inventory; carrier overflow names the action.
-Bind the selected shared `harmos_protocol::v1::DiscoveredContract` to generated application messages:
+Discover contracts with `client.operations.list()` or `client.operations.get(id)`.
+Typed `client.schemas.list()` and `client.streams.list()` expose their registries.
+Each List returns its payload directly. Calls take request content as arguments
+and own the transport context. A library-only dynamic call can bind a discovered
+operation to its library payloads:
 
 ```rust
-use harmos::client::Method;
-use schematic_protocol::{ValidateSchematic, Validation};
+let now = client.time.get().await?;
+println!("{now:?}");
+```
 
-let method = Method::<ValidateSchematic, Validation>::new(contract)?;
-let response = client.call(&method, tonic::Request::new(request)).await?.into_inner();
+For dynamic dispatch, obtain the contract and supply its encoded request content:
 
+```rust
+let operation = client.operations.get("harmos.host.v1.Time/Get").await?;
+let contract = operation.contract.ok_or("Time.Get has no contract")?;
+let payload = client.invocations.create(contract.id, contract.fingerprint, Vec::new()).await?;
 ```
 
 `Method::new` checks the advertised fingerprint and the reachable generated descriptor graphs.
@@ -1051,13 +1057,14 @@ including binary status details. Caller request metadata, extensions and timeout
 travel with the opening request. The server continues to own operation deadlines and retries.
 Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
 
-The [runnable Schematic client](../sdk/rust/examples/client.rs) discovers and calls a
-generated application contract without linking domain, storage, operations or runtime.
-Build it with `mise run build -- --package harmos --example client`; pass a running
-Schematic application's gRPC URL when launching `target/debug/examples/client`, with
-`HARMOS_CLIENT_RETAINED_BYTES` set to the application's decoded-memory budget in bytes.
-The dependency proof at `sdk/rust/tests/dependency_closure.py` traverses normal/build
-workspace dependencies and the client example's root development dependencies.
+The [library client example](../sdk/rust/examples/client.rs) uses library contracts.
+The [Schematic application client](../examples/schematic/protocol/examples/client.rs)
+calls `schematic.validate` through the application's generated `client.schematic.validate`
+resource. Build it with
+`mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-protocol --features sdk --example client`.
+Pass the application's gRPC URL and set `HARMOS_CLIENT_RETAINED_BYTES` to its
+decoded-memory budget in bytes. Application client generation and runtime assembly
+read the same [composition](../examples/schematic/protocol/composition.toml).
 
 Each operation has one canonical gRPC method. Get and List are unary; Watch observes
 changes. A declaration that promises a cooperative final result opts in with
@@ -1151,7 +1158,7 @@ this owner for both plugin backends.
 Use the [Plugin Manager](plugin-manager.md) for persistent entries, verified
 bundle installation and client management; the attachment API below owns each activation.
 
-From `harmos-runtime`, attach a `harmos.v1` endpoint with
+From `harmos-runtime`, attach a `harmos.host.v1` endpoint with
 `runtime.attach_grpc(placement, settings).await`. The types live in
 `harmos_runtime::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
 environment })` starts an executable, hashes its bytes with SHA-256, reads its
@@ -1169,7 +1176,7 @@ Retained activations fail after disconnect and never follow the next connection.
 
 Before admission the host verifies the declarations digest, resolves its declared
 message names, and verifies operation fingerprints using the shared
-[descriptor rule](../proto/harmos/v1/behaviour.md#schema-fingerprints). The Rust SDK,
+[descriptor rule](../proto/harmos/plugin/v1/behaviour.md#schema-fingerprints). The Rust SDK,
 reference fixture and host use `harmos-protocol` for this computation. Inconsistent
 hashes or unresolved message names refuse admission before an activation becomes visible.
 
@@ -1187,8 +1194,8 @@ value is a positive duration. The library materializes its declared default and
 stores overrides beside the plugin entry. The resolved setting takes precedence
 over the declared interval; an absent or invalid setting refuses admission.
 
-Plugins declare requirements for the Public `harmos.plugin.host.v1.Time/Sleep` and
-`harmos.plugin.host.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
+Plugins declare requirements for the Public `harmos.host.v1.Time/Sleep` and
+`harmos.host.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
 Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
 `advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
 still while work is in flight; only clock waits park that activity. Device streams
@@ -1409,26 +1416,27 @@ Plugin artifact crates declare `publish = false`.
 
 The [served plugin example](../sdk/rust/examples/plugin.rs) declares one public
 operation and a typed setting default. Declare settings with
-`Plugin::settings(v1::SettingsDeclarations { values })`; every `SettingDeclaration`
+`Plugin::settings(SettingsDeclarations { values })`; every `SettingDeclaration`
 contains a name, title, description and a selected `SettingValue` default. False
 flags and empty text remain present values. The SDK checks duplicate names and
 missing defaults when constructing the catalog. The library stores overrides and
 applies defaults for the admitted plugin entry.
 
 ```rust
-use harmos_protocol::plugin::host::SettingsListRequest;
+use harmos::plugin::{HostOperation, Plugin};
 
 let plugin = Plugin::new("echo", "1.0.0")
     .settings(declarations)
-    .requires::<SettingsListRequest>();
+    .requires_host(HostOperation::PluginsSettingsList);
 // Inside a handler, `context` retains the calling plugin's identity.
-let settings = context.settings().await?;
+let settings = context.host().plugins.settings.list().await?;
 ```
 
-`Context::settings` calls `Settings.List` without a plugin selector and returns the
-values, settings revision and issued read cut. For an issued cut, call the typed
-`SettingsListRequest { at: Some(cut) }` directly. Declare every host operation,
-clock and Watch requirement with `Plugin::requires`.
+`context.host().plugins.settings.list()` calls `plugins.Settings.List` with the
+calling plugin's trusted identity. Supplying another entry name is refused. Its
+response retains declarations, values, revision and issued read cut; issued cuts
+and name selection use the generated call options. Declare every host operation,
+clock and Watch requirement through `Plugin::requires_host` or a typed requirement.
 
 Observer contexts can make declared child calls while answering one Samples tick.
 Unary calls and Watches use the same carrier as that tick, preserve structured
@@ -1475,7 +1483,7 @@ and ranged archive reads.
 
 ## Reported Plugin Declarations
 
-Plugins report `harmos.v1.Declarations` through `InstanceGetResponse.declarations`,
+Plugins report `harmos.model.v1.Declarations` through `InstanceGetResponse.declarations`,
 `GuestRegistration.declarations` and `PluginDescription.declarations`. Inspect them
 with Rust/Python/C++ `plugin.declarations()` or C# `plugin.Declarations()`. Consumers
 regenerate bindings and migrate these message, field and builder names when pinning

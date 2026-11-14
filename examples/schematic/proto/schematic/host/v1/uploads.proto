@@ -6,11 +6,12 @@
 
 syntax = "proto3";
 
-package schematic.v1;
+package schematic.host.v1;
 
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
+import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/file.proto";
 import "harmos/model/v1/position.proto";
 import "harmos/model/v1/receipt.proto";
@@ -22,17 +23,29 @@ import "harmos/model/v1/receipt.proto";
 // Produces files for application content and managed plugin bundles.
 service Uploads {
   // Create a resumable upload from application metadata.
-  rpc Create(UploadsCreateRequest) returns (UploadsCreateResponse);
+  rpc Create(UploadsCreateRequest) returns (UploadsCreateResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Read the replay window and optional current upload progress.
-  rpc Get(UploadsGetRequest) returns (UploadsGetResponse);
+  rpc Get(UploadsGetRequest) returns (UploadsGetResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Fence the previous writer and return the resumed accepted prefix.
-  rpc Resume(UploadsResumeRequest) returns (UploadsResumeResponse);
+  rpc Resume(UploadsResumeRequest) returns (UploadsResumeResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Append one bounded chunk at its exact expected offset.
-  rpc Append(UploadsAppendRequest) returns (UploadsAppendResponse);
+  rpc Append(UploadsAppendRequest) returns (UploadsAppendResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Publish immutable content after checking the declared length and digest.
-  rpc Publish(UploadsPublishRequest) returns (UploadsPublishResponse);
+  rpc Publish(UploadsPublishRequest) returns (UploadsPublishResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Abandon an unfinished upload.
-  rpc Delete(UploadsDeleteRequest) returns (UploadsDeleteResponse);
+  rpc Delete(UploadsDeleteRequest) returns (UploadsDeleteResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
 }
 
 // === Requests and Responses === //

@@ -6,10 +6,11 @@
 
 syntax = "proto3";
 
-package schematic.v1;
+package schematic.host.v1;
 
 // === Imports === //
 
+import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/file.proto";
 import "harmos/model/v1/position.proto";
 
@@ -20,9 +21,13 @@ import "harmos/model/v1/position.proto";
 // Reads immutable application files and hashes selected content.
 service Files {
   // Read one bounded range of a published application file.
-  rpc Read(FilesReadRequest) returns (FilesReadResponse);
+  rpc Read(FilesReadRequest) returns (FilesReadResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
   // Hash a selected range of a published file or an explicit local path.
-  rpc Hash(FilesHashRequest) returns (FilesHashResponse);
+  rpc Hash(FilesHashRequest) returns (FilesHashResponse) {
+    option (harmos.model.v1.callers) = ALL;
+  }
 }
 
 // === Requests and Responses === //
