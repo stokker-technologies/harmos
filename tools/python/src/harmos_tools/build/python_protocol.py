@@ -136,7 +136,6 @@ def generate_client_fixture(output: Path) -> None:
                 f"--pyi_out={wire}",
                 f"--grpc_python_out={wire}",
                 f"--descriptor_set_out={descriptor_path}",
-                "--include_imports",
                 *inputs,
             ],
             check=True,

@@ -28,6 +28,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSe
 from grpc.aio import Channel, ServicerContext
 from harmos_tools.process import spawn_flags
 from harmos_tools.source.protocol import narrow_callers
+from harmos_tools.test.policy import root as project_root
 
 from harmos import SettingValues
 from harmos._generated.host import HostRoot
@@ -70,7 +71,7 @@ class NarrowedClient(Protocol):
 class ClientRoot(IsolatedAsyncioTestCase):
     async def test_composition_narrows_callers_without_inheriting_excluded_methods(self) -> None:
         # Narrow Shared Calls in Each Direction and Generate Both Audience Surfaces.
-        root = Path(__file__).resolve().parents[4]
+        root = project_root(Path(__file__).parent)
         descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
         descriptors.file.append(FileDescriptorProto.FromString(JobsStartRequest.DESCRIPTOR.file.serialized_pb))
         narrow_callers(descriptors, {"harmos.host.v1.Time/Get": "PLUGINS", "harmos.host.v1.Time/Sleep": "CLIENTS"})
