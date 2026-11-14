@@ -132,6 +132,7 @@ async fn handle_shares_manager() {
     })
     .await
     .unwrap();
+    let before = runtime.operations.residents().len();
     let manager = runtime.handle().operations;
     manager
         .register_service(
@@ -143,7 +144,7 @@ async fn handle_shares_manager() {
         )
         .unwrap();
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
-    assert_eq!(runtime.operations.residents().len(), 2);
+    assert_eq!(runtime.operations.residents().len(), before + 1);
     assert_eq!(runtime.operations.resident_key(dynamic.id()), Some(harmos_runtime::operations::resident::Key::root("dynamic")));
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
@@ -178,6 +179,7 @@ async fn shutdown_preserves_work() {
     .await
     .unwrap();
     let manager = runtime.operations.clone();
+    runtime.storage().unwrap().close().await.unwrap();
     manager.shutdown_residents().await.unwrap();
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
     crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
@@ -192,6 +194,7 @@ async fn admission_rejects_reserved() {
     })
     .await
     .unwrap();
+    let before: Vec<_> = runtime.operations.residents().into_keys().collect();
     assert!(matches!(
         runtime.operations.register_service(
             harmos_runtime::services::ServiceDefinition {
@@ -202,7 +205,7 @@ async fn admission_rejects_reserved() {
         ),
         Err(Error::InvalidInput { field: "service name", .. })
     ));
-    assert!(runtime.operations.residents().is_empty());
+    assert_eq!(runtime.operations.residents().into_keys().collect::<Vec<_>>(), before);
     crate::support::app::shutdown(&runtime).await.unwrap();
 }
 
@@ -249,6 +252,7 @@ async fn shutdown_join_started() {
         }));
     }
     barrier.wait().await;
+    runtime.storage().unwrap().close().await.unwrap();
     runtime.operations.shutdown_residents().await.unwrap();
     for producer in producers {
         match producer.await.unwrap() {
@@ -287,6 +291,7 @@ async fn concurrent_shutdowns_join() {
     .await
     .unwrap();
     service_status(runtime.operations.watch_residents(), "boot", |status| matches!(status, ServiceStatus::Running { .. })).await;
+    runtime.storage().unwrap().close().await.unwrap();
     let first = runtime.operations.shutdown_residents();
     tokio::pin!(first);
     tokio::select! {

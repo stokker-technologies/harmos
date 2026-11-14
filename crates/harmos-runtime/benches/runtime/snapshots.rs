@@ -14,7 +14,10 @@ mod store_fixture;
 
 /* === Imports === */
 
-use super::backend::{Data, Recovery, history, storage_settings as config};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings as config;
 use super::support::{Bank, Change, Fact, Ledger, Noted, catalog, deposit};
 use harmos_runtime::state::{Focus, Position, PrincipalId, RequestKey, SnapshotPolicy};
 use harmos_runtime::storage::{PayloadEncoding, ReadLimits, SchemaKey};
@@ -71,7 +74,7 @@ pub(super) async fn segmented_recovery() {
     }
     crate::support::app::shutdown(&runtime).await.unwrap();
     let snapshot = store.snapshot();
-    assert_eq!(snapshot.payload.manifest().position, Some(Position(730)));
+    assert_eq!(snapshot.payload.manifest().position, Position(730));
     assert!(snapshot.payload.manifest().count > 3);
     assert!(snapshot.payload.manifest().segments.iter().all(|segment| segment.bytes <= policy.max_bytes.get()));
     // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.

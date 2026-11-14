@@ -19,16 +19,18 @@ use arrow_schema::{DataType, Field, Schema};
 use criterion::Criterion;
 
 // Local Imports
-use harmos_storage::query::{
-    Accumulator, TableWriter,
-    scalar::{Agg, ScalarValue},
-    transform::{
-        FieldPath, Transform,
-        downsample::{Algorithm, Downsample},
-        sort::{Sort, SortKey},
-    },
-};
-use harmos_storage::{Aggregate, StorageAccumulatorSettings};
+use harmos_query::Accumulator;
+use harmos_query::TableWriter;
+use harmos_query::config::QueryAccumulatorSettings;
+use harmos_query::transform::FieldPath;
+use harmos_query::transform::Transform;
+use harmos_query::transform::downsample::Algorithm;
+use harmos_query::transform::downsample::Downsample;
+use harmos_query::transform::sort::Sort;
+use harmos_query::transform::sort::SortKey;
+use harmos_storage::Aggregate;
+use harmos_storage::query::scalar::Agg;
+use harmos_storage::query::scalar::ScalarValue;
 
 /* === Public Functions === */
 
@@ -93,7 +95,7 @@ fn percentiles() {
     let values = (0..7 * 24 * 60).map(|i| ((i * 19 % 101) as f64 - 50.0).sin()).collect::<Vec<_>>();
     for rank in [0, 13, 50, 77, 100] {
         let mut accumulator =
-            Accumulator::with_settings(Agg::Of(Aggregate::Percentile(rank)), StorageAccumulatorSettings { memory_bytes: 0 });
+            Accumulator::with_settings(Agg::Of(Aggregate::Percentile(rank)), QueryAccumulatorSettings { memory_bytes: 0 });
         for (index, value) in values.iter().enumerate() {
             accumulator.push(index as u64, &ScalarValue::Float(*value)).unwrap();
         }

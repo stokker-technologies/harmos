@@ -18,21 +18,24 @@ use harmos_domain::Identifier;
 use harmos_storage::*;
 
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms;
 
 /* === Private Functions === */
 
 // Start Controlled Storage With One Active Query And One Pending Write Batch.
-async fn start() -> (Arc<Data>, StorageManager) {
+async fn start() -> (Arc<Backend>, StorageManager) {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::new(1).unwrap();
     settings.request.max_pending_write_batches = NonZeroUsize::new(1).unwrap();
-    let data = Arc::new(Data::new(history()));
+    let data = Arc::new(Backend::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         settings,
     )
@@ -89,16 +92,17 @@ async fn cancelled_query_releases() {
     let mut settings = storage_settings();
     settings.request.max_active_queries = NonZeroUsize::MIN;
     settings.request.max_pending_write_batches = NonZeroUsize::MIN;
-    let data = std::sync::Arc::new(super::backend::Data::new(history()));
+    let data = std::sync::Arc::new(super::backend::Backend::new(history()));
     let backends = StorageBackends {
         primary: data,
-        state: std::sync::Arc::new(Recovery::new(history())),
+        state: std::sync::Arc::new(RecoveryBackend::new(history())),
     };
     let storage: StorageManager = StorageManager::new(backends, settings).unwrap();
     super::fixture::start(&storage).await;
     let accepted = storage.cursor_accepted();
     // Cancelling A Queued Query Releases Its Admission Slot.
-    let query = || harmos_storage::Query {
+    let query = || harmos_domain::model::storage::query::Query {
+        merge: None,
         at: accepted.clone(),
         source: harmos_storage::query::Source::Files(harmos_storage::query::FileSelection { scope: None, item: None }),
         transforms: vec![],
@@ -112,7 +116,7 @@ async fn cancelled_query_releases() {
     drop(waiting);
     drop(first_reader);
     let mut following = storage.query(query()).await.unwrap();
-    assert!(matches!(following.next().await.unwrap(), Some(harmos_storage::query::QueryArrow::Schema(_))));
+    assert!(matches!(following.next().await.unwrap(), Some(harmos_query::QueryArrow::Schema(_))));
     assert!(following.next().await.unwrap().is_none());
     assert_eq!(following.completion().unwrap().rows, 0);
     drop(following);

@@ -36,6 +36,7 @@ harmos-sdk-derive = { workspace = true, default-features = true, optional = true
 thiserror = { workspace = true, default-features = true }
 
 # Logging
+tracing = { workspace = true, features = ["std"] }
 
 # Utilities
 sha2 = { workspace = true }
@@ -82,6 +83,7 @@ harmos-operations = { path = "../harmos-operations", features = ["grpc"] }
 # Error Handling
 
 # Logging
+tracing = { workspace = true, features = ["std"] }
 
 # Utilities
 

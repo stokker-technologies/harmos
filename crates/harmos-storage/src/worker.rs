@@ -360,15 +360,18 @@ impl Worker {
                 continue;
             }
             let retry = failures.values().filter_map(|failure| failure.retry_at).filter(|deadline| *deadline > now).min();
-            let deadline = retry.map_or(next_flush, |retry| retry.min(next_flush));
-            let deadline = inner.state.lock().unwrap().file_deadline().map_or(deadline, |file| file.min(deadline));
-            let mut sleep = Box::pin(inner.execution.sleep(deadline.saturating_duration_since(inner.execution.now())));
+            let deadline = {
+                let state = inner.state.lock().unwrap();
+                let flush = (state.queue.len() != 0).then_some(next_flush);
+                [retry, flush, state.file_deadline()].into_iter().flatten().min()
+            };
+            let mut sleep = deadline.map(|deadline| inner.execution.sleep_until(deadline));
             let mut wake = Box::pin(changed.changed());
             let outcome = std::future::poll_fn(|cx| {
                 if let Poll::Ready(Some(outcome)) = active.poll_next_unpin(cx) {
                     return Poll::Ready(Some(outcome));
                 }
-                if wake.as_mut().poll(cx).is_ready() || sleep.as_mut().poll(cx).is_ready() {
+                if wake.as_mut().poll(cx).is_ready() || sleep.as_mut().is_some_and(|sleep| sleep.as_mut().poll(cx).is_ready()) {
                     return Poll::Ready(None);
                 }
                 Poll::Pending
@@ -586,7 +589,7 @@ impl Operation {
                 exchange.schema.encoded_bytes()?;
                 super::manager::encoded_size(exchange.as_ref())
             }
-            Self::SetSchema(exchange) => exchange.value.encoded_bytes(),
+            Self::SetSchema(exchange) => Ok(exchange.value.encoded_bytes()?),
             Self::Schema(values) => values.as_slice().iter().try_fold(0usize, |bytes, value| {
                 bytes.checked_add(value.encoded_bytes()?).ok_or(Error::InvalidInput {
                     field: "storage admission",

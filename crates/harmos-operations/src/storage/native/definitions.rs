@@ -21,10 +21,9 @@ use super::requests::required;
 
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
-use harmos_storage::{
-    StorageManager,
-    query::columnar::{Cancellation, ColumnSource},
-};
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnSource;
+use harmos_storage::StorageManager;
 
 /* === Structs === */
 
@@ -101,7 +100,7 @@ pub(super) async fn set_index(
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;
-        let definition: harmos_storage::query::index::IndexDefinition = required(definition)?;
+        let definition: harmos_query::index::IndexDefinition = required(definition)?;
         definition.validate()?;
 
         let mutation = required(mutation)?;

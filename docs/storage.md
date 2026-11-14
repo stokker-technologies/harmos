@@ -1,7 +1,9 @@
 # Storage Interfaces
 
-`harmos-storage` owns typed persistence, bounded Arrow scans, indexes, durable
-projections and atomic conditional objects. Consumers choose capacity, concurrency,
+`harmos-storage` owns backend contracts, manager admission, saved scans, index and
+projection catalogs and atomic conditional objects. `harmos-query` owns Arrow
+execution; `harmos-domain` owns selections and query contracts. The library ships
+one process-lifetime in-memory backend. Products own durable backends. Consumers choose capacity, concurrency,
 physical chunk sizes, work budgets and response limits. Storage does not expose
 product keys or a database connection.
 
@@ -36,31 +38,70 @@ Consumers explicitly provide `request.max_file_productions` and
 Retiring a receipt rotates its issuance window; an expired request is refused
 rather than admitted again. Admitted work remains owned until settlement.
 
-## Reference Backend
+## Backend Registration
 
-```toml
-[dependencies]
-harmos-storage = { version = "0.1.14", features = ["sqlite"] }
-```
+Every runtime selects an independent in-memory primary adapter and in-memory
+recovery adapter automatically when setup does not register a manager. No storage
+configuration, path or directory is required. The fallback includes the plugin
+registry object catalog. Its worker starts before application initialization and
+closes with the runtime. This selects storage; managed host-state capture still
+requires `setup.settings().managed_storage(settings)` and its serialization contract.
+
+The fallback uses 256 file productions, 4,096 mutation receipts, 64 pending and
+4 active queries, 256 pending write batches, 4 active file operations and 16 MiB
+pending write bytes. Responses use 1,024 rows / 1 MiB; filesystem observation uses
+a 100 ms poll, 100,000 entries and 1,024 events. Transfer and operation policy use
+`StorageTransferSettings` and `StoragePolicy` defaults. Products choose different
+budgets and policy by explicitly registering their manager, including when keeping
+memory storage:
 
 ```rust,ignore
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
-let primary = SqliteBackend::new(path, history, SqliteSettings {
-    chunk_rows,
-    chunk_bytes,
-})?;
+let storage = StorageManager::in_memory(catalog, settings)?;
+setup.settings().storage(&storage);
 ```
 
-`sqlite` is optional and uses bundled SQLite. The backend owns one native file
-lease for its instance lifetime; share that instance between callers. Durable
-commits use SQLite WAL with FULL synchronization. Typed rows, column chunks,
-indexes, projection publications and conditional outcomes live in that database.
-The independent state/recovery backend remains a separate `StorageBackends::state`
-owner. There is no transaction across these owners or unrelated backend methods.
+To register a product backend, implement all required methods in
+`harmos_storage::StorageBackend` and `harmos_storage::state::StateBackend` and
+compose their shared instances:
 
-An unrecognized format or different store history fails with an instruction to
-back up and deliberately reset the storage root. Opening never silently resets
-incompatible data. Application owners choose backup and migration policy.
+```rust,ignore
+let backends = StorageBackends { primary: primary.clone(), state: recovery.clone() };
+let storage = StorageManager::with_catalog(catalog, backends, settings)?;
+setup.settings().storage(&storage);
+```
+
+Registration during setup replaces the fallback selection completely; it does
+not copy data or open a second adapter. After startup, a different manager is
+refused. When using the plugin manager, include `harmos_runtime::plugin::manager::catalog()`
+in the catalog shared by the primary adapter and manager.
+
+Primary and recovery sessions are separate owners; there is no transaction across
+them. The product chooses persistence format, durability, backup, migration and
+exclusive root ownership. It must preserve saved cuts, replay identities, atomic
+conditional outcomes and the capability contracts below. A backend must refuse
+corrupt or incompatible data without resetting it. Register the object catalog
+used by both the primary adapter and manager.
+
+`memory::Backend` implements all 24 required primary methods and 24 optional
+methods. Its capabilities report conditional objects, projection publication,
+file sessions/deletion and mutation receipts. Native Arrow and native indexes
+report false; shared bounded execution provides those reads. Immutable record
+views and selected-record rank seeks are implemented. The four remaining optional
+methods retain their declared defaults: `get_work` returns zero counters,
+`advance_projection` returns `None` to select shared execution, and direct native
+columnar/index hooks refuse as unsupported. `memory::RecoveryBackend` implements
+all eight recovery methods, including snapshot integrity, singleton publication,
+bounded replay and saved-frontier flush. Snapshot bytes use `Arc<[u8]>` rather
+than a mandatory file.
+
+Keep both adapter instances to reopen their process-lifetime state. Dropping them
+loses their data; they provide no process-restart durability. The
+`durable_projections` capability names the publication contract within the
+backend's lifetime, not a disk guarantee. Products own explicit budgets and policy; the automatic runtime fallback uses
+the defaults above. Storage remains always present because the plugin manager
+uses it for entries, settings and content. The owner closed the feature-isolation
+proposal on 2026-11-14: storage and query remain unconditional. See
+[Unconditional Arrow Dependencies](architecture.md#unconditional-arrow-dependencies).
 
 ## Saved Reads and Capabilities
 
@@ -104,9 +145,8 @@ An empty page with a continuation is valid after pruning or filtering. Continue
 until `complete`; never treat an empty page as end-of-source.
 
 `ArrowSeek` binds the saved token, plan digest and last examined source position.
-Change the plan by starting a new read. Native SQLite reads fetch only required
-position, projection and predicate/time columns, with metadata pruning before
-column loading. `ArrowPage` reports source rows scanned, encoded column bytes read,
+Change the plan by starting a new read. A native backend may fetch only required position, projection and predicate/time
+columns, pruning before column loading. The memory adapter uses shared execution. `ArrowPage` reports source rows scanned, encoded column bytes read,
 columns fetched and payload rows reconstructed for measurement. These counters
 are evidence, not admission policy or timing assertions.
 
@@ -208,18 +248,15 @@ requires authority over both the old and new source. Native callers use
 Definition receipts name a completed metadata revision; they carry no primary-data position.
 
 Stale revisions conflict with the action “get again and retry”. A changed definition
-requires explicit rebuild and creates a new revision. SQLite builds history under
-one immediate transaction and updates entries in the source write transaction.
-Construction decodes each physical source chunk once, orders encoded entries and
-inserts them through one prepared statement in that transaction. Record and stream
-pages read the covering key/position index directly; object pages additionally
-resolve the latest object revision at the saved cut.
+requires explicit rebuild and creates a new revision. The memory adapter stores
+definitions in its index catalog and uses bounded shared execution over retained
+source rows. A product can implement native index construction and seek hooks.
 `IndexRead` supports inclusive lower/exclusive upper key bounds, byte prefix,
 direction and continuation. Its total order is canonical key bytes followed by
 source position; reverse reads reverse both components. Ties remain stable.
 Canonical scalar tags order null, boolean, signed, unsigned, finite float, text
 and datetime. Within each field type natural order is preserved; signed zero is
-normalized and text escapes embedded NULs. Use `query::index::encode_key` rather
+normalized and text escapes embedded NULs. Use `harmos_query::index::encode_key` rather
 than inventing encodings. Missing declarations return `IndexNotFound`. Rebuilding
 invalidates old index continuations; changed plans and foreign cuts refuse.
 
@@ -268,14 +305,10 @@ to the preceding published cut. Late input replaces affected buckets; old saved
 outputs remain readable. `Transform::TimeBuckets` and projection execution use
 the same bounded reduction. The protobuf mapping carries the same bounded time-bucket transform.
 
-For record and stream projections, SQLite checkpoints the latest sample for each
-logical identity and indexes its bucket membership. Advancement reads source rows
-after that checkpoint and recomputes the old and new buckets of changed identities.
-It recomputes moments in the canonical `(time, position)` order, avoiding subtraction
-of floating-point aggregates. Bucket versions, removed-key tombstones, membership,
-changed keys and the frontier commit together. Saved cuts share unchanged bucket
-versions; retirement retains private anchors needed by later cuts. Object-source
-projections use the common executor's latest-object selection semantics.
+The in-memory adapter uses the common executor's bounded source reduction and
+atomic projection catalog publication. Native checkpoint and incremental physical
+bucket implementations belong to a product backend; they must preserve the same
+canonical aggregate order, replacement and retained-frontier semantics.
 
 ## Conditional Objects
 
@@ -314,7 +347,7 @@ report `Gap` rather than silently truncating history.
 The reference backend preserves ordered staged file chunks, identical replay,
 length/hash verification, immutable published references, bounded range reads and
 mutation receipt recovery. Unpublished file bytes cannot be read as published
-content. SQLite also persists resumable sessions, writer generations and checkpoints;
+content. The memory adapter retains resumable sessions, writer generations and checkpoints;
 reopening trims an uncheckpointed tail to its durable prefix. Abandonment preserves
 retained content reads. File deletion remains a separate advertised capability. The existing file state/recovery
 backend and its journal/checkpoint format are retained.
@@ -399,8 +432,9 @@ original outcome, including after cancellation or restart.
 Enable `harmos-storage`'s `testing` feature to use `bench_support`. In a dedicated
 benchmark executable, install `bench_support::TrackingAllocator` as `#[global_allocator]`,
 construct `bench_support::workload::Workload::new(workload::ROWS)`, and call
-`bench_support::run_with_reopen(&runtime, &workload, || Box::new(open_backend()))`.
-The opener first creates an empty backend, then reopens that same store after disposal.
+`bench_support::run_with_reopen(&runtime, &workload, || backend.clone())`.
+The factory returns the same `Arc<dyn StorageBackend>` owner for close/reopen.
+The library harness uses the memory adapter; a product can supply its own owner.
 This runs identical data, plans, corrections, checks and case names against any backend;
 no concrete database or host engine is required. For JSON, consume its `STORAGE_MEASUREMENT`
 and `STORAGE_COUNTER`/`STORAGE_WORK` lines; the repository producer's `storage_bench.measurements(lines,
@@ -408,14 +442,14 @@ revision, system, backend="reference")` emits the release schema for another bac
 
 `StorageBackend::get_work()` optionally returns cumulative `StorageWork` counters.
 Differences around an isolated call report decoded source rows/bytes/chunks,
-bucket members and buckets recomputed, index entries visited, SQLite VM steps
+bucket members and buckets recomputed, index entries visited, backend-specific index steps
 and prepared index statements. Counters belong to an owner and include repeated
 physical decoding; encoded bytes are not unique device I/O. Unsupported counters
 remain zero. `advance_projection` is an optional backend hook; returning
 `None` selects the shared bounded executor without changing existing implementers.
 `Snapshot::advance_projection` accepts an optional expected revision and forwards it
 to that same hook. A native implementation must check the expected
-active revision atomically with publication; SQLite holds its state lock across both.
+active revision atomically with publication.
 Returning `None` retains the shared executor's revision and publication checks.
 
 `storage.window.time.2m` searches the whole history with exact time bounds covering
@@ -454,26 +488,133 @@ not an OS-cache-cold claim. Repeated read/replay cases use ten samples after a o
 warmup; mutating/build cases run once. Every timing name also emits `.allocations` (`count`),
 `.allocated.bytes` (`bytes`) and `.heap.peak.bytes` (`bytes`). These count Rust allocator
 calls, total requested bytes and the increase in live Rust heap high water during the
-region; SQLite's C allocations are outside those counters. `storage.process.peak.bytes`
+region. Native allocations outside the Rust allocator are not counted. `storage.process.peak.bytes`
 (`bytes`) includes native memory and untimed preparation. Scans emit `.read.bytes` (`bytes`)
 and `.payload.rows` (`rows`); encoded fetched bytes are not physical disk I/O. Ingest,
 full scan, projection/bucket advancement emit `.throughput` (`rows/s`); contention uses
 `attempts/s`. Verification and fixture generation are outside every timed region.
 
-`mise run bench -- --storage --filter native` runs the SQLite reference with WAL/FULL
-synchronization; commit, publication and contention costs include durability. Nightly
-runs it on Linux and Windows and adds platform/backend-qualified suites to the published
-`benchmarks.json` and raw report archive. The two-million-row executable is excluded from
-ordinary benchmark lanes. Ordinary tests retain one 16,385-row journey crossing the
-physical chunk boundary on both native and fallback backends. Consumer reports should
-record their own backend/durability mode while retaining these names, units and inputs.
+`mise run bench -- --storage --filter interface` runs the two-million-row library
+workload against the memory adapter, without file or disk management. Product
+reports can retain the same names, units and deterministic input while recording
+their backend and durability mode. The million-row temporal merge cases live in
+`harmos-query/benches/merge/`; existing transform cases live in the query and
+storage query benches.
+
+## Local Merge and Query Measurements
+
+Measured on Windows x86_64 on 2026-11-14 with Rust 1.99.1 and Cargo's `bench`
+profile. The benchmark executables were built from `650dd330`; subsequent Schematic
+assembly edits do not enter either benchmark. Values below are Criterion median
+point estimates from one invocation per suite, with ten samples after a one-second
+warmup. Merge cases request ten seconds of measurement; query cases request one
+second and may need longer to collect ten samples. These are local measurements,
+not hosted baselines or timing assertions. Native Criterion evidence is under
+`target/benchmarks/storage/criterion/`.
+
+### Ordered Merge
+
+`mise run bench -- --storage --filter time_merge` starts with two prebuilt,
+immutable in-memory Arrow batches of 1,000,000 rows each. Each timed iteration
+constructs fresh readers and drains all merged output in 16,384-row pages. It
+includes pairing and output allocation; input generation, storage admission,
+payload decoding and grouped aggregation are outside this boundary. The process
+and inputs are warm. No persistent adapter or filesystem is used.
+
+| Case | Rows per Input | Median |
+| --- | --- | --- |
+| Record Range | 1,000,000 | 183.67 ms |
+| Value at Record | 1,000,000 | 100.08 ms |
+| Record Intervals | 1,000,000 | 157.10 ms |
+| Stream Against Stream | 1,000,000 | 98.71 ms |
+
+### Query Cases
+
+`mise run bench -- --storage --filter query` produced the medians below. These
+cases use the in-memory adapter where storage is involved. Engine spill cases
+still use temporary files; removing backend disk management does not remove
+engine spill I/O.
+
+Order statistics start a fresh accumulator per iteration in a warm process.
+`push` times only pushing all N descending scalar values; `finish` times only
+finishing that accumulator. Creation, the other phase and answer checks are
+outside the reported phase. Quantiles have a 64 KiB scratch budget: Median and
+Percentile at N = 2,049 cross its 1,638-value capacity and include temporary-file
+spill work. Other statistics do not use quantile scratch.
+
+| Statistic / Phase | N = 2 | 3 | 4 | 11 | 13 | 45 | 100 | 2,049 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Median / push | 126.90 ns | 173.67 ns | 257.25 ns | 416.03 ns | 406.14 ns | 957.06 ns | 1.862 µs | 2.503 ms |
+| Median / finish | 103.59 ns | 147.63 ns | 210.76 ns | 895.77 ns | 1.245 µs | 6.777 µs | 18.839 µs | 249.366 ms |
+| Percentile(95) / push | 137.07 ns | 184.01 ns | 187.01 ns | 381.70 ns | 401.84 ns | 957.80 ns | 1.822 µs | 3.957 ms |
+| Percentile(95) / finish | 105.65 ns | 156.04 ns | 209.02 ns | 893.70 ns | 1.192 µs | 7.067 µs | 19.145 µs | 229.723 ms |
+| Percentile(99) / push | 125.64 ns | 183.49 ns | 270.30 ns | 395.95 ns | 400.78 ns | 953.41 ns | 1.844 µs | 2.440 ms |
+| Percentile(99) / finish | 105.59 ns | 149.28 ns | 214.19 ns | 901.87 ns | 1.192 µs | 6.672 µs | 19.931 µs | 211.173 ms |
+| Count / push | 43.62 ns | 53.58 ns | 61.37 ns | 121.57 ns | 145.82 ns | 408.97 ns | 869.08 ns | 18.972 µs |
+| Count / finish | 40.21 ns | 46.15 ns | 41.09 ns | 40.51 ns | 39.84 ns | 38.61 ns | 38.77 ns | 44.34 ns |
+| Min / push | 50.69 ns | 71.27 ns | 77.07 ns | 180.58 ns | 209.52 ns | 664.41 ns | 1.463 µs | 30.524 µs |
+| Min / finish | 41.35 ns | 45.12 ns | 47.14 ns | 44.89 ns | 42.61 ns | 45.27 ns | 43.30 ns | 46.90 ns |
+| Max / push | 46.14 ns | 67.66 ns | 72.98 ns | 169.22 ns | 190.57 ns | 591.71 ns | 1.369 µs | 26.076 µs |
+| Max / finish | 44.68 ns | 46.79 ns | 49.14 ns | 45.06 ns | 42.24 ns | 42.25 ns | 43.85 ns | 45.75 ns |
+| Mean / push | 50.88 ns | 126.16 ns | 90.06 ns | 171.19 ns | 205.90 ns | 609.91 ns | 1.349 µs | 27.799 µs |
+| Mean / finish | 45.70 ns | 52.34 ns | 45.83 ns | 43.28 ns | 42.15 ns | 40.73 ns | 40.97 ns | 43.18 ns |
+| Std / push | 54.79 ns | 83.02 ns | 86.16 ns | 183.16 ns | 204.35 ns | 696.98 ns | 1.469 µs | 30.464 µs |
+| Std / finish | 42.10 ns | 44.07 ns | 43.07 ns | 42.69 ns | 42.46 ns | 40.17 ns | 40.89 ns | 44.78 ns |
+| Rms / push | 54.50 ns | 73.45 ns | 85.60 ns | 183.80 ns | 205.27 ns | 648.51 ns | 1.768 µs | 28.926 µs |
+| Rms / finish | 43.71 ns | 46.85 ns | 46.54 ns | 45.00 ns | 47.04 ns | 44.16 ns | 46.73 ns | 45.92 ns |
+| Sum / push | 50.18 ns | 63.76 ns | 80.65 ns | 165.64 ns | 186.79 ns | 588.68 ns | 1.334 µs | 27.372 µs |
+| Sum / finish | 43.26 ns | 43.02 ns | 45.24 ns | 42.77 ns | 42.22 ns | 40.02 ns | 41.33 ns | 43.10 ns |
+
+The remaining cases time complete iterations, including the following work:
+
+- **Spill workloads:** fresh generated input, Arrow table construction, temporary
+  table/spill I/O, transforms and complete result drain. Hourly pages contain
+  168 × 20,000 rows; percentiles run five exact ranks over 10,080 values with
+  zero scratch memory; downsampling builds 10,080 rows and runs all four
+  algorithms to 40 rows. Inputs and tables are fresh; the process is warm.
+- **Opened files:** a memory manager and 256 KiB local file are prepared outside
+  timing. Each iteration opens and concurrently drains two independent 100,000-byte
+  ranges at offsets 0 and 128,000. The process/file are warm; local file I/O is
+  included, with no claim of persistent adapter durability.
+- **Storage projection:** seed and flush the memory adapter outside timing. Time
+  query/snapshot admission, payload decoding, projection, complete collection and
+  completion. Full scans collect all rows; windows start at one third and collect
+  4,096 rows. Manager and retained inputs are warm; response limits are 16,384 rows
+  and 8 MiB. Setup and teardown are outside timing.
+- **Quantile spill:** fresh accumulator, generation/push of 4,101 values and all
+  101 percentiles are timed. Zero bytes forces temporary files; 65,616 bytes keeps
+  the values in memory. The process is warm; accumulator state is fresh.
+- **Journal recovery:** fresh memory recovery owner, open, append/flush 10,080
+  entries, read them in 31-row pages, publish/flush a memory snapshot and read its
+  tail are timed. There is no host state replay, persistent journal or manager
+  overhead. The process is warm; recovery state is fresh.
+- **Mutation receipts:** fresh memory manager/worker with 4,096 receipt slots,
+  2,048 empty-file create/finish pairs, per-file flush, replay of the final finish,
+  checks and close are timed. The Tokio executor is outside timing. The process is
+  warm; backend state is fresh. There is no file payload or filesystem durability.
+
+| Case | Median |
+| --- | --- |
+| `journal_recovery/seven_days` | 9.928 ms |
+| `mutation_receipts/2048_files` | 214.056 ms |
+| `opened_files/independent_100000_byte_ranges` | 249.718 µs |
+| `quantile_spill/0` | 10.506 ms |
+| `quantile_spill/65616` | 1.013 ms |
+| `spill_workloads/merge_33768_rows_from_37_row_pages` | 4934.886 ms |
+| `spill_workloads/seven_days_of_downsampling` | 17.172 ms |
+| `spill_workloads/seven_days_of_hourly_pages` | 43.010 ms |
+| `spill_workloads/seven_days_of_percentiles` | 1624.842 ms |
+| `storage_projection/full/1000000` | 265.264 ms |
+| `storage_projection/full/40000` | 8.374 ms |
+| `storage_projection/window/1000000` | 736.523 µs |
+| `storage_projection/window/40000` | 754.496 µs |
 
 ## Durable-Lag Benchmark
 
 Run `mise run bench -- --storage --filter durable_lag` for the Nightly
 `integration/durable_lag/{small_high_rate,multi_megabyte,mixed}` cases. Each reports
 acceptance-to-durability p50, p95 and maximum, pending bytes/positions, admission wait,
-and synchronous SQLite commit count/time. Five runs per load retain median and
+and optional backend commit count/time. Five runs per load retain median and
 spread, compiler-activity samples and stage counters for cadence/ordered waits,
 batch construction, provider writing, synchronous commit and frontier publication.
 Durable lag was accepted as measured, amended by the owner on 2026-11-13:
@@ -498,8 +639,7 @@ no stored encoding, durability setting or admission ceiling changed. Large
 admissions remain separate commit units, so an earlier small prefix cannot join
 a later large admission. Checked admission sizes are reused when batching and
 persisting. Larger state captures still split at the existing atomic byte ceiling.
-SQLite independently compacts/splits physical column chunks inside the same
-transaction, preserving its configured row/byte limits and rollback semantics.
+Physical chunking and on-disk transaction costs belong to product measurements.
 
 ## Native Provider Hooks
 
@@ -612,3 +752,24 @@ measurements, not a claim about durable filesystem throughput. Consumer backends
 `harmos_storage::bench_support::file_transfer::{Carrier, run}`. Nightly retains raw
 native output and median throughput with bytes, call counts and configured range
 sizes. The owner accepted the measured unary tradeoff on 2026-11-13.
+
+## Story Migration
+
+Of the original 23 backend-focused integration stories, nine remain over shared
+memory owners: saved columnar cuts, index seeks/rebuild, projection replay,
+conditional objects, schema exchange, bucket replacement, stream identity,
+snapshot singleton publication and runtime checkpoint reopen. These assert
+interface behavior, including failures, cancellation and exact retained answers.
+
+Disk-format, physical-chunk, restart-durability, root-exclusivity and filesystem
+corruption stories belong with a product backend. They are absent from the
+library. Schematic application storage stories exercise the public memory adapter;
+manual document Save/Open remains application-owned serialization. Library tests
+do not claim disk durability.
+
+Runtime `tests/storage/default_backend.rs` proves automatic independent memory
+selection and primary/managed-recovery writes without storage configuration.
+`tests/storage/registered_backend.rs` proves explicit primary/recovery owners
+replace that selection and recover their state when those owners are reopened.
+Startup-acquisition failure and cancellation are covered in `tests/storage/state/boot.rs`;
+the superseded post-start acquisition stories are removed.

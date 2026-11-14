@@ -18,6 +18,8 @@ use std::convert::Infallible;
 // Third Party Imports
 
 // Local Imports
+use harmos_query::Error as QueryError;
+use harmos_storage::Error as StorageError;
 
 /* === Constants === */
 
@@ -329,6 +331,12 @@ impl<E> Error<E> {
             kind,
             source: Box::new(source),
         }
+    }
+}
+
+impl<E> From<QueryError> for Error<E> {
+    fn from(error: QueryError) -> Self {
+        Self::from(StorageError::from(error))
     }
 }
 

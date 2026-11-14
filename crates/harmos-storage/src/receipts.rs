@@ -498,7 +498,7 @@ impl StorageManager {
         Ok(())
     }
 
-    pub fn info(&self) -> Result<crate::storage::StorageInfo> {
+    pub fn info(&self) -> Result<crate::StorageInfo> {
         let mut state = self.inner.state.lock().unwrap();
         if !state.ready || state.status.closing {
             return Err(Error::NotReady { domain: "storage" });
@@ -508,7 +508,7 @@ impl StorageManager {
         } else {
             None
         };
-        Ok(crate::storage::StorageInfo {
+        Ok(crate::StorageInfo {
             accepted: state.status.accepted.clone(),
             saved: state.status.saved.clone(),
             mutations,

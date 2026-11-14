@@ -23,8 +23,8 @@ use sha2::{Digest, Sha256};
 use super::admissions::Mutation;
 use super::objects::invalid;
 use super::{ObjectReceipt, ObjectValue, StorageManager};
+use crate::MutationId;
 use crate::Result;
-use crate::storage::MutationId;
 
 /* === Constants === */
 

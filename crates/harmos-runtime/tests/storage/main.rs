@@ -13,6 +13,7 @@
 mod backend;
 #[path = "../storage/coordinator.rs"]
 mod coordinator;
+mod default_backend;
 mod filtered_pages;
 #[path = "../support/storage_fixture.rs"]
 pub(crate) mod fixture;
@@ -23,6 +24,7 @@ mod manager;
 mod native_pages;
 #[path = "../storage/operations.rs"]
 mod operations;
+mod registered_backend;
 #[path = "../storage/runtime.rs"]
 mod runtime;
 #[path = "../storage/state.rs"]

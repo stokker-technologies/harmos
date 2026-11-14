@@ -21,7 +21,7 @@ use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::{RecordInput, RecordWrite, StorageCursor, StorageManager};
-use crate::storage::MutationId;
+use crate::MutationId;
 use crate::{Error, Identifier, Result};
 
 /* === Constants === */

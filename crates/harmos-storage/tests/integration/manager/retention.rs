@@ -9,15 +9,21 @@
 
 /* === Imports === */
 
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms::{Experiment, objects_catalog};
+use harmos_domain::model::storage::query::Query;
+use harmos_query::QueryArrow;
+use harmos_query::transform::Transform;
+use harmos_query::transform::project::Project;
+use harmos_query::transform::project::Projection;
 use harmos_storage::Identifier;
-use harmos_storage::Query;
-use harmos_storage::query::transform::{
-    Transform,
-    project::{Project, Projection},
-};
-use harmos_storage::query::{ObjectSelection, ObjectVersions, QueryArrow, RowSlice, Source};
+use harmos_storage::query::ObjectSelection;
+use harmos_storage::query::ObjectVersions;
+use harmos_storage::query::RowSlice;
+use harmos_storage::query::Source;
 use harmos_storage::*;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -46,12 +52,12 @@ struct Revisions {
 
 impl Revisions {
     async fn new() -> Self {
-        let data = std::sync::Arc::new(super::backend::Data::with_catalog(objects_catalog(), history()));
+        let data = std::sync::Arc::new(super::backend::Backend::with_catalog(objects_catalog(), history()));
         let storage = StorageManager::with_catalog(
             objects_catalog(),
             StorageBackends {
                 primary: data,
-                state: std::sync::Arc::new(Recovery::new(history())),
+                state: std::sync::Arc::new(RecoveryBackend::new(history())),
             },
             storage_settings(),
         )
@@ -97,6 +103,7 @@ async fn labels(
 ) -> harmos_storage::Result<Vec<String>> {
     let mut reader = storage
         .query(Query {
+            merge: None,
             at: at.clone(),
             source: Source::Objects(ObjectSelection {
                 schema: Some(schema.clone()),
@@ -128,10 +135,10 @@ async fn labels(
 #[tokio::test]
 async fn snapshots_progress_during_persistence() {
     // Save the Revision Whose Reads Must Remain Independent of a Later Write.
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;
@@ -213,7 +220,7 @@ async fn snapshots_progress_during_persistence() {
 async fn reads_pin_cursor() {
     let r = Revisions::new().await;
 
-    // Queries Read Exactly The Requested Cursor, Never Newer Data.
+    // Queries Read Exactly The Requested Cursor, Never Newer Backend.
     let latest = |at| labels(&r.storage, at, &r.schema, ObjectVersions::Latest);
     assert_eq!(latest(&r.earlier).await.unwrap(), ["first"]);
     assert_eq!(latest(&r.durable).await.unwrap(), ["second"]);
@@ -234,10 +241,10 @@ async fn reads_pin_cursor() {
 #[tokio::test]
 async fn release_reclaims_history() {
     // A Controlled Result Gate Separates Reclamation From Its Acknowledgement.
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let backends = StorageBackends {
         primary: data.clone(),
-        state: Arc::new(Recovery::new(history())),
+        state: Arc::new(RecoveryBackend::new(history())),
     };
     let storage = StorageManager::with_catalog(objects_catalog(), backends, storage_settings()).unwrap();
     super::fixture::start(&storage).await;

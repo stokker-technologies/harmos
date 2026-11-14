@@ -18,7 +18,8 @@ Shared models, vertical operations, host app, CLI, guest and sidecar have separa
 `examples/schematic/`, a Cargo workspace of its own. The short advanced scenario adds streamed
 analysis and cancellation. Application contracts live in `examples/schematic/proto/schematic/v1/operations.proto`;
 `examples/schematic/protocol` owns their generator and generated-code drift test.
-The example's JSONL persistence adapter is `examples/schematic/storage/`.
+The example's explicit document Save/Open lives in `examples/schematic/app/src/document.rs`;
+its host storage uses the public in-memory adapter.
 Its own `Files` and `Uploads` contracts use shared `harmos.v1.File` and `Upload`
 messages over private native storage operations. Both plugins declare typed routing
 settings and read them through caller-scoped plugin-host `Settings.List`.

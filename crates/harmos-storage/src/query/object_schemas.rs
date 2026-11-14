@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use crate::storage::query::transform::ProjectExecution;
+use harmos_query::transform::ProjectExecution;
 // Standard Library Imports
 use std::sync::Arc;
 // Third Party Imports
@@ -25,13 +25,13 @@ use arrow_schema::{DataType, Field, Schema};
 // Local Imports
 use super::ObjectSelection;
 use super::reader::schema_at;
-use super::transform::{Transform, project::Project};
-use crate::storage::backend::ScanPage;
-use crate::storage::config::SCAN_ROWS;
-use crate::storage::manager::Inner;
-use crate::storage::snapshot::Snapshot;
-use crate::storage::{ObjectEntry, SchemaKey, StorageSchema};
+use crate::backend::ScanPage;
+use crate::config::SCAN_ROWS;
+use crate::manager::Inner;
+use crate::snapshot::Snapshot;
 use crate::{Error, Result};
+use crate::{ObjectEntry, SchemaKey, StorageSchema};
+use harmos_query::transform::{Transform, project::Project};
 
 // Standard Library Imports
 
@@ -102,12 +102,12 @@ impl NormalizedObjects {
 
         let mut output: Option<Arc<Schema>> = None;
         for schema in &schemas {
-            let empty = super::source::objects(schema, &[])?;
+            let empty = harmos_query::source::objects(schema, &[])?;
             let candidate = match &projection {
                 Some(project) => canonical_schema(&project.output_schema(empty.schema().as_ref())?),
                 None => empty.schema().as_ref().clone(),
             };
-            crate::storage::arrow::validate_schema(&candidate)?;
+            harmos_query::arrow::validate_schema(&candidate)?;
             if output.as_ref().is_some_and(|schema| schema.as_ref() != &candidate) {
                 return Err(invalid("selected object schemas require a leading projection to compatible fields"));
             }
@@ -139,7 +139,7 @@ impl NormalizedObjects {
                 .iter()
                 .find(|schema| &schema.key == key)
                 .ok_or_else(|| invalid("object schema was not resolved at the requested boundary"))?;
-            let source = super::source::objects(schema, &rows[start..end])?;
+            let source = harmos_query::source::objects(schema, &rows[start..end])?;
             let projected = match &self.projection {
                 Some(project) => canonical_batch(project.apply(&source, &mut || Ok(()))?, Arc::clone(&self.output))?,
                 None => source,

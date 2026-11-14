@@ -26,13 +26,19 @@ use std::{
 use crate::manager::{backend, fixture};
 use harmos_domain::model::storage::{catalog::object_schema, object_key};
 use harmos_domain::{Identified, Message, schema::Described};
-use harmos_storage::query::{
-    ObjectSelection, ObjectVersions, SchemaSelection,
-    columnar::{ArrowScan, Cancellation, ColumnKind, ColumnSource},
-    index::{IndexDefinition, IndexRead, list_index_entries},
-    projection::{ProjectionDefinition, ProjectionRead, ProjectionTransform},
-};
-use harmos_storage::sqlite::{SqliteBackend, SqliteSettings};
+use harmos_query::columnar::ArrowScan;
+use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::ColumnKind;
+use harmos_query::columnar::ColumnSource;
+use harmos_query::index::IndexDefinition;
+use harmos_query::index::IndexRead;
+use harmos_storage::query::ObjectSelection;
+use harmos_storage::query::ObjectVersions;
+use harmos_storage::query::SchemaSelection;
+use harmos_storage::query::index::list_index_entries;
+use harmos_storage::query::projection::ProjectionDefinition;
+use harmos_storage::query::projection::ProjectionRead;
+use harmos_storage::query::projection::ProjectionTransform;
 use harmos_storage::*;
 
 /* === Constants === */
@@ -82,17 +88,11 @@ fn catalog() -> ObjectCatalog {
 #[tokio::test]
 async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_restart() {
     // Start Both Managers On A Fixed Host Clock.
-    let root = tempfile::tempdir().unwrap();
-    let path = root.path().join("objects.sqlite");
     let history = backend::history();
     let policy = backend::storage_settings();
-    let settings = SqliteSettings {
-        chunk_rows: nz(4),
-        chunk_bytes: policy.response.batch_bytes,
-    };
-    let native = Arc::new(SqliteBackend::new(&path, history.clone(), settings).unwrap());
-    let deterministic = Arc::new(backend::Data::with_catalog(catalog(), history.clone()));
     let (clock, _driver) = harmos_storage::execution::Execution::virtual_at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
+    let primary = Arc::new(backend::Backend::with_execution(catalog(), history.clone(), clock.clone()));
+    let deterministic = Arc::new(backend::Backend::with_execution(catalog(), history.clone(), clock.clone()));
     let work = ReadLimits { rows: nz(64), bytes: nz(1024 * 1024) };
     let cancel = Cancellation::default();
     let mut retained = None;
@@ -105,12 +105,12 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         },
         columns: vec!["payload.value".into()],
     };
-    for primary in [native.clone() as Arc<dyn StorageBackend>, deterministic.clone() as Arc<dyn StorageBackend>] {
+    for primary in [primary.clone() as Arc<dyn StorageBackend>, deterministic.clone() as Arc<dyn StorageBackend>] {
         let storage = StorageManager::with_catalog(
             catalog(),
             StorageBackends {
                 primary: primary.clone(),
-                state: Arc::new(backend::Recovery::new(history.clone())),
+                state: Arc::new(backend::RecoveryBackend::new(history.clone())),
             },
             policy.clone(),
         )
@@ -294,7 +294,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
         drop(held);
 
         // A Dropped Caller Cannot Retract Work Already Admitted To The Worker.
-        if !primary.capabilities().native_arrow {
+        if Arc::ptr_eq(&primary, &(deterministic.clone() as Arc<dyn StorageBackend>)) {
             deterministic.control.block_write.store(true, Ordering::SeqCst);
             let mutation = MutationId {
                 window,
@@ -325,17 +325,17 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
 
     // Abort An Index Update Inside The Real Object Transaction, Then Retry It.
     let (create, existing, initial, existing_outcome, winner) = retained.unwrap();
-    native.create_session().await.unwrap();
-    let before = native.get_saved_position().await.unwrap();
-    while !native.delete_expired_object_revisions(&before, nz(64), &catalog()).await.unwrap() {}
-    let pruned = native.create_snapshot(&before).await.unwrap();
+    primary.create_session().await.unwrap();
+    let before = primary.get_saved_position().await.unwrap();
+    while !primary.delete_expired_object_revisions(&before, nz(64), &catalog()).await.unwrap() {}
+    let pruned = primary.create_snapshot(&before).await.unwrap();
     let point = ObjectPoint {
         schema: definition.source.schema.id.clone(),
         item: object_key(&1_u64, work.bytes).unwrap(),
         version: ObjectVersion::Exact(initial.version.clone()),
     };
-    assert!(matches!(native.get_object(&pruned, &point).await, Err(Error::Gap { .. })));
-    native.delete_snapshot(&pruned).await.unwrap();
+    assert!(matches!(primary.get_object(&pruned, &point).await, Err(Error::Gap { .. })));
+    primary.delete_snapshot(&pruned).await.unwrap();
     let value = Counter { id: 1, value: 333 };
     let graph =
         harmos_domain::schema::graph::Schema::from_declaration(Counter::DEFINITION, &harmos_domain::config::SchemaSettings::default())
@@ -364,28 +364,24 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             },
         },
     };
-    let fault = rusqlite::Connection::open(&path).unwrap();
-    fault.execute_batch("CREATE TRIGGER interrupt_object_index BEFORE INSERT ON storage_index_entries BEGIN SELECT RAISE(ABORT,'injected index interruption'); END;").unwrap();
-    assert!(native.set_object(&exchange).await.is_err());
-    assert_eq!(native.get_saved_position().await.unwrap(), before);
-    fault.execute_batch("DROP TRIGGER interrupt_object_index;").unwrap();
-    let accepted = native.set_object(&exchange).await.unwrap();
+    primary.control.permanent.store(true, Ordering::SeqCst);
+    assert!(primary.set_object(&exchange).await.is_err());
+    assert_eq!(primary.get_saved_position().await.unwrap(), before);
+    primary.control.permanent.store(false, Ordering::SeqCst);
+    let accepted = primary.set_object(&exchange).await.unwrap();
     assert!(matches!(accepted, CompareExchange::Applied(_)));
-    assert_eq!(native.set_object(&exchange).await.unwrap(), accepted);
+    assert_eq!(primary.set_object(&exchange).await.unwrap(), accepted);
     let mut forged = exchange.clone();
     forged.value.value.payload = Counter { id: 1, value: 444 }.encode();
-    assert!(native.set_object(&forged).await.is_err());
-    native.delete_session().await.unwrap();
-    drop(native);
-    drop(fault);
+    assert!(primary.set_object(&forged).await.is_err());
+    primary.delete_session().await.unwrap();
 
     // Restart, Replay Original Success And Conflict, Then Retire Acknowledged Outcomes.
-    let native = Arc::new(SqliteBackend::new(&path, history.clone(), settings).unwrap());
     let storage = StorageManager::with_catalog(
         catalog(),
         StorageBackends {
-            primary: native.clone(),
-            state: Arc::new(backend::Recovery::new(history)),
+            primary: primary.clone(),
+            state: Arc::new(backend::RecoveryBackend::new(history)),
         },
         policy,
     )

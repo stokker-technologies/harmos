@@ -22,20 +22,21 @@ use harmos_operations::{
     operations::{OperationSpec, WireDeclaration},
 };
 use harmos_protocol::{
-    client,
-    plugin::{self, instance_samples_request as request, instance_samples_response as response},
-    v1::{self, child_response},
+    client::{self, TimeGetRequest, TimeGetResponse},
+    plugin::{self, InstanceSamplesResponse, instance_samples_request as request, instance_samples_response as response},
+    v1::{self, Failure as ProtocolFailure, child_response},
 };
 use harmos_runtime::{
     clock::Clock,
     operations::{
-        ExecutionContext, FunctionContext, Grpc, HostContext, OperationFactory, OperationPolicy, ProtobufOperation, ProtobufOutput,
-        Resource, RetryPolicy, ServingError, Visibility,
+        ExecutionContext, FunctionContext, Grpc, OperationFactory, OperationPolicy, ProtobufOperation, ProtobufOutput, Resource,
+        RetryPolicy, ServingError, Visibility,
     },
     plugin::grpc::CallingPlugin,
 };
 use prost::Message;
 use prost_reflect::ReflectMessage;
+use response::Frame as ResponseFrame;
 use std::{
     collections::BTreeMap,
     sync::{
@@ -44,7 +45,8 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, mpsc, mpsc::Sender};
+use tonic::Status;
 
 /* === Constants === */
 
@@ -82,9 +84,9 @@ struct Watch;
 /* === Implementations === */
 
 impl ProtobufOperation for Watch {
-    type Request = client::TimeGetRequest;
-    type Response = client::TimeGetResponse;
-    type Endpoints = ProtobufOutput<client::TimeGetResponse>;
+    type Request = TimeGetRequest;
+    type Response = TimeGetResponse;
+    type Endpoints = ProtobufOutput<TimeGetResponse>;
     const ID: &'static str = "fixture.tick_watch";
     const POLICY: OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
@@ -120,7 +122,7 @@ fn payload(value: &[u8]) -> Vec<u8> {
     harmos_operations::execution::grpc::encode(&Host { value: value.into() }, &mut bytes).unwrap();
     bytes
 }
-fn expected_failure() -> v1::Failure {
+fn expected_failure() -> ProtocolFailure {
     v1::Failure {
         classification: v1::Classification::Transient as i32,
         code: "tick_failure".into(),
@@ -139,7 +141,7 @@ fn expected_failure() -> v1::Failure {
 fn operation(signals: Arc<Signals>) -> OperationFactory {
     OperationFactory::function(
         OperationSpec::<Host>::new(&DECLARATION),
-        const { &[Resource::of::<CallingPlugin>(), Resource::of::<HostContext>()] },
+        const { &[Resource::of::<CallingPlugin>()] },
         move |request: Host, context: FunctionContext<Host>| {
             let signals = signals.clone();
             async move {
@@ -153,8 +155,7 @@ fn operation(signals: Arc<Signals>) -> OperationFactory {
                     let parked = signals.parked(key);
                     let _cancelled = Cancelled(parked.clone());
                     parked.entered.notify_one();
-                    let clock = context.resource::<HostContext>().unwrap().borrow().scope().clock().clone();
-                    clock.sleep(Duration::from_secs(60)).await;
+                    std::future::pending::<()>().await;
                 }
                 if value == "fail" {
                     return Err(Failure::from(expected_failure()));
@@ -166,12 +167,11 @@ fn operation(signals: Arc<Signals>) -> OperationFactory {
     )
     .unwrap()
 }
-async fn frame(output: &mpsc::Sender<Result<plugin::InstanceSamplesResponse, tonic::Status>>, frame: response::Frame) {
+async fn frame(output: &Sender<Result<InstanceSamplesResponse, Status>>, frame: ResponseFrame) {
     output.send(Ok(plugin::InstanceSamplesResponse { samples: vec![], frame: Some(frame) })).await.unwrap();
 }
 async fn child(
-    output: &mpsc::Sender<Result<plugin::InstanceSamplesResponse, tonic::Status>>, call: u64, operation: &str, fingerprint: Vec<u8>,
-    payload: Vec<u8>,
+    output: &Sender<Result<InstanceSamplesResponse, Status>>, call: u64, operation: &str, fingerprint: Vec<u8>, payload: Vec<u8>,
 ) {
     frame(
         output,
@@ -347,9 +347,6 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 signals.parked(&cancelled).entered.notified().await;
                 frame(&output, response::Frame::ChildCancel(v1::ChildCancel { call: base + 5 })).await;
                 signals.parked(&cancelled).cancelled.notified().await;
-                let ended = format!("{key}:end");
-                child(&output, base + 6, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
-                signals.parked(&ended).entered.notified().await;
                 child(
                     &output,
                     base + 7,
@@ -400,6 +397,9 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 };
                 assert!(plugin::host::SettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
                 assert!(matches!(&replies[&(base + 7)], Some(child_response::Result::Payload(_))));
+                let ended = format!("{key}:end");
+                child(&output, base + 6, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
+                signals.parked(&ended).entered.notified().await;
                 let at = tick.at.unwrap();
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
@@ -435,8 +435,11 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     let drive = controller.advance_until(Duration::from_secs(10), || {
         signals.answered.load(Ordering::SeqCst) >= 4 && signals.refusals.load(Ordering::SeqCst) == 5
     });
-    let ((), result) = tokio::join!(collect, drive);
-    result.unwrap();
+    let collected = async {
+        collect.await;
+        Ok(())
+    };
+    tokio::try_join!(collected, drive).unwrap();
     assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick_owner") && reported == "remote"));
     host.close().await;
 }

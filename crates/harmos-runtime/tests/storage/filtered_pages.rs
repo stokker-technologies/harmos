@@ -13,15 +13,24 @@
 
 use super::{Fixture, config};
 use harmos_domain::Message;
+use harmos_domain::model::storage::query::Query;
 use harmos_operations::storage::{ListRows, ListRowsRequest};
 use harmos_protocol::v1;
+use harmos_query::QueryArrow;
+use harmos_query::transform::Transform;
+use harmos_query::transform::filter::Clause;
+use harmos_query::transform::filter::Compare;
+use harmos_query::transform::filter::Condition;
+use harmos_query::transform::filter::Filter;
+use harmos_query::transform::filter::Term;
+use harmos_storage::Identifier;
+use harmos_storage::PayloadEncoding;
+use harmos_storage::RecordInput;
+use harmos_storage::SchemaKey;
+use harmos_storage::query::RecordSelection;
+use harmos_storage::query::RowSlice;
+use harmos_storage::query::Source;
 use harmos_storage::query::scalar::ScalarValue;
-use harmos_storage::query::transform::{
-    Transform,
-    filter::{Clause, Compare, Condition, Filter, Term},
-};
-use harmos_storage::query::{QueryArrow, RecordSelection, RowSlice, Source};
-use harmos_storage::{Identifier, PayloadEncoding, Query, RecordInput, SchemaKey};
 use std::{num::NonZeroU32, sync::atomic::Ordering};
 
 /* === Structs === */
@@ -67,6 +76,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
     let at = fixture.storage.flush().await.unwrap();
     fixture.data.control.record_page_rows.store(2, Ordering::Relaxed);
     let query = Query {
+        merge: None,
         at,
         source: Source::Records(RecordSelection {
             schema,
@@ -88,8 +98,8 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
                     }],
                 }],
             }),
-            Transform::Project(harmos_storage::query::transform::project::Project {
-                fields: vec![harmos_storage::query::transform::project::Projection {
+            Transform::Project(harmos_query::transform::project::Project {
+                fields: vec![harmos_query::transform::project::Projection {
                     field: "_storage.item".into(),
                     name: "item".into(),
                 }],
@@ -98,6 +108,7 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         slice: RowSlice::default(),
     };
     let mut request = ListRowsRequest {
+        merge: None,
         source: Some(query.source),
         transforms: query.transforms,
         at: None,

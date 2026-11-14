@@ -118,8 +118,9 @@ It also runs as part of `check --language python`.
 Storage-engine stories exercise `harmos-storage` without a host runtime; its
 real `WorkerOwner` owns the canonical worker and settlement. Runtime storage
 stories cover host composition, managed journal projection and operation dispatch.
-Inject file journal faults at the public `FileBackend` boundary, retaining its
-parsing, rollback and leasing. The specialized integration entrypoints are
+Use the public memory adapter and its deterministic control gates for manager
+fault stories. Disk parsing, rollback and root leasing belong to product backend
+stories. The specialized integration entrypoints are
 `crates/harmos-domain/tests/message/main.rs` and `sdk/rust/tests/wasm/main.rs`.
 
 Runtime system tests compose the host baseline with the Schematic guest and

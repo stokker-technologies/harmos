@@ -37,8 +37,6 @@ mod snapshot_restores_state;
 mod snapshot_resumes_durable;
 #[path = "snapshots/snapshot_waits_queue.rs"]
 mod snapshot_waits_queue;
-#[path = "snapshots/snapshots_require_storage.rs"]
-mod snapshots_require_storage;
 
 #[path = "../../support/snapshot_store.rs"]
 mod store_fixture;
@@ -54,8 +52,16 @@ use tracing_subscriber::prelude::*;
 
 // Local Imports
 use super::{CleanupCapture, closed};
+use crate::storage::Backend;
+use crate::storage::Bank;
+use crate::storage::Ledger;
+use crate::storage::RecoveryBackend;
+use crate::storage::StorageManager;
+use crate::storage::catalog;
+use crate::storage::config;
+use crate::storage::history;
+use crate::storage::schema;
 use crate::storage::support::{Change, Fact, HOUSE, Noted, deposit};
-use crate::storage::{Bank, Data, Ledger, Recovery, StorageManager, catalog, config, history, schema};
 use harmos_runtime::state::SnapshotPolicy;
 use harmos_runtime::storage::ReadLimits;
 use harmos_runtime::storage::state::SnapshotPayload;

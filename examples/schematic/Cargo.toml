@@ -2,7 +2,7 @@
 
 [workspace]
 resolver = "3"
-members = ["app", "cli", "domain", "guest", "operations", "protocol", "sidecar", "storage"]
+members = ["app", "cli", "domain", "guest", "operations", "protocol", "sidecar"]
 
 # === Workspace Package === #
 
@@ -24,6 +24,7 @@ harmos-domain = { path = "../../crates/harmos-domain", default-features = false 
 harmos-packaging = { path = "../../tools/packaging", default-features = false }
 harmos = { path = "../../sdk/rust" }
 harmos-storage = { path = "../../crates/harmos-storage" }
+harmos-query = { path = "../../crates/harmos-query" }
 
 # Git
 

@@ -18,11 +18,10 @@
 // Local Imports
 use arrow_array::{Int64Array, RecordBatch};
 use arrow_schema::{DataType, Field, Schema};
-use harmos_storage::query::Coordinates;
-use harmos_storage::query::transform::{
-    FieldPath,
-    downsample::{Algorithm, Downsample},
-};
+use harmos_query::Coordinates;
+use harmos_query::transform::FieldPath;
+use harmos_query::transform::downsample::Algorithm;
+use harmos_query::transform::downsample::Downsample;
 use std::sync::Arc;
 
 /* === Tests === */

@@ -102,8 +102,10 @@ Portable messages support standard Rust maps with deterministic key ordering
 and bounded decoding, plus root optional payloads that preserve value presence. The [message guide](docs/product-guide.md)
 describes their repeated key/value entry representation.
 
-`harmos-storage/sqlite` adds an optional durable reference backend with bounded Arrow scans,
-ordered indexes, exact-frontier projections, grouped time buckets and atomic object updates.
+`harmos-storage` ships a process-lifetime memory backend, manager and backend contracts.
+A runtime selects memory storage automatically unless setup registers a product backend.
+`harmos-query` executes Arrow scans, transforms, time merges and reductions below storage;
+products register their own durable primary and recovery backends.
 See [Storage Interfaces](docs/storage.md) for native APIs, backend obligations, bounded pages and retained-cut query examples.
 Applications expose their own wire operations over private native storage.
 Applications can expose resumable unary file productions and bounded content ranges through product operations.
@@ -117,7 +119,8 @@ applications control collection. See [Performance](docs/product-guide.md#perform
 
 The [Schematic walkthrough](examples/schematic/cli/src/walkthrough.rs) covers
 editing, plugin validation, undo/redo and save/reopen. Its
-[storage adapter](examples/schematic/storage/) shows application-owned persistence.
+[document Save/Open](examples/schematic/app/src/document.rs) shows application-owned serialization,
+while its runtime stories use the public memory adapter.
 Its native plugin serves unary advice over gRPC; analysis and transfer streams run
 in the host. The guest uses SDK builders with `harmos/wasm` and exposes unary transfer endpoints under its `benchmark` feature
 for the [performance suites](docs/product-guide.md#performance).

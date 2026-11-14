@@ -31,7 +31,7 @@ pub(crate) async fn prepare(rows: usize) -> Mapped {
 }
 
 pub(crate) async fn scan(mapped: &Mapped, offset: usize, limit: usize) -> Vec<(f64, f64)> {
-    use harmos_storage::query::transform::{
+    use harmos_query::transform::{
         FieldPath, Transform,
         project::{Project, Projection},
     };

@@ -14,10 +14,13 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error::Error as StdError;
+use std::result::Result as StdResult;
 
 // Third Party Imports
 
 // Local Imports
+use harmos_query::{BackendFailure as QueryFailure, Error as QueryError};
 
 /* === Constants === */
 
@@ -25,7 +28,7 @@
 
 /* === Type Aliases === */
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, Error>;
 
 /* === Structs === */
 
@@ -103,11 +106,41 @@ impl Error {
         }
     }
 
-    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl StdError + Send + Sync + 'static) -> Self {
         Self::Backend {
             operation,
             kind,
             source: Box::new(source),
+        }
+    }
+}
+
+impl From<QueryError> for Error {
+    fn from(error: QueryError) -> Self {
+        match error {
+            QueryError::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            QueryError::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
+            QueryError::Closing { domain } => Self::Closing { domain },
+            QueryError::NotReady { domain } => Self::NotReady { domain },
+            QueryError::Domain(error) => Self::Domain(error),
+            QueryError::Backend { operation, kind, source } => {
+                let source = match source.downcast::<Self>() {
+                    Ok(error) => return *error,
+                    Err(source) => source,
+                };
+                Self::Backend {
+                    operation,
+                    source,
+                    kind: match kind {
+                        QueryFailure::Transient => BackendFailure::Transient,
+                        QueryFailure::Permanent => BackendFailure::Permanent,
+                        QueryFailure::Corrupt => BackendFailure::Corrupt,
+                        QueryFailure::Conflict => BackendFailure::Conflict,
+                        QueryFailure::Unsupported => BackendFailure::Unsupported,
+                    },
+                }
+            }
+            other => Self::backend("execute query", BackendFailure::Permanent, other),
         }
     }
 }

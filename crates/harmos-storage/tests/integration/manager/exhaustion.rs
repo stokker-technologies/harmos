@@ -28,11 +28,11 @@ use super::waveforms;
 async fn oversized_batch_refused() {
     let mut settings = storage_settings();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(8192).unwrap();
-    let data = Arc::new(super::backend::Data::new(history()));
+    let data = Arc::new(super::backend::Backend::new(history()));
     let storage: StorageManager = StorageManager::new(
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(super::backend::Recovery::new(history())),
+            state: Arc::new(super::backend::RecoveryBackend::new(history())),
         },
         settings,
     )

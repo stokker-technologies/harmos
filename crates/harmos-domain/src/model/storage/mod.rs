@@ -25,6 +25,8 @@ pub mod mutations;
 pub mod objects;
 pub mod position;
 pub mod query;
+pub mod read_batch;
+mod schema_encoding;
 pub mod time;
 pub mod writes;
 
@@ -46,7 +48,8 @@ pub use position::{RecoveryPosition, StorageCursor, StoreHistory};
 pub use query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
 };
-pub use writes::DataBatch;
+pub use read_batch::{ReadBatch, ReadPages};
+pub use writes::{BackendSnapshot, DataBatch, ReadLimits, StorageSchema};
 
 /* === Imports === */
 

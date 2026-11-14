@@ -11,43 +11,25 @@
 
 /* === Modules === */
 
-mod accumulate;
+mod batches;
 pub mod columnar;
-mod execute;
 pub mod index;
 mod manager;
 mod object_schemas;
-mod order_stats;
-mod ordering;
 pub mod projection;
 
-pub mod quantiles;
 mod reader;
-mod reduction;
-mod source;
-mod spill;
-mod table;
-pub mod time_buckets;
-pub mod transform;
 mod typed;
 
 /* === Re-Exports === */
 
-#[cfg(feature = "testing")]
-pub use reduction::testing::Coordinates;
-#[cfg(feature = "testing")]
-pub use source::testing::PayloadDecoder;
-
-pub use accumulate::Accumulator;
 pub use harmos_domain::model::storage::query::{
     FileSelection, ObjectSelection, ObjectVersions, QueryCompletion, RecordSelection, RowSlice, SchemaSelection, Source, StreamSelection,
     scalar,
 };
-pub use reader::QueryOutput;
+
+pub use reader::QueryReader;
 pub(crate) use reader::schema_at;
-pub use reader::{Query, QueryArrow, QueryReader, QueryStep};
-pub use table::{Table, TableReader, TableWriter};
-pub use typed::{ObjectRead, ObjectReader, RecordRead, RecordReader, StreamRead, StreamReader};
 
 /* === Imports === */
 

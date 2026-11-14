@@ -23,14 +23,14 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Float64Array, RecordBatch, UInt32Array};
 use arrow_schema::{DataType, Field, Schema};
 use criterion::{BenchmarkId, Criterion, Throughput};
-use harmos_runtime::storage::query::transform::TransformExecution;
-use harmos_runtime::storage::query::transform::{
-    Transform,
-    aggregate::{Aggregate, Measure},
-    downsample::{Algorithm, Downsample},
-    histogram::Histogram,
-    project::Projection,
-};
+use harmos_query::transform::Transform;
+use harmos_query::transform::TransformExecution;
+use harmos_query::transform::aggregate::Aggregate;
+use harmos_query::transform::aggregate::Measure;
+use harmos_query::transform::downsample::Algorithm;
+use harmos_query::transform::downsample::Downsample;
+use harmos_query::transform::histogram::Histogram;
+use harmos_query::transform::project::Projection;
 
 // Local Imports
 

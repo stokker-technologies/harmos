@@ -226,7 +226,7 @@ where
     bytes.verify(policy.max_bytes.get()).map_err(Incompatible::unreadable)?;
     let reader = std::io::BufReader::new(bytes.reader().map_err(Incompatible::unreadable)?);
     let snapshot: Snapshot<A::State> = serde_json::from_reader(reader).map_err(Incompatible::unreadable)?;
-    if snapshot.schema != policy.schema || bytes.manifest().position.is_some_and(|position| snapshot.position != position) {
+    if snapshot.schema != policy.schema || snapshot.position != bytes.manifest().position {
         return Err(invalid());
     }
     for (kind, id, version) in &snapshot.definitions {

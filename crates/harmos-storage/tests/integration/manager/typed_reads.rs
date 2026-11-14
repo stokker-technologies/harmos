@@ -19,22 +19,31 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use super::backend::{Data, Recovery, history, storage_settings};
+use super::backend::Backend;
+use super::backend::RecoveryBackend;
+use super::backend::history;
+use super::backend::storage_settings;
 use super::waveforms::{self, Experiment, Sample, objects_catalog};
+use harmos_domain::model::storage::query::Query;
+use harmos_query::typed::ObjectRead;
+use harmos_query::typed::RecordRead;
 use harmos_storage::Error;
-use harmos_storage::Query;
+use harmos_storage::ObjectReceipt;
+use harmos_storage::ObjectVersion;
+use harmos_storage::StorageBackends;
+use harmos_storage::StorageManager;
+use harmos_storage::StorageSettings;
 use harmos_storage::query::{ObjectVersions, RecordSelection, RowSlice, Source};
-use harmos_storage::{ObjectRead, ObjectReceipt, ObjectVersion, RecordRead, StorageBackends, StorageManager, StorageSettings};
 
 /* === Private Functions === */
 
-async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Data>) {
-    let data = Arc::new(Data::with_catalog(objects_catalog(), history()));
+async fn manager(settings: StorageSettings) -> (StorageManager, Arc<Backend>) {
+    let data = Arc::new(Backend::with_catalog(objects_catalog(), history()));
     let storage = StorageManager::with_catalog(
         objects_catalog(),
         StorageBackends {
             primary: data.clone(),
-            state: Arc::new(Recovery::new(history())),
+            state: Arc::new(RecoveryBackend::new(history())),
         },
         settings,
     )
@@ -224,17 +233,18 @@ async fn unwritten_schema_empty() {
     drop(reader);
 
     // The Arrow Query Has No Schema To Answer, So It Still Refuses.
-    let mut query = storage
-        .query(Query {
-            at: at.clone(),
-            source: Source::Records(samples()),
-            transforms: Vec::new(),
-            slice: RowSlice::default(),
-        })
-        .await
-        .unwrap();
-    assert!(query.next().await.is_err());
-    drop(query);
+    assert!(
+        storage
+            .query(Query {
+                merge: None,
+                at: at.clone(),
+                source: Source::Records(samples()),
+                transforms: Vec::new(),
+                slice: RowSlice::default(),
+            })
+            .await
+            .is_err()
+    );
 
     let (storage, _) = manager(paged()).await;
     storage.write_schema(waveforms::schema(), waveforms::definition()).await.unwrap();

@@ -18,6 +18,7 @@
 // Local Imports
 use super::*;
 use harmos_runtime::Runtime;
+use harmos_runtime::storage::{ObjectCatalog, StorageManager};
 
 /* === Tests === */
 
@@ -1369,7 +1370,11 @@ async fn settled_stream_drain_keeps_idle_deadline() {
         )
     }
     let finished = Arc::new(tokio::sync::Notify::new());
+    let mut storage_settings = crate::storage::fixture::config();
+    storage_settings.transfer.chunk_bytes = Some(1024);
+    let storage = StorageManager::in_memory(ObjectCatalog::new(), storage_settings).unwrap();
     let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        setup.settings().storage(&storage);
         setup
             .resource::<tokio::sync::Notify>(finished.clone())
             .operation(buffered_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());

@@ -95,13 +95,6 @@ pub struct StorageResponseSettings {
     pub batch_bytes: NonZeroUsize,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StorageAccumulatorSettings {
-    // Maximum Retained Numeric Slot Bytes Per Accumulator; Zero Spills Immediately.
-    pub memory_bytes: usize,
-}
-
 /* === Enums === */
 
 /* === Traits === */
@@ -124,12 +117,6 @@ impl Default for StoragePolicy {
             file_session_timeout: Duration::from_secs(60),
             mutation_retention: Duration::from_secs(300),
         }
-    }
-}
-
-impl Default for StorageAccumulatorSettings {
-    fn default() -> Self {
-        Self { memory_bytes: 64 * 1024 }
     }
 }
 

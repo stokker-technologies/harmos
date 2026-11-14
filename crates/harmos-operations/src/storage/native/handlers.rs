@@ -441,7 +441,7 @@ impl NativeOperation for ListRows {
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
-        let page = super::pages::list(&context, request.source, request.at, request.transforms, request.page).await?;
+        let page = super::pages::list(&context, request.source, request.at, request.transforms, request.merge, request.page).await?;
         super::admission::read_response(
             &context,
             Self::Response {

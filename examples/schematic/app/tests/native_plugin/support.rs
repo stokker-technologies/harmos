@@ -44,7 +44,7 @@ use schematic_app::{app::Runtime, document::Document};
 
 pub async fn host(directory: &Path) -> Arc<Runtime> {
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
-    let document = Document::new(directory.join("schematic.json"));
+    let document = Document::new();
     let recordings = tempfile::tempdir().unwrap();
     let config = LaunchConfig {
         document: document.clone(),

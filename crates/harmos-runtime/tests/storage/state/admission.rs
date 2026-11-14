@@ -175,8 +175,9 @@ impl RecordProjection for Projection {
 /* === Private Functions === */
 
 // A Query Pins A Snapshot Through The Worker, Holding It At The Backend View Gate.
-fn gate(at: StorageCursor) -> harmos_runtime::storage::Query {
-    harmos_runtime::storage::Query {
+fn gate(at: StorageCursor) -> harmos_domain::model::storage::query::Query {
+    harmos_domain::model::storage::query::Query {
+        merge: None,
         at,
         source: harmos_runtime::storage::query::Source::Files(harmos_runtime::storage::query::FileSelection { scope: None, item: None }),
         transforms: Vec::new(),
@@ -233,8 +234,8 @@ async fn unrelated_backlog_skipped() {
 
 #[tokio::test]
 async fn journal_awaits_data() {
-    let data = Arc::new(Data::new(history()));
-    let state = Arc::new(Recovery::new(history()));
+    let data = Arc::new(Backend::new(history()));
+    let state = Arc::new(RecoveryBackend::new(history()));
     let policy = config();
     let storage: StorageManager = StorageManager::new(
         StorageBackends {

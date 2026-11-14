@@ -15,7 +15,9 @@ use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage as operations;
 use harmos_protocol::v1;
-use harmos_storage::query::{QueryOutput, RecordSelection, Source};
+use harmos_query::QueryOutput;
+use harmos_storage::query::RecordSelection;
+use harmos_storage::query::Source;
 use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
 use std::{
     num::{NonZeroU32, NonZeroUsize},
@@ -76,6 +78,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source_end: None,
     }));
     let selection = operations::ListRowsRequest {
+        merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
@@ -122,7 +125,11 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let mut current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest { at: None, ..selection.clone() })
+        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None,
+            at: None,
+            ..selection.clone()
+        })
         .await
         .unwrap();
     assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
@@ -132,7 +139,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
         for row in &current.rows {
             if let QueryOutput::Batch(bytes) = row {
-                durable_rows += harmos_storage::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
+                durable_rows += harmos_query::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
             }
         }
         if current.next_page_token.is_empty() {
@@ -142,6 +149,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
             .runtime
             .operations
             .call_native::<operations::ListRows>(operations::ListRowsRequest {
+                merge: None,
                 at: None,
                 page: Some(v1::PageRequest {
                     page_token: current.next_page_token,
@@ -156,6 +164,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
 
     // Replay The Native Continuation Without Changing Its Page.
     let request = operations::ListRowsRequest {
+        merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
         transforms: vec![],
@@ -169,6 +178,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         .runtime
         .operations
         .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None,
             page: request.page.clone(),
             ..selection.clone()
         })
@@ -209,7 +219,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         assert_eq!(response.resolved_at, Some(cut.clone()));
         for row in response.rows {
             if let QueryOutput::Batch(bytes) = row {
-                count += harmos_storage::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
+                count += harmos_query::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
             }
         }
         if response.next_page_token.is_empty() {
@@ -226,7 +236,11 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest { at: None, ..selection.clone() })
+        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            merge: None,
+            at: None,
+            ..selection.clone()
+        })
         .await
         .unwrap();
     assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, latest.sequence);
