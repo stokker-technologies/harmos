@@ -8,7 +8,7 @@ authorization policy and application services.
 
 ## Access
 
-`harmos.client.v1.access.Listener.Get/Set` reads and replaces the complete listener value:
+`harmos.host.v1.access.Listener.Get/Set` reads and replaces the complete listener value:
 enabled, socket endpoint and TLS certificate names. Pass the revision returned by
 Get to Set. A stale revision refuses with “get again and retry”. The reported bound
 endpoint includes the actual port when the configured socket uses port zero.
@@ -50,7 +50,7 @@ The gRPC manager retains and shuts down the access attachment.
 
 ## Status
 
-`harmos.client.v1.Status.Get` returns the supplied application name/version and stable host
+`harmos.host.v1.Status.Get` returns the supplied application name/version and stable host
 identifier, library version, runtime start time, availability and named health
 components. Status.Watch opens with the current status and follows changes; slow
 observers receive the latest coalesced status. Host time comes from the runtime clock.
@@ -62,7 +62,7 @@ changing its facts, and drop it to withdraw them. Component names must be unique
 Provider failure appears as unavailable health; diagnostics collection fails with
 the action named. A contributor never replaces the library's collection service.
 
-Logs and TraceEvents expose List/Watch in `harmos.client.v1.status`. Supply positive row
+Logs and TraceEvents expose List/Watch in `harmos.host.v1.status`. Supply positive row
 and byte bounds. List returns `resolved_at` and an optional continuation token;
 continue at that exact boundary even while new events arrive. Watch sends an empty
 opening boundary and then bounded batches strictly after its position. It refuses
