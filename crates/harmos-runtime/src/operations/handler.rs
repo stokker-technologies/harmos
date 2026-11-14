@@ -499,8 +499,8 @@ impl harmos_operations::execution::operations::instances::Instances for HostCont
             let operation = request.operation.clone();
             self.borrow().invoke_client(request).await.map_err(|source| {
                 use harmos_protocol::model::Classification;
-                let failure = match source.failure() {
-                    Some(failure) => Failure::from(&failure.clone().without_diagnostics()),
+                let failure = match source.operation_failure() {
+                    Some(failure) => Failure::from(&failure.without_diagnostics()),
                     None => Failure {
                         classification: if matches!(&source, Error::OperationUnauthorized { .. } | Error::InvalidInput { .. }) {
                             Classification::Refused as i32

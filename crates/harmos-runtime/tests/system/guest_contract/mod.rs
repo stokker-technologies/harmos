@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod caller_refusal;
 mod cancellation;
 mod dependencies;
 mod lifecycle;

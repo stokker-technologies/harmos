@@ -97,6 +97,8 @@ public sealed class Fixture
     }
     catch (PluginFailureException error)
     {
+      if (request.Value_ == ByteString.CopyFromUtf8("propagate"))
+        throw;
       return new Value { Value_ = error.Failure.ToByteString() };
     }
     throw new InvalidOperationException("Create Invocation: Client-Only Operation Was Admitted");

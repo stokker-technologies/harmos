@@ -1060,9 +1060,27 @@ root barrel; generated client and plugin resources keep their existing call styl
 request content as arguments, owned transport context, and a single response field
 returned as the payload. Multi-field replies retain their complete response type.
 Python keeps wire modules under `_wire/model`, `_wire/host` and `_wire/plugin`.
-Rust protocol modules are `model`, `host` and `plugin`. ALL payloads are exported
-through both Rust/Python audience barrels, through the C++ shared root, and through
+Rust protocol modules are `model`, `host` and `plugin`; SDK wire modules remain crate-private. ALL payloads are exported
+through the Rust/Python and C++ shared roots, and through
 C# `Harmos.Clients` (the context uses that same public payload type).
+
+Repository checks reject wire packages and version namespaces in public C++ headers,
+Python modules, stubs and exports, Rust wire module declarations and SDK guides.
+The allow-list is internal generated directories (`detail`, `_generated`, `_wire`),
+canonical gRPC method paths, and protocol documentation that maps packages (`proto/**/*.md`
+and this architecture guide). Markdown link destinations may name protocol source files.
+Generated Python export inventories also reject duplicate public homes.
+
+Reflection remains optional and off by default; `Operations` is supported discovery.
+When reflection is enabled, it merges the reachable message graphs from operation
+contracts before registering each served service once. Shared descriptor files are
+partial graphs, not conflicting complete registrations. Python generators relocate
+imports and message module metadata without changing canonical gRPC service identities.
+
+Wrong-caller admission uses one failure constructor in `harmos-operations/src/failure.rs`:
+`REFUSED`, code `-32604`, action `Call`, the refused operation, and a message naming both.
+Native gRPC, child replies, samples, guest imports and nested invocation failures
+preserve that record; the gRPC status is PermissionDenied, including after nesting.
 
 ### Product Composition and Narrowing
 
@@ -1104,7 +1122,24 @@ exists. A product's own wire services also declare caller options. Consumers mig
 product packages to model/host/plugin with the next pin. Schematic already uses
 its own executor packages, composition file and generated application client.
 
+Every composition generator projects both audiences from the same effective method
+table after narrowing. Beside the requested client file it emits `plugin.rs`,
+`plugin.py`, `Plugin.g.cs`, or `plugin.hpp` and `plugin.cpp`. The product's generated
+`PluginContext` binds an SDK invocation context and exposes its narrowed host root;
+it never inherits the unrestricted SDK host root. C++ products compile the generated
+implementation with their SDK. The shared SDK fixture proves exclusions in both
+directions, including a Rust compile refusal and C++ constrained lookup.
+
+Python products place generated protocol modules below `application._wire.<original package>`
+for a public package named `application`. Rewrite Python imports and message module metadata
+to that private prefix while retaining canonical descriptor packages and gRPC method paths.
+Expose payloads through the product's public barrels, without exporting the wire modules.
+
 ### Native Type Ownership
+
+Native revision hashing retains the protocol domain separators `harmos.stream.v1\0`
+for streams and `harmos.record.v1\0` for records. Their remaining inputs and byte
+encoding are described in the product guide; public SDK symbols do not carry these versions.
 
 Storage remains Private and in-process. Products own typed file, upload, query,
 record and object wire operations over those native calls. Model FileReference,

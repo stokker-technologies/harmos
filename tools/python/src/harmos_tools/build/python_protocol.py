@@ -91,7 +91,10 @@ def generate(output: Path) -> None:
         for face in ("model", "host", "plugin"):
             source = source.replace(f"from harmos.{face}", f"from harmos._wire.{face}")
             source = source.replace(f"import harmos.{face}.", f"import harmos._wire.{face}.")
-            source = source.replace(f"'harmos.{face}.", f"'harmos._wire.{face}.")
+            source = source.replace(
+                f"BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.{face}.",
+                f"BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.{face}.",
+            )
         path.write_text(source, encoding="utf-8", newline="\n")
     # Generated Convenience Calls Require the Experimental Submodule Explicitly.
     for name in GENERATED:
@@ -146,7 +149,10 @@ def generate_client_fixture(output: Path) -> None:
             if not path.is_file() or not path.name.endswith((".py", ".pyi")):
                 continue
             source = path.read_text(encoding="utf-8").replace("from application.", "from tests.fixtures.client._wire.application.")
-            source = source.replace("'application.", "'tests.fixtures.client._wire.application.")
+            source = source.replace(
+                "BuildTopDescriptorsAndMessages(DESCRIPTOR, 'application.",
+                "BuildTopDescriptorsAndMessages(DESCRIPTOR, 'tests.fixtures.client._wire.application.",
+            )
             source = source.replace("from harmos.model.", "from harmos._wire.model.")
             path.write_text(source, encoding="utf-8", newline="\n")
         compose(

@@ -88,6 +88,18 @@ use prost_types::Duration;
 use tonic::Status as RpcStatus;
 use tonic::codegen::http::uri::PathAndQuery;
 #[derive(Default)]
+pub struct JobsStartOptions {
+    pub context: CallOptions,
+}
+#[derive(Default)]
+pub struct JobsProgressWatchOptions {
+    pub context: CallOptions,
+}
+#[derive(Default)]
+pub struct PluginsAnnotationsGetOptions {
+    pub context: CallOptions,
+}
+#[derive(Default)]
 pub struct AccessCertificatesCreateOptions {
     pub context: CallOptions,
 }
@@ -137,16 +149,6 @@ pub struct OperationsGetOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
-pub struct PluginsSettingsListOptions {
-    pub at: Option<ReadCut>,
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct PluginsSettingsSetOptions {
-    pub request_id: Option<String>,
-    pub context: CallOptions,
-}
-#[derive(Default)]
 pub struct PluginsGetOptions {
     pub at: Option<ReadCut>,
     pub context: CallOptions,
@@ -185,8 +187,27 @@ pub struct PluginsReplaceOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
+pub struct PluginsSettingsListOptions {
+    pub at: Option<ReadCut>,
+    pub context: CallOptions,
+}
+#[derive(Default)]
+pub struct PluginsSettingsSetOptions {
+    pub request_id: Option<String>,
+    pub context: CallOptions,
+}
+#[derive(Default)]
 pub struct SchemasListOptions {
     pub schema: Option<String>,
+    pub context: CallOptions,
+}
+#[derive(Default)]
+pub struct StatusGetOptions {
+    pub context: CallOptions,
+}
+#[derive(Default)]
+pub struct StatusWatchOptions {
+    pub at: Option<Position>,
     pub context: CallOptions,
 }
 #[derive(Default)]
@@ -216,33 +237,12 @@ pub struct StatusTraceEventsWatchOptions {
     pub context: CallOptions,
 }
 #[derive(Default)]
-pub struct StatusGetOptions {
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct StatusWatchOptions {
-    pub at: Option<Position>,
-    pub context: CallOptions,
-}
-#[derive(Default)]
 pub struct StreamsListOptions {
     pub schema: Option<String>,
     pub context: CallOptions,
 }
 #[derive(Default)]
 pub struct TimeSleepOptions {
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct JobsStartOptions {
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct JobsProgressWatchOptions {
-    pub context: CallOptions,
-}
-#[derive(Default)]
-pub struct PluginsAnnotationsGetOptions {
     pub context: CallOptions,
 }
 #[derive(Clone)]

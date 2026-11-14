@@ -151,6 +151,14 @@ def main() -> None:
             narrow_callers(library, composition.get("callers", {}))
         methods = table(library) + table(fixture)
         cpp(ROOT, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client)
+        from .resource_roots import cpp_host
+
+        cpp_host(
+            ROOT,
+            [method for method in methods if method["face"] == "context"],
+            namespace="fixture",
+            target=options.fixture_client.with_name("plugin.hpp"),
+        )
         return
     selected = options.preset or ("release" if options.profile == "release" else "tests")
     directory = ROOT / "target/cpp" / selected

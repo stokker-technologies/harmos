@@ -114,6 +114,18 @@ pub enum CodecError {
 /* === Implementations === */
 
 impl Failure {
+    /// One Wrong-Caller Failure for Every Carrier.
+    pub fn wrong_caller(operation: &str) -> Self {
+        Self::from(WireFailure {
+            classification: harmos_protocol::model::Classification::Refused as i32,
+            code: crate::refusal::WRONG_CALLER.to_string(),
+            action: "Call".into(),
+            operation: operation.into(),
+            message: format!("Call {operation}: caller is not allowed"),
+            ..Default::default()
+        })
+    }
+
     pub fn new(code: operations::FailureKind, cause: impl Into<String>) -> Self {
         Self(Box::new(Record {
             code,

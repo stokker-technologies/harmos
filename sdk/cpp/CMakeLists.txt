@@ -36,7 +36,7 @@ foreach(protocol IN LISTS HARMOS_PROTOCOLS)
     string(REPLACE ".proto" ".grpc.pb.h" service_header "${protocol}")
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/${message_header}"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/${service_header}"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/harmos/_wire/${directory}")
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/harmos/detail/protocol/${directory}")
 endforeach()
 configure_package_config_file(cmake/HarmosConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake"

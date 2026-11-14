@@ -383,14 +383,19 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
     binding, payload and fingerprint. The reference-host fixture registers one
     PLUGINS-only host operation and records invocations; direct and dynamic client
     dispatch MUST refuse without changing that record. The refusal MUST identify
-    the operation and the disallowed caller. The library currently has no such
+    the operation and the disallowed caller. Every carrier MUST retain classification
+    REFUSED, code `-32604` and action `Call`; the message names the action and operation.
+    The library currently has no such
     host operation; the fixture supplies it rather than adding a library twin.
 34. **Plugin Caller Refusal.** The host MUST refuse a plugin child call to a
     CLIENTS-only host operation before invoking its handler, even with a matching
     declared requirement and fingerprint. The fixture calls
     `harmos.host.v1.Invocations/Create` from Invoke and an unanswered Samples tick;
     both MUST refuse without creating an invocation. The returned failure retains
-    its classification and identifies the operation and disallowed caller. Other
+    classification REFUSED, code `-32604`, action `Call` and the refused operation.
+    The message names the action and operation. This applies to sidecar child calls,
+    Samples ticks, WebAssembly imports and nested Invocations.Create calls: no wrapper
+    may turn the denial into INTERNAL or PERMANENT. Other
     calls on the connection MUST remain usable. Product narrowing of ALL to one
     caller MUST enforce the same refusal on the excluded direction.
 

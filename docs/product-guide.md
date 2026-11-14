@@ -60,7 +60,7 @@ Original refusal codes, detail maps and diagnostics remain in the report. Displa
 renders readable root prose rather than Rust Debug output.
 
 Native and plugin stream revisions are derived automatically in the Rust core when a declaration
-becomes a runtime definition. The input is `harmos.stream.v1\0`, the window as a
+becomes a runtime definition. The input is the [stream identity domain separator](architecture.md#native-type-ownership), the window as a
 little-endian `u64`, and the canonical row-schema encoding in
 `crates/harmos-domain/src/schema/identity.rs`. SHA-256's first four bytes are read
 as a little-endian `u32`, with zero mapped to one. Field order, names, wire tags,
@@ -142,7 +142,7 @@ value; `Application` and operation managers carry no lane type parameter.
 
 Typed record and transaction entries compute schema-only revisions through
 `harmos_domain::schema::identity::revision(schema)`. Its input is
-`harmos.record.v1\0` followed by the same canonical graph encoding; SHA-256's
+the [record identity domain separator](architecture.md#native-type-ownership) followed by the same canonical graph encoding; SHA-256's
 first four bytes become a little-endian nonzero `u32`. Presentation labels,
 Rust module paths and graph indices do not participate. Entry values own stored identities and revisions; use `entry.definition()`.
 Record rows select an entry value, which owns their stable identity:
@@ -313,11 +313,11 @@ Use `Plugin`, `Operation`, `Stream` and `Observer` builder values and finish a p
 with `serve()`. Messages derive protobuf descriptors with `#[derive(Message)]`.
 
 Host embedders depend explicitly on `harmos-runtime`. Managed and remote
-`harmos.plugin.v1` placement is always available on native targets.
+the plugin protocol placement is always available on native targets.
 
 | Runtime Feature | Enables |
 | --- | --- |
-| `plugin-guest` | Wasmtime guest hosting with `harmos.plugin.v1` lifecycle and child-control messages. |
+| `plugin-guest` | Wasmtime guest hosting with the plugin protocol lifecycle and child-control messages. |
 | `grpc` | External host gRPC listener, reflection and TLS; enabled by default. |
 | `simulation` | Deterministic runtime simulation. |
 
@@ -368,7 +368,7 @@ checks run both backends from an isolated extraction. Examples and fixtures rema
 
 Stable releases attach these downloads:
 
-- `harmos-proto-<version>.zip`: definitions under `harmos/model/v1/`, `harmos/host/v1/` and `harmos/plugin/v1/`, with the plugin behaviour specification.
+- `harmos-proto-<version>.zip`: the model, host and plugin protocol definitions, with the plugin behaviour specification.
 - `harmos-conformance-<version>-<platform>.zip|tar.gz`: reference host and reference plugin;
   platform names are Rust target triples. Windows uses ZIP; Linux uses tar.gz.
 - `harmos-compliance-<version>.zip`: locked Cargo source SBOMs under `crates/<triple>/`,
@@ -442,7 +442,7 @@ from the moment it starts until the instance stops or settles. Plugins reach the
 so they must declare them as requirements.
 
 Register `harmos_operations::host_catalog()` on a chosen lane to serve typed
-`harmos.host.v1.Operations.List/Get`, `Schemas.List` and `Streams.List`.
+`client.operations.list/get`, `client.schemas.list` and `client.streams.list`.
 Operations returns the complete admitted registry, including application operations
 registered with `setup.operation(...)` or `setup.catalog(...)`. Each entry contains
 its contract, request/response descriptors, provider, generation, operation policy,
@@ -951,8 +951,9 @@ Ok(summary.into())
 Host applications can register Prost-generated request, response and stream messages directly
 with `operations::ProtobufOperation` and `Registration::new(lane).protobuf::<Declaration>()`.
 Host lifecycle, clock and discovery declarations use the protocol crate's generated messages.
-Storage status, file mutation, read/capture/follow and directory operations also accept generated requests;
-use `Manager::call_protobuf` for unary calls or `Manager::submit_protobuf` for native streams.
+Storage remains private and in-process. Product operations own generated payloads over
+native storage calls. Use `Manager::call_protobuf` for unary host operations or
+`Manager::submit_protobuf` for their declared streams.
 `Manager::download_protobuf` provides typed generated output items through `next` and a generated
 completion through `join`. Plugin-scoped callers use the same helper with their original scope.
 Supply the caller's preparation budget and stream limits in operation settings and submission.
@@ -967,10 +968,10 @@ The storage schema validator checks the graph before mutation admission.
 
 
 The declaration's `GRPC` is optional; Protected and Private native operations leave it `None`.
+See [Protocol Mapping](architecture.md#protocol-boundary-definition-and-consumer-migration) for executor identities.
 Declare typed callees in `OPERATIONS` and invoke them through the execution context:
 
 ```rust
-const GRPC: Option<Grpc> = Some(Grpc::new("example.host.v1", "Operations", "Run"));
 const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<Callee>()];
 // Inside the handler:
 let response = context.call_protobuf::<Callee>(request).await?;
@@ -988,9 +989,9 @@ Portable projection machinery serves native stored message values.
 `operations.submit_encoded` and `call_encoded` accept and return protobuf payloads.
 Use `call_protobuf`, `download_protobuf`, `upload_protobuf` or `exchange_protobuf` for
 typed native declarations. Assignment catalogs use the generated
-`harmos.plugin.v1.OperationAssignments` messages, with frozen identity validation.
+`OperationAssignments` messages, with frozen identity validation.
 
-Guest commands, answers and child controls use authoritative `harmos.plugin.v1` protobuf
+Guest commands, answers and child controls use authoritative the plugin protocol protobuf
 messages. Guests call application-owned publication and storage contracts;
 Harmos storage operations stay private and in-process. Fingerprints, provider
 generations and host grants remain checked. Stored data encoding and schema
@@ -1158,7 +1159,7 @@ this owner for both plugin backends.
 Use the [Plugin Manager](plugin-manager.md) for persistent entries, verified
 bundle installation and client management; the attachment API below owns each activation.
 
-From `harmos-runtime`, attach a `harmos.host.v1` endpoint with
+From `harmos-runtime`, attach a the host protocol endpoint with
 `runtime.attach_grpc(placement, settings).await`. The types live in
 `harmos_runtime::plugin::grpc`. `Placement::Managed(Managed { executable, arguments,
 environment })` starts an executable, hashes its bytes with SHA-256, reads its
@@ -1483,7 +1484,7 @@ and ranged archive reads.
 
 ## Reported Plugin Declarations
 
-Plugins report `harmos.model.v1.Declarations` through `InstanceGetResponse.declarations`,
+Plugins report `Declarations` through `InstanceGetResponse.declarations`,
 `GuestRegistration.declarations` and `PluginDescription.declarations`. Inspect them
 with Rust/Python/C++ `plugin.declarations()` or C# `plugin.Declarations()`. Consumers
 regenerate bindings and migrate these message, field and builder names when pinning

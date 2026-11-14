@@ -34,7 +34,8 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
         "${PROJECT_SOURCE_DIR}/../../crates/harmos-protocol/src/descriptors.bin"
     VERBATIM)
 add_executable(harmos-cpp-tests unit/catalog.cpp unit/client_root.cpp unit/client_call_context.cpp unit/samples.cpp
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp")
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp" "${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.cpp")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.cpp" PROPERTIES GENERATED TRUE)
 target_include_directories(harmos-cpp-tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_include_directories(harmos-cpp-tests PRIVATE "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/examples/conformance")
 target_link_libraries(harmos-cpp-tests PRIVATE Harmos::Cpp harmos_client_fixture harmos_conformance_protocol Catch2::Catch2)

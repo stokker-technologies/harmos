@@ -163,6 +163,7 @@ pub fn harmos_register() -> Registration {
         .requires::<ProviderEchoOperation>()
         .requires::<ReadOperation>()
         .requires::<PublishProgress>()
+        .requires_host(harmos::plugin::HostOperation::TimeGet)
         .stream(Stream::<Echoed>::new("progress"));
     Registration::new(plugin)
         .capacity(2)
@@ -238,6 +239,9 @@ async fn progress(context: &Context, value: &str) -> Result<()> {
         .await
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
+    if request.say == "caller-refusal" {
+        context.host().time.get().await?;
+    }
     if let Some(say) = request.say.strip_prefix("local:") {
         return context.call(LocalEcho { say: say.into() }).await;
     }

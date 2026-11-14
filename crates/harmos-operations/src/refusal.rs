@@ -32,6 +32,8 @@ pub const UNKNOWN: i64 = -32_601;
 
 pub const UNREADABLE: i64 = -32_602;
 
+pub const WRONG_CALLER: i64 = -32_604;
+
 /* === Macros === */
 
 /* === Type Aliases === */

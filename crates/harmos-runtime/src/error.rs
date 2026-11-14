@@ -309,6 +309,21 @@ impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
 }
 
 impl<E> Error<E> {
+    pub(crate) fn operation_failure(&self) -> Option<harmos_operations::Failure> {
+        if let Some(failure) = self.failure() {
+            return Some(failure.clone());
+        }
+        match self {
+            Self::OperationUnauthorized { operation, .. } => Some(harmos_operations::Failure::wrong_caller(operation)),
+            Self::OperationFailed { source, .. } | Self::TaskFailed { source, .. } => operation_failure(source.as_ref()),
+            Self::OperationFinalization { outcome, source, .. } => {
+                outcome.as_deref().and_then(Error::operation_failure).or_else(|| source.operation_failure())
+            }
+            Self::OperationSettlement { source } => source.operation_failure(),
+            _ => None,
+        }
+    }
+
     // The structured failure this error carries from a plugin, with its cause
     // written once at the origin and the operation frame the host added.
     pub fn failure(&self) -> Option<&harmos_operations::Failure> {
@@ -343,6 +358,29 @@ impl<E> From<QueryError> for Error<E> {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn operation_failure(mut source: &(dyn std::error::Error + 'static)) -> Option<harmos_operations::Failure> {
+    use prost::Message;
+    loop {
+        if let Some(error) = source.downcast_ref::<Error>() {
+            return error.operation_failure();
+        }
+        #[cfg(feature = "grpc")]
+        if let Some(status) = source.downcast_ref::<tonic::Status>()
+            && !status.details().is_empty()
+        {
+            return harmos_protocol::model::Failure::decode(status.details())
+                .ok()
+                .map(Into::into)
+                .or_else(|| harmos_operations::Failure::decode(status.details()).ok());
+        }
+        if let Some(harmos_operations::execution::ServingError::Native(error)) = source.downcast_ref() {
+            source = error.as_ref();
+            continue;
+        }
+        source = source.source()?;
+    }
+}
 
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.

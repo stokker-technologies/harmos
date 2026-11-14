@@ -281,6 +281,11 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo focused check --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
 
+[tasks."build:rust:focused"]
+hide = true
+description = "Compile a Focused Rust Selection"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo focused"
+
 [tasks."build:rust:tests"]
 hide = true
 description = "Build the Shared Test Archive and Fixtures"

@@ -22,7 +22,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
 from harmos_tools.build.resource_roots import compose, table
-from harmos_tools.source.protocol import caller_options, narrow_callers
+from harmos_tools.source.protocol import caller_options, check_public_surfaces, narrow_callers
 
 # Type Checking Imports
 
@@ -107,6 +107,23 @@ class ProtocolCallers(unittest.TestCase):
             methods = {node.name for node in resource.body if isinstance(node, ast.AsyncFunctionDef)}
             self.assertNotIn("get", methods)
             self.assertIn("sleep", methods)
+            plugin = ast.parse(output.with_name("plugin.py").read_text(encoding="utf-8"))
+            resource = next(node for node in plugin.body if isinstance(node, ast.ClassDef) and node.name == "HostTimeResource")
+            self.assertIn("get", {node.name for node in resource.body if isinstance(node, ast.AsyncFunctionDef)})
+
+    def test_public_surface_check_rejects_wire_imports_and_allows_internal_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "README.md").write_text("# SDK\n", encoding="utf-8")
+            headers = root / "sdk/cpp/include/harmos"
+            (headers / "detail").mkdir(parents=True)
+            (headers / "detail/types.hpp").write_text("using Value = ::harmos::model::v1::Value;\n", encoding="utf-8")
+            public = headers / "types.hpp"
+            public.write_text('#include "detail/types.hpp"\n', encoding="utf-8")
+            check_public_surfaces(root)
+            public.write_text("using Value = ::harmos::model::v1::Value;\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                check_public_surfaces(root)
 
 
 # === Private Functions === #

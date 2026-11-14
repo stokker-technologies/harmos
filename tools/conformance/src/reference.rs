@@ -210,7 +210,12 @@ async fn invoke(
             else {
                 return Err(Status::invalid_argument("Invoke Client Operation: Expected Caller Refusal"));
             };
-            response::Result::Payload(fixture::payload(&failure.encode_to_vec()))
+            let value = fixture::Value::decode(request.payload.as_slice()).map_err(|error| Status::invalid_argument(error.to_string()))?;
+            if value.value == b"propagate" {
+                response::Result::Failure(failure)
+            } else {
+                response::Result::Payload(fixture::payload(&failure.encode_to_vec()))
+            }
         }
         "conformance.settings_read" => {
             send_child(output, 1, "harmos.host.v1.plugins.Settings/List", Vec::new()).await?;

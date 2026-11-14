@@ -1,6 +1,6 @@
 // @generated from protocol descriptors; do not edit.
 #pragma once
-#include "client_wire.hpp"
+#include "detail/client.hpp"
 #include "harmos/client_transport.hpp"
 #include "harmos/messages.hpp"
 namespace harmos {

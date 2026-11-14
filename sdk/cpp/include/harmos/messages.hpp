@@ -1,6 +1,6 @@
 // @generated from protocol descriptors; do not edit.
 #pragma once
-#include "detail/messages_wire.hpp"
+#include "detail/messages.hpp"
 namespace harmos {
 using Callers = ::harmos::detail::SharedCallers;
 inline constexpr auto CALLERS_UNSPECIFIED = ::harmos::detail::SharedCALLERS_UNSPECIFIED;

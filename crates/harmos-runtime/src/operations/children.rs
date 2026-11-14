@@ -187,6 +187,13 @@ pub(crate) async fn lifecycle(invocation: EncodedInvocation, mut cancelled: ones
 }
 
 pub(crate) fn refused(error: Error) -> Refusal {
+    if let Some(failure) = error.operation_failure() {
+        let failure = match &error {
+            Error::OperationFailed { operation, .. } => failure.in_operation(operation.as_str()),
+            _ => failure,
+        };
+        return Refusal::failed(failure.refusal_code().unwrap_or(harmos_operations::FAILED), failure);
+    }
     match error {
         Error::OperationCaller { source } => source.into_refusal(),
         Error::OperationFailed { ref operation, ref source } => {
@@ -205,7 +212,7 @@ pub(crate) fn refused(error: Error) -> Refusal {
             let failure = failure.in_operation(operation.as_str());
             Refusal::failed(harmos_operations::FAILED, failure)
         }
-        Error::OperationUnauthorized { .. } | Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
+        Error::OperationLaneCycle { .. } => Refusal::new(-32_604, error),
         Error::NotRegistered { .. } => Refusal::new(harmos_operations::UNKNOWN, error),
         Error::OperationPayload { .. } => Refusal::new(harmos_operations::UNREADABLE, error),
         Error::OperationRefused(crate::Refusal::TimedOut { .. }) => Refusal::new(-32_607, error),
@@ -243,3 +250,22 @@ fn unknown(instance: u64) -> Refusal {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn child_refusal_preserves_classification_code_and_operation_frame() {
+        let failure = harmos_operations::Failure::new(crate::operations::FailureKind::Transient, "provider unavailable");
+        let source = Refusal::failed(73, failure);
+        let error = Error::OperationFailed {
+            operation: "provider.read".into(),
+            source: Arc::new(source),
+        };
+        let refusal = refused(error);
+        assert_eq!(refusal.code(), 73);
+        assert_eq!(refusal.failure().code(), crate::operations::FailureKind::Transient);
+        assert_eq!(refusal.failure().context().operation(), Some("provider.read"));
+    }
+}

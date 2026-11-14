@@ -1,5 +1,37 @@
 ## ADDED Requirements
 
+### Requirement: Effective Caller Surfaces
+Each composition generator SHALL project client and plugin context roots from the same effective callers after narrowing, in Rust, Python, C# and C++.
+
+#### Scenario: A Product Narrows a Shared Operation
+- **WHEN** composition narrows an ALL host operation to CLIENTS or PLUGINS
+- **THEN** the excluded generated root cannot resolve or compile that call, while the admitted root retains it
+
+### Requirement: Public SDK Type Ownership
+Wire modules SHALL remain internal and each payload SHALL have one public barrel path. Repository checks SHALL reject wire packages and version namespaces in public headers, stubs, exports and guides, allowing internal generation, gRPC method paths and protocol package mapping documentation.
+
+#### Scenario: A Consumer Uses a Public SDK Entry Point
+- **WHEN** a consumer imports a public SDK module or includes a public C++ header
+- **THEN** its signatures name public payloads without requiring a wire namespace or version
+
+### Requirement: Canonical Plugin Service Identity
+Every SDK plugin SHALL register its canonical gRPC service identity independently of the generated source module layout.
+
+#### Scenario: Conformance Calls the Plugin by Its Canonical Path
+- **WHEN** the conformance host calls `/harmos.plugin.v1.Instance/Get` directly
+- **THEN** every SDK plugin returns its declarations
+
+### Requirement: One Wrong-Caller Failure
+Wrong-caller admission SHALL return classification REFUSED, code `-32604`, action `Call` and the refused operation across gRPC, sidecar child replies, samples, guest imports and nested invocations. The message SHALL name the action and operation.
+
+#### Scenario: An Invocation Forwards a Denied Child Call
+- **WHEN** a client invocation runs an operation whose child call has the wrong caller
+- **THEN** the original refusal kind, code, action and operation survive nesting without INTERNAL or PERMANENT reclassification
+
+#### Scenario: A Guest Calls an Excluded Host Operation
+- **WHEN** a WebAssembly import calls a host operation narrowed to CLIENTS
+- **THEN** the host returns the same wrong-caller failure and the guest remains usable
+
 ### Requirement: Host-Free Product SDK
 The `harmos` crate at `sdk/rust` SHALL expose plugin authoring and client APIs through its prelude with only protocol as a product dependency; host embedding SHALL use `harmos-runtime`.
 
@@ -29,7 +61,7 @@ Harmos domain SHALL retain only non-wire native state/recovery, encoding and sto
 - **THEN** operations has no runtime feature and domain contains no duplicate wire models
 
 ### Requirement: One Sidecar Protocol
-gRPC with the `harmos.v1` package SHALL be the only sidecar protocol, defined by checked-in
+gRPC with model, host and plugin executor packages SHALL be the only sidecar protocol, defined by checked-in
 `.proto` files that need no Cargo to consume.
 
 #### Scenario: Old Wire Removed

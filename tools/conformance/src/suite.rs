@@ -143,20 +143,25 @@ pub async fn run(address: &str, managed: bool) -> Result<Vec<Case>> {
 
 async fn connect(address: &str) -> Result<(Client, InstanceGetResponse)> {
     let maximum = harmos_protocol::transfer::default_message_bytes().get();
-    let mut client = Client::connect(address.to_owned()).await?.max_decoding_message_size(maximum).max_encoding_message_size(maximum);
-    let description = describe(&mut client).await?;
-    Ok((client, description))
-}
-
-async fn describe(client: &mut Client) -> Result<InstanceGetResponse> {
-    Ok(client
-        .get(InstanceGetRequest {
-            revision: 1,
-            host: "conformance_host".into(),
-            host_version: "1.0.0".into(),
-        })
+    let channel =
+        tonic::transport::Endpoint::from_shared(address.to_owned()).map_err(|error| Error::Invalid(error.to_string()))?.connect().await?;
+    // Call the Canonical Identity Independently of Each SDK's Generated Stub.
+    let mut canonical = tonic::client::Grpc::new(channel.clone()).max_decoding_message_size(maximum).max_encoding_message_size(maximum);
+    canonical.ready().await.map_err(|error| Error::Invalid(error.to_string()))?;
+    let description = canonical
+        .unary(
+            tonic::Request::new(InstanceGetRequest {
+                revision: 1,
+                host: "conformance_host".into(),
+                host_version: "1.0.0".into(),
+            }),
+            tonic::codegen::http::uri::PathAndQuery::from_static("/harmos.plugin.v1.Instance/Get"),
+            tonic_prost::ProstCodec::<InstanceGetRequest, InstanceGetResponse>::default(),
+        )
         .await?
-        .into_inner())
+        .into_inner();
+    let client = Client::new(channel).max_decoding_message_size(maximum).max_encoding_message_size(maximum);
+    Ok((client, description))
 }
 
 fn require(condition: bool, message: &str) -> Result<()> {

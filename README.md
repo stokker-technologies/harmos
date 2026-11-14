@@ -88,7 +88,7 @@ Plugin and client authors depend on `harmos`: import Client and shared messages 
 `harmos::plugin`.
 Its protobuf messages, plugin builders and generated-contract clients compile without host code.
 Use generated resource calls such as `client.operations.list().await?`. Products
-generate their own typed client from application descriptors and composition; see
+generate their client and plugin context from application descriptors and composition; see
 the [Schematic client](examples/schematic/protocol/examples/client.rs). The separate
 [Rust client example](sdk/rust/examples/client.rs) discovers and invokes an operation dynamically.
 The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default

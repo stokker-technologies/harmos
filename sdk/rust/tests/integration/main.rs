@@ -37,6 +37,9 @@ use host as wire;
 mod composed_resources {
     include!("../fixtures/client/resources.rs");
 }
+pub mod composed_plugin {
+    include!("../fixtures/client/plugin.rs");
+}
 pub mod client {
     pub use super::composed_resources::*;
     include!("../fixtures/client/client_types.rs");
