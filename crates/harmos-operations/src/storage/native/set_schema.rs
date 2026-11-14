@@ -65,15 +65,15 @@ impl NativeOperation for SetSchema {
                 });
             };
             let schema = super::requests::SchemaInput {
-                key: Some(key.clone().into()),
-                graph: Some(graph.clone().into()),
+                key: Some(key.clone()),
+                graph: Some(graph.clone()),
             };
             let position = storage.set_schema_once(&mutation, key, graph, expected).await?;
             let revision = harmos_protocol::v1::Position::from(position.clone()).encode_to_vec();
             Ok(Self::Response {
                 schema: Some(schema),
                 revision,
-                receipt: Some(super::transfers::receipt(&mutation.into(), Some(position))),
+                receipt: Some(super::transfers::receipt(&mutation, Some(position))),
             })
         }
         .await;

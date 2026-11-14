@@ -36,8 +36,8 @@ impl NativeOperation for DeleteFile {
             let file: harmos_storage::StagedFile = request.file.ok_or(crate::Error::InvalidInput { field: "file", reason: "required" })?;
             let file = storage.delete_file_once(&mutation, &file).await?;
             Ok(Self::Response {
-                file: Some(file.into()),
-                receipt: Some(super::transfers::receipt(&mutation.into(), None)),
+                file: Some(file),
+                receipt: Some(super::transfers::receipt(&mutation, None)),
             })
         }
         .await;

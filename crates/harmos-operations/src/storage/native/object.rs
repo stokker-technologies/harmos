@@ -57,7 +57,7 @@ pub(super) async fn get(
             version: harmos_storage::ObjectVersion::Latest,
         };
         let selected = read.get_object(&point).await?;
-        let (value, revision) = selected.map_or((None, vec![]), |entry| (Some(entry.value.into()), revision(entry.version)));
+        let (value, revision) = selected.map_or((None, vec![]), |entry| (Some(entry.value), revision(entry.version)));
         Ok((value, revision, read.cut().clone()))
     }
     .await;
@@ -117,7 +117,7 @@ pub(super) async fn set(
         let outcome = storage.compare_exchange_value_once(&identity, expected, value.clone(), graph).await?;
         Ok(match outcome {
             harmos_storage::CompareExchange::Applied(applied) => SetOutcome::Applied(
-                Box::new(value.into()),
+                Box::new(value),
                 revision(applied.version),
                 super::transfers::receipt(&mutation, Some(applied.position)),
             ),

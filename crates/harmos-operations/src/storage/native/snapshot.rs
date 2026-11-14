@@ -122,7 +122,7 @@ impl SavedSnapshots {
         let mut token = vec![0; 32];
         getrandom::fill(&mut token).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "snapshot entropy" })?;
         let identity = identity.unwrap_or_else(|| token.clone());
-        let at = Some(snapshot.at().clone().into());
+        let at = Some(snapshot.at().clone());
         let mut registry = self.registry.lock().unwrap();
         registry.order.push_back(token.clone());
         registry.entries.insert(
@@ -192,7 +192,7 @@ impl SavedSnapshots {
             let registry = self.registry.lock().unwrap();
             registry.entries.iter().find(|(_, held)| held.cut == cut && held.snapshot.is_available()).map(|(token, held)| SavedSnapshot {
                 token: token.clone(),
-                at: Some(held.snapshot.at().clone().into()),
+                at: Some(held.snapshot.at().clone()),
             })
         };
         let handle = if let Some(handle) = found {
@@ -304,7 +304,7 @@ impl SavedSnapshots {
                 registry.entries.iter().find(|(_, held)| held.identity == identity && held.snapshot.is_available()).ok_or_else(expired)?;
             SavedSnapshot {
                 token: token.clone(),
-                at: Some(held.snapshot.at().clone().into()),
+                at: Some(held.snapshot.at().clone()),
             }
         };
         let read = self.read(handle)?;

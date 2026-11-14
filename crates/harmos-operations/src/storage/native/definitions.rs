@@ -80,7 +80,7 @@ pub(super) async fn get_index(
             super::admission::source_matches(&source, &definition.source)?;
             let cut = super::lists::with_revision(read.cut().clone(), &resource, current);
             drop(read);
-            Ok((definition.into(), revision(current), snapshots.composite(&storage, cut).await?))
+            Ok((definition, revision(current), snapshots.composite(&storage, cut).await?))
         },
         cancel.clone(),
     )
@@ -126,7 +126,7 @@ pub(super) async fn set_index(
             }
         }
         let current = storage.set_index_definition_once(&identity, definition.clone(), expected, rebuild, work).await?;
-        Ok((definition.into(), revision(current), super::transfers::receipt(&mutation, None)))
+        Ok((definition, revision(current), super::transfers::receipt(&mutation, None)))
     }
     .await;
     result.map_err(super::admission::failure)

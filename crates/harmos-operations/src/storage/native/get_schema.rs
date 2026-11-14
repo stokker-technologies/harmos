@@ -40,8 +40,8 @@ impl NativeOperation for GetSchema {
             let revision =
                 value.as_ref().map(|value| harmos_protocol::v1::Position::from(value.position.clone()).encode_to_vec()).unwrap_or_default();
             let schema = value.map(|value| super::requests::SchemaInput {
-                key: Some(value.key.into()),
-                graph: Some(value.schema.as_ref().clone().into()),
+                key: Some(value.key),
+                graph: Some(value.schema.as_ref().clone()),
             });
             let response = Self::Response {
                 exists: schema.is_some(),

@@ -56,15 +56,15 @@ impl Rows {
         match self {
             Self::Records(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Record(row.clone().into()), row.position.clone())).collect(), through))
+                Ok((page.entries().iter().map(|row| (Event::Record(row.clone()), row.position.clone())).collect(), through))
             }
             Self::Samples(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Sample(row.clone().into()), row.record.position.clone())).collect(), through))
+                Ok((page.entries().iter().map(|row| (Event::Sample(row.clone()), row.record.position.clone())).collect(), through))
             }
             Self::Objects(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Object(row.clone().into()), row.position.clone())).collect(), through))
+                Ok((page.entries().iter().map(|row| (Event::Object(row.clone()), row.position.clone())).collect(), through))
             }
         }
     }

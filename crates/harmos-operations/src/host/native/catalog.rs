@@ -22,6 +22,7 @@ use harmos_protocol::client::{
     OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, SchemaDescription, SchemasListRequest,
     SchemasListResponse, StreamIdentity, StreamsListRequest, StreamsListResponse,
 };
+use harmos_storage::follow::Entry;
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 use std::{num::NonZeroUsize, sync::Arc};
 
@@ -159,9 +160,9 @@ fn storage(context: &ExecutionContext) -> Result<Arc<StorageManager>, Error> {
     let resource = context.resource::<Option<Arc<StorageManager>>>().map_err(|_| Error::NotReady { domain: "registry storage" })?;
     resource.as_ref().clone().ok_or(Error::NotReady { domain: "registry storage" })
 }
-async fn stored<T: harmos_storage::follow::Entry>(storage: &StorageManager, selection: &T::Selection) -> Result<Vec<T>, Error>
+async fn stored<T>(storage: &StorageManager, selection: &T::Selection) -> Result<Vec<T>, Error>
 where
-    T: Clone,
+    T: Entry + Clone,
 {
     let through = storage.get_saved_position().sequence;
     let mut after = 0;

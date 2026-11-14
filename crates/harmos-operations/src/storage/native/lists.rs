@@ -106,8 +106,7 @@ pub(super) async fn indexes(
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
             plan.work = None;
-            let wire_source: ColumnSource = source.clone().into();
-            let plan = [b"storage.index:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&wire_source)?].concat();
+            let plan = [b"storage.index:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&source)?].concat();
             let page = page.unwrap_or_default();
             let (definition, current) = storage.get_index_definition(&name).await?;
             super::admission::source_matches(&source, &definition.source)?;
@@ -145,7 +144,6 @@ pub(super) async fn indexes(
             };
             let result = selected.list_index_entries(&read, &cancel).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: IndexPage = result.into();
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -171,9 +169,7 @@ pub(super) async fn projections(
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
             plan.work = None;
-            let wire_source: ColumnSource = source.clone().into();
-            let plan =
-                [b"storage.projection:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&wire_source)?].concat();
+            let plan = [b"storage.projection:".as_slice(), &super::admission::plan(&plan)?, &super::admission::plan(&source)?].concat();
             let page = page.unwrap_or_default();
             let resource = format!("storage.projection.{name}");
             let requested = if selection.revision.is_empty() { None } else { Some(decode_revision(&selection.revision)?) };

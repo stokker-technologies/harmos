@@ -21,7 +21,7 @@ use super::requests::required;
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::v1;
-use harmos_storage::{FileSource, StorageManager};
+use harmos_storage::{FileCapture, FileRead, FileSource, StorageManager};
 use prost::Message;
 use ring::digest;
 
@@ -73,7 +73,7 @@ pub(super) async fn production(
         let position = base.at().clone();
         let status = storage.get_file_production_status(&file).await?;
         let production = Production {
-            progress: status.progress.into(),
+            progress: status.progress,
             generation: status.writer_generation.unwrap_or(0),
             accepted: status.accepted_length,
             durable: status.durable_length,
@@ -111,7 +111,7 @@ pub(super) async fn hash(
         match source {
             FileSource::Stored(file) => {
                 let read = snapshots.resolve(&storage, at).await?;
-                Ok((read.hash_file(&file, range.into()).await?.into(), read.cut().clone()))
+                Ok((read.hash_file(&file, range).await?, read.cut().clone()))
             }
             FileSource::Local(path) => {
                 if let Some(at) = at {
@@ -120,16 +120,15 @@ pub(super) async fn hash(
                     let Data::Hash(hash) = &observation.data else {
                         return Err(expired().into());
                     };
-                    return Ok((hash.clone(), read.cut().clone()));
+                    return Ok((*hash, read.cut().clone()));
                 }
                 // Select The Primary Boundary Before Reading External Metadata.
                 let base = snapshots.resolve(&storage, None).await?;
                 let position = base.at().clone();
-                let hash: FileHash = storage.hash_file(harmos_storage::FileRead { source: FileSource::Local(path), range }).await?.into();
+                let hash: FileHash = storage.hash_file(FileRead { source: FileSource::Local(path), range }).await?;
                 drop(base);
                 let resource = resource("file_hash", &plan);
-                let observed =
-                    snapshots.observe(&storage, position, resource, Observation { plan, data: Data::Hash(hash.clone()) }).await?;
+                let observed = snapshots.observe(&storage, position, resource, Observation { plan, data: Data::Hash(hash) }).await?;
                 Ok((hash, observed.cut().clone()))
             }
         }
@@ -151,9 +150,9 @@ pub(super) async fn capture(
         // Capture Reads Its Source And Publishes Its Independently Owned Destination.
 
         let file = storage
-            .capture_file(harmos_storage::FileCapture {
+            .capture_file(FileCapture {
                 source,
-                range: required(range)?.into(),
+                range: required(range)?,
                 metadata,
                 consistency,
             })
@@ -166,7 +165,7 @@ pub(super) async fn capture(
             durable_at: Some(position),
             completed: true,
         };
-        Ok((file.into(), receipt))
+        Ok((file, receipt))
     }
     .await;
     result.map_err(super::admission::failure)

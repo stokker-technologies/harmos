@@ -114,21 +114,21 @@ pub(super) async fn create(
         .into());
     }
     let production = storage.create_file_once(&mutation.clone(), &metadata).await?;
-    Ok((production.into(), receipt(&mutation, None)))
+    Ok((production, receipt(&mutation, None)))
 }
 
 pub(super) async fn append(
     storage: &StorageManager, session: FileSession, mutation: MutationId, offset: u64, data: Vec<u8>,
 ) -> crate::Result<(FileProducer, v1::Receipt)> {
     let production = storage.append_file_once(&mutation.clone(), &session, offset, harmos_storage::FileChunk::new(data)).await?;
-    Ok((production.into(), receipt(&mutation, None)))
+    Ok((production, receipt(&mutation, None)))
 }
 
 pub(super) async fn writer(
     storage: &StorageManager, session: FileSession, mutation: MutationId,
 ) -> crate::Result<(FileProducer, v1::Receipt)> {
     let production = storage.resume_file_once(&mutation.clone(), &session).await?;
-    Ok((production.into(), receipt(&mutation, None)))
+    Ok((production, receipt(&mutation, None)))
 }
 
 pub(super) async fn publish(
@@ -142,14 +142,14 @@ pub(super) async fn publish(
     // Publication's Reference and Receipt Become Durable Together Before Acknowledgment.
     storage.flush_until(&file.position).await?;
     let receipt = receipt(&mutation, Some(file.position.clone()));
-    Ok((file.into(), receipt))
+    Ok((file, receipt))
 }
 
 pub(super) async fn delete(
     storage: &StorageManager, session: FileSession, mutation: MutationId,
 ) -> crate::Result<(FileProgress, v1::Receipt)> {
     let progress = storage.abandon_file_once(&mutation.clone(), &session).await?;
-    Ok((progress.into(), receipt(&mutation, None)))
+    Ok((progress, receipt(&mutation, None)))
 }
 
 pub(super) async fn get(

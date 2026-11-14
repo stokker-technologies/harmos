@@ -36,7 +36,7 @@ use super::transform::{
 use super::{ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 #[cfg(feature = "sqlite")]
 use crate::StorageSchema;
-use crate::{BackendSnapshot, Error, ReadLimits, Result, ScanPage, SchemaKey, StorageBackend};
+use crate::{BackendSnapshot, Error, MemorySize, ReadLimits, Result, ScanPage, SchemaKey, StorageBackend};
 
 /* === Constants === */
 
@@ -135,6 +135,36 @@ pub enum ColumnKind {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl MemorySize for ColumnSource {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.schema.memory_size())
+    }
+}
+
+impl MemorySize for ColumnPredicate {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.column.memory_size())
+    }
+}
+
+impl MemorySize for TimeBounds {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.column.memory_size())
+    }
+}
+
+impl MemorySize for StorageCapabilities {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl MemorySize for ArrowPage {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.batch.get_array_memory_size()).saturating_add(self.columns_read.memory_size())
+    }
+}
 
 impl Cancellation {
     pub(crate) fn child(&self) -> Self {
@@ -603,37 +633,5 @@ mod tests {
         ] {
             assert_eq!(compare_bound(&value, bound).unwrap(), expected);
         }
-    }
-}
-
-impl crate::MemorySize for ColumnSource {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.schema))
-    }
-}
-
-impl crate::MemorySize for ColumnPredicate {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.column))
-    }
-}
-
-impl crate::MemorySize for TimeBounds {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(crate::MemorySize::memory_size(&self.column))
-    }
-}
-
-impl crate::MemorySize for StorageCapabilities {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
-
-impl crate::MemorySize for ArrowPage {
-    fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.batch.get_array_memory_size())
-            .saturating_add(crate::MemorySize::memory_size(&self.columns_read))
     }
 }

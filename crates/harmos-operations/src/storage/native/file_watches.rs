@@ -48,9 +48,9 @@ where
             next = reader.next() => next.map_err(|error| super::admission::failure(error.into()))?,
         };
         let Some(event) = next else {
-            return reader.completion().map(Into::into).map_err(|error| super::admission::failure(error.into()));
+            return reader.completion().map_err(|error| super::admission::failure(error.into()));
         };
-        let event: FileEvent = (*event).clone().into();
+        let event: FileEvent = (*event).clone();
         match event {
             FileEvent::Data(batch) => {
                 let mut start = 0;
@@ -99,7 +99,7 @@ where
             next = reader.next_batch(maximum) => next.map_err(|error| super::admission::failure(error.into()))?,
         };
         let Some(batch) = next else {
-            return Ok(reader.progress().into());
+            return Ok(reader.progress());
         };
 
         next_offset = batch.offset() + batch.bytes().len() as u64;
@@ -130,7 +130,7 @@ where
         let Some(event) = next else {
             return Ok(());
         };
-        emit((*event).clone().into()).await?;
+        emit((*event).clone()).await?;
     }
 }
 

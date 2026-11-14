@@ -31,7 +31,7 @@ use harmos_storage::{
 pub(super) async fn capabilities(context: &ExecutionContext) -> Result<(StorageCapabilities, Option<MutationWindow>, u64), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let info = storage.info().map_err(|error| super::admission::failure(error.into()))?;
-    Ok((storage.capabilities().into(), info.mutations.map(Into::into), info.file_batch_bytes))
+    Ok((storage.capabilities(), info.mutations, info.file_batch_bytes))
 }
 pub(super) async fn create(context: &ExecutionContext, at: Option<v1::ReadCut>) -> Result<(SavedSnapshot, v1::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
@@ -103,7 +103,7 @@ pub(super) async fn projection_status(
             drop(read);
             let cut = snapshots.composite(&storage, cut).await?;
 
-            Ok((status.map(Into::into), cut))
+            Ok((status, cut))
         },
         cancel.clone(),
     )
