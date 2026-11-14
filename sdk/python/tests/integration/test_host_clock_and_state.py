@@ -66,7 +66,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         child = (await call.read()).child
         self.assertEqual(child.operation, failure.operation)
         selected = InvocationsCreateRequest.FromString(child.payload)
-        self.assertEqual(selected.operation, HostOperation.TIME_GET.value)
+        self.assertEqual(selected.operation, "conformance.host.v1.CallerProbe/Get")
         self.assertTrue(selected.fingerprint)
         await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
         terminal = await call.read()
