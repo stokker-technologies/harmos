@@ -2,9 +2,10 @@
 version: v2
 modules:
   - path: proto
-    # Library contracts are checked independently of product-owned wrapper migrations.
+    # Library Contracts and Product Wrappers Are Independent Modules.
     includes:
       - proto/harmos
+  - path: examples/schematic/proto
 lint:
   use:
     - STANDARD

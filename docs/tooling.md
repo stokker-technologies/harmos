@@ -737,9 +737,10 @@ mise run generate -- --sdk csharp
 mise run generate -- --sdk cpp
 ```
 
-Storage protobuf generation refreshes messages, service stubs and reflection together. Rust
-contracts are exposed as `harmos::storage`; the other SDKs generate storage clients from the
-same `proto/harmos/v1/storage.proto`. See [Generated Storage Clients](storage.md#generated-storage-clients).
+Protocol generation refreshes messages, service stubs and reflection together.
+Storage stays in-process; products declare their own wire operations and use shared
+File/Upload vocabulary from `proto/harmos/v1/`. See
+[Private Native Operations](storage.md#private-native-operations).
 
 Shared SDK client inputs live in `sdk/tests/fixtures/client/proto/application/v1/`.
 Each SDK composes those roots with the real library Status and nested Diagnostics

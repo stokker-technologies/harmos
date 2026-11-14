@@ -12,6 +12,11 @@
 /* === Imports === */
 
 use arrow_array::UInt64Array;
+use harmos::encoding::Message as WireMessage;
+use harmos_protocol::client::{
+    InvocationsInvokeRequest, OperationsGetRequest, OperationsListRequest, invocations_client::InvocationsClient,
+    operations_client::OperationsClient,
+};
 use harmos_protocol::v1::{FileMetadata, PageRequest, UploadState};
 use harmos_runtime::Identifier;
 use harmos_runtime::builtins::storage as operations;
@@ -33,8 +38,8 @@ use schematic_app::operations::transfer::{
     FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
 };
 use schematic_app::protocol::{
-    FilesHashRequest, FilesReadRequest, UploadMutation, UploadsAppendRequest, UploadsCreateRequest, UploadsDeleteRequest,
-    UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
+    FilesHashRequest, FilesReadRequest, FilesReadResponse, UploadMutation, UploadsAppendRequest, UploadsCreateRequest,
+    UploadsDeleteRequest, UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
 };
 use schematic_app::{
     app::Runtime,
@@ -353,6 +358,66 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
         .unwrap();
     assert!(published.receipt.unwrap().durable_at.is_some());
     let file = published.file.unwrap();
+
+    // Discover the Application Contract and Use Its Generic Call Path.
+    runtime
+        .operations
+        .register_batch(
+            harmos_runtime::operations::Registration::new(Default::default())
+                .protobuf::<harmos_runtime::builtins::host::List>()
+                .unwrap()
+                .protobuf::<harmos_runtime::builtins::host::Get>()
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    runtime.operations.register_catalog(harmos_runtime::builtins::lifecycle_catalog(), Default::default()).await.unwrap();
+    let listener = runtime
+        .grpc()
+        .attach(harmos_runtime::grpc::Settings {
+            address: "127.0.0.1:0".parse().unwrap(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let address = format!("http://{}", listener.local_addr());
+    let mut registry = OperationsClient::connect(address.clone()).await.unwrap();
+    let listed = registry.list(OperationsListRequest {}).await.unwrap().into_inner();
+    let discovered = listed
+        .operations
+        .iter()
+        .find(|entry| entry.contract.as_ref().is_some_and(|contract| contract.id == "schematic.v1.Files/Read"))
+        .unwrap();
+    let selected = registry.get(OperationsGetRequest { id: "schematic.v1.Files/Read".into() }).await.unwrap().into_inner();
+    assert_eq!(selected.operation.as_ref(), Some(discovered));
+    let contract = discovered.contract.as_ref().unwrap();
+    let protobuf = contract.protobuf.as_ref().unwrap();
+    assert_eq!(protobuf.request, "schematic.v1.FilesReadRequest");
+    assert_eq!(protobuf.response, "schematic.v1.FilesReadResponse");
+    assert!(!protobuf.descriptors.is_empty());
+    assert!(contract.policy.is_some());
+    assert_eq!(contract.grpc.as_ref().unwrap().method, "Read");
+    let request = FilesReadRequest {
+        file: Some(file.clone()),
+        offset: 0,
+        max_bytes: 4,
+        at: None,
+    };
+    let mut invocations = InvocationsClient::connect(address).await.unwrap();
+    let response = invocations
+        .invoke(InvocationsInvokeRequest {
+            operation: contract.id.clone(),
+            fingerprint: contract.fingerprint.clone(),
+            payload: request.encode_to_vec(),
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let generic = <FilesReadResponse as WireMessage>::decode(response.payload.as_slice()).unwrap();
+    assert_eq!(generic.bytes, payload[..4]);
+    drop(invocations);
+    drop(registry);
+    drop(listener);
 
     // Read Bounded Ranges and Hash the Published File Through Application Calls.
     let prefix = runtime

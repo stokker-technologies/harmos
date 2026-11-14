@@ -2,7 +2,7 @@
 
 Transfers remain unary, amended by the owner on 2026-11-13. The generated
 `StorageTransferSettings.chunk_bytes` under `StorageSettings.transfer` owns the
-single 4 MiB default for append and ranged-read sizes on both faces. Generated
+single 4 MiB default for native append and ranged-read sizes and product wrappers. Generated
 `MessageSettings.message_bytes` declares the separate 8 MiB message default once.
 Client SDKs, listeners, plugin carriers and Wasm guests use it and refuse ceilings
 that cannot carry the configured chunk plus framing at startup, naming the action and
@@ -11,7 +11,7 @@ stories and benchmark cases are deleted; Watch and native readers remain.
 
 Application-owned immutable content registers through StorageManager's single
 `ContentSource`. Resolution receives the inherited caller scope and returns length,
-SHA-256 and a bounded lease with explicit expiry. Client/plugin GetFileBytes retain
+SHA-256 and a bounded lease with explicit expiry. Native GetFileBytes and product wrappers retain
 that lease in the existing bounded read-cut registry, bound to the reference and
 scope. Expiry refuses rather than renewing a continuation. Native hosts use
 `open_content(&reference, scope, at)` and `ContentRead::get_bytes(offset, maximum)`.
@@ -43,7 +43,7 @@ do not prove a future contract. All missing guards have unchecked tasks in
 both directions of plugin/host invocation. A face is never a substitute for visibility.
 
 Paging was amended by the owner on 2026-11-13: only data rows that can grow
-without bound are paged. CatalogEntries on both faces, Plugins and Access.Pairings
+without bound are paged. Operations, Schemas, Streams, Plugins and Access.Pairings
 return the complete set without page requests, tokens or application byte bounds.
 The carrier message ceiling is their sole response guard; overflow names the action.
 Records, samples, log lines, trace events, files and rows retain position-resolved paging.
@@ -100,14 +100,13 @@ does not establish that behavior has landed. When a handler only forwards metada
 describe that boundary rather than inventing the downstream owner's defaults.
 Request and response comments describe their payloads rather than repeating the
 call's instructions; an empty payload needs only the call name. File purposes name
-the audience: applications or tools call the host through `harmos/v1`, the host
+the audience: applications or tools call the host through `harmos/client/v1`, the host
 calls a plugin through `harmos/plugin/v1`, and a running plugin calls back to the
-host from inside an invocation through `harmos/context/v1`, answered for that plugin.
-For example, `Samples.Append` forwards absent sequence/context/timestamp metadata;
-its handler does not assign defaults or interpret following-row duration metadata.
+host from inside an invocation through `harmos/plugin/host/v1`, answered for that plugin.
+Storage remains in-process; products declare their own wire operations over it.
 
-The root `buf.yaml` selects only maintained Harmos inputs, excluding application
-and third-party sources. `mise run format` formats them and honors `--check`;
+The root `buf.yaml` selects maintained Harmos inputs and the independent Schematic
+application module, excluding third-party sources. `mise run format` formats them and honors `--check`;
 `mise run check -- --repository` checks formatting and runs Buf lint. Standard
 lint plus required service/call/message comments keeps the locked request/response
 grammar; each exception in `buf.yaml` names the incompatible existing declaration
@@ -247,11 +246,11 @@ and caller-face authorization remain independent checks.
    **Where:** Boundary and Manager Ownership in
    `openspec/changes/operation-grammar/design.md`; Manager Ownership and Thin Service
    Methods in `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   OperationManager owns catalog/invocations/context HostValues; StreamManager owns
+   OperationManager owns operation discovery and invocations; StreamManager owns
    publication/demand; StorageManager owns persistence/production; GrpcManager owns
    listeners/access; ServiceManager owns resident services/status and host clock;
    StateManager owns state/replay; RecordManager owns record registration/lifecycle;
-   plugin management owns entries, placement, activation and shutdown.
+   plugin management owns entries, typed settings, placement, activation and shutdown.
    Existing owners live in `crates/harmos-runtime/src/operations/manager/mod.rs`,
    `crates/harmos-runtime/src/streams/manager.rs`,
    `crates/harmos-runtime/src/storage/manager.rs`,
@@ -264,26 +263,21 @@ and caller-face authorization remain independent checks.
    and `credential_store_unavailable` guard listener/credential atomicity.
    `client_reads_status`, `client_pages_and_watches_events` and
    `client_reads_diagnostics_ranges` guard contributions, histories and archives.
-   HostValues resolver registration/removal and failures have plugin_grpc stories.
    **Status:** landed; native proof is tracked separately from source.
 
-9. **Library and Product Composition.** The library owns generic hosting, access,
-   transfers, status, invocations, time, storage, streams, protocol and SDKs; products
-   compose those services directly without redeclaring/wrapping them or rebuilding
-   generic machinery on the protocol crate alone. Products own their schemas,
-   indexes/projections, objects, operations, authorization, latest selection and
-   settings/secrets stores, UI, archives and credential integration.
-   **Why:** avoid duplicate dispatch, connection, launch and storage authorities;
-   settings and secrets are product policy. Generic HostValues delivery and catalog
-   settings declarations do not make a library settings store.
-   **Where:** Generic Machinery and Product Composition and Product Definitions,
-   Policy and Plugin Values in
-   `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
-   **Proof:** `declared_values_use_the_product_resolver_and_registration_lifetime`
-   and `resolver_failure_and_a_mismatched_value_type_are_propagated` guard resolver
-   composition without a library store. The manager, access and status client journeys
-   compose runtime services with host-supplied persistence, credentials and facts.
-   **Status:** landed for native host composition.
+9. **Library and Product Composition.** The library owns hosting, access, status,
+   invocations, time, plugin management and typed plugin settings. Products compose
+   these complete wire services directly. Storage and publication remain Private
+   in-process capabilities; products declare their own typed wire operations and
+   policy over them. Products own schemas, indexes/projections, objects, operations,
+   authorization, secrets, UI, archives and credential integration.
+   **Why:** one owner per atomic operation and no duplicate wire twins. The library
+   stores plugin settings beside entries; product secrets remain outside that store.
+   **Where:** Owner Amendments of 2026-11-13 and the boundary mapping below.
+   **Proof:** settings, replacement and trusted caller journeys under
+   `crates/harmos-runtime/tests/plugin_grpc/manager`; application upload and discovery
+   under `examples/schematic/app/tests/storage`.
+   **Status:** landed source; candidate validation is separate.
 
 10. **Resource Operation Grammar.** Services name resources, methods use the closed
     ordinary verb set Get/List/Watch/Set/Create/Delete/Append; only declared domain
@@ -572,12 +566,12 @@ and caller-face authorization remain independent checks.
 
 ## Protocol Boundary Definition and Consumer Migration
 
-This definition pass implements the owner amendments of 2026-11-13. The declarations
-and generated outputs below are the new contract; hand-written consumers are intentionally
-unmigrated and do not compile yet. This section supersedes earlier package paths, wire
-storage placement, registry resources and settings ownership in this guide. Historical
-runtime proof elsewhere in this document applies to the preceding implementation until
-the named workers migrate it. No implementation or full-project proof is implied.
+The boundary declarations, generated bindings and hand-written consumers implement
+the owner amendments of 2026-11-13. The mapping below records the clean replacement;
+former identities are migration references, never compatibility aliases. Candidate
+validation is separate from source implementation. Guest descriptor validation uses
+generated clock and message-option graphs; it retains the same validation and fuel
+budget without loading unrelated Protobuf meta-schema definitions.
 
 The descriptor census is client 12 services/59 calls → 14/33, plugin-host 6/40 →
 4/8, and plugin 1/4 → 1/4. Shared `harmos.v1` has zero services.
@@ -715,138 +709,78 @@ New calls have no former identity:
 
 - Keep `harmos.v1.Catalog` and the `catalog` fields as the plugin-reported description. `Instance.Get`, guest registration and managed-entry `PluginDescription` still report operations, requirements, streams, opaque product sections, digest and reachable types (fields 1–6 unchanged). The removed resource was registry browsing, not this activation admission payload. Handlers in `plugin/grpc`, SDK authoring and `schema::catalog_digest` consume all these fields.
 - Keep `SettingsDeclarations` as the typed contribution section in `Catalog.sections`; its declarations now contain name, title, description and typed default. No second direct settings inventory is added to Catalog or its digest. Settings are library-owned; secrets remain product sections and product operations.
-- `Settings.Set` replaces one complete `SettingValues` map for the named plugin entry. List returns the complete map, with defaults materialized; all declared names and their value variants must match. Settings have their own opaque revision and issued read cut. Plugin-host List has no plugin selector and no change notification. Replay lifetime and persistence are implementation work under the existing manager receipt policy.
+- `Settings.Set` replaces one complete `SettingValues` map for the named plugin entry. List returns the complete map, with defaults materialized; all declared names and their value variants must match. Settings have their own opaque revision and issued read cut. Plugin-host List has no plugin selector and no change notification. Replay lifetime and persistence use the existing manager receipt policy.
 - Replace takes `PluginPlacement`, constrained to managed-to-managed replacement. It preserves entry name, settings and product data; failed staging preserves the previous serving bundle. `PluginChange.deleted` remains the sole wire deletion signal. Deleting an entry removes its settings atomically; product cleanup follows the in-process watch and startup reconciliation and is eventual.
 - Operations.Get selects one operation by its complete ID and returns the same `DiscoveredOperation` metadata used in List. Discovery has no invented read cut: the current handler issues none.
 - Schemas.List preserves the actual `StorageSchema` position/key/graph; Streams.List preserves `StoredIdentity::Stream` schema/scope/item/stream/first. The shared schema graph is registry vocabulary, not storage operations. Object identities have no library wire listing. No SDK reads persisted schemas or streams today, so neither service is added to the plugin-host boundary.
 - `FileReference.position` now uses shared `Position`/`History`, preserving the position fields and encoding. `File` wraps the immutable reference. `Upload` carries production ID/history, writer generation, accepted/durable lengths and state; product wrappers supply operations and policy. Shared proto2 transfer defaults remain in `transfer.proto` because all SDK carriers use the previously locked chunk, message and framing declarations.
 - Python client wire modules use `harmos._wire.client.v1` to avoid the authored `harmos.client` module. Wire identities remain `harmos.client.v1`; shared and plugin module paths follow the proto folders. The SDK handler keeps the name context.
 - Access remains a generated parent node of Listener, Pairings and Certificates, with no new empty root service. Nested C# namespaces use `AccessResources`, `StatusResources` and `PluginsResources`.
-- Root Buf now checks the library module independently. The Schematic proto imports the deleted plugin-host storage request; its worker must migrate that import and restore its independent Buf validation. Library lint rules were not weakened. The only remaining exceptions are service suffixes, persisted schema enum prefixes/zero names, and version suffixes on nested resource packages.
+- Root Buf checks the library and Schematic as independent modules. Schematic owns its file/upload wrappers and imports only shared vocabulary. Library lint rules remain unchanged. The only remaining exceptions are service suffixes, persisted schema enum prefixes/zero names, and version suffixes on nested resource packages.
 
 ### Native Type Ownership
 
-The old generated wire types are also the current in-process request types:
-`harmos-operations/src/storage/client.rs` and `storage/context.rs` use the 32
-`Storage<Method>Request/Response` pairs shown above as `ProtobufOperation` associated
-types; they are not independent native models. The runtime worker must replace these
-with one native request/result owner per storage operation and remove both face
-projections, duplicate registrations, protobuf coupling and Public visibility. Native
-storage operations become Private. Preserve mutation encodings, replay, receipt
-positions, durability, scoped content leases, retained reads and all meaningful native
-stories. A product wrapper is a declaration and one call through a small native helper;
-the helper is the operations/runtime worker’s implementation responsibility.
+`harmos-operations/src/storage` owns one Private in-process declaration and native
+request/result pair per storage capability. Domain storage values remain in
+`harmos-domain/src/model/storage`; query, column, index, projection and storage
+backend values remain in `harmos-storage`. Native mutation, cursor and revision
+encodings preserve persisted data and original outcomes. Neither boundary exposes
+storage methods or an object registry. Product handlers call the native operation
+through `ExecutionContext::call_native` with their own policy and typed wire values.
 
-Four more currently native-only pairs also live in the deleted wire files and must
-be owned natively: `StorageInfoRequest/Response`, `StorageDeleteFileRequest/Response`,
-`StorageSetSchemaRequest/Response`, `StorageGetSchemaRequest/Response`. The latter
-schema operations currently encode cursor revisions; retain those bytes explicitly
-rather than letting removal of Prost types change persistence. Removed nested outcomes
-`StorageSetObjectResponse::{Applied, Conflict}` likewise become native results.
+### Application Operations in Discovery
 
-The following retired payload/enum declarations are not a new wire home or aliases.
-Reuse existing native domain/storage values where present, and make the remaining
-in-process representations native in their existing owner:
+The existing assembly surface registers application operations in the same registry
+as library operations. No separate service inventory or discovery adapter is needed:
 
-`StoreHistory`, `StorageCursor`, `MutationWindow`, `MutationId`, `StagedFile`, `FileSession`, `FileProducer`, `FileProgress`,
-`DirectoryRule`, `DirectorySelection`, `DirectoryEntry`, `DirectoryCompletion`, `DirectoryRename`, `Empty`, `DirectoryEvent`, `FileSource`,
-`ByteRange`, `FileBatch`, `FileCompletion`, `FileHash`, `FollowStart`, `FileEvent`, `RowSlice`, `ObjectSelection`,
-`RecordSelection`, `StreamSelection`, `SchemaSelection`, `FileSelection`, `QuerySource`, `QueryCompletion`, `QueryOutput`, `FieldPath`,
-`ExactNumber`, `ScalarValue`, `Comparison`, `ScalarValues`, `Condition`, `Term`, `Clause`, `Filter`,
-`Projection`, `Project`, `Statistic`, `Measure`, `Aggregate`, `Histogram`, `Downsample`, `SortKey`,
-`Sort`, `Transform`, `Query`, `StoredRecord`, `StoredRow`, `ObjectVersionToken`, `ObjectValue`, `ObjectEntry`,
-`DataBatch`, `ReadLimits`, `StorageCapabilities`, `ColumnSource`, `ColumnPredicate`, `TimeBounds`, `ColumnSelection`, `ArrowPage`,
-`IndexDefinition`, `IndexEntry`, `IndexSelection`, `IndexPage`, `TimeBucketPlan`, `SelectColumns`, `ProjectionDefinition`, `ProjectionSelection`,
-`ProjectionPage`, `ProjectionStatus`, `SavedSnapshot`, `DefinitionRevision`, `ProjectionState`, `StorageFailure`, `FilePhase`, `CaptureConsistency`,
-`ObjectVersions`, `Compare`, `DownsampleAlgorithm`, `ColumnKind`, `StorageFailureKind`.
+```rust
+setup.catalog(schematic_operations::transfer::files_catalog(), lane);
+setup.catalog(harmos_runtime::builtins::host_catalog(), lane);
+```
 
-`harmos-domain/src/model/storage` already owns histories/cursors, mutations, files,
-directory values, keys, identities, objects and batches. `harmos-storage/src/query`
-owns query plans, column/index/projection structures and bounds; several output buffers
-are currently re-exported from the protocol crate and need native definitions. Move
-the removed `storage_helpers.rs` directory-event constructor, structured storage failure
-conversion, descriptor helper where still needed and output-buffer accounting to those
-owners. `FollowingRow` and the removed Samples append pair need a native publication
-representation for internal batch metadata; do not regenerate them as library wire types.
+`Operations.List/Get` returns admitted application contracts with request/response
+descriptors, policy and gRPC binding. Generic encoded calls resolve the same entry.
+`examples/schematic/app/tests/storage/main.rs` discovers `schematic.v1.Files/Read`
+and invokes it through the generic client `Invocations.Invoke` gRPC path.
+Decision: retain the existing assembly registration; application and library operations share discovery.
 
-### Runtime Worker
+### Consumer Work Lists
 
-- Implement samples child calls (behaviour rules 30–32): Route observer child calls through the existing admitted plugin context and registry; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-The consumer workers also migrate the affected README claims and owning guides
-(`docs/product-guide.md`, `docs/plugin-manager.md`, `docs/storage.md` and language
-guides) with their implementation. Their current executable examples describe the
-preceding consumer tree, not proof of the new definition-only candidate.
-
-- Migrate runtime admission and gRPC registration from client `harmos.v1[.*]` to `harmos.client.v1[.*]`, and context `harmos.context.v1` to `harmos.plugin.host.v1`. `harmos.plugin.v1.Instance` is unchanged. Remove Storage and Samples child bindings entirely; the native storage declarations/results above need their own owner.
-- Mechanical Rust recipe: `harmos_protocol::v1::<client wrapper/resource>` → `harmos_protocol::client::<same name>`; `v1::access` → `client::access`; `v1::status` → `client::status`; `context::<retained wrapper>` → `plugin::host::<same name>`. Shared vocabulary remains `v1`. `storage::{FileMetadata, FileReference, schema graph types, transfer defaults}` → `v1::{same name}`; adapt `StorageCursor/StoreHistory` conversions to `Position/History`.
-- Replace CatalogEntries dispatch with typed Operations/List/Get, Schemas/List and Streams/List. Map the existing schema and identity models field-for-field as specified above, preserving grant filters and complete bounded inventories. Delete the objects branch from library wire discovery.
-- Implement Plugins.Replace staging/fencing and settings persistence, revision guards, replay identities, defaults and scoped plugin-host Settings.List on the existing entry owner. Publish trusted caller entry name plus reported description to product context handlers; remove HostValues resolver registration. A client field never chooses that caller.
-- Keep product nested resources composed beneath Plugins; add the application-owned nested-resource fixture in all four SDKs. Atomically delete library settings with an entry, keep `PluginChange.deleted`, and leave eventual product cleanup to its in-process watch/startup reconciliation.
-- The guest system fixture `tests/system/guest_contract/support.rs::Publisher` currently stages rows via Samples.Append, and `tests/operations/wire/generated_publication.rs` checks batched following-row metadata. These are concrete non-tick uses: migrate to a product fixture operation/native publication types, preserving scope and metadata. `Instance.Samples` still supports both tick answers and device-originated samples while demand is open. The Schematic example has no direct Samples.Append call found in this tree.
-
-### Operations Worker
-
-- Own the native request/result pairs listed under Native Type Ownership, including nested conditional outcomes; migrate `storage/client.rs`, `storage/context.rs`, transfers, lists, watches, pages, snapshots, schemas and registrations to one Private in-process declaration per capability. Keep real native behavior tests; delete redundant face tests only when their replacement covers the behavior.
-- Rename generated wrappers with the Runtime Worker recipe; replace host CatalogEntries associated types and DiscoveryAccess responses with typed client/plugin-host Operations wrappers. Registry schemas/streams become typed client handlers. Remove HostValues and Samples wire declarations and expose the native one-call storage wrapper helper.
-- No new generated module is the destination for removed Storage/Samples requests. Do not preserve them as compatibility aliases or another public package.
-
-### Storage Worker
-
-- Keep storage implementation/persistence in-process; reuse `harmos_domain::model::storage` types listed above. Replace `harmos_protocol::storage::<native value>` with the existing native owner or a native type defined in `harmos-storage` where it currently owns the behavior. Remove protocol-only query conversions that no consumer requires.
-- Retained shared types move `harmos_protocol::storage::{FileMetadata,FileReference,SchemaKey,SchemaField,SchemaDefinition,SchemaRepresentation,SchemaGraph,SchemaInput,PayloadEncoding,SchemaCardinality,SchemaKind,SchemaForm,SchemaOmission,StorageTransferSettings,MessageSettings,TransferFraming}` → `harmos_protocol::v1::{same name}` at actual serialization boundaries. Use native values internally. Replace file-reference position conversion with `v1::Position`/`History`.
-- Preserve cursor/revision encodings, conditional outcomes, mutations and old persisted data. Move protocol storage helpers and output-buffer accounting to their native owners; the protocol crate no longer exports `storage` or `storage_types`.
-
-### Rust SDK Worker
-
-- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-- Regenerated modules are `harmos_protocol::{v1,client,client::access,client::plugins,client::status,plugin,plugin::host}`. `context` and `storage` protocol modules are deleted. Apply the Runtime Worker mechanical recipe to hand-written SDK authoring, clock, transfer, server and guest code; retain the public SDK Context object.
-- Generated client methods now live at `client.operations.{list,get}`, `client.schemas.list`, `client.streams.list`, `client.plugins.replace`, `client.plugins.settings.{list,set}`. The `catalog_entries` and `storage` roots are removed. `context/contracts.rs` and its per-message descriptor projections are already regenerated for `plugin::host`; migrate hand-written imports and declared requirements/fingerprints.
-- Decode the existing Catalog settings section as typed declarations; read values through plugin-host Settings.List. Remove HostValues and Samples/Storage wire conveniences; product operations own any required wrappers. No SDK-owned replacement native storage request types are needed.
-
-### Python SDK Worker
-
-- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-- Old `harmos.v1.<service>_pb2[_grpc]` → `harmos._wire.client.v1.<service>_pb2[_grpc]`; `harmos.v1.access/status.*` → `harmos._wire.client.v1.access/status.*`. Old `harmos.context.v1.<retained service>_pb2` → `harmos.plugin.host.v1.<service>_pb2`. Instance remains `harmos.plugin.v1.instance_pb2[_grpc]`.
-- Replace the former `harmos.v1.types_pb2` aggregate import with concept imports: `.position_pb2`, `.page_pb2`, `.receipt_pb2`, `.failure_pb2`, `.policy_pb2`, `.operation_pb2`, `.description_pb2`, `.invocation_pb2`, `.stream_pb2`, `.setting_pb2`. File/schema/default vocabulary moves from `storage_types_pb2`/`storage_settings_pb2` to `.file_pb2`/`.schema_pb2`/`.transfer_pb2`.
-- Migrate authoring, invocation, transfer and package imports without reintroducing generated modules under `harmos.client`. Generated client root and fixture resources already use `_wire`. Remove storage/HostValues/Samples conveniences and switch registry/settings calls as for Rust. No native storage request types belong in the SDK.
-
-### C# SDK Worker
-
-- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-- `Harmos.V1.<client wrapper/resource>` → `Harmos.Client.V1.<same name>`; `Harmos.V1.AccessResources` → `Harmos.Client.V1.AccessResources`; `Harmos.V1.StatusResources` → `Harmos.Client.V1.StatusResources`; new settings wrappers live in `Harmos.Client.V1.PluginsResources`.
-- `Harmos.Context.V1` → `Harmos.Plugin.Host.V1`; Instance remains `Harmos.Plugin.V1`. `Harmos.Storage.V1.<retained shared type>` → `Harmos.V1.<same name>`. The old file names Types/StorageTypes/StorageSettings are replaced by the concept files under `harmos/v1`.
-- Regenerated `Generated/Client.g.cs` and composition fixture include typed registries and Plugins.Settings. Update any explicit protobuf input inventory/build imports, authoring/settings section builders, carrier requirements and transfer defaults; remove wire storage/HostValues/Samples helpers. No SDK-native storage request types are needed.
-
-### C++ SDK Worker
-
-- Implement samples child calls (behaviour rules 30–32): Enable observer contexts to call host operations, clock, settings and declared Watch through the Samples carrier; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-- `::harmos::v1::<client wrapper/resource>` → `::harmos::client::v1::<same name>`; nested `::harmos::v1::{access,status}` → `::harmos::client::v1::{access,status}`. `::harmos::context::v1` → `::harmos::plugin::host::v1`; Instance remains `::harmos::plugin::v1`.
-- `::harmos::storage::v1::<retained shared type>` → `::harmos::v1::<same name>`. Include `harmos/client/v1/<service>.pb.h`, `harmos/plugin/host/v1/<service>.pb.h`, and the specific shared concept headers instead of `harmos/v1/types.pb.h` or storage aggregates.
-- Update the hand-written input list in `sdk/cpp/cmake/Protocol.cmake` to the final proto inventory before its protocol build. Generated `harmos/generated/client.hpp` already uses the new packages. Update authoring, native server/context, transfer defaults and required fingerprints; remove obsolete wire convenience calls. No SDK-native storage request types are needed.
-
-### Schematic Example Worker
-
-- Apply the Rust module recipe and regenerate the product protocol after removing `harmos/context/v1/storage.proto` from `examples/schematic/proto/schematic/v1/operations.proto`. Its GetFileHash payload currently embeds `harmos.context.v1.StorageGetFileHashRequest`; replace it with a product-owned typed request and a native storage call.
-- Declare only the product storage wrappers actually required by the example, using shared File/Upload/FileReference and the recommended bare verbs; do not recreate library Storage twins. Migrate analysis/hash/transfer/preview consumers and preserve existing native storage stories.
-- Restore product-owned Buf validation after the proto imports compile, independently of the library module. No library wire aliases may be added to make the example compile.
-
-### Conformance Tool Worker
-
-- Implement samples child calls (behaviour rules 30–32): Implement deterministic cases for rules 30–32 in the reference host and fixtures; correlate out-of-order replies with IDs unique across ticks on one stream, preserve failures, cancel open children on tick answer/stream end, and refuse child traffic outside an unanswered tick. Preserve existing sample fields and tick ordering.
-
-- Apply `v1::<client wrapper>` → `client::<same name>` and `context::<retained wrapper>` → `plugin::host::<same name>` to the reference host and fixtures; shared Catalog/frames stay `v1`. Adapt any aggregate proto imports to the concept files.
-- Recompute descriptors/fingerprints for renamed service wrappers, preserve Instance wire identity, and migrate HostValues/registry tests to typed Settings/Operations. Storage and pushed publication belong to product fixture contracts or native stories, rather than library wire declarations. Conformance owns no native storage request replacement.
+- **Core:** Boundary admission, typed registries, trusted `CallingPlugin`, stored
+  settings, managed replacement and atomic settings deletion use their existing
+  runtime owners. Product cleanup follows the entry watch and startup reconciliation
+  and remains eventual. Private storage has no wire projection.
+- **Rust SDK:** Client wrappers use `harmos_protocol::client`; shared vocabulary uses
+  `v1`; plugin-host wrappers use `plugin::host`. The handler remains `Context`.
+  Composition includes application `plugins.Annotations` beneath library Plugins.
+- **Python SDK:** Client wire modules use `harmos._wire.client.v1`; shared and
+  plugin-host modules follow proto folders. The handler remains `Context`; generated
+  composition includes application Plugins children.
+- **C# SDK:** Client wrappers use `Harmos.Client.V1`, shared vocabulary `Harmos.V1`,
+  and plugin-host wrappers `Harmos.Plugin.Host.V1`. Generated client composition
+  includes application Plugins children.
+- **C++ SDK:** Client headers use `harmos/client/v1`, plugin-host headers
+  `harmos/plugin/host/v1`, and shared concept headers `harmos/v1`. Generated resource
+  composition includes application Plugins children.
+- **All SDKs:** Observer contexts carry tick-scoped child calls on Instance.Samples,
+  correlate replies across ticks, preserve failures, support demand-bounded Watch,
+  cancel open work at tick/stream end and refuse outside-tick traffic (rules 30–32).
+  The `interval_setting` value is the typed declaration name `interval`, not a field
+  path into an opaque product section (rule 18).
+- **Schematic:** Application Files/Uploads wrap Private native storage operations.
+  Native and wasm plugins share regenerated concept messages and typed settings.
+  Root Buf checks its independent product module.
+- **Conformance and Fixtures:** All numbered cases remain, including tick children
+  and typed settings/registry discovery. Product publication uses
+  `example.plugin.host.v1.Progress/Publish` with `{stream, payload} -> ()`; no library
+  publication wire service is recreated. Generation rebuilds the Rust producer and
+  emits the Schematic bindings and nested Plugins composition for every language.
 
 ### Next Pin for Products That Vendor the Protocol
 
 Replace the vendored `proto/harmos` tree as a whole, regenerate all language bindings
 and update explicit file lists/imports, boundary admission and operation requirements
-using the mechanical recipes above. Do not retain deleted aggregate proto files or
+using the boundary namespaces in the consumer work lists above. Do not retain deleted aggregate proto files or
 compatibility copies of Storage requests. Products wrapping storage must declare their
 own typed client/plugin-host operations and policy and call the library’s Private
 in-process storage operation through the native helper. File uploads/ranges, queries,

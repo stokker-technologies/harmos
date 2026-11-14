@@ -91,7 +91,7 @@ current definition by identity and compiled row type. Low-level declarations use
 `Definition::declared::<Row>(id, schema, window)` and return a derived definition.
 Every stream definition owns a schema; `Definition::schema()` returns it directly.
 Publication inventories,
-listener sources and `harmos.context.v1.Samples/Append` do not accept schema ordinals. Listener
+listener sources and in-process publication do not accept schema ordinals. Listener
 publication binding uses `(id, after)` and `frontier(id)`.
 
 Register stream definitions as owned lists; no stream catalog enum or
@@ -433,31 +433,30 @@ contract. Protobuf payloads and RPC paths remain unchanged.
 
 Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
 runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
-Status, Cancel and Watch operations (gRPC `/harmos.v1.Invocations/Get`, `/Cancel`
+Status, Cancel and Watch operations (gRPC `/harmos.client.v1.Invocations/Get`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
 foreign and settled ids are refused alike. A watch streams every status change
 from the moment it starts until the instance stops or settles. Plugins reach them like any other operation,
 so they must declare them as requirements.
 
-Register `harmos_operations::host_catalog()` by value on a chosen lane to serve the `List`
-declaration at `/harmos.v1.CatalogEntries/List`. Its generated request is
-`harmos_protocol::v1::CatalogEntriesListRequest`, with `kind` (`Operations`, `Schemas`, `Streams`
-or `Objects`) and optional `schema`. One response returns the complete authorized
-set without a page request, token or application byte bound. The carrier message
-ceiling is the only List response guard; an oversize failure names the action.
-`CatalogEntriesListResponse::operations`
-contains generated operation metadata, including descriptors, provider identity,
-generation, policy, selected grants and current gRPC availability.
-`CatalogEntriesListResponse::entries` retains the UTF-8 JSON array for stored schemas and
-identities.
+Register `harmos_operations::host_catalog()` on a chosen lane to serve typed
+`harmos.client.v1.Operations.List/Get`, `Schemas.List` and `Streams.List`.
+Operations returns the complete admitted registry, including application operations
+registered with `setup.operation(...)` or `setup.catalog(...)`. Each entry contains
+its contract, request/response descriptors, provider, generation, operation policy,
+gRPC binding, selected grants and current availability. Get selects the complete ID.
+Private storage operations remain excluded. A product declares its own wire operation
+over the library's in-process storage operation.
 
-Stored kinds need the storage manager and a `harmos.v1.CatalogEntries/List` grant scoped
-`schemas:*`, `streams:*` or `objects:*` (`<kind>:schema:<id>` with `schema`).
-Listing operations needs no grant. Discovery applies readiness, caller visibility
-and dependency rules; `conditional_access` means invocation still checks
-request-specific grants and middleware. Re-discover after provider reload or
-runtime restart; pages do not promise a frozen registry snapshot.
+Schemas and Streams return typed registry entries and require the storage manager
+and their respective operation grants scoped `schemas:*` or `streams:*`
+(`schemas:schema:<id>` or `streams:schema:<id>` when selecting a schema).
+No object registry is exposed on the wire. Lists are complete bounded inventories;
+the carrier message ceiling guards the response. Discovery applies readiness,
+caller visibility and dependency rules; `conditional_access` means invocation still
+checks request-specific grants and middleware. Re-discover after provider reload or
+runtime restart; discovery does not issue a frozen registry cut.
 
 Register one `operations::authorization::Authorizer` with the original operation
 manager before external calls. Its `authorize` method selects
@@ -929,7 +928,7 @@ interruption remain physical mechanisms.
 Owners (plugin, artifact, sidecar record and stream owners) are one `[a-z][a-z0-9_]*` segment, such as `obc_plugin`.
 Dots and hyphens are refused in owners, including by `#[plugin]` at compile time. Reserved identity rules still apply.
 Local operation IDs use dotted segments `segment(.segment)*`, each with that same grammar. The runtime prepends the owner once:
-`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.v1.Invocations/Cancel`, `harmos.initialize`
+`temperature.read` becomes `plugin_name.temperature.read`. Built-ins include `harmos.client.v1.Invocations/Cancel`, `harmos.initialize`
 and `storage.append_file`. A manual native message codec remains an ordinary trait implementation.
 
 Started operations return the same typed `Response<T>` from `join()` and
@@ -1183,13 +1182,13 @@ device rows carry host arrival time in `published_unix_micros` and retain an opt
 device timestamp as `context.source_time` (seconds and nanos). Disconnect and stop
 close demand; reconnect opens fresh calls with sequence one. Lost samples are not replayed.
 
-An `interval_setting` names a fully qualified protobuf section field, such as
-`fixture.Settings.interval`, whose value is a positive `google.protobuf.Duration`.
-The host resolves it from `Catalog.sections`; it takes precedence over the declared
-interval. An absent or invalid setting refuses admission.
+An `interval_setting` names a typed plugin setting, such as `interval`, whose
+value is a positive duration. The library materializes its declared default and
+stores overrides beside the plugin entry. The resolved setting takes precedence
+over the declared interval; an absent or invalid setting refuses admission.
 
-Plugins declare requirements for the Public `harmos.v1.Time/Sleep` and
-`harmos.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
+Plugins declare requirements for the Public `harmos.plugin.host.v1.Time/Sleep` and
+`harmos.plugin.host.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
 Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
 `advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
 still while work is in flight; only clock waits park that activity. Device streams
