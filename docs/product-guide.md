@@ -1321,6 +1321,7 @@ cases measure crossing the carrier boundary.
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: bidirectional unary protobuf transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
+| [Interval Ticks](../crates/harmos-runtime/benches/ticks/main.rs) | Host-owned interval ticks against a managed Rust SDK plugin process, packed-row windows and the Samples call alone. |
 
 Build matching executables and carrier fixtures with `mise run build -- --artifact bench`,
 then run `mise run bench`.
@@ -1333,6 +1334,56 @@ Native Criterion HTML and raw measurements live under `.stkr/benchmarks/criterio
 partitioned by compatibility identity and benchmark executable. The runner compares
 against the compatible `dev` baseline and reports missing baselines or regressions
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
+
+### Interval Tick Figures
+
+The interval tick suite re-executes its benchmark binary as a managed Rust SDK
+plugin with 1 to 128 interval observers. A `plain` observer returns its sequence;
+a `time` observer first calls `Time.Get` as a tick child. Each case times rows
+reaching a counting stream consumer, so it includes the Tick, the observer, the
+sample's admission, the consumer drain and the per-tick ingestion wait. Controlled
+cases advance a virtual clock until the rows arrive; real cases use the host clock
+with a 1 ms interval, or a 1 µs interval that is due whenever the previous sample
+settles. Packed-row cases return one row holding N `double` values per tick.
+The Samples wire cases skip the host loop: a separate carrier process answers each
+Tick with N `Sample` messages or one packed row on the Samples call, and the host
+decodes every value. Before the timed cases, a breakdown pass aggregates the
+existing `operations.*` span lifetimes per tick by operation.
+
+Figures below are medians at `af8b9a0c` in the bench profile on Windows x86-64
+(AMD Ryzen 9 5950X), 2026-11-15, with unrelated compilation running on the same
+machine. They are rows (or values) per second, summed over all streams.
+
+| Case | 1 | 4 | 16 | 64 | 128 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Controlled, plain | 3,578 | 4,185 | 2,785 | 6,600 | 11,185 |
+| Controlled, `Time.Get` | 1,768 | 2,380 | 2,065 | 4,559 | 6,644 |
+| Real 1 ms, plain | 481 | 1,741 | 4,551 | 15,202 | 15,959 |
+| Real 1 ms, `Time.Get` | 462 | 1,450 | 2,875 | 7,523 | 9,482 |
+| Real 1 µs, plain | 837 | 2,673 | 5,733 | 13,008 | 20,073 |
+| Real 1 µs, `Time.Get` | 845 | 2,084 | 3,104 | 8,062 | 9,020 |
+
+| Values per Message | 1 | 64 | 1,024 | 65,536 |
+| --- | ---: | ---: | ---: | ---: |
+| Packed row, controlled, one stream | 2,914 | 220,280 | 2,544,400 | 8,823,100 |
+| Packed row, real 1 µs, one stream | 810 | 54,575 | 854,290 | 6,141,900 |
+| Samples wire, repeated `Sample` | 11,415 | 415,730 | 2,176,200 | 1,870,600 |
+| Samples wire, one packed row | 8,822 | 427,480 | 8,246,100 | 35,263,000 |
+
+A real interval stream schedules its next tick one period after the previous
+sample settles ([publish.rs](../crates/harmos-runtime/src/plugin/grpc/publish.rs),
+`next_tick = reading.instant + period`), and the Windows timer rounds short sleeps
+up to about 1 ms. One 1 ms stream therefore reaches about 480 rows per second, and
+a 1 µs stream about 840. The host accepts exactly one sample per Samples message.
+
+The breakdown pass for one controlled `Time.Get` stream measured 426 µs of wall
+time per tick: the `samples.tick` attempt (Tick to sample, including the plugin
+and its child call) took 333 µs, the `Time.Get` child 108 µs from admission to
+completion, and `samples.tick` admission, queueing and dispatch a further 57 µs.
+The remaining 35 µs cover ingestion and the per-tick ingestion wait. The Samples
+wire round trip alone is about 90 µs. With 128 controlled streams, a row took
+170 µs of aggregate wall time while each tick spent 13 ms in flight, including
+about 1 ms queued for `Time.Get` and 0.7 ms for `samples.tick` admission.
 
 Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
 identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
