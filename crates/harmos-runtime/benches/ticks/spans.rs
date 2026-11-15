@@ -134,7 +134,7 @@ pub fn report(title: &str, ticks: u64, wall: Duration) {
     println!("\nTICK BREAKDOWN — {title}: {ticks} ticks, {:.1} µs wall per tick", per_tick(wall));
     println!("  {:<72} {:>10} {:>14}", "span @ operation", "per tick", "µs per tick");
     let mut rows: Vec<_> = totals.into_iter().collect();
-    rows.sort_by(|left, right| right.1.1.cmp(&left.1.1));
+    rows.sort_by_key(|row| std::cmp::Reverse(row.1.1));
     for (key, (count, total)) in rows {
         println!("  {key:<72} {:>10.2} {:>14.1}", count as f64 / ticks as f64, per_tick(total));
     }

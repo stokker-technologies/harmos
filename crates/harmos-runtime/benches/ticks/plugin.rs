@@ -51,7 +51,7 @@ struct Window {
 
 /* === Public Functions === */
 
-/// Serve `streams` Interval Observers; `observer` Is `plain`, `time` or `packed:<values>`.
+/// Serve `streams` Interval Observers; `observer` Is `plain`, `time` or `window:<values>`.
 pub fn serve(mut arguments: impl Iterator<Item = String>) {
     let streams: usize = arguments.next().unwrap().parse().unwrap();
     let nanos: u64 = arguments.next().unwrap().parse().unwrap();
@@ -63,7 +63,7 @@ pub fn serve(mut arguments: impl Iterator<Item = String>) {
     let mut plugin = Plugin::new("tick_benchmark", "1.0.0").requires_host(HostOperation::TimeGet);
     for index in 0..streams {
         let id = format!("benchmark.ticks_{index}");
-        if let Some(values) = observer.strip_prefix("packed:") {
+        if let Some(values) = observer.strip_prefix("window:") {
             let values: usize = values.parse().unwrap();
             let stream = Stream::<Window>::new(id);
             let window = Observer::new(&stream, async move |context: &Context| {

@@ -247,19 +247,25 @@ fn benchmarks(criterion: &mut Criterion) {
     }
     group.finish();
 
-    // One Stream Whose Single Row Packs a Window of Values; Throughput Counts Values.
-    let mut group = criterion.benchmark_group("ticks-packed-row");
+    // Each Tick's Single Row Carries a Window of Repeated Values; Throughput Counts Values.
+    // The SDK Derive Encodes Repeated Scalars Unpacked, One Tag per Value.
+    let mut group = criterion.benchmark_group("ticks-window-row");
     group.sample_size(10).sampling_mode(SamplingMode::Flat).warm_up_time(Duration::from_millis(500));
     group.measurement_time(Duration::from_secs(3));
-    for (name, controlled, interval) in [("controlled", true, MILLISECOND), ("real-unpaced", false, UNPACED)] {
-        for values in WINDOWS {
+    for (name, controlled, streams, interval) in [
+        ("controlled-1-stream", true, 1, MILLISECOND),
+        ("real-unpaced-1-stream", false, 1, UNPACED),
+        ("controlled-128-streams", true, 128, MILLISECOND),
+    ] {
+        // 128 Retained Windows of 65,536 Values Would Hold Gigabytes in Stream Windows.
+        for values in WINDOWS.into_iter().filter(|values| streams == 1 || *values <= 1024) {
             let name = format!("{name}-values");
             let case = Case {
                 name: &name,
                 controlled,
-                streams: 1,
+                streams,
                 interval,
-                observer: format!("packed:{values}"),
+                observer: format!("window:{values}"),
                 ticks: 16,
                 samples: values as u64,
                 parameter: values,
