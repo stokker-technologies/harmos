@@ -371,3 +371,11 @@ An independent review of the scoped binding at `dev` 7181b5ed found defects in t
 - [ ] SB.3 Stories for each defect, reproduced before its fix, and for transitions that have no story today: plugin exit or crash with a live binding, runtime shutdown with a live binding, a hung or non-EOF plugin, bind during stop or reconnect, close racing an interval tick, and sleep through typed and native calls.
 - [ ] SB.4 Every SDK ends its Samples response with OK after the host half-closes; conformance checks this for all four languages.
 - [ ] SB.5 On Unix, a managed plugin dies with its host process. On Windows, the hosting product owns process-tree lifetime through a kill-on-close job, as documented in `docs/architecture.md`.
+
+## Interval Tick Throughput
+
+A product measured, at 7181b5ed in a debug build, that one interval stream runs strictly serially (`plugin/grpc/publish.rs`): sleep to the tick, send the tick to the plugin as a full admitted operation call, wait for the sample, and only then schedule the next tick. An observer that reads the time adds a second full call. On the real clock, a 1 ms observer reached about 470 samples per second; under the controlled clock, each tick cost about 6.7 ms.
+
+- [ ] IT.1 Bench cases for interval ticks per second: one and several concurrent streams, on the real and the controlled clock, with and without a time read in the observer, measured in the bench profile, with figures recorded in the library documentation.
+- [ ] IT.2 Find the cause of the product's runtime publication slowdown (348 ms to 5.29 s), and establish whether the library's operation preparation byte budget accumulates over long runs.
+- [ ] IT.3 The owner sets the sustained rate per stream and the number of concurrent streams, from the release-profile figures. The design is then chosen: ticks carry their time and travel as messages on the open Samples stream, keeping the host in charge of the interval loop; or interval timing moves into the plugin, which changes the locked design.
