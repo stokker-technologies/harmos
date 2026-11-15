@@ -153,6 +153,7 @@ impl<A: Application> Binding<A> {
                     let prepared = tokio::select! {
                         biased;
                         () = super::disconnected(parent.clone()) => Err(Error::Invalid("Start Scoped Samples: activation is closing; bind to its next activation".into())),
+                        () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing".into())),
                         prepared = host.timeout(source.settings.connect_timeout, prepare) => prepared.map_err(|_| Error::Timeout("Start Scoped Samples")).and_then(|prepared| prepared),
                     };
                     let started = prepared.map(|prepared| {
