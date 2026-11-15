@@ -405,22 +405,6 @@ fn leaf_code(error: &Error) -> tonic::Code {
         _ => tonic::Code::Internal,
     }
 }
-pub(crate) fn explicit_status(mut error: &Error) -> Option<Status> {
-    for _ in 0..32 {
-        match error {
-            Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
-                if let Some(status) = source.downcast_ref::<Status>() {
-                    return Some(status.clone());
-                }
-
-                error = source.downcast_ref::<Error>()?;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
 // An Encoded Provider's Prepared Grant The Caller Lacks Keeps Its Runtime Denial.
 fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) -> Option<&'a Error> {
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
@@ -475,7 +459,7 @@ pub(super) fn status(error: Error) -> Status {
         status.set_source(Arc::new(error));
         return status;
     }
-    let status = explicit_status(&error).unwrap_or_else(|| match caller_refusal(&error) {
+    let status = error.explicit_status().unwrap_or_else(|| match caller_refusal(&error) {
         Some(operation) => Status::permission_denied(format!("Call {operation}: caller is not allowed")),
         None => Status::new(code(&error), "operation request failed"),
     });
@@ -499,13 +483,13 @@ pub(super) fn in_operation(status: Status, operation: &str) -> Status {
 
 fn input_status(error: InputError) -> Status {
     let explicit = match &error {
-        InputError::Operation(error) => explicit_status(error),
+        InputError::Operation(error) => error.explicit_status(),
         InputError::Forward { source, settlement }
             if !settlement
                 .as_deref()
                 .is_some_and(|error| matches!(error, Error::OperationFinalization { .. } | Error::OperationSettlement { .. })) =>
         {
-            explicit_status(source)
+            source.explicit_status()
         }
         InputError::Forward { .. } => None,
     };

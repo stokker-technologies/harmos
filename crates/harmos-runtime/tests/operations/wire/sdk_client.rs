@@ -314,10 +314,14 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert!(running.next().await.unwrap().is_none());
 
     // The Queued Final Response Keeps Its Claim Until Join Hands It To The Caller.
-    assert_eq!(bounded.clone().call(&echo, Request::default()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
+    let competing = Request {
+        text: "retained".repeat(15),
+        ..Default::default()
+    };
+    assert_eq!(bounded.clone().call(&echo, competing.clone()).await.unwrap_err().code(), tonic::Code::ResourceExhausted);
     assert_eq!(running.join().await.unwrap().offset, 23);
     assert_eq!(item.offset, 0);
-    assert!(bounded.call(&echo, Request::default()).await.is_ok());
+    assert_eq!(bounded.call(&echo, competing.clone()).await.unwrap().text, competing.text);
 
     // Refuse An Oversized Request Before It Enters The Outgoing Queue.
     let oversized = Request {

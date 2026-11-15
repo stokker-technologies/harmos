@@ -397,16 +397,18 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     return Err(invalid("Invalid Sample Time"));
                 }
                 let published = tick.unwrap_or_else(|| clock.date().into());
-                let mut context = serde_json::Map::new();
-                if interval.is_none()
-                    && let Some(at) = sample.at
-                {
-                    context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
-                }
-                if let Some(scope) = operations.call_context().get::<crate::Scope>() {
-                    context.insert("scope".into(), serde_json::json!(scope.as_str()));
-                }
-                let context = (!context.is_empty()).then(|| serde_json::Value::Object(context).to_string());
+                let source_time = if interval.is_none() { sample.at } else { None };
+                let context = match operations.call_context().get::<crate::Scope>() {
+                    Some(scope) => {
+                        let mut context = serde_json::Map::new();
+                        context.insert("scope".into(), serde_json::json!(scope.as_str()));
+                        if let Some(at) = source_time {
+                            context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
+                        }
+                        Some(serde_json::Value::Object(context).to_string())
+                    }
+                    None => source_time.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos)),
+                };
                 let payload = row.decode(&sample.row)?;
                 let receipt = lease
                     .admit_clocked_row(

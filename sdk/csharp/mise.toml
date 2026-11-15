@@ -13,8 +13,7 @@ lockfile = true
 
 # === Tools === #
 
-[tools]
-dotnet = "10.0.403"
+# The Root Owns .NET Because Rust Runtime Stories Also Launch the C# Fixture.
 
 # === Environment === #
 
