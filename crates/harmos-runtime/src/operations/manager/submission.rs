@@ -230,7 +230,10 @@ impl Manager {
         if let Some(unit) = self.call_context().get::<Arc<super::super::clock::Unit>>() {
             job.activity = Some(unit.clock.activity(format!("scoped invocation {}", id.value())));
             if !unit.track(&control) {
-                job.refusal = Some(Error::Closing { domain: "scoped unit of work" });
+                job.refusal = Some(Error::InvalidInput {
+                    field: "scoped plugin binding",
+                    reason: "Call Scoped Plugin: binding has closed",
+                });
             }
         }
         job.policy = policy;

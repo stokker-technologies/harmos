@@ -146,8 +146,31 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     // The Original Unscoped Demand Continues on the Runtime Clock.
     controller.advance_until(Duration::from_secs(5), || host.rows().iter().any(|row| row.context.is_none())).await.unwrap();
     assert!(activation.is_connected());
+    let dropped = host.runtime.bind_grpc(&activation, "unit/dropped", left_clock.clone()).await.unwrap();
+    drop(dropped);
+
+    // A Lost Connection Still Settles the Scope's Already Accepted Ingestion.
     let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock).await.unwrap();
-    drop(rebound);
+    let previous = rows_for("unit/left").len();
+    host.signals.storage_hold.store(true, std::sync::atomic::Ordering::SeqCst);
+    let delivering = left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous);
+    tokio::pin!(delivering);
+    tokio::select! {
+        result = &mut delivering => panic!("Disconnected Ingestion Is Still Held: {result:?}"),
+        () = host.signals.storage_entered.notified() => {},
+    }
+    let network = clock.activity("Await Scoped Disconnect");
+    sdk.disconnect().await;
+    controller.advance_until(Duration::from_secs(5), || !activation.is_connected()).await.unwrap();
+    drop(network);
+    let closing = rebound.close();
+    tokio::pin!(closing);
+    assert!(pending(closing.as_mut()).await);
+    host.signals.storage_release.notify_one();
+    let (closed, delivered) = tokio::join!(closing, delivering);
+    assert!(closed.unwrap_err().to_string().contains("Close Scoped Samples"));
+    delivered.unwrap();
+    assert_eq!(rows_for("unit/left").len(), previous + 1);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

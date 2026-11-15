@@ -392,6 +392,17 @@ impl StreamWriter {
         self.wait_ingested(Some(published)).await
     }
 
+    pub(crate) async fn drained_at(&self, published: u64) -> Result<(), StreamPublicationError> {
+        let mut progress = self.stream.ingest.watch();
+        while self.stream.ingest.pending(published) {
+            if self.stream.closed.load(Ordering::Acquire) {
+                return Err(StreamPublicationError::Revoked);
+            }
+            progress.changed().await.map_err(|_| StreamPublicationError::Revoked)?;
+        }
+        Ok(())
+    }
+
     async fn wait_ingested(&self, published: Option<u64>) -> Result<(), StreamPublicationError> {
         let mut taken = self.stream.ingest.watch();
         loop {

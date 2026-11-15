@@ -61,7 +61,7 @@ impl<A: Application> Runtime<A> {
             return Err(Error::Invalid("Bind Scoped Plugin: activation belongs to another runtime".into()));
         }
         if *source.close.borrow() || !activation.is_connected() {
-            return Err(Error::Disconnected);
+            return Err(Error::Invalid("Bind Scoped Plugin: activation is disconnected".into()));
         }
         let scope = scope.into();
         let operations =
@@ -70,8 +70,8 @@ impl<A: Application> Runtime<A> {
         let mut context = operations.call_context().clone();
         context
             .insert(ClockAccess(Arc::new(crate::operations::clock::Clock(clock.clone()))))
-            .map_err(|error| Error::Invalid(error.to_string()))?;
-        context.insert(unit.clone()).map_err(|error| Error::Invalid(error.to_string()))?;
+            .map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
+        context.insert(unit.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let operations = operations.with_context(context);
         let (close, closing) = watch::channel(false);
         let (completed, completion) = watch::channel(None);
@@ -83,7 +83,11 @@ impl<A: Application> Runtime<A> {
             }
             scopes.insert(scope, completion.clone());
         }
-        let prepared = Publications::prepare(&self.streams, activation, &source.settings, &operations, true).await?;
+        let host_clock = self.operations.clock();
+        let _activity = host_clock.activity("Bind Scoped Plugin");
+        let prepare = Publications::prepare(&self.streams, activation, &source.settings, &operations, true);
+        let prepared =
+            host_clock.timeout(source.settings.connect_timeout, prepare).await.map_err(|_| Error::Timeout("Bind Scoped Plugin"))??;
         let mut publications = Publications::scoped(prepared, source, activation, &clock, &operations);
         let parent = source.close.clone();
         tokio::spawn(async move {
@@ -117,7 +121,7 @@ impl ScopedBinding {
                 return result;
             }
             if self.completed.changed().await.is_err() {
-                return Err(Arc::new(Error::Disconnected));
+                return Err(Arc::new(Error::Invalid("Close Scoped Plugin: settlement task ended before completion".into())));
             }
         }
     }

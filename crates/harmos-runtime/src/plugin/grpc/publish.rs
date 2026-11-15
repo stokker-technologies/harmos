@@ -331,7 +331,7 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
-    {
+    let outcome = {
         let work = async {
             let mut sequence = 0;
             let mut next_tick = interval.map(|period| clock.now() + period);
@@ -427,20 +427,31 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
         tokio::pin!(work);
         tokio::select! {
             biased;
-            () = super::disconnected(closed) => return Ok(()),
-            () = super::disconnected(close.clone()) => {},
+            () = super::disconnected(closed) => {
+                if parent.is_none() { return Ok(()); }
+                Err(Error::Transport("Close Scoped Samples: plugin connection closed".into()))
+            },
+            () = super::disconnected(close.clone()) => Ok(()),
             () = async {
                 match &mut parent {
                     Some(parent) => super::disconnected(parent.clone()).await,
                     None => std::future::pending().await,
                 }
-            } => {},
-            result = &mut work => return result,
+            } => Ok(()),
+            result = &mut work => {
+                if parent.is_none() { return result; }
+                result
+            },
+        }
+    };
+    if let Some(published) = ingested_through {
+        if parent.is_some() {
+            lease.drained_at(published).await.map_err(|error| invalid(format!("Close Scoped Samples: {error}")))?;
+        } else {
+            lease.ingested_at(published).await.map_err(invalid)?;
         }
     }
-    if let Some(published) = ingested_through {
-        lease.ingested_at(published).await.map_err(invalid)?;
-    }
+    outcome?;
     drop(output);
     // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup.
     while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}

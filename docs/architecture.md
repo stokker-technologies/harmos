@@ -1234,19 +1234,23 @@ A product can bind an already admitted gRPC activation to a trusted scope and it
 own clock for the lifetime of a scoped unit of work:
 
 ```rust,ignore
-let activation = attached.activation().expect("plugin is ready");
+let activation = plugins.activation("plugins/example").await?;
 let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
 binding.operations().call_encoded(operation, payload).await?;
 binding.close().await?;
 ```
 
 `Runtime::bind_grpc` returns `plugin::grpc::ScopedBinding`. The supplied activation
-must belong to that runtime and still be admitted; duplicate live bindings for the
+comes from `plugin::manager::Manager::activation` for a ready managed entry, or
+`Attached::activation` for a directly attached plugin. Manager lookup refuses
+unavailable entries and never restores an old activation after disable or restart.
+The activation must belong to that runtime and still be admitted; duplicate live bindings for the
 same activation and scope refuse. The product owns the scope's meaning, time
 advancement and admission policy. Scope text is selection context, never authority.
 Binding does not change declarations, endpoints, the plugin process or its single
 physical connection. It opens additional Samples demands with the existing
 `SamplesSelection.scope` and retains the activation's admitted stream writers.
+Opening uses the attachment's configured connect timeout on the runtime clock.
 
 The binding's operation handle carries a local clock resource through descendants,
 including plugin child calls to Time.Get and Time.Sleep. Portable context cannot
@@ -1266,6 +1270,8 @@ Retained operation handles refuse new work after closure. Bindings never follow 
 reconnection: a new activation needs a new binding. Closing one binding leaves the
 other scopes and the original unscoped publication active. Products that do not
 bind a scope retain their runtime clock and attachment-time Samples behavior.
+Connection loss still awaits any already accepted scoped ingestion before close
+reports the transport failure.
 
 The fixture story `plugin_grpc::scoped_publications` starts two concurrent calls
 and demands after attachment, holds one ingestion boundary, closes that scope,

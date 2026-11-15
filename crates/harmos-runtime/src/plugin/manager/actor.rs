@@ -59,7 +59,7 @@ use super::{
     content::Installation,
     persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
-use crate::plugin::grpc::{Attached, Managed, Placement, Status};
+use crate::plugin::grpc::{Activation, Attached, Managed, Placement, Status};
 use harmos_protocol::host as wire;
 use harmos_protocol::model;
 
@@ -117,6 +117,7 @@ pub(super) struct Snapshot {
 }
 
 struct Worker {
+    activation: Option<Activation>,
     stop: oneshot::Sender<()>,
     task: JoinHandle<Result<(), Error>>,
 }
@@ -130,6 +131,7 @@ pub(super) enum GuestAction {
 }
 
 pub(super) enum Command {
+    Activation(String, Reply<Activation>),
     #[cfg(feature = "plugin-guest")]
     Guest(Box<PluginDescription>, Reply<PluginEntry>),
     #[cfg(feature = "plugin-guest")]
@@ -233,6 +235,13 @@ impl Actor {
                 command = receiver.recv() => match command { Some(command) => command, None => break },
             };
             match command {
+                Command::Activation(name, reply) => {
+                    let activation = self.workers.get(&name).and_then(|worker| worker.activation.clone());
+                    let result = activation
+                        .filter(Activation::is_connected)
+                        .ok_or_else(|| Error::new("activation_unavailable", "Get Plugin Activation", "select a ready gRPC plugin entry"));
+                    let _ = reply.send(result);
+                }
                 #[cfg(feature = "plugin-guest")]
                 Command::Guest(description, reply) => {
                     let _ = reply.send(self.guest(*description).await);
@@ -772,7 +781,7 @@ impl Actor {
                 Err(error) => Err(problem("Stop Plugin Activation", error)),
             }
         });
-        self.workers.insert(name, Worker { stop, task });
+        self.workers.insert(name, Worker { activation: None, stop, task });
     }
 
     pub(super) async fn stop(&mut self, name: &str) -> Result<(), Error> {
@@ -800,6 +809,9 @@ impl Actor {
             || !entry.value.as_ref().is_some_and(|value| value.enabled)
         {
             return Ok(());
+        }
+        if let Some(worker) = self.workers.get_mut(&name) {
+            worker.activation = status.as_ref().ok().and_then(|status| status.activation.clone());
         }
         match status {
             Ok(status) => {
