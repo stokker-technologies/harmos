@@ -449,3 +449,42 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
     host.runtime.shutdown().await.unwrap();
     assert_eq!((rows(&host, "unit/live"), rows(&host, "unit/next")), (1, 1));
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_killed_host_takes_its_managed_plugin_with_it() {
+    use std::os::fd::{FromRawFd, OwnedFd};
+    use tokio::io::{AsyncBufReadExt, BufReader, unix::AsyncFd};
+
+    // Start a Separate Host Process That Attaches a Managed Plugin.
+    let evidence = tempfile::tempdir().unwrap();
+    let cleaned = evidence.path().join("cleanup");
+    let mut parent = tokio::process::Command::new(support::binary("harmos-managed-parent-fixture"))
+        .arg(support::binary("harmos-sdk-host-fixture"))
+        .arg(&cleaned)
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut lines = BufReader::new(parent.stdout.take().unwrap()).lines();
+    let plugin = loop {
+        let line = lines.next_line().await.unwrap().expect("Host Reports Its Plugin");
+        if let Some(process) = line.strip_prefix("plugin pid ") {
+            break process.parse::<libc::pid_t>().unwrap();
+        }
+    };
+
+    // Watch the Plugin by Process Identifier, Then Kill Its Host.
+    // SAFETY: pidfd_open Returns a New Descriptor That This Story Owns.
+    #[allow(unsafe_code)]
+    let descriptor = unsafe { libc::syscall(libc::SYS_pidfd_open, plugin, 0) };
+    assert!(descriptor >= 0, "Open the Plugin's Process Descriptor");
+    // SAFETY: The Descriptor Was Just Opened and Is Owned Exactly Once.
+    #[allow(unsafe_code)]
+    let exited = AsyncFd::new(unsafe { OwnedFd::from_raw_fd(descriptor as i32) }).unwrap();
+    parent.kill().await.unwrap();
+
+    // The Plugin Ends by Its Parent-Death Signal, Without a Stop Request.
+    let _ready = exited.readable().await.unwrap();
+    assert!(!cleaned.exists(), "End the Plugin Without Running Its Stop Hooks");
+}

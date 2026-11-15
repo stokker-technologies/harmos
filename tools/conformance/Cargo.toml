@@ -69,6 +69,12 @@ path = "../../crates/harmos-runtime/tests/fixtures/managed_stub.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "harmos-managed-parent-fixture"
+path = "../../crates/harmos-runtime/tests/fixtures/managed_parent.rs"
+test = false
+bench = false
+
 # === Features === #
 
 # === Dependencies === #

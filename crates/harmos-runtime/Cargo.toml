@@ -236,6 +236,10 @@ wasmtime = { workspace = true, optional = true }
 # The executable throughput fixture owns four native runtime workers.
 tokio = { workspace = true, default-features = true, features = ["rt-multi-thread"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Utilities
+libc = { workspace = true }
+
 [target.'cfg(unix)'.dev-dependencies]
 # Utilities
 libc = { workspace = true }

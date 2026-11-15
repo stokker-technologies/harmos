@@ -44,9 +44,9 @@ use tokio::{
 use super::Error;
 use crate::{Error as RuntimeError, clock::Clock, runtime::StopParticipant};
 #[cfg(unix)]
-use unix::command;
+use unix::{command, spawn};
 #[cfg(target_os = "windows")]
-use windows::command;
+use windows::{command, spawn};
 
 /* === Constants === */
 
@@ -93,8 +93,8 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        let mut child = command
-            .spawn()
+        let mut child = spawn(command)
+            .await
             .map_err(|error| Error::Invalid(format!("Start Managed Plugin: spawn {}: {error}", placement.executable.display())))?;
         let stdout = child.stdout.take().expect("managed stdout is piped");
         Ok(Self {
