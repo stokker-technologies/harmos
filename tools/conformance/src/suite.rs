@@ -94,6 +94,7 @@ pub const CASES: &[&str] = &[
     "Message Ceiling Independent of Transfer Chunks",
     "Typed Settings Defaults and Stored Values",
     "Typed Operations Discovery",
+    "Half-Close During an Unanswered Tick",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -519,6 +520,17 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 };
                 let value = fixture::Value::decode(payload.as_slice())?;
                 require(SettingValues::decode(value.value.as_slice())? == values, "List Settings: Values Differ")?;
+            }
+        }
+        39 => {
+            // A Host Closing a Scope Half-Closes Without Awaiting Its Last Tick; the Demand Still Ends With OK.
+            let (send, mut input) = open(&mut client, "conformance.ticks").await?;
+            samples_tick(&send, 1_700_000_000).await?;
+            drop(send);
+            let mut answered = 0;
+            while let Some(frame) = input.message().await? {
+                answered += frame.samples.len();
+                require(frame.frame.is_none() && answered <= 1, "Half-Close: Unexpected Frame After the Last Tick")?;
             }
         }
         38 => {
