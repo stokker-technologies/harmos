@@ -283,12 +283,11 @@ impl Manager {
         if let Some(memory) = NonZeroUsize::new(memory) {
             preparation.merge(self.claim_preparation(memory)?);
         }
-        let prepared = factory.prepare_envelope(self.prepare_resources(&entry, &payload), &payload, true, limits).map_err(|source| {
-            Error::OperationFailed {
+        let prepared =
+            factory.prepare_envelope(self.resources_for(&entry), &payload, true, limits).map_err(|source| Error::OperationFailed {
                 operation: O::ID.into(),
                 source: Arc::new(source),
-            }
-        })?;
+            })?;
         let streams = prepared.streams.clone();
         let mut binding = super::binding::Request::from(payload);
         binding.lane = lane;

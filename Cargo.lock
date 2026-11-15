@@ -1302,6 +1302,7 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper-util",
+ "libc",
  "prost",
  "prost-build",
  "prost-reflect",

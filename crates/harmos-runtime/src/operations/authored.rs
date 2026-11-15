@@ -109,6 +109,10 @@ impl<D: RequestShape> Bound<D> {
 }
 
 impl<D: RequestShape> Body<super::Response<Payload<D>>> for Bound<D> {
+    fn admit(&mut self) {
+        self.physical.instance.admit();
+    }
+
     fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
         self.physical.instance.progress()
     }

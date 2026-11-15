@@ -83,6 +83,9 @@ enum Stage<O> {
 /* === Traits === */
 
 pub(super) trait Body<O>: Send {
+    /// Runs Once at Admission, Before Middleware Observes the Call.
+    fn admit(&mut self) {}
+
     fn progress(&self) -> Vec<watch::Receiver<Option<tokio::time::Instant>>> {
         Vec::new()
     }

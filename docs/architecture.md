@@ -1210,8 +1210,18 @@ after spawn, before readiness. Startup has a retained task and runtime stop
 participant; cancelling the caller or a manager worker signals that owner and
 awaits termination and exit. Readiness failures, connection failures and staged
 replacement rollback settle the same child. Ready processes retain graceful Stop
-through the existing placement deadline. A disconnected child is terminated and
-reaped under that placement's `stop_grace`.
+through the existing placement deadline. Reaping never waits on a child the host
+has not signalled: Stop awaits the requested exit until the teardown deadline, then
+kills; a disconnected child is killed at once. After a kill, the exit is reaped
+within a fresh `stop_grace` measured from the kill, so a slow drain cannot turn
+into a reap failure.
+
+The host's death ends its managed children on Linux: the spawn sets
+`PR_SET_PDEATHSIG` to `SIGKILL` and rechecks the parent to close the fork race.
+Linux delivers that signal when the forking thread exits, so every managed child
+is forked from one process-lifetime spawner thread rather than a runtime worker
+that may retire. macOS is not covered. On Windows the hosting product owns
+process-tree lifetime, for example with a job object that kills on close.
 
 Manager Delete and installation reuse follow successful settlement. Candidate
 bundles are kept out of synchronous temporary-directory cleanup once launch is
@@ -1283,13 +1293,16 @@ Rows retain the trusted scope in `PublicationRow.context` as the JSON `scope`
 property, alongside device source time when present. Consumers use that property
 to select the unit's rows and advance only its clock after awaited ingestion.
 
-Scoped Time.Sleep calls register their relative timer during admission, before
-operation middleware observes the call. Middleware may announce the sleep and a
-product may advance the unit clock immediately; the handler awaits that already
-registered timer. The prepared call owns it, so refusal, cancellation and binding
-closure drop it even when middleware has not let the handler run. This ordering
-applies to plugin children, encoded calls and native protobuf calls through the
-binding; unscoped calls retain their runtime-clock behavior.
+Clock waits register at admission. An operation that declares the wait its request
+performs (`admitted_wait` on `ProtobufOperation` and `NativeOperation`; Time.Sleep
+does) registers that timer in `admit_entry` through `NativeInstance::admit`, before
+operation middleware observes the call. Every path admits there: encoded, protobuf,
+native and typed calls and plugin children. Inside a scoped unit each call receives
+its own unit clock, so middleware may announce the sleep and a product may advance
+the unit clock immediately; the handler awaits that registered timer. The prepared
+call owns it, so refusal, cancellation and binding closure drop it even when
+middleware has not let the handler run. A retried attempt registers its own timer.
+Unscoped calls retain their runtime-clock behavior.
 
 ```rust,ignore
 let binding = runtime.bind_grpc(&activation, scope, unit_clock).await?;
@@ -1298,31 +1311,51 @@ unit_time.advance_by(sample_interval).await;
 binding.close().await?;
 ```
 
-Samples demand is opened before binding returns. Accepted publications hold unit
-activity until ingestion; close captures and drains each demand's accepted cursor
-before reporting settlement. Child invocation admission tracks its instance in
-the unit before middleware runs. Close stops that tracking atomically, cancels
-tracked instances and refuses later calls; a call preparing a timer concurrently
-with close is refused and releases its timer during settlement.
+Concurrent and nested waits inside one operation share its activity without a
+lock; the activity parks only while all of its waits park, so joined waits never
+serialize or stall virtual time.
 
-`ScopedBinding::close` stops scoped calls and waits for their settlement, accepted
-ingestion and Samples EOF/producer cleanup. Each demand awaits its captured
-ingestion cursor, so later publications cannot extend its close boundary. Dropping
-the binding requests the same cleanup; attachment shutdown also waits for it.
-Retained operation handles refuse new work after closure. Bindings never follow a
-reconnection: a new activation needs a new binding. Closing one binding leaves the
-other scopes and the original unscoped publication active. Products that do not
-bind a scope retain their runtime clock and attachment-time Samples behavior.
-Connection loss still awaits any already accepted scoped ingestion before close
-reports the transport failure. Remote attachments retain that cleanup failure in
+Each binding is one state machine the attachment owns from `bind_grpc` until it
+settles; no binding task outlives its attachment.
+
+| State | Entered when | Leaves when |
+| ----- | ------------ | ----------- |
+| Preparing | `bind_grpc` admits the scope under the attachment's bindings lock | Samples demands open, preparation fails, or the attachment starts settling |
+| Serving | Demands are open and `bind_grpc` returns the handle | `close()`, the handle is dropped, or the attachment settles |
+| Settling | Close was requested | The steps below finish or their deadline passes |
+| Settled | The outcome is published | `close()` returns it |
+
+Settling signals close to every demand, then cancels the unit's tracked calls, so
+close always wins over a tick it cancels. It then drains each demand: accepted
+ingestion and the plugin's end of its Samples response. A drain that misses the
+deadline cancels the remaining work and reports `Error::Deadline` naming the
+action. The attachment settles itself through the same sequence on every ending,
+whether stop, plugin exit, disconnect or runtime shutdown. It closes scoped
+admission first, so a later `bind_grpc` is refused and must bind to the next
+activation. It then joins its bindings, revokes the activation's stream leases and
+withdraws its operations. Only then does it send Stop, kill and reap a managed
+process, or start reconnecting a remote one.
+
+The deadline is `PlacementSettings::stop_grace` on the runtime clock, measured
+when settling starts. The unit clock never bounds it. `ScopedBinding::close`
+returns within that bound. On `Error::Deadline { action: "Close Scoped Plugin" }`
+the demands were cancelled; rows accepted before the deadline remain delivered.
+The plugin did not end its Samples response after the host half-closed it, which
+the SDK conformance suite requires. Teardown holds a runtime-clock activity, so a
+virtual runtime clock never expires settlement work that is still in progress.
+Connection loss or plugin exit still awaits accepted scoped ingestion before the
+binding reports the transport failure. Remote attachments retain that failure in
 their disconnected status and continue reconnecting under the placement policy.
-A cleanup timeout remains terminal; managed placements still terminate and reap
-their child before releasing ownership.
+Retained operation handles refuse new work after closure. Closing one binding
+leaves the other scopes and the original unscoped publication active.
 
 The fixture story `plugin_grpc::scoped_publications` starts two concurrent calls
 and demands after attachment, holds one ingestion boundary, closes that scope,
 then settles only the other scope's sleep by advancing its clock. It checks
 scope-stamped rows and proves the original unscoped demand still operates.
+`plugin_grpc::binding_lifecycle` drives each ending with a live binding: a drain
+outliving `stop_grace`, a plugin that ignores half-close, plugin exit, managed
+disconnect, runtime shutdown, a bind racing stop and a bind during reconnect.
 
 Rust client retained admission bounds each generated oneof by its largest variant,
 with presence/alignment and boxed recursive edges, and scans the actual wire values

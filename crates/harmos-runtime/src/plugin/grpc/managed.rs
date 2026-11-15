@@ -28,6 +28,7 @@ use std::{
     path::PathBuf,
     process::{ExitStatus, Stdio},
     sync::Arc,
+    time::Duration,
 };
 
 // Third Party Imports
@@ -43,9 +44,9 @@ use tokio::{
 use super::Error;
 use crate::{Error as RuntimeError, clock::Clock, runtime::StopParticipant};
 #[cfg(unix)]
-use unix::command;
+use unix::{command, spawn};
 #[cfg(target_os = "windows")]
-use windows::command;
+use windows::{command, spawn};
 
 /* === Constants === */
 
@@ -92,8 +93,8 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        let mut child = command
-            .spawn()
+        let mut child = spawn(command)
+            .await
             .map_err(|error| Error::Invalid(format!("Start Managed Plugin: spawn {}: {error}", placement.executable.display())))?;
         let stdout = child.stdout.take().expect("managed stdout is piped");
         Ok(Self {
@@ -146,7 +147,8 @@ impl Process {
         self.child.as_ref().and_then(Child::id)
     }
 
-    pub(super) async fn terminate(&mut self, clock: &Clock, deadline: Instant, action: &str) -> Result<(), Error> {
+    /// Kill the Child, Then Reap It Within a Fresh `grace` Measured From the Kill.
+    pub(super) async fn terminate(&mut self, clock: &Clock, grace: Duration, action: &str) -> Result<(), Error> {
         let process = format!("{} (pid {:?})", self.executable.display(), self.id());
         let exit = self
             .child
@@ -154,22 +156,31 @@ impl Process {
             .expect("managed child is owned until reaped")
             .try_wait()
             .map_err(|error| self.reap_failure(format!("{action}: inspect process {process}: {error}; retain its installation")))?;
-        if exit.is_none() {
-            self.child
-                .as_mut()
-                .expect("managed child is owned until reaped")
-                .start_kill()
-                .map_err(|error| self.reap_failure(format!("{action}: terminate process {process}: {error}; retain its installation")))?;
+        if exit.is_some() {
+            return Ok(());
         }
-        self.settle(clock, deadline, action).await.map(|_| ())
+        self.child
+            .as_mut()
+            .expect("managed child is owned until reaped")
+            .start_kill()
+            .map_err(|error| self.reap_failure(format!("{action}: terminate process {process}: {error}; retain its installation")))?;
+        clock.timeout_at(clock.now() + grace, self.exited()).await.map_err(|_| {
+            self.reap_failure(format!("{action}: process {process} outlived stop_grace after it was killed; retain its installation"))
+        })??;
+        Ok(())
     }
 
-    pub(super) async fn settle(&mut self, clock: &Clock, deadline: Instant, action: &str) -> Result<ExitStatus, Error> {
-        let process = format!("{} (pid {:?})", self.executable.display(), self.id());
-        clock
-            .timeout_at(deadline, self.exited())
-            .await
-            .map_err(|_| self.reap_failure(format!("{action}: process {process} exceeded its stop grace; retain its installation")))?
+    /// Await the Exit a Stop Request Asked For Until `deadline`, Then Terminate the Child.
+    pub(super) async fn stop(
+        &mut self, clock: &Clock, deadline: Instant, grace: Duration, action: &'static str,
+    ) -> Result<ExitStatus, Error> {
+        match clock.timeout_at(deadline, self.exited()).await {
+            Ok(exit) => exit,
+            Err(_) => {
+                self.terminate(clock, grace, action).await?;
+                Err(Error::Deadline { action })
+            }
+        }
     }
 
     fn reap_failure(&self, message: String) -> Error {

@@ -38,12 +38,16 @@ use super::{
     invoke_support::{HostFixture, pending},
     support,
 };
-use harmos_operations::clock::Sleep as SleepOperation;
-use harmos_protocol::host::TimeSleepRequest;
+use harmos_operations::clock::{ClockAccess, Sleep as SleepOperation};
+use harmos_protocol::host::{TimeSleepRequest, TimeSleepResponse};
 use harmos_runtime::{
     Scope,
     clock::{Clock, Reading, Sleep, Source},
-    operations::middleware::{Enter, Invocation, Middleware},
+    operations::{
+        ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, ProtobufDependency, ProtobufOperation,
+        Registration as Batch, Resource, ServingError,
+        middleware::{Enter, Invocation, Middleware},
+    },
     plugin::grpc::Placement,
 };
 
@@ -85,6 +89,15 @@ struct Admission {
 }
 
 struct Gate(mpsc::UnboundedSender<Admission>);
+
+/// A Host Operation That Sleeps Through a Typed Child Call.
+struct TypedSleeper;
+
+/// A Product-Defined Native Operation That Waits on Its Call's Clock.
+struct NativeSleep;
+
+#[derive(Clone)]
+struct Wait(Duration);
 
 /* === Enums === */
 
@@ -172,10 +185,45 @@ impl Drop for Timer {
     }
 }
 
+impl harmos_domain::MemorySize for Wait {
+    fn memory_size(&self) -> usize {
+        std::mem::size_of::<Self>()
+    }
+}
+
+impl NativeOperation for NativeSleep {
+    type Request = Wait;
+    type Response = ();
+    type Endpoints = ();
+    const ID: &'static str = "fixture.native_sleep";
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
+    fn admitted_wait(request: &Wait) -> Option<Duration> {
+        Some(request.0)
+    }
+    async fn run(context: ExecutionContext, request: Wait, _: &()) -> Result<(), ServingError> {
+        context.resource::<ClockAccess>().map_err(|_| ServingError::Catalog)?.0.sleep(request.0).await;
+        Ok(())
+    }
+}
+
+impl ProtobufOperation for TypedSleeper {
+    type Request = TimeSleepRequest;
+    type Response = TimeSleepResponse;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.typed_sleeper";
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
+    const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<SleepOperation>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_operations::execution::operations::Calls>()];
+    async fn run(context: ExecutionContext, request: TimeSleepRequest, _: &()) -> Result<TimeSleepResponse, ServingError> {
+        Ok(context.call_protobuf::<SleepOperation>(request).await?.into_owned())
+    }
+}
+
 impl Middleware for Gate {
     fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a> {
         Box::pin(async move {
-            if call.operation().id.as_str() == "harmos.host.v1.Time/Sleep"
+            if matches!(call.operation().id.as_str(), "harmos.host.v1.Time/Sleep" | "fixture.native_sleep")
                 && let Some(scope) = call.context().get::<Scope>()
             {
                 let (release, waiting) = oneshot::channel();
@@ -376,6 +424,86 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
         assert_eq!(retained, requested, "Retain Each Unit's Exact Row Count");
     }
     assert_eq!(right_source.pending(), 0, "Remove Right's Timers on Close");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn native_operations_register_their_declared_wait_at_admission() {
+    // Register a Product Native Operation That Declares Its Clock Wait.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    let registration = Batch::new(Lane::default()).operation(OperationFactory::native::<NativeSleep>().unwrap(), NativeSleep::ID).unwrap();
+    host.runtime.register_batch(registration).await.unwrap();
+    let sdk = host.sdk("caller").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/native", Clock::with_clock(source.clone())).await.unwrap();
+
+    // Admission Owns the Timer Before Middleware Sees the Native Call.
+    let call = unit.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(2)), ()).unwrap();
+    assert_eq!(source.pending(), 1, "Register the Native Wait at Admission");
+    let admission = admissions.recv().await.unwrap();
+    assert_eq!(admission.scope, "unit/native");
+    source.advance_by(Duration::from_secs(2));
+    admission.release.send(()).unwrap();
+    call.await.unwrap();
+    assert_eq!(source.pending(), 0, "Settle the Native Wait");
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closing_during_an_in_flight_tick_settles_without_failure() {
+    // Hold One Tick In Flight While the Plugin Sleeps on the Unit Clock.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/racing", Clock::with_clock(source.clone())).await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    loop {
+        let registered = source.registered.notified();
+        if source.pending() == 1 {
+            break;
+        }
+        registered.await;
+    }
+
+    // Close Wins Over the Tick It Cancels and Leaves Nothing Behind.
+    unit.close().await.unwrap();
+    assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
+    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn typed_child_sleeps_register_at_admission() {
+    // A Host Operation Calls Time.Sleep as a Typed Child Inside the Unit.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    host.runtime.register_batch(Batch::new(Lane::default()).protobuf::<TypedSleeper>().unwrap()).await.unwrap();
+    let sdk = host.sdk("caller").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
+    let request = TimeSleepRequest {
+        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+    };
+
+    // The Child's Timer Exists Before Middleware Sees the Child Call.
+    let (call, _) = unit.operations().submit_protobuf::<TypedSleeper>(request, None).unwrap();
+    let admission = admissions.recv().await.unwrap();
+    assert_eq!(admission.scope, "unit/typed");
+    assert_eq!(source.pending(), 1, "Register the Typed Child Sleep at Admission");
+    source.advance_by(Duration::from_secs(1));
+    admission.release.send(()).unwrap();
+    call.await.unwrap();
+    assert_eq!(source.pending(), 0, "Settle the Typed Child Sleep");
+    unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

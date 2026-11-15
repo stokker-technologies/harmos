@@ -24,8 +24,8 @@ use harmos_runtime::clock::Clock;
 async fn host_work_wait_and_interval_interleave_under_one_controller() {
     // Compose One Host Clock and Register Work Before Scheduling It
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let mut operation = clock.activity("operation call");
-    let mut observer = clock.activity("observer stream");
+    let operation = clock.activity("operation call");
+    let observer = clock.activity("observer stream");
     let events = Arc::new(Mutex::new(Vec::new()));
     let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mut interval = clock.interval(Duration::from_secs(2));

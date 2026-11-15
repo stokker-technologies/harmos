@@ -13,6 +13,7 @@
 
 mod active_call;
 mod application_faces;
+mod binding_lifecycle;
 mod cancellation;
 mod catalog_admission;
 mod child_calls;

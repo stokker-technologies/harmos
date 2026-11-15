@@ -54,6 +54,9 @@ pub struct ClockAccess(pub Arc<dyn Clock>);
 pub trait Clock: Send + Sync {
     fn now(&self) -> prost_types::Timestamp;
     fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+
+    /// Register the Wait an Admitted Call Will Perform, Before Middleware Observes the Call.
+    fn register(&self, _duration: Duration) {}
 }
 
 /* === Implementations === */

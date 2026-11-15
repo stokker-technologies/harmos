@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::path::Path;
 // Third Party Imports
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 // Local Imports
 
 /* === Constants === */
@@ -45,6 +45,11 @@ pub(super) fn command(executable: &Path) -> Command {
     let mut command = Command::new(executable);
     command.creation_flags(CREATE_NO_WINDOW);
     command
+}
+
+/// The Hosting Product Owns Process-Tree Lifetime on Windows, for Example Through a Job Object.
+pub(super) async fn spawn(mut command: Command) -> std::io::Result<Child> {
+    command.spawn()
 }
 
 /* === Tests === */

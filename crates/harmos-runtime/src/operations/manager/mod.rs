@@ -215,22 +215,16 @@ impl Manager {
         resources.replace(self.registry.access.clone());
         resources.replace(self.registry.status.clone());
         resources.replace(Arc::new(self.resources().resource::<harmos_storage::StorageManager>().ok()));
-        let clock = self
-            .call_context()
-            .get::<harmos_operations::clock::ClockAccess>()
-            .cloned()
-            .unwrap_or_else(|| harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone()))));
+        // A Scoped Unit Gives Each Call Its Own Clock So Admission Can Register Its Wait.
+        let clock = match self.call_context().get::<Arc<super::clock::Unit>>() {
+            Some(unit) => harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(unit.clock.clone()))),
+            None => self
+                .call_context()
+                .get::<harmos_operations::clock::ClockAccess>()
+                .cloned()
+                .unwrap_or_else(|| harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))),
+        };
         resources.replace(Arc::new(clock));
-        resources
-    }
-
-    pub(super) fn prepare_resources(&self, entry: &Entry, payload: &[u8]) -> harmos_operations::execution::__private::ResourceSet {
-        let mut resources = self.resources_for(entry);
-        if let Some(unit) = self.call_context().get::<Arc<super::clock::Unit>>()
-            && let Some(clock) = unit.prepare_sleep(entry.id(), payload)
-        {
-            resources.replace(Arc::new(clock));
-        }
         resources
     }
 }

@@ -107,6 +107,10 @@ pub trait NativeOperation: Send + Sync + 'static {
     fn classify(_: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
         FailureKind::Permanent
     }
+    /// A Clock Wait This Request Performs, Registered When the Call Is Admitted.
+    fn admitted_wait(_request: &Self::Request) -> Option<std::time::Duration> {
+        None
+    }
     fn run(
         context: ExecutionContext, request: Self::Request, endpoints: &Self::Endpoints,
     ) -> impl Future<Output = Result<Self::Response, ServingError>> + Send;
@@ -176,6 +180,13 @@ impl OperationFactory {
     }
 }
 impl<O: NativeOperation> NativeInstance for Instance<O> {
+    fn admit(&mut self) {
+        if let Some(duration) = O::admitted_wait(&self.request)
+            && let Ok(clock) = self.resources.resource::<crate::clock::ClockAccess>()
+        {
+            clock.0.register(duration);
+        }
+    }
     fn classify(&self, error: &(dyn Error + Send + Sync + 'static)) -> FailureKind {
         O::classify(error)
     }

@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 // Third Party Imports
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 // Local Imports
 use super::{Activation, Error, Outcome, publish::Publications};
@@ -28,7 +28,6 @@ use crate::{
     clock::Clock,
     operations::{Manager, clock::Unit},
 };
-use harmos_operations::clock::ClockAccess;
 
 /* === Constants === */
 
@@ -37,6 +36,16 @@ use harmos_operations::clock::ClockAccess;
 /* === Type Aliases === */
 
 /* === Structs === */
+
+/// One Scope's Settlement State, Owned by the Attachment From Bind to Settled.
+struct Binding<A: Application> {
+    streams: crate::streams::StreamManager<A>,
+    activation: Activation,
+    host: Clock,
+    clock: Clock,
+    operations: Manager,
+    unit: Arc<Unit>,
+}
 
 /// Owns One Trusted Scope's Clock, Calls and Samples on an Admitted Activation.
 #[must_use = "retain the binding until its scoped work has settled"]
@@ -55,56 +64,93 @@ pub struct ScopedBinding {
 impl<A: Application> Runtime<A> {
     /// Bind Samples and Descendant Time Calls Without Opening Another Connection.
     pub async fn bind_grpc(&self, activation: &Activation, scope: impl Into<String>, clock: Clock) -> Result<ScopedBinding, Error> {
+        let scope = scope.into();
         let source =
             activation.publications.get().ok_or_else(|| Error::Invalid("Bind Scoped Plugin: activation is not admitted".into()))?;
         if !Arc::ptr_eq(&self.operations.registry, &source.operations.registry) {
             return Err(Error::Invalid("Bind Scoped Plugin: activation belongs to another runtime".into()));
         }
-        if *source.close.borrow() || !activation.is_connected() {
-            return Err(Error::Invalid("Bind Scoped Plugin: activation is disconnected".into()));
-        }
-        let scope = scope.into();
         let operations =
             source.operations.with_scope(scope.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let unit = Arc::new(Unit::new(clock.clone()));
         let mut context = operations.call_context().clone();
-        context
-            .insert(ClockAccess(Arc::new(crate::operations::clock::Clock(clock.clone()))))
-            .map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         context.insert(unit.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let operations = operations.with_context(context);
         let (close, closing) = watch::channel(false);
         let (completed, completion) = watch::channel(None);
+        let (ready, started) = oneshot::channel();
+        let binding = Binding {
+            streams: self.streams.clone(),
+            activation: activation.clone(),
+            host: self.operations.clock().clone(),
+            clock,
+            operations: operations.clone(),
+            unit,
+        };
         {
-            let mut scopes = source.scopes.lock().expect("scoped publications lock is healthy");
-            scopes.retain(|_, completed| completed.borrow().is_none() && completed.has_changed().is_ok());
-            if scopes.contains_key(&scope) {
+            // Admission, Registration and Ownership Change Together Under the Attachment's Lock.
+            let mut bindings = source.bindings.lock().expect("scoped bindings lock is healthy");
+            if bindings.closed || *source.close.borrow() || !activation.is_connected() {
+                return Err(Error::Invalid("Bind Scoped Plugin: activation is closing; bind to its next activation".into()));
+            }
+            while bindings.tasks.try_join_next().is_some() {}
+            bindings.scopes.retain(|_, completed| completed.borrow().is_none() && completed.has_changed().is_ok());
+            if bindings.scopes.contains_key(&scope) {
                 return Err(Error::Invalid("Bind Scoped Plugin: scope already has an active binding".into()));
             }
-            scopes.insert(scope, completion.clone());
+            bindings.scopes.insert(scope, completion.clone());
+            bindings.tasks.spawn(binding.run(ready, closing, completed));
         }
-        let host_clock = self.operations.clock();
-        let _activity = host_clock.activity("Bind Scoped Plugin");
-        let prepare = Publications::prepare(&self.streams, activation, &source.settings, &operations, true);
-        let prepared =
-            host_clock.timeout(source.settings.connect_timeout, prepare).await.map_err(|_| Error::Timeout("Bind Scoped Plugin"))??;
-        let mut publications = Publications::scoped(prepared, source, activation, &clock, &operations);
+        match started.await {
+            Ok(Ok(())) => Ok(ScopedBinding { operations, close, completed: completion }),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(Error::Invalid("Bind Scoped Plugin: activation stopped while binding; bind to its next activation".into())),
+        }
+    }
+}
+
+impl<A: Application> Binding<A> {
+    /// Prepare, Serve Until Close, Then Settle; the Attachment Owns This Task Throughout.
+    async fn run(
+        self, ready: oneshot::Sender<Result<(), Error>>, closing: watch::Receiver<bool>, completed: watch::Sender<Option<Outcome>>,
+    ) {
+        let Self {
+            streams,
+            activation,
+            host,
+            clock,
+            operations,
+            unit,
+        } = self;
+        let source = activation.publications.get().expect("bound activations are admitted");
         let parent = source.close.clone();
-        tokio::spawn(async move {
+        let prepared = {
+            let _activity = host.activity("Bind Scoped Plugin");
+            let prepare = Publications::prepare(&streams, &activation, &source.settings, &operations, true);
             tokio::select! {
-                () = super::disconnected(closing.clone()) => {},
-                () = super::disconnected(parent) => {},
+                biased;
+                () = super::disconnected(parent.clone()) => Err(Error::Invalid("Bind Scoped Plugin: activation is closing; bind to its next activation".into())),
+                prepared = host.timeout(source.settings.connect_timeout, prepare) => prepared.map_err(|_| Error::Timeout("Bind Scoped Plugin")).and_then(|prepared| prepared),
             }
-            let pending = unit.stop();
-            let mut result = publications.close().await.map_err(Arc::new);
-            for instance in pending {
-                if let Err(error) = instance.settle().await {
-                    result = Err(Arc::new(Error::Invalid(format!("Close Scoped Plugin: {error}"))));
-                }
+        };
+        let mut publications = match prepared {
+            Ok(prepared) => Publications::scoped(prepared, source, &activation, &clock, &operations),
+            Err(error) => {
+                // An Unprepared Binding Never Served, So It Has Nothing to Settle.
+                completed.send_replace(Some(Ok(())));
+                let _ = ready.send(Err(error));
+                return;
             }
-            completed.send_replace(Some(result));
-        });
-        Ok(ScopedBinding { operations, close, completed: completion })
+        };
+        let _ = ready.send(Ok(()));
+        // A Dropped Handle Closes Like an Explicit Close.
+        tokio::select! {
+            () = super::disconnected(closing) => {},
+            () = super::disconnected(parent) => {},
+        }
+        let deadline = host.now() + source.settings.stop_grace;
+        let result = publications.settle(&host, deadline, Some(&unit), "Close Scoped Plugin").await;
+        completed.send_replace(Some(result.map_err(Arc::new)));
     }
 }
 
@@ -113,7 +159,7 @@ impl ScopedBinding {
         &self.operations
     }
 
-    /// Stop Scoped Calls and Await Accepted Ingestion and Producer Cleanup.
+    /// Stop Scoped Calls and Await Accepted Ingestion and Producer Cleanup Within `stop_grace`.
     pub async fn close(mut self) -> Outcome {
         self.close.send_replace(true);
         loop {
@@ -121,7 +167,7 @@ impl ScopedBinding {
                 return result;
             }
             if self.completed.changed().await.is_err() {
-                return Err(Arc::new(Error::Invalid("Close Scoped Plugin: settlement task ended before completion".into())));
+                return Err(Arc::new(Error::Deadline { action: "Close Scoped Plugin" }));
             }
         }
     }

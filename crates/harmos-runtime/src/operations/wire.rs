@@ -501,7 +501,7 @@ pub(super) fn dispatch_native(
             submission.preparation = Some(decoded);
         }
     }
-    let resources = operations.prepare_resources(&submission.entry, &input.payload);
+    let resources = operations.resources_for(&submission.entry);
     let prepared = catch_unwind(AssertUnwindSafe(|| {
         if let Some(factory) = factory {
             return factory.prepare_envelope(resources, &input.payload, protobuf, None);

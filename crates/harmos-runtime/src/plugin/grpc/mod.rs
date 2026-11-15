@@ -141,6 +141,12 @@ pub enum Placement {
     Remote(String),
 }
 
+enum Ending {
+    Stop(String),
+    Exit(Result<std::process::ExitStatus, Error>),
+    Disconnect,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
@@ -158,6 +164,9 @@ pub enum Error {
     #[error("plugin {0} exceeded its host-clock budget")]
     Timeout(&'static str),
 
+    #[error("{action}: the plugin did not settle within PlacementSettings.stop_grace; its remaining work was cancelled")]
+    Deadline { action: &'static str },
+
     #[error("managed plugin exited with {0}")]
     Exit(std::process::ExitStatus),
 
@@ -172,7 +181,7 @@ pub enum Error {
 impl PreparedPlugin {
     pub(crate) async fn stop(&mut self, clock: &Clock, settings: &PlacementSettings) -> Result<(), Error> {
         if let Some(process) = &mut self.process {
-            process.terminate(clock, clock.now() + settings.stop_grace, "Stop Staged Plugin Replacement").await?;
+            process.terminate(clock, settings.stop_grace, "Stop Staged Plugin Replacement").await?;
         }
         Ok(())
     }
@@ -247,7 +256,7 @@ impl<A: Application> Runtime<A> {
             }),
             Err(error) => {
                 if let Some(process) = &mut process {
-                    process.terminate(clock, clock.now() + settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                    process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
                 }
                 Err(error)
             }
@@ -271,7 +280,7 @@ impl<A: Application> Runtime<A> {
             Ok(publications) => publications,
             Err(error) => {
                 if let Some(process) = &mut process {
-                    process.terminate(&clock, clock.now() + settings.stop_grace, "Stop Failed Replacement Activation").await?;
+                    process.terminate(&clock, settings.stop_grace, "Stop Failed Replacement Activation").await?;
                 }
                 return Err(error);
             }
@@ -437,7 +446,7 @@ impl Attached {
             Ok(connected) => connected,
             Err(error) => {
                 if let Some(process) = &mut process {
-                    process.terminate(&clock, clock.now() + settings.stop_grace, "Stop Plugin Startup").await?;
+                    process.terminate(&clock, settings.stop_grace, "Stop Plugin Startup").await?;
                 }
                 return Err(error);
             }
@@ -626,49 +635,52 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 None => std::future::pending().await,
             }
         };
-        let reason = tokio::select! {
+        let ending = tokio::select! {
             biased;
-            reason = stopping(&mut stop, &mut participant) => Some(reason),
-            result = exited => {
-                activation.connection.closed.send_replace(true);
-                activation.admission.as_ref().unwrap().remove();
-                return Err(Arc::new(result.map_or_else(|error| error, Error::Exit)));
-            },
-            () = disconnected(activation.connection.closed.subscribe()) => None,
+            reason = stopping(&mut stop, &mut participant) => Ending::Stop(reason),
+            result = exited => Ending::Exit(result),
+            () = disconnected(activation.connection.closed.subscribe()) => Ending::Disconnect,
         };
-        if let Some(reason) = reason {
-            let _activity = clock.activity("plugin stop");
-            let deadline = clock.now() + settings.stop_grace;
-            let streams_closed = clock.timeout_at(deadline, publications.close()).await;
-            let mut client = activation.connection.client();
-            let result = clock
-                .timeout_at(deadline, client.stop(InstanceStopRequest { reason }))
-                .await
-                .map_err(|_| Error::Timeout("Stop"))
-                .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
-            let result = streams_closed.map_err(|_| Error::Timeout("Publish closure")).and_then(|result| result).and(result);
-            if let Err(error) = &result {
-                tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
-            }
-            activation.connection.closed.send_replace(true);
-            activation.admission.as_ref().unwrap().remove();
-            if let Some(process) = &mut process {
-                let exit = process.settle(&clock, deadline, "Stop Managed Plugin").await.map_err(Arc::new)?;
-                if !exit.success() {
-                    return Err(Arc::new(Error::Exit(exit)));
-                }
-            }
-            return result.map_err(Arc::new);
-        }
+        // Every Ending Settles Its Bindings Before the Connection or Process Is Released.
+        let _activity = clock.activity("plugin teardown");
         let deadline = clock.now() + settings.stop_grace;
-        let closed = clock.timeout_at(deadline, publications.close()).await;
+        if !matches!(ending, Ending::Stop(_)) {
+            activation.connection.closed.send_replace(true);
+        }
+        let settled = publications.settle(&clock, deadline, None, "Settle Plugin Publications").await;
         activation.admission.as_ref().unwrap().remove();
+        match ending {
+            Ending::Stop(reason) => {
+                let mut client = activation.connection.client();
+                let stopped = clock
+                    .timeout_at(deadline, client.stop(InstanceStopRequest { reason }))
+                    .await
+                    .map_err(|_| Error::Timeout("Stop"))
+                    .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
+                let result = settled.and(stopped);
+                if let Err(error) = &result {
+                    tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
+                }
+                activation.connection.closed.send_replace(true);
+                if let Some(process) = &mut process {
+                    let exit = match process.stop(&clock, deadline, settings.stop_grace, "Stop Managed Plugin").await {
+                        Ok(exit) if exit.success() => Ok(()),
+                        Ok(exit) => Err(Error::Exit(exit)),
+                        Err(error) => Err(error),
+                    };
+                    return result.and(exit).map_err(Arc::new);
+                }
+                return result.map_err(Arc::new);
+            }
+            Ending::Exit(result) => return Err(Arc::new(result.map_or_else(|error| error, Error::Exit))),
+            Ending::Disconnect => {}
+        }
         if let Some(process) = &mut process {
-            process.terminate(&clock, deadline, "Stop Disconnected Managed Plugin").await.map_err(Arc::new)?;
+            process.terminate(&clock, settings.stop_grace, "Stop Disconnected Managed Plugin").await.map_err(Arc::new)?;
             return Err(Arc::new(Error::Disconnected));
         }
-        let closed = closed.map_err(|_| Arc::new(Error::Timeout("Publish closure")))?;
-        let failure = closed.err().unwrap_or(Error::Disconnected);
+        drop(_activity);
+        let failure = settled.err().unwrap_or(Error::Disconnected);
         status.send_replace(Status {
             activation: None,
             failure: Some(Arc::new(failure)),
