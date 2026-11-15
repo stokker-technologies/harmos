@@ -63,6 +63,17 @@ class PackagedRustConformance(unittest.TestCase):
             patches = []
             for package, path in packages.items():
                 patches += ["--config", f'patch.crates-io.{package}.path="{path.as_posix()}"']
+            # Offline Packaging Reads Every Locked Crate, So Fetch Them Rather Than Rely on a Warm Cache.
+            result = subprocess.run(
+                ["cargo", "fetch", "--locked"],
+                cwd=root,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=spawn_flags(),
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
             # Build the Three Published Crate Archives Without Workspace Path Dependencies.
             for package in packages:
                 result = subprocess.run(
