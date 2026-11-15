@@ -16,11 +16,24 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::{Arc, Mutex, Weak};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex, Weak},
+    time::Duration,
+};
 
 // Third Party Imports
+use prost::Message;
+use prost_types::Timestamp;
 
 // Local Imports
+use crate::{
+    clock::{self, Sleep},
+    supervision::instance::Instance,
+};
+use harmos_operations::clock::{Clock as OperationClock, ClockAccess};
+use harmos_protocol::host::TimeSleepRequest;
 
 /* === Constants === */
 
@@ -30,11 +43,16 @@ use std::sync::{Arc, Mutex, Weak};
 
 /* === Structs === */
 
-pub(crate) struct Clock(pub(crate) crate::clock::Clock);
+pub(crate) struct Clock(pub(crate) clock::Clock);
+
+struct RegisteredSleep {
+    clock: clock::Clock,
+    timer: Mutex<Option<Sleep>>,
+}
 
 pub(crate) struct Unit {
-    pub(crate) clock: crate::clock::Clock,
-    pending: Mutex<Option<Vec<Weak<crate::supervision::instance::Instance>>>>,
+    pub(crate) clock: clock::Clock,
+    pending: Mutex<Option<Vec<Weak<Instance>>>>,
 }
 
 /* === Enums === */
@@ -44,14 +62,14 @@ pub(crate) struct Unit {
 /* === Implementations === */
 
 impl Unit {
-    pub(crate) fn new(clock: crate::clock::Clock) -> Self {
+    pub(crate) fn new(clock: clock::Clock) -> Self {
         Self {
             clock,
             pending: Mutex::new(Some(Vec::new())),
         }
     }
 
-    pub(crate) fn track(&self, instance: &Arc<crate::supervision::instance::Instance>) -> bool {
+    pub(crate) fn track(&self, instance: &Arc<Instance>) -> bool {
         let mut pending = self.pending.lock().expect("scoped work lock is healthy");
         let Some(pending) = pending.as_mut() else {
             return false;
@@ -61,7 +79,7 @@ impl Unit {
         true
     }
 
-    pub(crate) fn stop(&self) -> Vec<Arc<crate::supervision::instance::Instance>> {
+    pub(crate) fn stop(&self) -> Vec<Arc<Instance>> {
         let pending = self.pending.lock().expect("scoped work lock is healthy").take().unwrap_or_default();
         let pending = pending.into_iter().filter_map(|instance| instance.upgrade()).collect::<Vec<_>>();
         for instance in &pending {
@@ -69,14 +87,47 @@ impl Unit {
         }
         pending
     }
+
+    pub(crate) fn prepare_sleep(&self, operation: &str, payload: &[u8]) -> Option<ClockAccess> {
+        if operation != "harmos.host.v1.Time/Sleep" {
+            return None;
+        }
+        let request = TimeSleepRequest::decode(payload).ok()?;
+        let duration = request.duration.unwrap_or_default();
+        // Invalid Requests Still Use the Operation's Normal Validation.
+        if duration.seconds < 0 || !(0..1_000_000_000).contains(&duration.nanos) || duration.seconds > 315_576_000_000 {
+            return None;
+        }
+        let timer = self.clock.sleep(Duration::new(duration.seconds as u64, duration.nanos as u32));
+        Some(ClockAccess(Arc::new(RegisteredSleep {
+            clock: self.clock.clone(),
+            timer: Mutex::new(Some(timer)),
+        })))
+    }
 }
 
-impl harmos_operations::clock::Clock for Clock {
-    fn now(&self) -> prost_types::Timestamp {
+impl OperationClock for RegisteredSleep {
+    fn now(&self) -> Timestamp {
+        self.clock.date().into()
+    }
+
+    fn sleep(&self, _: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        let timer = self
+            .timer
+            .lock()
+            .expect("scoped sleep registration lock is healthy")
+            .take()
+            .expect("Time.Sleep: scoped timer is registered before execution");
+        Box::pin(clock::waiting(timer))
+    }
+}
+
+impl OperationClock for Clock {
+    fn now(&self) -> Timestamp {
         self.0.date().into()
     }
-    fn sleep(&self, duration: std::time::Duration) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + '_>> {
-        Box::pin(crate::clock::waiting(self.0.sleep(duration)))
+    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        Box::pin(clock::waiting(self.0.sleep(duration)))
     }
 }
 

@@ -1283,6 +1283,28 @@ Rows retain the trusted scope in `PublicationRow.context` as the JSON `scope`
 property, alongside device source time when present. Consumers use that property
 to select the unit's rows and advance only its clock after awaited ingestion.
 
+Scoped Time.Sleep calls register their relative timer during admission, before
+operation middleware observes the call. Middleware may announce the sleep and a
+product may advance the unit clock immediately; the handler awaits that already
+registered timer. The prepared call owns it, so refusal, cancellation and binding
+closure drop it even when middleware has not let the handler run. This ordering
+applies to plugin children, encoded calls and native protobuf calls through the
+binding; unscoped calls retain their runtime-clock behavior.
+
+```rust,ignore
+let binding = runtime.bind_grpc(&activation, scope, unit_clock).await?;
+// After ingestion and the middleware's Time.Sleep notification:
+unit_time.advance_by(sample_interval).await;
+binding.close().await?;
+```
+
+Samples demand is opened before binding returns. Accepted publications hold unit
+activity until ingestion; close captures and drains each demand's accepted cursor
+before reporting settlement. Child invocation admission tracks its instance in
+the unit before middleware runs. Close stops that tracking atomically, cancels
+tracked instances and refuses later calls; a call preparing a timer concurrently
+with close is refused and releases its timer during settlement.
+
 `ScopedBinding::close` stops scoped calls and waits for their settlement, accepted
 ingestion and Samples EOF/producer cleanup. Each demand awaits its captured
 ingestion cursor, so later publications cannot extend its close boundary. Dropping
