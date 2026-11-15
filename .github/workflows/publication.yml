@@ -87,6 +87,7 @@ jobs:
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     - name: Run Project Task
       if: '!inputs.report'
+      # PyPI Is Published Only By The Direct Job In release.yml.
       run: mise run release:publish -- --channel ${{ inputs.channel }}
       env:
         GH_TOKEN: ${{ github.token }}

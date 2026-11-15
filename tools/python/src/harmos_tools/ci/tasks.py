@@ -145,6 +145,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             publication = release.add_mutually_exclusive_group()
             publication.add_argument("--dry", action="store_true")
             publication.add_argument("--stage", choices=("assets", "rust", "finalize"))
+            release.add_argument("--registry", choices=("pypi",))
         if name == "prepare":
             release.add_argument("--review", action="store_true")
         if name == "rehearse":
@@ -548,6 +549,13 @@ def dispatch(arguments: list[str] | None = None) -> int:
 
     # Release Operations
     operation = options.command.partition(":")[2]
+    if operation == "publish" and options.registry:
+        if options.channel != "stable" or options.stage:
+            parser.error("--registry pypi requires stable publication without --stage")
+        if not options.dry and os.environ.get("GITHUB_ACTIONS"):
+            _module("release.checks")
+            _module("release.run", "identity")
+        return _module("release.run", "python-dry" if options.dry else "python")
     if operation in ("publish", "verify") and options.channel == "nightly":
         from ..release import nightly
         from ..release import policy as release_policy

@@ -63,6 +63,7 @@ VERBS = [
     "crates",
     "publish",
     "python",
+    "python-dry",
     "finalize",
     "verify",
     "guard",
@@ -535,7 +536,7 @@ def rehearse(directory: Path, settings: dict, *, target: str | None = None, prof
         dry(directory, settings, profile=profile, require_all=True, source_revision=revision, targets=targets)
         if not stage_only and _task_defined(directory, "release:publish:rust"):
             registry.rehearse_crates(directory, skip_published=False)
-        if not stage_only and _task_defined(directory, "release:publish:python"):
+        if not stage_only:
             registry.python(directory, settings, dry_run=True)
     print(f"release {'staging' if stage_only else 'rehearsal'} passed using staged {profile}-profile packages")
 
@@ -596,6 +597,7 @@ def run(directory: Path, verb: str, *, target: str | None = None, profile: str |
         "crates": crates,
         "publish": publish,
         "python": lambda directory, settings: registry.python(directory, settings, dry_run=False),
+        "python-dry": lambda directory, settings: registry.python(directory, settings, dry_run=True),
         "finalize": finalize,
         "verify": verify,
         "guard": lambda directory, settings: registry.require_tag(directory, release_tag(directory)),

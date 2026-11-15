@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import time
+import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -134,15 +135,37 @@ def crate_published(name: str, version: str | None = None) -> bool:
 def python(directory: Path, settings: dict, *, dry_run: bool) -> None:
     """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
     profile = policy.profile()
-    selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/package/{profile}/*/python/*") if path.is_file())
+    selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/build/{profile}/any/python/*") if path.is_file())
     if not selected:
         raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
     if dry_run:
         # Build and check only: uv validates every file without credentials or upload.
-        policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
+        with policy.credential_free(settings, profile=profile):
+            policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
         return
     if settings["provider"] == "github":
-        policy.execute(directory, ["uv", "publish", "--trusted-publishing", "always", *selected])
+        project = tomllib.loads((directory / "sdk/python/pyproject.toml").read_text(encoding="utf-8"))["project"]["name"]
+        try:
+            with urllib.request.urlopen(f"https://pypi.org/pypi/{urllib.parse.quote(project, safe='')}/json", timeout=60) as response:
+                releases = json.load(response)["releases"]
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+            releases = {}
+        published = {item["filename"]: item["digests"]["sha256"] for files in releases.values() for item in files}
+        missing = []
+        for relative in selected:
+            path = directory / relative
+            if path.name not in published:
+                missing.append(relative)
+                continue
+            if hashlib.sha256(path.read_bytes()).hexdigest() != published[path.name]:
+                raise policy.ToolError(f"PyPI file already exists with a different SHA-256: {path.name}")
+            print(f"PyPI file already published with matching SHA-256: {path.name}")
+        if missing:
+            policy.execute(
+                directory, ["uv", "publish", "--trusted-publishing", "always", "--check-url", "https://pypi.org/simple/", *missing]
+            )
         return
     base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
     project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
@@ -268,7 +291,7 @@ def request(
             if not retry or attempt == RETRY_ATTEMPTS:
                 raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
             print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
-            _pause(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+            time.sleep(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
     raise AssertionError("unreachable")
 
 
@@ -639,10 +662,6 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 
 
 # === Private Functions === #
-
-
-def _pause(seconds: float) -> None:
-    time.sleep(seconds)
 
 
 def _publish_crates(
