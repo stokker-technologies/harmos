@@ -1367,7 +1367,11 @@ while it waits on the plugin, and a demand parks its activity while it awaits th
 plugin's end of its Samples response, so a virtual runtime clock reaches the
 deadline once its controller advances. Accepted host ingestion holds a
 runtime-clock activity until it completes, so virtual time never expires host work
-in progress.
+in progress. A controller that advances while a stop, close or disconnect waits on
+the plugin may therefore expire that wait even for a plugin that would answer;
+advance past `stop_grace` only to exercise the deadline. A cancelled call that is
+still running at the deadline remains owned by its operation entry, whose own
+policy and settlement govern it.
 
 Connection loss or plugin exit still awaits accepted scoped ingestion before the
 binding reports the transport failure. A settlement failure is logged with its

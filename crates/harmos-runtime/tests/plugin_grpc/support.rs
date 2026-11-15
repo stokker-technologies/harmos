@@ -57,6 +57,8 @@ use harmos_runtime::{
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 pub type App = crate::support::Bank;
 type SamplesHandler = Arc<dyn Fn(Streaming<InstanceSamplesRequest>) -> Output<InstanceSamplesResponse> + Send + Sync>;
+/// Signals for a Withheld Samples Response: Arrival, Then Abandonment.
+type WithheldSamples = (oneshot::Sender<()>, oneshot::Sender<()>);
 
 /* === Structs === */
 
@@ -87,7 +89,7 @@ struct Fixture {
     message_bytes: Arc<std::sync::atomic::AtomicU64>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
-    pending_samples: Arc<Mutex<Option<(oneshot::Sender<()>, oneshot::Sender<()>)>>>,
+    pending_samples: Arc<Mutex<Option<WithheldSamples>>>,
     samples: Arc<Mutex<Option<SamplesHandler>>>,
 }
 
