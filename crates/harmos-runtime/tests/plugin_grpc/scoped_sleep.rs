@@ -39,12 +39,13 @@ use super::{
     support,
 };
 use harmos_operations::clock::{ClockAccess, Sleep as SleepOperation};
-use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::{TimeSleepRequest, TimeSleepResponse};
 use harmos_runtime::{
     Scope,
     clock::{Clock, Reading, Sleep, Source},
     operations::{
-        ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, Registration as Batch, Resource, ServingError,
+        ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, ProtobufDependency, ProtobufOperation,
+        Registration as Batch, Resource, ServingError,
         middleware::{Enter, Invocation, Middleware},
     },
     plugin::grpc::Placement,
@@ -88,6 +89,9 @@ struct Admission {
 }
 
 struct Gate(mpsc::UnboundedSender<Admission>);
+
+/// A Host Operation That Sleeps Through a Typed Child Call.
+struct TypedSleeper;
 
 /// A Product-Defined Native Operation That Waits on Its Call's Clock.
 struct NativeSleep;
@@ -200,6 +204,19 @@ impl NativeOperation for NativeSleep {
     async fn run(context: ExecutionContext, request: Wait, _: &()) -> Result<(), ServingError> {
         context.resource::<ClockAccess>().map_err(|_| ServingError::Catalog)?.0.sleep(request.0).await;
         Ok(())
+    }
+}
+
+impl ProtobufOperation for TypedSleeper {
+    type Request = TimeSleepRequest;
+    type Response = TimeSleepResponse;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.typed_sleeper";
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
+    const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<SleepOperation>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_operations::execution::operations::Calls>()];
+    async fn run(context: ExecutionContext, request: TimeSleepRequest, _: &()) -> Result<TimeSleepResponse, ServingError> {
+        Ok(context.call_protobuf::<SleepOperation>(request).await?.into_owned())
     }
 }
 
@@ -459,6 +476,34 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
     unit.close().await.unwrap();
     assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
     assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn typed_child_sleeps_register_at_admission() {
+    // A Host Operation Calls Time.Sleep as a Typed Child Inside the Unit.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    host.runtime.register_batch(Batch::new(Lane::default()).protobuf::<TypedSleeper>().unwrap()).await.unwrap();
+    let sdk = host.sdk("caller").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
+    let request = TimeSleepRequest {
+        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+    };
+
+    // The Child's Timer Exists Before Middleware Sees the Child Call.
+    let (call, _) = unit.operations().submit_protobuf::<TypedSleeper>(request, None).unwrap();
+    let admission = admissions.recv().await.unwrap();
+    assert_eq!(admission.scope, "unit/typed");
+    assert_eq!(source.pending(), 1, "Register the Typed Child Sleep at Admission");
+    source.advance_by(Duration::from_secs(1));
+    admission.release.send(()).unwrap();
+    call.await.unwrap();
+    assert_eq!(source.pending(), 0, "Settle the Typed Child Sleep");
+    unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }
