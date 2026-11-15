@@ -667,10 +667,11 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             process.terminate(&clock, deadline, "Stop Disconnected Managed Plugin").await.map_err(Arc::new)?;
             return Err(Arc::new(Error::Disconnected));
         }
-        closed.map_err(|_| Arc::new(Error::Timeout("Publish closure")))?.map_err(Arc::new)?;
+        let closed = closed.map_err(|_| Arc::new(Error::Timeout("Publish closure")))?;
+        let failure = closed.err().unwrap_or(Error::Disconnected);
         status.send_replace(Status {
             activation: None,
-            failure: Some(Arc::new(Error::Disconnected)),
+            failure: Some(Arc::new(failure)),
         });
         let previous = activation.description.started_at;
         let number = activation.number + 1;

@@ -1292,7 +1292,10 @@ reconnection: a new activation needs a new binding. Closing one binding leaves t
 other scopes and the original unscoped publication active. Products that do not
 bind a scope retain their runtime clock and attachment-time Samples behavior.
 Connection loss still awaits any already accepted scoped ingestion before close
-reports the transport failure.
+reports the transport failure. Remote attachments retain that cleanup failure in
+their disconnected status and continue reconnecting under the placement policy.
+A cleanup timeout remains terminal; managed placements still terminate and reap
+their child before releasing ownership.
 
 The fixture story `plugin_grpc::scoped_publications` starts two concurrent calls
 and demands after attachment, holds one ingestion boundary, closes that scope,
