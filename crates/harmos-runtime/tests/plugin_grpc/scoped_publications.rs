@@ -55,6 +55,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     let sdk = host.sdk("scoped-publications").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let activation = attached.activation().unwrap();
+    let mut status = attached.status();
 
     // Bind Two Independent Timelines to the Existing Activation.
     let (left_clock, left_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
@@ -150,7 +151,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     drop(dropped);
 
     // A Lost Connection Still Settles the Scope's Already Accepted Ingestion.
-    let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock).await.unwrap();
+    let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.unwrap();
     let previous = rows_for("unit/left").len();
     host.signals.storage_hold.store(true, std::sync::atomic::Ordering::SeqCst);
     let delivering = left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous);
@@ -171,6 +172,24 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     assert!(closed.unwrap_err().to_string().contains("Close Scoped Samples"));
     delivered.unwrap();
     assert_eq!(rows_for("unit/left").len(), previous + 1);
+
+    // Retain the Cleanup Failure While the Remote Attachment Is Disconnected.
+    support::offline(&mut status).await;
+    assert!(status.borrow().failure.as_ref().unwrap().to_string().contains("Close Scoped Samples"));
+    assert!(!activation.is_connected());
+
+    // Reconnect and Bind Fresh Samples After the Old Scope Has Settled.
+    controller
+        .advance_until(Duration::from_secs(5), || attached.activation().is_some_and(|next| next.number > activation.number))
+        .await
+        .unwrap();
+    let reconnected = attached.activation().unwrap();
+    assert_eq!(reconnected.number, activation.number + 1);
+    assert!(status.borrow().failure.is_none());
+    let resumed = host.runtime.bind_grpc(&reconnected, "unit/left", left_clock).await.unwrap();
+    let previous = rows_for("unit/left").len();
+    left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous).await.unwrap();
+    resumed.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

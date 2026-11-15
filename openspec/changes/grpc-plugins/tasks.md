@@ -1,5 +1,11 @@
 # Tasks
 
+## Remote Disconnect Regression
+
+- [x] 14.1 Preserve remote reconnect after scoped publication cleanup reports connection loss in `crates/harmos-runtime/src/plugin/grpc/mod.rs`; retain the cleanup failure in disconnected status and preserve the existing cleanup timeout and managed reaping policy.
+- [x] 14.2 Extend `crates/harmos-runtime/tests/plugin_grpc/scoped_publications.rs` to prove failure retention, reconnect and fresh scoped ingestion after accepted ingestion settles; update `docs/architecture.md` and this change's `design.md`, and review README impact. The scoped story and existing remote reconnect, stream reconnect and remote stop stories pass; README claims remain current.
+- [ ] 14.3 Validate the committed repair with format, Rust/repository checks, locked workspace/tests/benches compilation, all four Rust lanes, coverage and Rust fixture conformance; retain native Linux and hosted Nightly as separate proof obligations. Commits remain local.
+
 ## Managed Process Settlement
 
 - [x] 13.1 Own managed process creation, readiness, cancellation and bounded reaping in `crates/harmos-runtime/src/plugin/grpc`; settle startup, stop, disconnect and shutdown before releasing ownership; propagate unreaped process failures through runtime stop participants (`runtime.rs`, `runtime/lifecycle.rs`).
