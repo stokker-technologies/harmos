@@ -223,6 +223,16 @@ impl Manager {
         resources.replace(Arc::new(clock));
         resources
     }
+
+    pub(super) fn prepare_resources(&self, entry: &Entry, payload: &[u8]) -> harmos_operations::execution::__private::ResourceSet {
+        let mut resources = self.resources_for(entry);
+        if let Some(unit) = self.call_context().get::<Arc<super::clock::Unit>>()
+            && let Some(clock) = unit.prepare_sleep(entry.id(), payload)
+        {
+            resources.replace(Arc::new(clock));
+        }
+        resources
+    }
 }
 
 #[cfg(feature = "plugin-guest")]

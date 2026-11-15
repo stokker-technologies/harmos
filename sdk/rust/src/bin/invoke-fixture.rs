@@ -296,7 +296,15 @@ fn main() -> Result<()> {
     let request_tag = pool.get_message_by_name(&request).unwrap().get_field_by_name("value").unwrap().number();
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
-    let plugin = if mode == "scoped-publications" {
+    let plugin = if mode == "scoped-sleep" {
+        let stream = Stream::<Value>::new("fixture.scoped_ticks");
+        let observer = Observer::new(&stream, scoped_sleep_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        Plugin::new("scoped_sleep", "1.0.0")
+            .requires_host(HostOperation::TimeGet)
+            .requires_host(HostOperation::TimeSleep)
+            .stream(stream)
+            .observer(observer)
+    } else if mode == "scoped-publications" {
         let stream = Stream::<Value>::new("fixture.scoped_ticks");
         let observer = Observer::new(&stream, scoped_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_publications", "1.0.0")
@@ -462,6 +470,15 @@ async fn scoped_observe(context: &Context) -> Result<Value> {
     let now = context.now().await?;
     Ok(Value {
         value: format!("{scope}:{}", now.seconds).into_bytes(),
+    })
+}
+
+async fn scoped_sleep_observe(context: &Context) -> Result<Value> {
+    context.sleep(Duration::from_secs(1)).await?;
+    let scope = context.scope().unwrap_or("unscoped");
+    let now = context.now().await?;
+    Ok(Value {
+        value: format!("{scope}:{}:{}", context.sequence(), now.seconds).into_bytes(),
     })
 }
 

@@ -1,0 +1,381 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Scoped Sleep Admission Stories
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex, mpsc as blocking},
+    task::{Context, Poll},
+    time::{Duration, SystemTime},
+};
+
+// Third Party Imports
+use prost::Message;
+use prost_types::Duration as ProtocolDuration;
+use tokio::{
+    sync::{Notify, mpsc, oneshot},
+    time::Instant,
+};
+
+// Local Imports
+use super::{
+    invoke_support::{HostFixture, pending},
+    support,
+};
+use harmos_operations::clock::Sleep as SleepOperation;
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_runtime::{
+    Scope,
+    clock::{Clock, Reading, Sleep, Source},
+    operations::middleware::{Enter, Invocation, Middleware},
+    plugin::grpc::Placement,
+};
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+#[derive(Clone)]
+struct Controlled {
+    state: Arc<Mutex<TimeState>>,
+    registered: Arc<Notify>,
+    hold: Arc<Mutex<Option<Registration>>>,
+}
+
+struct Registration {
+    entered: oneshot::Sender<()>,
+    release: blocking::Receiver<()>,
+}
+
+struct TimeState {
+    reading: Reading,
+    next_id: usize,
+    timers: BTreeMap<usize, (Instant, oneshot::Sender<()>)>,
+}
+
+struct Timer {
+    receiver: oneshot::Receiver<()>,
+    state: Arc<Mutex<TimeState>>,
+    id: usize,
+}
+
+struct Admission {
+    scope: String,
+    release: oneshot::Sender<()>,
+}
+
+struct Gate(mpsc::UnboundedSender<Admission>);
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+impl Source for Controlled {
+    fn read(&self) -> Reading {
+        self.state.lock().unwrap().reading
+    }
+
+    fn sleep_until(&self, deadline: Instant) -> Sleep {
+        let (sender, receiver) = oneshot::channel();
+        let mut state = self.state.lock().unwrap();
+        let id = state.next_id;
+        state.next_id += 1;
+        if deadline <= state.reading.instant {
+            sender.send(()).unwrap();
+        } else {
+            state.timers.insert(id, (deadline, sender));
+        }
+        drop(state);
+        self.registered.notify_one();
+        if let Some(registration) = self.hold.lock().unwrap().take() {
+            registration.entered.send(()).unwrap();
+            registration.release.recv().unwrap();
+        }
+        Box::pin(Timer { receiver, state: self.state.clone(), id })
+    }
+}
+
+impl Controlled {
+    fn new() -> Self {
+        let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+        Self {
+            state: Arc::new(Mutex::new(TimeState {
+                reading: clock.read(),
+                next_id: 0,
+                timers: BTreeMap::new(),
+            })),
+            registered: Arc::new(Notify::new()),
+            hold: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn pending(&self) -> usize {
+        self.state.lock().unwrap().timers.len()
+    }
+
+    fn advance_by(&self, duration: Duration) {
+        let mut state = self.state.lock().unwrap();
+        state.reading.instant += duration;
+        state.reading.date += duration;
+        let now = state.reading.instant;
+        let ready = state.timers.extract_if(.., |_, (deadline, _)| *deadline <= now).map(|(_, (_, sender))| sender).collect::<Vec<_>>();
+        drop(state);
+        for sender in ready {
+            let _ = sender.send(());
+        }
+    }
+
+    async fn wait_registered(&self) {
+        loop {
+            let registered = self.registered.notified();
+            if self.pending() != 0 {
+                return;
+            }
+            registered.await;
+        }
+    }
+}
+
+impl Future for Timer {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+        Pin::new(&mut self.receiver).poll(context).map(|_| ())
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.state.lock().unwrap().timers.remove(&self.id);
+    }
+}
+
+impl Middleware for Gate {
+    fn enter<'a>(&'a self, call: &'a mut Invocation) -> Enter<'a> {
+        Box::pin(async move {
+            if call.operation().id.as_str() == "harmos.host.v1.Time/Sleep"
+                && let Some(scope) = call.context().get::<Scope>()
+            {
+                let (release, waiting) = oneshot::channel();
+                self.0.send(Admission { scope: scope.as_str().into(), release }).unwrap();
+                let _ = waiting.await;
+            }
+            Ok(())
+        })
+    }
+}
+
+/* === Public Functions === */
+
+/* === Private Functions === */
+
+async fn retain_rows(requested: usize) {
+    // Connect the Plugin Before Binding the Scoped Unit.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone())).await.unwrap();
+
+    // Start the First Tick on the Controlled Clock.
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+
+    // Advance After Ingestion and While Middleware Still Holds Each Sleep.
+    for row in 0..requested {
+        let admission = admissions.recv().await.unwrap();
+        assert_eq!(admission.scope, "unit/boundary");
+        assert_eq!(source.pending(), 1, "Register Scoped Sleep Before Middleware for Row {row}");
+        source.advance_by(Duration::from_secs(1));
+        admission.release.send(()).unwrap();
+        host.signals.storage_ingested.notified().await;
+        assert_eq!(host.rows().len(), row + 1, "Ingest Exactly One Scoped Sample");
+    }
+
+    // Close Demand Without Capping Accepted Rows.
+    unit.close().await.unwrap();
+    source.advance_by(Duration::from_secs(10));
+    let rows = host.rows();
+    assert_eq!(rows.len(), requested, "Retain the Requested Scoped Row Count");
+    for (index, row) in rows.iter().enumerate() {
+        assert_eq!(row.published_unix_micros, Some((index as i64 + 1) * 1_000_000));
+    }
+    let values = (1..=requested)
+        .map(|sequence| serde_json::json!({ "value": format!("unit/boundary:{sequence}:{}", sequence + 1).into_bytes() }))
+        .collect::<Vec<_>>();
+    assert_eq!(host.values(), values, "Retain Consecutive Scoped Samples");
+    assert_eq!(source.pending(), 0, "Remove Scoped Timers on Close");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+/* === Tests === */
+
+#[tokio::test]
+async fn native_and_encoded_calls_own_registration_before_middleware() {
+    // Bind a Scoped Unit Without Publication Timers.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    let sdk = host.sdk("caller").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone())).await.unwrap();
+    let request = TimeSleepRequest {
+        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+    };
+
+    // Register Native Protobuf Calls Before Returning Their Invocation Handle.
+    let (call, _) = unit.operations().submit_protobuf::<SleepOperation>(request, None).unwrap();
+    assert_eq!(source.pending(), 1, "Admit Native Scoped Sleep");
+    let admission = admissions.recv().await.unwrap();
+    source.advance_by(Duration::from_secs(1));
+    admission.release.send(()).unwrap();
+    call.await.unwrap();
+    assert_eq!(source.pending(), 0, "Settle Native Scoped Sleep");
+
+    // Cancel an Encoded Call While Middleware Holds Its Registered Timer.
+    let call = unit.operations().submit_encoded("harmos.host.v1.Time/Sleep", request.encode_to_vec()).unwrap();
+    assert_eq!(source.pending(), 1, "Admit Encoded Scoped Sleep");
+    let admission = admissions.recv().await.unwrap();
+    call.cancel().await.unwrap_err();
+    drop(admission);
+    assert_eq!(source.pending(), 0, "Cancel Encoded Scoped Sleep");
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn closing_a_unit_during_timer_registration_removes_the_timer() {
+    // Block the Clock's Synchronous Registration on the Other Runtime Thread.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/cancel", Clock::with_clock(source.clone())).await.unwrap();
+    source.wait_registered().await;
+    let (entered, registering) = oneshot::channel();
+    let (release, held) = blocking::channel();
+    *source.hold.lock().unwrap() = Some(Registration { entered, release: held });
+    source.advance_by(Duration::from_secs(1));
+    registering.await.unwrap();
+    let registered = source.pending();
+
+    // Initiate Unit Cancellation Before Registration Returns to Admission.
+    let closing = unit.close();
+    tokio::pin!(closing);
+    let settling = pending(closing.as_mut()).await;
+    release.send(()).unwrap();
+    closing.await.unwrap();
+    assert!(settling, "Await Scoped Registration Settlement on Close");
+    assert_eq!(registered, 1, "Own the Timer During Scoped Registration");
+    assert_eq!(source.pending(), 0, "Remove the Timer After Cancelling Registration");
+    assert!(host.rows().is_empty(), "Cancel the Sample Being Prepared");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn admitted_sleeps_retain_exactly_1023_rows() {
+    retain_rows(1023).await;
+}
+
+#[tokio::test]
+async fn admitted_sleeps_retain_exactly_1024_rows() {
+    retain_rows(1024).await;
+}
+
+#[tokio::test]
+async fn admitted_sleeps_retain_exactly_1025_rows() {
+    retain_rows(1025).await;
+}
+
+#[tokio::test]
+async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
+    // Share One Connection Between Two Independent Units.
+    let (admitted, mut admissions) = mpsc::unbounded_channel();
+    let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    let left_source = Controlled::new();
+    let right_source = Controlled::new();
+    let left = host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(left_source.clone())).await.unwrap();
+    let right = host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(right_source.clone())).await.unwrap();
+
+    // Start Both Timelines Before Receiving Either Unit's Sleep.
+    left_source.wait_registered().await;
+    right_source.wait_registered().await;
+    left_source.advance_by(Duration::from_secs(1));
+    right_source.advance_by(Duration::from_secs(1));
+
+    // Admit Both Units' Sleeps Together, Then Ingest Each on Its Own Clock.
+    for _ in 0..1024 {
+        let mut sleeping = BTreeMap::new();
+        for _ in 0..2 {
+            let admission = admissions.recv().await.unwrap();
+            assert!(sleeping.insert(admission.scope, admission.release).is_none());
+        }
+        for (scope, source) in [("unit/left", &left_source), ("unit/right", &right_source)] {
+            assert_eq!(source.pending(), 1, "Register Each Unit's Sleep Before Middleware");
+            source.advance_by(Duration::from_secs(1));
+            sleeping.remove(scope).unwrap().send(()).unwrap();
+            host.signals.storage_ingested.notified().await;
+        }
+    }
+
+    // Cancel Left During the Registration Handoff, Before Its Handler Runs.
+    let mut sleeping = BTreeMap::new();
+    for _ in 0..2 {
+        let admission = admissions.recv().await.unwrap();
+        assert!(sleeping.insert(admission.scope, admission.release).is_none());
+    }
+    assert_eq!(left_source.pending(), 1);
+    left.close().await.unwrap();
+    sleeping.remove("unit/left");
+    assert_eq!(left_source.pending(), 0, "Cancel the Admitted Scoped Timer");
+
+    // Right Can Still Complete Another Sample Before Its Own Close.
+    right_source.advance_by(Duration::from_secs(1));
+    sleeping.remove("unit/right").unwrap().send(()).unwrap();
+    host.signals.storage_ingested.notified().await;
+    right.close().await.unwrap();
+    left_source.advance_by(Duration::from_secs(10));
+    right_source.advance_by(Duration::from_secs(10));
+    let rows = host.rows();
+    for (scope, requested) in [("unit/left", 1024), ("unit/right", 1025)] {
+        let retained = rows
+            .iter()
+            .filter(|row| {
+                row.context.as_ref().is_some_and(|context| serde_json::from_str::<serde_json::Value>(context).unwrap()["scope"] == scope)
+            })
+            .count();
+        assert_eq!(retained, requested, "Retain Each Unit's Exact Row Count");
+    }
+    assert_eq!(right_source.pending(), 0, "Remove Right's Timers on Close");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}

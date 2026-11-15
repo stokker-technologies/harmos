@@ -48,6 +48,7 @@ pub struct Signals {
     pub storage_hold: std::sync::atomic::AtomicBool,
     pub storage_entered: Notify,
     pub storage_release: Notify,
+    pub storage_ingested: Notify,
 }
 
 pub struct HostFixture {
@@ -75,8 +76,13 @@ impl harmos_runtime::storage::StreamConsumer<support::App> for Store {
             self.2.storage_entered.notify_one();
             self.2.storage_release.notified().await;
         }
-        self.0.lock().unwrap().extend(batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.clone())));
+        let publications = batch.publications().map(|(definition, _, row)| (definition.clone(), row.value.clone())).collect::<Vec<_>>();
+        let published = !publications.is_empty();
+        self.0.lock().unwrap().extend(publications);
         self.1 = batch.reaches();
+        if published {
+            self.2.storage_ingested.notify_one();
+        }
         self.1
     }
 }
@@ -146,22 +152,30 @@ impl HostFixture {
     }
 
     pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
-        Self::configured(source, None, std::num::NonZeroUsize::new(4096).unwrap()).await
+        Self::configured(source, None, std::num::NonZeroUsize::new(4096).unwrap(), None).await
+    }
+
+    pub async fn with_middleware(middleware: Arc<dyn harmos_runtime::operations::middleware::Middleware>) -> Self {
+        Self::configured(None, None, std::num::NonZeroUsize::new(4096).unwrap(), Some(middleware)).await
     }
 
     pub async fn with_composition(
         source: harmos_runtime::clock::Clock, composition: &str, preparation_bytes: std::num::NonZeroUsize,
     ) -> Self {
-        Self::configured(Some(source), Some(composition), preparation_bytes).await
+        Self::configured(Some(source), Some(composition), preparation_bytes, None).await
     }
 
     async fn configured(
         source: Option<harmos_runtime::clock::Clock>, composition: Option<&str>, preparation_bytes: std::num::NonZeroUsize,
+        middleware: Option<Arc<dyn harmos_runtime::operations::middleware::Middleware>>,
     ) -> Self {
         let clock = support::Manual::new();
         let signals = Arc::new(Signals::default());
         let stored = Arc::new(std::sync::Mutex::new(Vec::new()));
         let runtime = crate::support::booted(Default::default(), |setup| {
+            if let Some(middleware) = middleware {
+                setup.settings().operation_middleware(middleware);
+            }
             if let Some(composition) = composition {
                 setup.composition(composition).unwrap();
             }
