@@ -1228,6 +1228,64 @@ builder calls, and configure the entry manager before registering guest modules.
 
 ## SDK Call Contracts
 
+### Scoped Plugin Bindings
+
+A product can bind an already admitted gRPC activation to a trusted scope and its
+own clock for the lifetime of a scoped unit of work:
+
+```rust,ignore
+let activation = attached.activation().expect("plugin is ready");
+let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
+binding.operations().call_encoded(operation, payload).await?;
+binding.close().await?;
+```
+
+`Runtime::bind_grpc` returns `plugin::grpc::ScopedBinding`. The supplied activation
+must belong to that runtime and still be admitted; duplicate live bindings for the
+same activation and scope refuse. The product owns the scope's meaning, time
+advancement and admission policy. Scope text is selection context, never authority.
+Binding does not change declarations, endpoints, the plugin process or its single
+physical connection. It opens additional Samples demands with the existing
+`SamplesSelection.scope` and retains the activation's admitted stream writers.
+
+The binding's operation handle carries a local clock resource through descendants,
+including plugin child calls to Time.Get and Time.Sleep. Portable context cannot
+replace it. Callee policy deadlines continue to use the runtime clock. Scoped
+invocation activity and each accepted row's ingestion activity keep the unit clock
+from advancing through outstanding work. Each demand validates its own wire
+sequence; the shared stream writer assigns its publication sequence atomically.
+Rows retain the trusted scope in `PublicationRow.context` as the JSON `scope`
+property, alongside device source time when present. Consumers use that property
+to select the unit's rows and advance only its clock after awaited ingestion.
+
+`ScopedBinding::close` stops scoped calls and waits for their settlement, accepted
+ingestion and Samples EOF/producer cleanup. Each demand awaits its captured
+ingestion cursor, so later publications cannot extend its close boundary. Dropping
+the binding requests the same cleanup; attachment shutdown also waits for it.
+Retained operation handles refuse new work after closure. Bindings never follow a
+reconnection: a new activation needs a new binding. Closing one binding leaves the
+other scopes and the original unscoped publication active. Products that do not
+bind a scope retain their runtime clock and attachment-time Samples behavior.
+
+The fixture story `plugin_grpc::scoped_publications` starts two concurrent calls
+and demands after attachment, holds one ingestion boundary, closes that scope,
+then settles only the other scope's sleep by advancing its clock. It checks
+scope-stamped rows and proves the original unscoped demand still operates.
+
+Rust client retained admission bounds each generated oneof by its largest variant,
+with presence/alignment and boxed recursive edges, and scans the actual wire values
+for nested allocations and repeated capacity. Inline nested layouts are counted
+once. A representative reply fixture covers a plugin entry, a document, sample
+pages and plot snapshots with a 4 MiB consumer budget and refuses an oversized
+reply before decode. Python, C# and C++ clients use their native protobuf transport
+decoders and do not share this Rust descriptor-layout estimator.
+
+Plugin peer admission compares the configured transfer chunk plus framing with
+the peer's advertised bound. The transport message ceiling remains independent.
+Encoded Invocations.Create forwarding preserves an explicit native gRPC status,
+including its action, details and cause; conformance's Client Caller Refusal rule
+also compares direct and encoded Unimplemented failures.
+
 All four typed client generators flatten request fields in declaration order. Required
 fields are positional; definition-level optional fields and retry identity are optional.
 Python uses keyword-only arguments; C# uses optional parameters. Rust exposes a plain

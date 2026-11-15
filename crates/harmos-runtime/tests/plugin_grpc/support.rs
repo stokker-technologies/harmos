@@ -84,6 +84,7 @@ struct Fixture {
     catalog: Arc<Mutex<model::Declarations>>,
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
+    message_bytes: Arc<std::sync::atomic::AtomicU64>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     samples: Arc<Mutex<Option<SamplesHandler>>>,
@@ -149,6 +150,7 @@ impl Remote {
             })),
             started_at: Arc::new(AtomicI64::new(100)),
             stops: Arc::new(AtomicUsize::new(0)),
+            message_bytes: Arc::new(std::sync::atomic::AtomicU64::new(harmos_protocol::transfer::default_message_bytes().get() as u64)),
             pending_description: Arc::new(Mutex::new(None)),
             pending_stop: Arc::new(Mutex::new(None)),
             samples: Arc::new(Mutex::new(None)),
@@ -214,6 +216,10 @@ impl Remote {
         self.service.stops.load(Ordering::SeqCst)
     }
 
+    pub fn message_bytes(&self, bytes: u64) {
+        self.service.message_bytes.store(bytes, Ordering::SeqCst);
+    }
+
     pub fn samples(&self, handler: impl Fn(Streaming<InstanceSamplesRequest>) -> Output<InstanceSamplesResponse> + Send + Sync + 'static) {
         *self.service.samples.lock().unwrap() = Some(Arc::new(handler));
     }
@@ -256,7 +262,7 @@ impl Instance for Fixture {
             return std::future::pending().await;
         }
         Ok(Response::new(InstanceGetResponse {
-            message_bytes: harmos_protocol::transfer::default_message_bytes().get() as u64,
+            message_bytes: self.message_bytes.load(Ordering::SeqCst),
             id: "remote".into(),
             version: "1.0.0".into(),
             revision: 1,

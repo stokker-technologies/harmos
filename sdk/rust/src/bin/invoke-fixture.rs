@@ -296,7 +296,16 @@ fn main() -> Result<()> {
     let request_tag = pool.get_message_by_name(&request).unwrap().get_field_by_name("value").unwrap().number();
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
-    let plugin = if mode == "interval" {
+    let plugin = if mode == "scoped-publications" {
+        let stream = Stream::<Value>::new("fixture.scoped_ticks");
+        let observer = Observer::new(&stream, scoped_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        Plugin::new("scoped_publications", "1.0.0")
+            .requires_host(HostOperation::TimeGet)
+            .requires_host(HostOperation::TimeSleep)
+            .stream(stream)
+            .observer(observer)
+            .operation(Operation::new("fixture.clock", scoped_clock).visibility(Visibility::Protected))
+    } else if mode == "interval" {
         let stream = Stream::<Value>::new("fixture.ticks");
         let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
@@ -447,6 +456,15 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
+async fn scoped_observe(context: &Context) -> Result<Value> {
+    // The Attachment's Unscoped Demand Remains Usable Alongside Scoped Demands.
+    let scope = context.scope().unwrap_or("unscoped");
+    let now = context.now().await?;
+    Ok(Value {
+        value: format!("{scope}:{}", now.seconds).into_bytes(),
+    })
+}
+
 async fn device(context: &Context, publisher: Publisher<Value>) -> Result<()> {
     DEVICE_ACTIVE.store(true, Ordering::SeqCst);
     let _demand = DeviceDemand;
@@ -459,6 +477,15 @@ async fn device(context: &Context, publisher: Publisher<Value>) -> Result<()> {
 async fn clock(context: &Context, _: Value) -> Result<Value> {
     let before = context.now().await?;
     context.sleep(Duration::from_secs(3600)).await?;
+    let after = context.now().await?;
+    Ok(Value {
+        value: (after.seconds - before.seconds).to_le_bytes().to_vec(),
+    })
+}
+
+async fn scoped_clock(context: &Context, _: Value) -> Result<Value> {
+    let before = context.now().await?;
+    context.sleep(Duration::from_secs(3)).await?;
     let after = context.now().await?;
     Ok(Value {
         value: (after.seconds - before.seconds).to_le_bytes().to_vec(),

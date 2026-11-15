@@ -119,6 +119,7 @@ pub(super) fn prepared<O>(entry: &Entry, id: OperationInstanceId, body: Box<dyn 
         id,
         refusal: None,
         middleware: None,
+        activity: None,
     }
 }
 

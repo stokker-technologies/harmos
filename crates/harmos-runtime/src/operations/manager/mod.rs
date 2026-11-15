@@ -197,9 +197,10 @@ impl Manager {
     }
 
     pub(crate) fn transfer_message_bytes(&self) -> std::num::NonZeroUsize {
-        self.resources()
-            .resource::<harmos_storage::StorageManager>()
-            .map_or_else(|_| harmos_protocol::transfer::default_message_bytes(), |storage| storage.settings().transfer_message_bytes())
+        self.resources().resource::<harmos_storage::StorageManager>().map_or_else(
+            |_| harmos_protocol::transfer::message_bytes(&Default::default()).expect("valid default transfer size"),
+            |storage| storage.settings().transfer_message_bytes(),
+        )
     }
 
     pub(crate) fn resources(&self) -> &harmos_operations::execution::__private::ResourceSet {
@@ -214,7 +215,12 @@ impl Manager {
         resources.replace(self.registry.access.clone());
         resources.replace(self.registry.status.clone());
         resources.replace(Arc::new(self.resources().resource::<harmos_storage::StorageManager>().ok()));
-        resources.replace(Arc::new(harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone())))));
+        let clock = self
+            .call_context()
+            .get::<harmos_operations::clock::ClockAccess>()
+            .cloned()
+            .unwrap_or_else(|| harmos_operations::clock::ClockAccess(Arc::new(super::clock::Clock(self.clock().clone()))));
+        resources.replace(Arc::new(clock));
         resources
     }
 }

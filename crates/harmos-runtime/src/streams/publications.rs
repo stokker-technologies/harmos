@@ -192,10 +192,8 @@ impl StreamWriter {
         self.admit(row, Some(wire_sequence), missed, None)
     }
 
-    pub(crate) fn admit_clocked_row(
-        &self, row: PublicationRow, wire_sequence: u64, clock: &crate::clock::Clock,
-    ) -> Result<super::ManagedPublication, StreamPublicationError> {
-        self.admit(row, Some(wire_sequence), 0, Some(clock.activity("stream storage delivery")))
+    pub(crate) fn admit_clocked_row(&self, row: PublicationRow, clock: &crate::clock::Clock) -> Result<u64, StreamPublicationError> {
+        self.admit_at(row, None, 0, Some(clock.activity("stream storage delivery"))).map(|(_, cursor)| cursor)
     }
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
@@ -283,6 +281,12 @@ impl StreamWriter {
     fn admit(
         &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<crate::clock::Activity>,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
+        self.admit_at(row, sequence, missed, activity).map(|(publication, _)| publication)
+    }
+
+    fn admit_at(
+        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<crate::clock::Activity>,
+    ) -> Result<(super::ManagedPublication, u64), StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {
             #[cfg(not(feature = "plugin-guest"))]
@@ -302,6 +306,7 @@ impl StreamWriter {
             }
         };
         let (publication, evicted) = result?;
+        let cursor = self.stream.wired.window.latest_locked();
         if let Some(activity) = activity {
             self.stream.ingest.track(self.stream.wired.window.latest_locked(), activity);
         }
@@ -309,7 +314,7 @@ impl StreamWriter {
         drop(evicted);
         self.stream.wired.window.knock();
         self.stream.wired.window.wake_delivery();
-        Ok(publication)
+        Ok((publication, cursor))
     }
 
     // Visibility and original scope phase precede writer and row-state locks.
@@ -380,12 +385,20 @@ impl StreamWriter {
     // Wait until every live feed has taken in every row published on this
     // stream so far. A caught-up stream answers without yielding.
     pub async fn ingested(&self) -> Result<(), StreamPublicationError> {
+        self.wait_ingested(None).await
+    }
+
+    pub(crate) async fn ingested_at(&self, published: u64) -> Result<(), StreamPublicationError> {
+        self.wait_ingested(Some(published)).await
+    }
+
+    async fn wait_ingested(&self, published: Option<u64>) -> Result<(), StreamPublicationError> {
         let mut taken = self.stream.ingest.watch();
         loop {
             if !*self.active.lock().expect("stream lease poisoned") || self.stream.closed.load(Ordering::Acquire) {
                 return Err(StreamPublicationError::Revoked);
             }
-            let published = self.stream.wired.window.latest_locked();
+            let published = published.unwrap_or_else(|| self.stream.wired.window.latest_locked());
             if taken.borrow_and_update().values().all(|cursor| *cursor >= published) {
                 return Ok(());
             }

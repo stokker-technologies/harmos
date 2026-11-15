@@ -14,7 +14,7 @@ mod authored;
 pub mod authorization;
 mod binding;
 mod caller;
-mod clock;
+pub(crate) mod clock;
 pub(crate) mod context;
 mod surface;
 

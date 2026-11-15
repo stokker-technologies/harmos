@@ -1,5 +1,23 @@
 # gRPC Plugins Design
 
+## Product Integration Repair Contract
+
+The active local repair branch is `fix/product-integration-gaps`. This repair adds
+`Runtime::bind_grpc(&Activation, scope, Clock) -> ScopedBinding` for an already
+admitted activation. The lease owns scoped calls, clock propagation and additional
+Samples selections on the same connection; close settles calls, captured ingestion
+and producer cleanup. Shared admitted writers retain separate wire-sequence
+validation and scope-stamped rows. The runtime clock still owns policy deadlines.
+See `docs/architecture.md#scoped-plugin-bindings` for the complete usage contract.
+
+Source audit confirms the runtime clock replacement, attachment-time selection,
+Rust oneof/layout overestimate, transfer-ceiling admission and encoded-status
+rewriting claims. Python, C# and C++ do not use the Rust memory estimator. No
+library generator emits a path-based Rust input dispatch match; the empty-match
+lint finding belongs to a product's generator and needs no library source change.
+The settlement Send repair named in the attached notes is already in the base.
+Task group 12 owns this inventory; other open changes are not being implemented.
+
 ## Resuming
 
 Integration branch: `feat/grpc-plugins`; every change under `openspec/changes/` is delivered together on it.

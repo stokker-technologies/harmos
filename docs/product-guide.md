@@ -38,6 +38,12 @@ An absent scope produces a refused failure with code `scope_required` and messag
 "Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
 meaning to the scope and does not require it for operations that do not ask for it.
 
+For a scoped unit of work that owns its time and sample ingestion, use
+`runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
+binding's `operations()` and await `close()` when the unit ends. Concurrent bindings
+share the admitted connection and retain independent clocks and Samples selections;
+see [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
+
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
 with `Failure::with_detail` and read it with `Failure::detail`; a plugin admission

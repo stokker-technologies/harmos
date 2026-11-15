@@ -227,6 +227,12 @@ impl Manager {
             origin.clone(),
             preparation,
         )?;
+        if let Some(unit) = self.call_context().get::<Arc<super::super::clock::Unit>>() {
+            job.activity = Some(unit.clock.activity(format!("scoped invocation {}", id.value())));
+            if !unit.track(&control) {
+                job.refusal = Some(Error::Closing { domain: "scoped unit of work" });
+            }
+        }
         job.policy = policy;
         #[cfg(feature = "grpc")]
         if !<O::Input as crate::operations::Direction>::STREAMED

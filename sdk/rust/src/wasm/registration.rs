@@ -137,8 +137,8 @@ impl Registration {
                         "Register Guest: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing"
                             .into(),
                     )
-                })?
-                .get() as u64,
+                })
+                .map(|_| harmos_protocol::transfer::default_message_bytes().get() as u64)?,
         })
     }
 }

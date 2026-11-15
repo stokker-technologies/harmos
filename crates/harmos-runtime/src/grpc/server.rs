@@ -405,7 +405,7 @@ fn leaf_code(error: &Error) -> tonic::Code {
         _ => tonic::Code::Internal,
     }
 }
-fn explicit_status(mut error: &Error) -> Option<Status> {
+pub(crate) fn explicit_status(mut error: &Error) -> Option<Status> {
     for _ in 0..32 {
         match error {
             Error::TaskFailed { source, .. } | Error::OperationFailed { source, .. } => {
