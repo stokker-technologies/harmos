@@ -123,6 +123,38 @@ impl Manual {
             registered.await;
         }
     }
+
+    /// Move Time Forward and Fire Every Live Timer Due by the New Instant.
+    pub fn advance_by(&self, duration: Duration) {
+        let due = {
+            let mut state = self.state.lock().unwrap();
+            state.reading.instant += duration;
+            state.reading.date += duration;
+            let now = state.reading.instant;
+            let (due, waiting) = std::mem::take(&mut state.timers).into_iter().partition::<Vec<_>, _>(|(at, _)| *at <= now);
+            state.timers = waiting;
+            due
+        };
+        for (_, timer) in due {
+            let _ = timer.send(());
+        }
+    }
+
+    /// Report Whether a Live Timer Is Registered for Exactly This Instant.
+    pub fn timer_at(&self, deadline: Instant) -> bool {
+        self.state.lock().unwrap().timers.iter().any(|(at, timer)| *at == deadline && !timer.is_closed())
+    }
+
+    /// Wait Until a Live Timer Is Registered for Exactly This Instant.
+    pub async fn registered_at(&self, deadline: Instant) {
+        loop {
+            let registered = self.registered.notified();
+            if self.timer_at(deadline) {
+                return;
+            }
+            registered.await;
+        }
+    }
 }
 
 impl Source for Manual {
@@ -132,7 +164,13 @@ impl Source for Manual {
 
     fn sleep_until(&self, deadline: Instant) -> Sleep {
         let (sender, receiver) = oneshot::channel();
-        self.state.lock().unwrap().timers.push((deadline, sender));
+        let mut state = self.state.lock().unwrap();
+        if deadline <= state.reading.instant {
+            let _ = sender.send(());
+        } else {
+            state.timers.push((deadline, sender));
+        }
+        drop(state);
         self.registered.notify_one();
         Box::pin(async move {
             let _ = receiver.await;
@@ -366,6 +404,36 @@ pub async fn offline(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::
             return;
         }
         status.changed().await.unwrap();
+    }
+}
+
+/// Report Whether the Operating System Still Runs This Process Identifier.
+pub fn running(process: u32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: Signal 0 Only Probes the Identifier; No Signal Is Delivered.
+        #[allow(unsafe_code)]
+        let probed = unsafe { libc::kill(process as libc::pid_t, 0) };
+        probed == 0
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::{
+            Foundation::{CloseHandle, STILL_ACTIVE},
+            System::Threading::{GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+        };
+        // SAFETY: The Handle Is Checked and Closed Before Returning.
+        #[allow(unsafe_code)]
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code = 0;
+            let queried = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            queried != 0 && code == STILL_ACTIVE as u32
+        }
     }
 }
 

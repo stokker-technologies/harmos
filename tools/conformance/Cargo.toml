@@ -63,6 +63,12 @@ path = "../../crates/harmos-runtime/tests/fixtures/stream_consumer.rs"
 test = false
 bench = false
 
+[[bin]]
+name = "harmos-managed-stub-fixture"
+path = "../../crates/harmos-runtime/tests/fixtures/managed_stub.rs"
+test = false
+bench = false
+
 # === Features === #
 
 # === Dependencies === #

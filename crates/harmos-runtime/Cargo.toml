@@ -236,6 +236,14 @@ wasmtime = { workspace = true, optional = true }
 # The executable throughput fixture owns four native runtime workers.
 tokio = { workspace = true, default-features = true, features = ["rt-multi-thread"] }
 
+[target.'cfg(unix)'.dev-dependencies]
+# Utilities
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dev-dependencies]
+# Utilities
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Threading"] }
+
 # Networking
 
 # Storage

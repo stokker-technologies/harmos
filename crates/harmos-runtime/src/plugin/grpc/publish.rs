@@ -30,10 +30,14 @@ use std::{
 
 // Third Party Imports
 use futures_util::stream;
-use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
+use tokio::{
+    sync::{Mutex as AsyncMutex, mpsc, watch},
+    time::Instant,
+};
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, model};
+use crate::operations::clock::Unit;
 use crate::streams::protobuf::Row;
 use crate::{
     Application,
@@ -62,7 +66,15 @@ pub(super) struct ScopeSource {
     pub(super) close: watch::Receiver<bool>,
     pub(super) settings: PlacementSettings,
     pub(super) operations: crate::operations::Manager,
-    pub(super) scopes: Mutex<BTreeMap<String, watch::Receiver<Option<super::Outcome>>>>,
+    pub(super) bindings: Mutex<Bindings>,
+}
+
+/// Scoped Bindings the Attachment Owns; Admission Ends When Its Settlement Starts.
+#[derive(Default)]
+pub(super) struct Bindings {
+    pub(super) closed: bool,
+    pub(super) scopes: BTreeMap<String, watch::Receiver<Option<super::Outcome>>>,
+    pub(super) tasks: tokio::task::JoinSet<()>,
 }
 
 pub(super) struct PreparedPublications {
@@ -160,7 +172,7 @@ impl Publications {
                 close: publications.close.subscribe(),
                 settings: settings.clone(),
                 operations: operations.clone(),
-                scopes: Mutex::new(BTreeMap::new()),
+                bindings: Mutex::default(),
             })
             .map_err(|_| invalid("Activate Samples: activation already has publications"))?;
         publications.source = Some(activation.publications.clone());
@@ -232,28 +244,63 @@ impl Publications {
         publications
     }
 
-    pub(super) async fn close(&mut self) -> Result<(), Error> {
+    /// Settle One Binding: Signal Close, Cancel Tracked Work, Drain by the Deadline, Then Revoke Leases.
+    pub(super) async fn settle(
+        &mut self, clock: &Clock, deadline: Instant, unit: Option<&Unit>, action: &'static str,
+    ) -> Result<(), Error> {
+        let _activity = clock.activity(action);
+        // Close Scoped Admission Before Signalling So No Binding Joins After This Snapshot.
+        let bindings = self.source.as_ref().and_then(|source| source.get()).map(|source| {
+            let mut bindings = source.bindings.lock().expect("scoped bindings lock is healthy");
+            bindings.closed = true;
+            let open = bindings.scopes.values().filter(|outcome| outcome.borrow().is_none()).cloned().collect::<Vec<_>>();
+            (std::mem::take(&mut bindings.tasks), open)
+        });
         self.close.send_replace(true);
+        let pending = unit.map(Unit::stop).unwrap_or_default();
         let mut failure = None;
-        while let Some(result) = self.jobs.join_next().await {
-            if let Err(error) = result.map_err(invalid).and_then(|result| result)
-                && self.parent.is_some()
-            {
-                failure.get_or_insert(error);
-            }
-        }
-        if let Some(source) = self.source.as_ref().and_then(|source| source.get()) {
-            let scopes = source.scopes.lock().expect("scoped publications lock is healthy").values().cloned().collect::<Vec<_>>();
-            for mut scope in scopes {
-                while scope.borrow_and_update().is_none() {
-                    if scope.changed().await.is_err() {
-                        break;
+        let scoped = self.parent.is_some();
+        let jobs = &mut self.jobs;
+        let drained = clock
+            .timeout_at(deadline, async {
+                while let Some(result) = jobs.join_next().await {
+                    if let Err(error) = result.map_err(invalid).and_then(|result| result)
+                        && scoped
+                    {
+                        failure.get_or_insert(error);
                     }
                 }
-                if let Some(Err(error)) = scope.borrow().as_ref() {
+            })
+            .await;
+        if drained.is_err() {
+            jobs.abort_all();
+            while jobs.join_next().await.is_some() {}
+            failure = Some(Error::Deadline { action });
+        }
+        for instance in pending {
+            match clock.timeout_at(deadline, instance.settle()).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    failure.get_or_insert_with(|| invalid(format!("{action}: {error}")));
+                }
+                Err(_) => {
+                    failure.get_or_insert(Error::Deadline { action });
+                }
+            }
+        }
+        if let Some((mut tasks, open)) = bindings {
+            let joined = clock.timeout_at(deadline, async { while tasks.join_next().await.is_some() {} }).await;
+            if joined.is_err() {
+                tasks.abort_all();
+                while tasks.join_next().await.is_some() {}
+                failure.get_or_insert(Error::Deadline { action });
+            }
+            for outcome in open {
+                if let Some(Err(error)) = outcome.borrow().as_ref() {
                     failure.get_or_insert_with(|| invalid(format!("Close Scoped Samples: {error}")));
                 }
             }
+            // Leases Belong to the Activation, So Only Its Own Settlement Revokes Them.
             for lease in self.registration.leases() {
                 lease.revoke();
             }
@@ -425,6 +472,8 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
             }
         };
         tokio::pin!(work);
+        let requested = close.clone();
+        let parent_requested = parent.clone();
         tokio::select! {
             biased;
             () = super::disconnected(closed) => {
@@ -439,8 +488,14 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                 }
             } => Ok(()),
             result = &mut work => {
-                if parent.is_none() { return result; }
-                result
+                // Close Requested First Owns the Outcome of an Attempt It Cancelled.
+                if *requested.borrow() || parent_requested.as_ref().is_some_and(|parent| *parent.borrow()) {
+                    Ok(())
+                } else if parent.is_none() {
+                    return result;
+                } else {
+                    result
+                }
             },
         }
     };
