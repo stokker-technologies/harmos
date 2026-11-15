@@ -1177,6 +1177,9 @@ the connection and reconnects independently after transport loss.
 
 Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window }`
 with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
+Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
+`stop_grace` before a managed child is killed and reaped within another; see
+[Managed Process Ownership](architecture.md#managed-process-ownership).
 `Attached::status()` watches connection state and failures; `activation()` captures
 the current connection. An activation exposes its `description`, monotonic `number`,
 `previous_started_at`, optional `executable_digest` and managed `process_id`. Compare the current and

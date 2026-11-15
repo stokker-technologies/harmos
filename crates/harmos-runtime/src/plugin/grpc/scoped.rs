@@ -134,7 +134,7 @@ impl<A: Application> Binding<A> {
             }
         };
         let mut publications = match prepared {
-            Ok(prepared) => Publications::scoped(prepared, source, &activation, &clock, &operations),
+            Ok(prepared) => Publications::scoped(prepared, source, &activation, &clock, &host, &operations),
             Err(error) => {
                 // An Unprepared Binding Never Served, So It Has Nothing to Settle.
                 completed.send_replace(Some(Ok(())));
@@ -148,8 +148,10 @@ impl<A: Application> Binding<A> {
             () = super::disconnected(closing) => {},
             () = super::disconnected(parent) => {},
         }
+        // Settling Parks Its Runtime-Clock Activity While It Waits on the Plugin.
+        let activity = host.activity("Close Scoped Plugin");
         let deadline = host.now() + source.settings.stop_grace;
-        let result = publications.settle(&host, deadline, Some(&unit), "Close Scoped Plugin").await;
+        let result = activity.wait(publications.settle(&host, deadline, Some(&unit), "Close Scoped Plugin")).await;
         completed.send_replace(Some(result.map_err(Arc::new)));
     }
 }

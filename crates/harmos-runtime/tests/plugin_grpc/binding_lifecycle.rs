@@ -22,7 +22,7 @@ use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
 
 // Standard Library Imports
 use std::{
-    sync::{atomic::Ordering, mpsc as blocking},
+    sync::{Arc, Mutex, atomic::Ordering, mpsc as blocking},
     time::{Duration, SystemTime},
 };
 
@@ -34,6 +34,7 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 use tonic::Status;
+use tracing_subscriber::layer::SubscriberExt as _;
 
 // Local Imports
 use super::{
@@ -64,6 +65,13 @@ struct Racing {
 /// Reports a Samples Response Dropped by the Host.
 struct Released(String, mpsc::UnboundedSender<String>);
 
+/// Records the `action` of Every Warning Emitted While Installed.
+#[derive(Clone, Default)]
+struct Actions(Arc<Mutex<Vec<String>>>);
+
+/// Reads One Event's `action` Field.
+struct Action(Option<String>);
+
 /// A Plugin That Opens Demands but Never Ends a Samples Response.
 struct Hung {
     remote: Remote,
@@ -86,6 +94,41 @@ impl From<Racing> for String {
     }
 }
 
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Actions {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if *event.metadata().level() != tracing::Level::WARN {
+            return;
+        }
+        let mut action = Action(None);
+        event.record(&mut action);
+        self.0.lock().unwrap().extend(action.0);
+    }
+}
+
+impl tracing::field::Visit for Action {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "action" {
+            self.0 = Some(value.into());
+        }
+    }
+
+    fn record_debug(&mut self, _: &tracing::field::Field, _: &dyn std::fmt::Debug) {}
+}
+
+impl Actions {
+    /// Observe Warnings on This Story's Thread; Every Task of a Current-Thread Story Runs There.
+    fn install(&self) -> (tracing::Dispatch, tracing::subscriber::DefaultGuard) {
+        // Register the Unobserved Dispatcher Too: Parallel Stories Register Callsites Without a
+        // Subscriber, Which Tracing's Single-Dispatcher Cache Otherwise Treats as Disabled.
+        let unobserved = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+        (unobserved, tracing::subscriber::set_default(tracing_subscriber::registry().with(self.clone())))
+    }
+
+    fn contains(&self, action: &str) -> bool {
+        self.0.lock().unwrap().iter().any(|recorded| recorded == action)
+    }
+}
+
 impl Drop for Released {
     fn drop(&mut self) {
         let _ = self.1.send(self.0.clone());
@@ -93,13 +136,15 @@ impl Drop for Released {
 }
 
 impl Hung {
-    async fn start() -> Self {
+    /// Declare One Device Stream, or an Interval Stream When `interval` Is Given.
+    async fn start(interval: Option<prost_types::Duration>) -> Self {
         let remote = Remote::start().await;
         let mut catalog = model::Declarations {
             types: Some(harmos_protocol::clock::declarations_types()),
             streams: vec![model::StreamDeclaration {
                 id: "probe".into(),
                 row: "harmos.host.v1.TimeGetResponse".into(),
+                interval,
                 ..Default::default()
             }],
             ..Default::default()
@@ -198,7 +243,7 @@ fn rows(host: &HostFixture, scope: &str) -> usize {
 /* === Tests === */
 
 #[tokio::test]
-async fn managed_stop_kills_a_plugin_whose_scoped_drain_outlives_stop_grace() {
+async fn managed_stop_reaps_a_plugin_whose_scoped_drain_outlives_stop_grace() {
     // Bind One Scoped Unit to a Managed Plugin on the Controlled Host Clock.
     let host = HostFixture::new().await;
     let grace = settings().stop_grace;
@@ -218,7 +263,7 @@ async fn managed_stop_kills_a_plugin_whose_scoped_drain_outlives_stop_grace() {
         () = host.signals.storage_entered.notified() => {},
     }
 
-    // Stop Spends the Whole Grace on the Drain, Then Kills and Reaps the Child.
+    // Stop Spends the Whole Grace on the Drain, Then Stops and Reaps the Child.
     let deadline = host.clock.read().instant + grace;
     let stopping = attached.stop("Story Stop");
     tokio::pin!(stopping);
@@ -228,8 +273,8 @@ async fn managed_stop_kills_a_plugin_whose_scoped_drain_outlives_stop_grace() {
     }
     host.clock.advance_by(grace);
     let error = stopping.await.unwrap_err();
-    assert!(matches!(error.as_ref(), Error::Deadline { .. }), "Report the Drain Deadline: {error}");
-    assert!(!support::running(process), "Kill and Reap the Managed Plugin");
+    assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Drain Deadline: {error}");
+    assert!(!support::running(process), "Reap the Managed Plugin");
     assert!(binding.close().await.is_err(), "Report the Cancelled Scoped Drain");
 
     // Shutdown Succeeds and the Accepted Sample Is Still Delivered.
@@ -245,7 +290,7 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
     let manual = Manual::new();
     let grace = settings().stop_grace;
     let runtime = support::runtime(Some(Clock::with_clock(manual.clone()))).await;
-    let mut hung = Hung::start().await;
+    let mut hung = Hung::start(None).await;
     let attached = runtime.attach_grpc(Placement::Remote(hung.remote.address.clone()), settings()).await.unwrap();
     let activation = attached.activation().unwrap();
     assert_eq!(hung.opened.recv().await.unwrap(), "");
@@ -289,6 +334,8 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
 #[tokio::test]
 async fn plugin_exit_settles_its_live_binding_before_reporting() {
     // A Managed Process Fronts an In-Process Plugin, So Its Exit Leaves the Connection Open.
+    let actions = Actions::default();
+    let _observed = actions.install();
     let host = HostFixture::new().await;
     let grace = settings().stop_grace;
     let remote = device().await;
@@ -326,6 +373,7 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
     host.signals.storage_release.notify_one();
     offline.await;
     assert!(matches!(closing.await.unwrap_err().as_ref(), Error::Transport(_)), "Report the Lost Connection");
+    assert!(actions.contains("Settle Plugin Publications"), "Report the Attachment's Settlement Failure");
     assert_eq!(rows(&host, "unit/exit"), 1, "Deliver Exactly the Accepted Scoped Sample");
     assert!(matches!(attached.stop("Already Exited").await.unwrap_err().as_ref(), Error::Exit(_)));
     assert!(!support::running(process), "Reap the Exited Process");
@@ -334,8 +382,8 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_bind_racing_attachment_stop_is_refused() {
-    // Park a Bind Between Its Checks and Its Registration.
+async fn a_bind_reaching_the_lock_after_attachment_stop_is_refused() {
+    // Park a Bind Before It Takes the Attachment's Bindings Lock.
     let host = HostFixture::new().await;
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
@@ -386,6 +434,8 @@ async fn runtime_shutdown_settles_a_live_binding_and_reaps_its_plugin() {
 #[tokio::test]
 async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     // A Live Managed Process Whose Plugin Connection the Story Can Cut.
+    let actions = Actions::default();
+    let _observed = actions.install();
     let host = HostFixture::new().await;
     let remote = device().await;
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -411,6 +461,7 @@ async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     support::offline(&mut status).await;
     assert!(matches!(binding.close().await.unwrap_err().as_ref(), Error::Transport(_)), "Report the Lost Connection");
     assert!(matches!(attached.stop("Already Disconnected").await.unwrap_err().as_ref(), Error::Disconnected));
+    assert!(actions.contains("Settle Plugin Publications"), "Report the Attachment's Settlement Failure");
     assert!(!support::running(process), "Kill and Reap the Disconnected Process");
     assert_eq!(rows(&host, "unit/cut"), 1);
     host.runtime.shutdown().await.unwrap();
@@ -450,6 +501,154 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
     assert_eq!((rows(&host, "unit/live"), rows(&host, "unit/next")), (1, 1));
 }
 
+#[tokio::test]
+async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ignoring_half_close() {
+    // Attach on a Virtual Runtime Clock; the Root Demand's First Tick Lies Beyond Every Deadline.
+    let grace = settings().stop_grace;
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let runtime = support::runtime(Some(clock)).await;
+    let mut hung = Hung::start(Some(prost_types::Duration { seconds: 3600, nanos: 0 })).await;
+    let attached = runtime.attach_grpc(Placement::Remote(hung.remote.address.clone()), settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "");
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = runtime.bind_grpc(&activation, "unit/virtual", unit_clock).await.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "unit/virtual");
+
+    // Closing Parks While It Waits on the Plugin, So Advancing the Grace Expires the Drain.
+    let closing = tokio::spawn(binding.close());
+    assert_eq!(hung.half_closed.recv().await.unwrap(), "unit/virtual");
+    support::bounded(grace, time.advance_by(grace)).await;
+    let error = closing.await.unwrap().unwrap_err();
+    assert!(matches!(error.as_ref(), Error::Deadline { action: "Close Scoped Plugin" }), "Name the Bounded Action: {error}");
+    assert_eq!(support::bounded(grace, hung.released.recv()).await.unwrap(), "unit/virtual");
+
+    // Stop Expires the Root Drain the Same Way, Then Still Tells the Plugin to Stop.
+    let stopping = tokio::spawn(async move { attached.stop("Story Complete").await });
+    assert_eq!(hung.half_closed.recv().await.unwrap(), "");
+    support::bounded(grace, time.advance_by(grace)).await;
+    let error = support::bounded(grace, stopping).await.unwrap().unwrap_err();
+    assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Root Drain Deadline: {error}");
+    assert_eq!(hung.remote.stops(), 1, "Tell the Plugin to Stop After Its Drain Deadline");
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_bind_registered_before_attachment_stop_is_settled_by_the_stop() {
+    // Hold a Bind in Preparing After It Registered Under the Attachment's Bindings Lock.
+    let host = HostFixture::new().await;
+    let remote = device().await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    let (entered, abandoned) = remote.hold_samples();
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = host.runtime.bind_grpc(&activation, "unit/preparing", unit_clock);
+    tokio::pin!(binding);
+    tokio::select! {
+        result = &mut binding => panic!("Bind Finished Before Its Samples Response: {:?}", result.err()),
+        entered = entered => entered.unwrap(),
+    }
+
+    // Stop Takes the Lock Next, Owns the Preparing Binding and Settles It.
+    let (stopped, bound) = tokio::join!(attached.stop("Story Stop"), binding);
+    stopped.unwrap();
+    let error = bound.err().expect("Refuse a Binding Its Attachment Settled");
+    assert!(matches!(error, Error::Invalid(_)), "Refuse as Invalid: {error}");
+    support::bounded(settings().stop_grace, abandoned).await.unwrap();
+    assert_eq!(remote.stops(), 1);
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_drain_that_spends_the_grace_still_tells_the_managed_plugin_to_stop_before_the_kill() {
+    // A Managed Process Fronts a Plugin Whose Root Samples Response Never Ends.
+    let manual = Manual::new();
+    let grace = settings().stop_grace;
+    let runtime = support::runtime(Some(Clock::with_clock(manual.clone()))).await;
+    let mut hung = Hung::start(None).await;
+    let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let placement = Placement::Managed(Managed {
+        executable: support::binary("harmos-managed-stub-fixture"),
+        arguments: vec![control.local_addr().unwrap().to_string().into(), hung.remote.address.trim_start_matches("http://").into()],
+        environment: Default::default(),
+    });
+    let (attached, accepted) = tokio::join!(runtime.attach_grpc(placement, settings()), control.accept());
+    let attached = attached.unwrap();
+    let _control = accepted.unwrap();
+    let process = attached.activation().unwrap().process_id.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "");
+    let received = hung.remote.hold_stop();
+
+    // Settlement Spends the Whole Grace on the Unended Root Demand.
+    let settled = manual.read().instant + grace;
+    let stopping = attached.stop("Story Stop");
+    tokio::pin!(stopping);
+    tokio::select! {
+        result = &mut stopping => panic!("Stop Finished Before Its Drain Deadline: {result:?}"),
+        () = manual.registered_at(settled) => {},
+    }
+    manual.advance_by(grace);
+
+    // The Plugin Is Told to Stop, and Stop With the Exit Wait Get a Fresh Grace Before the Kill.
+    tokio::select! {
+        biased;
+        result = &mut stopping => panic!("Killed Without Telling the Plugin to Stop: {result:?}"),
+        received = received => received.unwrap(),
+    }
+    assert!(manual.timer_at(settled + grace), "Bound Stop and the Exit by a Fresh Grace");
+    assert!(support::running(process), "Keep the Process Until Its Stop Deadline");
+    manual.advance_by(grace);
+    let error = stopping.await.unwrap_err();
+    assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Drain Deadline First: {error}");
+    assert!(!support::running(process), "Kill and Reap the Managed Plugin");
+    assert_eq!(hung.remote.stops(), 1);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
+    // Hold a Scoped Sample's Ingestion on a Remote Attachment.
+    let host = HostFixture::new().await;
+    let grace = settings().stop_grace;
+    let remote = device().await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    let mut status = attached.status();
+    host.signals.storage_hold.store(true, Ordering::SeqCst);
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let old = host.runtime.bind_grpc(&activation, "unit/old", unit_clock.clone()).await.unwrap();
+    host.signals.storage_entered.notified().await;
+
+    // Losing the Connection Starts a Cleanup Whose Drain Misses the Deadline.
+    let deadline = host.clock.read().instant + grace;
+    remote.drop_connection(200).await;
+    host.clock.registered_at(deadline).await;
+    host.clock.advance_by(grace);
+    let error = old.close().await.unwrap_err();
+    assert!(matches!(error.as_ref(), Error::Deadline { action: "Close Scoped Plugin" }), "Report the Missed Drain: {error}");
+    support::offline(&mut status).await;
+    let failure = status.borrow().failure.clone().expect("Report the Missed Cleanup");
+    assert!(matches!(failure.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Name the Cleanup: {failure}");
+
+    // The Next Activation Admits Its Own Leases and Serves a New Scope.
+    host.clock.advance_next().await;
+    let next = support::activation(&mut status, 2).await;
+    let bound = host.runtime.bind_grpc(&next, "unit/next", unit_clock.clone()).await.unwrap();
+    assert!(host.runtime.bind_grpc(&activation, "unit/late", unit_clock).await.is_err(), "Refuse the Old Activation");
+
+    // Late Ingestion Under the Old Leases Lands Without Disturbing the Next Activation.
+    host.signals.storage_release.notify_one();
+    while rows(&host, "unit/next") == 0 {
+        host.signals.storage_ingested.notified().await;
+    }
+    assert_eq!(rows(&host, "unit/old"), 1, "Deliver the Sample Accepted Before the Deadline");
+    assert!(next.is_connected(), "Keep the Next Activation Connected");
+    bound.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+    assert_eq!(rows(&host, "unit/next"), 1);
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn a_killed_host_takes_its_managed_plugin_with_it() {
@@ -482,6 +681,8 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
     // SAFETY: The Descriptor Was Just Opened and Is Owned Exactly Once.
     #[allow(unsafe_code)]
     let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor as i32) };
+    // A Regression Fails at the Placement Grace Instead of Hanging.
+    let bound = i32::try_from(settings().stop_grace.as_millis()).unwrap();
     let exited = tokio::task::spawn_blocking(move || {
         let mut watched = libc::pollfd {
             fd: descriptor.as_raw_fd(),
@@ -490,7 +691,7 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
         };
         // SAFETY: One Valid Entry Is Polled Until the Process Exits.
         #[allow(unsafe_code)]
-        let ready = unsafe { libc::poll(&mut watched, 1, -1) };
+        let ready = unsafe { libc::poll(&mut watched, 1, bound) };
         (ready, watched.revents)
     });
     parent.kill().await.unwrap();

@@ -1207,21 +1207,39 @@ Samples.Append service is recreated. Compose the library's host resources direct
 
 `crates/harmos-runtime/src/plugin/grpc/managed.rs` owns a native child immediately
 after spawn, before readiness. Startup has a retained task and runtime stop
-participant; cancelling the caller or a manager worker signals that owner and
+participant. The spawn is never raced against cancellation, so cancelling the
+caller or a manager worker signals that owner once the child exists, and the owner
 awaits termination and exit. Readiness failures, connection failures and staged
-replacement rollback settle the same child. Ready processes retain graceful Stop
-through the existing placement deadline. Reaping never waits on a child the host
-has not signalled: Stop awaits the requested exit until the teardown deadline, then
-kills; a disconnected child is killed at once. After a kill, the exit is reaped
-within a fresh `stop_grace` measured from the kill, so a slow drain cannot turn
-into a reap failure.
+replacement rollback settle the same child.
+
+Reaping never waits on a child the host has not signalled. Every ending first
+settles its bindings, then releases the plugin in phases that each get their own
+`PlacementSettings::stop_grace`, measured when the phase starts:
+
+1. Settle: bindings and publications drain, or are cancelled at the deadline.
+2. Stop: the host sends Stop and awaits the requested exit, so the plugin is always
+   told to stop before it is killed, even when settling spent its whole grace.
+3. Kill: a child still running is killed and reaped within a fresh grace measured
+   from the kill, so a slow drain cannot turn into a reap failure.
+
+A disconnected child cannot receive Stop, so it is killed as soon as its bindings
+settle; a child that exited is only reported. Teardown therefore ends within
+`2 × stop_grace` for a remote plugin and within `3 × stop_grace` for a managed one.
+
+Every managed child is forked from one process-lifetime spawner thread
+(`managed/spawner.rs`) on every platform. A request whose caller is gone is dropped
+unforked. A child forked for a caller that left meanwhile is handed to its process
+owner, which kills it and reaps it under the runtime stop participant. A panic
+answers only the request that raised it, with an error naming the start; the thread
+keeps serving. Should the thread end anyway, the next spawn starts a new one.
 
 The host's death ends its managed children on Linux: the spawn sets
 `PR_SET_PDEATHSIG` to `SIGKILL` and rechecks the parent to close the fork race.
-Linux delivers that signal when the forking thread exits, so every managed child
-is forked from one process-lifetime spawner thread rather than a runtime worker
-that may retire. macOS is not covered. On Windows the hosting product owns
-process-tree lifetime, for example with a job object that kills on close.
+Linux delivers that signal when the forking thread exits, which is why the spawner
+thread lives for the whole process rather than on a runtime worker that may retire.
+If the spawner thread ended anyway, Linux kills the children it forked and their
+attachments report the exit. macOS is not covered. On Windows the hosting product
+owns process-tree lifetime, for example with a job object that kills on close.
 
 Manager Delete and installation reuse follow successful settlement. Candidate
 bundles are kept out of synchronous temporary-directory cleanup once launch is
@@ -1337,15 +1355,30 @@ withdraws its operations. Only then does it send Stop, kill and reap a managed
 process, or start reconnecting a remote one.
 
 The deadline is `PlacementSettings::stop_grace` on the runtime clock, measured
-when settling starts. The unit clock never bounds it. `ScopedBinding::close`
-returns within that bound. On `Error::Deadline { action: "Close Scoped Plugin" }`
+when settling starts. The unit clock never bounds it. Cancelled calls settle
+alongside the drain, so each has the whole grace. `ScopedBinding::close` returns
+within that bound. On `Error::Deadline { action: "Close Scoped Plugin" }`
 the demands were cancelled; rows accepted before the deadline remain delivered.
 The plugin did not end its Samples response after the host half-closed it, which
-the SDK conformance suite requires. Teardown holds a runtime-clock activity, so a
-virtual runtime clock never expires settlement work that is still in progress.
+the SDK conformance suite requires.
+
+The bound holds on every clock kind. Teardown parks its runtime-clock activity
+while it waits on the plugin, and a demand parks its activity while it awaits the
+plugin's end of its Samples response, so a virtual runtime clock reaches the
+deadline once its controller advances. Accepted host ingestion holds a
+runtime-clock activity until it completes, so virtual time never expires host work
+in progress.
+
 Connection loss or plugin exit still awaits accepted scoped ingestion before the
-binding reports the transport failure. Remote attachments retain that failure in
-their disconnected status and continue reconnecting under the placement policy.
+binding reports the transport failure. A settlement failure is logged with its
+action on every ending, returned by `stop()` after a Stop request and kept in a
+remote attachment's disconnected status. Remote attachments continue reconnecting
+under the placement policy. One `connect_timeout` bounds each reconnect attempt,
+including opening its publications, and stop interrupts every step. An attempt
+that cannot select the retained settings, admit its operations or open its
+publications closes its connection, reports the failure in the status and retries
+after `reconnect_delay`. Leases belong to their activation, so a cleanup that
+missed its deadline never affects the next one.
 Retained operation handles refuse new work after closure. Closing one binding
 leaves the other scopes and the original unscoped publication active.
 
@@ -1354,8 +1387,10 @@ and demands after attachment, holds one ingestion boundary, closes that scope,
 then settles only the other scope's sleep by advancing its clock. It checks
 scope-stamped rows and proves the original unscoped demand still operates.
 `plugin_grpc::binding_lifecycle` drives each ending with a live binding: a drain
-outliving `stop_grace`, a plugin that ignores half-close, plugin exit, managed
-disconnect, runtime shutdown, a bind racing stop and a bind during reconnect.
+outliving `stop_grace`, a plugin that ignores half-close on the manual and on a
+virtual runtime clock, Stop after a spent drain, plugin exit, managed disconnect,
+runtime shutdown, both orders of a bind and stop at the bindings lock, a bind
+during reconnect and a remote cleanup that misses its deadline then reconnects.
 
 Rust client retained admission bounds each generated oneof by its largest variant,
 with presence/alignment and boxed recursive edges, and scans the actual wire values
