@@ -107,7 +107,7 @@ fn boxed(field: &FieldDescriptor) -> bool {
     let Kind::Message(nested) = field.kind() else {
         return false;
     };
-    !field.is_list() && !field.is_map() && reaches(&nested, &field.parent_message(), &mut BTreeSet::new())
+    !field.is_list() && !field.is_map() && reaches(&nested, field.parent_message(), &mut BTreeSet::new())
 }
 
 fn reaches(message: &MessageDescriptor, target: &MessageDescriptor, seen: &mut BTreeSet<String>) -> bool {

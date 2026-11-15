@@ -236,10 +236,10 @@ impl Publications {
         self.close.send_replace(true);
         let mut failure = None;
         while let Some(result) = self.jobs.join_next().await {
-            if let Err(error) = result.map_err(invalid).and_then(|result| result) {
-                if self.parent.is_some() {
-                    failure.get_or_insert(error);
-                }
+            if let Err(error) = result.map_err(invalid).and_then(|result| result)
+                && self.parent.is_some()
+            {
+                failure.get_or_insert(error);
             }
         }
         if let Some(source) = self.source.as_ref().and_then(|source| source.get()) {
