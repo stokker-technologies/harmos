@@ -361,3 +361,13 @@ No push or specification lifecycle command is authorized.
 - [x] I.3 Repair C++ linking/installed consumers, rebuild the componentizer and integrate conformance and Schematic consumers.
 - [x] I.4 Update architecture mappings, consumer work lists and README client guidance for the landed tree.
 - [x] I.5 On the committed head run the requested checks, stories, four SDK builds/tests, conformance, Schematic and packaging; repeat generation without drift.
+
+## Scoped Binding Lifecycle Restructure
+
+An independent review of the scoped binding at `dev` 7181b5ed found defects in two seams: teardown and clock registration. Point repairs have not closed them, so both seams are restructured. The public binding API (`bind_grpc`, `operations`, `close`) stays the same.
+
+- [ ] SB.1 Teardown: one binding state machine, owned by the attachment and registered under its scopes lock, joined within `stop_grace`. It runs the same steps on every path (stop, plugin exit, disconnect, drop): signal close to the demand, cancel tracked work, drain within a deadline taken from the stop policy, revoke leases, then kill and reap a managed placement. This closes four defects: the stop path waiting on an unsignalled child, an unbounded `close()`, plugin exit skipping settlement, and a bind racing parent close. It also fixes the inverted close-then-cancel order.
+- [ ] SB.2 Clock registration at admission: every path registers its sleep on the unit clock before middleware observes the call, and the per-call-site registration is deleted. The Activity lock is no longer held across the wrapped future. A second sleep call returns a typed error instead of panicking.
+- [ ] SB.3 Stories for each defect, reproduced before its fix, and for transitions that have no story today: plugin exit or crash with a live binding, runtime shutdown with a live binding, a hung or non-EOF plugin, bind during stop or reconnect, close racing an interval tick, and sleep through typed and native calls.
+- [ ] SB.4 Every SDK ends its Samples response with OK after the host half-closes; conformance checks this for all four languages.
+- [ ] SB.5 On Unix, a managed plugin dies with its host process. On Windows, the hosting product owns process-tree lifetime through a kill-on-close job, as documented in `docs/architecture.md`.
