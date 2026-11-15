@@ -102,6 +102,7 @@ async fn client_manages_remote_plugins() {
     // Bind the Existing Managed Activation Without a Second Attachment
     let activation = host.manager.activation("remote").await.unwrap();
     let binding = host.runtime.bind_grpc(&activation, "bound-unit", host.runtime.operations.clock().clone()).await.unwrap();
+    binding.start_samples().await.unwrap();
     let response = binding.operations().call_encoded("conformance.step.0", payload(b"scope")).await.unwrap();
     assert_eq!(response, payload(b"bound-unit"));
     binding.close().await.unwrap();

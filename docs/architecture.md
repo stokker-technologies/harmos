@@ -1285,7 +1285,11 @@ own clock for the lifetime of a scoped unit of work:
 ```rust,ignore
 let activation = plugins.activation("plugins/example").await?;
 let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
-binding.operations().call_encoded(operation, payload).await?;
+binding.operations().call_encoded(initialize, payload).await?; // the plugin registers the unit
+binding.start_samples().await?;
+// ... the unit runs; the host ticks its streams on the unit clock ...
+binding.stop_samples().await?;
+binding.operations().call_encoded(cleanup, payload).await?; // the plugin ends the unit
 binding.close().await?;
 ```
 
@@ -1297,9 +1301,19 @@ The activation must belong to that runtime and still be admitted; duplicate live
 same activation and scope refuse. The product owns the scope's meaning, time
 advancement and admission policy. Scope text is selection context, never authority.
 Binding does not change declarations, endpoints, the plugin process or its single
-physical connection. It opens additional Samples demands with the existing
-`SamplesSelection.scope` and retains the activation's admitted stream writers.
-Opening uses the attachment's configured connect timeout on the runtime clock.
+physical connection, and it opens no Samples demand: calls are bound at once,
+sample demand is controlled separately. `start_samples()` opens one Samples demand
+per declared stream with the existing `SamplesSelection.scope` and retains the
+activation's admitted stream writers; opening uses the attachment's configured
+connect timeout on the runtime clock. `stop_samples()` settles only that demand
+within `stop_grace`: in-flight ticks either answer or are cancelled, accepted
+samples are drained and committed, and the demand's Samples responses end. Calls
+stay bound. The host grants a scope ticks only between start and stop, so a product
+starts demand after its plugin has registered the unit and stops it before the
+plugin's cleanup ends the unit; no tick reaches the plugin outside that interval.
+Demand may start again after a stop. Start and stop bound the windows the host
+grants under the windowed-batch direction. `close()` settles any demand still open
+together with the unit's calls.
 
 The binding's operation handle carries a local clock resource through descendants,
 including plugin child calls to Time.Get and Time.Sleep. Portable context cannot
@@ -1338,8 +1352,8 @@ settles; no binding task outlives its attachment.
 
 | State | Entered when | Leaves when |
 | ----- | ------------ | ----------- |
-| Preparing | `bind_grpc` admits the scope under the attachment's bindings lock | Samples demands open, preparation fails, or the attachment starts settling |
-| Serving | Demands are open and `bind_grpc` returns the handle | `close()`, the handle is dropped, or the attachment settles |
+| Serving | `bind_grpc` admits the scope under the attachment's bindings lock and returns the handle | `start_samples()`, `close()`, the handle is dropped, or the attachment settles |
+| Sampling | `start_samples()` opened the demands | `stop_samples()` settles them back to Serving, `close()`, the handle is dropped, or the attachment settles |
 | Settling | Close was requested | The steps below finish or their deadline passes |
 | Settled | The outcome is published | `close()` returns it |
 
@@ -1394,7 +1408,9 @@ scope-stamped rows and proves the original unscoped demand still operates.
 outliving `stop_grace`, a plugin that ignores half-close on the manual and on a
 virtual runtime clock, Stop after a spent drain, plugin exit, managed disconnect,
 runtime shutdown, both orders of a bind and stop at the bindings lock, a bind
-during reconnect and a remote cleanup that misses its deadline then reconnects.
+during reconnect, a remote cleanup that misses its deadline then reconnects, and
+sample demand that ticks the plugin only between `start_samples()` and
+`stop_samples()` while the binding stays bound.
 
 Rust client retained admission bounds each generated oneof by its largest variant,
 with presence/alignment and boxed recursive edges, and scans the actual wire values

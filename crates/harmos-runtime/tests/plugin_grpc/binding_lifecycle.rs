@@ -22,7 +22,11 @@ use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
 
 // Standard Library Imports
 use std::{
-    sync::{Arc, Mutex, atomic::Ordering, mpsc as blocking},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc as blocking,
+    },
     time::{Duration, SystemTime},
 };
 
@@ -220,6 +224,52 @@ async fn device() -> Remote {
     remote
 }
 
+/// An Interval-Stream Plugin That Answers Scoped Ticks Only While Its Unit Is Registered.
+async fn ticking(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Remote {
+    let remote = Remote::start().await;
+    let mut catalog = model::Declarations {
+        types: Some(harmos_protocol::clock::declarations_types()),
+        streams: vec![model::StreamDeclaration {
+            id: "probe".into(),
+            row: "harmos.host.v1.TimeGetResponse".into(),
+            interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    catalog.digest = harmos_protocol::schema::declarations_digest(&catalog);
+    remote.declarations(catalog);
+    remote.samples(move |mut input| {
+        let (output, receiver) = mpsc::channel(1);
+        let registered = registered.clone();
+        let refused = refused.clone();
+        tokio::spawn(async move {
+            let Some(RequestFrame::Open(_)) = input.message().await.unwrap().unwrap().frame else {
+                panic!("Expected Open");
+            };
+            let mut sequence = 0;
+            // Answer Each Tick Until the Host Half-Closes the Demand.
+            while let Some(request) = input.message().await.ok().flatten() {
+                let Some(RequestFrame::Tick(tick)) = request.frame else { continue };
+                if !registered.load(Ordering::SeqCst) {
+                    refused.fetch_add(1, Ordering::SeqCst);
+                    let _ = output.send(Err(Status::failed_precondition("Start the Unit Before Requesting Its Samples"))).await;
+                    continue;
+                }
+                sequence += 1;
+                let sample = Sample {
+                    at: tick.at,
+                    sequence,
+                    row: TimeGetResponse::default().encode_to_vec(),
+                };
+                let _ = output.send(Ok(InstanceSamplesResponse { samples: vec![sample], frame: None })).await;
+            }
+        });
+        Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
+    });
+    remote
+}
+
 /// A Grace No Operation Policy Shares, So Its Deadline Identifies the Teardown Timer.
 fn settings() -> PlacementSettings {
     PlacementSettings {
@@ -252,6 +302,7 @@ async fn managed_stop_reaps_a_plugin_whose_scoped_drain_outlives_stop_grace() {
     let process = activation.process_id.unwrap();
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&activation, "unit/slow", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
     unit_time.advance_until(Duration::from_secs(5), || rows(&host, "unit/slow") == 1).await.unwrap();
 
     // Hold the Next Accepted Scoped Sample So Its Drain Outlives the Grace.
@@ -296,6 +347,7 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
     assert_eq!(hung.opened.recv().await.unwrap(), "");
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = runtime.bind_grpc(&activation, "unit/hung", unit_clock.clone()).await.unwrap();
+    binding.start_samples().await.unwrap();
     assert_eq!(hung.opened.recv().await.unwrap(), "unit/hung");
 
     // Close Half-Closes the Demand and Bounds the Wait for Its End.
@@ -311,6 +363,7 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
 
     // A Dropped Binding Settles Under the Attachment With the Same Bound.
     let dropped = runtime.bind_grpc(&activation, "unit/hung", unit_clock).await.unwrap();
+    dropped.start_samples().await.unwrap();
     assert_eq!(hung.opened.recv().await.unwrap(), "unit/hung");
     let deadline = manual.read().instant + grace;
     drop(dropped);
@@ -356,6 +409,7 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
     host.signals.storage_hold.store(true, Ordering::SeqCst);
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&activation, "unit/exit", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
     host.signals.storage_entered.notified().await;
     let deadline = host.clock.read().instant + grace;
     drop(control);
@@ -420,6 +474,7 @@ async fn runtime_shutdown_settles_a_live_binding_and_reaps_its_plugin() {
     let process = activation.process_id.unwrap();
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&activation, "unit/shutdown", unit_clock.clone()).await.unwrap();
+    binding.start_samples().await.unwrap();
     unit_time.advance_until(Duration::from_secs(5), || rows(&host, "unit/shutdown") == 1).await.unwrap();
 
     // Shutdown Settles the Binding, Stops the Plugin and Reaps Its Process.
@@ -452,6 +507,7 @@ async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     let mut status = attached.status();
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&activation, "unit/cut", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
     while rows(&host, "unit/cut") == 0 {
         host.signals.storage_ingested.notified().await;
     }
@@ -477,6 +533,7 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
     let mut status = attached.status();
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let live = host.runtime.bind_grpc(&activation, "unit/live", unit_clock.clone()).await.unwrap();
+    live.start_samples().await.unwrap();
     while rows(&host, "unit/live") == 0 {
         host.signals.storage_ingested.notified().await;
     }
@@ -492,6 +549,7 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
     host.clock.advance_next().await;
     let next = support::activation(&mut status, 2).await;
     let bound = host.runtime.bind_grpc(&next, "unit/next", unit_clock).await.unwrap();
+    bound.start_samples().await.unwrap();
     while rows(&host, "unit/next") == 0 {
         host.signals.storage_ingested.notified().await;
     }
@@ -513,6 +571,7 @@ async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ign
     assert_eq!(hung.opened.recv().await.unwrap(), "");
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = runtime.bind_grpc(&activation, "unit/virtual", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
     assert_eq!(hung.opened.recv().await.unwrap(), "unit/virtual");
 
     // Closing Parks While It Waits on the Plugin, So Advancing the Grace Expires the Drain.
@@ -535,25 +594,29 @@ async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ign
 
 #[tokio::test]
 async fn a_bind_registered_before_attachment_stop_is_settled_by_the_stop() {
-    // Hold a Bind in Preparing After It Registered Under the Attachment's Bindings Lock.
+    // Register a Binding Under the Attachment's Lock and Hold Its Samples Start.
     let host = HostFixture::new().await;
     let remote = device().await;
     let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
     let activation = attached.activation().unwrap();
     let (entered, abandoned) = remote.hold_samples();
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let binding = host.runtime.bind_grpc(&activation, "unit/preparing", unit_clock);
-    tokio::pin!(binding);
-    tokio::select! {
-        result = &mut binding => panic!("Bind Finished Before Its Samples Response: {:?}", result.err()),
-        entered = entered => entered.unwrap(),
-    }
+    let binding = host.runtime.bind_grpc(&activation, "unit/preparing", unit_clock).await.unwrap();
+    let (stopped, started) = {
+        let starting = binding.start_samples();
+        tokio::pin!(starting);
+        tokio::select! {
+            result = &mut starting => panic!("Samples Started Before Their Response: {result:?}"),
+            entered = entered => entered.unwrap(),
+        }
 
-    // Stop Takes the Lock Next, Owns the Preparing Binding and Settles It.
-    let (stopped, bound) = tokio::join!(attached.stop("Story Stop"), binding);
+        // Stop Takes the Lock Next, Owns the Registered Binding and Settles It.
+        tokio::join!(attached.stop("Story Stop"), starting)
+    };
     stopped.unwrap();
-    let error = bound.err().expect("Refuse a Binding Its Attachment Settled");
+    let error = started.expect_err("Refuse Samples Its Attachment Settled");
     assert!(matches!(error, Error::Invalid(_)), "Refuse as Invalid: {error}");
+    binding.close().await.unwrap();
     support::bounded(settings().stop_grace, abandoned).await.unwrap();
     assert_eq!(remote.stops(), 1);
     host.runtime.shutdown().await.unwrap();
@@ -617,6 +680,7 @@ async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
     host.signals.storage_hold.store(true, Ordering::SeqCst);
     let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let old = host.runtime.bind_grpc(&activation, "unit/old", unit_clock.clone()).await.unwrap();
+    old.start_samples().await.unwrap();
     host.signals.storage_entered.notified().await;
 
     // Losing the Connection Starts a Cleanup Whose Drain Misses the Deadline.
@@ -634,6 +698,7 @@ async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
     host.clock.advance_next().await;
     let next = support::activation(&mut status, 2).await;
     let bound = host.runtime.bind_grpc(&next, "unit/next", unit_clock.clone()).await.unwrap();
+    bound.start_samples().await.unwrap();
     assert!(host.runtime.bind_grpc(&activation, "unit/late", unit_clock).await.is_err(), "Refuse the Old Activation");
 
     // Late Ingestion Under the Old Leases Lands Without Disturbing the Next Activation.
@@ -647,6 +712,41 @@ async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
     assert_eq!(rows(&host, "unit/next"), 1);
+}
+
+#[tokio::test]
+async fn sample_demand_runs_only_between_start_and_stop_while_calls_stay_bound() {
+    // A Plugin That Refuses Ticks for a Unit It Has Not Registered.
+    let host = HostFixture::new().await;
+    let registered = Arc::new(AtomicBool::new(false));
+    let refused = Arc::new(AtomicUsize::new(0));
+    let remote = ticking(registered.clone(), refused.clone()).await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
+    let activation = attached.activation().unwrap();
+    let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = host.runtime.bind_grpc(&activation, "unit/window", unit_clock).await.unwrap();
+
+    // Unit Time Passes Before the Plugin Registers the Unit, and No Tick Reaches It.
+    unit_time.advance_by(Duration::from_secs(3)).await;
+    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Tick Before Samples Start");
+
+    // Demand Starts After Registration and Ticks the Unit Clock.
+    registered.store(true, Ordering::SeqCst);
+    binding.start_samples().await.unwrap();
+    unit_time.advance_until(Duration::from_secs(5), || rows(&host, "unit/window") == 2).await.unwrap();
+
+    // Demand Stops Before the Plugin's Cleanup Ends the Unit; Later Unit Time Grants Nothing.
+    binding.stop_samples().await.unwrap();
+    registered.store(false, Ordering::SeqCst);
+    unit_time.advance_by(Duration::from_secs(3)).await;
+    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Tick After Samples Stop");
+
+    // The Binding Still Holds Its Scope, and the Run Closes Clean.
+    assert!(host.runtime.bind_grpc(&activation, "unit/window", Clock::virtual_at(SystemTime::UNIX_EPOCH).0).await.is_err());
+    binding.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+    assert_eq!(rows(&host, "unit/window"), 2, "Commit Every Sample Accepted Inside the Window");
 }
 
 #[cfg(target_os = "linux")]

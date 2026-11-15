@@ -254,6 +254,7 @@ async fn retain_rows(requested: usize) {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
 
     // Start the First Tick on the Controlled Clock.
     source.wait_registered().await;
@@ -298,6 +299,7 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     let request = TimeSleepRequest {
         duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
     };
@@ -331,6 +333,7 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/cancel", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     source.wait_registered().await;
     let (entered, registering) = oneshot::channel();
     let (release, held) = blocking::channel();
@@ -379,7 +382,9 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     let left_source = Controlled::new();
     let right_source = Controlled::new();
     let left = host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(left_source.clone())).await.unwrap();
+    left.start_samples().await.unwrap();
     let right = host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(right_source.clone())).await.unwrap();
+    right.start_samples().await.unwrap();
 
     // Start Both Timelines Before Receiving Either Unit's Sleep.
     left_source.wait_registered().await;
@@ -446,6 +451,7 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/native", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
 
     // Admission Owns the Timer Before Middleware Sees the Native Call.
     let call = unit.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(2)), ()).unwrap();
@@ -469,6 +475,7 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/racing", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));
     loop {
@@ -497,6 +504,7 @@ async fn typed_child_sleeps_register_at_admission() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     let request = TimeSleepRequest {
         duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
     };

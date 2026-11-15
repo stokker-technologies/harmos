@@ -180,6 +180,13 @@ impl Publications {
         Ok(publications)
     }
 
+    /// A Scope's Publications Before Its Samples Start: No Demand, but Settlement Still Covers Its Calls.
+    pub(super) fn idle(
+        source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &crate::operations::Manager,
+    ) -> Self {
+        Self::start(Vec::new(), source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()))
+    }
+
     pub(super) fn scoped(
         prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock,
         operations: &crate::operations::Manager,
