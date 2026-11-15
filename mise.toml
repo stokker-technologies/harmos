@@ -407,6 +407,7 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.release.version check",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.release.run dry",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.release.run crates-dry",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.release.run python-dry",
 ]
 
 [tasks."release:publish:finalize"]
