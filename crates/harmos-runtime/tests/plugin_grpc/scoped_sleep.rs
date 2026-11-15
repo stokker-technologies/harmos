@@ -120,16 +120,12 @@ impl Source for Controlled {
         } else {
             state.timers.insert(id, (deadline, sender));
         }
+        // Claim the Hold Before Announcing This Registration, So a Hold Set After the
+        // Announcement Applies Only to the Next Registration.
+        let hold = self.hold.lock().unwrap().take();
         drop(state);
         self.registered.notify_one();
-        if let Some(registration) = self.hold.lock().unwrap().take() {
-            let now = self.state.lock().unwrap().reading.instant;
-            eprintln!(
-                "held registration: deadline {:?} after now, pending {}\n{}",
-                deadline.checked_duration_since(now),
-                self.pending(),
-                std::backtrace::Backtrace::force_capture()
-            );
+        if let Some(registration) = hold {
             registration.entered.send(()).unwrap();
             registration.release.recv().unwrap();
         }
