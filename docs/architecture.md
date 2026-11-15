@@ -1346,10 +1346,14 @@ binding.close().await?;
 A scoped sleep settles after the ticks it spans. A clock wait of a scoped call that
 ends at instant `t` (Time.Sleep or an operation's admitted wait) settles only after
 every sample tick of the same unit due at or before `t` has been answered and its
-sample committed, on every clock kind. A plugin that sleeps and then reads its
-observer state therefore sees exactly the ticks its sleep spanned. Waits inside a
-sample tick's own call tree are exempt, since that tick cannot be answered before
-them. Each scoped interval demand records its next unanswered tick in the unit
+sample committed, on every clock kind. "Due" follows the demand's schedule, which
+anchors each next tick at the instant the previous one fired: on a controlled clock
+a sleep of N periods spans exactly N ticks, while on the real clock firing latency
+delays later ticks and the sleep may span fewer. A plugin that sleeps and then reads
+its observer state sees every tick due by the sleep's end. Waits inside a sample
+tick's own call tree are exempt, since that tick cannot be answered before them. A
+tick whose handler waits on something the sleeping call holds therefore holds that
+sleep until the call's own policy deadline. Each scoped interval demand records its next unanswered tick in the unit
 (`operations/clock.rs`); under windowed batches the rule becomes: the window ending
 at `t` is committed before a sleep ending at `t` settles.
 `plugin_grpc::scoped_sleep::a_sleep_spanning_1024_ticks_observes_1024` and its 1,023

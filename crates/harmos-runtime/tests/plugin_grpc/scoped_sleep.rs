@@ -534,6 +534,48 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
     host.runtime.shutdown().await.unwrap();
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_samples_during_an_in_flight_tick_keeps_calls_and_restarts_demand() {
+    // Hold One Tick In Flight While the Plugin Sleeps on the Unit Clock.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/paused", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    source.wait_registered().await;
+
+    // Stopping Samples Cancels the Tick, Publishes Nothing and Leaves No Timer.
+    unit.stop_samples().await.unwrap();
+    assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
+    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+
+    // Calls Stay Bound: a Scoped Sleep Still Runs on the Unit Clock.
+    let request = TimeSleepRequest {
+        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+    };
+    let (call, _) = unit.operations().submit_protobuf::<SleepOperation>(request, None).unwrap();
+    assert_eq!(source.pending(), 1, "Register the Call's Sleep After Samples Stopped");
+    source.advance_by(Duration::from_secs(1));
+    call.await.unwrap();
+
+    // Demand Starts Again and Ticks the Same Unit.
+    unit.start_samples().await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    while host.rows().is_empty() {
+        host.signals.storage_ingested.notified().await;
+    }
+    unit.close().await.unwrap();
+    assert_eq!(host.rows().len(), 1, "Publish the Restarted Demand's Sample");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn typed_child_sleeps_register_at_admission() {
     // A Host Operation Calls Time.Sleep as a Typed Child Inside the Unit.
