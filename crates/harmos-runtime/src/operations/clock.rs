@@ -17,14 +17,19 @@
 
 // Standard Library Imports
 use std::{
+    collections::BTreeMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex, Weak},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
 // Third Party Imports
 use prost_types::Timestamp;
+use tokio::{sync::watch, time::Instant};
 
 // Local Imports
 use crate::{
@@ -46,13 +51,31 @@ pub(crate) struct Clock(pub(crate) clock::Clock);
 /// One Call's Unit Clock; Admission Registers the Call's Declared Wait Before Middleware Runs.
 pub(crate) struct Registered {
     clock: clock::Clock,
-    timer: Mutex<Option<(Duration, Sleep)>>,
+    ticks: Option<Arc<Ticks>>,
+    timer: Mutex<Option<(Duration, Instant, Sleep)>>,
 }
 
 pub(crate) struct Unit {
     pub(crate) clock: clock::Clock,
     pending: Mutex<Option<Vec<Weak<Instance>>>>,
+    pub(crate) ticks: Arc<Ticks>,
 }
+
+/// The Next Unanswered Tick of Each Interval Demand in One Unit.
+#[derive(Default)]
+pub(crate) struct Ticks {
+    due: watch::Sender<BTreeMap<u64, Instant>>,
+    next: AtomicU64,
+}
+
+/// One Demand's Place in Its Unit's Tick Schedule; Dropping It Leaves the Schedule.
+pub(crate) struct Schedule {
+    ticks: Arc<Ticks>,
+    id: u64,
+}
+
+/// Marks a Sample Tick's Call Tree, Whose Sleeps Its Own Tick Cannot Wait For.
+pub(crate) struct TickCall;
 
 /* === Enums === */
 
@@ -65,6 +88,7 @@ impl Unit {
         Self {
             clock,
             pending: Mutex::new(Some(Vec::new())),
+            ticks: Arc::default(),
         }
     }
 
@@ -88,9 +112,43 @@ impl Unit {
     }
 }
 
+impl Ticks {
+    pub(crate) fn schedule(self: &Arc<Self>, due: Instant) -> Schedule {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        self.due.send_modify(|ticks| {
+            ticks.insert(id, due);
+        });
+        Schedule { ticks: self.clone(), id }
+    }
+
+    /// Resolve Once Every Tick Due at or Before `at` Has Been Answered and Its Sample Committed.
+    async fn answered_through(&self, at: Instant) {
+        let mut due = self.due.subscribe();
+        let _ = due.wait_for(|ticks| ticks.values().all(|next| *next > at)).await;
+    }
+}
+
+impl Schedule {
+    /// Record the Demand's Next Unanswered Tick After Its Previous Sample Committed.
+    pub(crate) fn due(&self, next: Instant) {
+        self.ticks.due.send_modify(|ticks| {
+            ticks.insert(self.id, next);
+        });
+    }
+}
+
+impl Drop for Schedule {
+    fn drop(&mut self) {
+        self.ticks.due.send_modify(|ticks| {
+            ticks.remove(&self.id);
+        });
+    }
+}
+
 impl Registered {
-    pub(crate) fn new(clock: clock::Clock) -> Self {
-        Self { clock, timer: Mutex::new(None) }
+    /// A Call Outside Its Unit's Sample Ticks Orders Its Sleeps After the Ticks They Span.
+    pub(crate) fn new(clock: clock::Clock, ticks: Option<Arc<Ticks>>) -> Self {
+        Self { clock, ticks, timer: Mutex::new(None) }
     }
 }
 
@@ -100,18 +158,29 @@ impl OperationClock for Registered {
     }
 
     fn register(&self, duration: Duration) {
-        let timer = self.clock.sleep(duration);
-        *self.timer.lock().expect("scoped sleep registration lock is healthy") = Some((duration, timer));
+        let deadline = self.clock.now() + duration;
+        let timer = self.clock.sleep_until(deadline);
+        *self.timer.lock().expect("scoped sleep registration lock is healthy") = Some((duration, deadline, timer));
     }
 
     fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         // A Retried Attempt Has Consumed the Admitted Timer and Registers Its Own.
         let registered = self.timer.lock().expect("scoped sleep registration lock is healthy").take();
-        let timer = match registered {
-            Some((admitted, timer)) if admitted == duration => timer,
-            _ => self.clock.sleep(duration),
+        let (deadline, timer) = match registered {
+            Some((admitted, deadline, timer)) if admitted == duration => (deadline, timer),
+            _ => {
+                let deadline = self.clock.now() + duration;
+                (deadline, self.clock.sleep_until(deadline))
+            }
         };
-        Box::pin(clock::waiting(timer))
+        // A Sleep Ending at `deadline` Settles After Every Unit Tick Due by Then Has Committed.
+        let ticks = self.ticks.clone();
+        Box::pin(clock::waiting(async move {
+            timer.await;
+            if let Some(ticks) = ticks {
+                ticks.answered_through(deadline).await;
+            }
+        }))
     }
 }
 

@@ -1343,6 +1343,18 @@ unit_time.advance_by(sample_interval).await;
 binding.close().await?;
 ```
 
+A scoped sleep settles after the ticks it spans. A clock wait of a scoped call that
+ends at instant `t` (Time.Sleep or an operation's admitted wait) settles only after
+every sample tick of the same unit due at or before `t` has been answered and its
+sample committed, on every clock kind. A plugin that sleeps and then reads its
+observer state therefore sees exactly the ticks its sleep spanned. Waits inside a
+sample tick's own call tree are exempt, since that tick cannot be answered before
+them. Each scoped interval demand records its next unanswered tick in the unit
+(`operations/clock.rs`); under windowed batches the rule becomes: the window ending
+at `t` is committed before a sleep ending at `t` settles.
+`plugin_grpc::scoped_sleep::a_sleep_spanning_1024_ticks_observes_1024` and its 1,023
+and 1,025 siblings read the count after one sleep with no wait in the plugin.
+
 Concurrent and nested waits inside one operation share its activity without a
 lock; the activity parks only while all of its waits park, so joined waits never
 serialize or stall virtual time.

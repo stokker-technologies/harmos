@@ -37,7 +37,7 @@ use tokio::{
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, model};
-use crate::operations::clock::Unit;
+use crate::operations::clock::{TickCall, Unit};
 use crate::streams::protobuf::Row;
 use crate::{
     Application,
@@ -397,10 +397,21 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
+    // A Scoped Interval Demand Joins Its Unit's Tick Schedule; Its Ticks' Call Trees Are Marked.
+    let unit = interval.and(operations.call_context().get::<Arc<Unit>>().cloned());
+    let operations = match &unit {
+        Some(_) => {
+            let mut context = operations.call_context().clone();
+            context.insert(TickCall).map_err(invalid)?;
+            operations.with_context(context)
+        }
+        None => operations,
+    };
     let outcome = {
         let work = async {
             let mut sequence = 0;
             let mut next_tick = interval.map(|period| clock.now() + period);
+            let schedule = unit.as_ref().zip(next_tick).map(|(unit, due)| unit.ticks.schedule(due));
             loop {
                 let tick = if let Some(period) = interval {
                     let next = clock.sleep_until(next_tick.expect("interval streams have a next tick"));
@@ -488,6 +499,9 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                     .map_err(invalid)?;
                 ingested_through = Some(receipt);
                 lease.ingested_at(receipt).await.map_err(invalid)?;
+                if let Some((schedule, next)) = schedule.as_ref().zip(next_tick) {
+                    schedule.due(next);
+                }
             }
         };
         tokio::pin!(work);

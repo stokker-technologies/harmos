@@ -20,7 +20,11 @@ use std::{
     collections::BTreeMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex, mpsc as blocking},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc as blocking,
+    },
     task::{Context, Poll},
     time::{Duration, SystemTime},
 };
@@ -35,7 +39,7 @@ use tokio::{
 
 // Local Imports
 use super::{
-    invoke_support::{HostFixture, pending},
+    invoke_support::{HostFixture, payload, pending},
     support,
 };
 use harmos_operations::clock::{ClockAccess, Sleep as SleepOperation};
@@ -284,6 +288,31 @@ async fn retain_rows(requested: usize) {
     host.runtime.shutdown().await.unwrap();
 }
 
+/// One Sleep Spanning `requested` Ticks Observes Every One of Them.
+async fn count_after_sleep(requested: u64) {
+    // A Plugin Counts Its Scoped Ticks on a Virtual Unit Clock.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("counted-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/counted", clock).await.unwrap();
+    unit.start_samples().await.unwrap();
+
+    // The Plugin Sleeps Once, Then Reads Its Count; the Last Tick Shares the Sleep's Instant.
+    let finished = AtomicBool::new(false);
+    let call = async {
+        let result = unit.operations().submit_encoded("fixture.count_after", payload(&requested.to_le_bytes())).unwrap().await;
+        finished.store(true, Ordering::SeqCst);
+        result
+    };
+    let (result, advanced) = tokio::join!(call, time.advance_until(Duration::from_secs(requested + 1), || finished.load(Ordering::SeqCst)));
+    advanced.unwrap();
+    assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Tick It Spans");
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
 /* === Tests === */
 
 #[tokio::test]
@@ -365,6 +394,21 @@ async fn admitted_sleeps_retain_exactly_1024_rows() {
 #[tokio::test]
 async fn admitted_sleeps_retain_exactly_1025_rows() {
     retain_rows(1025).await;
+}
+
+#[tokio::test]
+async fn a_sleep_spanning_1023_ticks_observes_1023() {
+    count_after_sleep(1023).await;
+}
+
+#[tokio::test]
+async fn a_sleep_spanning_1024_ticks_observes_1024() {
+    count_after_sleep(1024).await;
+}
+
+#[tokio::test]
+async fn a_sleep_spanning_1025_ticks_observes_1025() {
+    count_after_sleep(1025).await;
 }
 
 #[tokio::test]
