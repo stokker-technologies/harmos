@@ -516,7 +516,25 @@ coverage may fail independently.
 `verification.yml` own the shared publish and verify jobs. Both channels use
 `release:publish --channel stable|nightly` and `release:verify --channel stable|nightly`.
 Stable keeps its review evidence and registry guards; Nightly creates no stable tag
-and publishes no registry packages. Registry publication remains in `release.yml`.
+and publishes no registry packages. PyPI publication runs only in the direct
+`Release / Publish PyPI` job in `release.yml`, after shared publication succeeds;
+verification waits for both jobs. Crates.io publication remains in Release / Tag.
+
+Register the PyPI Trusted Publisher for project `harmos-sdk` with owner
+`stokker-technologies`, repository `harmos`, workflow file `release.yml` and
+environment `release`. [PyPI does not support reusable publishing workflows](https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github).
+The direct job calls `mise run release:publish -- --channel stable --registry pypi`
+using the validated review's `build-python-release` artifact; the shared publisher
+never selects PyPI. Nightly never uploads to PyPI.
+
+A failed PyPI job fails the release workflow without rolling back earlier
+publications. Rerun that failed job: it skips existing filenames only when their
+SHA-256 matches, fails before uploading on a mismatch, and uploads missing files.
+uv's `--check-url https://pypi.org/simple/` also checks duplicates during upload retries.
+The [crates.io documentation](https://crates.io/docs/trusted-publishing) and
+[NuGet documentation](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
+document no equivalent reusable-workflow prohibition. NuGet and npm publishing
+are not configured in this repository.
 
 Package exports the reference host and plugin archive from matching Product bytes,
 with conservative locked Cargo target graphs and the Python SDK lock inventory as
@@ -532,6 +550,9 @@ packages without registry dry runs. Hosted rehearsal requires release-profile
 packages for both native targets and registry verification. `release:publish --dry`
 uses the same staging path; add `--channel nightly` to rehearse the Nightly inventory.
 Neither command builds missing inputs.
+Stable dry publication and rehearsal also validate the existing Python wheel with
+`uv publish --dry-run --trusted-publishing never`, without publishing credentials.
+Use `release:publish --channel stable --registry pypi --dry` for Python alone.
 
 Nightly publishes initial report downloads even when no suite has finished. The final
 report job calls the shared publisher with `report: true` and `results: toJSON(needs)`.
@@ -601,7 +622,9 @@ configured, then creates the release review. Hosted GitHub `release:tag` and
 `release:publish` own identity reporting and the exact-commit CI guard. Publication uses
 `release:publish --dry` for a dry run or `release:publish --stage assets|rust|finalize`
 for one real publication stage. These selections are mutually exclusive. Default publication still drafts
-assets then finalizes. `release:rehearse` accepts `--target`, `--profile` and
+assets then finalizes; PyPI is selected separately with `--registry pypi`.
+`--registry` cannot be combined with `--stage` or the Nightly channel.
+`release:rehearse` accepts `--target`, `--profile` and
 `--stage-only`; no release command builds missing products. Workflow and task changes are delivered together.
 
 Broad CI compilation tasks retain the configured backend verification and measured

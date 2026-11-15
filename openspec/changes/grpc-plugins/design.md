@@ -892,6 +892,13 @@ removing extracted content. Archive extraction never launches children; upload
 staging and guest component bytes are separate from native executable installations.
 Guests have no on-disk module cache in this implementation.
 
+Remote disconnection has no child to reap. Scoped publication cleanup still drains
+accepted ingestion and reports connection loss to the binding. The attachment
+retains that failure in disconnected status and reconnects with a fresh activation;
+the old binding stays closed and a new binding may use the same scope. Cleanup
+timeout remains terminal under the unchanged placement stop policy. README claims,
+public APIs and managed process settlement remain unchanged.
+
 The sandbox limit story's spinning operation consumes finite store fuel; failed
 memory growth traps through the store limiter. Fuel is refilled only between idle
 batches, never inside a spinning call. Suspended work settles through operation
