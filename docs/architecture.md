@@ -1203,6 +1203,27 @@ mandatory callers and product narrowing input before enabling listeners. Product
 own storage wrappers and application-specific publication; no library Storage or
 Samples.Append service is recreated. Compose the library's host resources directly.
 
+## Managed Process Ownership
+
+`crates/harmos-runtime/src/plugin/grpc/managed.rs` owns a native child immediately
+after spawn, before readiness. Startup has a retained task and runtime stop
+participant; cancelling the caller or a manager worker signals that owner and
+awaits termination and exit. Readiness failures, connection failures and staged
+replacement rollback settle the same child. Ready processes retain graceful Stop
+through the existing placement deadline. A disconnected child is terminated and
+reaped under that placement's `stop_grace`.
+
+Manager Delete and installation reuse follow successful settlement. Candidate
+bundles are kept out of synchronous temporary-directory cleanup once launch is
+possible; rollback explicitly reaps before removing them. An expired exit bound
+reports the action, executable and process identifier, retains the installation
+and refuses reuse. A retained native reaper keeps ownership after cancellation or
+failed settlement; runtime participants propagate the failure through shutdown.
+Archive extraction itself launches no process. Upload production publishes bytes
+through storage, and installation reads immutable content into a separate extracted
+directory. Guests compile owned component bytes in-process; there is no on-disk
+guest module cache or native child holding the uploaded module.
+
 ## Guest Entries and Reported Declarations
 
 Every host-registered WebAssembly plugin has a durable `PluginEntry` keyed by its

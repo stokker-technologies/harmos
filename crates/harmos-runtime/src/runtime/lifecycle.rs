@@ -202,7 +202,7 @@ impl<A: Application> Shutdown<A> {
             self.progress.send_replace("operations");
             self.handles.operations.shutdown().await?;
             self.progress.send_replace("participants");
-            self.participants.stop().await;
+            self.participants.stop().await?;
             self.progress.send_replace("application lifecycle");
             if let Some(application) = &self.application {
                 application.settle().await.map_err(|source| {

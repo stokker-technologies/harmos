@@ -178,11 +178,13 @@ struct Supervision<A: Application> {
 struct Participants {
     stopping: watch::Sender<bool>,
     active: watch::Sender<usize>,
+    failure: watch::Sender<Option<Arc<Error>>>,
 }
 
 pub struct StopParticipant {
     stopping: watch::Receiver<bool>,
     active: watch::Sender<usize>,
+    failure: watch::Sender<Option<Arc<Error>>>,
     released: bool,
 }
 
@@ -1167,6 +1169,7 @@ impl Participants {
         Self {
             stopping: watch::channel(false).0,
             active: watch::channel(0).0,
+            failure: watch::channel(None).0,
         }
     }
 
@@ -1176,22 +1179,41 @@ impl Participants {
         StopParticipant {
             stopping: self.stopping.subscribe(),
             active: self.active.clone(),
+            failure: self.failure.clone(),
             released: false,
         }
     }
 
-    async fn stop(&self) {
+    async fn stop(&self) -> Result<(), Error> {
         self.stopping.send_replace(true);
         let mut active = self.active.subscribe();
-        while *active.borrow_and_update() != 0 {
-            if active.changed().await.is_err() {
-                break;
+        let mut failure = self.failure.subscribe();
+        loop {
+            if let Some(source) = failure.borrow_and_update().clone() {
+                return Err(Error::TaskFailed { domain: "runtime participant", source });
+            }
+            if *active.borrow_and_update() == 0 {
+                return Ok(());
+            }
+            tokio::select! {
+                _ = active.changed() => {},
+                _ = failure.changed() => {},
             }
         }
     }
 }
 
 impl StopParticipant {
+    pub(crate) fn fail(&self, source: Arc<Error>) {
+        self.failure.send_if_modified(|failure| {
+            if failure.is_some() {
+                return false;
+            }
+            *failure = Some(source);
+            true
+        });
+    }
+
     pub fn is_stopping(&self) -> bool {
         *self.stopping.borrow()
     }
@@ -1386,3 +1408,24 @@ async fn inspect_reads<A: Application>(mut consumers: Consumers<A>, mut requests
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn failed_participant_returns_its_cause_without_discarding_a_live_owner() {
+        // Retain a Native Cleanup Owner That Cannot Report Settlement
+        let participants = Participants::new();
+        let participant = participants.register();
+        let source = Arc::new(Error::Closing { domain: "managed process" });
+        participant.fail(source);
+
+        // Shutdown Refuses the Failure Even While That Owner Remains Alive
+        let Error::TaskFailed { source, .. } = participants.stop().await.unwrap_err() else { panic!("participant failure was lost") };
+        assert!(matches!(source.downcast_ref::<Error>(), Some(Error::Closing { domain: "managed process" })));
+        assert!(participant.is_stopping());
+        drop(participant);
+        assert!(participants.stop().await.is_err());
+    }
+}

@@ -15,6 +15,11 @@ use harmos_protocol::host::PluginState;
 use harmos_protocol::host::PluginsDeleteRequest;
 use harmos_protocol::host::PluginsRestartRequest;
 use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::{PluginValue, PluginsSetRequest};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpListener,
+};
 
 use super::support::{self, Backends, Host};
 
@@ -77,5 +82,145 @@ async fn client_manages_bundled_plugins() {
     assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     assert!(host.client.list(support::list()).await.unwrap().into_inner().entries.is_empty());
     drop(watch);
+    host.close().await;
+}
+
+#[tokio::test]
+async fn cancelled_startup_is_reaped_before_immediate_delete() {
+    // Hold the Managed Child Before It Announces Readiness
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let content = host.upload("starting", support::bundle_with_startup(true, Some(&listener.local_addr().unwrap().to_string()))).await;
+    let entry = host.client.create(support::managed("starting", content, true)).await.unwrap().into_inner().entry.unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut control = BufReader::new(stream);
+    let mut id = String::new();
+    control.read_line(&mut id).await.unwrap();
+    let process = support::Process::observe(id.trim().parse().unwrap()).await;
+
+    // Cancel Startup and Delete Without Advancing Time or Retrying
+    let stopped = host
+        .client
+        .set(PluginsSetRequest {
+            name: entry.name.clone(),
+            value: Some(PluginValue { enabled: false }),
+            expected_revision: entry.revision,
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .entry
+        .unwrap();
+    assert!(stopped.failure.is_none());
+    process.assert_exited().await;
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: stopped.name,
+            expected_revision: stopped.revision,
+        })
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    host.close().await;
+}
+
+#[tokio::test]
+async fn failed_readiness_is_reaped_before_immediate_delete() {
+    // Retain the Child That Will Announce an Invalid Address
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let content = host.upload("failing", support::bundle_with_startup(true, Some(&listener.local_addr().unwrap().to_string()))).await;
+    let mut watch = host.client.watch(PluginsWatchRequest { name: Some("failing".into()), at: None }).await.unwrap().into_inner();
+    host.client.create(support::managed("failing", content, true)).await.unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut control = BufReader::new(stream);
+    let mut id = String::new();
+    control.read_line(&mut id).await.unwrap();
+    let process = support::Process::observe(id.trim().parse().unwrap()).await;
+
+    // Fail Readiness While the Native Executable Remains Open
+    control.get_mut().write_all(b"fail\n").await.unwrap();
+    let failed = support::state(&mut watch, "failing", PluginState::Unavailable, 1).await;
+    assert!(failed.failure.is_some());
+    process.assert_exited().await;
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: failed.name,
+            expected_revision: failed.revision,
+        })
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    host.close().await;
+}
+
+#[tokio::test]
+async fn shutdown_reaps_a_managed_child_during_startup() {
+    // Observe a Native Child Held Before Readiness
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let content = host.upload("starting", support::bundle_with_startup(true, Some(&listener.local_addr().unwrap().to_string()))).await;
+    host.client.create(support::managed("starting", content, true)).await.unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut control = BufReader::new(stream);
+    let mut id = String::new();
+    control.read_line(&mut id).await.unwrap();
+    let process = support::Process::observe(id.trim().parse().unwrap()).await;
+
+    // Shutdown Completes Only After the Retained Native Process Has Exited
+    host.close().await;
+    process.assert_exited().await;
+}
+
+#[tokio::test]
+async fn restart_during_startup_reaps_before_reusing_the_installation() {
+    // Retain the First Child Before It Announces Readiness
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let content = host.upload("starting", support::bundle_with_startup(true, Some(&listener.local_addr().unwrap().to_string()))).await;
+    let first = host.client.create(support::managed("starting", content, true)).await.unwrap().into_inner().entry.unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut control = BufReader::new(stream);
+    let mut id = String::new();
+    control.read_line(&mut id).await.unwrap();
+    let process = support::Process::observe(id.trim().parse().unwrap()).await;
+
+    // Restart Reaps the First Child Before Starting the Same Executable Again
+    let next = host
+        .client
+        .restart(PluginsRestartRequest {
+            name: first.name,
+            expected_revision: first.revision,
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .entry
+        .unwrap();
+    process.assert_exited().await;
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut control = BufReader::new(stream);
+    let mut id = String::new();
+    control.read_line(&mut id).await.unwrap();
+    let process = support::Process::observe(id.trim().parse().unwrap()).await;
+
+    // Delete Directly During the Replacement Child's Startup
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: next.name,
+            expected_revision: next.revision,
+        })
+        .await
+        .unwrap();
+    process.assert_exited().await;
+    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     host.close().await;
 }

@@ -63,6 +63,10 @@ impl Process {
         self.child.stdin.as_mut().unwrap().write_all(b"kill\n").await.unwrap();
         self.exited().await
     }
+    pub async fn assert_exited(mut self) {
+        self.child.stdin.as_mut().unwrap().write_all(b"assert-exited\n").await.unwrap();
+        assert!(self.exited().await.success(), "the retained native process must already have exited");
+    }
     pub async fn exited(mut self) -> ExitStatus {
         drop(self.child.stdin.take());
         self.child.wait().await.unwrap()

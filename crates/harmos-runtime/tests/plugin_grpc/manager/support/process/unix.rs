@@ -27,7 +27,10 @@ const OBSERVE: &str = r#"
 import os, select, signal, sys
 fd = os.pidfd_open(int(sys.argv[1]))
 print('ready', flush=True)
-if sys.stdin.readline().strip() == 'kill':
+control = sys.stdin.readline().strip()
+if control == 'assert-exited' and not select.select([fd], [], [], 0)[0]:
+    sys.exit('Managed process still running')
+if control == 'kill':
     signal.pidfd_send_signal(fd, signal.SIGKILL)
 select.select([fd], [], [])
 os.close(fd)
