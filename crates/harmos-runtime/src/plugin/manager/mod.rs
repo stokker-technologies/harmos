@@ -112,14 +112,14 @@ impl Manager {
             .map_err(|_| Error::new("already_started", "Start Plugin Manager", "start this manager only once"))?;
         let host = Arc::downgrade(runtime);
         let settings = self.inner.settings.placement.clone();
-        let attach: actor::Attach = Arc::new(move |name, placement, values| {
+        let attach: actor::Attach = Arc::new(move |name, placement, values, cancelled| {
             let activity = clock.activity("plugin manager activation");
             let host = host.clone();
             let settings = settings.clone();
             Box::pin(async move {
                 let _activity = activity;
                 let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
-                runtime.attach_grpc_entry(name, placement, settings, values).await
+                runtime.attach_grpc_entry(name, placement, settings, values, cancelled).await
             })
         });
         let host = Arc::downgrade(runtime);
@@ -134,9 +134,18 @@ impl Manager {
         });
         let host = Arc::downgrade(runtime);
         let placement_settings = self.inner.settings.placement.clone();
-        let activate: actor::Activate = Arc::new(move |prepared| {
-            let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
-            runtime.activate_grpc_entry(prepared, placement_settings.clone())
+        let activation_clock = runtime.operations.clock().clone();
+        let activate: actor::Activate = Arc::new(move |mut prepared| {
+            let host = host.clone();
+            let settings = placement_settings.clone();
+            let clock = activation_clock.clone();
+            Box::pin(async move {
+                let Some(runtime) = host.upgrade() else {
+                    prepared.stop(&clock, &settings).await?;
+                    return Err(crate::plugin::grpc::Error::Disconnected);
+                };
+                runtime.activate_grpc_entry(prepared, settings).await
+            })
         });
         let actor = actor::Actor::open(
             self.inner.storage.engine(),

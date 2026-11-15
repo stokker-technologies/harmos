@@ -103,8 +103,13 @@ bound endpoint through the existing readiness line. Windows launches use
 streams, reconnect and process supervision. A managed process exit reports an
 unavailable entry with its failure; explicit Restart replaces it. Remote
 attachments reconnect under their existing placement policy. Delete stops and
-reaps managed processes and removes their installation. A remote process remains
-owned by its external launcher.
+reaps managed processes and removes their installation. Startup cancellation and
+readiness failure also await native process exit before Delete, Restart or Replace
+can remove or reuse the installation. Staged replacement failures reap their
+candidate before removing its extracted bundle. Exit settlement uses the placement's
+`stop_grace`; an exhausted bound reports the action and process and retains the
+installation. Runtime shutdown waits for children still in startup and propagates
+unsettled process failures. A remote process remains owned by its external launcher.
 
 On host restart, persisted placement and enabled intent are restored. Enabled
 managed entries start from their installation, remote entries reconnect, and

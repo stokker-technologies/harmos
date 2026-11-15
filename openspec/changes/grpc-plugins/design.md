@@ -877,3 +877,25 @@ The optional-marker edits are:
 Product binding acceptance retains static consumer typing and aggregate round-trip proof;
 the superseded snapshot of a public module's private wire imports is removed. Wire modules
 and their request aliases now stay behind the generated private binding module.
+
+
+## Managed Process Settlement
+
+Managed startup and installation mutation share native process ownership. Readiness
+is borrowed work on an already-owned child. Cancellation signals retained startup
+work, which terminates and reaps before the manager can remove or reuse files.
+Ready Stop keeps its graceful placement deadline; startup failure and disconnect
+request termination and await exit within `stop_grace`. A failed exit bound retains
+the installation and is reported with the action, executable and process identifier,
+including through runtime shutdown. Candidate rollback explicitly settles before
+removing extracted content. Archive extraction never launches children; upload
+staging and guest component bytes are separate from native executable installations.
+Guests have no on-disk module cache in this implementation.
+
+The sandbox limit story's spinning operation consumes finite store fuel; failed
+memory growth traps through the store limiter. Fuel is refilled only between idle
+batches, never inside a spinning call. Suspended work settles through operation
+policy and the virtual clock; store destruction acknowledges guest exit. Inspection
+found no unbounded guest loop or machine-speed-dependent wait in these paths.
+The existing 120-second story hang guard remains unchanged; native Linux Nightly
+must establish whether its isolated timeout recurs under hosted load.

@@ -37,7 +37,7 @@ use harmos_protocol::plugin::InstanceStopRequest;
 use std::{future::Future, sync::Arc};
 
 // Third Party Imports
-use tokio::sync::watch;
+use tokio::sync::{oneshot, watch};
 
 // Local Imports
 use crate::{Application, Runtime, clock::Clock};
@@ -100,6 +100,13 @@ pub(crate) struct PreparedPlugin {
     publications: PreparedPublications,
 }
 
+struct Startup {
+    participant: crate::runtime::StopParticipant,
+    process_participant: Option<crate::runtime::StopParticipant>,
+    entry: Option<EntrySettings>,
+    cancelled: Option<oneshot::Receiver<()>>,
+}
+
 struct EntrySettings {
     name: String,
     values: Option<SettingValues>,
@@ -139,6 +146,9 @@ pub enum Error {
     #[error("{0}")]
     Invalid(String),
 
+    #[error("{0}")]
+    Reap(String),
+
     #[error("plugin transport failed: {0}")]
     Transport(String),
 
@@ -158,6 +168,15 @@ pub enum Error {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl PreparedPlugin {
+    pub(crate) async fn stop(&mut self, clock: &Clock, settings: &PlacementSettings) -> Result<(), Error> {
+        if let Some(process) = &mut self.process {
+            process.terminate(clock, clock.now() + settings.stop_grace, "Stop Staged Plugin Replacement").await?;
+        }
+        Ok(())
+    }
+}
 
 impl CallingPlugin {
     pub(crate) fn connection_identity(&self) -> usize {
@@ -183,11 +202,13 @@ impl<A: Application> Runtime<A> {
     ) -> Result<PreparedPlugin, Error> {
         let operations = self.operations.execution();
         let clock = operations.clock();
+        let mut process = None;
+        let mut participant = self.stop_participant();
         let stage = async {
-            let (process, address) = match placement {
+            let address = match placement {
                 Placement::Managed(managed) => {
-                    let (process, address) = Process::start(&managed).await?;
-                    (Some(process), address)
+                    process = Some(Process::spawn(&managed, self.stop_participant()).await?);
+                    process.as_mut().expect("spawned process").ready(&managed).await?
                 }
                 Placement::Remote(_) => return Err(Error::Invalid("Replace Plugin: managed placement required".into())),
             };
@@ -206,22 +227,35 @@ impl<A: Application> Runtime<A> {
                 values,
             )
             .map_err(|error| Error::Invalid(error.to_string()))?;
-            activation.process_id = process.as_ref().and_then(|process| process.child.id());
+            activation.process_id = process.as_ref().and_then(Process::id);
             let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
             let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
-            Ok(PreparedPlugin {
+            Ok((address, activation, admission, publications))
+        };
+        let result = tokio::select! {
+            biased;
+            () = participant.stopping() => Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into())),
+            result = clock.timeout(settings.connect_timeout, stage) => result.map_err(|_| Error::Timeout("Replace startup")).and_then(|result| result),
+        };
+        match result {
+            Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
                 process,
                 address,
                 activation,
                 admission,
                 publications,
-            })
-        };
-        clock.timeout(settings.connect_timeout, stage).await.map_err(|_| Error::Timeout("Replace startup"))?
+            }),
+            Err(error) => {
+                if let Some(process) = &mut process {
+                    process.terminate(clock, clock.now() + settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                }
+                Err(error)
+            }
+        }
     }
-    pub(crate) fn activate_grpc_entry(&self, prepared: PreparedPlugin, settings: PlacementSettings) -> Result<Attached, Error> {
+    pub(crate) async fn activate_grpc_entry(&self, prepared: PreparedPlugin, settings: PlacementSettings) -> Result<Attached, Error> {
         let PreparedPlugin {
-            process,
+            mut process,
             address,
             mut activation,
             mut admission,
@@ -229,8 +263,19 @@ impl<A: Application> Runtime<A> {
         } = prepared;
         let operations = self.operations.execution();
         let clock = operations.clock().clone();
-        admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
-        let publications = Publications::activate(publications, &self.streams, &activation, &clock, &operations, &settings, true)?;
+        let activated = (|| {
+            admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
+            Publications::activate(publications, &self.streams, &activation, &clock, &operations, &settings, true)
+        })();
+        let publications = match activated {
+            Ok(publications) => publications,
+            Err(error) => {
+                if let Some(process) = &mut process {
+                    process.terminate(&clock, clock.now() + settings.stop_grace, "Stop Failed Replacement Activation").await?;
+                }
+                return Err(error);
+            }
+        };
         admission.seal();
         activation.admission = Some(Arc::new(admission));
         Ok(Attached::launch(
@@ -250,6 +295,7 @@ impl<A: Application> Runtime<A> {
 
     pub(crate) async fn attach_grpc_entry(
         &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<SettingValues>,
+        cancelled: oneshot::Receiver<()>,
     ) -> Result<Attached, Error> {
         Attached::start(
             self.operations.execution(),
@@ -257,8 +303,12 @@ impl<A: Application> Runtime<A> {
             crate::operations::Lane::default().name(),
             placement,
             settings,
-            self.stop_participant(),
-            Some(EntrySettings { name, values }),
+            Startup {
+                participant: self.stop_participant(),
+                process_participant: Some(self.stop_participant()),
+                entry: Some(EntrySettings { name, values }),
+                cancelled: Some(cancelled),
+            },
         )
         .await
     }
@@ -274,8 +324,12 @@ impl<A: Application> Runtime<A> {
             crate::operations::Lane::default().name(),
             placement,
             settings,
-            participant,
-            None,
+            Startup {
+                participant,
+                process_participant: Some(self.stop_participant()),
+                entry: None,
+                cancelled: None,
+            },
         )
         .await
     }
@@ -305,20 +359,38 @@ impl Activation {
 impl Attached {
     async fn start<A: Application>(
         operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
-        settings: PlacementSettings, participant: crate::runtime::StopParticipant, entry: Option<EntrySettings>,
+        settings: PlacementSettings, startup: Startup,
     ) -> Result<Self, Error> {
+        let (cancel, dropped) = oneshot::channel();
+        let task = tokio::spawn(Self::start_owned(operations, streams, lane, placement, settings, startup, dropped));
+        let result = task.await.map_err(|error| Error::Invalid(format!("Join Plugin Startup: {error}")))?;
+        drop(cancel);
+        result
+    }
+
+    async fn start_owned<A: Application>(
+        operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, placement: Placement,
+        settings: PlacementSettings, startup: Startup, dropped: oneshot::Receiver<()>,
+    ) -> Result<Self, Error> {
+        let Startup {
+            mut participant,
+            mut process_participant,
+            entry,
+            cancelled,
+        } = startup;
         let clock = operations.clock().clone();
         if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
         let _activity = clock.activity("plugin startup");
+        let mut process = None;
         let setup = async {
-            let (process, address) = match &placement {
+            let address = match &placement {
                 Placement::Managed(managed) => {
-                    let (process, address) = Process::start(managed).await?;
-                    (Some(process), address)
+                    process = Some(Process::spawn(managed, process_participant.take().expect("managed process participant")).await?);
+                    process.as_mut().expect("spawned process").ready(managed).await?
                 }
-                Placement::Remote(address) => (None, address.clone()),
+                Placement::Remote(address) => address.clone(),
             };
             let mut activation = connect(
                 &clock,
@@ -338,20 +410,44 @@ impl Attached {
                 values,
             )
             .map_err(|error| Error::Invalid(error.to_string()))?;
-            activation.process_id = process.as_ref().and_then(|process| process.child.id());
+            activation.process_id = process.as_ref().and_then(Process::id);
             let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
                 activation.connection.closed.send_replace(true);
             })?;
             activation.admission = Some(Arc::new(admission));
             let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
-            Ok::<_, Error>(ConnectedPlugin {
-                process,
-                address,
-                activation,
-                publications,
-            })
+            Ok::<_, Error>((address, activation, publications))
         };
-        let connected = clock.timeout(settings.connect_timeout, setup).await.map_err(|_| Error::Timeout("startup"))??;
+        let cancelled = async {
+            match cancelled {
+                Some(cancelled) => {
+                    let _ = cancelled.await;
+                }
+                None => std::future::pending().await,
+            }
+        };
+        let result = tokio::select! {
+            biased;
+            _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
+            () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
+            () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
+            result = clock.timeout(settings.connect_timeout, setup) => result.map_err(|_| Error::Timeout("startup")).and_then(|result| result),
+        };
+        let (address, activation, publications) = match result {
+            Ok(connected) => connected,
+            Err(error) => {
+                if let Some(process) = &mut process {
+                    process.terminate(&clock, clock.now() + settings.stop_grace, "Stop Plugin Startup").await?;
+                }
+                return Err(error);
+            }
+        };
+        let connected = ConnectedPlugin {
+            process,
+            address,
+            activation,
+            publications,
+        };
         Ok(Self::launch(operations, streams, lane, settings, participant, connected))
     }
 
@@ -557,32 +653,21 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             activation.connection.closed.send_replace(true);
             activation.admission.as_ref().unwrap().remove();
             if let Some(process) = &mut process {
-                let exit = clock.timeout_at(deadline, process.exited()).await;
-                match exit {
-                    Ok(Ok(exit)) if exit.success() => {}
-                    Ok(Ok(exit)) => return Err(Arc::new(Error::Exit(exit))),
-                    Ok(Err(error)) => return Err(Arc::new(error)),
-                    Err(_) => {
-                        let _ = process.child.kill().await;
-                        return Err(Arc::new(Error::Timeout("process exit")));
-                    }
+                let exit = process.settle(&clock, deadline, "Stop Managed Plugin").await.map_err(Arc::new)?;
+                if !exit.success() {
+                    return Err(Arc::new(Error::Exit(exit)));
                 }
             }
             return result.map_err(Arc::new);
         }
-        let _ = publications.close().await;
+        let deadline = clock.now() + settings.stop_grace;
+        let closed = clock.timeout_at(deadline, publications.close()).await;
         activation.admission.as_ref().unwrap().remove();
         if let Some(process) = &mut process {
-            let failure = match process.child.try_wait() {
-                Ok(Some(exit)) => Error::Exit(exit),
-                Ok(None) => {
-                    process.child.kill().await.map_err(|error| Arc::new(Error::Io(error)))?;
-                    Error::Disconnected
-                }
-                Err(error) => Error::Io(error),
-            };
-            return Err(Arc::new(failure));
+            process.terminate(&clock, deadline, "Stop Disconnected Managed Plugin").await.map_err(Arc::new)?;
+            return Err(Arc::new(Error::Disconnected));
         }
+        closed.map_err(|_| Arc::new(Error::Timeout("Publish closure")))?.map_err(Arc::new)?;
         status.send_replace(Status {
             activation: None,
             failure: Some(Arc::new(Error::Disconnected)),

@@ -1,5 +1,13 @@
 # Tasks
 
+## Managed Process Settlement
+
+- [x] 13.1 Own managed process creation, readiness, cancellation and bounded reaping in `crates/harmos-runtime/src/plugin/grpc`; settle startup, stop, disconnect and shutdown before releasing ownership; propagate unreaped process failures through runtime stop participants (`runtime.rs`, `runtime/lifecycle.rs`).
+- [x] 13.2 Own manager stop/delete/restart and staged replacement rollback ordering; retain installations and refuse reuse after failed settlement. Audit archive extraction, guest modules and upload staging for child-held paths.
+- [x] 13.3 Own deterministic manager lifecycle stories and controlled fixture startup; prove cancellation/delete, readiness failure/delete, running replacement and shutdown during startup through retained native process observation.
+- [x] 13.4 Inspect the guest sandbox story, fuel, memory limiter and suspended-call settlement; repair a demonstrated hazard without changing the story deadline. Review README impact and update affected architecture/plugin guidance.
+- [ ] 13.5 Final validation: run the requested local committed-head format, Rust/repository checks, locked workspace/tests/benches compilation, manager/runtime system stories and Rust fixture conformance once. Native Linux and hosted Nightly remain required proof beyond this local-only delivery; leave final validation open until those results exist. No push is authorized.
+
 ## Product Integration Gaps
 
 - [x] 12.1 Bind an admitted activation's samples and host Time operations to one trusted scope and consumer clock with an owned, settling lease; preserve unscoped behavior. Own runtime operation resources/activity tracking, gRPC publication lifecycle, managed activation lookup, stream ingestion, the SDK fixture, scoped and managed-entry stories, `docs/architecture.md` and affected README/product guidance. Targeted stories prove accepted ingestion settlement on connection loss and normal closure, the original unscoped JSON bytes, independent clocks and samples, cancellation, and lookup/refusal across managed-entry disable.

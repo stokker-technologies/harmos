@@ -334,6 +334,9 @@ pub async fn state(watch: &mut tonic::Streaming<PluginsWatchResponse>, name: &st
     }
 }
 pub fn bundle(executable: bool) -> Vec<u8> {
+    bundle_with_startup(executable, None)
+}
+pub fn bundle_with_startup(executable: bool, control: Option<&str>) -> Vec<u8> {
     use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
     let bytes = std::fs::read(placement::binary("harmos-conformance-plugin")).unwrap();
     let source = Source {
@@ -345,6 +348,14 @@ pub fn bundle(executable: bool) -> Vec<u8> {
             registrations: vec![],
         }),
     };
+    let mut sources = vec![source];
+    if let Some(control) = control {
+        sources.push(Source {
+            path: "bin/startup-control",
+            bytes: control.as_bytes(),
+            executable: None,
+        });
+    }
     bundle::build(
         Identity {
             name: "reference-plugin".into(),
@@ -352,7 +363,7 @@ pub fn bundle(executable: bool) -> Vec<u8> {
             description: "Reference Plugin".into(),
             package: Default::default(),
         },
-        &[source],
+        &sources,
         Default::default(),
     )
     .unwrap()

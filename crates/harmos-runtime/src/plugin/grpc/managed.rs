@@ -27,18 +27,21 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     process::{ExitStatus, Stdio},
+    sync::Arc,
 };
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Child,
+    io::{AsyncBufReadExt, BufReader, Lines},
+    process::{Child, ChildStdout},
     task::JoinHandle,
+    time::Instant,
 };
 
 // Local Imports
 use super::Error;
+use crate::{Error as RuntimeError, clock::Clock, runtime::StopParticipant};
 #[cfg(unix)]
 use unix::command;
 #[cfg(target_os = "windows")]
@@ -61,8 +64,11 @@ pub struct Managed {
 }
 
 pub(super) struct Process {
-    pub(super) child: Child,
-    drain: JoinHandle<()>,
+    child: Option<Child>,
+    lines: Option<Lines<BufReader<ChildStdout>>>,
+    drain: Option<JoinHandle<()>>,
+    executable: PathBuf,
+    participant: Option<StopParticipant>,
     pub(super) digest: [u8; 32],
 }
 
@@ -73,8 +79,10 @@ pub(super) struct Process {
 /* === Implementations === */
 
 impl Process {
-    pub(super) async fn start(placement: &Managed) -> Result<(Self, String), Error> {
-        let bytes = tokio::fs::read(&placement.executable).await?;
+    pub(super) async fn spawn(placement: &Managed, participant: StopParticipant) -> Result<Self, Error> {
+        let bytes = tokio::fs::read(&placement.executable)
+            .await
+            .map_err(|error| Error::Invalid(format!("Start Managed Plugin: read {}: {error}", placement.executable.display())))?;
         let digest = Sha256::digest(bytes).into();
         let mut command = command(&placement.executable);
         command
@@ -84,39 +92,135 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        let mut child = command.spawn()?;
+        let mut child = command
+            .spawn()
+            .map_err(|error| Error::Invalid(format!("Start Managed Plugin: spawn {}: {error}", placement.executable.display())))?;
         let stdout = child.stdout.take().expect("managed stdout is piped");
-        let mut lines = BufReader::new(stdout).lines();
+        Ok(Self {
+            child: Some(child),
+            lines: Some(BufReader::new(stdout).lines()),
+            drain: None,
+            executable: placement.executable.clone(),
+            participant: Some(participant),
+            digest,
+        })
+    }
+
+    pub(super) async fn ready(&mut self, placement: &Managed) -> Result<String, Error> {
+        let process = format!("{} (pid {:?})", self.executable.display(), self.id());
+        let lines = self.lines.as_mut().expect("managed stdout is owned until readiness");
         let announced = loop {
-            let line = lines.next_line().await?.ok_or_else(|| Error::Invalid("Plugin Exited Before Announcing Its Address".into()))?;
+            let line = lines
+                .next_line()
+                .await
+                .map_err(|error| Error::Invalid(format!("Read Managed Plugin Readiness: process {process}: {error}")))?
+                .ok_or_else(|| {
+                    Error::Invalid(format!("Read Managed Plugin Readiness: process {process} exited before announcing its address"))
+                })?;
             let Some(address) = line.strip_prefix("harmos listening ") else { continue };
-            let socket: SocketAddr = address.parse().map_err(|_| Error::Invalid("Invalid Announced Plugin Address".into()))?;
+            let socket: SocketAddr = address
+                .parse()
+                .map_err(|_| Error::Invalid(format!("Read Managed Plugin Readiness: process {process} announced an invalid address")))?;
             if !socket.ip().is_loopback() || socket.port() == 0 {
-                return Err(Error::Invalid("Managed Address Must Be Loopback with a Bound Port".into()));
+                return Err(Error::Invalid(format!(
+                    "Read Managed Plugin Readiness: process {process} must announce loopback with a bound port"
+                )));
             }
             break address.to_owned();
         };
         let override_address =
             placement.environment.get(&OsString::from("HARMOS_ADDRESS")).cloned().or_else(|| std::env::var_os("HARMOS_ADDRESS"));
         let address = match override_address {
-            Some(address) if address != "127.0.0.1:0" => {
-                address.into_string().map_err(|_| Error::Invalid("HARMOS_ADDRESS Is Not UTF-8".into()))?
-            }
+            Some(address) if address != "127.0.0.1:0" => address
+                .into_string()
+                .map_err(|_| Error::Invalid(format!("Read Managed Plugin Readiness: process {process}: HARMOS_ADDRESS is not UTF-8")))?,
             Some(_) => announced,
             None => announced,
         };
-        let drain = tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} });
-        Ok((Self { child, drain, digest }, address))
+        let mut lines = self.lines.take().expect("managed stdout is owned until readiness");
+        self.drain = Some(tokio::spawn(async move { while lines.next_line().await.ok().flatten().is_some() {} }));
+        Ok(address)
+    }
+
+    pub(super) fn id(&self) -> Option<u32> {
+        self.child.as_ref().and_then(Child::id)
+    }
+
+    pub(super) async fn terminate(&mut self, clock: &Clock, deadline: Instant, action: &str) -> Result<(), Error> {
+        let process = format!("{} (pid {:?})", self.executable.display(), self.id());
+        let exit = self
+            .child
+            .as_mut()
+            .expect("managed child is owned until reaped")
+            .try_wait()
+            .map_err(|error| self.reap_failure(format!("{action}: inspect process {process}: {error}; retain its installation")))?;
+        if exit.is_none() {
+            self.child
+                .as_mut()
+                .expect("managed child is owned until reaped")
+                .start_kill()
+                .map_err(|error| self.reap_failure(format!("{action}: terminate process {process}: {error}; retain its installation")))?;
+        }
+        self.settle(clock, deadline, action).await.map(|_| ())
+    }
+
+    pub(super) async fn settle(&mut self, clock: &Clock, deadline: Instant, action: &str) -> Result<ExitStatus, Error> {
+        let process = format!("{} (pid {:?})", self.executable.display(), self.id());
+        clock
+            .timeout_at(deadline, self.exited())
+            .await
+            .map_err(|_| self.reap_failure(format!("{action}: process {process} exceeded its stop grace; retain its installation")))?
+    }
+
+    fn reap_failure(&self, message: String) -> Error {
+        if let Some(participant) = &self.participant {
+            participant.fail(Arc::new(RuntimeError::TaskFailed {
+                domain: "managed plugin process",
+                source: Arc::new(Error::Reap(message.clone())),
+            }));
+        }
+        Error::Reap(message)
     }
 
     pub(super) async fn exited(&mut self) -> Result<ExitStatus, Error> {
-        Ok(self.child.wait().await?)
+        let process = format!("{} (pid {:?})", self.executable.display(), self.id());
+        self.child
+            .as_mut()
+            .expect("managed child is owned until reaped")
+            .wait()
+            .await
+            .map_err(|error| self.reap_failure(format!("Reap Managed Plugin: process {process}: {error}; retain its installation")))
     }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
-        self.drain.abort();
+        if let Some(drain) = self.drain.take() {
+            drain.abort();
+        }
+        if let Some(mut child) = self.child.take() {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            let participant = self.participant.take();
+            let process = format!("{} (pid {:?})", self.executable.display(), child.id());
+            // Cancellation Cannot Discard the Native Exit Obligation.
+            let _ = child.start_kill();
+            tokio::spawn(async move {
+                if let Err(error) = child.wait().await {
+                    tracing::error!(%process, %error, "Reap Managed Plugin Process");
+                    if let Some(participant) = &participant {
+                        participant.fail(Arc::new(RuntimeError::TaskFailed {
+                            domain: "managed plugin process",
+                            source: Arc::new(Error::Reap(format!(
+                                "Reap Managed Plugin: process {process}: {error}; retain its installation"
+                            ))),
+                        }));
+                    }
+                }
+                drop(participant);
+            });
+        }
     }
 }
 

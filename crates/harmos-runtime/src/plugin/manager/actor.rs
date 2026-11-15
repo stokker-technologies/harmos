@@ -76,7 +76,7 @@ pub(super) type GuestControl = Arc<dyn Fn(String, GuestAction) -> Pin<Box<dyn Fu
 
 type Reply<T> = oneshot::Sender<Result<T, Error>>;
 type Attachment = Pin<Box<dyn Future<Output = Result<Attached, crate::plugin::grpc::Error>> + Send>>;
-pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<model::SettingValues>) -> Attachment + Send + Sync>;
+pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<model::SettingValues>, oneshot::Receiver<()>) -> Attachment + Send + Sync>;
 pub(super) type Stage = Arc<
     dyn Fn(
             String,
@@ -86,7 +86,7 @@ pub(super) type Stage = Arc<
         + Send
         + Sync,
 >;
-pub(super) type Activate = Arc<dyn Fn(crate::plugin::grpc::PreparedPlugin) -> Result<Attached, crate::plugin::grpc::Error> + Send + Sync>;
+pub(super) type Activate = Arc<dyn Fn(crate::plugin::grpc::PreparedPlugin) -> Attachment + Send + Sync>;
 
 /* === Structs === */
 
@@ -118,8 +118,9 @@ pub(super) struct Snapshot {
 
 struct Worker {
     activation: Option<Activation>,
-    stop: oneshot::Sender<()>,
-    task: JoinHandle<Result<(), Error>>,
+    stop: Option<oneshot::Sender<()>>,
+    task: Option<JoinHandle<Result<(), Error>>>,
+    failure: Option<String>,
 }
 
 /* === Enums === */
@@ -296,9 +297,14 @@ impl Actor {
         }
         receiver.close();
         let workers = std::mem::take(&mut self.workers);
-        for (_, worker) in workers {
-            let _ = worker.stop.send(());
-            match worker.task.await {
+        for (_, mut worker) in workers {
+            if let Some(stop) = worker.stop.take() {
+                let _ = stop.send(());
+            }
+            let Some(task) = worker.task else {
+                continue;
+            };
+            match task.await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => tracing::warn!(%error, "plugin manager shutdown reported a failure"),
                 Err(error) => tracing::error!(%error, "plugin manager activation task failed"),
@@ -627,18 +633,21 @@ impl Actor {
         } else {
             self.stop(&entry.name).await
         };
+        if let Err(error) = stopped {
+            let failure = problem("Set Plugin State", &error);
+            self.cleanup_failure(&entry.name, error).await?;
+            return Err(failure);
+        }
         if !value.enabled {
             entry.state = PluginState::Stopped as i32;
             entry.process = None;
-            entry.failure = stopped.err().map(|error| *error.0);
+            entry.failure = None;
             let mut registry = self.registry.clone();
             registry.entries.get_mut(&entry.name).expect("entry exists").entry = entry.encode_to_vec();
             self.commit(registry, changed(entry.clone())).await?;
             response.entry = Some(entry.clone());
             response.receipt.as_mut().expect("mutation has a receipt").durable_at = self.cut().positions.into_iter().next();
             self.issued.insert(self.sequence);
-        } else if let Err(error) = stopped {
-            response.entry = Some(self.cleanup_failure(&entry.name, error).await?);
         }
         self.start(&entry.name);
         Ok(response)
@@ -658,7 +667,9 @@ impl Actor {
         registry.entries.get_mut(&entry.name).expect("entry exists").entry = entry.encode_to_vec();
         self.commit(registry, changed(entry.clone())).await?;
         if let Err(error) = self.stop(&entry.name).await {
-            entry = self.cleanup_failure(&entry.name, error).await?;
+            let failure = problem("Restart Plugin", &error);
+            self.cleanup_failure(&entry.name, error).await?;
+            return Err(failure);
         }
         self.start(&entry.name);
         Ok(PluginsRestartResponse { entry: Some(entry) })
@@ -671,6 +682,13 @@ impl Actor {
         let response = PluginsDeleteResponse {
             receipt: Some(self.receipt(String::new())),
         };
+        if is_guest(&entry) {
+            if let Some(control) = &self.guest_control {
+                control(entry.name.clone(), GuestAction::Remove).await?;
+            }
+        } else {
+            self.stop(&entry.name).await?;
+        }
         self.commit(
             registry,
             PluginChange {
@@ -678,18 +696,9 @@ impl Actor {
             },
         )
         .await?;
-        let stopped = if is_guest(&entry) {
-            match &self.guest_control {
-                Some(control) => control(entry.name.clone(), GuestAction::Remove).await,
-                None => Ok(()),
-            }
-        } else {
-            self.stop(&entry.name).await
-        };
         if let Some(executable) = saved.executable {
             super::content::remove(&executable, &self.settings)?;
         }
-        stopped?;
         Ok(response)
     }
 
@@ -720,10 +729,13 @@ impl Actor {
             .then(|| model::SettingValues::decode(saved.settings.as_slice()))
             .transpose()
             .map_err(|error| problem("Restore Plugin Settings", error));
-        let attachment = placement.and_then(|placement| values.map(|values| (self.attach)(name.to_owned(), placement, values)));
-        self.monitor(name, saved.generation, attachment);
+        let (cancel, cancelled) = oneshot::channel();
+        let attachment = placement.and_then(|placement| values.map(|values| (self.attach)(name.to_owned(), placement, values, cancelled)));
+        self.monitor(name, saved.generation, attachment, Some(cancel));
     }
-    pub(super) fn monitor(&mut self, name: &str, activation: u64, attachment: Result<Attachment, Error>) {
+    pub(super) fn monitor(
+        &mut self, name: &str, activation: u64, attachment: Result<Attachment, Error>, cancel: Option<oneshot::Sender<()>>,
+    ) {
         let commands = self.commands.clone();
         let name = name.to_owned();
         let (stop, mut stopping) = oneshot::channel();
@@ -733,14 +745,18 @@ impl Actor {
                 Ok(mut attachment) => tokio::select! {
                     biased;
                     _ = &mut stopping => {
-                        if let Ok(attached) = attachment.await {
-                            attached.stop("Plugin Entry Stopped During Startup").await.map_err(|error| problem("Stop Starting Plugin", error))?;
+                        if let Some(cancel) = cancel { let _ = cancel.send(()); }
+                        match attachment.await {
+                            Ok(attached) => attached.stop("Plugin Entry Stopped During Startup").await.map_err(|error| problem("Stop Starting Plugin", error))?,
+                            Err(error @ crate::plugin::grpc::Error::Reap(_)) => return Err(problem("Stop Starting Plugin", error)),
+                            Err(_) => {},
                         }
                         return Ok(());
                     },
-                    result = &mut attachment => result.map_err(|error| error.to_string()),
+                    result = &mut attachment => result,
+
                 },
-                Err(error) => Err(error.to_string()),
+                Err(error) => Err(crate::plugin::grpc::Error::Invalid(error.to_string())),
             };
             let attached = match attached {
                 Ok(attached) => attached,
@@ -748,10 +764,13 @@ impl Actor {
                     let command = Command::Health {
                         name: worker_name,
                         activation,
-                        status: Box::new(Err(error)),
+                        status: Box::new(Err(error.to_string())),
                     };
                     tokio::select! { _ = &mut stopping => {}, _ = commands.send(command) => {} }
-                    return Ok(());
+                    return match error {
+                        crate::plugin::grpc::Error::Reap(_) => Err(problem("Reap Starting Plugin", error)),
+                        _ => Ok(()),
+                    };
                 }
             };
             let mut status = attached.status();
@@ -777,18 +796,38 @@ impl Actor {
             }
             match attached.stop("Plugin Entry Activation Replaced").await {
                 Ok(()) => Ok(()),
-                Err(_) if terminal_failure => Ok(()),
+                Err(error) if terminal_failure && !matches!(error.as_ref(), crate::plugin::grpc::Error::Reap(_)) => Ok(()),
                 Err(error) => Err(problem("Stop Plugin Activation", error)),
             }
         });
-        self.workers.insert(name, Worker { activation: None, stop, task });
+        self.workers.insert(
+            name,
+            Worker {
+                activation: None,
+                stop: Some(stop),
+                task: Some(task),
+                failure: None,
+            },
+        );
     }
 
     pub(super) async fn stop(&mut self, name: &str) -> Result<(), Error> {
-        if let Some(worker) = self.workers.remove(name) {
-            let _ = worker.stop.send(());
-            worker.task.await.map_err(|error| problem("Join Plugin Activation", error))??;
+        if let Some(worker) = self.workers.get_mut(name) {
+            if let Some(stop) = worker.stop.take() {
+                let _ = stop.send(());
+            }
+            if let Some(failure) = &worker.failure {
+                return Err(problem("Stop Plugin Activation", failure));
+            }
+            if let Some(task) = worker.task.take() {
+                let result = task.await.map_err(|error| problem("Join Plugin Activation", error)).and_then(|result| result);
+                if let Err(error) = result {
+                    worker.failure = Some(error.to_string());
+                    return Err(error);
+                }
+            }
         }
+        self.workers.remove(name);
         Ok(())
     }
 

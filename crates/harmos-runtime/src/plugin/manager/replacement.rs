@@ -92,99 +92,133 @@ impl Actor {
             return Err(Error::new("receipt_capacity", "Replace Plugin", "configure capacity for retained mutation receipts"));
         }
         let installation = Installation::prepare(&self.store.storage, bundle, &self.settings).await?;
-        let mut registry = self.registry.clone();
-        entry.placement = Some(placement);
-        entry.revision = registry.revision()?;
-        entry.activation = next_activation(entry.activation)?;
-        entry.process = None;
-        entry.failure = None;
-        let saved = registry.entries.get_mut(&entry.name).expect("selected entry exists");
-        saved.executable = Some(installation.executable().to_owned());
-        saved.executable_digest = Some(installation.digest());
-        saved.generation = entry.activation;
-        let enabled = entry.value.as_ref().is_some_and(|value| value.enabled);
-        let prepared = if enabled {
-            let placement = managed(saved, &self.settings)?;
-            let prepared = (self.stage)(
-                entry.name.clone(),
-                placement,
-                (!saved.settings.is_empty())
-                    .then(|| SettingValues::decode(saved.settings.as_slice()))
-                    .transpose()
-                    .map_err(|error| problem("Read Replacement Settings", error))?,
-            )
-            .await
-            .map_err(|error| problem("Stage Plugin Replacement", error))?;
-            let description = &prepared.activation.description;
-            entry.state = PluginState::Ready as i32;
-            entry.declarations_digest = description.declarations.as_ref().expect("admitted description").digest.clone();
-            entry.description = Some(PluginDescription {
-                id: description.id.clone(),
-                version: description.version.clone(),
-                started_at: description.started_at,
-                declarations: description.declarations.clone(),
-                revision: description.revision,
-                sdk: description.sdk.clone(),
-                sdk_version: description.sdk_version.clone(),
-            });
-            entry.process = prepared.activation.process_id.map(|id| PluginProcess {
-                id,
-                executable_digest: prepared.activation.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
-                started_at: description.started_at,
-            });
-            Some(prepared)
-        } else {
-            entry.state = PluginState::Stopped as i32;
-            None
-        };
-        registry.entries.get_mut(&entry.name).expect("selected entry exists").entry = entry.encode_to_vec();
-        super::settings::materialize(&mut registry)?;
-        let response = PluginsReplaceResponse {
-            entry: Some(entry.clone()),
-            receipt: Some(self.receipt(request.request_id.clone())),
-        };
-        if response.encoded_len() > self.settings.response_bytes.get() {
-            return Err(Error::new(
-                "response_capacity",
-                "Replace Plugin",
-                "configure capacity for the complete replacement entry and receipt",
-            ));
-        }
-        registry.entries.get_mut(&entry.name).expect("selected entry exists").replacements.insert(
-            request.request_id,
-            SavedMutation {
-                request: encoded,
-                response: response.encode_to_vec(),
-            },
-        );
-        self.store.save(&registry).await?;
-        let attached = match prepared.map(|prepared| (self.activate)(prepared)).transpose() {
-            Ok(attached) => attached,
-            Err(error) => {
-                if let Err(restore) = self.store.save(&self.registry).await {
-                    installation.commit();
-                    return Err(Error::new(
-                        "replacement_restore",
-                        format!("Restore Plugin After Failed Replacement: {restore}; activation: {error}"),
-                        "keep the previous serving bundle and repair the registry backend",
-                    ));
-                }
-                return Err(problem("Activate Plugin Replacement", error));
-            }
-        };
+        let executable = installation.executable().to_owned();
+        let digest = installation.digest();
+        // A Running Candidate Must Never Be Removed by TempDir's Synchronous Drop.
         installation.commit();
-        self.registry = registry;
-        self.publish(Some(changed(entry.clone())))?;
-        let stopped = self.stop(&entry.name).await;
-        if let Some(attached) = attached {
-            self.monitor(&entry.name, entry.activation, Ok(Box::pin(async move { Ok(attached) })));
+        let mut prepared = None;
+        let mut installed = false;
+        let mut unreaped = false;
+        let result = async {
+            let mut registry = self.registry.clone();
+            entry.placement = Some(placement);
+            entry.revision = registry.revision()?;
+            entry.activation = next_activation(entry.activation)?;
+            entry.process = None;
+            entry.failure = None;
+            let saved = registry.entries.get_mut(&entry.name).expect("selected entry exists");
+            saved.executable = Some(executable.clone());
+            saved.executable_digest = Some(digest);
+            saved.generation = entry.activation;
+            let enabled = entry.value.as_ref().is_some_and(|value| value.enabled);
+            if enabled {
+                let placement = managed(saved, &self.settings)?;
+                let staged = (self.stage)(
+                    entry.name.clone(),
+                    placement,
+                    (!saved.settings.is_empty())
+                        .then(|| SettingValues::decode(saved.settings.as_slice()))
+                        .transpose()
+                        .map_err(|error| problem("Read Replacement Settings", error))?,
+                )
+                .await
+                .map_err(|error| {
+                    unreaped = matches!(error, crate::plugin::grpc::Error::Reap(_));
+                    problem("Stage Plugin Replacement", error)
+                })?;
+                prepared = Some(staged);
+                let candidate = prepared.as_ref().expect("staged candidate");
+                let description = &candidate.activation.description;
+                entry.state = PluginState::Ready as i32;
+                entry.declarations_digest = description.declarations.as_ref().expect("admitted description").digest.clone();
+                entry.description = Some(PluginDescription {
+                    id: description.id.clone(),
+                    version: description.version.clone(),
+                    started_at: description.started_at,
+                    declarations: description.declarations.clone(),
+                    revision: description.revision,
+                    sdk: description.sdk.clone(),
+                    sdk_version: description.sdk_version.clone(),
+                });
+                entry.process = candidate.activation.process_id.map(|id| PluginProcess {
+                    id,
+                    executable_digest: candidate.activation.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
+                    started_at: description.started_at,
+                });
+            } else {
+                entry.state = PluginState::Stopped as i32;
+            }
+            registry.entries.get_mut(&entry.name).expect("selected entry exists").entry = entry.encode_to_vec();
+            super::settings::materialize(&mut registry)?;
+            let response = PluginsReplaceResponse {
+                entry: Some(entry.clone()),
+                receipt: Some(self.receipt(request.request_id.clone())),
+            };
+            if response.encoded_len() > self.settings.response_bytes.get() {
+                return Err(Error::new(
+                    "response_capacity",
+                    "Replace Plugin",
+                    "configure capacity for the complete replacement entry and receipt",
+                ));
+            }
+            registry.entries.get_mut(&entry.name).expect("selected entry exists").replacements.insert(
+                request.request_id,
+                SavedMutation {
+                    request: encoded,
+                    response: response.encode_to_vec(),
+                },
+            );
+            self.store.save(&registry).await?;
+            let activation = match prepared.take() {
+                Some(prepared) => (self.activate)(prepared).await.map(Some),
+                None => Ok(None),
+            };
+            let attached = match activation {
+                Ok(attached) => attached,
+                Err(error) => {
+                    unreaped = matches!(error, crate::plugin::grpc::Error::Reap(_));
+                    if let Err(restore) = self.store.save(&self.registry).await {
+                        installed = true;
+                        return Err(Error::new(
+                            "replacement_restore",
+                            format!("Restore Plugin After Failed Replacement: {restore}; activation: {error}"),
+                            "keep the previous serving bundle and repair the registry backend",
+                        ));
+                    }
+                    return Err(problem("Activate Plugin Replacement", error));
+                }
+            };
+            installed = true;
+            self.registry = registry;
+            self.publish(Some(changed(entry.clone())))?;
+            let stopped = self.stop(&entry.name).await;
+            if let Some(attached) = attached {
+                self.monitor(&entry.name, entry.activation, Ok(Box::pin(async move { Ok(attached) })), None);
+            }
+            let cleaned = stopped.and_then(|()| {
+                previous_executable.as_deref().map_or(Ok(()), |executable| super::content::remove(executable, &self.settings))
+            });
+            if let Err(error) = cleaned {
+                let failure = problem("Replace Plugin Cleanup", &error);
+                self.cleanup_failure(&entry.name, error).await?;
+                return Err(failure);
+            }
+            Ok(response)
         }
-        let cleaned = stopped
-            .and_then(|()| previous_executable.as_deref().map_or(Ok(()), |executable| super::content::remove(executable, &self.settings)));
-        if let Err(error) = cleaned {
-            self.cleanup_failure(&entry.name, error).await?;
+        .await;
+        if result.is_err() && !installed {
+            if let Some(prepared) = &mut prepared {
+                prepared
+                    .stop(self.store.storage.clock(), &self.settings.placement)
+                    .await
+                    .map_err(|error| problem("Reap Staged Replacement", error))?;
+            }
+            // A Failed Reap Retains the Candidate's Installation.
+            if !unreaped {
+                super::content::remove(&executable, &self.settings)?;
+            }
         }
-        Ok(response)
+        result
     }
 }
 

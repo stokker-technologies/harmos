@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::{BufRead, Write};
 
 // Third Party Imports
 
@@ -43,6 +44,20 @@ async fn main() -> harmos_conformance::Result<()> {
     let remote = arguments == ["--remote"];
     if !arguments.is_empty() && !remote {
         return Err(harmos_conformance::Error::Invalid("Usage: harmos-conformance-plugin [--remote]".into()));
+    }
+    // A Bundle May Supply an Explicit Startup Control Endpoint for Lifecycle Stories.
+    let control = std::env::current_exe()?.parent().expect("executable directory").join("startup-control");
+    if control.exists() {
+        let address = std::fs::read_to_string(control)?;
+        let mut connection = std::net::TcpStream::connect(address.trim())?;
+        writeln!(connection, "{}", std::process::id())?;
+        let mut command = String::new();
+        std::io::BufReader::new(connection).read_line(&mut command)?;
+        if command.trim() == "fail" {
+            println!("harmos listening invalid");
+            std::io::stdout().flush()?;
+            std::future::pending::<()>().await;
+        }
     }
     harmos_conformance::serve(remote).await
 }

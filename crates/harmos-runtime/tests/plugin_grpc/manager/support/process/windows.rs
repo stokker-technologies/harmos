@@ -40,7 +40,7 @@ use tokio::process::Command;
 
 pub(super) fn command(id: u32) -> Command {
     let script = format!(
-        "$ErrorActionPreference='Stop'; $process=Get-Process -Id {id}; $null=$process.Handle; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); $control=[Console]::ReadLine(); if ($control -eq 'kill') {{ $process.Kill() }}; $process.WaitForExit(); $process.Dispose()"
+        "$ErrorActionPreference='Stop'; $process=Get-Process -Id {id}; $null=$process.Handle; [Console]::Out.WriteLine('ready'); [Console]::Out.Flush(); $control=[Console]::ReadLine(); if ($control -eq 'kill') {{ $process.Kill() }}; if ($control -eq 'assert-exited' -and -not $process.HasExited) {{ throw 'Managed process still running' }}; $process.WaitForExit(); $process.Dispose()"
     );
     let mut command = Command::new("pwsh");
     command.args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(0x0800_0000);
