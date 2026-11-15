@@ -95,7 +95,7 @@ fn die_with_parent(command: &mut Command) {
     #[allow(unsafe_code)]
     unsafe {
         command.pre_exec(move || {
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL as libc::c_ulong) == -1 {
                 return Err(std::io::Error::last_os_error());
             }
             if libc::getppid() != parent {
