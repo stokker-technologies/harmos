@@ -123,6 +123,13 @@ impl Source for Controlled {
         drop(state);
         self.registered.notify_one();
         if let Some(registration) = self.hold.lock().unwrap().take() {
+            let now = self.state.lock().unwrap().reading.instant;
+            eprintln!(
+                "held registration: deadline {:?} after now, pending {}\n{}",
+                deadline.checked_duration_since(now),
+                self.pending(),
+                std::backtrace::Backtrace::force_capture()
+            );
             registration.entered.send(()).unwrap();
             registration.release.recv().unwrap();
         }
