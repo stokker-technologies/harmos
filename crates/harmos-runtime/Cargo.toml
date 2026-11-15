@@ -308,6 +308,12 @@ harness = false
 required-features = ["grpc"]
 
 [[bench]]
+name = "system-ticks"
+path = "benches/ticks/main.rs"
+harness = false
+required-features = ["grpc"]
+
+[[bench]]
 name = "integration-simulation"
 path = "benches/simulation/main.rs"
 harness = false
