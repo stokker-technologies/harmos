@@ -453,8 +453,8 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn a_killed_host_takes_its_managed_plugin_with_it() {
-    use std::os::fd::{FromRawFd, OwnedFd};
-    use tokio::io::{AsyncBufReadExt, BufReader, unix::AsyncFd};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
     // Start a Separate Host Process That Attaches a Managed Plugin.
     let evidence = tempfile::tempdir().unwrap();
@@ -481,10 +481,22 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
     assert!(descriptor >= 0, "Open the Plugin's Process Descriptor");
     // SAFETY: The Descriptor Was Just Opened and Is Owned Exactly Once.
     #[allow(unsafe_code)]
-    let exited = AsyncFd::new(unsafe { OwnedFd::from_raw_fd(descriptor as i32) }).unwrap();
+    let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor as i32) };
+    let exited = tokio::task::spawn_blocking(move || {
+        let mut watched = libc::pollfd {
+            fd: descriptor.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // SAFETY: One Valid Entry Is Polled Until the Process Exits.
+        #[allow(unsafe_code)]
+        let ready = unsafe { libc::poll(&mut watched, 1, -1) };
+        (ready, watched.revents)
+    });
     parent.kill().await.unwrap();
 
     // The Plugin Ends by Its Parent-Death Signal, Without a Stop Request.
-    let _ready = exited.readable().await.unwrap();
+    let (ready, events) = exited.await.unwrap();
+    assert_eq!((ready, events & libc::POLLIN), (1, libc::POLLIN), "Observe the Plugin's Exit by Its Process Identifier");
     assert!(!cleaned.exists(), "End the Plugin Without Running Its Stop Hooks");
 }
