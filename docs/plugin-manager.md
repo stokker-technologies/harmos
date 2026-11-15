@@ -107,8 +107,10 @@ reaps managed processes and removes their installation. Startup cancellation and
 readiness failure also await native process exit before Delete, Restart or Replace
 can remove or reuse the installation. Staged replacement failures reap their
 candidate before removing its extracted bundle. Exit settlement uses the placement's
-`stop_grace`; an exhausted bound reports the action and process and retains the
-installation. Runtime shutdown waits for children still in startup and propagates
+`stop_grace`: a child that has not exited by then is killed, then reaped within a
+fresh `stop_grace`; only an exhausted reap reports the action and process and
+retains the installation. On Linux a managed child also dies with its host process;
+on Windows the hosting product owns process-tree lifetime. Runtime shutdown waits for children still in startup and propagates
 unsettled process failures. A remote process remains owned by its external launcher.
 
 On host restart, persisted placement and enabled intent are restored. Enabled
