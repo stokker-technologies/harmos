@@ -11,8 +11,9 @@ The root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 Run `mise run prepare` once after checkout or dependency changes to synchronize
 the root tooling dependency groups and install the components and targets
 from `rust-toolchain.toml`. Run `mise -C sdk/python run prepare` for its isolated
-environment. CMake and Ninja live in `sdk/cpp/mise.toml`, dotnet in
-`sdk/csharp/mise.toml`; root Python and uv serve both tooling and the Python SDK.
+environment. CMake and Ninja live in `sdk/cpp/mise.toml`. The root pins .NET because
+Rust runtime stories launch the C# fixture; root Python and uv serve both tooling
+and the Python SDK.
 SDK task selections delegate into their folders. Mise lock files accompany tool
 declarations; Python package versions remain in its existing `uv.lock`.
 Tool versions stay pinned in the owning `mise.toml` and `mise.lock`;
@@ -38,8 +39,7 @@ not run Clippy. `check --repository` checks repository configuration without a b
 `check --generated` checks existing generated Python, and ordinary `check` includes both.
 
 The repository Python check includes package-isolation stories for Rust and C#;
-its tooling suite therefore runs in the C# SDK tool environment and needs the root
-Rust toolchain. The tooling task restores the locked C# generator tools before
+both toolchains activate from the root `mise.toml`. The tooling task restores the locked C# generator tools before
 running its stories and passes the selected profile to package consumers.
 Python wheel and reference-host stories consume exports from that same profile.
 Generated-Python-only checks need Python and uv.

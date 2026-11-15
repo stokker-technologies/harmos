@@ -16,6 +16,7 @@
 // Standard Library Imports
 use std::convert::Infallible;
 // Third Party Imports
+use tonic::Status;
 
 // Local Imports
 use harmos_query::Error as QueryError;
@@ -308,6 +309,24 @@ impl<E> From<harmos_operations::operations::ContextError> for Error<E> {
     }
 }
 
+impl Error {
+    pub(crate) fn explicit_status(&self) -> Option<Status> {
+        let mut error = self;
+        for _ in 0..32 {
+            match error {
+                Self::TaskFailed { source, .. } | Self::OperationFailed { source, .. } => {
+                    if let Some(status) = source.downcast_ref::<Status>() {
+                        return Some(status.clone());
+                    }
+                    error = source.downcast_ref::<Self>()?;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+}
+
 impl<E> Error<E> {
     pub(crate) fn operation_failure(&self) -> Option<harmos_operations::Failure> {
         if let Some(failure) = self.failure() {
@@ -365,8 +384,7 @@ fn operation_failure(mut source: &(dyn std::error::Error + 'static)) -> Option<h
         if let Some(error) = source.downcast_ref::<Error>() {
             return error.operation_failure();
         }
-        #[cfg(feature = "grpc")]
-        if let Some(status) = source.downcast_ref::<tonic::Status>()
+        if let Some(status) = source.downcast_ref::<Status>()
             && !status.details().is_empty()
         {
             return harmos_protocol::model::Failure::decode(status.details())

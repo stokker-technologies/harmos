@@ -50,7 +50,8 @@ pub fn default_message_bytes() -> NonZeroUsize {
 
 pub fn message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize> {
     let ceiling = default_message_bytes();
-    (required_message_bytes(settings)? <= ceiling).then_some(ceiling)
+    let required = required_message_bytes(settings)?;
+    (required <= ceiling).then_some(required)
 }
 
 /* === Private Functions === */

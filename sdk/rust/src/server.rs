@@ -214,14 +214,10 @@ impl Service for Server {
 
 pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
-    let message_bytes = harmos_protocol::transfer::message_bytes(&plugin.transfer)
-        .filter(|bytes| bytes.get() <= u32::MAX as usize)
-        .ok_or_else(|| {
-            Error::Invalid(
-                "Start Plugin: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing".into(),
-            )
-        })?
-        .get();
+    harmos_protocol::transfer::message_bytes(&plugin.transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
+        Error::Invalid("Start Plugin: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing".into())
+    })?;
+    let message_bytes = harmos_protocol::transfer::default_message_bytes().get();
     let address = env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
     let listener = TcpListener::bind(address).await?;
     let (shutdown, stopped) = oneshot::channel();

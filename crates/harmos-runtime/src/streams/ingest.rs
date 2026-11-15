@@ -62,6 +62,11 @@ impl Ingest {
 
     pub(crate) fn drained(&self, cursor: u64) {
         self.work.lock().expect("stream work lock is healthy").retain(|pending, _| *pending > cursor);
+        self.wake();
+    }
+
+    pub(crate) fn pending(&self, cursor: u64) -> bool {
+        self.work.lock().expect("stream work lock is healthy").contains_key(&cursor)
     }
 
     pub(crate) fn new() -> Self {

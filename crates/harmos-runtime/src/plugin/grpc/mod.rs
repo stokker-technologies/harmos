@@ -18,12 +18,14 @@ pub(crate) mod invoke;
 mod managed;
 mod publish;
 pub(crate) mod samples;
+mod scoped;
 /* === Re-Exports === */
 
 pub use config::PlacementSettings;
 pub use harmos_protocol::model;
 pub use invoke::CallError;
 pub use managed::Managed;
+pub use scoped::ScopedBinding;
 
 /* === Imports === */
 
@@ -75,6 +77,7 @@ pub struct Activation {
     connection: Arc<Connection>,
     clock: Clock,
     admission: Option<Arc<crate::operations::GrpcAdmission>>,
+    publications: Arc<std::sync::OnceLock<publish::ScopeSource>>,
 }
 
 #[derive(Clone)]
@@ -227,7 +230,7 @@ impl<A: Application> Runtime<A> {
         let operations = self.operations.execution();
         let clock = operations.clock().clone();
         admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
-        let publications = Publications::activate(publications, &self.streams, &activation, &clock, &operations, true)?;
+        let publications = Publications::activate(publications, &self.streams, &activation, &clock, &operations, &settings, true)?;
         admission.seal();
         activation.admission = Some(Arc::new(admission));
         Ok(Attached::launch(
@@ -448,7 +451,7 @@ async fn connect(
     clock: &Clock, address: &str, number: u64, previous_started_at: Option<prost_types::Timestamp>, executable_digest: Option<[u8; 32]>,
     message_bytes: usize,
 ) -> Result<Activation, Error> {
-    let connection = Arc::new(Connection::open(address, message_bytes).await?);
+    let connection = Arc::new(Connection::open(address, harmos_protocol::transfer::default_message_bytes().get()).await?);
     let description = describe(&connection).await?;
     if description.message_bytes < message_bytes as u64 {
         return Err(Error::Invalid(
@@ -481,6 +484,7 @@ async fn connect(
         process_id: None,
         connection,
         admission: None,
+        publications: Arc::new(std::sync::OnceLock::new()),
         clock: clock.clone(),
     })
 }
@@ -546,7 +550,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 .await
                 .map_err(|_| Error::Timeout("Stop"))
                 .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
-            let result = streams_closed.map_err(|_| Error::Timeout("Publish closure")).and(result);
+            let result = streams_closed.map_err(|_| Error::Timeout("Publish closure")).and_then(|result| result).and(result);
             if let Err(error) = &result {
                 tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
             }
@@ -566,7 +570,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             }
             return result.map_err(Arc::new);
         }
-        publications.close().await;
+        let _ = publications.close().await;
         activation.admission.as_ref().unwrap().remove();
         if let Some(process) = &mut process {
             let failure = match process.child.try_wait() {

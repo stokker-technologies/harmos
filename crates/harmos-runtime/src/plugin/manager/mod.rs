@@ -87,6 +87,11 @@ struct Inner {
 /* === Implementations === */
 
 impl Manager {
+    /// Returns the currently admitted gRPC activation of a ready managed entry.
+    pub async fn activation(&self, name: impl Into<String>) -> Result<crate::plugin::grpc::Activation, Error> {
+        self.call(move |reply| actor::Command::Activation(name.into(), reply)).await
+    }
+
     pub fn new(storage: StorageManager, settings: PluginManagerSettings) -> Result<Self, Error> {
         settings.validate()?;
         Ok(Self {

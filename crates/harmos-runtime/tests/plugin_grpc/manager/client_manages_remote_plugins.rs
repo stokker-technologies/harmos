@@ -99,6 +99,13 @@ async fn client_manages_remote_plugins() {
     let response = operations.call_encoded("conformance.step.0", payload(b"scope")).await.unwrap();
     assert_eq!(response, payload(b"opaque-unit"));
 
+    // Bind the Existing Managed Activation Without a Second Attachment
+    let activation = host.manager.activation("remote").await.unwrap();
+    let binding = host.runtime.bind_grpc(&activation, "bound-unit", host.runtime.operations.clock().clone()).await.unwrap();
+    let response = binding.operations().call_encoded("conformance.step.0", payload(b"scope")).await.unwrap();
+    assert_eq!(response, payload(b"bound-unit"));
+    binding.close().await.unwrap();
+
     // Disable Using the Whole Writable Value and Refuse Its Stale Revision
     let disabled = host
         .client
@@ -113,6 +120,8 @@ async fn client_manages_remote_plugins() {
         .entry
         .unwrap();
     assert_eq!(disabled.state, PluginState::Stopped as i32);
+    assert!(host.manager.activation("remote").await.is_err());
+    assert!(host.runtime.bind_grpc(&activation, "stale-unit", host.runtime.operations.clock().clone()).await.is_err());
     assert!(host.runtime.operations.call_encoded("conformance.step.0", payload(b"disabled")).await.is_err());
     assert!(
         host.client

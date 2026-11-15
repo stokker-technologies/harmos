@@ -129,12 +129,12 @@ pub struct Running<R, I, O> {
 
 impl ClientSettings {
     pub fn for_storage(transfer: StorageTransferSettings, retained_bytes: NonZeroUsize) -> Result<Self, Status> {
-        let message_bytes =
-            harmos_protocol::transfer::message_bytes(&transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
-                Status::invalid_argument(
-                    "Configure Client: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
-                )
-            })?;
+        harmos_protocol::transfer::message_bytes(&transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
+            Status::invalid_argument(
+                "Configure Client: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing",
+            )
+        })?;
+        let message_bytes = harmos_protocol::transfer::default_message_bytes();
         Ok(Self {
             transfer,
             retained_bytes,

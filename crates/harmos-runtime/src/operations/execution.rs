@@ -53,6 +53,7 @@ pub(crate) struct Prepared<O> {
     pub(super) id: OperationInstanceId,
     pub(super) refusal: Option<Error>,
     pub(super) middleware: Option<super::middleware::Session>,
+    pub(super) activity: Option<crate::clock::Activity>,
 }
 
 pub(super) struct Execution {

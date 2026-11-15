@@ -35,6 +35,7 @@ thread_local! {
 
 tokio::task_local! {
     static ACTIVITY: std::sync::Arc<tokio::sync::Mutex<Activity>>;
+    static SCOPED_ACTIVITY: Option<std::sync::Arc<tokio::sync::Mutex<Activity>>>;
 }
 
 /* === Type Aliases === */
@@ -74,15 +75,22 @@ pub(crate) async fn active<F: Future>(activity: Activity, future: F) -> F::Outpu
     ACTIVITY.scope(std::sync::Arc::new(tokio::sync::Mutex::new(activity)), future).await
 }
 
+pub(crate) async fn scoped_activity<F: Future>(activity: Option<Activity>, future: F) -> F::Output {
+    SCOPED_ACTIVITY.scope(activity.map(|activity| std::sync::Arc::new(tokio::sync::Mutex::new(activity))), future).await
+}
+
 pub(crate) fn waiting_scope(sleep: Sleep) -> Sleep {
     Box::pin(waiting(sleep))
 }
 
 pub(crate) async fn waiting<F: Future>(future: F) -> F::Output {
     let activity = ACTIVITY.try_with(Clone::clone).ok();
-    match activity {
-        Some(activity) => activity.lock().await.wait(future).await,
-        None => future.await,
+    let scoped = SCOPED_ACTIVITY.try_with(Clone::clone).ok().flatten();
+    match (activity, scoped) {
+        (Some(activity), Some(scoped)) => activity.lock().await.wait(scoped.lock().await.wait(future)).await,
+        (Some(activity), None) => activity.lock().await.wait(future).await,
+        (None, Some(scoped)) => scoped.lock().await.wait(future).await,
+        (None, None) => future.await,
     }
 }
 

@@ -16,11 +16,13 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::{BTreeMap, BTreeSet};
+use std::mem::size_of;
 
 // Third Party Imports
 use bytes::Buf;
 use prost::encoding::{DecodeContext, WireType, decode_key, decode_varint, skip_field};
-use prost_reflect::{Kind, MessageDescriptor};
+use prost_reflect::{FieldDescriptor, Kind, MessageDescriptor};
 use tonic::Status;
 
 // Local Imports
@@ -58,31 +60,76 @@ fn layout(message: &MessageDescriptor, parent: Option<&Layout<'_>>) -> Result<us
     while let Some(node) = ancestor {
         if node.message == message {
             // Recursive Generated Fields Are Boxed or Live in a Collection.
-            return Ok(32);
+            return Ok(size_of::<usize>());
         }
         ancestor = node.parent;
     }
     let node = Layout { message, parent };
-    let mut bytes = 32;
+    let mut bytes = 0;
+    let mut oneofs = BTreeSet::new();
     for field in message.fields() {
-        let slot = if field.is_map() {
-            64
-        } else if field.is_list() {
-            32
-        } else {
-            element(&field.kind(), Some(&node))?
-        };
-        // Includes Optional Presence, Oneof Discriminants and Alignment Padding.
-        bytes = add(bytes, add(slot, 16)?)?;
+        if let Some(oneof) = field.containing_oneof().filter(|oneof| !oneof.is_synthetic()) {
+            if !oneofs.insert(oneof.full_name().to_owned()) {
+                continue;
+            }
+            let mut largest = 0;
+            for variant in oneof.fields() {
+                largest = largest.max(slot(&variant, Some(&node))?);
+            }
+            // One Enum Payload Plus Its Discriminant, Including Option Presence.
+            bytes = add(bytes, add(largest, size_of::<usize>())?)?;
+            continue;
+        }
+        let mut storage = slot(&field, Some(&node))?;
+        if field.supports_presence() && !field.is_list() && !field.is_map() {
+            storage = add(storage, size_of::<usize>())?;
+        }
+        bytes = add(bytes, storage)?;
     }
     Ok(bytes)
+}
+
+fn slot(field: &FieldDescriptor, parent: Option<&Layout<'_>>) -> Result<usize, Status> {
+    if field.is_map() {
+        return Ok(size_of::<std::collections::HashMap<(), ()>>());
+    }
+    if field.is_list() {
+        return Ok(size_of::<Vec<()>>());
+    }
+    if boxed(field) {
+        return Ok(size_of::<usize>());
+    }
+    element(&field.kind(), parent)
+}
+
+// Prost Boxes Singular Edges That Close a Message Cycle; Collection Edges Already Indirect.
+fn boxed(field: &FieldDescriptor) -> bool {
+    let Kind::Message(nested) = field.kind() else {
+        return false;
+    };
+    !field.is_list() && !field.is_map() && reaches(&nested, field.parent_message(), &mut BTreeSet::new())
+}
+
+fn reaches(message: &MessageDescriptor, target: &MessageDescriptor, seen: &mut BTreeSet<String>) -> bool {
+    if message == target {
+        return true;
+    }
+    if !seen.insert(message.full_name().to_owned()) {
+        return false;
+    }
+    message
+        .fields()
+        .filter(|field| !field.is_list() && !field.is_map())
+        .any(|field| matches!(field.kind(), Kind::Message(nested) if reaches(&nested, target, seen)))
 }
 
 fn element(kind: &Kind, parent: Option<&Layout<'_>>) -> Result<usize, Status> {
     match kind {
         Kind::Message(message) => layout(message, parent),
-        Kind::String | Kind::Bytes => Ok(32),
-        _ => Ok(16),
+        Kind::String => Ok(size_of::<String>()),
+        Kind::Bytes => Ok(size_of::<Vec<u8>>().max(size_of::<bytes::Bytes>())),
+        // Rounding Each Scalar to Pointer Alignment Bounds Rust Field Reordering.
+        _ => Ok(8),
     }
 }
 
@@ -91,6 +138,7 @@ fn allocations(message: &MessageDescriptor, mut encoded: &[u8], depth: usize) ->
         return Err(Status::data_loss("protobuf nesting limit exceeded"));
     }
     let mut bytes = 0;
+    let mut repeated = BTreeMap::new();
     while encoded.has_remaining() {
         let (tag, wire) = decode_key(&mut encoded).map_err(invalid)?;
         let Some(field) = message.get_field(tag) else {
@@ -108,7 +156,10 @@ fn allocations(message: &MessageDescriptor, mut encoded: &[u8], depth: usize) ->
             encoded = remaining;
             match &kind {
                 Kind::Message(nested) => {
-                    bytes = add(bytes, memory_at(nested, payload, depth - 1)?)?;
+                    bytes = add(bytes, allocations(nested, payload, depth - 1)?)?;
+                    if boxed(&field) {
+                        bytes = add(bytes, layout(nested, None)?)?;
+                    }
                 }
                 Kind::String | Kind::Bytes => {
                     // Covers Growth, Replacement and the Smallest Vec Allocation.
@@ -123,7 +174,10 @@ fn allocations(message: &MessageDescriptor, mut encoded: &[u8], depth: usize) ->
             let Kind::Message(nested) = &kind else {
                 return Err(Status::data_loss("invalid protobuf group field"));
             };
-            bytes = add(bytes, memory_at(nested, body, depth - 1)?)?;
+            bytes = add(bytes, allocations(nested, body, depth - 1)?)?;
+            if boxed(&field) {
+                bytes = add(bytes, layout(nested, None)?)?;
+            }
         } else {
             skip_field(wire, tag, &mut encoded, DecodeContext::default()).map_err(invalid)?;
         }
@@ -131,15 +185,24 @@ fn allocations(message: &MessageDescriptor, mut encoded: &[u8], depth: usize) ->
             // Covers Hash Tables and Generated BTreeMaps, Including Their First Node.
             bytes = add(bytes, multiply(add(element(&kind, None)?, 64)?, 16)?)?;
         } else if field.is_list() {
-            // Covers Geometric Growth and the Minimum Capacity for Short Lists.
-            bytes = add(bytes, multiply(multiply(element(&kind, None)?.max(8), count)?, 4)?)?;
+            let total = repeated.entry(field.number()).or_insert(0usize);
+            *total = add(*total, count)?;
         }
     }
+    for (tag, count) in repeated {
+        let field = message.get_field(tag).expect("scanned repeated field");
+        let storage = element(&field.kind(), None)?.max(1);
+        let minimum = if storage == 1 {
+            8
+        } else if storage <= 1024 {
+            4
+        } else {
+            1
+        };
+        // Vec's Minimum Capacity and At Most Geometric Growth for Present Elements.
+        bytes = add(bytes, multiply(storage, multiply(count.max(minimum), 2)?)?)?;
+    }
     Ok(bytes)
-}
-
-fn memory_at(message: &MessageDescriptor, encoded: &[u8], depth: usize) -> Result<usize, Status> {
-    add(layout(message, None)?, allocations(message, encoded, depth)?)
 }
 
 fn group(encoded: &[u8], tag: u32) -> Result<(&[u8], &[u8]), Status> {

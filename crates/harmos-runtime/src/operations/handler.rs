@@ -498,6 +498,10 @@ impl harmos_operations::execution::operations::instances::Instances for HostCont
             use prost::Message;
             let operation = request.operation.clone();
             self.borrow().invoke_client(request).await.map_err(|source| {
+                if let Some(mut status) = source.explicit_status() {
+                    status.set_source(Arc::new(source));
+                    return harmos_operations::execution::ServingError::Native(Arc::new(status));
+                }
                 use harmos_protocol::model::Classification;
                 let failure = match source.operation_failure() {
                     Some(failure) => Failure::from(&failure.without_diagnostics()),

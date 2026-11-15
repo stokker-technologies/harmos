@@ -58,7 +58,7 @@ use harmos_operations::clock::Get as ClockGet;
 use harmos_operations::execution::operations::{
     Catalog, ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility,
 };
-use harmos_protocol::host::{InvocationsCreateRequest, invocations_client::InvocationsClient};
+use harmos_protocol::host::{InvocationsCreateRequest, PluginsGetRequest, PluginsGetResponse, invocations_client::InvocationsClient};
 use harmos_protocol::model::{Classification, Failure};
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
@@ -91,6 +91,7 @@ type Frames<T> = Pin<Box<dyn Stream<Item = StdResult<T, Status>> + Send>>;
 
 struct App;
 struct Probe;
+struct NativeRefusal;
 
 struct Forwarding<T> {
     incoming: Pin<Box<Streaming<T>>>,
@@ -143,6 +144,10 @@ impl Lifecycle for App {
     async fn prepare(_: Self::Config, setup: &mut Setup<Self>) -> StdResult<Self, Self::Error> {
         let factory = OperationFactory::protobuf::<Probe>().expect("caller probe contract");
         setup.catalog(Catalog::new().entry(factory), Default::default());
+        setup.catalog(
+            Catalog::new().entry(OperationFactory::protobuf::<NativeRefusal>().expect("native refusal contract")),
+            Default::default(),
+        );
         setup.catalog(harmos_operations::lifecycle_catalog(), Default::default());
         setup.composition(include_str!("../../../sdk/tests/fixtures/client/composition.toml")).map_err(IoError::other)?;
         Ok(Self)
@@ -168,6 +173,37 @@ impl ProtobufOperation for Probe {
     async fn run(context: ExecutionContext, _: CallerProbeGetRequest, _: &()) -> StdResult<CallerProbeGetResponse, ServingError> {
         context.resource::<AtomicU64>().map_err(|_| ServingError::Catalog)?.fetch_add(1, Ordering::SeqCst);
         Ok(CallerProbeGetResponse {})
+    }
+}
+
+impl ProtobufOperation for NativeRefusal {
+    type Request = PluginsGetRequest;
+    type Response = PluginsGetResponse;
+    type Endpoints = ();
+    const ID: &'static str = "harmos.host.v1.Plugins/Get";
+    const POLICY: OperationPolicy = ClockGet::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Get"));
+    const RESOURCES: &'static [Resource] = &[];
+
+    async fn run(_: ExecutionContext, _: PluginsGetRequest, _: &()) -> StdResult<PluginsGetResponse, ServingError> {
+        let failure = Failure {
+            classification: Classification::Permanent as i32,
+            code: "unsupported".into(),
+            message: "Read Probe: capability is unavailable".into(),
+            action: "Read Probe".into(),
+            operation: Self::ID.into(),
+            cause: Some(Box::new(Failure {
+                code: "capability_absent".into(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        Err(ServingError::Native(Arc::new(Status::with_details(
+            Code::Unimplemented,
+            failure.message.clone(),
+            failure.encode_to_vec().into(),
+        ))))
     }
 }
 
@@ -285,7 +321,7 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
         .map_err(invalid)?;
     let address = format!("http://{}", listener.local_addr());
     let channel = Endpoint::from_shared(address.clone()).map_err(invalid)?.connect().await?;
-    let mut client = RpcClient::new(channel);
+    let mut client = RpcClient::new(channel.clone());
     client.ready().await.map_err(invalid)?;
     let codec = ProstCodec::<CallerProbeGetRequest, CallerProbeGetResponse>::default();
     let status = client
@@ -306,6 +342,36 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
     let failure = Failure::decode(status.details())?;
     wrong_caller(&failure, TARGET)?;
     require(counter.load(Ordering::SeqCst) == 1, "Call Probe: Refused Client Reached Handler")?;
+
+    // An Explicit Native Status Has the Same Kind, Action and Cause Through Create.
+    let mut direct = RpcClient::new(channel);
+    direct.ready().await.map_err(invalid)?;
+    let status = direct
+        .unary(
+            Request::new(PluginsGetRequest::default()),
+            PathAndQuery::from_static("/harmos.host.v1.Plugins/Get"),
+            ProstCodec::<PluginsGetRequest, PluginsGetResponse>::default(),
+        )
+        .await
+        .err()
+        .ok_or_else(|| invalid("Read Probe: native refusal succeeded"))?;
+    require(status.code() == Code::Unimplemented, "Read Probe: direct status was rewritten")?;
+    let contract = OperationFactory::protobuf::<NativeRefusal>().map_err(invalid)?;
+    let encoded = client
+        .create(InvocationsCreateRequest {
+            operation: NativeRefusal::ID.into(),
+            fingerprint: contract.contract().expect("native refusal contract").fingerprint().0.to_vec(),
+            payload: PluginsGetRequest::default().encode_to_vec(),
+        })
+        .await
+        .err()
+        .ok_or_else(|| invalid("Read Probe: encoded refusal succeeded"))?;
+    require(encoded.code() == status.code(), "Read Probe: encoded status was rewritten")?;
+    require(encoded.message() == status.message(), "Read Probe: encoded action was rewritten")?;
+    let failure = Failure::decode(encoded.details())?;
+    require(failure == Failure::decode(status.details())?, "Read Probe: encoded cause was rewritten")?;
+    require(failure.action == "Read Probe", "Read Probe: missing action")?;
+    require(failure.cause.is_some_and(|cause| cause.code == "capability_absent"), "Read Probe: missing cause")?;
     drop(client);
     drop(listener);
     Ok(())

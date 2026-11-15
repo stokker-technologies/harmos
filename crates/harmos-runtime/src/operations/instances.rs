@@ -258,8 +258,11 @@ impl Instances {
                     dispatch.follows_from(queued_driver.id());
                     drop(queued_driver);
                     match prepared.await {
-                        Ok((prepared, cause)) => {
-                            let answer = execution::execute(owner, prepared, execution, cause).instrument(dispatch).await;
+                        Ok((mut prepared, cause)) => {
+                            let activity = prepared.activity.take();
+                            let answer = crate::clock::scoped_activity(activity, execution::execute(owner, prepared, execution, cause))
+                                .instrument(dispatch)
+                                .await;
                             let _ = reply.send(answer);
                         }
                         Err(_) => control.finished(),

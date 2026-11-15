@@ -28,6 +28,10 @@ Wrong-caller admission SHALL return classification REFUSED, code `-32604`, actio
 - **WHEN** a client invocation runs an operation whose child call has the wrong caller
 - **THEN** the original refusal kind, code, action and operation survive nesting without INTERNAL or PERMANENT reclassification
 
+#### Scenario: An Encoded Invocation Forwards an Explicit Native Status
+- **WHEN** a native operation returns an explicit gRPC status through Invocations.Create
+- **THEN** the direct and encoded calls retain the same status kind, action, structured details and cause, including Unimplemented
+
 #### Scenario: A Guest Calls an Excluded Host Operation
 - **WHEN** a WebAssembly import calls a host operation narrowed to CLIENTS
 - **THEN** the host returns the same wrong-caller failure and the guest remains usable
@@ -193,6 +197,11 @@ that clock virtually in a test.
 - **WHEN** the host runs a virtual clock and every call in flight is waiting on it
 - **THEN** the clock jumps to the next timer and the waiting call continues without real time
   passing
+
+#### Scenario: Concurrent Scoped Units on One Activation
+- **WHEN** a product binds two trusted scopes and independent clocks to an already admitted activation
+- **THEN** each scope's Samples selection and descendant Time operations use its clock on the same physical connection
+- **AND** accepted ingestion blocks that clock, closing one scope awaits ingestion and producer cleanup, and the other scope and unscoped demand remain usable
 
 ### Requirement: Two Visibility Levels
 An operation SHALL be `Private`, callable by its declaring plugin and the host, or `Public`,

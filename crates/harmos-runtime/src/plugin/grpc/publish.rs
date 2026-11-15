@@ -22,7 +22,7 @@ use harmos_protocol::plugin::instance_samples_request::Frame;
 
 // Standard Library Imports
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     sync::{Arc, Mutex},
     time::Duration,
@@ -51,8 +51,18 @@ use crate::{
 
 pub(super) struct Publications {
     close: watch::Sender<bool>,
-    jobs: tokio::task::JoinSet<()>,
-    registration: ConnectionStreams,
+    jobs: tokio::task::JoinSet<Result<(), Error>>,
+    registration: Arc<ConnectionStreams>,
+    parent: Option<watch::Receiver<bool>>,
+    source: Option<Arc<std::sync::OnceLock<ScopeSource>>>,
+}
+
+pub(super) struct ScopeSource {
+    pub(super) registration: Arc<ConnectionStreams>,
+    pub(super) close: watch::Receiver<bool>,
+    pub(super) settings: PlacementSettings,
+    pub(super) operations: crate::operations::Manager,
+    pub(super) scopes: Mutex<BTreeMap<String, watch::Receiver<Option<super::Outcome>>>>,
 }
 
 pub(super) struct PreparedPublications {
@@ -74,6 +84,7 @@ struct Demand {
     interval: Option<Duration>,
     lease: Arc<StreamWriter>,
     close: watch::Receiver<bool>,
+    parent: Option<watch::Receiver<bool>>,
     closed: watch::Receiver<bool>,
     operations: crate::operations::Manager,
     caller: Arc<super::CallingPlugin>,
@@ -91,7 +102,7 @@ impl Publications {
         operations: &crate::operations::Manager,
     ) -> Result<Self, Error> {
         let prepared = Self::prepare(streams, activation, settings, operations, false).await?;
-        Self::activate(prepared, streams, activation, clock, operations, false)
+        Self::activate(prepared, streams, activation, clock, operations, settings, false)
     }
     pub(super) async fn prepare<A: Application>(
         streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &crate::operations::Manager,
@@ -138,16 +149,44 @@ impl Publications {
     }
     pub(super) fn activate<A: Application>(
         prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
-        operations: &crate::operations::Manager, replace: bool,
+        operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
-        let registration = streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?;
+        let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
+        let mut publications = Self::start(prepared.demands, registration.clone(), activation, clock, operations, None);
+        activation
+            .publications
+            .set(ScopeSource {
+                registration,
+                close: publications.close.subscribe(),
+                settings: settings.clone(),
+                operations: operations.clone(),
+                scopes: Mutex::new(BTreeMap::new()),
+            })
+            .map_err(|_| invalid("Activate Samples: activation already has publications"))?;
+        publications.source = Some(activation.publications.clone());
+        Ok(publications)
+    }
+
+    pub(super) fn scoped(
+        prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock,
+        operations: &crate::operations::Manager,
+    ) -> Self {
+        Self::start(prepared.demands, source.registration.clone(), activation, clock, operations, Some(source.close.clone()))
+    }
+
+    fn start(
+        demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock,
+        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>,
+    ) -> Self {
         let close = watch::channel(false).0;
         let mut publications = Self {
             close,
             jobs: tokio::task::JoinSet::new(),
             registration,
+            parent,
+            source: None,
         };
-        for prepared in prepared.demands {
+        for prepared in demands {
             let activity = clock.activity(format!("Publish {}", prepared.id));
             let lease = publications
                 .registration
@@ -157,6 +196,7 @@ impl Publications {
                 .expect("staged stream lease")
                 .clone();
             let close = publications.close.subscribe();
+            let parent = publications.parent.clone();
             let connection = activation.connection.clone();
             let clock = clock.clone();
             let operations = operations.clone();
@@ -174,27 +214,51 @@ impl Publications {
                     interval: prepared.interval,
                     lease,
                     close,
+                    parent,
                     closed: connection.closed.subscribe(),
                     operations,
                     caller,
                 };
-                if let Err(error) = run(&clock, activity, demand).await {
+                let result = run(&clock, activity, demand).await;
+                if let Err(error) = &result {
                     tracing::warn!(%error, "plugin publication ended");
                     if !matches!(error, Error::Invalid(_)) {
                         connection.closed.send_replace(true);
                     }
                 }
+                result
             });
         }
-        Ok(publications)
+        publications
     }
 
-    pub(super) async fn close(&mut self) {
+    pub(super) async fn close(&mut self) -> Result<(), Error> {
         self.close.send_replace(true);
-        while self.jobs.join_next().await.is_some() {}
-        for lease in self.registration.leases() {
-            lease.revoke();
+        let mut failure = None;
+        while let Some(result) = self.jobs.join_next().await {
+            if let Err(error) = result.map_err(invalid).and_then(|result| result)
+                && self.parent.is_some()
+            {
+                failure.get_or_insert(error);
+            }
         }
+        if let Some(source) = self.source.as_ref().and_then(|source| source.get()) {
+            let scopes = source.scopes.lock().expect("scoped publications lock is healthy").values().cloned().collect::<Vec<_>>();
+            for mut scope in scopes {
+                while scope.borrow_and_update().is_none() {
+                    if scope.changed().await.is_err() {
+                        break;
+                    }
+                }
+                if let Some(Err(error)) = scope.borrow().as_ref() {
+                    failure.get_or_insert_with(|| invalid(format!("Close Scoped Samples: {error}")));
+                }
+            }
+            for lease in self.registration.leases() {
+                lease.revoke();
+            }
+        }
+        failure.map_or(Ok(()), Err)
     }
 }
 
@@ -258,14 +322,16 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
         row,
         interval,
         lease,
-        mut close,
+        close,
+        mut parent,
         closed,
         operations,
         caller,
     } = demand;
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
-    {
+    let mut ingested_through = None;
+    let outcome = {
         let work = async {
             let mut sequence = 0;
             let mut next_tick = interval.map(|period| clock.now() + period);
@@ -331,34 +397,61 @@ async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand
                     return Err(invalid("Invalid Sample Time"));
                 }
                 let published = tick.unwrap_or_else(|| clock.date().into());
-                let context = if interval.is_none() {
-                    sample.at.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos))
-                } else {
-                    None
+                let source_time = if interval.is_none() { sample.at } else { None };
+                let context = match operations.call_context().get::<crate::Scope>() {
+                    Some(scope) => {
+                        let mut context = serde_json::Map::new();
+                        context.insert("scope".into(), serde_json::json!(scope.as_str()));
+                        if let Some(at) = source_time {
+                            context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
+                        }
+                        Some(serde_json::Value::Object(context).to_string())
+                    }
+                    None => source_time.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos)),
                 };
                 let payload = row.decode(&sample.row)?;
-                lease
+                let receipt = lease
                     .admit_clocked_row(
                         PublicationRow {
                             payload,
                             published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
                             context,
                         },
-                        sequence,
                         clock,
                     )
                     .map_err(invalid)?;
-                lease.ingested().await.map_err(invalid)?;
+                ingested_through = Some(receipt);
+                lease.ingested_at(receipt).await.map_err(invalid)?;
             }
         };
         tokio::pin!(work);
         tokio::select! {
             biased;
-            () = super::disconnected(closed) => return Ok(()),
-            _ = close.changed() => {},
-            result = &mut work => return result,
+            () = super::disconnected(closed) => {
+                if parent.is_none() { return Ok(()); }
+                Err(Error::Transport("Close Scoped Samples: plugin connection closed".into()))
+            },
+            () = super::disconnected(close.clone()) => Ok(()),
+            () = async {
+                match &mut parent {
+                    Some(parent) => super::disconnected(parent.clone()).await,
+                    None => std::future::pending().await,
+                }
+            } => Ok(()),
+            result = &mut work => {
+                if parent.is_none() { return result; }
+                result
+            },
+        }
+    };
+    if let Some(published) = ingested_through {
+        if parent.is_some() {
+            lease.drained_at(published).await.map_err(|error| invalid(format!("Close Scoped Samples: {error}")))?;
+        } else {
+            lease.ingested_at(published).await.map_err(invalid)?;
         }
     }
+    outcome?;
     drop(output);
     // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup.
     while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}

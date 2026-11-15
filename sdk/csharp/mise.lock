@@ -2,7 +2,4 @@
 
 lockfile_version = 3
 
-[[tools.dotnet]]
-version = "10.0.403"
-backend = "core:dotnet"
-specifiers = ["10.0.403"]
+[tools]

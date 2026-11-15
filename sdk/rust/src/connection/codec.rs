@@ -244,6 +244,105 @@ mod tests {
     use prost::Message;
     use prost_reflect::ReflectMessage;
 
+    #[test]
+    fn representative_product_replies_fit_the_unchanged_retained_budget() {
+        // Exercise the Same Admission and Decode Boundary as a Network Reply.
+        fn reply<T: Message + ReflectMessage + Default + PartialEq + std::fmt::Debug>(value: T, budget: usize) {
+            let encoded = value.encode_to_vec();
+            let retained = Arc::new(Semaphore::new(budget));
+            let decoder = Decode::<T, T> {
+                retained: retained.clone(),
+                response: value.descriptor(),
+                output: None,
+                envelope: false,
+                marker: PhantomData,
+            };
+            let Output::Response(decoded, permit) = decoder.message(&encoded).unwrap() else {
+                panic!("unary reply");
+            };
+            assert_eq!(decoded, value);
+            drop(permit);
+            assert_eq!(retained.available_permits(), budget);
+        }
+        fn record(fields: impl IntoIterator<Item = (String, prost_types::Value)>) -> prost_types::Value {
+            prost_types::Value {
+                kind: Some(prost_types::value::Kind::StructValue(prost_types::Struct { fields: fields.into_iter().collect() })),
+            }
+        }
+        let budget = 4 * 1024 * 1024;
+
+        // A Plugin Entry Includes Its Full Declaration Graph, Even with No Payload Fields.
+        reply(
+            harmos_protocol::host::PluginsGetResponse {
+                entry: Some(harmos_protocol::host::PluginEntry {
+                    name: "fixture".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            budget,
+        );
+
+        // A Document Holds Ordinary Text and Nested Properties.
+        let text = prost_types::Value {
+            kind: Some(prost_types::value::Kind::StringValue("document text".repeat(256))),
+        };
+        reply(record([("title".into(), text.clone()), ("body".into(), text)]), budget);
+
+        // A Page of Samples Contains Repeated Numeric Rows.
+        let samples = prost_types::ListValue {
+            values: (0..256)
+                .map(|index| {
+                    record([
+                        (
+                            "time".into(),
+                            prost_types::Value {
+                                kind: Some(prost_types::value::Kind::NumberValue(f64::from(index))),
+                            },
+                        ),
+                        (
+                            "reading".into(),
+                            prost_types::Value {
+                                kind: Some(prost_types::value::Kind::NumberValue(0.5)),
+                            },
+                        ),
+                    ])
+                })
+                .collect(),
+        };
+        reply(samples, budget);
+
+        // Plot Snapshots Contain Several Repeated Series.
+        let series = prost_types::Value {
+            kind: Some(prost_types::value::Kind::ListValue(prost_types::ListValue {
+                values: (0..128)
+                    .map(|index| prost_types::Value {
+                        kind: Some(prost_types::value::Kind::NumberValue(f64::from(index))),
+                    })
+                    .collect(),
+            })),
+        };
+        reply(
+            prost_types::ListValue {
+                values: (0..8).map(|index| record([(format!("series_{index}"), series.clone())])).collect(),
+            },
+            budget,
+        );
+
+        // Oversized Wire Values Still Refuse Before Decode Under That Same Budget.
+        let oversized = prost_types::Value {
+            kind: Some(prost_types::value::Kind::StringValue("x".repeat(budget))),
+        };
+        let decoder = Decode::<prost_types::Value, prost_types::Value> {
+            retained: Arc::new(Semaphore::new(budget)),
+            response: oversized.descriptor(),
+            output: None,
+            envelope: false,
+            marker: PhantomData,
+        };
+        assert_eq!(decoder.message(&oversized.encode_to_vec()).err().unwrap().code(), tonic::Code::ResourceExhausted);
+    }
+
     #[derive(Default)]
     struct Undecodable;
 
