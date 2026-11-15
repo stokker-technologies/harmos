@@ -84,6 +84,11 @@ pub trait ProtobufOperation: Send + Sync + 'static {
         Ok(None)
     }
 
+    /// A Clock Wait This Request Performs, Registered When the Call Is Admitted.
+    fn admitted_wait(_request: &Self::Request) -> Option<std::time::Duration> {
+        None
+    }
+
     fn classify(_error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
         super::super::FailureKind::Permanent
     }
@@ -408,6 +413,13 @@ impl OperationFactory {
 }
 
 impl<O: ProtobufOperation> NativeInstance for Instance<O> {
+    fn admit(&mut self) {
+        if let Some(duration) = O::admitted_wait(&self.request)
+            && let Ok(clock) = self.resources.resource::<crate::clock::ClockAccess>()
+        {
+            clock.0.register(duration);
+        }
+    }
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> super::super::FailureKind {
         O::classify(error)
     }

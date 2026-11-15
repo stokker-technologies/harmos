@@ -293,7 +293,7 @@ impl crate::operations::Context<'_> {
                     field: "child operation",
                     reason: "host operation has no protobuf codec",
                 })?;
-            let mut resources = self.operations.prepare_resources(&entry, &child.payload);
+            let mut resources = self.operations.resources_for(&entry);
             resources.replace(Arc::new(caller.clone()));
             resources.replace(Arc::new(harmos_operations::execution::operations::access::CallingPlugin { name: caller.name.clone() }));
             factory

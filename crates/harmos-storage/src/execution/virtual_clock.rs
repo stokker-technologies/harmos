@@ -53,7 +53,13 @@ struct State {
     next_id: u64,
     timers: BTreeMap<(Instant, u64), Option<Waker>>,
     ready: BTreeSet<u64>,
-    activities: BTreeMap<u64, (String, bool)>,
+    activities: BTreeMap<u64, Tracked>,
+}
+
+/// One activity's waits; it is runnable unless every wait in progress is parked.
+struct Tracked {
+    _name: String,
+    waits: BTreeMap<u64, bool>,
 }
 
 struct Timer {
@@ -62,18 +68,21 @@ struct Timer {
 }
 
 /// Retain across an operation, unanswered tick or host I/O. Drop on settlement.
-/// Each concurrent branch needs its own activity.
+/// Concurrent and nested waits share one activity; it parks only while all of them park.
 pub struct Activity {
     tracked: Option<(Arc<Shared>, u64)>,
 }
 
-struct Waiting<'a> {
-    activity: &'a Activity,
+struct Waiting {
+    shared: Arc<Shared>,
+    activity: u64,
+    wait: u64,
 }
 
 struct Resume {
     shared: Arc<Shared>,
-    id: u64,
+    activity: u64,
+    wait: u64,
     outer: Waker,
     awakened: AtomicBool,
 }
@@ -154,7 +163,7 @@ impl Controller {
             }
             let wake = {
                 let mut state = self.0.state.lock().expect("virtual clock is healthy");
-                let active = state.activities.values().any(|(_, active)| *active);
+                let active = state.activities.values().any(Tracked::is_active);
                 if active || !state.ready.is_empty() {
                     None
                 } else if state.now >= target {
@@ -212,7 +221,7 @@ impl Clock for Arc<Shared> {
         let mut state = self.state.lock().expect("virtual clock is healthy");
         let id = state.next_id;
         state.next_id += 1;
-        state.activities.insert(id, (name, true));
+        state.activities.insert(id, Tracked { _name: name, waits: BTreeMap::new() });
         Activity { tracked: Some((self.clone(), id)) }
     }
 }
@@ -249,44 +258,69 @@ impl Activity {
         Self { tracked: None }
     }
 
-    /// Park only while this branch's sole outstanding work is a clock wait.
+    /// Park only while this wait's sole outstanding work is a clock wait.
     /// Do not wrap a timeout around active work: a deadline is not quiescence.
-    pub async fn wait<F: Future>(&mut self, future: F) -> F::Output {
-        let waiting = Waiting { activity: self };
+    pub async fn wait<F: Future>(&self, future: F) -> F::Output {
+        let Some((shared, activity)) = &self.tracked else {
+            return future.await;
+        };
+        let waiting = {
+            let mut state = shared.state.lock().expect("virtual clock is healthy");
+            let wait = state.next_id;
+            state.next_id += 1;
+            if let Some(tracked) = state.activities.get_mut(activity) {
+                tracked.waits.insert(wait, true);
+            }
+            Waiting {
+                shared: shared.clone(),
+                activity: *activity,
+                wait,
+            }
+        };
         let mut future = Box::pin(future);
         std::future::poll_fn(|context| {
-            let Some((shared, id)) = &waiting.activity.tracked else {
-                return future.as_mut().poll(context);
-            };
             let resume = Arc::new(Resume {
-                shared: shared.clone(),
-                id: *id,
+                shared: waiting.shared.clone(),
+                activity: waiting.activity,
+                wait: waiting.wait,
                 outer: context.waker().clone(),
                 awakened: AtomicBool::new(false),
             });
             let waker = Waker::from(resume.clone());
-            shared.state.lock().expect("virtual clock is healthy").activities.get_mut(id).unwrap().1 = true;
+            waiting.mark(true);
             let result = future.as_mut().poll(&mut Context::from_waker(&waker));
             if result.is_pending() {
                 // Register the Wait Before Parking; Serialize Parking with Its Wake
-                let mut state = shared.state.lock().expect("virtual clock is healthy");
-                state.activities.get_mut(id).unwrap().1 = resume.awakened.load(Ordering::SeqCst);
+                waiting.mark(resume.awakened.load(Ordering::SeqCst));
             }
-            shared.changed.notify_waiters();
+            waiting.shared.changed.notify_waiters();
             result
         })
         .await
     }
 }
 
-impl Drop for Waiting<'_> {
-    fn drop(&mut self) {
-        if let Some((shared, id)) = &self.activity.tracked {
-            if let Some((_, active)) = shared.state.lock().expect("virtual clock is healthy").activities.get_mut(id) {
-                *active = true;
-            }
-            shared.changed.notify_waiters();
+impl Tracked {
+    fn is_active(&self) -> bool {
+        self.waits.is_empty() || self.waits.values().any(|running| *running)
+    }
+}
+
+impl Waiting {
+    fn mark(&self, running: bool) {
+        let mut state = self.shared.state.lock().expect("virtual clock is healthy");
+        if let Some(wait) = state.activities.get_mut(&self.activity).and_then(|tracked| tracked.waits.get_mut(&self.wait)) {
+            *wait = running;
         }
+    }
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        if let Some(tracked) = self.shared.state.lock().expect("virtual clock is healthy").activities.get_mut(&self.activity) {
+            tracked.waits.remove(&self.wait);
+        }
+        self.shared.changed.notify_waiters();
     }
 }
 
@@ -299,8 +333,8 @@ impl Wake for Resume {
         {
             let mut state = self.shared.state.lock().expect("virtual clock is healthy");
             self.awakened.store(true, Ordering::SeqCst);
-            if let Some((_, active)) = state.activities.get_mut(&self.id) {
-                *active = true;
+            if let Some(wait) = state.activities.get_mut(&self.activity).and_then(|tracked| tracked.waits.get_mut(&self.wait)) {
+                *wait = true;
             }
         }
         self.shared.changed.notify_waiters();
@@ -423,7 +457,7 @@ mod tests {
     async fn activity_blocks_deadlines_and_resumes_before_the_next_jump() {
         let (clock, controller) = create(SystemTime::UNIX_EPOCH);
         let origin = clock.now();
-        let mut call = clock.activity("operation");
+        let call = clock.activity("operation");
         let external = clock.activity("disk work");
         let mut advance = Box::pin(controller.advance_by(Duration::from_secs(10)));
         let pending = std::future::poll_fn(|cx| Poll::Ready(advance.as_mut().poll(cx).is_pending())).await;
@@ -463,7 +497,7 @@ mod tests {
     #[tokio::test]
     async fn wake_during_registration_keeps_activity_runnable() {
         let (clock, controller) = create(SystemTime::UNIX_EPOCH);
-        let mut activity = clock.activity("registering wait");
+        let activity = clock.activity("registering wait");
         let mut first = true;
         let future = std::future::poll_fn(|context| {
             if first {
@@ -476,21 +510,21 @@ mod tests {
         });
         let mut wait = Box::pin(activity.wait(future));
         assert!(std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx).is_pending())).await);
-        assert!(controller.0.state.lock().unwrap().activities.values().next().unwrap().1);
+        assert!(controller.0.state.lock().unwrap().activities.values().next().unwrap().is_active());
         wait.await;
-        assert!(controller.0.state.lock().unwrap().activities.values().next().unwrap().1);
+        assert!(controller.0.state.lock().unwrap().activities.values().next().unwrap().is_active());
     }
 
     #[tokio::test]
     async fn cancelling_a_parked_wait_restores_activity_and_removes_its_timer() {
         let (clock, controller) = create(SystemTime::UNIX_EPOCH);
-        let mut activity = clock.activity("call");
+        let activity = clock.activity("call");
         let mut wait = Box::pin(activity.wait(clock.sleep(Duration::from_secs(5))));
         assert!(std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx).is_pending())).await);
-        assert!(!controller.0.state.lock().unwrap().activities.values().next().unwrap().1);
+        assert!(!controller.0.state.lock().unwrap().activities.values().next().unwrap().is_active());
         drop(wait);
         let state = controller.0.state.lock().unwrap();
-        assert!(state.activities.values().next().unwrap().1);
+        assert!(state.activities.values().next().unwrap().is_active());
         assert!(state.timers.is_empty());
     }
 }

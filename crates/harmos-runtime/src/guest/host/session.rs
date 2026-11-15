@@ -217,7 +217,7 @@ impl<A: Application> Session<A> {
             loans: Arc::new(Mutex::new(BTreeMap::new())),
         };
         let (stopping, stopped) = watch::channel(false);
-        let mut activity =
+        let activity =
             owned.guest.as_ref().expect("owned guest store").store.data().operations.clock().activity("guest component execution");
         let running = executor::task(async move {
             let mut owned = owned;

@@ -34,8 +34,8 @@ thread_local! {
 /* === Macros === */
 
 tokio::task_local! {
-    static ACTIVITY: std::sync::Arc<tokio::sync::Mutex<Activity>>;
-    static SCOPED_ACTIVITY: Option<std::sync::Arc<tokio::sync::Mutex<Activity>>>;
+    static ACTIVITY: std::sync::Arc<Activity>;
+    static SCOPED_ACTIVITY: Option<std::sync::Arc<Activity>>;
 }
 
 /* === Type Aliases === */
@@ -72,24 +72,25 @@ pub(crate) async fn scope<F: Future>(clock: Clock, future: F) -> F::Output {
 }
 
 pub(crate) async fn active<F: Future>(activity: Activity, future: F) -> F::Output {
-    ACTIVITY.scope(std::sync::Arc::new(tokio::sync::Mutex::new(activity)), future).await
+    ACTIVITY.scope(std::sync::Arc::new(activity), future).await
 }
 
 pub(crate) async fn scoped_activity<F: Future>(activity: Option<Activity>, future: F) -> F::Output {
-    SCOPED_ACTIVITY.scope(activity.map(|activity| std::sync::Arc::new(tokio::sync::Mutex::new(activity))), future).await
+    SCOPED_ACTIVITY.scope(activity.map(std::sync::Arc::new), future).await
 }
 
 pub(crate) fn waiting_scope(sleep: Sleep) -> Sleep {
     Box::pin(waiting(sleep))
 }
 
+/// Park the Task's Activities Around a Clock Wait; Concurrent and Nested Waits Share Them.
 pub(crate) async fn waiting<F: Future>(future: F) -> F::Output {
     let activity = ACTIVITY.try_with(Clone::clone).ok();
     let scoped = SCOPED_ACTIVITY.try_with(Clone::clone).ok().flatten();
     match (activity, scoped) {
-        (Some(activity), Some(scoped)) => activity.lock().await.wait(scoped.lock().await.wait(future)).await,
-        (Some(activity), None) => activity.lock().await.wait(future).await,
-        (None, Some(scoped)) => scoped.lock().await.wait(future).await,
+        (Some(activity), Some(scoped)) => activity.wait(scoped.wait(future)).await,
+        (Some(activity), None) => activity.wait(future).await,
+        (None, Some(scoped)) => scoped.wait(future).await,
         (None, None) => future.await,
     }
 }
@@ -191,6 +192,31 @@ pub(crate) mod tests {
         let (first, second) = tokio::join!(first, second);
         assert_eq!(first.unwrap(), SystemTime::UNIX_EPOCH + Duration::from_secs(160));
         assert_eq!(second.unwrap(), SystemTime::UNIX_EPOCH + Duration::from_secs(260));
+    }
+
+    #[tokio::test]
+    async fn concurrent_waits_in_one_activity_scope_park_together() {
+        // One Task Awaits a Long and a Short Wait Under the Same Activity.
+        let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+        let origin = clock.now();
+        let order = Mutex::new(Vec::new());
+        let task = active(clock.activity("operation"), async {
+            let long = async {
+                waiting(clock.sleep(Duration::from_secs(5))).await;
+                order.lock().unwrap().push(5);
+            };
+            let short = async {
+                waiting(clock.sleep(Duration::from_secs(1))).await;
+                order.lock().unwrap().push(1);
+            };
+            tokio::join!(long, short);
+        });
+
+        // The Short Wait Completes First and Neither Holds the Other's Activity.
+        let (_, advanced) = tokio::join!(task, controller.advance_until(Duration::from_secs(5), || order.lock().unwrap().len() == 2));
+        advanced.unwrap();
+        assert_eq!(*order.lock().unwrap(), [1, 5]);
+        assert_eq!(clock.now() - origin, Duration::from_secs(5));
     }
 
     #[tokio::test(start_paused = true)]

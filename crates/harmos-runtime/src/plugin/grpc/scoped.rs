@@ -28,7 +28,6 @@ use crate::{
     clock::Clock,
     operations::{Manager, clock::Unit},
 };
-use harmos_operations::clock::ClockAccess;
 
 /* === Constants === */
 
@@ -75,9 +74,6 @@ impl<A: Application> Runtime<A> {
             source.operations.with_scope(scope.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let unit = Arc::new(Unit::new(clock.clone()));
         let mut context = operations.call_context().clone();
-        context
-            .insert(ClockAccess(Arc::new(crate::operations::clock::Clock(clock.clone()))))
-            .map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         context.insert(unit.clone()).map_err(|error| Error::Invalid(format!("Bind Scoped Plugin: {error}")))?;
         let operations = operations.with_context(context);
         let (close, closing) = watch::channel(false);

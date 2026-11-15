@@ -362,7 +362,7 @@ fn sample_error(error: crate::Error) -> Error {
     invalid(error)
 }
 
-async fn run(clock: &Clock, mut activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
+async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
         input,

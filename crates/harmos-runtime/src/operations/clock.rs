@@ -24,7 +24,6 @@ use std::{
 };
 
 // Third Party Imports
-use prost::Message;
 use prost_types::Timestamp;
 
 // Local Imports
@@ -32,8 +31,7 @@ use crate::{
     clock::{self, Sleep},
     supervision::instance::Instance,
 };
-use harmos_operations::clock::{Clock as OperationClock, ClockAccess};
-use harmos_protocol::host::TimeSleepRequest;
+use harmos_operations::clock::Clock as OperationClock;
 
 /* === Constants === */
 
@@ -45,9 +43,10 @@ use harmos_protocol::host::TimeSleepRequest;
 
 pub(crate) struct Clock(pub(crate) clock::Clock);
 
-struct RegisteredSleep {
+/// One Call's Unit Clock; Admission Registers the Call's Declared Wait Before Middleware Runs.
+pub(crate) struct Registered {
     clock: clock::Clock,
-    timer: Mutex<Option<Sleep>>,
+    timer: Mutex<Option<(Duration, Sleep)>>,
 }
 
 pub(crate) struct Unit {
@@ -87,37 +86,31 @@ impl Unit {
         }
         pending
     }
+}
 
-    pub(crate) fn prepare_sleep(&self, operation: &str, payload: &[u8]) -> Option<ClockAccess> {
-        if operation != "harmos.host.v1.Time/Sleep" {
-            return None;
-        }
-        let request = TimeSleepRequest::decode(payload).ok()?;
-        let duration = request.duration.unwrap_or_default();
-        // Invalid Requests Still Use the Operation's Normal Validation.
-        if duration.seconds < 0 || !(0..1_000_000_000).contains(&duration.nanos) || duration.seconds > 315_576_000_000 {
-            return None;
-        }
-        let timer = self.clock.sleep(Duration::new(duration.seconds as u64, duration.nanos as u32));
-        Some(ClockAccess(Arc::new(RegisteredSleep {
-            clock: self.clock.clone(),
-            timer: Mutex::new(Some(timer)),
-        })))
+impl Registered {
+    pub(crate) fn new(clock: clock::Clock) -> Self {
+        Self { clock, timer: Mutex::new(None) }
     }
 }
 
-impl OperationClock for RegisteredSleep {
+impl OperationClock for Registered {
     fn now(&self) -> Timestamp {
         self.clock.date().into()
     }
 
-    fn sleep(&self, _: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
-        let timer = self
-            .timer
-            .lock()
-            .expect("scoped sleep registration lock is healthy")
-            .take()
-            .expect("Time.Sleep: scoped timer is registered before execution");
+    fn register(&self, duration: Duration) {
+        let timer = self.clock.sleep(duration);
+        *self.timer.lock().expect("scoped sleep registration lock is healthy") = Some((duration, timer));
+    }
+
+    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        // A Retried Attempt Has Consumed the Admitted Timer and Registers Its Own.
+        let registered = self.timer.lock().expect("scoped sleep registration lock is healthy").take();
+        let timer = match registered {
+            Some((admitted, timer)) if admitted == duration => timer,
+            _ => self.clock.sleep(duration),
+        };
         Box::pin(clock::waiting(timer))
     }
 }

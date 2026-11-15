@@ -154,6 +154,8 @@ pub trait ServiceInstance: Send {
 }
 
 pub trait NativeInstance: Send {
+    /// Runs Once When the Call Is Admitted, Before Middleware or Execution Observe It.
+    fn admit(&mut self) {}
     fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> crate::execution::operations::FailureKind;
     fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
