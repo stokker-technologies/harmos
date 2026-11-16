@@ -1351,65 +1351,43 @@ partitioned by compatibility identity and benchmark executable. The runner compa
 against the compatible `dev` baseline and reports missing baselines or regressions
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
-### Interval Tick Figures
+### Interval Window Figures
 
-The interval tick suite re-executes its benchmark binary as a managed Rust SDK
-plugin with 1 to 128 interval observers. A `plain` observer returns its sequence;
-a `time` observer first calls `Time.Get` as a tick child. Each case times rows
-reaching a counting stream consumer, so it includes the Tick, the observer, the
-sample's admission, the consumer drain and the per-tick ingestion wait. Controlled
-cases advance a virtual clock until the rows arrive; real cases use the host clock
-with a 1 ms interval, or a 1 µs interval that is due whenever the previous sample
-settles. Window-row cases return one row holding N repeated `double` values per
-tick; the SDK derive encodes repeated scalars unpacked, one tag per value.
-The Samples wire cases skip the host loop: a separate carrier process answers each
-Tick with N `Sample` messages or one row of N packed `double` values on the Samples
-call, and the host decodes every value. Before the timed cases, a breakdown pass
-aggregates the existing `operations.*` span lifetimes per tick by operation.
+The interval window suite re-executes its benchmark binary as a managed Rust SDK
+plugin with 1, 16 or 128 interval streams of one `double` per sample. A `window`
+observer returns each granted window's column at once; a `sample` observer is the
+one-sample form, which the SDK calls once per sample and transposes into columns.
+Each case times samples reaching a counting stream consumer, so it includes the
+window grant, the observer, the columnar answer, one admission per stored row, the
+consumer drain and the per-window ingestion wait. A 1 kHz stream uses 100 ms windows
+(100 samples), a 1 MHz stream 10 ms windows (10,000 samples), through
+`PlacementSettings::interval_window`. Controlled cases advance a virtual clock until
+the samples arrive; real cases use the host clock, so a stream cannot exceed its
+declared rate there and real 1 kHz figures saturate at streams × 1,000.
 
-Figures below are medians at `af8b9a0c` in the bench profile on Windows x86-64
-(AMD Ryzen 9 5950X), 2026-11-15, from `mise run bench -- --layer system` with one
-unrelated compilation running on the same machine. They are rows (or values) per
-second, summed over all streams.
+Before each case a probe waits up to 30 s for one iteration's samples; a host that
+falls behind its declared rate grants ever longer windows until storage refuses
+them, and such a case is reported as not sustained instead of measured.
 
-| Case | 1 | 4 | 16 | 64 | 128 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Controlled, plain | 4,679 | 5,478 | 3,006 | 7,325 | 12,407 |
-| Controlled, `Time.Get` | 2,179 | 3,603 | 2,170 | 4,918 | 7,696 |
-| Real 1 ms, plain | 485 | 1,809 | 5,062 | 20,397 | 21,220 |
-| Real 1 ms, `Time.Get` | 474 | 1,536 | 3,292 | 8,490 | 11,901 |
-| Real 1 µs, plain | 842 | 2,883 | 7,017 | 23,745 | 35,154 |
-| Real 1 µs, `Time.Get` | 863 | 2,291 | 3,850 | 8,633 | 11,848 |
+Figures below are medians at `68e35ecb` in the bench profile on Windows x86-64
+(AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are
+samples per second, summed over all streams.
 
-| Values per Message | 1 | 64 | 1,024 | 65,536 |
-| --- | ---: | ---: | ---: | ---: |
-| Window row, controlled, 1 stream | 4,337 | 272,750 | 3,102,500 | 8,581,700 |
-| Window row, real 1 µs, 1 stream | 841 | 56,454 | 875,360 | 9,249,700 |
-| Window row, controlled, 128 streams | 10,713 | 904,700 | 13,470,000 | Not measured |
-| Samples wire, repeated `Sample` | 12,449 | 576,460 | 2,593,000 | 2,832,800 |
-| Samples wire, one packed row | 12,611 | 725,600 | 10,903,000 | 52,176,000 |
+| Case | 1 Stream | 16 Streams | 128 Streams |
+| --- | ---: | ---: | ---: |
+| Controlled, 1 kHz, window observer | 572,020 | 317,420 | 1,475,800 |
+| Controlled, 1 MHz, window observer | 10,355,000 | 36,130,000 | 42,151,000 |
+| Real, 1 kHz, window observer | 952 | 15,612 | 127,940 |
+| Real, 1 MHz, window observer | 861,770 | 15,626,000 | Not sustained |
+| Controlled, 1 kHz, one-sample observer | 430,680 | 409,430 | 1,326,700 |
+| Real, 1 kHz, one-sample observer | 952 | 15,997 | 127,990 |
 
-128 retained windows of 65,536 values would hold gigabytes in stream windows, so
-that case is not run.
-
-A real interval stream schedules its next tick one period after the previous tick
-woke ([publish.rs](../crates/harmos-runtime/src/plugin/grpc/publish.rs),
-`next_tick = reading.instant + period`), and Tokio rounds each timer deadline up to
-the end of a millisecond. One 1 ms stream therefore ticks about every 2 ms, near
-480 rows per second, and a 1 µs stream about every 1.2 ms. Ticks never overlap on
-one stream, and the host accepts exactly one sample per Samples message.
-
-The breakdown pass runs before the timed cases and its tracing adds overhead, so
-its totals do not match the table. For one controlled `Time.Get` stream it measured
-498 µs of wall time per tick: the `samples.tick` attempt (Tick to sample, including
-the plugin and its child call) took 385 µs, of which the `Time.Get` child took
-125 µs from admission to completion; `samples.tick` admission, queueing and
-dispatch took a further 65 µs. The remaining 47 µs cover ingestion, the per-tick
-ingestion wait and clock settlement. A plain observer took 220 µs per tick, with a
-114 µs attempt. The Samples wire round trip alone is about 80 µs. With 128
-controlled `Time.Get` streams a row took 146 µs of aggregate wall time while each
-tick spent 11.4 ms in flight, including 0.8 ms queued for `Time.Get` and 0.4 ms
-for `samples.tick` admission.
+The per-sample tick path these windows replace measured 12,407 samples per second
+for 128 controlled 1 ms streams and 21,220 on the real clock at `af8b9a0c`. 128 real
+1 MHz streams need 128 million samples per second; the host converts each value from
+protobuf into the stored encoding and reached about 42 million per second on the
+controlled clock, so that case falls behind and its windows grow until the
+publication budget refuses them.
 
 Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
 identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
