@@ -29,6 +29,8 @@ Group 2 Pin: `502121ff` (product backend conformance kit; focused compound stori
 - [x] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
 - [x] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/storage.md`.
 
+Group 3 Pin: `1c4f3aec8cf12dd59fe636545e76f72d6d5860bf` (native object/scope deletion, explicit object scope, retained-cut reclamation and scoped backend conformance; build, Rust lint, format and focused proof passed).
+
 ## 4. Storage Before Full Startup
 
 - [ ] 4.1 Let the builder produce a storage-only runtime that owns the storage manager and admits storage operations without listeners, plugins or services, then upgrades to the full runtime or closes. Prove with `storage_only_runtime_admits_operations` in `crates/harmos-runtime/tests/storage`.
