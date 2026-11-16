@@ -21,7 +21,7 @@ use std::num::NonZeroUsize;
 // Third Party Imports
 
 // Local Imports
-use crate::model::{StorageTransferSettings, TransferFraming};
+use crate::model::{MessageSettings, StorageTransferSettings, TransferFraming};
 
 /* === Constants === */
 
@@ -45,7 +45,8 @@ pub fn required_message_bytes(settings: &StorageTransferSettings) -> Option<NonZ
 }
 
 pub fn default_message_bytes() -> NonZeroUsize {
-    NonZeroUsize::new(crate::model::MessageSettings::default().message_bytes() as usize).expect("positive default message ceiling")
+    let message_bytes = MessageSettings::default().message_bytes() as usize;
+    NonZeroUsize::new(message_bytes).expect("positive default message ceiling")
 }
 
 pub fn message_bytes(settings: &StorageTransferSettings) -> Option<NonZeroUsize> {

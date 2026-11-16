@@ -41,53 +41,14 @@ from ..process import spawn_flags
 
 def caller_options(descriptors: FileDescriptorSet) -> dict[str, str]:
     """Read Custom Options Without Depending on Generated SDK Imports."""
-    pool = descriptor_pool.DescriptorPool()
-    pending = {file.name: file for file in descriptors.file}
-    while pending:
-        ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
-        if not ready:
-            raise ValueError(
-                "Protocol Callers: Unresolved Descriptor Dependencies; "
-                "Correct the source protocol declarations or explicit public exports before regenerating"
-            )
-        for file in ready:
-            pool.AddSerializedFile(file.SerializeToString())
-            del pending[file.name]
-    result = {}
-    for file in descriptors.file:
-        if "host" not in Path(file.name).parts[:-1]:
-            continue
-        for service in file.service:
-            for method in service.method:
-                identity = f"{file.package}.{service.name}/{method.name}"
-                try:
-                    extension = pool.FindExtensionByName("harmos.model.v1.callers")
-                except KeyError as error:
-                    raise ValueError(
-                        f"Protocol Callers: {identity} Has No Callers Declaration; "
-                        "Correct the source protocol declarations or explicit public exports before regenerating"
-                    ) from error
-                if extension.enum_type is None:
-                    raise ValueError(
-                        "Protocol Callers: Option Must Be an Enum; "
-                        "Correct the source protocol declarations or explicit public exports before regenerating"
-                    )
-                options = cast(Any, message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))())
-                options.ParseFromString(method.options.SerializeToString())
-                value = options.Extensions[extension]
-                allowed = extension.enum_type.values_by_number.get(value)
-                if not options.HasExtension(extension) or allowed is None or allowed.name not in {"CLIENTS", "PLUGINS", "ALL"}:
-                    raise ValueError(
-                        f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; "
-                        "Correct the source protocol declarations or explicit public exports before regenerating"
-                    )
-                result[identity] = allowed.name
-    return result
+    pool = _descriptor_inventory(descriptors)
+    return _read_callers(descriptors, pool)
 
 
 def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) -> None:
     """Apply Product Assembly Restrictions to the Generator's Descriptor Copy."""
-    declared = caller_options(descriptors)
+    pool = _descriptor_inventory(descriptors)
+    declared = _read_callers(descriptors, pool)
     audiences = {"CLIENTS": {"CLIENTS"}, "PLUGINS": {"PLUGINS"}, "ALL": {"CLIENTS", "PLUGINS"}}
     for identity, selected in overrides.items():
         original = declared.get(identity)
@@ -97,13 +58,6 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
                 "Correct the source protocol declarations or explicit public exports before regenerating"
             )
     # The Extension Number and Its Definition Are Owned by the Descriptor, Not This Tool.
-    pool = descriptor_pool.DescriptorPool()
-    pending = {file.name: file for file in descriptors.file}
-    while pending:
-        ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
-        for file in ready:
-            pool.AddSerializedFile(file.SerializeToString())
-            del pending[file.name]
     extension = pool.FindExtensionByName("harmos.model.v1.callers")
     if extension.enum_type is None:
         raise ValueError(
@@ -174,10 +128,14 @@ def check_public_surfaces(root: Path) -> None:
             ):
                 continue
             if not isinstance(node.value, (ast.List, ast.Tuple)):
-                raise ValueError(f"Check Public Exports: {path} Must Declare Its Names Explicitly")
+                raise ValueError(
+                    f"Check Public Exports: {path} Must Declare Its Names Explicitly; Correct the source protocol declarations or explicit public exports before regenerating"
+                )
             for item in node.value.elts:
                 if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
-                    raise ValueError(f"Check Public Exports: {path} Must Declare String Names")
+                    raise ValueError(
+                        f"Check Public Exports: {path} Must Declare String Names; Correct the source protocol declarations or explicit public exports before regenerating"
+                    )
                 if item.value in exports:
                     findings.append(f"{path.relative_to(root)}: Duplicate Public Export {item.value}")
                 exports[item.value] = path
@@ -190,11 +148,77 @@ def check_public_surfaces(root: Path) -> None:
             if re.search(r"\bpub\s+mod\s+(?:wire|v\d+)\b", line):
                 findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")
     if findings:
-        raise ValueError("Check Public Surfaces:\n" + "\n".join(findings))
+        raise ValueError(
+            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating
+"
+            + "
+".join(findings)
+        )
     print("Public Surfaces: Headers, Stubs and Exports Passed")
 
 
 # === Private Functions === #
+
+
+def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.DescriptorPool) -> dict[str, str]:
+    methods = [
+        (f"{file.package}.{service.name}/{method.name}", method)
+        for file in descriptors.file
+        if "host" in Path(file.name).parts[:-1]
+        for service in file.service
+        for method in service.method
+    ]
+    if not methods:
+        return {}
+
+    # Resolve the Shared Option Schema Once for the Entire Descriptor Inventory.
+    try:
+        extension = pool.FindExtensionByName("harmos.model.v1.callers")
+    except KeyError as error:
+        identity = methods[0][0]
+        raise ValueError(
+            f"Protocol Callers: {identity} Has No Callers Declaration; Correct the source protocol declarations or explicit public exports before regenerating"
+        ) from error
+    if extension.enum_type is None:
+        raise ValueError(
+            "Protocol Callers: Option Must Be an Enum; Correct the source protocol declarations or explicit public exports before regenerating"
+        )
+    options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
+
+    result = {}
+    for identity, method in methods:
+        options = cast(Any, options_type.FromString(method.options.SerializeToString()))
+        value = options.Extensions[extension]
+        allowed = extension.enum_type.values_by_number.get(value)
+        if allowed is None:
+            raise ValueError(
+                f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
+        declared = options.HasExtension(extension)
+        valid = allowed.name in {"CLIENTS", "PLUGINS", "ALL"}
+        if not declared or not valid:
+            raise ValueError(
+                f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
+        result[identity] = allowed.name
+    return result
+
+
+def _descriptor_inventory(descriptors: FileDescriptorSet) -> descriptor_pool.DescriptorPool:
+    """Load Dependencies Before Their Users Without Losing Custom Options."""
+    pool = descriptor_pool.DescriptorPool()
+    pending = {file.name: file for file in descriptors.file}
+    while pending:
+        ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
+        if not ready:
+            raise ValueError(
+                "Protocol Callers: Supply Resolvable Descriptor Dependencies; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
+        for file in ready:
+            pool.AddSerializedFile(file.SerializeToString())
+            del pending[file.name]
+    return pool
+
 
 # === Entry Point === #
 

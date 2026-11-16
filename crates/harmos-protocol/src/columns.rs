@@ -117,14 +117,12 @@ pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
         r#type: Some(kind as i32),
         ..Default::default()
     };
+    dependency.sort();
+    dependency.dedup();
     let columns_file = FileDescriptorProto {
         name: Some(format!("harmos/columns/{}.proto", row.full_name())),
         package: Some("harmos.columns".into()),
-        dependency: {
-            dependency.sort();
-            dependency.dedup();
-            dependency
-        },
+        dependency,
         message_type: vec![DescriptorProto {
             name: Some(name.clone()),
             field: fields,

@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::time::Duration;
 
 // Third Party Imports
 use prost::Message;
@@ -111,11 +112,11 @@ fn a_consumer_retains_composite_reads_receipts_failures_and_retry_policy() {
     let applied = policy::OperationPolicy::try_from(Some(&wire)).unwrap();
     assert_eq!(
         applied.retries.retry_after(0, policy::FailureKind::Transient, policy::ReplaySafety::Idempotent, 0),
-        Some(std::time::Duration::from_secs(1))
+        Some(Duration::from_secs(1))
     );
     assert_eq!(
         applied.retries.retry_after(1, policy::FailureKind::Transient, policy::ReplaySafety::Idempotent, 0),
-        Some(std::time::Duration::from_secs(2))
+        Some(Duration::from_secs(2))
     );
     assert_eq!(applied.retries.retry_after(2, policy::FailureKind::Transient, policy::ReplaySafety::Idempotent, 0), None);
     assert_eq!(applied.retries.retry_after(0, policy::FailureKind::Transient, policy::ReplaySafety::Unknown, 0), None);

@@ -7,12 +7,11 @@
 # ***
 
 
-"""Generate Python Resource Contracts."""
+"""Generate Python Resource Classes and Public Payload Exports."""
 
 # === Imports === #
 
 # Standard Library Imports
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
 # Local Imports
-import harmos_tools.build.resources.descriptor
+from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, table
 from harmos_tools.process import spawn_flags
 
 # Type Checking Imports
@@ -30,17 +29,19 @@ from harmos_tools.process import spawn_flags
 
 # === Constants === #
 
+
 # === Types === #
 
 # === Classes === #
+
 
 # === Public Functions === #
 
 
 def exports(target: Path, descriptors: FileDescriptorSet) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
-    methods = harmos_tools.build.resources.descriptor.table(descriptors)
-    audiences = harmos_tools.build.resources.descriptor.payload_audiences(descriptors)
+    methods = table(descriptors)
+    audiences = payload_audiences(descriptors)
     requests = {method["request"] for method in methods}
     carriers = {
         "Request",
@@ -64,6 +65,7 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
+            # The Wire Failure Value and the Runtime Failure Exception Have Distinct Public Names.
             name = "FailureValue" if definition.name == "Failure" else definition.name
             groups_for_type = (
                 {"shared"}
@@ -83,7 +85,9 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for group, entries in groups.items():
         lines = ["# @generated from protocol descriptors; do not edit."]
-        lines += [f"from {module} import {original} as {name}" for module, original, name in sorted(entries)]
+        lines += [
+            f"from {module} import {original}" + (f" as {name}" if original != name else "") for module, original, name in sorted(entries)
+        ]
         public_module = "harmos" if group == "shared" else "harmos." + group.removesuffix("_types")
         lines += [f'{name}.__module__ = "{public_module}"' for module, original, name in sorted(entries) if (module, original) in messages]
         lines += ["", "__all__ = [", *[f"    {name!r}," for name in sorted(name for _, _, name in entries)], "]", ""]
@@ -111,13 +115,14 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
         )
 
     shared = sorted(name for _, _, name in groups["shared"])
+    # Preserve the Public Exception Name While Its Authored Implementation Is Outside Generation.
     barrel(
         package / "__init__.py",
         [
-            "from ._connection import Client as Client",
+            "from ._connection import Client",
             "from ._invocation import FailureError as Failure",
-            "from ._invocation import ProtocolError as ProtocolError",
-            *[f"from ._generated.shared import {name} as {name}" for name in shared],
+            "from ._invocation import ProtocolError",
+            *[f"from ._generated.shared import {name}" for name in shared],
         ],
         ["Client", "Failure", "ProtocolError", *shared],
     )
@@ -132,8 +137,8 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
     barrel(
         package / "client.py",
         [
-            *[f"from ._generated.client_types import {name} as {name}" for name in client],
-            *[f"from ._generated.client import {name} as {name}" for name in resources],
+            *[f"from ._generated.client_types import {name}" for name in client],
+            *[f"from ._generated.client import {name}" for name in resources],
         ],
         [*client, *resources],
     )
@@ -144,42 +149,31 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
         "_invocation": ["Context", "Publisher"],
         "_generated.host": ["HostOperation"],
     }
-    imports = [f"from ..{module} import {name} as {name}" for module, names in authored.items() for name in names]
+    imports = [f"from ..{module} import {name}" for module, names in authored.items() for name in names]
     barrel(
         package / "plugin/__init__.py",
-        [*imports, *[f"from .._generated.plugin_types import {name} as {name}" for name in plugin]],
+        [*imports, *[f"from .._generated.plugin_types import {name}" for name in plugin]],
         [*plugin, *[name for names in authored.values() for name in names]],
     )
     paths = [target / f"{group}.py" for group in groups] + [package / "__init__.py", package / "client.py", package / "plugin/__init__.py"]
     config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", *map(str, paths)]
     subprocess.run(
-        command,
+        [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", *map(str, paths)],
         check=True,
         creationflags=spawn_flags(),
     )
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "format", "--config", str(config), *map(str, paths)]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "--config", str(config), *map(str, paths)], check=True, creationflags=spawn_flags()
+    )
 
 
-def client(
-    target: Path,
-    methods: list[harmos_tools.build.resources.descriptor.Method],
-    descriptors: FileDescriptorSet,
-    *,
-    module_prefixes: dict[str, str] | None = None,
-) -> None:
+def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
     """Generate Content Arguments and Exactly-One-Field Response Projection."""
-    selected: list[harmos_tools.build.resources.descriptor.Method] = []
+    selected: list[Method] = []
     for method in methods:
         method = method.copy()
         if method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
-            method["fields"] = [
-                harmos_tools.build.resources.descriptor.Field(**{**field, "optional": False}) if field["name"] == "name" else field
-                for field in method["fields"]
-            ]
+            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
         selected.append(method)
     methods = selected
     nodes: set[tuple[str, ...]] = {()}
@@ -187,17 +181,25 @@ def client(
     for method in methods:
         path = tuple(method["path"])
         if method["face"] != "client" or path in leaves:
-            raise ValueError(f"Generate Python Client {'.'.join(path)}: Invalid or Duplicate Resource")
+            raise ValueError(
+                f"Generate Python Client {'.'.join(path)}: Invalid or Duplicate Resource; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         leaves.add(path)
         if method["client_streaming"]:
-            raise ValueError(f"Generate Python Client {method['method']}: Client Streaming Requires a Managed Contract")
+            raise ValueError(
+                f"Generate Python Client {method['method']}: Client Streaming Requires a Managed Contract; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
     if leaves & nodes:
-        raise ValueError("Generate Python Client: Resource Collides With a Method")
-    names = {node: "ClientRoot" if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
+        raise ValueError(
+            "Generate Python Client: Resource Collides With a Method; Correct the source protocol declarations or explicit public exports before regenerating"
+        )
     composed = any(method["owner"] != "harmos" for method in methods)
+    composed_package = composed and target.parent.name == "_generated"
+    root_name = "Client" if composed_package else "ClientRoot"
+    names = {node: root_name if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     library = Path(__file__).resolve().parents[6] / "crates/harmos-protocol/src/descriptors.bin"
-    library_methods = harmos_tools.build.resources.descriptor.table(FileDescriptorSet.FromString(library.read_bytes()))
+    library_methods = table(FileDescriptorSet.FromString(library.read_bytes()))
     library_leaves = {tuple(method["path"]) for method in library_methods if method["face"] == "client"}
     narrowed = not library_leaves <= leaves
     library_nodes: set[tuple[str, ...]] = {()}
@@ -227,17 +229,20 @@ def client(
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    aliases = {full: full.rsplit(".", 1)[-1] for full in used}
-    for full in sorted(used):
-        if sum(value == aliases[full] for value in aliases.values()) > 1:
-            aliases[full] = (
-                "".join(part.title().replace("_", "") for part in full.split(".")[:-1] if not re.fullmatch(r"v[0-9]+", part))
-                + full.rsplit(".", 1)[-1]
-            )
+    message_names = {full: messages[full][1] for full in used}
+    imported_modules: dict[str, set[str]] = {}
+    for full in used:
+        module, name = messages[full]
+        imported_modules.setdefault(name.split(".", 1)[0], set()).add(module)
+    duplicates = {name for name, modules in imported_modules.items() if len(modules) > 1}
+    for full in used:
+        module, name = messages[full]
+        if name.split(".", 1)[0] in duplicates:
+            message_names[full] = f"{module}.{name}"
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    def field_type(field: Field) -> str:
         value = (
-            aliases[field["type"]]
+            message_names[field["type"]]
             if field["type"]
             else {1: "float", 2: "float", 8: "bool", 9: "str", 12: "bytes"}.get(field["kind"], "int")
         )
@@ -253,29 +258,28 @@ def client(
         "from harmos._client_transport import Metadata, call_error, stream, unary",
     ]
     if narrowed:
-        lines += ["from harmos._connection import Connection as LibraryConnection"]
+        lines += ["from harmos import _connection"]
     elif composed:
-        lines += ["from harmos import Client as LibraryClient"]
-        lines += [f"from harmos.client import {names[node]} as Library{names[node]}" for node in sorted(library_nodes) if node]
+        lines += ["import harmos", "from harmos import client"]
+    imports = set()
     for full in sorted(used):
         module, name = messages[full]
-        if "." in name:
-            parent, nested = name.split(".", 1)
-            imported = "_" + parent + aliases[full]
-            lines += [f"from {module} import {parent} as {imported}", f"{aliases[full]} = {imported}.{nested}"]
+        if message_names[full].startswith(module + "."):
+            imports.add(f"import {module}")
         else:
-            lines += [f"from {module} import {name}" + (f" as {aliases[full]}" if aliases[full] != name else "")]
+            imports.add(f"from {module} import {name.split('.', 1)[0]}")
+    lines += sorted(imports)
     for node in sorted(nodes, key=lambda value: (-len(value), value)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
         parent = ""
         if narrowed:
             if not node:
-                parent = "LibraryConnection"
+                parent = "_connection.Connection"
         elif composed:
             if not node:
-                parent = "LibraryClient"
+                parent = "harmos.Client"
             elif node in library_nodes:
-                parent = "Library" + names[node]
+                parent = "client." + names[node]
         lines += ["", f"class {names[node]}" + (f"({parent})" if parent else "") + ":", "    def __init__(self, channel: Channel) -> None:"]
         if parent:
             lines += ["        super().__init__(channel)"]
@@ -285,7 +289,7 @@ def client(
         for child in children:
             lines += ["", "    @property", f"    def {child[-1]}(self) -> {names[child]}:", f"        return self.{storage}{child[-1]}"]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
-            request, response = (aliases[method[key]] for key in ("request", "response"))
+            request, response = (message_names[method[key]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             optional = [field for field in method["fields"] if field["optional"]]
             parameters = [f"{field['name']}: {field_type(field)}" for field in required]
@@ -337,7 +341,7 @@ def client(
                 lines += [f"        return {value}"]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    if composed and target.parent.name == "_generated":
+    if composed_package:
         package = target.parent.parent
         requests = {method["request"] for method in methods}
         exports = []
@@ -347,16 +351,21 @@ def client(
             exports.append((module, name))
         private_types = [
             "# @generated from protocol descriptors; do not edit.",
-            *[f"from {module} import {name} as {name}" for module, name in exports],
+            *[f"from {module} import {name}" for module, name in exports],
+            "",
+            f"__all__ = {sorted(name for _, name in exports)!r}",
         ]
         (target.parent / "client_types.py").write_text("\n".join(private_types) + "\n", encoding="utf-8", newline="\n")
         client_exports = [
             "# @generated from protocol descriptors; do not edit.",
-            *[f"from ._generated.client_types import {name} as {name}" for _, name in exports],
+            *[f"from ._generated.client_types import {name}" for _, name in exports],
+            "",
+            f"__all__ = {sorted(name for _, name in exports)!r}",
         ]
         (package / "client.py").write_text("\n".join(client_exports) + "\n", encoding="utf-8", newline="\n")
+        # A Composed Package Exposes Its Generated Root Through the Same Client Entry Point.
         (package / "__init__.py").write_text(
-            "# @generated from protocol descriptors; do not edit.\nfrom ._generated.client import ClientRoot as Client\n\n__all__ = ['Client']\n",
+            "# @generated from protocol descriptors; do not edit.\nfrom ._generated.client import Client\n\n__all__ = ['Client']\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -364,24 +373,22 @@ def client(
     config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     paths = [target] + (
         [target.parent / "client_types.py", target.parent.parent / "client.py", target.parent.parent / "__init__.py"]
-        if composed and target.parent.name == "_generated"
+        if composed_package
         else []
     )
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", *map(str, paths)]
     subprocess.run(
-        command,
+        [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", *map(str, paths)],
         check=True,
         creationflags=spawn_flags(),
     )
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "format", "--config", str(config), *map(str, paths)]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run(
+        [sys.executable, "-m", "ruff", "format", "--config", str(config), *map(str, paths)], check=True, creationflags=spawn_flags()
+    )
 
 
 def host(
     target: Path,
-    methods: list[harmos_tools.build.resources.descriptor.Method],
+    methods: list[Method],
     descriptors: FileDescriptorSet,
     *,
     module_prefixes: dict[str, str] | None = None,
@@ -405,7 +412,7 @@ def host(
         if field["type"]
     )
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    def field_type(field: Field) -> str:
         value = (
             field["type"].rsplit(".", 1)[-1]
             if field["type"]
@@ -434,9 +441,9 @@ def host(
         lines += [f'    {name} = "{method["package"]}.{method["service"]}/{method["method"]}"']
     for method in methods:
         name = "_".join(method["path"]).upper()
-        q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+        request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
         lines += [
-            f"_{name} = Operation(HostOperation.{name}.value, {q}, {r}, visibility=VISIBILITY_PUBLIC, watch={method['server_streaming']})"
+            f"_{name} = Operation(HostOperation.{name}.value, {request_type}, {response_type}, visibility=VISIBILITY_PUBLIC, watch={method['server_streaming']})"
         ]
     lines += ["def host_requirement(operation: HostOperation) -> Operation[Message, Message]:"]
     if methods:
@@ -461,7 +468,7 @@ def host(
         lines += [f"        self.{child[-1]} = {names[child]}(context)" for child in nodes if child[:-1] == node]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "_".join(method["path"]).upper()
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             parameters = [f"{field['name']}: {field_type(field)}" for field in method["fields"] if not field["optional"]]
             parameters += ["*"]
             parameters += [f"{field['name']}: {field_type(field)} | None = None" for field in method["fields"] if field["optional"]]
@@ -470,12 +477,12 @@ def host(
             else:
                 parameters += ["policy: OperationPolicy | None = None"]
             payload = method["payload_field"]
-            result = field_type(payload) if payload else r
+            result = field_type(payload) if payload else response_type
             if method["server_streaming"]:
                 result = f"AsyncGenerator[{result}]"
             lines += [
                 f"    async def {method['path'][-1]}(self{', ' if parameters else ''}{', '.join(parameters)}) -> {result}:",
-                f"        request = {q}({', '.join(field['name'] + '=' + field['name'] for field in method['fields'])})",
+                f"        request = {request_type}({', '.join(field['name'] + '=' + field['name'] for field in method['fields'])})",
             ]
             indent = "        "
             if method["server_streaming"]:
@@ -503,16 +510,12 @@ def host(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", str(target)]
     subprocess.run(
-        command,
+        [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", str(target)],
         check=True,
         creationflags=spawn_flags(),
     )
-    # Run the Native Command
-    command = [sys.executable, "-m", "ruff", "format", "--config", str(config), str(target)]
-    subprocess.run(command, check=True, creationflags=spawn_flags())
+    subprocess.run([sys.executable, "-m", "ruff", "format", "--config", str(config), str(target)], check=True, creationflags=spawn_flags())
 
 
 # === Private Functions === #

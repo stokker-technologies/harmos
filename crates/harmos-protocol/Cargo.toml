@@ -41,9 +41,9 @@ sha2 = { workspace = true }
 
 # Serialization
 prost = { workspace = true, features = ["derive", "std"] }
+prost-reflect = { workspace = true }
 prost-types = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["alloc", "derive"] }
-prost-reflect = { workspace = true }
 
 # Configuration
 
@@ -83,7 +83,6 @@ prost-build = { workspace = true, features = ["format"] }
 protoc-bin-vendored = { workspace = true }
 
 # Configuration
-toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
 
 # Filesystem
 tempfile = { workspace = true, default-features = true }
@@ -115,7 +114,7 @@ tonic-prost = { workspace = true }
 
 [[test]]
 name = "integration"
-path = "tests/integration/main.rs"
+path = "integration.rs"
 
 # === Bench Targets === #
 
@@ -123,7 +122,7 @@ path = "tests/integration/main.rs"
 
 [[example]]
 name = "generate"
-path = "examples/generate.rs"
+path = "generate.rs"
 
 # === Workspace Lints === #
 

@@ -16,12 +16,17 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::BTreeSet;
 
 // Third Party Imports
+use prost::Message;
+use prost_reflect::ReflectMessage;
+use prost_types::FileDescriptorSet;
 
 // Local Imports
-
-use prost_reflect::ReflectMessage;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::model::Callers;
+use harmos_protocol::schema::{self, Executor, method_callers, operation_identity};
 
 /* === Constants === */
 
@@ -45,15 +50,12 @@ use prost_reflect::ReflectMessage;
 
 #[test]
 fn executors_and_callers_project_host_operations_for_each_audience() {
-    use harmos_protocol::host::TimeGetRequest;
-    use harmos_protocol::model::Callers;
-    use harmos_protocol::schema::{Executor, method_callers, operation_identity};
     let descriptor = TimeGetRequest::default().descriptor();
     let pool = descriptor.parent_pool();
 
     // Project Every Host Method From Its Mandatory Option.
-    let mut clients = std::collections::BTreeSet::new();
-    let mut plugins = std::collections::BTreeSet::new();
+    let mut clients = BTreeSet::new();
+    let mut plugins = BTreeSet::new();
     for service in pool.services() {
         let id = format!("{}/{}", service.full_name(), service.methods().next().unwrap().name());
         let executor = operation_identity(&id).unwrap();
@@ -83,16 +85,15 @@ fn executors_and_callers_project_host_operations_for_each_audience() {
     assert!(pool.files().filter(|file| file.package_name() == "harmos.model.v1").all(|file| file.services().len() == 0));
 
     // Runtime Projections Restore Caller Options After Data-Only Descriptor Assembly.
-    use prost::Message;
     let raw = pool.encode_to_vec();
-    let types = prost_types::FileDescriptorSet::decode(raw.as_slice()).unwrap();
+    let types = FileDescriptorSet::decode(raw.as_slice()).unwrap();
     let callers = pool
         .services()
         .filter(|service| service.package_name().split('.').any(|segment| segment == "host"))
         .flat_map(|service| service.methods().collect::<Vec<_>>())
         .map(|method| (format!("{}/{}", method.parent_service().full_name(), method.name()), method_callers(&method).unwrap()))
         .collect();
-    let retained = harmos_protocol::schema::with_method_callers(types, &callers).unwrap();
+    let retained = schema::with_method_callers(types, &callers).unwrap();
     let service = retained.get_service_by_name("harmos.host.v1.Time").unwrap();
     assert_eq!(method_callers(&service.methods().next().unwrap()).unwrap(), Callers::All);
     let service = retained.get_service_by_name("harmos.host.v1.Invocations").unwrap();

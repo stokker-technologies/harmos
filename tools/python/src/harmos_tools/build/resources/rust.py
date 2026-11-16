@@ -7,7 +7,7 @@
 # ***
 
 
-"""Generate Rust Resource Contracts."""
+"""Generate Rust Resources, Operation Contracts and Payload Exports."""
 
 # === Imports === #
 
@@ -19,7 +19,7 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
 # Local Imports
-import harmos_tools.build.resources.descriptor
+from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, snake, table
 
 # Type Checking Imports
 
@@ -27,16 +27,18 @@ import harmos_tools.build.resources.descriptor
 
 # === Constants === #
 
+
 # === Types === #
 
 # === Classes === #
+
 
 # === Public Functions === #
 
 
 def exports(root: Path, descriptors: FileDescriptorSet) -> None:
-    requests = {method["request"] for method in harmos_tools.build.resources.descriptor.table(descriptors)}
-    audiences = harmos_tools.build.resources.descriptor.payload_audiences(descriptors)
+    requests = {method["request"] for method in table(descriptors)}
+    audiences = payload_audiences(descriptors)
     groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
     for file in descriptors.file:
         if not file.package.startswith("harmos.") or file.name.endswith("guest.proto") or ".plugin." in file.package:
@@ -62,7 +64,7 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
             ):
                 parent = source.rsplit("::", 1)[0]
                 for group in groups_for_type:
-                    groups[group].append(f"pub use {parent}::{harmos_tools.build.resources.descriptor.snake(definition.name)};")
+                    groups[group].append(f"pub use {parent}::{snake(definition.name)};")
     for group, lines in groups.items():
         target = root / "sdk/rust/src" / ("exports.rs" if group == "shared" else f"{group}/types.rs")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -79,18 +81,15 @@ def message_type(full: str) -> str:
         return "prost_types::" + full.rsplit(".", 1)[-1]
     parts = full.split(".")
     version = next(index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part))
-    return harmos_tools.build.resources.descriptor.snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parts[version + 1 :]])
+    return snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parts[version + 1 :]])
 
 
-def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Method], *, target: Path | None = None) -> None:
-    selected: list[harmos_tools.build.resources.descriptor.Method] = []
+def client(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
+    selected: list[Method] = []
     for method in methods:
         method = method.copy()
         if method["face"] == "client" and method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
-            method["fields"] = [
-                harmos_tools.build.resources.descriptor.Field(**{**field, "optional": False}) if field["name"] == "name" else field
-                for field in method["fields"]
-            ]
+            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
         selected.append(method)
     methods = selected
     nodes = {()}
@@ -104,15 +103,16 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    aliases = {full: full.rsplit(".", 1)[-1] for full in used}
-    duplicates = {name for name in aliases.values() if list(aliases.values()).count(name) > 1}
+    message_names = {full: full.rsplit(".", 1)[-1] for full in used}
+    reserved = set(names.values()) | {"CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"}
+    duplicates = reserved | {name for name in message_names.values() if list(message_names.values()).count(name) > 1}
     for full in used:
-        if aliases[full] in duplicates:
-            aliases[full] = "".join(part.title() for part in full.split(".")[:-1] if not re.fullmatch(r"v[0-9]+", part)) + aliases[full]
+        if message_names[full] in duplicates:
+            message_names[full] = message_type(full)
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    def field_type(field: Field) -> str:
         value = (
-            aliases[field["type"]]
+            message_names[field["type"]]
             if field["type"]
             else {
                 1: "f64",
@@ -135,13 +135,12 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
         "// @generated from protocol descriptors; do not edit.",
         "use harmos::client::{CallOptions, ClientTransport, Watching, action_error, request_id};",
         "use prost_reflect::ReflectMessage;",
-        "use tonic::Status as RpcStatus;",
         "use tonic::codegen::http::uri::PathAndQuery;",
     ]
     lines += [
-        f"use {message_type(full)}" + (f" as {aliases[full]}" if aliases[full] != full.rsplit(".", 1)[-1] else "") + ";"
-        for full in sorted(used)
+        f"use {message_type(full)};" for full in sorted(used) if message_names[full] not in duplicates and "::" not in message_names[full]
     ]
+
     for method in methods:
         name = "".join(part.title().replace("_", "") for part in method["path"]) + "Options"
         lines += ["#[derive(Default)]", f"pub struct {name} {{"]
@@ -162,10 +161,9 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
         for method in operations:
             if method["client_streaming"]:
                 raise ValueError(
-                    f"Generate Rust Client {method['method']}: Managed Contract Required; "
-                    "Correct the protocol resource contract and regenerate the Rust SDK"
+                    f"Generate Rust Client {method['method']}: Managed Contract Required; Correct the source protocol declarations or explicit public exports before regenerating"
                 )
-            request, response = (aliases[method[key]] for key in ("request", "response"))
+            request, response = (message_names[method[key]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             parameters = [
                 f"{field['name']}: " + ("impl Into<String>" if field_type(field) == "String" else field_type(field)) for field in required
@@ -178,12 +176,12 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
                 result = f"Watching<{result}>"
             name = method["path"][-1]
             lines += [
-                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result} , RpcStatus> {{",
+                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result}, tonic::Status> {{",
                 f"        self.{name}_with({', '.join([*args, options + '::default()'])}).await",
                 "    }",
             ]
             lines += [
-                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result} , RpcStatus> {{",
+                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result}, tonic::Status> {{",
                 f"        let value = {request} {{",
             ]
             for field in method["fields"]:
@@ -215,7 +213,7 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
                     field = payload["name"]
                     value = f"response.{field}"
                     if payload["kind"] == 11 and not payload["repeated"]:
-                        value += f'.ok_or_else(|| RpcStatus::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
+                        value += f'.ok_or_else(|| tonic::Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
                     else:
                         value = f"Ok({value})"
                     lines += [f"        Ok(response.map(|response| {value}))"]
@@ -227,7 +225,7 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
                     value = f"response.{payload['name']}"
                     if payload["kind"] == 11 and not payload["repeated"]:
                         lines += [
-                            f'        {value}.ok_or_else(|| RpcStatus::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
+                            f'        {value}.ok_or_else(|| tonic::Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
                         ]
                     else:
                         lines += [f"        Ok({value})"]
@@ -253,14 +251,14 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
         )
 
 
-def context(root: Path, methods: list[harmos_tools.build.resources.descriptor.Method]) -> None:
+def context(root: Path, methods: list[Method]) -> None:
     lines = ["// @generated from the protocol descriptor table; do not edit.", "use crate::{Message, OperationRequest};"]
     messages = sorted(
         {method[field] for method in methods for field in ("request", "response")}
         | {"harmos.model.v1.SettingDeclaration", "harmos.model.v1.SettingsDeclarations"}
     )
 
-    lines += ["use prost::Message as _;", "use prost_types::FileDescriptorSet;"]
+    lines += ["use prost_types::FileDescriptorSet;"]
     lines += [f"use {message_type(message)};" for message in messages]
 
     for message in messages:
@@ -268,7 +266,7 @@ def context(root: Path, methods: list[harmos_tools.build.resources.descriptor.Me
             f"impl Message for {message.rsplit('.', 1)[-1]} {{",
             f'    fn name() -> String {{ "{message}".into() }}',
             "    fn types() -> FileDescriptorSet {",
-            f'        FileDescriptorSet::decode(&include_bytes!("types/{message}.bin")[..]).expect("generated context wrapper")',
+            f'        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/{message}.bin")[..]).expect("generated context wrapper")',
             "    }",
             "}",
         ]
@@ -284,11 +282,11 @@ def context(root: Path, methods: list[harmos_tools.build.resources.descriptor.Me
     (root / "sdk/rust/src/context/contracts.rs").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def host(root: Path, methods: list[harmos_tools.build.resources.descriptor.Method], *, target: Path | None = None) -> None:
+def host(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    def field_type(field: Field) -> str:
         value = (
             field["type"].rsplit(".", 1)[-1]
             if field["type"]
@@ -339,16 +337,18 @@ def host(root: Path, methods: list[harmos_tools.build.resources.descriptor.Metho
         lines += [f"    pub {field['name']}: Option<{field_type(field)}>," for field in method["fields"] if field["optional"]]
         lines += (["    pub policy: Option<OperationPolicy>,"] if not method["server_streaming"] else []) + ["}"]
         if method["server_streaming"]:
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             payload = method["payload_field"]
-            result = field_type(payload) if payload else r
+            result = field_type(payload) if payload else response_type
             lines += [
                 f"pub struct Host{name} {{",
-                f"    incoming: crate::context::Watching<{r}>,",
+                f"    incoming: crate::context::Watching<{response_type}>,",
                 "}",
                 f"impl Host{name} {{",
                 f"    pub async fn next(&mut self) -> Result<Option<{result}>> {{",
-                "        let Some(response) = self.incoming.next().await? else { return Ok(None); };",
+                "        let Some(response) = self.incoming.next().await? else {",
+                "            return Ok(None);",
+                "        };",
             ]
             if payload and payload["kind"] == 11:
                 lines += [
@@ -372,7 +372,7 @@ def host(root: Path, methods: list[harmos_tools.build.resources.descriptor.Metho
         ]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             parameters = [f"{field['name']}: {field_type(field)}" for field in required]
             args = [field["name"] for field in required]
@@ -380,14 +380,14 @@ def host(root: Path, methods: list[harmos_tools.build.resources.descriptor.Metho
                 parameters += ["max_item_bytes: NonZeroUsize"]
                 args += ["max_item_bytes"]
             payload = method["payload_field"]
-            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else r
+            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else response_type
             action = method["path"][-1]
             lines += [
                 f"    pub async fn {action}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result}> {{",
                 f"        self.{action}_with({', '.join([*args, 'Host' + name + 'Options::default()'])}).await",
                 "    }",
                 f"    pub async fn {action}_with(&self, {', '.join([*parameters, 'options: Host' + name + 'Options'])}) -> Result<{result}> {{",
-                f"        let request = {q} {{",
+                f"        let request = {request_type} {{",
             ]
             for field in method["fields"]:
                 value = (
@@ -401,7 +401,7 @@ def host(root: Path, methods: list[harmos_tools.build.resources.descriptor.Metho
                     f"        Ok(Host{name} {{ incoming: self.context.watch(request, max_item_bytes).await? }})",
                 ]
             else:
-                lines += [f"        let response: {r} = self.context.call_with(request, options.policy).await?;"]
+                lines += [f"        let response: {response_type} = self.context.call_with(request, options.policy).await?;"]
                 if payload and payload["kind"] == 11 and not payload["repeated"]:
                     lines += [f'        response.{payload["name"]}.ok_or_else(|| Error::Invalid("Read {name}: Missing Payload".into()))']
                 else:

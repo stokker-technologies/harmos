@@ -301,7 +301,21 @@ message ResourceGetResponse {}
 The independent library and example Buf modules run through `mise run format` and
 `mise run check -- --repository`; the latter also enforces mandatory caller options.
 Regenerate with `mise run generate -- --sdk rust`, then python, csharp and cpp.
-Generation owns every output and removes obsolete generated modules. The protocol
+Generation owns every output and removes obsolete generated modules. The shared
+Rust generator lives in `crates/harmos-protocol/codegen/`; the generation example
+and integration target resolve it through ordinary module declarations. Its
+reflection renderer serves both library and product-fixture packages. Generated
+child packages also use ordinary module declarations, following the proto tree.
+
+`tools/python/src/harmos_tools/build/resource_roots.py` owns descriptor composition
+and generation order. Its `build/resources/descriptor.py` owns the shared method
+inventory; `python.py`, `rust.py`, `csharp.py` and `cpp.py` each own one language's
+rendering. `source/protocol.py` validates and narrows caller options from a
+single dependency-resolved descriptor pool, resolving the shared option schema
+once for the inventory. Call rendering and payload exports consume the same
+method inventory so audience ownership has one source. Composition entry points and wire
+contracts remain stable across this source organization. Generated bindings
+remain tracked and regeneration is the only authoring path. The protocol
 drift test compares committed sources and descriptor projections byte for byte.
 See the mapping below for the migrated identities and consumer ownership.
 
@@ -313,7 +327,7 @@ landed source until the breaking groups replace it; new product consumers follow
 native facade and product-wrapper direction. Manager ownership remains internal.
 
 Wire operation admission uses the protocol-owned validator in
-`crates/harmos-protocol/src/schema.rs`, independently of native dotted identities.
+`crates/harmos-protocol/src/schema/mod.rs`, independently of native dotted identities.
 The [wire identity contract](../openspec/changes/operation-grammar/design.md#wire-operation-identity-admission)
 covers numeric template bindings and application-owned face packages. Declaration admission,
 guest admission and host protobuf declarations share it; visibility, descriptor fingerprints
@@ -639,7 +653,7 @@ and caller-face authorization remain independent checks.
     ambiguous providers instead of choosing by arrival order.
     **Why:** opaque bytes are safe to route only under the admitted contract, and
     a renamed operation must not silently satisfy an old requirement.
-    **Where:** `crates/harmos-protocol/src/schema.rs`,
+    **Where:** `crates/harmos-protocol/src/schema/mod.rs`,
     `crates/harmos-runtime/src/plugin/grpc/catalog.rs`,
     `crates/harmos-runtime/src/operations/manager/admission.rs`;
     Catalog Admission Integrity in

@@ -35,6 +35,8 @@ from harmos_tools.source.protocol import narrow_callers
 
 # === Public Exports === #
 
+__all__ = ["compose", "generate", "main"]
+
 # === Constants === #
 
 # === Types === #
@@ -55,13 +57,6 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         "sdk/cpp/include/harmos/_generated",
     ]:
         (root / folder).mkdir(parents=True, exist_ok=True)
-    for name in ("client.hpp", "client_wire.hpp", "host.hpp"):
-        obsolete = root / "sdk/cpp/include/harmos/generated" / name
-        if obsolete.is_file():
-            obsolete.unlink()
-    obsolete = root / "sdk/rust/src/connection/types.rs"
-    if obsolete.is_file():
-        obsolete.unlink()
     methods = harmos_tools.build.resources.descriptor.table(descriptors)
     harmos_tools.build.resources.cpp.exports(root, descriptors)
     harmos_tools.build.resources.rust.exports(root, descriptors)
@@ -107,7 +102,7 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
             "namespace harmos::conformance {",
         ]
         lines += [
-            f"using {message.name} = ::{file.package.replace('.', '::')}::{message.name};"
+            f"using ::{file.package.replace('.', '::')}::{message.name};"
             for file in schema.file
             if file.package == "conformance.model.v1"
             for message in file.message_type
@@ -116,7 +111,6 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         target = root / "sdk/cpp/examples/conformance/detail/types.hpp"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-        (root / "sdk/cpp/examples/conformance/_wire/types.hpp").unlink(missing_ok=True)
         facade = target.parent.parent / "generated/types.hpp"
         facade.parent.mkdir(parents=True, exist_ok=True)
         facade.write_text(

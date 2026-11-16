@@ -7,21 +7,16 @@
  * ***
  */
 
-// Protocol Generation Checks.
+// Prepare the Transferred Protocol Compiler.
 
 /* === Modules === */
-
-mod audience_faces;
-mod generated_code_matches_proto;
-mod schema_fingerprints;
-mod shared_primitives;
-mod support;
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
+use std::{error::Error, path::Path};
 
 // Third Party Imports
 
@@ -42,6 +37,11 @@ mod support;
 /* === Implementations === */
 
 /* === Public Functions === */
+
+pub(crate) fn prepare_compiler(_compiler: &Path) -> Result<(), Box<dyn Error>> {
+    // Transferred Windows Executables Need No Permission-Bit Repair.
+    Ok(())
+}
 
 /* === Private Functions === */
 

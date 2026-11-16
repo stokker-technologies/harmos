@@ -7,16 +7,15 @@
 # ***
 
 
-"""Generate Csharp Resource Contracts."""
+"""Generate C# Client and Plugin Resource Classes."""
 
 # === Imports === #
 
 # Standard Library Imports
 from pathlib import Path
 
-# Third Party Imports
 # Local Imports
-import harmos_tools.build.resources.descriptor
+from harmos_tools.build.resources.descriptor import Field, Method
 
 # Type Checking Imports
 
@@ -24,9 +23,11 @@ import harmos_tools.build.resources.descriptor
 
 # === Constants === #
 
+
 # === Types === #
 
 # === Classes === #
+
 
 # === Public Functions === #
 
@@ -42,14 +43,7 @@ def message(name: str) -> str:
     )
 
 
-def client(
-    root: Path,
-    methods: list[harmos_tools.build.resources.descriptor.Method],
-    *,
-    namespace: str = "harmos",
-    target: Path | None = None,
-    check: bool = False,
-) -> None:
+def client(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None, check: bool = False) -> None:
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -69,15 +63,11 @@ def client(
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["csharp"]
     )
-    aliases = {full: full.rsplit(".", 1)[-1] for full in used}
-    duplicates = {name for name in aliases.values() if list(aliases.values()).count(name) > 1}
-    for full in used:
-        if aliases[full] in duplicates:
-            aliases[full] = full.replace(".", "").replace("V1", "")
+    message_names = _csharp_names(used)
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    def field_type(field: Field) -> str:
         value = (
-            aliases[field["csharp"]]
+            message_names[field["csharp"]]
             if field["csharp"]
             else {
                 1: "double",
@@ -95,26 +85,28 @@ def client(
             }.get(field["kind"], "long")
         )
         if field["type"].startswith("google.protobuf."):
-            value = field["type"].rsplit(".", 1)[-1]
+            value = message_names[field["csharp"]]
         return f"IReadOnlyList<{value}>" if field["repeated"] else value
 
+    namespaces = {
+        "System",
+        "System.Collections.Generic",
+        "System.Threading",
+        "System.Threading.Tasks",
+        "System.Runtime.CompilerServices",
+        "Grpc.Core",
+        "Grpc.Net.Client",
+        "Google.Protobuf",
+        "Google.Protobuf.WellKnownTypes",
+    }
+    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#nullable enable",
-        "using System;",
-        "using System.Collections.Generic;",
-        "using System.Threading;",
-        "using System.Threading.Tasks;",
-        "using System.Runtime.CompilerServices;",
-        "using Grpc.Core;",
-        "using Grpc.Net.Client;",
-        "using Google.Protobuf;",
-        "using Google.Protobuf.WellKnownTypes;",
-        "using StorageTransferSettings = global::Harmos.StorageTransferSettings;",
-        "using Transfer = global::Harmos.Transfer;",
+        *[f"using {name};" for name in sorted(namespaces)],
+        f"namespace {'.'.join(part.title() for part in namespace.split('.'))};",
+        "",
     ]
-    lines += [f"using {aliases[full]} = global::{message(full)};" for full in sorted(used)]
-    lines += [f"namespace {'.'.join(part.title() for part in namespace.split('.'))};", ""]
     for node in sorted(nodes):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
         operations = [method for method in methods if tuple(method["path"][:-1]) == node]
@@ -132,16 +124,16 @@ def client(
         lines += ["  }"]
         if builtin:
             lines += [
-                "  public static Client Connect(string address, StorageTransferSettings? transfer = null, int? messageBytes = null)",
+                "  public static Client Connect(string address, global::Harmos.StorageTransferSettings? transfer = null, int? messageBytes = null)",
                 "  {",
-                "    var maximum = Transfer.MessageBytes(transfer, messageBytes);",
+                "    var maximum = global::Harmos.Transfer.MessageBytes(transfer, messageBytes);",
                 "    var channel = GrpcChannel.ForAddress(address, new() { MaxSendMessageSize = maximum, MaxReceiveMessageSize = maximum });",
                 "    return new Client(channel.CreateCallInvoker()) { ownedChannel = channel };",
                 "  }",
                 "  public void Dispose() => ownedChannel?.Dispose();",
             ]
         for method in operations:
-            request, response = (aliases[method[key + "_csharp"]] for key in ("request", "response"))
+            request, response = (message_names[method[key + "_csharp"]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             optional = [field for field in method["fields"] if field["optional"]]
             parameters = [f"{field_type(field)} {parameter(field['name'])}" for field in required]
@@ -232,43 +224,40 @@ def client(
         destination.write_text(source, encoding="utf-8", newline="\n")
 
 
-def host(
-    root: Path,
-    methods: list[harmos_tools.build.resources.descriptor.Method],
-    *,
-    check: bool = False,
-    target: Path | None = None,
-    namespace: str = "Harmos.Plugins",
-) -> None:
+def host(root: Path, methods: list[Method], *, check: bool = False, target: Path | None = None, namespace: str = "Harmos.Plugins") -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
-    def field_type(field: harmos_tools.build.resources.descriptor.Field) -> str:
+    used = {method[key + "_csharp"] for method in methods for key in ("request", "response")}
+    used.update(field["csharp"] for method in methods for field in method["fields"] if field["csharp"])
+    used.update(method["payload_field"]["csharp"] for method in methods if method["payload_field"] and method["payload_field"]["csharp"])
+    message_names = _csharp_names(used)
+
+    def field_type(field: Field) -> str:
         if field["type"]:
-            value = field["type"].rsplit(".", 1)[-1]
+            value = message_names[field["csharp"]]
         else:
             value = {1: "double", 2: "float", 8: "bool", 9: "string", 12: "ByteString", 4: "ulong", 13: "uint"}.get(field["kind"], "long")
         return f"IReadOnlyList<{value}>" if field["repeated"] else value
 
     nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
+    namespaces = {
+        "System",
+        "System.Collections.Generic",
+        "System.Threading",
+        "System.Threading.Tasks",
+        "System.Runtime.CompilerServices",
+        "Google.Protobuf",
+        "Google.Protobuf.WellKnownTypes",
+    }
+    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
+    if target is not None:
+        namespaces.update({"Harmos", "Harmos.Plugins", "Harmos.Clients"})
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#nullable enable",
-        "using System;",
-        "using System.Collections.Generic;",
-        "using System.Threading;",
-        "using System.Threading.Tasks;",
-        "using System.Runtime.CompilerServices;",
-        "using Google.Protobuf;",
-        "using Google.Protobuf.WellKnownTypes;",
-        *(["using Harmos;", "using Harmos.Plugins;", "using Harmos.Clients;"] if target else []),
-        *[
-            f"using {method[key].rsplit('.', 1)[-1]} = global::{message(method[key + '_csharp'])};"
-            for method in methods
-            if target is None or method["owner"] != "harmos"
-            for key in ("request", "response")
-        ],
+        *[f"using {name};" for name in sorted(namespaces)],
         f"namespace {namespace};",
         "public enum HostOperation",
         "{",
@@ -279,9 +268,9 @@ def host(
         name = "".join(title(part) for part in method["path"])
         if target is not None and method["owner"] == "harmos":
             continue
-        q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+        request_type, response_type = (message_names[method[key + "_csharp"]] for key in ("request", "response"))
         lines += [
-            f'  internal static readonly Operation<{q}, {r}> {name} = new("{method["package"]}.{method["service"]}/{method["method"]}", Visibility.Public, watch: {str(method["server_streaming"]).lower()});'
+            f'  internal static readonly Operation<{request_type}, {response_type}> {name} = new("{method["package"]}.{method["service"]}/{method["method"]}", Visibility.Public, watch: {str(method["server_streaming"]).lower()});'
         ]
     lines += [
         "}",
@@ -307,7 +296,7 @@ def host(
         lines += [f"public sealed class {names[node]}(Context context)", "{"]
         lines += [f"  public {names[child]} {title(child[-1])} {{ get; }} = new(context);" for child in nodes if child[:-1] == node]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            request_type, response_type = (message_names[method[key + "_csharp"]] for key in ("request", "response"))
             parameters = [f"{field_type(field)} {field['name']}" for field in method["fields"] if not field["optional"]]
             stream = method["server_streaming"]
             if stream:
@@ -317,7 +306,7 @@ def host(
                 parameters += ["OperationPolicy? policy = null"]
             parameters += [("[EnumeratorCancellation] " if stream else "") + "CancellationToken cancellationToken = default"]
             payload = method["payload_field"]
-            result = field_type(payload) if payload else r
+            result = field_type(payload) if payload else response_type
             name = "".join(title(part) for part in method["path"])
             result = f"IAsyncEnumerable<{result}>" if stream else f"Task<{result}>"
             lines += [f"  public async {result} {method['method']}({', '.join(parameters)})", "  {"]
@@ -330,19 +319,28 @@ def host(
                 args += ([] if stream else ["policy"]) + ["cancellationToken"]
                 call = f"context.Host.{path}.{method['method']}({', '.join(args)})"
                 if stream:
-                    lines += [f"    await foreach (var response in {call}) {{ yield return response; }}"]
+                    lines += [
+                        f"    await foreach (var response in {call})",
+                        "    {",
+                        "      yield return response;",
+                        "    }",
+                    ]
                 else:
                     lines += [f"    return await {call};"]
                 lines += ["  }"]
                 continue
-            lines += [f"    var request = new {q}", "    {"]
+            lines += [f"    var request = new {request_type}", "    {"]
             lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"] if not field["optional"]]
             lines += ["    };"]
-            lines += [
-                f"    if ({field['name']} is not null) request.{title(field['name'])} = {field['name']};"
-                for field in method["fields"]
-                if field["optional"]
-            ]
+            for field in method["fields"]:
+                if not field["optional"]:
+                    continue
+                lines += [
+                    f"    if ({field['name']} is not null)",
+                    "    {",
+                    f"      request.{title(field['name'])} = {field['name']};",
+                    "    }",
+                ]
             value = f"response.{title(payload['name'])}" if payload else "response"
             if payload and payload["kind"] == 11 and not payload["repeated"]:
                 value += f' ?? throw new InvalidOperationException("Read {name}: Missing Payload")'
@@ -378,5 +376,15 @@ def host(
 
 
 # === Private Functions === #
+
+
+def _csharp_names(used: set[str]) -> dict[str, str]:
+    names = {full: full.rsplit(".", 1)[-1] for full in used}
+    duplicates = {name for name in names.values() if list(names.values()).count(name) > 1}
+    for full in used:
+        if names[full] in duplicates or ".Types." in full:
+            names[full] = "global::" + message(full)
+    return names
+
 
 # === Entry Point === #

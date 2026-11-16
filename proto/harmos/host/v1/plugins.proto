@@ -292,6 +292,7 @@ message PluginChange {
 
 // === Enums === //
 
+// The Persisted Entry Lifecycle, Independent of Its Placement.
 enum PluginState {
   PLUGIN_STATE_UNSPECIFIED = 0;
   PLUGIN_STATE_CONNECTING = 1;

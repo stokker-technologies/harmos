@@ -11,10 +11,24 @@
 
 /* === Modules === */
 
-#[path = "../../codegen.rs"]
-mod codegen;
+mod audience_faces;
+mod schema_fingerprints;
+mod shared_primitives;
+mod support;
+
+#[cfg(unix)]
+mod unix;
+
+#[cfg(target_os = "windows")]
+mod windows;
 
 /* === Re-Exports === */
+
+#[cfg(unix)]
+pub(crate) use unix::prepare_compiler;
+
+#[cfg(target_os = "windows")]
+pub(crate) use windows::prepare_compiler;
 
 /* === Imports === */
 
@@ -25,6 +39,7 @@ use std::{env, error::Error, fs, path::Path};
 // Third Party Imports
 
 // Local Imports
+use crate::codegen;
 
 /* === Constants === */
 
@@ -73,23 +88,17 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
             .into_iter()
             .find(|path| path.file_name().unwrap().to_string_lossy().starts_with(&prefix))
             .expect("the transferred vendor inputs contain the pinned protobuf compiler");
-        let executable = if cfg!(windows) { "protoc.exe" } else { "protoc" };
+        let executable = if OS == "windows" { "protoc.exe" } else { "protoc" };
         (package.join("bin").join(executable), package.join("include"))
     } else {
         (protoc_bin_vendored::protoc_bin_path()?, protoc_bin_vendored::include_path()?)
     };
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(&compiler)?.permissions();
-        permissions.set_mode(permissions.mode() | 0o100);
-        fs::set_permissions(&compiler, permissions)?;
-    }
+    prepare_compiler(&compiler)?;
 
     // Regenerate With the Pinned Compiler, Without Mutating the Environment.
     codegen::generate(&compiler, &includes, output.path())?;
 
-    // Compare the Complete Generated Source, Retaining Evidence on Failure.
+    // Compare the Complete Generated Source Without Dumping Descriptor Bytes.
     for entry in fs::read_dir(output.path())? {
         let path = entry?.path();
         let name = path.file_name().unwrap().to_string_lossy();
@@ -98,19 +107,21 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         }
         let module = codegen::module_path(name.trim_end_matches(".rs"))?;
         let committed = root.join(format!("crates/harmos-protocol/src/{}.rs", module.replace("::", "/")));
-        assert_eq!(fs::read(path)?, fs::read(committed)?, "{module}");
+        assert!(fs::read(path)? == fs::read(committed)?, "Generated Module Differs: {module}; Run mise run generate -- --sdk rust");
     }
-    assert_eq!(fs::read(output.path().join("reflection.rs"))?, include_bytes!("../../src/reflection.rs"));
-    assert_eq!(fs::read(output.path().join("descriptors.bin"))?, include_bytes!("../../src/descriptors.bin"));
-    assert_eq!(fs::read(output.path().join("guest-descriptors.bin"))?, include_bytes!("../../src/guest-descriptors.bin"));
-    assert_eq!(fs::read(output.path().join("clock-descriptors.bin"))?, include_bytes!("../../src/clock-descriptors.bin"));
-    assert_eq!(
-        fs::read(output.path().join("message-options-descriptors.bin"))?,
-        include_bytes!("../../src/message-options-descriptors.bin")
-    );
+    for (name, committed) in [
+        ("reflection.rs", include_bytes!("../src/reflection.rs").as_slice()),
+        ("descriptors.bin", include_bytes!("../src/descriptors.bin").as_slice()),
+        ("guest-descriptors.bin", include_bytes!("../src/guest-descriptors.bin").as_slice()),
+        ("clock-descriptors.bin", include_bytes!("../src/clock-descriptors.bin").as_slice()),
+        ("message-options-descriptors.bin", include_bytes!("../src/message-options-descriptors.bin").as_slice()),
+    ] {
+        assert!(fs::read(output.path().join(name))?.as_slice() == committed, "Generated Artifact Differs: {name}; Regenerate the Rust SDK");
+    }
     for entry in fs::read_dir(output.path().join("context-types"))? {
         let path = entry?.path();
-        assert_eq!(fs::read(&path)?, fs::read(root.join("sdk/rust/src/context/types").join(path.file_name().unwrap()))?);
+        let committed = root.join("sdk/rust/src/context/types").join(path.file_name().unwrap());
+        assert!(fs::read(&path)? == fs::read(committed)?, "Generated Context Types Differ: {}; Regenerate the Rust SDK", path.display());
     }
     codegen::generate_client_fixture(&compiler, &includes, output.path())?;
     for name in [
@@ -120,7 +131,10 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         "client-descriptors.bin",
         "client-reflection.rs",
     ] {
-        assert_eq!(fs::read(output.path().join(name))?, fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?);
+        assert!(
+            fs::read(output.path().join(name))? == fs::read(root.join("sdk/rust/tests/fixtures/client").join(name))?,
+            "Generated Client Fixture Differs: {name}; Regenerate the Rust SDK"
+        );
     }
     codegen::generate_conformance(&compiler, &includes, output.path())?;
     for (source, target) in [
@@ -128,7 +142,10 @@ fn generated_code_matches_proto() -> Result<(), Box<dyn Error>> {
         ("conformance-descriptors.bin", "descriptors.bin"),
         ("caller-request.bin", "caller-request.bin"),
     ] {
-        assert_eq!(fs::read(output.path().join(source))?, fs::read(root.join("sdk/rust/tests/fixtures/conformance").join(target))?);
+        assert!(
+            fs::read(output.path().join(source))? == fs::read(root.join("sdk/rust/tests/fixtures/conformance").join(target))?,
+            "Generated Conformance Fixture Differs: {source}; Regenerate the Rust SDK"
+        );
     }
     Ok(())
 }

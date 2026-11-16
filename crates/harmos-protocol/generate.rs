@@ -11,18 +11,14 @@
 
 /* === Modules === */
 
-#[path = "../codegen.rs"]
 mod codegen;
-
-#[path = "../../../examples/schematic/protocol/codegen.rs"]
-mod schematic;
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::{error::Error, fs, path::Path};
+use std::{collections::BTreeSet, error::Error, fs, path::Path};
 
 // Third Party Imports
 
@@ -51,7 +47,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     // Delete Superseded Generated Modules Before Copying the New Inventory.
-    let expected: std::collections::BTreeSet<_> = fs::read_dir(output.path())?
+    let expected: BTreeSet<_> = fs::read_dir(output.path())?
         .filter_map(Result::ok)
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| name.starts_with("harmos.") && name.ends_with(".rs"))
@@ -74,10 +70,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 fs::remove_file(path)?;
             }
         }
-    }
-    let obsolete = destination.join("client-clock-descriptors.bin");
-    if obsolete.exists() {
-        fs::remove_file(obsolete)?;
     }
     for entry in fs::read_dir(output.path())? {
         let path = entry?.path();
@@ -107,12 +99,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     codegen::generate_client_fixture(&protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/tests/fixtures/client");
     fs::create_dir_all(&destination)?;
-    for entry in fs::read_dir(&destination)? {
-        let path = entry?.path();
-        if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| name.starts_with("application.v1") && name.ends_with(".rs")) {
-            fs::remove_file(path)?;
-        }
-    }
     for name in [
         "application.host.v1.rs",
         "application.host.v1.jobs.rs",
@@ -131,18 +117,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         ("caller-request.bin", "caller-request.bin"),
     ] {
         fs::copy(output.path().join(source), destination.join(target))?;
-    }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/schematic");
-    schematic::generate(&root, &protoc_bin_vendored::protoc_bin_path()?, &protoc_bin_vendored::include_path()?, output.path())?;
-    for (source, target) in [
-        ("schematic.host.v1.rs", "host.rs"),
-        ("schematic.model.v1.rs", "model.rs"),
-        ("schematic.plugin.v1.rs", "plugin.rs"),
-        ("schematic.client.rs", "client.rs"),
-        ("schematic.reflection.rs", "reflection.rs"),
-        ("schematic.descriptors.bin", "descriptors.bin"),
-    ] {
-        fs::copy(output.path().join(source), root.join("protocol/src").join(target))?;
     }
     Ok(())
 }

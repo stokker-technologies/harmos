@@ -73,6 +73,7 @@ enum PayloadEncoding {
   POSTCARD_V1 = 1;
 }
 
+// The Number of Values Carried by a Schema Field.
 enum SchemaCardinality {
   REQUIRED = 0;
   OPTIONAL = 1;
@@ -80,6 +81,7 @@ enum SchemaCardinality {
   VARIANT = 3;
 }
 
+// The Primitive or Composite Value Category of a Field.
 enum SchemaKind {
   BOOL = 0;
   UINT32 = 1;
@@ -93,6 +95,7 @@ enum SchemaKind {
   MESSAGE = 9;
 }
 
+// The Shape of a Schema Definition.
 enum SchemaForm {
   OBJECT = 0;
   UNIT = 1;
@@ -104,6 +107,7 @@ enum SchemaForm {
   UNTAGGED = 7;
 }
 
+// Why a Schema Definition Is Not Included in This Reply.
 enum SchemaOmission {
   OMIT_NONE = 0;
   OMIT_EMPTY = 1;

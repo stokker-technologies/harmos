@@ -7,7 +7,7 @@
 # ***
 
 
-"""Generate Descriptor Resource Contracts."""
+"""Resolve Protocol Descriptors Into Typed Resource Methods."""
 
 # === Imports === #
 
@@ -26,6 +26,7 @@ from harmos_tools.source.protocol import caller_options
 # === Public Exports === #
 
 # === Constants === #
+
 
 # === Types === #
 
@@ -106,18 +107,19 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 path = [*parts[version + 1 :], snake(service.name), snake(method.name)]
                 identity = f"{file.package}.{service.name}/{method.name}"
                 audience = callers.get(identity, "CLIENTS")
-                faces = (
-                    ["plugin"]
-                    if executor == "plugin"
-                    else [
-                        face for face, allowed in [("client", {"CLIENTS", "ALL"}), ("context", {"PLUGINS", "ALL"})] if audience in allowed
-                    ]
-                )
+                if executor == "plugin":
+                    faces = ["plugin"]
+                else:
+                    faces = []
+                    if audience in {"CLIENTS", "ALL"}:
+                        faces.append("client")
+                    if audience in {"PLUGINS", "ALL"}:
+                        faces.append("context")
                 for face in faces:
                     leaf = (face, *path)
                     if leaf in leaves:
                         raise ValueError(
-                            f"Client Resource Collision: {'.'.join(path)}; Correct the protocol declarations and regenerate the descriptors"
+                            f"Client Resource Collision: {'.'.join(path)}; Correct the source protocol declarations or explicit public exports before regenerating"
                         )
                     leaves.add(leaf)
                     methods.append(
@@ -144,7 +146,7 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
     for leaf in leaves:
         if any(leaf[:length] in leaves for length in range(2, len(leaf))):
             raise ValueError(
-                f"Client Resource Collision: {'.'.join(leaf[1:])}; Correct the protocol declarations and regenerate the descriptors"
+                f"Client Resource Collision: {'.'.join(leaf[1:])}; Correct the source protocol declarations or explicit public exports before regenerating"
             )
     return methods
 
@@ -170,7 +172,9 @@ def payload_audiences(descriptors: FileDescriptorSet) -> dict[str, set[str]]:
 
 
 def snake(name: str) -> str:
-    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)).lower()
+    acronyms = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", acronyms)
+    return words.lower()
 
 
 # === Private Functions === #
