@@ -4,24 +4,32 @@ Groups 2–7 are additive and land before the breaking groups 9–10. Each group
 Conventional Commits on the integration branch and proves only its changed behavior through
 focused `mise run test`, `mise run build` and `mise run generate` invocations; full lanes run
 only after group 11 closes. Products adopt the revision that landed a group in their own
-change; never name revisions in this file.
+change; each completed group records the revision a product can pin below (owner override).
 
 ## 1. Inventory and Contract
 
-- [ ] 1.1 Lock the source inventory against design.md: every public export of `harmos-runtime`, `harmos`, `harmos-operations`, `harmos-storage`, `harmos-query` and `harmos-domain`, every manager `Deref` and getter, every engine type in an operation signature, every `callers` option under `proto/harmos/host/v1`, every composition reader and every statistics kernel; record any surprise in design.md before editing. Accept when the inventory lists owners and consumers (runtime, operations, SDKs, conformance, Schematic, stories) for each item.
-- [ ] 1.2 Update `docs/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
+- [x] 1.1 Lock the source inventory against design.md: every public export of `harmos-runtime`, `harmos`, `harmos-operations`, `harmos-storage`, `harmos-query` and `harmos-domain`, every manager `Deref` and getter, every engine type in an operation signature, every `callers` option under `proto/harmos/host/v1`, every composition reader and every statistics kernel; record any surprise in design.md before editing. Accept when the inventory lists owners and consumers (runtime, operations, SDKs, conformance, Schematic, stories) for each item.
+- [x] 1.2 Update `docs/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
+
+Group 1 Pin: `cffd2ec57486c7ad5e7de405495a340681612b99`.
 
 ## 2. Compound Atomic Mutation
 
-- [ ] 2.1 Add the compound mutation request/result to the native storage contracts in `harmos-domain/src/model/storage` and `harmos-operations/src/storage/native` (create, conditional set, delete, record append items; one mutation identity). Accept when the declaration registers in the storage catalog; prove with `mise run build -- --package harmos-operations --check`.
-- [ ] 2.2 Add the backend capability and one-commit primitive to `harmos-storage/src/backend.rs`, implement it in the in-memory backend and the reference SQLite backend, and refuse with a capability error elsewhere. Prove with new stories `compound_mutation_commits_atomically`, `compound_mutation_conflict_leaves_no_effect` and `compound_mutation_replays_receipt` under `crates/harmos-storage/tests/integration` run by `mise run test -- --paths <story file>`.
-- [ ] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through operation dispatch. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/storage.md`.
+- [x] 2.1 Add the compound mutation request/result to the native storage contracts in `harmos-domain/src/model/storage` and `harmos-operations/src/storage/native` (create, conditional set, delete, record append items; one mutation identity). Accept when the declaration registers in the storage catalog; prove with `mise run build -- --package harmos-operations --check`.
+- [x] 2.2 Add the backend capability and one-commit primitive to `harmos-storage/src/backend.rs`, implement it in the in-memory reference backend, and refuse with a capability error elsewhere. Harmos owns this contract and memory reference only; durable product backends live in the product. Supply an importable backend conformance test kit for products to prove atomic commits, conflicts and receipt replay. Prove with new stories `compound_mutation_commits_atomically`, `compound_mutation_conflict_leaves_no_effect` and `compound_mutation_replays_receipt` under `crates/harmos-storage/tests/integration` run by `mise run test -- --paths <story file>`.
+- [x] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through operation dispatch. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/storage.md`.
+
+Compound Native/Memory Checkpoint Pin: `6197796daee6feed793f33d3330e4c8a8356444f` (2.1, 2.3, 3.3).
+
+Group 2 Pin: `502121ff` (product backend conformance kit; focused compound stories, build and Rust lint passed).
 
 ## 3. Object and Scoped Deletion
 
-- [ ] 3.1 Add object deletion (optional expected revision, deletion revision) as a native storage operation and backend primitive in both bundled backends. Prove with `object_delete_hides_at_new_cuts_only` in `crates/harmos-storage/tests/integration`.
-- [ ] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
-- [ ] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/storage.md`.
+- [x] 3.1 Add object deletion (optional expected revision, deletion revision) as a native storage operation and backend primitive in the contract and memory reference backend. Prove with `object_delete_hides_at_new_cuts_only` in `crates/harmos-storage/tests/integration`.
+- [x] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
+- [x] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/storage.md`.
+
+Group 3 Pin: `1c4f3aec8cf12dd59fe636545e76f72d6d5860bf` (native object/scope deletion, explicit object scope, retained-cut reclamation and scoped backend conformance; build, Rust lint, format and focused proof passed).
 
 ## 4. Storage Before Full Startup
 

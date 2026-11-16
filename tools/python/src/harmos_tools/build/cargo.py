@@ -22,8 +22,11 @@ from typing import TypedDict
 
 # Third Party Imports
 # Local Imports
+import harmos_tools.test.archive
+
 from ..ci import summary
 from ..process import spawn_flags
+from ..test import policy
 from . import paths
 
 # Type Checking Imports
@@ -90,10 +93,6 @@ def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[st
 
 
 def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
-    import harmos_tools.test.archive
-
-    from ..test import policy
-
     if profile not in policy.PROFILES:
         raise policy.TestError("unknown build profile; Select a supported Cargo operation and canonical profile, then rerun the task")
     path = harmos_tools.test.archive.location(directory, profile)
@@ -194,7 +193,6 @@ def focused(directory: Path, operation: str, arguments: Sequence[str], *, messag
             creationflags=spawn_flags(),
             check=False,
         ).returncode
-
     finally:
         if messages is not None:
             output.close()

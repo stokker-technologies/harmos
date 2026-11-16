@@ -199,6 +199,7 @@ pub(super) enum Domain {
 
 pub(super) enum Operation {
     Conditional(Arc<super::ObjectExchange>),
+    Compound(Arc<crate::CompoundExchange>),
     Schema(StorageBatch<StorageSchema>),
     SetSchema(Arc<crate::SchemaExchange>),
     File(StorageBatch<super::FileReference>),

@@ -151,7 +151,7 @@ class FocusedCargoTests(unittest.TestCase):
             ):
                 arguments = ["--manifest-path", "examples/schematic/Cargo.toml"]
                 if operation == "clippy":
-                    cargo.clippy(directory, arguments)
+                    cargo.clippy(directory, arguments, environment={"CARGO_TARGET_DIR": "elsewhere"})
                 else:
                     cargo.focused(directory, operation, arguments)
             self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))

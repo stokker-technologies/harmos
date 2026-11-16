@@ -26,18 +26,26 @@ same content boundary. See [Application-Owned Content](storage.md#application-ow
 The domain contracts, query engine and storage layers are implemented in their
 named crates. `harmos-storage::memory::{Backend, RecoveryBackend}` provides the
 public process-lifetime implementation. `StorageBackends::in_memory` composes it;
-`harmos_runtime::storage::StorageManager::in_memory(catalog, settings)` supplies
-the runtime clock. Consumers still supply their budgets.
+the runtime builder supplies the runtime clock (locked facade direction). Consumers still supply their budgets.
 
-**Runtime composition, 2026-11-14:** storage remains always present. The plugin
-manager deliberately persists entries and settings and reads bundle content
-through storage. Before setup validation, a runtime without a registered manager
-selects independent in-memory primary and recovery adapters, including the plugin
-registry object catalog. Registering a manager with `setup.settings().storage(&storage)`
-selects that manager instead. Storage workers share startup ownership and shutdown
-with the runtime; a different manager cannot replace an already running owner.
-The owner closed the feature-isolation proposal on 2026-11-14: storage and the
-query engine remain unconditional, with no feature gate for either.
+**Runtime composition, locked direction (2026-11-16):** storage remains
+always present and the builder owns backend/catalog/settings admission and every
+manager lifecycle. Plugins persist entries, settings and bundle content through
+storage. Products do not construct or register a manager. A storage-only assembly
+admits prerequisite writes and offline maintenance without listeners or plugins;
+the implementation is tracked in `operation-boundary`.
+
+Compound mutation now applies ordered conditional object writes, deletion and record
+appends in one backend commit, publishing a cut and replayable receipt together.
+`harmos-storage/src/compound.rs` owns admission; `memory/compound.rs` stages bounded
+changes and publishes through the backend hook; `storage.mutate` is the native declaration.
+Unsupported backends refuse; sequential compensation is not an implementation.
+Object/scoped deletion preserves retained cuts and delays file reclamation until
+those cuts release. All statistics kernels consolidate under the crate-internal
+`harmos-query::statistics` module and products use `storage.list_rows` transforms,
+including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries and
+bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their
+task group closes. Floating-point population RMS/standard deviation are accepted.
 
 ### Inventory Before the Split
 
@@ -160,14 +168,13 @@ storage dependency. Storage owns admission, snapshots, source decoding and
 backend calls, index/projection catalogs and atomic publication. The disk backend and file recovery journal are removed. Arrow in storage is used
 for admitted-batch conversion and manager query integration.
 
-Products implement `StorageBackend` and `state::StateBackend`, register their
-object catalog and pass `StorageBackends { primary, state }` to runtime
-`StorageManager::with_catalog(catalog, backends, settings)`. Register that manager
-with `setup.settings().storage(&storage)`. The two backend owners have separate
-flush/session contracts; the library promises no cross-owner transaction. The
-in-memory adapters retain saved cuts, receipts, files and recovery only for the
-lifetime of their shared instances. Process restart durability is a product
-backend responsibility. See [Storage Interfaces](storage.md#backend-registration).
+Products implement `StorageBackend` and `StateBackend` through the facade's
+authoring contracts and pass the backend pair, catalog and storage settings to the
+builder. The in-memory adapters retain cuts, receipts, files and recovery only for
+their shared-instance lifetime; a product backend owns process durability. Primary
+compound transactions do not promise a cross-owner transaction with state recovery.
+See [Storage Interfaces](storage.md#backend-registration). The builder migration
+remains proposed; the source inventory records the existing constructors to remove.
 
 ### Unconditional Arrow Dependencies
 
@@ -299,6 +306,11 @@ drift test compares committed sources and descriptor projections byte for byte.
 See the mapping below for the migrated identities and consumer ownership.
 
 ## Invariants
+
+The `operation-boundary` contracts above supersede the wire composition and host-client
+root direction in invariants 1, 9 and 17. Those entries describe the preceding migration's
+landed source until the breaking groups replace it; new product consumers follow the
+native facade and product-wrapper direction. Manager ownership remains internal.
 
 Wire operation admission uses the protocol-owned validator in
 `crates/harmos-protocol/src/schema.rs`, independently of native dotted identities.
@@ -443,7 +455,7 @@ and caller-face authorization remain independent checks.
 
 9. **Library and Product Composition.** The library owns hosting, access, status,
    invocations, time, plugin management and typed plugin settings. Products compose
-   these complete wire services directly. Storage and publication remain Private
+   these capabilities through product-owned wrappers (locked direction). Storage and publication remain Private
    in-process capabilities; products declare their own typed wire operations and
    policy over them. Products own schemas, indexes/projections, objects, operations,
    authorization, secrets, UI, archives and credential integration.
@@ -1084,58 +1096,39 @@ Wrong-caller admission uses one failure constructor in `harmos-operations/src/fa
 Native gRPC, child replies, samples, guest imports and nested invocation failures
 preserve that record; the gRPC status is PermissionDenied, including after nesting.
 
-### Product Composition and Narrowing
+### Product Wrappers and the Native Facade
 
-The product-owned `protocol/composition.toml` is the single declarative composition
-input for both runtime assembly and SDK generation. Library entries list descriptor
-artifacts and the package roots to compose (nested resource packages are included);
-paths are relative to that file. Keep dependencies' model packages whenever their
-operations reference them. The `callers` table contains only explicit restrictions.
+**Locked direction, proposed implementation (`operation-boundary`, 2026-11-16):**
+replaces "The product-owned `protocol/composition.toml` is the single declarative
+composition input for both runtime assembly and SDK generation." Its purpose was
+matching caller admission and generated resources. Product wrapper descriptors
+now own both; Harmos host operations have no wire exposure markers or listener
+bindings. The composition reader, caller narrowing and generator `--composition`
+input are removed by the breaking group, together with their consumers.
 
-```toml
-[[libraries]]
-descriptors = "../vendor/library/descriptors.bin"
-packages = ["harmos.model.v1", "harmos.host.v1", "harmos.plugin.v1"]
-
-[callers]
-"harmos.host.v1.Time/Get" = "PLUGINS"
+```rust,ignore
+let reply = runtime.for_call(&ctx).storage().append_samples(request).await?;
+let plugin = runtime.for_call(&ctx).plugins().load(PluginSource::Process(process)).await?;
 ```
 
-```rust
-// Apply Before Starting Listeners or Plugins.
-setup.composition(include_str!("../protocol/composition.toml"))?;
-```
+Every typed facade method dispatches its registered native operation under that
+operation's policy. The builder accepts storage backends, object catalog and settings,
+owns every manager and can assemble storage alone for bootstrap and offline work.
+No manager, manager getter, `Deref`, engine, query or reader is reachable through the
+product facade or its operation results. Backend-authoring traits and their full DTO,
+catalog and codec closure remain public through one authoring module.
 
-`composition(&str) -> Result<(), AssemblyError>` applies the file's caller
-restrictions to the linked library declarations before listeners or plugins start.
-Runtime assembly does not open generator descriptor paths. It verifies the listed
-package roots against registered descriptors. Runtime assembly and SDK generation enforce the same restrictions:
+A product exposes remote behavior with its own wrapper operations and declared
+CLIENTS, PLUGINS or ALL audience. SDK generators project those descriptors. The four
+plugin SDKs, protocol generation, Wasm guests and conformance remain; Harmos host-client
+resource roots disappear. Shared host messages remain available as wrapper payloads.
+Plugin instance/invocation/window/sample/child frames stay on the wire, with plugin
+context facilities for time, own settings, own invocation Get/Cancel/Watch and
+admitted discovery. Discovery applies the dispatch admission predicate.
 
-```sh
-mise run generate -- --descriptors protocol/descriptors.bin --composition protocol/composition.toml --output target/generated/sdk --namespace application --sdk python
-```
-
-The CLI accepts the same input for every generated language. An explicit composition
-replaces implicit library inclusion. It rejects missing listed packages, conflicting
-descriptor files, unknown operation keys, invalid callers and widening. The effective
-set must be a nonempty subset: ALL may become CLIENTS or PLUGINS; an exclusive
-caller may only remain itself. No mutable widening or per-listener second authority
-exists. A product's own wire services also declare caller options. Consumers migrate
-product packages to model/host/plugin with the next pin. Schematic already uses
-its own executor packages, composition file and generated application client.
-
-Every composition generator projects both audiences from the same effective method
-table after narrowing. Beside the requested client file it emits `plugin.rs`,
-`plugin.py`, `Plugin.g.cs`, or `plugin.hpp` and `plugin.cpp`. The product's generated
-`PluginContext` binds an SDK invocation context and exposes its narrowed host root;
-it never inherits the unrestricted SDK host root. C++ products compile the generated
-implementation with their SDK. The shared SDK fixture proves exclusions in both
-directions, including a Rust compile refusal and C++ constrained lookup.
-
-Python products place generated protocol modules below `application._wire.<original package>`
-for a public package named `application`. Rewrite Python imports and message module metadata
-to that private prefix while retaining canonical descriptor packages and gRPC method paths.
-Expose payloads through the product's public barrels, without exporting the wire modules.
+The source still exposes the older managers and host services until the breaking
+groups close; those are migration inputs, not the agreed product contract. See
+`openspec/changes/operation-boundary/tasks.md` for completed groups and usable pins.
 
 ### Native Type Ownership
 
@@ -1171,6 +1164,13 @@ application's descriptors and the same composition file.
 
 ### Consumer Work Lists
 
+**Locked replacement, proposed (`operation-boundary`):** core crates close storage
+coverage, consolidate statistics and own native declarations and the typed facade;
+all four SDKs move context calls to plugin facilities and delete host-client roots;
+generators project product wrappers; conformance owns a wrapper fixture; Schematic,
+stories and benchmarks migrate together. The table below records the preceding
+executor-package migration, not the new delivery's completion.
+
 The consumer migration is implemented across these owners. Regenerate bindings
 from their source definitions; generated files have no independent ownership.
 
@@ -1184,12 +1184,10 @@ from their source definitions; generated files have no independent ownership.
 | Conformance | Both wrong-caller directions use the real runtime, including direct and managed invocation admission; all 38 rules apply to each SDK fixture. |
 | Schematic and Fixtures | Executor packages, explicit host callers, composition input, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Host handlers register their canonical service/method identities. Guest publication declares its own PLUGINS-only host service. Guest admission validates protobuf identities through their checked contracts while native declarations retain their native identity rules. |
 
-Caller narrowing is exercised by
-`crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`: narrow ALL to
-PLUGINS, refuse a client on direct and managed paths, omit the operation from
-client discovery, report effective PLUGINS to the plugin, and refuse widening.
-Generator composition coverage lives in
-`tools/python/tests/integration/test_protocol_callers.py`.
+The preceding narrowing stories in `crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`
+and `tools/python/tests/integration/test_protocol_callers.py` are removed with that mechanism.
+Their replacement proves wrapper audiences, unreachable host operations and discovery matching
+dispatch; the plugin context moves to plugin-protocol facilities.
 
 Invocation selectors retain the submitting caller's ownership. A plugin cannot watch
 an invocation submitted by the host or another caller. A watch demand already in

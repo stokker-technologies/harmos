@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
+
 /* === Imports === */
 
 // Standard Library Imports
@@ -32,6 +34,7 @@ use super::{
 };
 use crate::BackendFailure;
 use crate::CompareExchange;
+use crate::CompoundExchange;
 use crate::DefinitionOutcome;
 use crate::Identifier;
 use crate::MutationHeader;
@@ -49,7 +52,6 @@ use crate::query::projection::ProjectionPublication;
 use crate::query::projection::ProjectionRead;
 use crate::query::projection::ProjectionStatus;
 use crate::{Error, Result};
-pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 use harmos_query::columnar::ArrowPage;
 use harmos_query::columnar::ArrowScan;
@@ -131,6 +133,12 @@ pub trait StorageBackend: Send + Sync + 'static {
         _cancel: &'a Cancellation,
     ) -> StorageFuture<'a, Option<u64>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// Commit ordered conditional objects and records with their receipt in one transaction.
+    /// No item may become visible when any condition fails; replays return the original receipt.
+    fn mutate<'a>(&'a self, _exchange: &'a CompoundExchange) -> StorageFuture<'a, MutationReceipt> {
+        unsupported("compound mutations; register a backend implementing atomic compound commits")
     }
 
     fn set_object<'a>(&'a self, _exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {

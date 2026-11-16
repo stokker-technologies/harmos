@@ -184,6 +184,12 @@ impl StorageManager {
     }
 }
 
+impl FileState {
+    pub(super) fn belongs_to_scope(&self, scope: &Identifier) -> bool {
+        self.metadata.scope.as_ref() == Some(scope)
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */

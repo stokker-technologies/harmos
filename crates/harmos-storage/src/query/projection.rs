@@ -175,6 +175,13 @@ impl ProjectionPublication {
 }
 
 impl ProjectionCatalog {
+    pub(crate) fn reclaim_through(&mut self, through: u64) {
+        for revision in self.revisions.values_mut() {
+            revision.outputs.retain(|cut, _| *cut > through);
+            revision.retired = Some(revision.retired.unwrap_or(0).max(through));
+        }
+    }
+
     pub fn register(&mut self, definition: &ProjectionDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         definition.validate()?;
         if self.active.get(&definition.name).copied() != expected {

@@ -37,7 +37,7 @@ use super::requests::{
 // Third Party Imports
 
 // Local Imports
-use super::transfers;
+use super::{transfers, watch_rows};
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use crate::operations::{FailureKind, ReplaySafety};
 use harmos_storage::StorageManager;
@@ -702,11 +702,11 @@ impl NativeOperation for SetObject {
         .await?;
         use set_object_response::{Applied, Conflict, Outcome};
         let outcome = match result {
-            super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Applied {
+            super::object::SetOutcome::Applied(value, revision, receipt) => Outcome::Applied(Box::new(Applied {
                 value: Some(*value),
                 revision,
                 receipt: Some(receipt),
-            }),
+            })),
             super::object::SetOutcome::Conflict(current_revision) => Outcome::Conflict(Conflict {
                 current_revision,
                 action: "SetObject: get again and retry".into(),
@@ -798,18 +798,16 @@ impl NativeOperation for WatchRows {
     }
 }
 impl WatchRows {
-    fn response(frame: super::watch_rows::Frame) -> WatchRowsResponse {
-        use super::watch_rows::Event;
-        use watch_rows_response::Event as Wire;
+    fn response(frame: watch_rows::Frame) -> WatchRowsResponse {
         WatchRowsResponse {
             resolved_at: Some(frame.at),
             event: Some(match frame.event {
-                Event::Boundary => Wire::Boundary(()),
-                Event::Record(row) => Wire::Record(row),
-                Event::Sample(row) => Wire::Sample(row),
-                Event::Object(row) => Wire::Object(row),
-                Event::Progress => Wire::DurableProgress(()),
-                Event::Resync(error) => Wire::ResyncRequired(error),
+                watch_rows::Event::Boundary => watch_rows_response::Event::Boundary(()),
+                watch_rows::Event::Record(row) => watch_rows_response::Event::Record(row),
+                watch_rows::Event::Sample(row) => watch_rows_response::Event::Sample(row),
+                watch_rows::Event::Object(row) => watch_rows_response::Event::Object(row),
+                watch_rows::Event::Progress => watch_rows_response::Event::DurableProgress(()),
+                watch_rows::Event::Resync(error) => watch_rows_response::Event::ResyncRequired(error),
             }),
         }
     }

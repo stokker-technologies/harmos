@@ -82,9 +82,9 @@ conditional outcomes and the capability contracts below. A backend must refuse
 corrupt or incompatible data without resetting it. Register the object catalog
 used by both the primary adapter and manager.
 
-`memory::Backend` implements all 24 required primary methods and 24 optional
+`memory::Backend` implements all required primary methods and its supported optional
 methods. Its capabilities report conditional objects, projection publication,
-file sessions/deletion and mutation receipts. Native Arrow and native indexes
+file sessions/deletion, compound mutations and mutation receipts. Native Arrow and native indexes
 report false; shared bounded execution provides those reads. Immutable record
 views and selected-record rank seeks are implemented. The four remaining optional
 methods retain their declared defaults: `get_work` returns zero counters,
@@ -120,7 +120,7 @@ that token unusable. Later writes do not alter the retained answer. Readers must
 release snapshots before expecting retention to reclaim their rows.
 
 `StorageCapabilities` advertises `native_arrow`, `native_index`,
-`durable_projections`, `conditional_objects`, `file_sessions`, `file_deletion` and
+`durable_projections`, `conditional_objects`, `compound_mutations`, `file_sessions`, `file_deletion` and
 `mutation_receipts`. `list_column_rows` and `list_index_entries`
 choose native execution or the common bounded executor. A backend without native
 Arrow scans supplies typed row reads; it still receives the same predicates and
@@ -309,6 +309,84 @@ The in-memory adapter uses the common executor's bounded source reduction and
 atomic projection catalog publication. Native checkpoint and incremental physical
 bucket implementations belong to a product backend; they must preserve the same
 canonical aggregate order, replacement and retained-frontier semantics.
+
+## Compound Atomic Mutation
+
+`storage.mutate` is a Private native operation declared by
+`harmos_operations::storage::Mutate`. Its `MutateRequest` carries one mutation identity
+and ordered `MutationItem` values: Create, conditional Set, Delete and record Append.
+All items commit together in one primary-backend transaction with the original receipt.
+The reply is durable and carries one frontier and one position per applied item.
+A failed condition returns its zero-based item index and current object revision;
+get that object again and retry with a new mutation identity. No earlier item takes effect.
+
+```rust,ignore
+let response = runtime.operations.call_native::<Mutate>(MutateRequest {
+    mutation: Some(mutation),
+    items: vec![
+        MutationItem::Set { expected: revision, value: replacement },
+        MutationItem::Append(event),
+    ],
+}).await?;
+```
+
+Registration uses the existing storage catalog. The typed product facade in
+`operation-boundary` will replace the caller spelling above when its breaking group
+lands. The request obeys the consumer's existing pending-write and batch budgets;
+an oversized atomic request refuses and must be reduced, never split into commits.
+The native operation also bounds its largest possible reply before admission against
+`response.batch_bytes`; a request that cannot return its receipt has no effects.
+Reduce the atomic batch or configure a larger reply budget before resubmitting.
+Conditions evaluate in item order, including earlier items in the same request.
+Delete accepts an optional expected revision and produces its own deletion position;
+later latest-object reads omit the tombstoned value, while retained earlier cuts keep it.
+
+Backend authors advertise `StorageCapabilities.compound_mutations` and implement
+`StorageBackend::mutate(&CompoundExchange)`. Validate the prepared range, commit
+all effects (or the conflict outcome), the final frontier and `exchange.receipt(outcome)`
+in one transaction, and replay that receipt after a lost reply. Intermediate positions
+are not readable cuts. `memory::Backend` implements this contract within its shared-instance
+lifetime. A backend without it refuses with capability guidance; there is no sequential
+emulation or cross-owner transaction with recovery. Harmos ships the backend contract and memory reference only; durable backends live in the product.
+
+Products can run `harmos_storage::conformance::compound_mutations(&storage, fixture)`
+against a started manager configured with their backend. Supply a `CompoundFixture`
+with fresh object keys in the registered catalog, a replacement of the first key,
+and a record with a fresh item identity. The same proof runs against the memory
+reference. It checks ordered create/set/delete/append, a late conflict rolling back
+earlier objects and records, retained-cut isolation and replay of both success and
+conflict receipts. Products additionally prove reopen durability with their backend's
+own close/reopen fixture.
+
+## Object and Scoped Deletion
+
+Native `storage.delete_object` takes an object schema identity, key, optional
+expected revision and mutation identity. Its `MutateResponse` includes the deletion
+revision in the completed receipt. A mismatched expected revision produces a replayable
+conflict without changing data. Latest and exact reads at a new cut report absence;
+a cut retained before deletion continues to read its original object.
+
+`storage.delete_scope` removes objects, records, samples and files with exactly the
+supplied opaque scope. `ObjectValue.scope` records object ownership; typed object
+encoders copy `StoredObject::scope()`. Arrow object metadata carries `_storage.scope`
+and object batch ingestion restores it. Scopes do not assign meaning to object keys.
+Deleting current ownership removes all earlier revisions of that identity, preventing
+an older owner from resurfacing. Deleting historical ownership keeps a different current
+owner. Scope deletion is a standalone `MutationItem::DeleteScope` transaction with one
+frontier and receipt. Retrying that identity returns the original result and cannot
+delete newer data written into the same scope. Finish or abandon active file productions
+before deleting their scope; refusal happens before admission.
+
+The memory reference retains historical data in pinned snapshot images. Deleted file
+bytes remain readable through those cuts and are freed when the last referencing image
+releases. New cuts and newly advanced projections exclude deleted data. Earlier derived
+projection outputs remain available while earlier cuts are held; after their release,
+those disposable outputs are reclaimed and must be rebuilt at a current cut. Opening
+an unretained cut older than a scoped deletion returns a gap. Durable product backends
+must preserve the same visibility, replay and reclamation contract in their transaction.
+Run `harmos_storage::conformance::scoped_deletion(&storage, ScopeFixture { .. })`
+against the product backend for logical deletion, retained object/file reads and receipt
+replay; add its physical reclamation proof using backend-owned deterministic evidence.
 
 ## Conditional Objects
 
