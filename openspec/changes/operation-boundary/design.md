@@ -283,3 +283,13 @@ are reclaimed after the last earlier cut releases. Physical reclamation is backe
 The public backend conformance module now proves both compound mutations and scoped
 deletions; products add their own reopen and physical reclamation proofs. No durable
 product backend or plugin installation/registry/bundle implementation moved into Harmos.
+
+## Storage-Only Upgrade Question
+
+The current storage lifecycle binds a worker to one resident identity and rejects a
+different owner; it has no live worker-handoff operation. Group 4 must decide whether
+upgrading a minimal assembly drains/closes its session and reopens the same backends
+under the full runtime, or retains the exact live backend session through a new
+ownership-handoff contract. Drain/reopen is the simpler design; exact-session retention
+adds lifecycle and cancellation obligations. The owner has been asked to choose before
+this new lifecycle behavior is implemented. Groups 4 onward remain open.
