@@ -95,7 +95,7 @@
 
 Final proof runs on the committed candidate: root format; Rust, Python and repository
 checks; C++ configure/build/CTest presets; the Rust generated-protocol test; C# tests;
-and Python client tests. The tree must remain clean, commits local and C: above 40 GB.
+and Python client tests. The tree must remain clean and commits local.
 Windows-only local evidence does not close the existing cross-platform/hosted task 4.1.
 
 ## 11. Locked Example and Native Modules
