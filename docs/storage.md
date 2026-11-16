@@ -347,7 +347,16 @@ all effects (or the conflict outcome), the final frontier and `exchange.receipt(
 in one transaction, and replay that receipt after a lost reply. Intermediate positions
 are not readable cuts. `memory::Backend` implements this contract within its shared-instance
 lifetime. A backend without it refuses with capability guidance; there is no sequential
-emulation or cross-owner transaction with recovery. Harmos ships no SQLite backend.
+emulation or cross-owner transaction with recovery. Harmos ships the backend contract and memory reference only; durable backends live in the product.
+
+Products can run `harmos_storage::conformance::compound_mutations(&storage, fixture)`
+against a started manager configured with their backend. Supply a `CompoundFixture`
+with fresh object keys in the registered catalog, a replacement of the first key,
+and a record with a fresh item identity. The same proof runs against the memory
+reference. It checks ordered create/set/delete/append, a late conflict rolling back
+earlier objects and records, retained-cut isolation and replay of both success and
+conflict receipts. Products additionally prove reopen durability with their backend's
+own close/reopen fixture.
 
 ## Conditional Objects
 

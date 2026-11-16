@@ -24,6 +24,7 @@ use std::time::{Duration, UNIX_EPOCH};
 // Local Imports
 use super::{Counter, catalog, compound_value};
 use crate::manager::{backend, fixture};
+use harmos_storage::conformance::{self, CompoundFixture};
 use harmos_storage::{
     CompoundOutcome, Identifier, MutationId, MutationItem, ObjectPoint, ObjectVersion, StorageBackend, StorageBackends, StorageManager,
 };
@@ -47,6 +48,35 @@ use harmos_storage::{
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[tokio::test]
+async fn memory_backend_passes_compound_contract() {
+    // Start the Reference Backend With Its Explicit Catalog.
+    let history = backend::history();
+    let (clock, _driver) = harmos_storage::execution::Execution::virtual_at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
+    let primary = Arc::new(backend::Backend::with_execution(catalog(), history.clone(), clock.clone()));
+    let storage = StorageManager::with_catalog(
+        catalog(),
+        StorageBackends {
+            primary,
+            state: Arc::new(backend::RecoveryBackend::new(history)),
+        },
+        backend::storage_settings(),
+    )
+    .unwrap();
+    storage.adopt_clock(&clock).unwrap();
+    fixture::start(&storage).await;
+
+    // Run the Same Contract Products Use for Their Backends.
+    let proof = CompoundFixture {
+        first: compound_value(1, 10),
+        replacement: compound_value(1, 20),
+        second: compound_value(2, 30),
+        record: fixture::record(&compound_value(1, 0).schema, &Identifier::new("conformance-event").unwrap(), &[7]),
+    };
+    conformance::compound_mutations(&storage, proof).await.unwrap();
+    storage.close().await.unwrap();
+}
 
 #[tokio::test]
 async fn compound_mutation_commits_atomically() {

@@ -19,6 +19,7 @@ pub mod bench_support;
 mod capacity;
 mod compound;
 pub mod config;
+pub mod conformance;
 mod content;
 mod definitions;
 mod deletion;
