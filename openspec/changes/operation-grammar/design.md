@@ -1667,6 +1667,25 @@ stream it wants sampled outside scopes and reads demand failures from
 `Attached::status()` or the plugin entry. Rows stored as one row per sample are not
 converted; use a fresh storage root.
 
+### Plugin Load Deadline
+
+Owner decision, 2026-11-16: a plugin's startup timeout is the deadline of the
+operation that loads and initializes the plugin. It is neither a per-plugin
+preference nor a value fixed when the plugin manager is built. The native operation
+`plugins.load` (`plugin::grpc::Load`) owns it: its declared policy supplies the
+deadline like every other operation deadline, and the host executor enforces it on
+the runtime clock. A caller may replace the policy for one load through
+`Runtime::attach_grpc_with(placement, settings, LoadOptions { policy })`; later loads,
+reconnects included, use the operation's policy again. Attaching, a managed entry's
+start and replacement, each reconnect attempt and each scoped sample start run one
+load; `PlacementSettings::connect_timeout` is deleted. Spawning a managed process
+stays outside the load so every forked child reaches its owner, which still
+terminates and reaps it when the load misses its deadline or is cancelled. A missed
+deadline fails with `Error::LoadDeadline { plugin, timeout, configured_by }`, naming
+the plugin (its entry name, executable or address) and the action.
+`plugin_grpc::plugin_load` proves a slow plugin missing the deadline and a per-call
+override letting the same plugin start.
+
 ### Storage Lifecycle Operations (Parked)
 
 Owner direction, 2026-11-16, PARKED: recorded for a later change and not implemented

@@ -275,7 +275,6 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
         directory: root.path().join("plugins"),
         target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
         placement: PlacementSettings {
-            connect_timeout: Duration::from_secs(10),
             reconnect_delay: Duration::from_millis(100),
             stop_grace: Duration::from_secs(10),
             stream_window: NonZeroUsize::new(4).unwrap(),

@@ -1308,7 +1308,7 @@ sample demand is controlled separately. `start_samples(streams)` opens one Sampl
 demand for exactly each requested stream with the existing `SamplesSelection.scope`
 and retains the activation's admitted stream writers; a stream the plugin does not
 declare is refused, and the activation's other streams stay under its unscoped
-demand. Opening uses the attachment's configured connect timeout on the runtime clock. `stop_samples()` settles only that demand
+demand. Opening is one plugin load, bounded by the `plugins.load` operation's deadline on the runtime clock. `stop_samples()` settles only that demand
 within `stop_grace`: an in-flight window is cancelled and publishes nothing,
 accepted batches are drained and committed, and the demand's Samples responses
 end. Calls stay bound. The host grants a scope windows only between start and stop,
@@ -1465,8 +1465,9 @@ Connection loss or plugin exit still awaits accepted scoped ingestion before the
 binding reports the transport failure. A settlement failure is logged with its
 action on every ending, returned by `stop()` after a Stop request and kept in a
 remote attachment's disconnected status. Remote attachments continue reconnecting
-under the placement policy. One `connect_timeout` bounds each reconnect attempt,
-including opening its publications, and stop interrupts every step. An attempt
+under the placement policy. Each reconnect attempt, including opening its
+publications, is one `plugins.load` under that operation's own policy, and stop
+interrupts every step. An attempt
 that cannot select the retained settings, admit its operations or open its
 publications closes its connection, reports the failure in the status and retries
 after `reconnect_delay`. Leases belong to their activation, so a cleanup that

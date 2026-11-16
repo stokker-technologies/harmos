@@ -33,7 +33,6 @@ use std::{num::NonZeroU32, time::Duration};
 /// Placement Policy Uses The Same Clock As The Owning Host.
 #[derive(Clone, Debug)]
 pub struct PlacementSettings {
-    pub connect_timeout: Duration,
     pub reconnect_delay: Duration,
     pub stop_grace: Duration,
     /// Maximum Retained Rows per Stream; The Consumer Owns This Budget.

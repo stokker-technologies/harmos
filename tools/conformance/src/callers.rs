@@ -407,7 +407,6 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
         let _ = stopped.await;
     }));
     let settings = PlacementSettings {
-        connect_timeout: Duration::from_secs(10),
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(10),
         stream_window: NonZeroUsize::new(8).expect("stream window"),

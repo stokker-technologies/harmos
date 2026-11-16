@@ -118,10 +118,14 @@ impl Manager {
                 operation: "samples.window".into(),
                 source: Arc::new(source),
             })?;
+        let plugin_load = OperationFactory::native::<crate::plugin::grpc::Load>().map_err(|source| Error::OperationFailed {
+            operation: "plugins.load".into(),
+            source: Arc::new(source),
+        })?;
         self.register_native(crate::operations::Registration {
             batch: crate::operations::Catalog {
                 name: "harmos.samples",
-                operations: vec![sample_window],
+                operations: vec![sample_window, plugin_load],
                 services: vec![],
             },
             lane: None,

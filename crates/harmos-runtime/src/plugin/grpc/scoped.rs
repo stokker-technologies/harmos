@@ -162,14 +162,20 @@ impl<A: Application> Binding<A> {
                         continue;
                     }
                     let _activity = host.activity("Start Scoped Samples");
-                    let prepare = Publications::prepare(&streams, &activation, &source.settings, &operations, true, Some(&requested));
+                    // Opening the Scope's Demands Is One Plugin Load, Bounded by That Operation's Deadline.
+                    let prepare = {
+                        let (streams, activation, settings, operations) =
+                            (streams.clone(), activation.clone(), source.settings.clone(), operations.clone());
+                        let requested = requested.clone();
+                        async move { Publications::prepare(&streams, &activation, &settings, &operations, true, Some(&requested)).await }
+                    };
                     let prepared = tokio::select! {
                         biased;
                         () = super::disconnected(parent.clone()) => Err(Error::Invalid("Start Scoped Samples: activation is closing; bind to its next activation".into())),
                         () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing; bind the scope again after close() returns".into())),
                         // A Caller That Stopped Waiting Has Withdrawn Its Start.
                         () = reply.closed() => continue,
-                        prepared = host.timeout(source.settings.connect_timeout, prepare) => prepared.map_err(|_| Error::Timeout("Start Scoped Samples")).and_then(|prepared| prepared),
+                        prepared = super::load::load(&source.operations, activation.owner(), super::LoadOptions::default(), prepare) => prepared,
                     };
                     if reply.is_closed() {
                         continue;

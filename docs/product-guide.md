@@ -1179,9 +1179,16 @@ loopback readiness address and drains standard output. A supplied or inherited
 `HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
 the connection and reconnects independently after transport loss.
 
-Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window,
-interval_window, interval_lag }` with positive durations and a nonzero retained-row budget
-per stream; `interval_lag: Default::default()` tolerates ten window lengths of lag. Startup, reconnect and shutdown budgets use the host's clock.
+Pass `PlacementSettings { reconnect_delay, stop_grace, stream_window, interval_window,
+interval_lag }` with positive durations and a nonzero retained-row budget per stream;
+`interval_lag: Default::default()` tolerates ten window lengths of lag. Reconnect and
+shutdown budgets use the host's clock. A plugin's startup deadline is the deadline of
+the `plugins.load` operation (`plugin::grpc::Load`) that loads and initializes it:
+attaching, a managed entry's start or replacement, every reconnect attempt and each
+scoped sample start run one load under its policy on the host's clock. Pass
+`LoadOptions { policy }` to `Runtime::attach_grpc_with` to replace that policy for one
+load; a later reconnect uses the operation's policy again. A missed deadline fails with
+`Error::LoadDeadline`, naming the plugin, the applied timeout and its source.
 Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
 `stop_grace` before a managed child is killed and reaped within another; see
 [Managed Process Ownership](architecture.md#managed-process-ownership).

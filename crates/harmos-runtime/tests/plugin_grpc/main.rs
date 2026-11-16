@@ -39,6 +39,7 @@ mod managed_environment;
 mod managed_lifecycle;
 mod manager;
 mod peer_journey;
+mod plugin_load;
 mod protected_builtin;
 mod protected_peer_refusal;
 mod python_clock;

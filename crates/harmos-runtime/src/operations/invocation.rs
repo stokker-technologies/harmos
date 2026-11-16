@@ -77,6 +77,7 @@ struct NativeRequest<'a, P> {
     target: &'a Target,
     request: Box<dyn Any + Send>,
     retry: Option<super::RetryPolicy>,
+    policy: Option<super::OperationPolicy>,
     endpoints: P,
     factory: OperationFactory,
     erase: fn(P) -> Box<dyn Any + Send>,
@@ -118,10 +119,16 @@ impl<O: NativeOperation> NativeInvocation<O> {
 }
 impl super::Manager {
     pub fn submit_native<O: NativeOperation>(&self, request: O::Request, endpoints: O::Endpoints) -> crate::Result<NativeInvocation<O>> {
-        self.submit_native_as::<O>(request, endpoints, super::caller::Source::Host)
+        self.submit_native_as::<O>(request, endpoints, super::caller::Source::Host, None)
+    }
+    /// Submit as Host With `policy` Replacing the Operation's Policy for This Invocation Only.
+    pub(crate) fn submit_native_with<O: NativeOperation<Endpoints = ()>>(
+        &self, request: O::Request, policy: Option<super::OperationPolicy>,
+    ) -> crate::Result<NativeInvocation<O>> {
+        self.submit_native_as::<O>(request, (), super::caller::Source::Host, policy)
     }
     pub(super) fn submit_native_as<O: NativeOperation>(
-        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source,
+        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source, policy: Option<super::OperationPolicy>,
     ) -> crate::Result<NativeInvocation<O>> {
         let target = Target::native::<O>().map_err(|source| crate::Error::OperationFailed {
             operation: O::ID.into(),
@@ -144,6 +151,7 @@ impl super::Manager {
                 target: &target,
                 request: Box::new(request),
                 retry: None,
+                policy,
                 endpoints,
                 factory,
                 erase: |endpoints| Box::new(endpoints),
@@ -393,6 +401,7 @@ fn admit_native<P: Send + 'static>(
             target,
             request,
             retry,
+            policy: None,
             endpoints,
             factory,
             erase,
@@ -411,6 +420,7 @@ fn admit_native_as<P: Send + 'static>(
         target,
         request,
         retry,
+        policy,
         endpoints,
         factory,
         erase,
@@ -437,6 +447,7 @@ fn admit_native_as<P: Send + 'static>(
         memory,
     });
     input.retry = retry;
+    input.policy = policy;
     input.binding = Some(Arc::new(binding));
     input.grant = grant;
     let running = manager.admit_at::<NativeCall, P>(target.id, (input, endpoints), scope, ancestors, source, None)?;
