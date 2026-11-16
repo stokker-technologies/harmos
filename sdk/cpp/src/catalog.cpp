@@ -253,9 +253,10 @@ wire::Declarations Plugin::declarations() const {
       throw invalid_argument("Duplicate Stream");
     bool interval = stream.declaration.has_interval();
     bool setting = !stream.declaration.interval_setting().empty();
-    if (bool(stream.observer) != (interval || setting))
+    const bool observer = stream.sample || stream.window;
+    if (observer != (interval || setting))
       throw invalid_argument("Observer Requires an Interval");
-    if (!stream.observer && !stream.producer)
+    if (!observer && !stream.producer)
       throw invalid_argument("Stream Requires a Producer");
     if (interval) {
       const auto &duration = stream.declaration.interval();

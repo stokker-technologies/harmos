@@ -130,7 +130,7 @@ shared_ptr<detail::Watch> Context::open_watch(const detail::OperationDefinition 
   {
     lock_guard lock(root->mutex);
     auto found = state_->requirements.find(request.operation());
-    if (root->closed || (root->tick_scoped && (!root->tick_active || !root->accepting_children)) || state_->cancelled)
+    if (root->closed || (root->window_scoped && (!root->window_active || !root->accepting_children)) || state_->cancelled)
       throw TransportError(3, "Watch " + request.operation() + ": Child Scope Is Closed");
     if (!root->emit || !request.max_response_bytes() || found == state_->requirements.end() || found->second != request.fingerprint())
       throw invalid_argument("Watch " + request.operation() + ": Declared Requirement and Positive Item Limit Required");
@@ -261,7 +261,7 @@ Duration retry_delay(const wire::RetryPolicy &retry, uint64_t failed_attempt) {
 optional<shared_future<string>> Context::local(const detail::OperationDefinition &requested, const string &payload,
                                                optional<wire::OperationPolicy> override_policy, std::function<void()> *cancel) {
   auto root = transport(state_);
-  if (!root->emit || (root->tick_scoped && (!root->tick_active || !root->accepting_children)))
+  if (!root->emit || (root->window_scoped && (!root->window_active || !root->accepting_children)))
     throw TransportError(3, "Invoke " + requested.contract.id() + ": Child Scope Is Closed");
   auto found = state_->local.find(requested.contract.id());
   if (found == state_->local.end())
@@ -434,7 +434,7 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
   shared_future<string> result;
   {
     lock_guard lock(root->mutex);
-    if (!root->emit || (root->tick_scoped && (!root->tick_active || !root->accepting_children)))
+    if (!root->emit || (root->window_scoped && (!root->window_active || !root->accepting_children)))
       throw TransportError(3, "Invoke " + request.operation() + ": Child Scope Is Closed");
     if (root->closed)
       throw TransportError(14, "Invoke: Invocation Closed");

@@ -109,6 +109,51 @@ TEST_CASE("An observer preserves its stream contract") {
   }
 }
 
+TEST_CASE("Interval Observers Declare One Value per Field and Their Window Columns") {
+  using Graph = harmos::conformance::Graph;
+  using Values = ::conformance::model::v1::Values;
+  Duration interval;
+  interval.set_seconds(1);
+  SECTION("Repeated, Map, Oneof and Optional Row Fields Are Refused") {
+    authoring::Stream<Graph> repeated("example.graph");
+    REQUIRE_THROWS_AS(authoring::Observer<Graph>(repeated,
+                                                 [](authoring::Context &) {
+                                                   return Graph{};
+                                                 }),
+                      invalid_argument);
+    authoring::Stream<Graph::Nested> optional("example.nested");
+    REQUIRE_THROWS_AS(authoring::Observer<Graph::Nested>(optional,
+                                                         [](authoring::Context &) {
+                                                           return Graph::Nested{};
+                                                         }),
+                      invalid_argument);
+  }
+  SECTION("Window Columns Must Repeat Each Row Field") {
+    authoring::Stream<Value> stream("example.samples");
+    const auto mismatched = [](authoring::Context &, const authoring::Window &) {
+      return Value{};
+    };
+    REQUIRE_THROWS_AS(authoring::Observer<Value>::window<Value>(stream, mismatched), invalid_argument);
+  }
+  SECTION("A Window Observer Declares Its Window Setting and Columns Type") {
+    authoring::Stream<Value> stream("example.samples");
+    auto observer = authoring::Observer<Value>::window<Values>(stream, [](authoring::Context &, const authoring::Window &) {
+      return Values{};
+    });
+    observer.every(interval).window_setting("window");
+    authoring::Plugin plugin("example", "1.0.0");
+    plugin.stream(stream).observer(observer);
+    const auto declarations = plugin.declarations();
+    REQUIRE(declarations.streams(0).window_setting() == "window");
+    REQUIRE(declarations.streams(0).row() == Value::descriptor()->full_name());
+    bool columns = false;
+    for (const auto &file : declarations.types().file())
+      for (const auto &message : file.message_type())
+        columns = columns || (file.package() + "." + message.name()) == Values::descriptor()->full_name();
+    REQUIRE(columns);
+  }
+}
+
 TEST_CASE("A declarations preserves typed sections and their dependencies") {
   SECTION("Typed Sections Retain Their Values and Resolve Dependencies") {
     host_wire::TimeSleepRequest setting;

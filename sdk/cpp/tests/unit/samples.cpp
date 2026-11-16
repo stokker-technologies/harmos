@@ -63,17 +63,21 @@ using harmos::plugin::Context;
 using harmos::plugin::v1::Instance;
 using harmos::plugin::v1::InstanceSamplesRequest;
 using harmos::plugin::v1::InstanceSamplesResponse;
+using Values = ::conformance::model::v1::Values;
 using ValueOperation = harmos::plugin::Operation<Value, Value>;
+using Observe = std::function<Value(Context &)>;
 const ValueOperation echo("example.host.v1.Echo/Call", sdk::VISIBILITY_PUBLIC);
 const ValueOperation watching = ValueOperation("example.host.v1.Events/Watch", sdk::VISIBILITY_PUBLIC).watch();
 
 /* === Classes === */
 
+// Serves One Stream of Value Rows: a One-Sample or Window Observer, or a Device Publisher.
 class SamplesHost final : public Instance::CallbackService {
 public:
   vector<authoring::detail::StreamDefinition> streams;
   vector<authoring::detail::OperationDefinition> operations;
   map<string, string> requirements;
+  size_t message_bytes = 4 * 1024 * 1024;
   unique_ptr<Server> server;
   shared_ptr<Channel> channel;
   mutex samples_mutex;
@@ -81,15 +85,53 @@ public:
   size_t opened = 0;
   size_t closed = 0;
 
-  explicit SamplesHost(std::function<string(Context &)> observer, bool device = false) {
+  explicit SamplesHost(Observe observer, bool device = false) {
     authoring::detail::StreamDefinition stream;
     stream.declaration.set_id("example.rows");
+    stream.row = Value::descriptor();
     if (device)
       stream.producer = [observer](Context &context, auto) {
         observer(context);
       };
     else
-      stream.observer = std::move(observer);
+      stream.sample = [observer](Context &context) -> unique_ptr<Message> {
+        return std::make_unique<Value>(observer(context));
+      };
+    serve(std::move(stream));
+  }
+  SamplesHost(std::function<Values(Context &, const authoring::Window &)> observer, size_t limit) : message_bytes(limit) {
+    authoring::detail::StreamDefinition stream;
+    stream.declaration.set_id("example.rows");
+    stream.row = Value::descriptor();
+    stream.window = [observer](Context &context, const authoring::Window &window) -> unique_ptr<Message> {
+      return std::make_unique<Values>(observer(context, window));
+    };
+    serve(std::move(stream));
+  }
+  ~SamplesHost() {
+    server->Shutdown();
+    server->Wait();
+    unique_lock lock(samples_mutex);
+    changed.wait(lock, [&] {
+      return opened == closed;
+    });
+  }
+  ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
+    auto *call = new authoring::detail::PublicationCall(streams, operations, requirements, "example", message_bytes);
+    {
+      lock_guard lock(samples_mutex);
+      ++opened;
+    }
+    call->settled = [this] {
+      lock_guard lock(samples_mutex);
+      ++closed;
+      changed.notify_all();
+    };
+    return call;
+  }
+
+private:
+  void serve(authoring::detail::StreamDefinition stream) {
     streams.push_back(std::move(stream));
     const auto declarations = authoring::Plugin("example", "1.0.0")
                                   .requires_operation(echo)
@@ -108,27 +150,6 @@ public:
       throw runtime_error("Serve Samples: Bind Failed");
     channel = CreateChannel("127.0.0.1:" + std::to_string(port), InsecureChannelCredentials());
   }
-  ~SamplesHost() {
-    server->Shutdown();
-    server->Wait();
-    unique_lock lock(samples_mutex);
-    changed.wait(lock, [&] {
-      return opened == closed;
-    });
-  }
-  ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    auto *call = new authoring::detail::PublicationCall(streams, operations, requirements, "example");
-    {
-      lock_guard lock(samples_mutex);
-      ++opened;
-    }
-    call->settled = [this] {
-      lock_guard lock(samples_mutex);
-      ++closed;
-      changed.notify_all();
-    };
-    return call;
-  }
 };
 
 class Samples {
@@ -136,11 +157,9 @@ public:
   ClientContext context;
   unique_ptr<ClientReaderWriter<InstanceSamplesRequest, InstanceSamplesResponse>> stream;
   bool finished = false;
-  explicit Samples(const SamplesHost &host) : stream(Instance::NewStub(host.channel)->Samples(&context)) {
-    InstanceSamplesRequest request;
-    request.mutable_open()->set_stream("example.rows");
-    request.mutable_open()->set_scope("opaque-scope");
-    REQUIRE(stream->Write(request));
+  explicit Samples(const SamplesHost &host, bool open = true) : stream(Instance::NewStub(host.channel)->Samples(&context)) {
+    if (open)
+      this->open();
   }
   ~Samples() {
     if (!finished) {
@@ -148,15 +167,50 @@ public:
       stream->Finish();
     }
   }
-  void tick(int64_t seconds) {
+  void open() {
     InstanceSamplesRequest request;
-    request.mutable_tick()->mutable_at()->set_seconds(seconds);
+    request.mutable_open()->set_stream("example.rows");
+    request.mutable_open()->set_scope("opaque-scope");
+    REQUIRE(stream->Write(request));
+  }
+  void window(int64_t seconds, uint64_t sequence, uint64_t count = 1) {
+    InstanceSamplesRequest request;
+    request.mutable_window()->mutable_start()->set_seconds(seconds);
+    request.mutable_window()->mutable_period()->set_seconds(1);
+    request.mutable_window()->set_count(count);
+    request.mutable_window()->set_sequence(sequence);
+    send(request);
+  }
+  void send(const InstanceSamplesRequest &request) {
     REQUIRE(stream->Write(request));
   }
   InstanceSamplesResponse read() {
     InstanceSamplesResponse response;
     REQUIRE(stream->Read(&response));
     return response;
+  }
+  // Reads Every Part of the Window and Returns Its Values in Sample Order.
+  vector<string> answer(uint64_t count, size_t limit, size_t *parts = nullptr) {
+    vector<string> values;
+    for (;;) {
+      const auto response = read();
+      REQUIRE(response.samples().empty());
+      REQUIRE(response.has_batch());
+      const auto &batch = response.batch();
+      REQUIRE(batch.offset() == values.size());
+      REQUIRE(batch.count() >= 1);
+      REQUIRE(response.ByteSizeLong() <= limit);
+      REQUIRE(response.ByteSizeLong() ==
+              authoring::detail::framed_size(batch.offset(), batch.count(), batch.columns().size(), batch.last()));
+      const auto columns = authoring::decode<Values>(batch.columns());
+      REQUIRE(static_cast<uint64_t>(columns.value_size()) == batch.count());
+      values.insert(values.end(), columns.value().begin(), columns.value().end());
+      if (parts)
+        ++*parts;
+      REQUIRE(batch.last() == (values.size() == count));
+      if (batch.last())
+        return values;
+    }
   }
   void reply(uint64_t call, const Message &value) {
     InstanceSamplesRequest request;
@@ -170,6 +224,12 @@ public:
     finished = true;
     return result;
   }
+  Status refused() {
+    InstanceSamplesResponse response;
+    while (stream->Read(&response)) {
+    }
+    return finish();
+  }
 };
 
 /* === Templates === */
@@ -181,46 +241,190 @@ Value value(string bytes) {
   result.set_value(std::move(bytes));
   return result;
 }
+
+string little_endian(uint64_t number) {
+  string bytes(8, '\0');
+  for (unsigned index = 0; index < 8; ++index)
+    bytes[index] = static_cast<char>(number >> (8 * index));
+  return bytes;
+}
 } // namespace
 
-TEST_CASE("Samples Correlate Reverse Replies Across Ticks and Streams") {
+TEST_CASE("Samples Correlate Reverse Replies Across Windows and Streams") {
   SamplesHost host([](Context &context) {
     auto first = context.call(echo, value("first"));
     auto second = context.call(echo, value("second"));
-    return authoring::detail::encode(value(first.get().value() + second.get().value()));
+    return value(first.get().value() + second.get().value());
   });
   Samples first(host);
   Samples second(host);
-  for (int64_t tick = 1; tick <= 2; ++tick) {
-    first.tick(tick);
-    second.tick(tick);
+  for (int64_t window = 1; window <= 2; ++window) {
+    first.window(window, static_cast<uint64_t>(window));
+    second.window(window, static_cast<uint64_t>(window));
     const auto one = first.read();
     const auto two = first.read();
     const auto other_one = second.read();
     const auto other_two = second.read();
     REQUIRE(one.samples().empty());
     REQUIRE(two.samples().empty());
-    REQUIRE(one.child().call() == static_cast<uint64_t>(tick * 2 - 1));
-    REQUIRE(two.child().call() == static_cast<uint64_t>(tick * 2));
+    REQUIRE(one.child().call() == static_cast<uint64_t>(window * 2 - 1));
+    REQUIRE(two.child().call() == static_cast<uint64_t>(window * 2));
     REQUIRE(other_one.child().call() == one.child().call());
     REQUIRE(other_two.child().call() == two.child().call());
     first.reply(two.child().call(), value("B"));
     second.reply(other_two.child().call(), value("Y"));
     second.reply(other_one.child().call(), value("X"));
     first.reply(one.child().call(), value("A"));
-    const auto sample = first.read();
-    const auto other_sample = second.read();
-    REQUIRE(sample.frame_case() == InstanceSamplesResponse::FRAME_NOT_SET);
-    REQUIRE(sample.samples(0).sequence() == static_cast<uint64_t>(tick));
-    REQUIRE(sample.samples(0).at().seconds() == tick);
-    REQUIRE(authoring::decode<Value>(sample.samples(0).row()).value() == "AB");
-    REQUIRE(authoring::decode<Value>(other_sample.samples(0).row()).value() == "XY");
+    REQUIRE(first.answer(1, host.message_bytes) == vector<string>{"AB"});
+    REQUIRE(second.answer(1, host.message_bytes) == vector<string>{"XY"});
   }
   REQUIRE(first.finish().ok());
   REQUIRE(second.finish().ok());
 }
 
-TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
+TEST_CASE("A One-Sample Observer Answers Each Sample of a Window in Order") {
+  SamplesHost host([](Context &context) {
+    return value(little_endian(context.sequence));
+  });
+  Samples samples(host);
+  samples.window(10, 5, 3);
+  REQUIRE(samples.answer(3, host.message_bytes) == vector<string>{little_endian(5), little_endian(6), little_endian(7)});
+  samples.window(13, 8, 2);
+  REQUIRE(samples.answer(2, host.message_bytes) == vector<string>{little_endian(8), little_endian(9)});
+  REQUIRE(samples.finish().ok());
+}
+
+TEST_CASE("A Window Observer Answers the Whole Grant in Parts Within the Message Limit") {
+  const size_t limit = 64;
+  SamplesHost host(
+      [](Context &context, const authoring::Window &window) {
+        if (context.sequence != window.sequence || window.start.seconds() != 20 || window.period.seconds() != 1)
+          throw runtime_error("Answer Window: Unexpected Grant");
+        Values columns;
+        for (uint64_t index = 0; index < window.count; ++index)
+          columns.add_value(little_endian(window.sequence + index));
+        return columns;
+      },
+      limit);
+  Samples samples(host);
+  samples.window(20, 3, 25);
+  size_t parts = 0;
+  const auto values = samples.answer(25, limit, &parts);
+  REQUIRE(parts > 1);
+  for (uint64_t index = 0; index < values.size(); ++index)
+    REQUIRE(values[index] == little_endian(3 + index));
+  REQUIRE(samples.finish().ok());
+}
+
+TEST_CASE("A Window That Cannot Be Answered Fails the Call") {
+  SECTION("A Sample Larger Than the Message Limit Fails the Window") {
+    SamplesHost host(
+        [](Context &, const authoring::Window &window) {
+          Values columns;
+          for (uint64_t index = 0; index < window.count; ++index)
+            columns.add_value(string(index == 1 ? 100 : 1, 'x'));
+          return columns;
+        },
+        64);
+    Samples samples(host);
+    samples.window(1, 1, 3);
+    REQUIRE(samples.refused().error_code() == StatusCode::RESOURCE_EXHAUSTED);
+  }
+  SECTION("Columns Must Hold One Value per Sample") {
+    SamplesHost host(
+        [](Context &, const authoring::Window &) {
+          return Values{};
+        },
+        64);
+    Samples samples(host);
+    samples.window(1, 1, 2);
+    REQUIRE(samples.refused().error_code() == StatusCode::INTERNAL);
+  }
+}
+
+TEST_CASE("Samples Refuse Invalid Windows") {
+  SamplesHost host([](Context &) {
+    return Value{};
+  });
+  SECTION("A Window Before Open") {
+    Samples samples(host, false);
+    samples.window(1, 1);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Repeated Open") {
+    Samples samples(host);
+    samples.open();
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Missing Start") {
+    Samples samples(host);
+    InstanceSamplesRequest request;
+    request.mutable_window()->mutable_period()->set_seconds(1);
+    request.mutable_window()->set_count(1);
+    samples.send(request);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Start Outside the Timestamp Range") {
+    Samples samples(host);
+    InstanceSamplesRequest request;
+    request.mutable_window()->mutable_start()->set_seconds(253402300800LL);
+    request.mutable_window()->mutable_period()->set_seconds(1);
+    request.mutable_window()->set_count(1);
+    samples.send(request);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Missing Period") {
+    Samples samples(host);
+    InstanceSamplesRequest request;
+    request.mutable_window()->mutable_start()->set_seconds(1);
+    request.mutable_window()->set_count(1);
+    samples.send(request);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Non-Positive Period") {
+    Samples samples(host);
+    InstanceSamplesRequest request;
+    request.mutable_window()->mutable_start()->set_seconds(1);
+    request.mutable_window()->mutable_period()->set_seconds(-1);
+    request.mutable_window()->set_count(1);
+    samples.send(request);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+  SECTION("A Zero Count") {
+    Samples samples(host);
+    samples.window(1, 1, 0);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+  }
+}
+
+TEST_CASE("Samples Refuse a Window While Another Is Unanswered") {
+  SamplesHost host([](Context &context) {
+    return context.call(echo, Value{}).get();
+  });
+  Samples samples(host);
+  samples.window(1, 1);
+  REQUIRE(samples.read().has_child());
+  samples.window(2, 2);
+  REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_CASE("Samples Refuse a Window on a Device Stream") {
+  promise<void> published;
+  auto ready = published.get_future();
+  SamplesHost host(
+      [&published](Context &context) {
+        published.set_value();
+        context.cancelled();
+        return Value{};
+      },
+      true);
+  Samples samples(host);
+  ready.get();
+  samples.window(1, 1);
+  REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
+}
+
+TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
   SamplesHost host([](Context &context) {
     const auto now = context.now();
     const auto settings = context.settings();
@@ -230,10 +434,10 @@ TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
     result += std::to_string(settings.resolved_at().positions(0).sequence());
     while (auto item = watch.next())
       result += item->value();
-    return authoring::detail::encode(value(result));
+    return value(result);
   });
   Samples samples(host);
-  samples.tick(10);
+  samples.window(10, 1);
   auto child = samples.read();
   REQUIRE(child.child().operation() == "harmos.host.v1.Time/Get");
   host_wire::TimeGetResponse now;
@@ -261,21 +465,21 @@ TEST_CASE("A Tick Calls the Clock Settings and a Demand-Bounded Watch") {
   REQUIRE(samples.stream->Write(item));
   REQUIRE(samples.read().child_demand().call() == call);
   samples.reply(call, Value{});
-  REQUIRE(authoring::decode<Value>(samples.read().samples(0).row()).value() == "42configuredlabelrevision17item");
+  REQUIRE(samples.answer(1, host.message_bytes) == vector<string>{"42configuredlabelrevision17item"});
   REQUIRE(samples.finish().ok());
 }
 
-TEST_CASE("A Tick Preserves Every Structured Child Failure Field") {
+TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
       context.call(echo, Value{}).get();
     } catch (const sdk::Failure &failure) {
-      return authoring::detail::encode(failure.value);
+      return value(authoring::detail::encode(failure.value));
     }
     throw runtime_error("Call Echo: Expected Failure");
   });
   Samples samples(host);
-  samples.tick(1);
+  samples.window(1, 1);
   const auto child = samples.read();
   sdk::FailureValue failure;
   failure.set_classification(sdk::CLASSIFICATION_REFUSED);
@@ -291,68 +495,60 @@ TEST_CASE("A Tick Preserves Every Structured Child Failure Field") {
   response.mutable_child()->set_call(child.child().call());
   *response.mutable_child()->mutable_failure() = failure;
   REQUIRE(samples.stream->Write(response));
-  const auto actual = authoring::decode<sdk::FailureValue>(samples.read().samples(0).row());
+  const auto actual = authoring::decode<sdk::FailureValue>(samples.answer(1, host.message_bytes).at(0));
   REQUIRE(authoring::detail::encode(actual) == authoring::detail::encode(failure));
   REQUIRE(samples.finish().ok());
 }
 
-TEST_CASE("Tick Completion Cancels Children and Rejects Late Replies") {
+TEST_CASE("Answering a Window Cancels Children and Rejects Late Replies") {
   SamplesHost host([](Context &context) {
     auto cancelled = context.call(echo, Value{});
     cancelled.cancel();
     context.call(echo, Value{});
-    return authoring::detail::encode(Value{});
+    return Value{};
   });
   Samples samples(host);
-  samples.tick(1);
+  samples.window(1, 1);
   const auto first = samples.read().child().call();
   REQUIRE(samples.read().child_cancel().call() == first);
   const auto second = samples.read().child().call();
   REQUIRE(second != first);
   REQUIRE(samples.read().child_cancel().call() == second);
-  REQUIRE(samples.read().samples_size() == 1);
+  REQUIRE(samples.read().batch().last());
   samples.reply(second, Value{});
-  InstanceSamplesResponse ignored;
-  REQUIRE_FALSE(samples.stream->Read(&ignored));
-  REQUIRE(samples.finish().error_code() == StatusCode::INVALID_ARGUMENT);
+  REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
 }
 
-TEST_CASE("Samples Refuse Outside-Tick and Duplicate Child Traffic") {
-  SECTION("A Reply Before a Tick Is Refused") {
+TEST_CASE("Samples Refuse Outside-Window and Duplicate Child Traffic") {
+  SECTION("A Reply Before a Window Is Refused") {
     SamplesHost host([](Context &) {
-      return string{};
+      return Value{};
     });
     Samples samples(host);
     samples.reply(1, Value{});
-    InstanceSamplesResponse response;
-    REQUIRE_FALSE(samples.stream->Read(&response));
-    REQUIRE(samples.finish().error_code() == StatusCode::INVALID_ARGUMENT);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
   }
   SECTION("A Publisher Cannot Call Host Operations") {
     SamplesHost host(
         [](Context &context) {
-          return context.call(echo, Value{}).get().value();
+          return context.call(echo, Value{}).get();
         },
         true);
     Samples samples(host);
-    InstanceSamplesResponse response;
-    REQUIRE_FALSE(samples.stream->Read(&response));
-    REQUIRE(samples.finish().error_code() == StatusCode::INVALID_ARGUMENT);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
   }
   SECTION("A Duplicate Reply Cannot Satisfy Another Child") {
     SamplesHost host([](Context &context) {
       context.call(echo, Value{}).get();
-      return context.call(echo, Value{}).get().value();
+      return context.call(echo, Value{}).get();
     });
     Samples samples(host);
-    samples.tick(1);
+    samples.window(1, 1);
     const auto call = samples.read().child().call();
     samples.reply(call, Value{});
     REQUIRE(samples.read().child().call() != call);
     samples.reply(call, Value{});
-    InstanceSamplesResponse response;
-    REQUIRE_FALSE(samples.stream->Read(&response));
-    REQUIRE(samples.finish().error_code() == StatusCode::INVALID_ARGUMENT);
+    REQUIRE(samples.refused().error_code() == StatusCode::INVALID_ARGUMENT);
   }
 }
 
@@ -366,10 +562,10 @@ TEST_CASE("Ending Samples Settles Open Child Calls") {
       settled.set_value();
       throw;
     }
-    return string{};
+    return Value{};
   });
   Samples samples(host);
-  samples.tick(1);
+  samples.window(1, 1);
   REQUIRE(samples.read().has_child());
   REQUIRE(samples.finish().ok());
   done.get();

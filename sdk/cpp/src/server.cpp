@@ -254,7 +254,7 @@ public:
     return new InvocationCall(operations, requirements, description.id());
   }
   ServerBidiReactor<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    return new detail::PublicationCall(streams, operations, requirements, description.id());
+    return new detail::PublicationCall(streams, operations, requirements, description.id(), description.message_bytes());
   }
   ServerUnaryReactor *Stop(CallbackServerContext *context, const plugin::v1::InstanceStopRequest *,
                            plugin::v1::InstanceStopResponse *) override {

@@ -85,7 +85,7 @@ ephemeral loopback port and announces `harmos listening 127.0.0.1:PORT`.
 lifecycle: Stop completes cleanup and leaves the server running. Both modes use
 plain gRPC. Host clock waits require declaring `HostOperation::TimeSleep` and
 `HostOperation::TimeGet` from `harmos::plugin` with `requires_operation`. Observers may call declared host operations, the host clock,
-settings and demand-bounded Watch while answering a tick. Authors must not
+settings and demand-bounded Watch while answering a window. Authors must not
 start untracked background work if they require virtual-time execution.
 
 Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers cases from the executable through `catch_discover_tests()`. No separate runner or case inventory is maintained.
@@ -167,7 +167,7 @@ plugin.setting(setting).requires_operation(HostOperation::PluginsSettingsList);
 `Plugin::setting` contributes one `SettingsDeclarations` section and its reachable
 types to `Declarations`. It refuses duplicate names and declarations without a name
 or selected default. Value variants are flag, integer, number, text and duration.
-Inside an operation or tick observer, `context.settings()` calls
+Inside an operation or interval observer, `context.settings()` calls
 `context.host().plugins.settings.list()` and returns declarations, complete typed
 values, settings revision and issued read cut. Its omitted name defaults to the
 calling entry; the host refuses a different entry's name from a plugin caller.
@@ -178,19 +178,66 @@ expected settings revision and an optional replay request ID. Settings revisions
 settings separately from plugin entry revisions; policies and declared settings
 own deadlines and retries.
 
-## Tick Child Calls
+## Interval Observers and Windows
+
+The host keeps an interval stream's schedule and grants it windows: `count`
+consecutive samples, the first at `start` and each following one `period` later,
+with sequences from `sequence`. The plugin answers each window with columnar
+`SampleBatch` parts. A one-sample observer keeps its form; the SDK calls it once per
+sample of each window, in order, with `context.sequence` set to that sample's
+sequence, then transposes the rows into columns:
+
+```cpp
+using harmos::plugin::Context;
+using harmos::plugin::Observer;
+using harmos::plugin::Stream;
+using harmos::plugin::Window;
+
+Stream<Reading> stream("bench.reading");
+Observer<Reading> observer(stream, [](Context &context) { return read(); });
+observer.every(interval).window_setting("window");
+plugin.stream(stream).observer(observer);
+```
+
+A window observer receives the whole grant and returns the columns itself. Its
+columns message repeats every field of the row with the same number and type
+(`repeated` on each); the SDK checks this when the observer is declared. The
+handler's `context.sequence` is the window's first sequence.
+
+```cpp
+// struct Window { Timestamp start; Duration period; std::uint64_t count; std::uint64_t sequence; };
+auto columns = Observer<Reading>::window<ReadingColumns>(stream, [](Context &context, const Window &window) {
+  return read_many(window.count);
+});
+plugin.stream(stream).observer(columns.every(interval));
+```
+
+An interval row holds one value per field: declaring an observer of a row with
+repeated, map, oneof or proto3 `optional` fields throws `std::invalid_argument`.
+`window_setting` names a plugin Duration setting that overrides the host's window
+length for that stream. Numeric columns are packed; string, bytes and message
+columns carry one entry per sample, empty and default values included. The SDK
+splits a window at sample boundaries so every `InstanceSamplesResponse` fits the
+plugin's advertised `message_bytes`; a single sample that cannot fit fails the
+Samples call with `RESOURCE_EXHAUSTED`, naming the row and the limit. A window
+before open, on a device stream, while another is unanswered, without a valid start
+timestamp or positive period, or with a zero count fails it with `INVALID_ARGUMENT`.
+
+## Window Child Calls
 
 An observer's `Context` inherits the stream's opaque scope and declared requirements.
-Child call IDs increase across all ticks on that Samples call. Responses may arrive
+Child call IDs increase across all windows on that Samples call. Responses may arrive
 out of order; each `Call::get()` retains its own typed result or structured failure.
 `Call::cancel()` cancels that child, and a `Watching` object requests each item with
 `next()` and cancels its open Watch on destruction.
 
-Answering a tick cancels its remaining children and retires its context. Ending the
-stream wakes pending handlers and settles their workers. Child traffic before a tick,
-after its answer, on device streams, or with unknown or duplicate terminal IDs refuses
-the Samples RPC. Separate Samples calls and Invoke calls keep independent identities.
-Device-driven publication remains on `Publisher::publish` under active stream demand.
+Children belong to the unanswered window: when every sample is answered, the SDK
+cancels the window's remaining children and retires its context before sending the
+last part. Ending the stream wakes pending handlers and settles their workers. Child
+traffic before a window, after its last part, on device streams, or with unknown or
+duplicate terminal IDs refuses the Samples RPC. Separate Samples calls and Invoke
+calls keep independent identities. Device-driven publication remains on
+`Publisher::publish` under active stream demand.
 
 The reported message is `Declarations`; the SDK builder is
 `declarations()`. Regenerate client/plugin bindings when adopting this revision.

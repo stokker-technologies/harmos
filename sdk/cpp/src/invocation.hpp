@@ -64,13 +64,13 @@ struct Invocation {
   std::optional<std::string> cancelled;
   std::uint64_t next = 0;
   bool closed = false;
-  bool tick_scoped = false;
-  std::atomic<bool> tick_active = false;
+  bool window_scoped = false;
+  std::atomic<bool> window_active = false;
   std::atomic<bool> accepting_children = true;
 
   bool receive(const ::harmos::plugin::v1::ChildResponse &child, bool allow_retired = true) {
     std::lock_guard lock(mutex);
-    if (tick_scoped && !tick_active)
+    if (window_scoped && !window_active)
       return false;
     if (allow_retired && retired.contains(child.call()))
       return true;
