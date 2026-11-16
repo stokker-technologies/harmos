@@ -40,6 +40,7 @@ dir = "../.."
 run = ["mise -C sdk/cpp run format -- --check", "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --check"]
 
 [tasks.consumer]
+hide = true
 description = "Build the Installed C++ SDK Consumer"
 dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --consumer"

@@ -41,11 +41,13 @@ def main() -> None:
     paths = files(Path.cwd(), "*.toml")
     if not paths:
         return
-    command = ["taplo", "fmt", "--config", "tools/config/taplo.toml", "--option", "column_width=140"]
+    command = ["taplo", "fmt", "--config", "tools/config/taplo.toml"]
     if check:
         command.append("--check")
+    # Run the Native Command
+    command = [*command, "--", *paths]
     subprocess.run(
-        [*command, "--", *paths],
+        command,
         check=True,
         creationflags=spawn_flags(),
         stdin=sys.stdin,

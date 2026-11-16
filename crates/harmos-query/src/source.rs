@@ -214,6 +214,10 @@ pub fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBat
     let payload = payload(schema, &payloads)?;
 
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
+    columns.push((
+        Field::new("scope", DataType::Utf8, true),
+        strings(rows.iter().map(|row| row.value.scope.as_ref().map(|scope| scope.as_str()))),
+    ));
     columns.push((Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.item.as_str())))));
     columns.push((
         Field::new("revision", DataType::UInt64, false),

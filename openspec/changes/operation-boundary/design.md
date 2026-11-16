@@ -32,6 +32,41 @@ input for both runtime assembly and SDK generation" (Product Composition and Nar
 purpose, keeping plugins from acquiring client administration and keeping SDK surfaces equal
 to the deployed exposure, is preserved by product wrappers declaring their own audience.
 
+## Locked Source Inventory
+
+Inventory locked before implementation on 2026-11-16 at `0b26cb89`.
+Public declarations and their transitive reexports in each listed module belong to
+that owner; the migration removes escape paths together with all their consumers.
+
+| Owner | Source Inventory | Consumers |
+| --- | --- | --- |
+| Runtime | `src/lib.rs`, `prelude.rs`, `runtime.rs`, `runtime/**`, `services/**`, public module barrels; whole-crate `domain`, `builtins` and `storage` reexports; public state/record/stream/operation fields; storage and operation manager `Deref` | Schematic app/CLI, runtime stories and benches, conformance host |
+| Operations | `src/lib.rs`, `execution/**`, `storage/native/requests.rs`, `storage/native/{pages,lists,views,snapshot}.rs`; `QueryOutput`, Arrow pages, column/index/projection contracts in public responses | Runtime registration/dispatch, product handlers, runtime storage stories |
+| Storage | `src/lib.rs`, `backend.rs`, `state/**`, `manager/**`, `query/**`, `memory/**`; backend DTO closure, catalogs, codecs, manager constructors/readers | Operations, runtime storage/plugin/state owners, storage stories/benches |
+| Query | `src/lib.rs`, `accumulate.rs`, `aggregate.rs`, `quantiles.rs`, `order_stats.rs`, `time_buckets.rs`, `statistics/**`, `transform/{aggregate,histogram}.rs`; public readers/tables/Arrow/index values | Storage execution and column scans, operation results, storage benchmark percentile helper |
+| Domain | `src/lib.rs`, `model/storage/**`, `schema/**`, `state/**`, `streams/**`; query plans, payload and storage values, codecs and definitions | Query, storage, operations, runtime, derives |
+| Rust SDK | `sdk/rust/src/{lib,connection}.rs`, `client/**`, `plugin/{host,context}.rs`, generated resource roots and private protocol barrels | Product clients, native/Wasm plugins, SDK fixtures, conformance, Schematic |
+| Other SDKs | `sdk/{python,csharp,cpp}/`; host resources and plugin context resources, generated protocol messages | SDK fixture/example consumers, common conformance |
+| Host Exposure | All 33 method options in `proto/harmos/host/v1/{access/*,plugins,plugins/settings,invocations,operations,schemas,status,status/*,streams,time}.proto`; runtime gRPC catalog/listener dispatch | Direct/encoded/child calls, discovery, all four SDKs, conformance |
+| Composition | Runtime `runtime.rs`, `runtime/launch.rs`, operations `execution/setup.rs`; Python `build/{resource_roots,python_protocol,cpp}.py`, `csharp.py`, `ci/tasks.py`, `source/protocol.py`; Schematic protocol/codegen and app composition, SDK client fixture composition | Generator caller tests, runtime application-face stories, SDK client-root fixtures |
+| Statistics Duplicate | `crates/harmos-storage/src/bench_support/durable_lag.rs` percentile helper | Storage durable-lag benchmark |
+
+Surprises: there is no SQLite reference backend in this repository or conformance
+host. The only bundled primary implementation is `harmos-storage::memory::Backend`;
+reference-backend changes cannot target a nonexistent owner. The compound primitive
+will be a backend-authoring contract with capability refusal and an in-memory
+implementation; a product implements its durable transaction against that contract.
+Memory module declarations also contain redundant `#[path]` overrides; remove them
+when touching the backend. Objects initially had no scope field. Scoped deletion adds optional opaque object scope metadata, matching records and files, rather than assigning prefix semantics to object keys. The earlier prefix inventory assumption is superseded.
+
+Owner amendments override D3's generic caller example: the public calling shape is
+`runtime.for_call(&ctx).storage().append_samples(..)` and
+`.plugins().load(PluginSource::Process(..))`, dispatching native operations under
+registered policy. Built-ins currently using `call_protobuf` gain native declarations.
+The four plugin SDKs, generation, Wasm guest support and conformance remain; only
+Harmos host-client resource roots disappear. Revisions belong in tasks.md after
+completed groups, overriding its original instruction to omit them.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -261,3 +296,27 @@ the product. See `plugin-boundary` for the ownership table and bounded inspectio
 4. Products pin each breaking revision in the task that removes their use of the removed
    surface. Development storage policy permits clean breaks; there are no migrations or
    compatibility shims. Rollback is the previous pin.
+
+## Deletion Implementation Decisions
+
+Group 3 gives objects optional explicit opaque scope metadata, replacing the inventory's
+prefix assumption. Scoped deletion uses the existing atomic mutation receipt and accepted
+work queue; the queue fences new file creation through caller cancellation, avoiding a
+second lock or scheduler. Current object ownership removes all earlier revisions of that
+identity so another owner cannot resurface. Retained snapshots share an earlier image
+when another reader opens the same cut; file bytes and disposable old projection outputs
+are reclaimed after the last earlier cut releases. Physical reclamation is backend-owned.
+
+The public backend conformance module now proves both compound mutations and scoped
+deletions; products add their own reopen and physical reclamation proofs. No durable
+product backend or plugin installation/registry/bundle implementation moved into Harmos.
+
+## Storage-Only Upgrade Question
+
+The current storage lifecycle binds a worker to one resident identity and rejects a
+different owner; it has no live worker-handoff operation. Group 4 must decide whether
+upgrading a minimal assembly drains/closes its session and reopens the same backends
+under the full runtime, or retains the exact live backend session through a new
+ownership-handoff contract. Drain/reopen is the simpler design; exact-session retention
+adds lifecycle and cancellation obligations. The owner has been asked to choose before
+this new lifecycle behavior is implemented. Groups 4 onward remain open.

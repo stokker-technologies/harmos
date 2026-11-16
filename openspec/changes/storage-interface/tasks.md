@@ -1,5 +1,14 @@
 # Tasks
 
+## Current Ownership
+
+[operation-boundary](../operation-boundary/tasks.md) owns the typed facade over native storage operations, the narrowed runtime
+surface, storage operation gaps and centralized query aggregation. Existing native storage
+behavior and unperformed platform/consumer proof below remain owned here; old direct-manager
+adoption instructions are replaced by that facade, with no adapters or compatibility aliases.
+Product backend durability and product consumer migration are verified in the consuming
+product; library source inspection does not close those obligations.
+
 ## 1. Interface Design
 
 - [x] 1.1 Lock inventory for storage backend/object/query contracts, protocol mappings, operations, examples, backends, tests, benchmarks and storage guidance.
@@ -7,7 +16,7 @@
 - [x] 1.3 Settle projection registration/versioning, readable frontier, source-commit coupling, crash replay, invalidation/rebuild and old-snapshot behaviour in design.md.
 - [x] 1.4 Settle time-bucket boundaries, retained statistics/positions, corrections, late replacement, revision and changed-key retention semantics in design.md.
 - [x] 1.5 Settle conditional-update token scope, absent-object semantics, object-safe backend primitive, conflict receipts, durability and atomic index effects in design.md.
-- [x] 1.6 Lock the durable SQLite/Arrow reference backend module/feature, dependencies and capability obligations; retain the file recovery backend and bounded test backend as distinct owners.
+- [x] 1.6 The original bundled SQLite/file-recovery backend direction is superseded by the implemented storage/query split under operation-grammar S.1–S.7: Harmos supplies interfaces, manager and default in-memory primary/recovery adapters; products own disk persistence. New storage gaps and facade adoption belong to operation-boundary.
 - [x] 1.7 Before implementation, lock reproducible before/after workloads and numerical regression budgets; capture the baseline with deterministic multi-day data and millions of samples (Windows single-traversal baseline and proposed ceilings recorded in design.md; repeated/native Linux proof remains in 3.x).
 
 ## 2. Implementation and Targeted Proof
@@ -47,9 +56,9 @@
 - [x] 3.9 Run focused storage correctness stories and benchmark producer proof, then the required format, Rust, Python, repository checks and test-artifact build; commit only owned paths locally without pushing.
 
 - [x] 3.1 Measure native columnar, indexed seek, projection advancement/replay, late buckets and conditional-update contention against the baseline on Windows; verify results outside timed sections. Resolve deep-seek prefix scanning without changing budgets; native Linux remains in 3.2.
-- [ ] 3.2 Record throughput, page latency, allocations/peak memory, bytes read, durability and cancellation/stop costs on Windows and Linux; preserve raw artifacts and resolve regressions.
+- [ ] 3.2 Record remaining native Linux and hosted measurements for the current backend-neutral/in-memory workloads: throughput, page latency, allocations/peak memory, bytes examined and cancellation/stop costs. Historical Windows disk measurements remain evidence of the former backend only; product backends own durable I/O/restart measurements. Preserve artifacts and resolve regressions.
   - [x] Windows: record measured times, throughput, Rust allocations/incremental heap, process peak memory, encoded column bytes, WAL/FULL commit costs, replay, cancellation refusal and owner stop/restart; preserve raw samples and unchanged budgets.
-  - [ ] Linux: execute the identical native workload and retain its measurements; hosted Nightly execution remains pending.
+  - [ ] Linux: execute the current in-memory library workload and retain its measurements; prove disk durability only in the product backend. Hosted Nightly execution remains pending.
 
 - [x] 3.3 Wire backend-independent storage case names/units into Nightly benchmarks.json on native Linux and Windows; expose the identical workload as public storage bench support and retain only the boundary-crossing case in ordinary checks.
 
@@ -58,10 +67,10 @@
 - [ ] 4.1 After source closure and targeted proof, run the required native platform checks and hosted validation when delivery is authorized; report actual failures and pending proof.
   - [x] Windows: run format, Rust/Python/repository checks and Tests artifact compilation.
   - [ ] Native Linux and hosted validation remain pending integration.
-- [ ] 4.2 Publish an authorized usable Harmos revision for Dokime's storage-interface change and verify its pin; leave Dokime extraction and its product benchmarks in that consumer change.
+- [ ] 4.2 Publish an authorized usable Harmos revision after operation-boundary and plugin-lifecycle, and verify its product pin without local overrides. Product extraction, disk-backend adoption and product benchmarks remain in the consuming product change; no publication is authorized by this reconciliation.
 
 ## Workflow Follow-Up
 
-- Dokime's separate `storage-interface` consumes these extensions before extracting `dokime-storage`, retains product semantics and named disk-I/O exceptions, and proves before/after performance with multi-day data, restart, late replacement, finalization and report workloads.
+- A product's separate `storage-interface` consumes these extensions before extracting `product-storage`, retains product semantics and named disk-I/O exceptions, and proves before/after performance with multi-day data, restart, late replacement, finalization and report workloads.
 
 - [x] Consumer adoption follows protocol → operations → runtime → SDKs → examples → guides; retain ordinary bounded query fallback and streamed batch writes.

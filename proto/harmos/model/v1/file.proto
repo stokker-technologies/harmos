@@ -65,6 +65,7 @@ message Upload {
 
 // === Enums === //
 
+// The Current State of an Admitted Upload.
 enum UploadState {
   UPLOAD_STATE_UNSPECIFIED = 0;
   UPLOAD_STATE_PRODUCING = 1;

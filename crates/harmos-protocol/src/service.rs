@@ -17,8 +17,10 @@
 
 // Standard Library Imports
 use std::time::Duration;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use crate::policy::{Backoff, PolicyError};
 
@@ -91,8 +93,7 @@ impl RestartPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::policy::Backoff;
-    use crate::policy::Jitter;
+    use crate::policy::{Backoff, Jitter};
 
     #[test]
     fn service_credit_and_backoff() {

@@ -27,7 +27,10 @@ protocol/composition.toml, consumed by runtime assembly and SDK generation;
 restrictions may only narrow a library declaration.
 
 Regenerate through `mise run generate -- --sdk rust`, then python, csharp and cpp.
-Generated output is never edited by hand. The protocol crate's generated modules
+Generated output is never edited by hand. The native package and reflection
+renderers live in `crates/harmos-protocol/codegen/`; SDK renderers live in
+`tools/python/src/harmos_tools/build/protocol/`, with descriptor composition owned
+by `build/resource_roots.py`. The protocol crate's generated modules
 are model, host and plugin; Python wire modules are private beneath _wire.
 See [Behaviour](harmos/plugin/v1/behaviour.md) for the numbered conformance contract.
 Within retained values, field numbers, enum values and native storage encodings

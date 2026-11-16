@@ -1,15 +1,15 @@
 // @generated from protocol descriptors; do not edit.
 #nullable enable
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
 using Harmos;
-using Harmos.Plugins;
 using Harmos.Clients;
+using Harmos.Plugins;
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 namespace Fixture.Plugins;
 public enum HostOperation
 {
@@ -57,7 +57,10 @@ public sealed class HostInvocationsResource(Context context)
   }
   public async IAsyncEnumerable<InstanceState> Watch(ulong instance, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    await foreach (var response in context.Host.Invocations.Watch(instance, maxItemBytes, cancellationToken)) { yield return response; }
+    await foreach (var response in context.Host.Invocations.Watch(instance, maxItemBytes, cancellationToken))
+    {
+      yield return response;
+    }
   }
 }
 public sealed class HostOperationsResource(Context context)

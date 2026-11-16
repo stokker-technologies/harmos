@@ -2,9 +2,9 @@
 #pragma once
 #include "conformance/model/v1/fixture.pb.h"
 namespace harmos::conformance {
-using Graph = ::conformance::model::v1::Graph;
-using PayloadOnly = ::conformance::model::v1::PayloadOnly;
-using Value = ::conformance::model::v1::Value;
-using Values = ::conformance::model::v1::Values;
-using Zebra = ::conformance::model::v1::Zebra;
+using ::conformance::model::v1::Graph;
+using ::conformance::model::v1::PayloadOnly;
+using ::conformance::model::v1::Value;
+using ::conformance::model::v1::Values;
+using ::conformance::model::v1::Zebra;
 } // namespace harmos::conformance

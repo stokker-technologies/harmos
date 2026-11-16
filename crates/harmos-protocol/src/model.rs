@@ -138,7 +138,7 @@ pub struct OperationContract {
     /// Fully qualified response message name resolved in Declarations.types.
     #[prost(string, tag = "3")]
     pub response: ::prost::alloc::string::String,
-    /// Wire declarationss admit Public or Protected; Private remains process-local and Unspecified is invalid.
+    /// Wire declarations admit Public or Protected; Private remains process-local and Unspecified is invalid.
     #[prost(enumeration = "Visibility", tag = "4")]
     pub visibility: i32,
     /// Callee-owned execution budgets; the admitted declarations must provide a valid policy.
@@ -259,6 +259,7 @@ pub struct DiscoveredOperation {
     #[prost(bool, tag = "6")]
     pub grpc_available: bool,
 }
+/// Who May Invoke a Declared Operation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -460,6 +461,7 @@ pub struct Failure {
     #[prost(string, tag = "9")]
     pub diagnostics: ::prost::alloc::string::String,
 }
+/// The Failure Category Used for Admission and Retry Decisions.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -565,6 +567,7 @@ pub struct Upload {
     #[prost(enumeration = "UploadState", tag = "6")]
     pub state: i32,
 }
+/// The Current State of an Admitted Upload.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

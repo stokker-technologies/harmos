@@ -8,8 +8,8 @@ from google.protobuf.duration_pb2 import Duration
 from grpc import CallCredentials
 from grpc.aio import AioRpcError, Channel
 
+from harmos import _connection
 from harmos._client_transport import Metadata, call_error, stream, unary
-from harmos._connection import Connection as LibraryConnection
 from harmos._wire.host.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
 from harmos._wire.host.v1.access.listener_pb2 import (
     ListenerGetRequest,
@@ -971,7 +971,7 @@ class TimeResource:
         return response
 
 
-class ClientRoot(LibraryConnection):
+class Client(_connection.Connection):
     def __init__(self, channel: Channel) -> None:
         super().__init__(channel)
         self._channel = channel

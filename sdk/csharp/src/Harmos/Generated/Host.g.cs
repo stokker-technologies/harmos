@@ -1,28 +1,14 @@
 // @generated from protocol descriptors; do not edit.
 #nullable enable
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using InvocationsGetRequest = global::Harmos.Clients.InvocationsGetRequest;
-using InvocationsGetResponse = global::Harmos.Clients.InvocationsGetResponse;
-using InvocationsCancelRequest = global::Harmos.Clients.InvocationsCancelRequest;
-using InvocationsCancelResponse = global::Harmos.Clients.InvocationsCancelResponse;
-using InvocationsWatchRequest = global::Harmos.Clients.InvocationsWatchRequest;
-using InvocationsWatchResponse = global::Harmos.Clients.InvocationsWatchResponse;
-using OperationsListRequest = global::Harmos.Clients.OperationsListRequest;
-using OperationsListResponse = global::Harmos.Clients.OperationsListResponse;
-using OperationsGetRequest = global::Harmos.Clients.OperationsGetRequest;
-using OperationsGetResponse = global::Harmos.Clients.OperationsGetResponse;
-using SettingsListRequest = global::Harmos.Clients.SettingsListRequest;
-using SettingsListResponse = global::Harmos.Clients.SettingsListResponse;
-using TimeGetRequest = global::Harmos.Clients.TimeGetRequest;
-using TimeGetResponse = global::Harmos.Clients.TimeGetResponse;
-using TimeSleepRequest = global::Harmos.Clients.TimeSleepRequest;
-using TimeSleepResponse = global::Harmos.Clients.TimeSleepResponse;
+using Harmos;
+using Harmos.Clients;
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 namespace Harmos.Plugins;
 public enum HostOperation
 {
@@ -132,8 +118,14 @@ public sealed class HostPluginsSettingsResource(Context context)
     var request = new SettingsListRequest
     {
     };
-    if (name is not null) request.Name = name;
-    if (at is not null) request.At = at;
+    if (name is not null)
+    {
+      request.Name = name;
+    }
+    if (at is not null)
+    {
+      request.At = at;
+    }
     var response = await context.CallAsync(HostContracts.PluginsSettingsList, request, policy, cancellationToken);
     return response;
   }

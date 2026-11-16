@@ -13,9 +13,7 @@
 # Standard Library Imports
 import json
 import os
-import sys
-from collections.abc import Generator, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree
@@ -34,7 +32,6 @@ from . import policy
 TESTS = Path("target/tests")
 BENCHMARKS = Path("target/benchmarks")
 TRACES = Path("target/traces")
-LOCK = TESTS / ".lock"
 
 # === Types === #
 
@@ -60,9 +57,13 @@ class Case:
 def native_directory(root: Path, relative: Path) -> Path:
     path = root / relative
     if not path.resolve().is_relative_to(root.resolve()):
-        raise policy.TestError("native report directory escapes the repository")
+        raise policy.TestError(
+            "native report directory escapes the repository; Select a supported language and layer with a regular native report directory"
+        )
     if any(item.is_symlink() or item.is_junction() for item in (path, *path.parents) if item.is_relative_to(root)):
-        raise policy.TestError("native report directory must not contain links")
+        raise policy.TestError(
+            "native report directory must not contain links; Select a supported language and layer with a regular native report directory"
+        )
     path.mkdir(parents=True, exist_ok=True)
     return path.resolve()
 
@@ -70,13 +71,13 @@ def native_directory(root: Path, relative: Path) -> Path:
 def location(directory: Path, profile: str, key: str) -> Path:
     parts = key.split("-")
     if parts[-1] not in policy.LANGUAGES:
-        raise policy.TestError("unknown report language")
+        raise policy.TestError("unknown report language; Select a supported language and layer with a regular native report directory")
     if parts[0] == "coverage" and len(parts) in (2, 3):
         if len(parts) == 3 and parts[1] not in policy.CATEGORIES:
-            raise policy.TestError("unknown coverage layer")
+            raise policy.TestError("unknown coverage layer; Select a supported language and layer with a regular native report directory")
         return paths.output(directory, "tests", profile).joinpath("coverage", parts[-1], *parts[1:-1])
     if len(parts) != 2 or parts[0] not in policy.CATEGORIES:
-        raise policy.TestError("unknown report layer")
+        raise policy.TestError("unknown report layer; Select a supported language and layer with a regular native report directory")
     return paths.output(directory, "tests", profile) / key
 
 
@@ -116,7 +117,9 @@ def merge(texts: Sequence[str]) -> str:
 def load(path: Path) -> dict:
     if not path.is_file():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    return json.loads(text)
 
 
 def write(path: Path, text: str) -> None:
@@ -131,31 +134,6 @@ def dump(path: Path, value: object) -> None:
     write(path, json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-@contextmanager
-def locked(directory: Path) -> Generator[None]:
-    """Serialize read-modify-write of the shared evidence files across lanes."""
-    path = directory / LOCK
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as handle:
-        if sys.platform == "win32":
-            import msvcrt
-
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if sys.platform == "win32":
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
 # === Private Functions === #
 
 
@@ -163,7 +141,9 @@ def _parse(text: str) -> ElementTree.Element:
     try:
         return ElementTree.fromstring(text)
     except ElementTree.ParseError as error:
-        raise policy.TestError(f"invalid JUnit report: {error}") from error
+        raise policy.TestError(
+            f"invalid JUnit report: {error}; Select a supported language and layer with a regular native report directory"
+        ) from error
 
 
 def _testcases(root: ElementTree.Element) -> Iterator[tuple[str, ElementTree.Element]]:

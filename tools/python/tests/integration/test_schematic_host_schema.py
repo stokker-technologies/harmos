@@ -101,7 +101,9 @@ class SchematicHostSchemaTests(unittest.TestCase):
 
     def test_collects_host_schema_and_refuses_changed_capture(self) -> None:
         # Capture a Host Schema Beside a Native Plugin Without Generated Schemas
-        with tempfile.TemporaryDirectory() as directory:
+        directory_directory = tempfile.TemporaryDirectory()
+        directory = directory_directory.name
+        try:
             root = Path(directory)
             schema = root / "host-out/grpc/operations"
             schema.mkdir(parents=True)
@@ -137,6 +139,8 @@ class SchematicHostSchemaTests(unittest.TestCase):
             with patch.object(fixtures.subprocess, "check_output", return_value='{"artifacts": [], "schemas": []}'):
                 with self.assertRaises(RuntimeError):
                     fixtures.collect(Path("driver"), Path("Cargo.toml"), "schematic-sidecar", "sidecar", "dev", capture, root)
+        finally:
+            directory_directory.cleanup()
 
 
 # === Public Functions === #

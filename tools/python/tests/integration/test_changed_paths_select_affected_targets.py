@@ -32,7 +32,9 @@ from harmos_tools.test import focused, policy
 
 class TestSelection(unittest.TestCase):
     def test_changed_story_support_and_product_select_their_consumers(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary).resolve()
             packages: list[focused.Package] = []
             for name, dependencies in (("model", []), ("host", ["model"]), ("other", [])):
@@ -111,6 +113,8 @@ class TestSelection(unittest.TestCase):
             for path in (Path("README.md"), directory.parent / "outside.rs"):
                 with self.assertRaises(policy.TestError):
                     focused.select(directory, metadata, [path])
+        finally:
+            temporary_directory.cleanup()
 
 
 # === Public Functions === #

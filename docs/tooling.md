@@ -6,6 +6,18 @@ Rust executable conformance lives in `tools/conformance`; reusable build, watch,
 componentization, inspection, bundle construction and generators live in `tools/packaging`.
 Runtime owns verified bundle reading at `harmos_runtime::bundle` and the descriptor
 projection required by its transport; its normal dependencies contain no packaging tools.
+
+Within `harmos_tools`, `task/` parses selections and gives each public operation its
+own module. `ci/` owns bootstrap, compiler-cache execution, artifact transport and
+individual workflow operations. `build/resources/` separates descriptor analysis
+from Python, Rust, C# and C++ generation. Release preparation, review creation,
+rehearsal, tagging, publication and verification have separate modules under
+`release/`; registry publication is separate from provider transport. The test
+runner separates lane execution, coverage, benchmarks and native evidence handling.
+Resource owners expose explicit `close()` operations, paired with `try`/`finally`.
+Bootstrap loads the shared console policy by file before the tooling package is
+installed; ordinary task children run installed modules in their own interpreter.
+
 The root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 `sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
 Run `mise run prepare` once after checkout or dependency changes to synchronize
@@ -44,6 +56,39 @@ running its stories and passes the selected profile to package consumers.
 Python wheel and reference-host stories consume exports from that same profile.
 Generated-Python-only checks need Python and uv.
 
+## CI Impact Planning
+
+The hidden `ci:impact` task owns pure `classify(paths)` and `plan(classes, event)`
+functions in `ci/impact.py`. The CI workflow routes jobs from its boolean outputs
+and carries the complete `selected` and `skipped` JSON lists to Required.
+Required accepts success or a skip explicitly planned by a successful impact job;
+missing, failed, cancelled and unexpectedly skipped jobs fail aggregation.
+
+Documentation paths (`docs/**`, Markdown anywhere and `openspec/**`) select only
+`ci:docs`: public guide checks and deterministic local Markdown link checks.
+There is no documentation site build. Mixed changes union their selections.
+Rust, protocol and SDK changes select their checks and downstream consumers, then
+add required artifact producers. Shared tooling, configuration, workflows and
+unknown paths conservatively select every event-eligible job. Linux and Windows
+legs remain paired wherever the selected job has both platforms.
+
+PR diffs compare merge-base to head; push diffs compare before to after. Git's
+NUL-delimited name-status output includes deletions and both sides of renames.
+Missing commits, malformed or unavailable diffs and empty comparisons select all
+eligible jobs. Draft and closed reviews plan explicit skips. Release reviews and
+manual full validation select everything in the release profile. Dev pushes retain
+quick checks,
+documentation checks and Product builds, excluding Tests, fixtures, SDK tests and
+packaging. Nightly runs everything after its freshness gate; publication depends
+only on packaging, while suite verdicts are appended by the final report.
+
+SDK operation leaves (`consumer`, `test:unit`, `test:tooling`, `test:examples`) are
+hidden implementation tasks. `mise tasks` exposes conventional entry points.
+Native dependency setup, restored C# executable permissions and SDK activation
+run through hidden `ci:*` tasks. Only the pre-install bootstrap loads a Python
+file directly, because the tooling package and mise are not yet available.
+`tools/python/editables.txt` remains an input to offline fixtures.
+
 ## Workstation Builds
 
 The workstation owns the compiler cache: `RUSTC_WRAPPER`, `SCCACHE_DIR`,
@@ -72,6 +117,7 @@ Keep it enabled for edited workspace crates. Sccache reuses matching cacheable
 dependencies; it does not cache incremental crates, linked executables or procedural
 macro libraries. See [sccache's Rust limits](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
 Each worktree keeps its own `target/`; Cargo owns its normal compilation lock.
+Clippy uses that same target directory for nested workspace manifests.
 Retain that directory across edits and source revisions. Project tooling never
 scans or reclaims compiler output before compilation.
 
@@ -167,20 +213,30 @@ Windows measurements and remaining unmeasured cases are recorded in
 
 ## Protocol Generation
 
-The checked-in Rust messages and descriptor set come from the client, context and
-instance service files under `proto/harmos/`:
+The checked-in Rust messages and descriptor set come from the model, host and
+plugin contract files under `proto/harmos/`:
 
 ```sh
 mise run build -- --package harmos-protocol --example generate
 mise run generate -- --sdk rust
-mise run test -- --package harmos-protocol --target integration --exact generated_code_matches_proto::generated_code_matches_proto
+mise run test -- --package harmos-protocol --target integration --exact tests::generated_code_matches_proto
 mise run generate -- --sdk python
 mise run generate -- --sdk csharp
 mise run generate -- --sdk cpp
 ```
 
+The native generator is an ordinary module tree in
+`crates/harmos-protocol/codegen/`, shared by the generation example and integration
+target. SDK descriptor composition remains in
+`tools/python/src/harmos_tools/build/resource_roots.py`; its `build/resources/`
+modules own the descriptor inventory and each language's renderer. Composition
+entry points and arguments stay stable. Regenerate tracked output through the
+tasks above; edit its owning generator rather than the output.
+
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
+C# generation reads its compiler version from `sdk/csharp/Directory.Packages.props`.
+The Rust generator builds and runs the executable for the selected `--profile`.
 
 Client roots follow package parents, service names and method names mechanically:
 `client.plugins.settings.list(name)`, `client.jobs.progress.watch(value)` and
@@ -341,6 +397,8 @@ mise run test -- --language python --package harmos-sdk --target integration --e
 The wheel is written to `target/build/<profile>/any/python/`.
 The packaged conformance story installs it into a fresh environment with normal
 dependency resolution; it does not require a prepopulated package cache.
+The story closes the plugin's input pipe and drains its output before deleting
+the environment, so native extensions are unloaded on Windows.
 CI builds it once with Linux Product and supplies its artifact to the Python
 check. The Tests producer's example stories use their own stamped host fixtures.
 Checked-in private wire message, type-stub and service modules are generated by the pinned
@@ -590,7 +648,7 @@ notes should reflect the shared contracts above.
 
 ### Release Reviews
 
-`ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
+Release preparation invokes the runner allowlist check directly. `ci:release-mode` emits `mode`
 and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its
 merged, untagged release squash for tagging; unrelated completions skip. A dispatch
 on dev retries that squash, including after later dev merges, or prepares the next
@@ -599,25 +657,26 @@ green review and package evidence, then `release:tag` checks exact-commit requir
 CI and the release rehearsal before tagging and fast-forwarding main. CI closure cancellation excludes
 merged release reviews so their validation can finish. Release evidence lookup uses
 `ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
-`REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. `ci:release-checks` checks the exact
-`RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
-cancellations and unexpected skips; the release-review rehearsal may skip
-outside a release review (`RELEASE_REVIEW=false`). `OPTIONAL_JOBS` explicitly allows
-skipped suites, fixture preparation, packaging and dry publication on dev pushes.
-Dev pushes run only checks and Product/Tests builds; they never run those consumers.
-The dev Python job selects the existing format/lint tasks because the complete
-Python check also runs SDK and tooling tests. Generated-client checks consume
+`REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. Tagging and publication invoke
+release checks directly for the exact `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
+cancellations, missing jobs and skips absent from the successful impact plan.
+The successful planner must name every selected job and deliberate skip.
+Dev pushes run quick checks, docs checks and Product builds. Their quick check
+uses format/lint and repository tasks because the complete Python check also runs
+SDK and tooling tests. Generated-client checks consume
 Product outputs, including `target/generated/python/src`; they do not build or
 invent missing clients. Local complete Python checks require the reference host
 (`mise run build -- --package harmos-conformance`) and matching Product outputs
 (`mise run build`). The complete Python check reports this prerequisite before checking
 clients when `target/generated/python/src` is absent.
 
-Every pull request runs the full verification graph. Packaging consumes Product
+Ready pull requests run the impact-selected verification graph; release reviews
+run the complete graph. Packaging consumes Product
 without waiting for checks. Unit tests download only Tests and wait only for its build.
 Integration, acceptance and system tests download the joined fixture bundle, which
 contains their test archive, and wait only for its producer. Coverage tests also consume that bundle. Benchmarks consume only Bench. The required CI gate
-collects all verification results; release rehearsal runs only on release reviews.
+collects every planned result and rejects unexpected skips; release rehearsal runs
+on release reviews and manual full validation.
 Nightly freshness and release evidence are decision inputs; Nightly's final
 report consumes suite statuses as well as the publication result.
 

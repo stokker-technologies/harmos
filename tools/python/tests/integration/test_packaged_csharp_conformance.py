@@ -18,12 +18,12 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree
 import zipfile
 from pathlib import Path
 
+import harmos_tools.csharp
 from harmos_tools.build.paths import output
-from harmos_tools.csharp import run as csharp
 from harmos_tools.process import spawn_flags
 
 # Third Party Imports
@@ -55,22 +55,27 @@ class PackagedCSharpConformance(unittest.TestCase):
         dotnet = str(Path(dotnet_root) / ("dotnet.exe" if os.name == "nt" else "dotnet")) if dotnet_root else "dotnet"
         environment = dict(os.environ, DOTNET_NOLOGO="1", DOTNET_CLI_TELEMETRY_OPTOUT="1")
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
-        with tempfile.TemporaryDirectory() as name:
+        name_directory = tempfile.TemporaryDirectory()
+        name = name_directory.name
+        try:
             scratch = Path(name)
             feed = scratch / "feed"
             # Pack Only the SDK Assembly and Product Messages.
-            self.assertEqual(csharp(root, "build"), 0)
-            self.assertEqual(csharp(root, "package"), 0)
+            self.assertEqual(harmos_tools.csharp.run(root, "build"), 0)
+            self.assertEqual(harmos_tools.csharp.run(root, "package"), 0)
             feed.mkdir()
             for package in (root / "sdk/csharp/artifacts/packages").glob("*.nupkg"):
                 shutil.copyfile(package, feed / package.name)
             package = next(feed.glob("Harmos.*.nupkg"))
-            with zipfile.ZipFile(package) as archive:
-                manifest = ET.fromstring(archive.read("Harmos.nuspec"))
+            archive = zipfile.ZipFile(package)
+            try:
+                manifest = xml.etree.ElementTree.fromstring(archive.read("Harmos.nuspec"))
                 metadata = manifest.find("{*}metadata")
                 assert metadata is not None
                 version = metadata.findtext("{*}version")
-            dependencies = ET.parse(root / "sdk/csharp/Directory.Packages.props")
+            finally:
+                archive.close()
+            dependencies = xml.etree.ElementTree.parse(root / "sdk/csharp/Directory.Packages.props")
             grpc_tools = next(
                 item.attrib["Version"] for item in dependencies.iter("PackageVersion") if item.attrib["Include"] == "Grpc.Tools"
             )
@@ -141,6 +146,8 @@ class PackagedCSharpConformance(unittest.TestCase):
             self.assertEqual(int(summary[1]), int(summary[2]), result.stdout)
             rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
             self.assertEqual(len(rows), int(summary[2]), result.stdout)
+        finally:
+            name_directory.cleanup()
 
 
 # === Public Functions === #

@@ -183,11 +183,7 @@ runs:
     shell: bash
     env:
       SDK_TOOLS: ${{ inputs.sdk-tools }}
-    run: |
-      for sdk in $SDK_TOOLS; do
-        mise trust "sdk/$sdk/mise.toml"
-        mise -C "sdk/$sdk" install --locked
-      done
+    run: mise run ci:sdk-tools --
   - name: Prepare Python SDK Environment
     if: contains(inputs.sdk-tools, 'python')
     shell: bash
@@ -195,11 +191,11 @@ runs:
   - name: Activate the C# Runtime for Fixture Consumers
     if: contains(inputs.sdk-tools, 'csharp')
     shell: bash
-    run: echo "DOTNET_ROOT=$(mise -C sdk/csharp where dotnet)" >> "$GITHUB_ENV"
+    run: mise run ci:csharp-runtime --
   - name: Prepare C++ Binary Cache
     if: contains(inputs.sdk-tools, 'cpp')
     shell: bash
-    run: mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+    run: mise run ci:cpp-cache --
     env:
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.cache/vcpkg/archives
   - name: Cache / C++ Dependencies

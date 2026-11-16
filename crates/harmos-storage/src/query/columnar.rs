@@ -1,7 +1,39 @@
+/* ***
+ *
+ * Harmos
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * ***
+ */
+
+// Storage Columnar Capabilities and Bounded Fallback Scans
+
+/* === Modules === */
+
+/* === Re-Exports === */
+
+/* === Imports === */
+
+// Standard Library Imports
+use std::num::NonZeroUsize;
+
+// Third Party Imports
+
+// Local Imports
 use crate::{BackendSnapshot, Error, MemorySize, Result, ScanPage, StorageBackend};
 use harmos_domain::model::storage::{ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use harmos_query::columnar::{ArrowPage, ArrowScan, Cancellation, ColumnKind, ScanEvidence, finish_page, flatten};
-use std::num::NonZeroUsize;
+use harmos_query::source;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StorageCapabilities {
     pub file_sessions: bool,
@@ -11,14 +43,23 @@ pub struct StorageCapabilities {
     pub native_index: bool,
     pub durable_projections: bool,
     pub conditional_objects: bool,
+    pub compound_mutations: bool,
 }
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
 impl MemorySize for StorageCapabilities {
     fn memory_size(&self) -> usize {
         std::mem::size_of::<Self>()
     }
 }
 
-use harmos_query::source;
+/* === Public Functions === */
+
 pub async fn list_column_rows(
     backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation,
 ) -> Result<ArrowPage> {
@@ -29,6 +70,15 @@ pub async fn list_column_rows(
     }
     fallback(backend, snapshot, read, cancel).await
 }
+
+pub(crate) fn invalid(reason: &'static str) -> Error {
+    Error::InvalidInput { field: "storage columns", reason }
+}
+pub(crate) fn exhausted() -> Error {
+    Error::ResourceExhausted { resource: "columnar query work" }
+}
+
+/* === Private Functions === */
 
 async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation) -> Result<ArrowPage> {
     let after = read.position(snapshot)?;
@@ -107,9 +157,4 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
     )?)
 }
 
-pub(crate) fn invalid(reason: &'static str) -> Error {
-    Error::InvalidInput { field: "storage columns", reason }
-}
-pub(crate) fn exhausted() -> Error {
-    Error::ResourceExhausted { resource: "columnar query work" }
-}
+/* === Tests === */

@@ -178,7 +178,7 @@ this conversion does not change the protobuf-only transport contract.
 
 The following general rule preserves the original minimal Value fixture hashes.
 File options do not participate, including in imported well-known types. All
-operations, including host operations and required operations, MUST use it. `crates/harmos-protocol/src/schema.rs` is the shared Rust
+operations, including host operations and required operations, MUST use it. `crates/harmos-protocol/src/schema/mod.rs` is the shared Rust
 implementation; other language implementations MUST produce the same bytes.
 
 For each request and response message, independently, project `Declarations.types`

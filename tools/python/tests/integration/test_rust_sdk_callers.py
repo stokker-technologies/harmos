@@ -20,7 +20,8 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
-from harmos_tools.build.resource_roots import rust, rust_host, table
+import harmos_tools.build.resources.descriptor
+import harmos_tools.build.resources.rust
 from harmos_tools.source.protocol import narrow_callers
 
 # Type Checking Imports
@@ -47,9 +48,9 @@ class RustSdkCallers(unittest.TestCase):
         (self.output / "sdk/rust/src/plugin").mkdir()
 
     def test_client_and_context_share_settings_with_caller_specific_selectors(self) -> None:
-        methods = table(self.descriptors)
-        rust(self.output, [method for method in methods if method["face"] == "client"])
-        rust_host(self.output, [method for method in methods if method["face"] == "context"])
+        methods = harmos_tools.build.resources.descriptor.table(self.descriptors)
+        harmos_tools.build.resources.rust.client(self.output, [method for method in methods if method["face"] == "client"])
+        harmos_tools.build.resources.rust.host(self.output, [method for method in methods if method["face"] == "context"])
         client = (self.output / "sdk/rust/src/connection/resources.rs").read_text()
         context = (self.output / "sdk/rust/src/plugin/host.rs").read_text()
         self.assertIn("pub async fn list(&self, name: impl Into<String>)", client)
@@ -67,12 +68,12 @@ class RustSdkCallers(unittest.TestCase):
         for callers, absent, present in [("PLUGINS", "client", "context"), ("CLIENTS", "context", "client")]:
             descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
             narrow_callers(descriptors, {"harmos.host.v1.Time/Get": callers})
-            methods = table(descriptors)
+            methods = harmos_tools.build.resources.descriptor.table(descriptors)
             matching = [method["face"] for method in methods if method["request"] == "harmos.host.v1.TimeGetRequest"]
             self.assertNotIn(absent, matching)
             self.assertIn(present, matching)
-            rust(self.output, [method for method in methods if method["face"] == "client"])
-            rust_host(self.output, [method for method in methods if method["face"] == "context"])
+            harmos_tools.build.resources.rust.client(self.output, [method for method in methods if method["face"] == "client"])
+            harmos_tools.build.resources.rust.host(self.output, [method for method in methods if method["face"] == "context"])
             client = (self.output / "sdk/rust/src/connection/resources.rs").read_text()
             context = (self.output / "sdk/rust/src/plugin/host.rs").read_text()
             self.assertEqual("use harmos_protocol::host::TimeGetRequest;" in client, callers == "CLIENTS")

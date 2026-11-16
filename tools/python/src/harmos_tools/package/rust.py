@@ -24,16 +24,15 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TypedDict, cast
 
-from .. import temporary
-from ..build import paths
-
 # Third Party Imports
 # Local Imports
+from .. import temporary
+from ..build import paths
 from ..build.fixtures import ROOT
+from ..process import spawn_flags
 from . import conformance, run
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -67,7 +66,9 @@ def main() -> None:
     export = paths.output(ROOT, "build", profile)
     examples = export / "product/examples"
     catalog_path = examples / "catalog.json"
-    selectors = json.loads(catalog_path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = catalog_path.read_text(encoding="utf-8")
+    selectors = json.loads(text)
     for relative, expected in selectors["files"].items():
         _asset(ROOT / relative, expected)
     destination = paths.output(ROOT, "package", profile)
@@ -75,11 +76,13 @@ def main() -> None:
     destination.mkdir(parents=True)
 
     # Assemble Declared Products From The Matching Build.
+    # Run the Native Command
+    command = [sys.executable, "-m", run.__name__, "rust", "--profile", profile]
     subprocess.run(
-        [sys.executable, "-m", run.__name__, "rust", "--profile", profile],
+        command,
         cwd=ROOT,
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
@@ -104,16 +107,20 @@ def main() -> None:
             "to": str(examples / "builds" / name),
             "output": str(destination),
         }
+        # Run the Native Command
+        command = [str(tool)]
         output = subprocess.check_output(
-            [str(tool)],
+            command,
             input=json.dumps(request),
             text=True,
             cwd=ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             stderr=sys.stderr,
         )
         result.write_text(output, encoding="utf-8")
-        build = json.loads(receipt.read_text(encoding="utf-8"))
+        # Read Structured Input
+        text = receipt.read_text(encoding="utf-8")
+        build = json.loads(text)
         produced = [destination / artifact["producer"] / f"{artifact['name']}.harmos" for artifact in build["artifacts"]]
         records = _records(produced, destination)
         assets.update(records)
@@ -131,17 +138,24 @@ def _verify_schematic(bundle: Path, export: Path, selectors: dict) -> None:
         relative = source.relative_to(export / "bin").as_posix()
         expected[relative] = selectors["files"][source.relative_to(ROOT).as_posix()]
 
-    with temporary.directory() as install:
+    install_directory = temporary.Directory()
+    install = install_directory.path
+    try:
         _unpack_schematic(bundle, install, expected)
         executable = install / ("schematic-cli.exe" if sys.platform == "win32" else "schematic-cli")
         _walkthrough(executable, install / "sidecar", [])
         _walkthrough(executable, install / "guest", ["--guest"])
+    finally:
+        install_directory.close()
 
 
 def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> None:
-    with zipfile.ZipFile(bundle) as archive:
+    archive = zipfile.ZipFile(bundle)
+    try:
         names = archive.namelist()
         contents = {name: archive.read(name) for name in expected}
+    finally:
+        archive.close()
     if sorted(names) != sorted(expected):
         raise RuntimeError("Schematic bundle differs from its declared runtime layout")
 
@@ -157,14 +171,16 @@ def _unpack_schematic(bundle: Path, install: Path, expected: dict[str, str]) -> 
 def _walkthrough(executable: Path, directory: Path, arguments: list[str]) -> None:
     directory.mkdir()
     reports = directory.parent / f"{directory.name}-reports"
+    # Run the Native Command
+    command = [str(executable), *arguments]
     result = subprocess.run(
-        [str(executable), *arguments],
+        command,
         env=dict(os.environ, STKR_TEST_REPORT_DIR=str(reports)),
         cwd=directory,
         capture_output=True,
         text=True,
         check=False,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
     )
     if result.returncode:
@@ -184,8 +200,11 @@ def _records(sources: Iterable[Path], destination: Path) -> dict:
 
 
 def _digest(path: Path) -> str:
-    with path.open("rb") as stream:
+    stream = path.open("rb")
+    try:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+    finally:
+        stream.close()
 
 
 def _asset(path: Path, expected: str) -> dict:

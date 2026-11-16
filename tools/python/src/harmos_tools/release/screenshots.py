@@ -19,7 +19,6 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-# isort: split
 from ..test import archive
 from . import policy
 
@@ -41,7 +40,9 @@ MAX_BYTES = 4 * 1024 * 1024
 
 def dimensions(data: bytes) -> tuple[int, int]:
     if len(data) < 33 or data[:8] != PNG or data[12:16] != b"IHDR":
-        raise policy.ToolError("screenshot must contain a PNG IHDR")
+        raise policy.ToolError(
+            "screenshot must contain a PNG IHDR; Provide the declared regular screenshot files in the configured source directory"
+        )
     return struct.unpack(">II", data[16:24])
 
 
@@ -49,11 +50,15 @@ def check(directory: Path, _: str = "check") -> None:
     settings = policy.policy(directory, "screenshots")
     folder = policy.inside(directory, "screenshots")
     if not folder.is_dir():
-        raise policy.ToolError("screenshots/ is missing")
+        raise policy.ToolError("screenshots/ is missing; Provide the declared regular screenshot files in the configured source directory")
     readme = (folder / "README.md").read_text(encoding="utf-8")
-    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (folder / "manifest.json").read_text(encoding="utf-8")
+    manifest = json.loads(text)
     if not isinstance(manifest, list):
-        raise policy.ToolError("screenshot manifest must be an array")
+        raise policy.ToolError(
+            "screenshot manifest must be an array; Provide the declared regular screenshot files in the configured source directory"
+        )
     entries = {}
     for entry in manifest:
         if not isinstance(entry, dict) or not all(
@@ -67,37 +72,62 @@ def check(directory: Path, _: str = "check") -> None:
                 "captured_at",
             ]
         ):
-            raise policy.ToolError("screenshot manifest entry is incomplete")
+            raise policy.ToolError(
+                "screenshot manifest entry is incomplete; Provide the declared regular screenshot files in the configured source directory"
+            )
         image = entry["image"]
         if image in entries or image != f"{entry['surface']}-{entry['state']}.png":
-            raise policy.ToolError(f"duplicate or inconsistent screenshot: {image}")
+            raise policy.ToolError(
+                f"duplicate or inconsistent screenshot: {image}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
         if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+\.png", image):
-            raise policy.ToolError(f"invalid screenshot name: {image}")
+            raise policy.ToolError(
+                f"invalid screenshot name: {image}; Provide the declared regular screenshot files in the configured source directory"
+            )
         entries[image] = entry
     images = set()
     for path in folder.iterdir():
         if path.is_symlink() or not path.is_file():
-            raise policy.ToolError(f"screenshots must be flat regular files: {path.name}")
+            raise policy.ToolError(
+                f"screenshots must be flat regular files: {path.name}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
         if path.name in ["README.md", "manifest.json"]:
             continue
         if path.suffix != ".png" or path.stat().st_size > MAX_BYTES:
-            raise policy.ToolError(f"screenshot must be PNG at most 4 MiB: {path.name}")
+            raise policy.ToolError(
+                f"screenshot must be PNG at most 4 MiB: {path.name}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
         images.add(path.name)
         if path.name not in entries or not re.search(r"\]\((?:\./)?" + re.escape(path.name) + r"\)", readme):
-            raise policy.ToolError(f"screenshot missing manifest or README reference: {path.name}")
+            raise policy.ToolError(
+                f"screenshot missing manifest or README reference: {path.name}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
         entry = entries[path.name]
         width, height = dimensions(path.read_bytes())
         if entry["viewport"] != {"width": width, "height": height}:
-            raise policy.ToolError(f"screenshot viewport mismatch: {path.name}")
+            raise policy.ToolError(
+                f"screenshot viewport mismatch: {path.name}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
         timestamp = datetime.fromisoformat(entry["captured_at"])
         if timestamp.tzinfo is None:
-            raise policy.ToolError("captured_at requires a timezone")
+            raise policy.ToolError(
+                "captured_at requires a timezone; Provide the declared regular screenshot files in the configured source directory"
+            )
         revision = entry["revision"]
         if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40,64}", revision):
-            raise policy.ToolError("revision requires a full commit hash")
+            raise policy.ToolError(
+                "revision requires a full commit hash; Provide the declared regular screenshot files in the configured source directory"
+            )
         branch = settings.get("integration_branch", "main")
         if not isinstance(branch, str) or re.fullmatch(r"[A-Za-z0-9/._-]+", branch) is None:
-            raise policy.ToolError("invalid integration branch name")
+            raise policy.ToolError(
+                "invalid integration branch name; Provide the declared regular screenshot files in the configured source directory"
+            )
         policy.execute(
             directory,
             ["git", "merge-base", "--is-ancestor", revision, branch],
@@ -112,27 +142,39 @@ def check(directory: Path, _: str = "check") -> None:
         )
         limit = settings.get("max_commits_behind", 0)
         if not isinstance(limit, int) or limit < 0 or behind > limit:
-            raise policy.ToolError(f"screenshot revision is {behind} commits behind {branch}: {path.name}")
+            raise policy.ToolError(
+                f"screenshot revision is {behind} commits behind {branch}: {path.name}; "
+                "Provide the declared regular screenshot files in the configured source directory"
+            )
     if images != set(entries):
-        raise policy.ToolError("screenshot manifest contains missing images")
+        raise policy.ToolError(
+            "screenshot manifest contains missing images; Provide the declared regular screenshot files in the configured source directory"
+        )
 
 
 def capture(directory: Path, _: str = "capture") -> None:
     settings = policy.policy(directory, "screenshots")
     scenes = settings.get("scenes", [])
     if not isinstance(scenes, list) or not scenes:
-        raise policy.ToolError("screenshots.scenes must declare capture commands")
+        raise policy.ToolError(
+            "screenshots.scenes must declare capture commands; "
+            "Provide the declared regular screenshot files in the configured source directory"
+        )
     folder = policy.inside(directory, "screenshots")
     folder.mkdir(exist_ok=True)
     revision = archive.revision(directory)
     if revision is None:
-        raise policy.ToolError("cannot determine screenshot revision")
+        raise policy.ToolError(
+            "cannot determine screenshot revision; Provide the declared regular screenshot files in the configured source directory"
+        )
     entries = []
     for scene in scenes:
         surface, state = scene["surface"], scene["state"]
         image = f"{surface}-{state}.png"
         if not re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+\.png", image):
-            raise policy.ToolError(f"invalid scene name: {image}")
+            raise policy.ToolError(
+                f"invalid scene name: {image}; Provide the declared regular screenshot files in the configured source directory"
+            )
         target = policy.inside(folder, image)
         target.unlink(missing_ok=True)
         arguments = policy.command(scene.get("command"), "screenshots.scenes.command")

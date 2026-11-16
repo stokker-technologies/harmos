@@ -393,6 +393,7 @@ async fn receipt_frontier_preserves() {
         label: "replayed".into(),
     };
     let object = harmos_storage::ObjectValue {
+        scope: None,
         schema: harmos_domain::model::storage::catalog::object_schema::<Experiment>().unwrap(),
         item: harmos_storage::ObjectKey::new("once", NonZeroUsize::new(128).unwrap()).unwrap(),
         payload: harmos_storage::Message::encode(&value),

@@ -71,6 +71,10 @@ pub trait StoredObject: Identified + schema::Described + crate::Message + Memory
 
     fn key(&self) -> &Self::Key;
 
+    fn scope(&self) -> Option<&Identifier> {
+        None
+    }
+
     fn validate(&self) -> Result<()> {
         Ok(())
     }
@@ -206,7 +210,12 @@ impl<T: StoredObject> ObjectHandle<T> {
         if payload.len() != length {
             return Err(invalid("object codec reported an inconsistent length"));
         }
-        Ok(ObjectValue { schema, item, payload })
+        Ok(ObjectValue {
+            schema,
+            item,
+            payload,
+            scope: value.scope().cloned(),
+        })
     }
 
     pub fn decode(&self, value: &ObjectValue, max_payload_bytes: NonZeroUsize) -> Result<T> {

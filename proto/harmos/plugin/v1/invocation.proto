@@ -21,14 +21,6 @@ import "harmos/model/v1/policy.proto";
 
 // === Resources === //
 
-// === Options === //
-
-// === Services === //
-
-// === Requests and Responses === //
-
-// === Resources === //
-
 // Opens exactly one plugin operation attempt; subsequent Request frames on that Invoke are invalid.
 message Request {
   // Complete admitted operation routing identity; no provider prefix or provider selection is added.

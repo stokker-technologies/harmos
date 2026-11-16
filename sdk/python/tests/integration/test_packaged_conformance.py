@@ -12,14 +12,13 @@
 # === Imports === #
 
 # Standard Library Imports
-import asyncio
+import asyncio.subprocess
 import os
 import shutil
-import subprocess
 import sys
-from asyncio.subprocess import PIPE as ASYNCIO_PIPE
+from asyncio import create_subprocess_exec, wait_for
 from pathlib import Path
-from subprocess import PIPE, STDOUT
+from subprocess import PIPE, STDOUT, run
 from tempfile import mkdtemp
 from unittest import IsolatedAsyncioTestCase
 
@@ -58,7 +57,7 @@ class PackagedConformance(IsolatedAsyncioTestCase):
         environment = dict(os.environ)
         for variable in ("VIRTUAL_ENV", "PYTHONPATH", "UV_PROJECT_ENVIRONMENT"):
             environment.pop(variable, None)
-        result = subprocess.run(
+        result = run(
             ["uv", "venv", "--python", sys.executable, str(scratch / "env")],
             env=environment,
             stdout=PIPE,
@@ -68,7 +67,7 @@ class PackagedConformance(IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout)
         python = scratch / "env" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-        result = subprocess.run(
+        result = run(
             ["uv", "pip", "install", "--no-cache", "--python", str(python), str(wheel)],
             env=environment,
             stdout=PIPE,
@@ -81,22 +80,42 @@ class PackagedConformance(IsolatedAsyncioTestCase):
         shutil.copytree(root / "sdk/python/tests/fixtures/conformance", scratch / "conformance")
         source = scratch / "plugin.py"
         source.write_text(
-            "import asyncio\nimport sys\nfrom pathlib import Path\nsys.path.insert(0, str(Path(__file__).parent))\nfrom conformance import plugin\nasync def main():\n    endpoint = await plugin().start('127.0.0.1:0')\n    print(endpoint.address, flush=True)\n    await endpoint.server.wait_for_termination()\nasyncio.run(main())\n",
+            "import asyncio\n"
+            "import sys\n"
+            "from conformance import plugin\n"
+            "async def main():\n"
+            "    endpoint = await plugin().start('127.0.0.1:0')\n"
+            "    print(endpoint.address, flush=True)\n"
+            "    try:\n"
+            "        await asyncio.to_thread(sys.stdin.read)\n"
+            "    finally:\n"
+            "        await endpoint.close()\n"
+            "asyncio.run(main())\n",
             encoding="utf-8",
         )
-        process = await asyncio.create_subprocess_exec(
-            str(python), "-I", str(source), cwd=scratch, env=environment, stdout=ASYNCIO_PIPE, creationflags=spawn_flags()
+        # Own the Plugin Lifetime Through Its Input Pipe.
+        process = await create_subprocess_exec(
+            str(python),
+            "-E",
+            "-s",
+            str(source),
+            cwd=scratch,
+            env=environment,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=spawn_flags(),
         )
         try:
             assert process.stdout is not None
-            address = (await asyncio.wait_for(process.stdout.readline(), 30)).decode().strip()
+            address = (await wait_for(process.stdout.readline(), 30)).decode().strip()
             # Run Every Reference-Host Rule Against the Installed Package.
             status, stdout, stderr = await host.run(address)
             self.assertEqual(status, 0, stdout + stderr)
         finally:
-            if process.returncode is None:
-                process.kill()
-            await process.wait()
+            # Close Input and Drain Both Pipes Before Removing the Environment.
+            stdout, stderr = await process.communicate()
+        self.assertEqual(process.returncode, 0, stdout.decode() + stderr.decode())
 
 
 # === Public Functions === #
