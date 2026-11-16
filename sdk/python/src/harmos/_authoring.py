@@ -47,7 +47,7 @@ from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 from harmos._wire.plugin.v1.stream_pb2 import Window as WireWindow
 
-from ._columns import batches, extract, transpose
+from ._columns import append, batches, extract
 from ._contracts import Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
 
@@ -574,14 +574,13 @@ async def _produce(
         while True:
             window, execution = await windows.get()
             if definition.columns is None:
-                rows = []
+                columns = [[] for _ in definition.row.DESCRIPTOR.fields]
                 for index in range(window.count):
                     execution.sequence = window.sequence + index
                     row = await cast(Observer, handler)(execution)
                     if not isinstance(row, definition.row):
                         raise TypeError("Answer Samples Window: Observer Returned the Wrong Protobuf Type")
-                    rows.append(row)
-                columns = transpose(definition.row, rows)
+                    append(columns, row)
             else:
                 result = await cast(WindowObserver, handler)(execution, window)
                 if not isinstance(result, definition.columns):

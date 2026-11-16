@@ -77,10 +77,16 @@ def columns_type(row: type[Message], stream: str) -> type[Message]:
         return message_factory.GetMessageClass(pool.FindMessageTypeByName(name))
     except KeyError:
         pass
+    imports = {descriptor.file.name}
+    for field in descriptor.fields:
+        if field.message_type is not None:
+            imports.add(field.message_type.file.name)
+        elif field.enum_type is not None:
+            imports.add(field.enum_type.file.name)
     file = FileDescriptorProto(
         name=f"harmos/columns/{descriptor.full_name}.proto",
         package=name.removesuffix(".Columns"),
-        dependency=[descriptor.file.name],
+        dependency=sorted(imports),
         syntax="editions",
         edition=EDITION_2023,
     )
@@ -116,9 +122,15 @@ def check_columns(row: type[Message], columns: type[Message], stream: str) -> No
             )
 
 
-def transpose(row: type[Message], rows: Sequence[Message]) -> Columns:
-    """Turn One-Sample Rows Into One List per Row Field in Sample Order."""
-    return [[getattr(value, field.name) for value in rows] for field in cast(Descriptor, row.DESCRIPTOR).fields]
+def append(columns: Columns, row: Message) -> None:
+    """Add One Sample's Row to Its Columns, Copying Values So Later Row Changes Cannot Leak."""
+    for values, field in zip(columns, cast(Descriptor, row.DESCRIPTOR).fields, strict=True):
+        value = getattr(row, field.name)
+        if field.message_type is not None:
+            copy = type(value)()
+            copy.CopyFrom(value)
+            value = copy
+        values.append(value)
 
 
 def extract(row: type[Message], columns: Message, count: int) -> Columns:

@@ -15,7 +15,7 @@ from unittest import IsolatedAsyncioTestCase
 
 # Third Party Imports
 import grpc
-from google.protobuf import message_factory
+from google.protobuf import duration_pb2, message_factory, struct_pb2
 from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorProto
 from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.duration_pb2 import Duration
@@ -27,7 +27,7 @@ from grpc import StatusCode
 from grpc.aio import AioRpcError
 
 from harmos import MessageSettings
-from harmos._columns import batches, columns_type, transpose
+from harmos._columns import Columns, append, batches, columns_type
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest, InstanceSamplesResponse
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
@@ -54,16 +54,21 @@ START = Timestamp(seconds=100)
 class WindowBatches(IsolatedAsyncioTestCase):
     async def test_one_sample_observer_answers_a_window_with_exact_columns(self) -> None:
         # Call the Observer Once per Sample, in Order, With Each Sample's Sequence.
-        reading, inner = _reading()
+        reading, inner, span = _reading()
         sequences: list[int] = []
 
         class Reader:
+            def __init__(self) -> None:
+                self.row = reading()
+
             @observer("example.reading", row=reading, interval=SECOND, window_setting="window")
             async def read(self, context: Context) -> Message:
+                # One Reused Row Instance Still Yields Each Sample's Own Values.
                 sequences.append(context.sequence)
+                self.row.Clear()
                 if context.sequence == 7:
-                    return reading(gain=1.5, count=-1, label="a", inner=inner(x=1))
-                return reading()
+                    self.row.MergeFrom(reading(gain=1.5, count=-1, label="a", inner=inner(x=1), span=span(seconds=2)))
+                return self.row
 
         endpoint = await Plugin(Reader(), id="example", version="1.0.0").start("127.0.0.1:0")
         self.addAsyncCleanup(endpoint.close)
@@ -83,6 +88,8 @@ class WindowBatches(IsolatedAsyncioTestCase):
             "120b" + "ffffffffffffffffff01" + "00"  # count: packed int64
             "1a0161" + "1a00"  # label: one string per sample
             "22020801" + "2200"  # inner: one message per sample
+            "2a020802" + "2a00"  # span: an imported message type
+            "32020000"  # null: a packed imported enum
         )
         self.assertEqual((await stream.read()).batch, SampleBatch(count=2, columns=columns, last=True))
         self.assertEqual(sequences, [7, 8])
@@ -131,12 +138,14 @@ class WindowBatches(IsolatedAsyncioTestCase):
 
     def test_splitting_keeps_every_part_within_a_small_limit(self) -> None:
         # Mixed Rows With Wide Varints, Strings and Messages Split at Sample Boundaries.
-        reading, inner = _reading()
+        reading, inner, _ = _reading()
         rows = [
             reading(gain=index / 3, count=-index if index % 2 else index * 1_000_003, label="x" * (index % 7), inner=inner(x=index))
             for index in range(50)
         ]
-        columns = transpose(reading, rows)
+        columns: Columns = [[] for _ in reading.DESCRIPTOR.fields]
+        for row in rows:
+            append(columns, row)
         parts = batches(reading, columns, len(rows), 120)
         self.assertGreater(len(parts), 1)
         decoded = columns_type(reading, "example.reading")()
@@ -152,8 +161,9 @@ class WindowBatches(IsolatedAsyncioTestCase):
         self.assertEqual(decoded.SerializeToString(), batches(reading, columns, len(rows), 2**31 - 1)[0].columns)
 
         # A Single Sample Beyond the Limit Fails the Window.
-        wide = [reading(label="x" * 200)]
-        self.assertRaises(ValueError, batches, reading, transpose(reading, wide), 1, 120)
+        wide: Columns = [[] for _ in reading.DESCRIPTOR.fields]
+        append(wide, reading(label="x" * 200))
+        self.assertRaises(ValueError, batches, reading, wide, 1, 120)
 
     async def test_windows_refuse_invalid_frames(self) -> None:
         # Serve the Conformance Fixture for Every Invalid Window.
@@ -215,9 +225,13 @@ class WindowBatches(IsolatedAsyncioTestCase):
 # === Private Functions === #
 
 
-def _reading() -> tuple[type[Message], type[Message]]:
-    """A Row With Double, Int64, String and Message Fields, Built in a Private Pool."""
+def _reading() -> tuple[type[Message], type[Message], type[Message]]:
+    """A Row With Double, Int64, String, Message and Imported Fields, Built in a Private Pool."""
+    pool = DescriptorPool()
+    for imported in (duration_pb2, struct_pb2):
+        pool.AddSerializedFile(imported.DESCRIPTOR.serialized_pb)
     file = FileDescriptorProto(name="tests/window/reading.proto", package="tests.window", syntax="proto3")
+    file.dependency.extend([duration_pb2.DESCRIPTOR.name, struct_pb2.DESCRIPTOR.name])
     inner = file.message_type.add(name="Inner")
     inner.field.add(name="x", number=1, label=FieldDescriptorProto.LABEL_OPTIONAL, type=FieldDescriptorProto.TYPE_INT32)
     row = file.message_type.add(name="Reading")
@@ -234,11 +248,25 @@ def _reading() -> tuple[type[Message], type[Message]]:
         type=FieldDescriptorProto.TYPE_MESSAGE,
         type_name=".tests.window.Inner",
     )
-    pool = DescriptorPool()
+    row.field.add(
+        name="span",
+        number=5,
+        label=FieldDescriptorProto.LABEL_OPTIONAL,
+        type=FieldDescriptorProto.TYPE_MESSAGE,
+        type_name=".google.protobuf.Duration",
+    )
+    row.field.add(
+        name="null",
+        number=6,
+        label=FieldDescriptorProto.LABEL_OPTIONAL,
+        type=FieldDescriptorProto.TYPE_ENUM,
+        type_name=".google.protobuf.NullValue",
+    )
     pool.Add(file)
     return (
         message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.window.Reading")),
         message_factory.GetMessageClass(pool.FindMessageTypeByName("tests.window.Inner")),
+        message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.Duration")),
     )
 
 
