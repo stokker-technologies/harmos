@@ -55,7 +55,10 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
     settings = policy.policy(directory, "version")
     target = value or settings.get("value")
     if not isinstance(target, str) or re.fullmatch(VERSION, target) is None:
-        raise policy.ToolError("version.value must declare a semantic version")
+        raise policy.ToolError(
+            "version.value must declare a semantic version; "
+            "Synchronize the declared release version and dependency pins in the owning manifests"
+        )
     paths = settings.get("files", ["Cargo.toml"])
     pending = []
     for name in paths:
@@ -63,9 +66,14 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
         text = path.read_text(encoding="utf-8", newline="")
         current = versions(text, name)
         if not current:
-            raise policy.ToolError(f"no static version found: {name}")
+            raise policy.ToolError(
+                f"no static version found: {name}; Synchronize the declared release version and dependency pins in the owning manifests"
+            )
         if verb == "check" and any(value != target for value in current):
-            raise policy.ToolError(f"{name}: versions {current} differ from {target}")
+            raise policy.ToolError(
+                f"{name}: versions {current} differ from {target}; "
+                "Synchronize the declared release version and dependency pins in the owning manifests"
+            )
         if verb == "sync":
             if name.endswith(".json"):
                 newline = "\r\n" if "\r\n" in text else "\n"
@@ -94,7 +102,10 @@ def run(directory: Path, verb: str, *, value: str | None = None) -> None:
                     count=1,
                 )
             if versions(text, name) != [target] * len(current):
-                raise policy.ToolError(f"could not synchronize version: {name}")
+                raise policy.ToolError(
+                    f"could not synchronize version: {name}; "
+                    "Synchronize the declared release version and dependency pins in the owning manifests"
+                )
             pending.append((path, text))
     for path, text in pending:
         path.write_text(text, encoding="utf-8", newline="")
@@ -105,7 +116,9 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
     """Synchronize Exact Local Sibling Requirements, Including Renames And Target Tables."""
     if not (directory / "Cargo.toml").is_file():
         return
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1"], capture=True))
+    # Read Structured Input
+    text = policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1"], capture=True)
+    metadata = json.loads(text)
     members = set(metadata["workspace_members"])
     siblings = {item["name"]: Path(item["manifest_path"]).resolve() for item in metadata["packages"] if item["id"] in members}
     manifests = set(siblings.values())
@@ -113,7 +126,10 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
     pending = []
     for manifest in sorted(manifests):
         if not manifest.is_relative_to(directory.resolve()):
-            raise policy.ToolError("workspace manifest must stay inside the repository")
+            raise policy.ToolError(
+                "workspace manifest must stay inside the repository; "
+                "Synchronize the declared release version and dependency pins in the owning manifests"
+            )
         text = manifest.read_text(encoding="utf-8", newline="")
         document = tomllib.loads(text)
         sections = re.split(r"(?m)(^\[[^\r\n]+\][ \t]*(?:#[^\r\n]*)?\r?$)", text)
@@ -147,7 +163,10 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
                     continue
                 expected = ("=" if exact else "") + target
                 if verb == "check" and exact and pin != expected:
-                    raise policy.ToolError(f"{manifest.relative_to(directory)}: sibling {alias} pin {pin} differs from {expected}")
+                    raise policy.ToolError(
+                        f"{manifest.relative_to(directory)}: sibling {alias} pin {pin} differs from {expected}; "
+                        "Synchronize the declared release version and dependency pins in the owning manifests"
+                    )
                 if verb != "sync":
                     continue
                 body = sections[index + 1]
@@ -180,7 +199,10 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
                         body,
                     )
                 if count != 1:
-                    raise policy.ToolError(f"could not synchronize sibling pin {alias} in {manifest}")
+                    raise policy.ToolError(
+                        f"could not synchronize sibling pin {alias} in {manifest}; "
+                        "Synchronize the declared release version and dependency pins in the owning manifests"
+                    )
                 sections[index + 1] = body
         pending.append((manifest, "".join(sections)))
     if verb == "sync":

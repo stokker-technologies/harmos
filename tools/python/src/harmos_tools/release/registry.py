@@ -11,7 +11,6 @@
 
 # Standard Library Imports
 import base64
-import email.utils
 import hashlib
 import http.client
 import json
@@ -19,7 +18,6 @@ import os
 import re
 import subprocess
 import time
-import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,12 +27,10 @@ from typing import IO, Literal, overload
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
+import harmos_tools.release.review
 
-# isort: split
-from ..package import changelog
-from . import pins, policy
-from . import review as evidence
+from ..process import spawn_flags
+from . import policy
 
 # Type Checking Imports
 
@@ -43,9 +39,6 @@ from . import review as evidence
 # === Constants === #
 
 # crates.io admits a short burst of new crates, then one per ten minutes.
-CRATES_INDEX = "https://index.crates.io"
-RATE_INTERVAL = 600
-RATE_BUDGET = 5400
 REHEARSAL_CHECK = "Release / Rehearsal"
 RELEASE_BRANCH = "release/"
 GITLAB_REHEARSAL_JOB = "Release / Rehearsal"
@@ -69,7 +62,9 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
         origin = urllib.parse.urlsplit(req.full_url)
         destination = urllib.parse.urlsplit(newurl)
         if destination.scheme != "https":
-            raise policy.ToolError("release download redirect must use HTTPS")
+            raise policy.ToolError(
+                "release download redirect must use HTTPS; Configure the release download endpoint to redirect over HTTPS"
+            )
         if redirected is not None and (origin.scheme, origin.netloc) != (destination.scheme, destination.netloc):
             for name in ["Authorization", "PRIVATE-TOKEN", "JOB-TOKEN"]:
                 redirected.remove_header(name)
@@ -77,104 +72,6 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 
 # === Public Functions === #
-
-
-def publish_crates(directory: Path, *, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> None:
-    """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
-    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
-        raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
-    pins.check(directory)
-    packages = publishable(directory)
-    deadline = clock() + RATE_BUDGET
-    with changelog.staged(directory, packages):
-        _publish_crates(directory, packages, deadline, sleep=sleep, clock=clock)
-
-
-def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
-    """Dry-Run Crates In Publication Order Without Publishing Credentials."""
-    nightly = os.environ.get("GITHUB_WORKFLOW_REF", "").split("/workflows/")[-1].startswith("nightly.yml@")
-    nightly = nightly or os.environ.get("CI_SIMULATE") == "1" and os.environ.get("CI_PIPELINE_KIND") == "nightly"
-    if not pins.check(directory, warn=nightly):
-        return
-    with policy.credential_free(policy.policy(directory, "release")):
-        packages = publishable(directory)
-        metadata = policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True)
-        target = Path(json.loads(metadata)["target_directory"])
-        lock = directory / "Cargo.lock"
-        original = lock.read_bytes() if lock.is_file() else None
-        staged = []
-        with changelog.staged(directory, packages):
-            _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
-
-
-def publishable(directory: Path) -> dict:
-    """Publishable Workspace Members By Name."""
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
-    return policy.publishable(directory, metadata)
-
-
-def crate_published(name: str, version: str | None = None) -> bool:
-    """Whether The Sparse Index Lists This Crate, Or This Exact Crate Version."""
-    lower = name.lower()
-    prefix = {1: "1", 2: "2", 3: "3/" + lower[0]}.get(len(lower), f"{lower[0:2]}/{lower[2:4]}")
-    try:
-        with urllib.request.urlopen(f"{CRATES_INDEX}/{prefix}/{lower}", timeout=60) as response:
-            lines = response.read().decode("utf-8").splitlines()
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
-    except urllib.error.URLError as error:
-        if isinstance(error.reason, FileNotFoundError):
-            return False
-        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
-    entries = [json.loads(line) for line in lines if line.strip()]
-    return bool(entries) if version is None else any(entry.get("vers") == version for entry in entries)
-
-
-def python(directory: Path, settings: dict, *, dry_run: bool) -> None:
-    """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
-    profile = policy.profile()
-    selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/build/{profile}/any/python/*") if path.is_file())
-    if not selected:
-        raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
-    if dry_run:
-        # Build and check only: uv validates every file without credentials or upload.
-        with policy.credential_free(settings, profile=profile):
-            policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
-        return
-    if settings["provider"] == "github":
-        project = tomllib.loads((directory / "sdk/python/pyproject.toml").read_text(encoding="utf-8"))["project"]["name"]
-        try:
-            with urllib.request.urlopen(f"https://pypi.org/pypi/{urllib.parse.quote(project, safe='')}/json", timeout=60) as response:
-                releases = json.load(response)["releases"]
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            releases = {}
-        published = {item["filename"]: item["digests"]["sha256"] for files in releases.values() for item in files}
-        missing = []
-        for relative in selected:
-            path = directory / relative
-            if path.name not in published:
-                missing.append(relative)
-                continue
-            if hashlib.sha256(path.read_bytes()).hexdigest() != published[path.name]:
-                raise policy.ToolError(f"PyPI file already exists with a different SHA-256: {path.name}")
-            print(f"PyPI file already published with matching SHA-256: {path.name}")
-        if missing:
-            policy.execute(
-                directory, ["uv", "publish", "--trusted-publishing", "always", "--check-url", "https://pypi.org/simple/", *missing]
-            )
-        return
-    base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
-    project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
-    token = os.environ.get("CI_JOB_TOKEN")
-    if not token or not project:
-        raise policy.ToolError("GitLab Python publication requires the native CI_JOB_TOKEN")
-    destination = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/packages/pypi"
-    command = ["uv", "publish", "--publish-url", destination, "--username", "gitlab-ci-token", "--password", token, *selected]
-    policy.execute(directory, command)
 
 
 def request(
@@ -196,7 +93,7 @@ def request(
         if method == "GET" and endpoint.startswith("actions/"):
             token = os.environ.get("GITHUB_TOKEN") or token
         if not repository or not token:
-            raise policy.ToolError("GitHub repository and native token required")
+            raise policy.ToolError("GitHub repository and native token required; Configure release.repository and GH_TOKEN or GITHUB_TOKEN")
         headers = {"Authorization": "Bearer " + token, "X-GitHub-Api-Version": "2022-11-28"}
         if upload:
             base = settings.get("upload_url", "https://uploads.github.com")
@@ -213,85 +110,102 @@ def request(
     elif provider == "gitlab":
         base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
         if not isinstance(base, str) or not base:
-            raise policy.ToolError("GitLab API URL required")
+            raise policy.ToolError("GitLab API URL required; Configure CI_API_V4_URL or release.api_url")
         project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
         token = os.environ.get("RELEASE_TOKEN") or os.environ.get("GITLAB_TOKEN")
         job_token = os.environ.get("CI_JOB_TOKEN")
         if not project or not (token or job_token):
-            raise policy.ToolError("GitLab project and protected native token required")
+            raise policy.ToolError(
+                "GitLab project and protected native token required; Configure the project ID and protected RELEASE_TOKEN or CI_JOB_TOKEN"
+            )
         if graphql:
             if not token or not base.rstrip("/").endswith("/api/v4"):
-                raise policy.ToolError("GitLab policy read requires RELEASE_TOKEN and a native /api/v4 URL")
+                raise policy.ToolError(
+                    "GitLab policy read requires RELEASE_TOKEN and a native /api/v4 URL; "
+                    "Configure RELEASE_TOKEN and a native /api/v4 API URL"
+                )
             headers = {"Authorization": "Bearer " + token}
             url = base.rstrip("/").removesuffix("/v4") + "/graphql"
         else:
             if channel:
                 resource = endpoint.split("?", 1)[0]
                 links = re.fullmatch(r"releases/nightly/assets/links(?:/[0-9]+)?", resource)
-                allowed = (
-                    resource == "releases"
-                    and method == "POST"
-                    or resource == "releases/nightly"
-                    and method in {"GET", "PUT"}
-                    or links
-                    and method in {"GET", "POST", "DELETE"}
-                )
+                release_creation = resource == "releases" and method == "POST"
+                nightly_release = resource == "releases/nightly" and method in {"GET", "PUT"}
+                nightly_links = bool(links) and method in {"GET", "POST", "DELETE"}
+                allowed = release_creation or nightly_release or nightly_links
                 if not allowed:
-                    raise policy.ToolError("nightly requires native job-token release endpoints")
+                    raise policy.ToolError(
+                        "nightly requires native job-token release endpoints; Select the native Nightly release or release-link endpoint"
+                    )
             cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
-            tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
-            if (
-                not channel
-                and method != "GET"
-                and not tagging
-                and not ((method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases"))
-            ):
-                raise policy.ToolError("GitLab release write endpoint is not allowed")
+            tag_creation = method == "POST" and endpoint in {"repository/tags", "repository/commits"}
+            tagging = tag_creation or cleanup or merging
+            package_upload = method == "PUT" and endpoint.startswith("packages/generic/")
+            release_creation = method == "POST" and endpoint == "releases"
+            publication = package_upload or release_creation
+            if not channel and method != "GET" and not tagging and not publication:
+                raise policy.ToolError(
+                    "GitLab release write endpoint is not allowed; Select a supported tagging, release or generic package endpoint"
+                )
             if channel:
                 if not job_token:
-                    raise policy.ToolError("nightly requires native CI_JOB_TOKEN")
+                    raise policy.ToolError("nightly requires native CI_JOB_TOKEN; Run Nightly with the native CI_JOB_TOKEN")
                 headers = {"JOB-TOKEN": job_token}
             elif tagging:
                 if not token:
-                    raise policy.ToolError("GitLab tagging and release reviews require the RELEASE_TOKEN release identity")
+                    raise policy.ToolError(
+                        "GitLab tagging and release reviews require the RELEASE_TOKEN release identity; "
+                        "Configure the protected RELEASE_TOKEN release identity"
+                    )
                 headers = {"Authorization": "Bearer " + token}
             elif method == "GET":
                 if not token:
-                    raise policy.ToolError("GitLab reads require RELEASE_TOKEN with read_api access")
+                    raise policy.ToolError(
+                        "GitLab reads require RELEASE_TOKEN with read_api access; Configure RELEASE_TOKEN with read_api access"
+                    )
                 headers = {"Authorization": "Bearer " + token}
             elif job_token:
                 headers = {"JOB-TOKEN": job_token}
             elif os.environ.get("GITLAB_CI"):
-                raise policy.ToolError("GitLab CI publication requires CI_JOB_TOKEN")
+                raise policy.ToolError("GitLab CI publication requires CI_JOB_TOKEN; Run publication with the native CI_JOB_TOKEN")
             elif token:
                 headers = {"Authorization": "Bearer " + token}
             else:
-                raise policy.ToolError("GitLab local publication requires RELEASE_TOKEN")
+                raise policy.ToolError("GitLab local publication requires RELEASE_TOKEN; Configure RELEASE_TOKEN for local publication")
             url = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/{endpoint}"
         headers["Accept"] = "application/octet-stream" if binary else "application/json"
     else:
-        raise policy.ToolError("release.provider must be github or gitlab")
+        raise policy.ToolError("release.provider must be github or gitlab; Set release.provider to github or gitlab")
     if data is not None:
         headers["Content-Type"] = "application/octet-stream" if binary else "application/json"
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         native = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
+            response = urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60)
+            try:
                 return response.read()
+            finally:
+                response.close()
         except urllib.error.HTTPError as error:
-            # A Retried Delete Whose Earlier Attempt Landed Finds Nothing Left To Remove.
-            if error.code == 404 and (method == "GET" or method == "DELETE" and attempt > 1):
-                return None
-            message = error.read().decode("utf-8", errors="replace")
-            for secret in (token, os.environ.get("CI_JOB_TOKEN")):
-                if secret:
-                    message = message.replace(secret, "***")
-            retry = error.code in THROTTLED or error.code in TRANSIENT and method in IDEMPOTENT
-            if not retry or attempt == RETRY_ATTEMPTS:
-                raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
-            print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
-            time.sleep(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+            try:
+                if error.code == 404 and (method == "GET" or method == "DELETE" and attempt > 1):
+                    return None
+                message = error.read().decode("utf-8", errors="replace")
+                for secret in (token, os.environ.get("CI_JOB_TOKEN")):
+                    if secret:
+                        message = message.replace(secret, "***")
+                retry = error.code in THROTTLED or error.code in TRANSIENT and method in IDEMPOTENT
+                if not retry or attempt == RETRY_ATTEMPTS:
+                    raise policy.ToolError(
+                        f"release provider {method} failed: HTTP {error.code}: {message}; "
+                        "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+                    ) from error
+                print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
+                time.sleep(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+            finally:
+                error.close()
     raise AssertionError("unreachable")
 
 
@@ -322,10 +236,12 @@ def document(
     result = json.loads(value)
     if collection:
         if not isinstance(result, list) or any(not isinstance(item, dict) for item in result):
-            raise policy.ToolError("provider collection must contain objects")
+            raise policy.ToolError(
+                "provider collection must contain objects; Check the configured provider endpoint and its response schema"
+            )
         return result
     if not isinstance(result, dict):
-        raise policy.ToolError("provider response must be an object")
+        raise policy.ToolError("provider response must be an object; Check the configured provider endpoint and its response schema")
     return result
 
 
@@ -338,7 +254,9 @@ def pages(settings: dict, endpoint: str, key: str | None = None, *, channel: boo
         response = document(settings, address, channel=channel) if key else document(settings, address, channel=channel, collection=True)
         values = response.get(key, []) if key and isinstance(response, dict) else response
         if not isinstance(values, list):
-            raise policy.ToolError("provider returned invalid paginated evidence")
+            raise policy.ToolError(
+                "provider returned invalid paginated evidence; Check the configured provider endpoint and its pagination response schema"
+            )
         result.extend(values)
         if len(values) < 100:
             return result
@@ -355,7 +273,10 @@ def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep: Callable[[
         source = urllib.parse.quote(branch, safe="")
         reviews = pages(settings, f"merge_requests?state=opened&target_branch=dev&source_branch={source}")
     if len(reviews) != 1:
-        raise policy.ToolError(f"expected one open release review for {branch}; auto-merge was not armed")
+        raise policy.ToolError(
+            f"expected one open release review for {branch}; auto-merge was not armed; "
+            "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+        )
     review = reviews[0]
     if settings["provider"] == "github":
         payload = {
@@ -370,7 +291,10 @@ def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep: Callable[[
             raise policy.ToolError("enablePullRequestAutoMerge failed: " + json.dumps(response["errors"]))
         result = ((response.get("data") or {}).get("enablePullRequestAutoMerge") or {}).get("pullRequest") or {}
         if result.get("autoMergeRequest") != {"mergeMethod": "SQUASH", "commitHeadline": title}:
-            raise policy.ToolError(f"GitHub did not confirm squash auto-merge for {branch}")
+            raise policy.ToolError(
+                f"GitHub did not confirm squash auto-merge for {branch}; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            )
         return
 
     endpoint = f"merge_requests/{review['iid']}"
@@ -399,27 +323,33 @@ def arm_auto_merge(settings: dict, branch: str, title: str, *, sleep: Callable[[
             else:
                 if result.get("merge_when_pipeline_succeeds") or result.get("state") == "merged":
                     return
-                raise policy.ToolError(f"GitLab did not confirm auto-merge for {branch}")
+                raise policy.ToolError(
+                    f"GitLab did not confirm auto-merge for {branch}; "
+                    "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+                )
         if attempt < 11:
             sleep(5)
-    raise policy.ToolError(f"GitLab release review for {branch} was not ready for auto-merge after 12 attempts; the review remains open")
+    raise policy.ToolError(
+        f"GitLab release review for {branch} was not ready for auto-merge after 12 attempts; the review remains open; "
+        "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+    )
 
 
 def verify_duplicate_policy(settings: dict) -> None:
     """Read Back The Group's Generic Package Duplicate Protection; Publication Never Changes It."""
     project = document(settings, "")
     if not isinstance(project, dict):
-        raise policy.ToolError("GitLab project identity is unavailable")
+        raise policy.ToolError("GitLab project identity is unavailable; Verify the configured project ID and project API access")
     path = project.get("path_with_namespace")
     owner = project.get("namespace")
     namespace = owner.get("full_path") if isinstance(owner, dict) else None
     if not isinstance(path, str) or not isinstance(namespace, str):
-        raise policy.ToolError("GitLab group namespace identity is unavailable")
+        raise policy.ToolError("GitLab group namespace identity is unavailable; Verify the project group and its namespace API access")
     query = "query ReleasePolicy($project: ID!) { project(fullPath: $project) { fullPath group { fullPath packageSettings { genericDuplicatesAllowed genericDuplicateExceptionRegex } } } }"
     raw = request(settings, "graphql", "POST", json.dumps({"query": query, "variables": {"project": path}}).encode(), graphql=True)
     result = json.loads(raw) if raw else {}
     if not isinstance(result, dict) or result.get("errors"):
-        raise policy.ToolError("GitLab duplicate policy query failed")
+        raise policy.ToolError("GitLab duplicate policy query failed; Inspect the group duplicate-protection API response")
     data = result.get("data")
     selected = data.get("project") if isinstance(data, dict) else None
     group = selected.get("group") if isinstance(selected, dict) else None
@@ -433,13 +363,16 @@ def verify_duplicate_policy(settings: dict) -> None:
         or package.get("genericDuplicatesAllowed") is not False
         or package.get("genericDuplicateExceptionRegex") != ""
     ):
-        raise policy.ToolError("GitLab generic package duplicate protection must be verified for the project's group")
+        raise policy.ToolError(
+            "GitLab generic package duplicate protection must be verified for the project's group; "
+            "Verify generic package duplicate protection for the owning group"
+        )
 
 
 def require_tag(directory: Path, tag: str) -> None:
     """The Protected Push Of Exactly This Stable Tag, Checked Out At Its Commit."""
     if re.fullmatch(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", tag) is None:
-        raise policy.ToolError("release requires a stable release tag")
+        raise policy.ToolError("release requires a stable release tag; Prepare the stable release and use its protected version tag")
     if os.environ.get("GITHUB_ACTIONS"):
         allowed = (
             os.environ.get("GITHUB_EVENT_NAME") == "push"
@@ -455,18 +388,21 @@ def require_tag(directory: Path, tag: str) -> None:
         )
         sha = os.environ.get("CI_COMMIT_SHA")
     if not allowed:
-        raise policy.ToolError(f"publication requires the protected push of {tag}; an unprotected tag means the tag ruleset is missing")
+        raise policy.ToolError(
+            f"publication requires the protected push of {tag}; an unprotected tag means the tag ruleset is missing; "
+            "Configure the release tag ruleset and publish from its protected push"
+        )
     actual = policy.execute(directory, ["git", "rev-parse", "HEAD"], capture=True).strip()
     tagged = policy.execute(directory, ["git", "rev-parse", "refs/tags/" + tag + "^{commit}"], capture=True).strip()
     if actual != sha or tagged != actual:
-        raise policy.ToolError("release tag SHA differs from checkout")
+        raise policy.ToolError("release tag SHA differs from checkout; Use the checkout at the immutable release tag revision")
 
 
 def draft(settings: dict, tag: str, sha: str, body: str) -> dict:
     """The GitHub Draft For This Tag: Reused While Still A Draft, Never Replacing A Published Release."""
     releases = [item for item in pages(settings, "releases") if item["tag_name"] == tag]
     if len(releases) > 1:
-        raise policy.ToolError("release tag identity ambiguous")
+        raise policy.ToolError("release tag identity ambiguous; Resolve the release tag to one immutable commit before publication")
     if releases and not releases[0]["draft"]:
         raise policy.ToolError("published release cannot be replaced; use a new patch version")
     if releases:
@@ -478,7 +414,7 @@ def draft(settings: dict, tag: str, sha: str, body: str) -> dict:
         {"tag_name": tag, "target_commitish": sha, "name": tag, "body": body, "draft": True, "prerelease": False},
     )
     if not isinstance(created, dict) or not created.get("draft") or created.get("tag_name") != tag:
-        raise policy.ToolError("release draft was not created as a draft")
+        raise policy.ToolError("release draft was not created as a draft; Inspect the provider release state before uploading assets")
     return created
 
 
@@ -486,7 +422,7 @@ def upload(settings: dict, release: int, item: dict, data: bytes) -> str:
     """Upload One Asset To A Draft Unless Present, Then Verify Its Remote Bytes."""
     available = [value for value in pages(settings, f"releases/{release}/assets") if value["name"] == item["name"]]
     if len(available) > 1:
-        raise policy.ToolError("duplicate draft asset")
+        raise policy.ToolError("duplicate draft asset; Inspect the draft asset inventory before continuing publication")
     if available:
         endpoint = f"releases/assets/{available[0]['id']}"
     else:
@@ -514,7 +450,9 @@ def upload_generic(settings: dict, package: str, tag: str, item: dict, data: byt
 def verify_download(settings: dict, endpoint: str, item: dict, *, channel: bool = False) -> bytes:
     data = request(settings, endpoint, binary=True, channel=channel)
     if data is None or len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
-        raise policy.ToolError(f"remote release download differs: {item['name']}")
+        raise policy.ToolError(
+            f"remote release download differs: {item['name']}; Inspect the downloaded asset and its recorded digest before publication"
+        )
     return data
 
 
@@ -525,7 +463,9 @@ def verify_signatures(directory: Path, settings: dict, root: Path, names: list[s
     try:
         for name in names:
             if not policy.inside(root, name).is_file():
-                raise policy.ToolError(f"signature check input missing: {name}")
+                raise policy.ToolError(
+                    f"signature check input missing: {name}; Stage the declared signature-check inputs before verification"
+                )
         for command in settings.get("signature_checks", []):
             policy.execute(directory, policy.command(command, "release.signature_checks"))
     finally:
@@ -547,7 +487,10 @@ def release_review(settings: dict, sha: str, branch: str) -> dict | None:
             and item.get("head", {}).get("ref") == branch
         ]
         if len(matches) > 1:
-            raise policy.ToolError("the revision identifies several merged release pull requests")
+            raise policy.ToolError(
+                "the revision identifies several merged release pull requests; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            )
         return {"head": matches[0]["head"]["sha"], "number": matches[0]["number"]} if matches else None
     matches = [
         item
@@ -558,7 +501,10 @@ def release_review(settings: dict, sha: str, branch: str) -> dict | None:
         and item.get("source_branch") == branch
     ]
     if len(matches) > 1:
-        raise policy.ToolError("the revision identifies several merged release merge requests")
+        raise policy.ToolError(
+            "the revision identifies several merged release merge requests; "
+            "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+        )
     return {"head": matches[0]["sha"], "number": matches[0]["iid"]} if matches else None
 
 
@@ -571,26 +517,38 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
         try:
             if not isinstance(pull, dict) or pull.get("number") != review["number"] or pull.get("head", {}).get("sha") != head:
                 raise ValueError("review identity or head differs")
-            candidates = [run for run in runs if evidence.github_review_run(run, pull)]
-            _, jobs = evidence.github_validation_run(
+            candidates = [run for run in runs if harmos_tools.release.review.github_review_run(run, pull)]
+            _, jobs = harmos_tools.release.review.github_validation_run(
                 candidates, lambda identifier: pages(settings, f"actions/runs/{identifier}/jobs?filter=latest", "jobs")
             )
         except (KeyError, TypeError, ValueError) as error:
-            raise policy.ToolError(f"release PR #{review['number']} head {head} has no green validation: {error}") from error
+            raise policy.ToolError(
+                f"release PR #{review['number']} head {head} has no green validation: {error}; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            ) from error
         if not any(job.get("name") == REHEARSAL_CHECK and job.get("conclusion") == "success" for job in jobs):
-            raise policy.ToolError(f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check")
+            raise policy.ToolError(
+                f"release PR #{review['number']} head {head} has no successful {REHEARSAL_CHECK} check; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            )
         _same_tree(directory, head, sha)
         return
     # The merge request's latest pipeline ran on its head; its rehearsal job must have succeeded there.
     merged_review = document(settings, f"merge_requests/{review['number']}")
     pipeline = merged_review.get("head_pipeline") if isinstance(merged_review, dict) else None
     if not isinstance(pipeline, dict) or pipeline.get("sha") != head or not isinstance(pipeline.get("id"), int):
-        raise policy.ToolError(f"release MR !{review['number']} has no pipeline for its head {head}")
+        raise policy.ToolError(
+            f"release MR !{review['number']} has no pipeline for its head {head}; "
+            "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+        )
     pipeline_jobs = pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false")
     if any(job.get("name") == "Plan / Impact" for job in pipeline_jobs):
         bridges = [bridge for bridge in pages(settings, f"pipelines/{pipeline['id']}/bridges") if bridge.get("name") == "CI / Required"]
         if len(bridges) != 1 or bridges[0].get("status") != "success":
-            raise policy.ToolError("release review child gate is not green")
+            raise policy.ToolError(
+                "release review child gate is not green; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            )
         child = bridges[0].get("downstream_pipeline")
         if (
             not isinstance(child, dict)
@@ -598,12 +556,18 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
             or child.get("status") != "success"
             or not isinstance(child.get("id"), int)
         ):
-            raise policy.ToolError("release review child pipeline is not green for its head")
+            raise policy.ToolError(
+                "release review child pipeline is not green for its head; "
+                "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+            )
         pipeline = child
         pipeline_jobs = pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false")
     jobs = [job for job in pipeline_jobs if job.get("name") == GITLAB_REHEARSAL_JOB]
     if not jobs or any(job.get("status") != "success" for job in jobs):
-        raise policy.ToolError(f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job")
+        raise policy.ToolError(
+            f"release MR !{review['number']} pipeline {pipeline['id']} has no successful {GITLAB_REHEARSAL_JOB} job; "
+            "Inspect the release provider response and correct its revision, workflow evidence or credentials"
+        )
     _same_tree(directory, head, sha)
 
 
@@ -611,10 +575,15 @@ def oidc_claims(url: str, token: str) -> dict:
     """The Claims Of A GitHub OIDC Token Requested For Diagnosis Only; The Token Itself Is Never Printed."""
     separator = "&" if "?" in url else "?"
     native = urllib.request.Request(f"{url}{separator}audience=release-identity", headers={"Authorization": "Bearer " + token})
-    with urllib.request.urlopen(native, timeout=60) as response:
+    response = urllib.request.urlopen(native, timeout=60)
+    try:
         value = json.loads(response.read())["value"]
+    finally:
+        response.close()
     payload = value.split(".")[1]
-    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    # Read Structured Input
+    text = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    return json.loads(text)
 
 
 def workflow_filename(reference: str) -> str:
@@ -664,66 +633,13 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 # === Private Functions === #
 
 
-def _publish_crates(
-    directory: Path, packages: dict, deadline: float, *, sleep: Callable[[float], None], clock: Callable[[], float]
-) -> None:
-    for name in _publication_order(packages):
-        version = packages[name]["version"]
-        if crate_published(name, version):
-            print(f"{name} {version}: already published")
-            continue
-        while True:
-            result = subprocess.run(
-                ["cargo", "publish", "--locked", "--allow-dirty", "--package", name],
-                creationflags=spawn_flags(),
-                cwd=directory,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=False,
-            )
-            output = (result.stdout or "") + (result.stderr or "")
-            if result.returncode == 0:
-                print(f"{name} {version}: published")
-                break
-            if "already exists" in output:
-                print(f"{name} {version}: already published")
-                break
-            if "429" not in output and "Too Many Requests" not in output:
-                raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
-            wait = _retry_after(output)
-            if clock() + wait > deadline:
-                raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
-            print(f"{name} {version}: rate limited; retrying in {wait}s")
-            sleep(wait)
-
-
-def _rehearse_crates(
-    directory: Path, packages: dict, target: Path, lock: Path, original: bytes | None, staged: list, *, skip_published: bool
-) -> None:
-    try:
-        for name in _publication_order(packages):
-            version = packages[name]["version"]
-            if skip_published and crate_published(name, version):
-                print(f"{name} {version}: already published; the real leaf skips it")
-                continue
-            # A sibling resolves from its packaged sources only once the real leaf would have published it, so a
-            # crate ordered before something its published manifest requires fails here, before any tag exists.
-            command = ["cargo", "publish", "--dry-run", "--allow-dirty", "--package", name]
-            for sibling, release in staged:
-                command += ["--config", f'patch.crates-io.{sibling}.path="{(target / "package" / f"{sibling}-{release}").as_posix()}"']
-            policy.execute(directory, command)
-            staged.append((name, version))
-    finally:
-        # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
-        if original is not None:
-            lock.write_bytes(original)
-
-
 def _same_tree(directory: Path, head: str, merged: str) -> None:
     revisions = (head, merged)
     if any(not isinstance(revision, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) for revision in revisions):
-        raise policy.ToolError("rehearsal tree verification requires full commit object IDs")
+        raise policy.ToolError(
+            "rehearsal tree verification requires full commit object IDs; "
+            "Pass complete hexadecimal commit IDs for the rehearsed and merged revisions"
+        )
     commands = [["git", "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", *revisions]]
     commands.extend(["git", "rev-parse", "--verify", revision + "^{tree}"] for revision in revisions)
     outputs = []
@@ -740,65 +656,24 @@ def _same_tree(directory: Path, head: str, merged: str) -> None:
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            raise policy.ToolError("could not fetch and resolve the rehearsed and merged Git trees") from error
+            raise policy.ToolError(
+                "could not fetch and resolve the rehearsed and merged Git trees; "
+                "Verify remote access to the rehearsed and merged commit objects"
+            ) from error
         if output.returncode:
-            raise policy.ToolError("could not fetch and resolve the rehearsed and merged Git trees")
+            raise policy.ToolError(
+                "could not fetch and resolve the rehearsed and merged Git trees; "
+                "Verify remote access to the rehearsed and merged commit objects"
+            )
         outputs.append(output.stdout.strip())
     trees = outputs[1:]
     if any(not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", tree) for tree in trees):
-        raise policy.ToolError("rehearsal tree verification returned no valid tree object IDs")
+        raise policy.ToolError(
+            "rehearsal tree verification returned no valid tree object IDs; "
+            "Verify that the rehearsed and merged revisions resolve to Git tree objects"
+        )
     if trees[0] != trees[1]:
         raise policy.ToolError("the merged tree differs from the rehearsed release review head; update the review and merge again")
-
-
-def _publication_order(packages: dict) -> list[str]:
-    """Publishable Crates After Every Publishable Crate Their Published Manifest Requires, Ties By Name.
-
-    A dev-dependency that carries a version stays in the published manifest and must resolve from the registry; a
-    path-only one is stripped on packaging.
-    """
-    requires = {
-        name: sorted(
-            {
-                dependency["name"]
-                for dependency in package["dependencies"]
-                if (dependency.get("kind") != "dev" or dependency.get("req", "*") != "*")
-                and dependency["name"] in packages
-                and dependency["name"] != name
-            }
-        )
-        for name, package in packages.items()
-    }
-    order = []
-    visiting = set()
-
-    def visit(name: str) -> None:
-        if name in order:
-            return
-        if name in visiting:
-            cycle = ", ".join(sorted(visiting))
-            raise policy.ToolError(
-                f"publishable crates {cycle} require each other at {name}; a dev-dependency on a sibling that carries a version stays in the "
-                'published manifest, so declare it path-only ({ path = "../sibling" }, no version) and cargo strips it on packaging'
-            )
-        visiting.add(name)
-        for dependency in requires[name]:
-            visit(dependency)
-        visiting.discard(name)
-        order.append(name)
-
-    for name in sorted(packages):
-        visit(name)
-    return order
-
-
-def _retry_after(output: str) -> int:
-    """Seconds Until The Registry-Indicated Retry Time, Or The Published Interval."""
-    match = re.search(r"try again after ([A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT)", output)
-    if match is None:
-        return RATE_INTERVAL
-    retry = email.utils.parsedate_to_datetime(match.group(1)).timestamp()
-    return max(1, min(RATE_INTERVAL * 2, int(retry - time.time()) + 1))
 
 
 # === Entry Point === #

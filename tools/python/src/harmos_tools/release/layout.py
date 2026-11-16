@@ -64,7 +64,9 @@ def classify(settings: dict, name: str) -> dict:
     match = re.fullmatch(r"harmos-conformance-.+-(x86_64|aarch64)-[a-z0-9_]+-(linux|windows|darwin).*(\.zip|\.tar\.gz)", name)
     if match:
         return {"kind": "conformance", "os": {"darwin": "macos"}.get(match[2], match[2]), "arch": match[1], "format": match[3][1:]}
-    raise policy.ToolError(f"unsupported release download: {name}")
+    raise policy.ToolError(
+        f"unsupported release download: {name}; Regenerate the staged release inventory from complete release-profile packages"
+    )
 
 
 def downloads(settings: dict, *, version: str, channel: str, tag: str, published: str, files: list[dict], sums: str) -> dict:
@@ -73,13 +75,17 @@ def downloads(settings: dict, *, version: str, channel: str, tag: str, published
     for line in sums.splitlines():
         digest, separator, name = line.partition("  ")
         if not separator or name in digests:
-            raise policy.ToolError("invalid or duplicate SHA256SUMS entry")
+            raise policy.ToolError(
+                "invalid or duplicate SHA256SUMS entry; Regenerate the staged release inventory from complete release-profile packages"
+            )
         digests[name] = digest
     artifacts = []
     for item in sorted(files, key=lambda entry: entry["name"]):
         digest = digests.get(item["name"])
         if digest is None:
-            raise policy.ToolError(f"SHA256SUMS does not list {item['name']}")
+            raise policy.ToolError(
+                f"SHA256SUMS does not list {item['name']}; Regenerate the staged release inventory from complete release-profile packages"
+            )
         artifacts.append(
             {
                 **classify(settings, item["name"]),
@@ -101,33 +107,56 @@ def uploads(directory: Path, *, staged: bool = False) -> list[dict]:
     """Read The Exact Publication Inventory, Refusing Unsafe Names, Paths And Changed Bytes."""
     path = policy.inside(directory, "target/release-assets/upload.json")
     if not path.is_file() or path.is_symlink():
-        raise policy.ToolError("release upload.json manifest is missing or linked")
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+        raise policy.ToolError(
+            "release upload.json manifest is missing or linked; "
+            "Regenerate the staged release inventory from complete release-profile packages"
+        )
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    manifest = json.loads(text)
     if not isinstance(manifest, dict) or manifest.get("format_version") != 1 or not isinstance(manifest.get("assets"), list):
-        raise policy.ToolError("unsupported release upload manifest")
+        raise policy.ToolError(
+            "unsupported release upload manifest; Regenerate the staged release inventory from complete release-profile packages"
+        )
     names = set()
     for item in manifest["assets"]:
         if not isinstance(item, dict) or set(item) != {"name", "path", "sha256", "size"}:
-            raise policy.ToolError("invalid release upload entry")
+            raise policy.ToolError(
+                "invalid release upload entry; Regenerate the staged release inventory from complete release-profile packages"
+            )
         name, relative, digest, size = (item[key] for key in ("name", "path", "sha256", "size"))
         if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", "..", "upload.json", "published.json"}:
-            raise policy.ToolError("unsafe release upload name")
+            raise policy.ToolError(
+                "unsafe release upload name; Regenerate the staged release inventory from complete release-profile packages"
+            )
         if name.casefold() in names:
-            raise policy.ToolError("release upload names collide")
+            raise policy.ToolError(
+                "release upload names collide; Regenerate the staged release inventory from complete release-profile packages"
+            )
         names.add(name.casefold())
         if not isinstance(relative, str) or not re.fullmatch(r"target/release-assets/[A-Za-z0-9_-]+/" + re.escape(name), relative):
-            raise policy.ToolError("unsafe release upload path")
+            raise policy.ToolError(
+                "unsafe release upload path; Regenerate the staged release inventory from complete release-profile packages"
+            )
         if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or type(size) is not int or size < 0:
-            raise policy.ToolError("invalid release upload digest or size")
+            raise policy.ToolError(
+                "invalid release upload digest or size; Regenerate the staged release inventory from complete release-profile packages"
+            )
         if staged:
             source = policy.inside(directory, relative)
             if not source.is_file() or source.is_symlink():
-                raise policy.ToolError(f"missing staged upload: {name}")
+                raise policy.ToolError(
+                    f"missing staged upload: {name}; Regenerate the staged release inventory from complete release-profile packages"
+                )
             data = source.read_bytes()
             if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
-                raise policy.ToolError(f"staged upload changed: {name}")
+                raise policy.ToolError(
+                    f"staged upload changed: {name}; Regenerate the staged release inventory from complete release-profile packages"
+                )
     if "sha256sums" not in names:
-        raise policy.ToolError("release upload manifest has no SHA256SUMS")
+        raise policy.ToolError(
+            "release upload manifest has no SHA256SUMS; Regenerate the staged release inventory from complete release-profile packages"
+        )
     return manifest["assets"]
 
 

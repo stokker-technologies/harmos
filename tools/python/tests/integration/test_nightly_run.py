@@ -23,7 +23,9 @@ from unittest.mock import patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.ci import tasks, workflow
+import harmos_tools.ci.nightly_freshness
+import harmos_tools.ci.nightly_report
+from harmos_tools.ci import tasks
 from harmos_tools.release import nightly, review
 
 # Type Checking Imports
@@ -40,7 +42,9 @@ from harmos_tools.release import nightly, review
 
 class NightlyRunTests(unittest.TestCase):
     def test_revision_is_built_once_and_receives_only_its_own_results(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             output = Path(temporary) / "output"
             environment = {
                 "GITHUB_EVENT_NAME": "schedule",
@@ -53,7 +57,7 @@ class NightlyRunTests(unittest.TestCase):
             }
             with (
                 patch.dict(os.environ, environment, clear=True),
-                patch.object(workflow.subprocess, "run") as lookup,
+                patch.object(harmos_tools.ci.nightly_freshness.subprocess, "run") as lookup,
                 patch.object(review, "request") as request,
                 patch.object(review, "pages", return_value=[]) as pages,
             ):
@@ -115,13 +119,15 @@ class NightlyRunTests(unittest.TestCase):
             with (
                 patch.dict(os.environ, {**environment, "NEEDS": json.dumps(results)}, clear=True),
                 patch.object(nightly, "report") as report,
-                patch.object(workflow.policy, "root", return_value=Path(temporary)),
+                patch.object(harmos_tools.ci.nightly_report.policy, "root", return_value=Path(temporary)),
             ):
                 for published in (True, False):
                     report.return_value = published
                     self.assertEqual(tasks.main(["ci:nightly-report"]), 0)
                     self.assertEqual(output.read_text().splitlines()[-1], f"published={str(published).lower()}")
                     report.assert_called_with(Path(temporary), results, environment["RUN_URL"])
+        finally:
+            temporary_directory.cleanup()
 
 
 # === Public Functions === #

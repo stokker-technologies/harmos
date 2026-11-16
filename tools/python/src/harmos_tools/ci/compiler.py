@@ -27,7 +27,6 @@ from ..process import spawn_flags
 
 # Type Checking Imports
 
-
 # === Public Exports === #
 
 # === Constants === #
@@ -76,7 +75,7 @@ def run(
         raise
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         _report("configuration", error=error)
-        raise CacheError("sccache: backend configuration failed") from None
+        raise CacheError("sccache: backend configuration failed; correct the declared backend configuration") from None
 
 
 # === Private Functions === #
@@ -90,10 +89,12 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
         "READ_WRITE" if os.environ.get("CACHE_POLICY") == "pull-push" else "READ_ONLY",
     )
     if mode not in {"READ_ONLY", "READ_WRITE"}:
-        raise RuntimeError("sccache: invalid backend access mode")
+        raise RuntimeError("sccache: invalid backend access mode; Correct the workstation or CI compiler-cache backend configuration")
     if backend == "s3":
         if not os.environ.get("SCCACHE_BUCKET") or not os.environ.get("SCCACHE_REGION"):
-            raise RuntimeError("sccache: S3 bucket and region are required")
+            raise RuntimeError(
+                "sccache: S3 bucket and region are required; Correct the workstation or CI compiler-cache backend configuration"
+            )
         environment.update(
             SCCACHE_BUCKET=os.environ["SCCACHE_BUCKET"],
             SCCACHE_REGION=os.environ["SCCACHE_REGION"],
@@ -104,16 +105,21 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
             environment["SCCACHE_ENDPOINT"] = endpoint
     elif backend == "disk":
         if not os.environ.get("SCCACHE_DIR"):
-            raise RuntimeError("sccache: an explicit disk cache directory is required")
+            raise RuntimeError(
+                "sccache: an explicit disk cache directory is required; Correct the workstation or CI compiler-cache backend configuration"
+            )
         directory = Path(os.environ["SCCACHE_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
         environment.update(SCCACHE_DIR=str(directory.resolve()), SCCACHE_LOCAL_RW_MODE=mode)
         if size := os.environ.get("SCCACHE_CACHE_SIZE"):
             environment["SCCACHE_CACHE_SIZE"] = size
     else:
-        raise RuntimeError("sccache: a supported explicit backend is required")
-    with tempfile.TemporaryDirectory(prefix="project-sccache-") as temporary:
-        # Ignore Persistent Runner Configuration And Use Only The Declared Store.
+        raise RuntimeError(
+            "sccache: a supported explicit backend is required; Correct the workstation or CI compiler-cache backend configuration"
+        )
+    temporary_directory = tempfile.TemporaryDirectory(prefix="project-sccache-")
+    temporary = temporary_directory.name
+    try:
         configuration = Path(temporary) / "config"
         configuration.write_text("", encoding="utf-8")
         environment.update(
@@ -121,6 +127,8 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
             SCCACHE_CACHED_CONF=str(Path(temporary) / "cached-config"),
         )
         return _execute(command, shell, environment, backend, statistics=statistics)
+    finally:
+        temporary_directory.cleanup()
 
 
 def _execute(
@@ -143,8 +151,10 @@ def _execute(
     }
     # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
     try:
+        # Run the Native Command
+        command = ["sccache"]
         server = subprocess.Popen(
-            ["sccache"],
+            command,
             creationflags=spawn_flags(),
             env=server_environment,
             stdout=subprocess.DEVNULL,
@@ -154,9 +164,9 @@ def _execute(
         )
     except OSError as error:
         _report("process launch", error=error)
-        raise CacheError("sccache: server launch failed") from None
+        raise CacheError("sccache: server launch failed; verify the pinned sccache executable and backend access") from None
 
-    with server:
+    try:
 
         def read_endpoint() -> None:
             try:
@@ -180,11 +190,11 @@ def _execute(
                 port = endpoint.get(timeout=60)
             except queue.Empty:
                 _report("readiness timeout")
-                raise CacheError("sccache: backend readiness timed out") from None
+                raise CacheError("sccache: backend readiness timed out; inspect the retained backend startup diagnostics") from None
             if not port or server.poll() is not None:
                 reader.join(timeout=1)
                 _report("startup exit", server.poll())
-                raise CacheError("sccache: backend startup failed")
+                raise CacheError("sccache: backend startup failed; inspect the retained backend startup diagnostics")
             child_environment = environment | {
                 "SCCACHE_SERVER_PORT": port,
                 "RUSTC_WRAPPER": "sccache",
@@ -209,18 +219,22 @@ def _execute(
                     information = json.loads(readiness.stdout)
                     scheme = "Local disk:" if backend == "disk" else "s3,"
                     if not isinstance(information, dict) or not isinstance(information.get("cache_location"), str):
-                        raise TypeError("invalid backend statistics")
+                        raise TypeError("invalid backend statistics; Correct the workstation or CI compiler-cache backend configuration")
                     if not information["cache_location"].startswith(scheme):
-                        raise ValueError("unexpected cache location scheme")
+                        raise ValueError(
+                            "unexpected cache location scheme; Correct the workstation or CI compiler-cache backend configuration"
+                        )
                     version = information.get("version")
                     if not isinstance(version, str):
-                        raise TypeError("invalid cache version type")
+                        raise TypeError("invalid cache version type; Correct the workstation or CI compiler-cache backend configuration")
                     if re.fullmatch(re.escape(SERIES) + r"[0-9]+", version) is None:
-                        raise ValueError("unsupported cache version")
+                        raise ValueError("unsupported cache version; Correct the workstation or CI compiler-cache backend configuration")
                 except (OSError, TypeError, ValueError, subprocess.SubprocessError) as error:
                     output = error if isinstance(error, subprocess.CalledProcessError) else readiness
                     _report("backend verification", getattr(output, "returncode", None), error)
-                    raise CacheError("sccache: pinned backend verification failed; refusing implicit storage fallback") from None
+                    raise CacheError(
+                        "sccache: pinned backend verification failed; verify the pinned cache version and declared storage backend"
+                    ) from None
             if isinstance(command, str):
                 shell = shell or ("pwsh" if os.name == "nt" else "bash")
                 command = (
@@ -254,28 +268,34 @@ def _execute(
                 )
             except OSError as error:
                 _report("command launch", error=error)
-                raise CacheError("sccache: compiler command launch failed") from None
-            with child:
+                raise CacheError("sccache: compiler command launch failed; verify the configured compiler command and toolchain") from None
+            try:
                 try:
                     while child.poll() is None:
                         if server.poll() is not None:
                             child.terminate()
                             reader.join(timeout=1)
                             _report("unexpected server exit", server.poll())
-                            raise CacheError("sccache: owned compiler cache server exited during the command")
+                            raise CacheError(
+                                "sccache: owned compiler cache server exited during the command; inspect its retained backend diagnostics"
+                            )
                         try:
                             child.wait(timeout=0.2)
                         except subprocess.TimeoutExpired:
                             continue
                     if server.poll() is not None:
                         _report("unexpected server exit", server.poll())
-                        raise CacheError("sccache: owned compiler cache server exited during the command")
+                        raise CacheError(
+                            "sccache: owned compiler cache server exited during the command; inspect its retained backend diagnostics"
+                        )
                     return child.returncode
                 finally:
                     if server.poll() is None:
                         try:
+                            # Run the Native Command
+                            command = ["sccache", "--show-stats", "--stats-format", "json"]
                             result = subprocess.run(
-                                ["sccache", "--show-stats", "--stats-format", "json"],
+                                command,
                                 creationflags=spawn_flags(),
                                 env=child_environment,
                                 stdin=subprocess.DEVNULL,
@@ -297,6 +317,14 @@ def _execute(
                             subprocess.SubprocessError,
                         ) as error:
                             _report("statistics", getattr(error, "returncode", None), error)
+            finally:
+                if child.stdout is not None:
+                    child.stdout.close()
+                if child.stderr is not None:
+                    child.stderr.close()
+                if child.stdin is not None:
+                    child.stdin.close()
+                child.wait()
         finally:
             # The Process Handle Is Ours; Never Issue Stop-Server Against A Reused Endpoint.
             try:
@@ -309,7 +337,7 @@ def _execute(
                     server.wait(timeout=10)
             except (OSError, subprocess.SubprocessError) as error:
                 _report("server cleanup", getattr(error, "returncode", None), error)
-                raise CacheError("sccache: owned server cleanup failed") from None
+                raise CacheError("sccache: owned server cleanup failed; inspect the owned server termination diagnostics") from None
             reader.join(timeout=1)
             for category, count in write_errors.items():
                 if count:
@@ -317,6 +345,14 @@ def _execute(
                     print(f"sccache write errors: {category} x{count}", file=sys.stderr, flush=True)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
+    finally:
+        if server.stdout is not None:
+            server.stdout.close()
+        if server.stderr is not None:
+            server.stderr.close()
+        if server.stdin is not None:
+            server.stdin.close()
+        server.wait()
 
 
 def _report(
@@ -328,8 +364,10 @@ def _report(
 ) -> None:
     """Emit Only Fixed Classifications And Validated Native Version And Error Codes."""
     try:
+        # Run the Native Command
+        command = ["sccache", "--version"]
         result = subprocess.run(
-            ["sccache", "--version"],
+            command,
             creationflags=spawn_flags(),
             capture_output=True,
             text=True,

@@ -45,7 +45,9 @@ ROOT = Path(__file__).resolve().parents[5]
 def environment() -> dict[str, str]:
     environment = dict(os.environ)
     cache = subprocess.check_output(["mise", "cache", "path"], text=True, creationflags=spawn_flags()).strip()
-    manifest = json.loads((ROOT / "sdk/cpp/vcpkg.json").read_text())
+    # Read Structured Input
+    text = (ROOT / "sdk/cpp/vcpkg.json").read_text()
+    manifest = json.loads(text)
     revision = manifest["builtin-baseline"]
     checkout = Path(cache) / "vcpkg" / revision[:12]
     environment["VCPKG_ROOT"] = str(checkout)
@@ -53,17 +55,19 @@ def environment() -> dict[str, str]:
     # Bootstrap the Immutable Tool Checkout Outside the Repository.
     if not checkout.is_dir():
         checkout.parent.mkdir(parents=True, exist_ok=True)
+        # Run the Native Command
+        command = [
+            "git",
+            "clone",
+            "--filter=blob:none",
+            "--single-branch",
+            "--branch",
+            "2026.05.25",
+            "https://github.com/microsoft/vcpkg.git",
+            str(checkout),
+        ]
         subprocess.run(
-            [
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "--single-branch",
-                "--branch",
-                "2026.05.25",
-                "https://github.com/microsoft/vcpkg.git",
-                str(checkout),
-            ],
+            command,
             check=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -100,8 +104,10 @@ def environment() -> dict[str, str]:
             creationflags=spawn_flags(),
         ).strip()
         developer = Path(installation) / "Common7/Tools/VsDevCmd.bat"
+        # Run the Native Command
+        command = f'cmd /d /s /c ""{developer}" -no_logo -arch=x64 -host_arch=x64 >nul && set"'
         output = subprocess.check_output(
-            f'cmd /d /s /c ""{developer}" -no_logo -arch=x64 -host_arch=x64 >nul && set"',
+            command,
             text=True,
             env=dict(environment, PATH=str(vswhere.parent) + os.pathsep + environment["PATH"]),
             creationflags=spawn_flags(),
@@ -139,21 +145,27 @@ def main() -> None:
     if options.fixture_client:
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
+        import harmos_tools.build.resources.cpp
+        import harmos_tools.build.resources.descriptor
+
         from ..source.protocol import narrow_callers
-        from .resource_roots import cpp, table
 
         if options.fixture_descriptors is None:
             parser.error("C++ fixture client requires --fixture-descriptors")
         library = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
         fixture = FileDescriptorSet.FromString(options.fixture_descriptors.read_bytes())
         if options.fixture_composition:
-            composition = tomllib.loads(options.fixture_composition.read_text(encoding="utf-8"))
+            # Read Structured Input
+            text = options.fixture_composition.read_text(encoding="utf-8")
+            composition = tomllib.loads(text)
             narrow_callers(library, composition.get("callers", {}))
-        methods = table(library) + table(fixture)
-        cpp(ROOT, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client)
-        from .resource_roots import cpp_host
+        methods = harmos_tools.build.resources.descriptor.table(library) + harmos_tools.build.resources.descriptor.table(fixture)
+        harmos_tools.build.resources.cpp.client(
+            ROOT, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client
+        )
+        import harmos_tools.build.resources.cpp
 
-        cpp_host(
+        harmos_tools.build.resources.cpp.host(
             ROOT,
             [method for method in methods if method["face"] == "context"],
             namespace="fixture",
@@ -180,12 +192,17 @@ def main() -> None:
     if options.generate:
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-        from .resource_roots import cpp, cpp_exports, cpp_host, table
+        import harmos_tools.build.resources.cpp
+        import harmos_tools.build.resources.descriptor
 
         descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        cpp_exports(ROOT, descriptors)
-        cpp(ROOT, [method for method in table(descriptors) if method["face"] == "client"])
-        cpp_host(ROOT, [method for method in table(descriptors) if method["face"] == "context"])
+        harmos_tools.build.resources.cpp.exports(ROOT, descriptors)
+        harmos_tools.build.resources.cpp.client(
+            ROOT, [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"]
+        )
+        harmos_tools.build.resources.cpp.host(
+            ROOT, [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"]
+        )
 
     # Tests Consume Existing Producer Outputs; a Selection That Runs No Test Fails.
     if options.test:
@@ -207,8 +224,10 @@ def main() -> None:
         elif options.layer != "unit" and not options.exact:
             integration = ["discover", "-s", "tests/integration"]
         if integration is not None:
+            # Run the Native Command
+            command = [sys.executable, "-m", "unittest", *integration, "-v"]
             subprocess.run(
-                [sys.executable, "-m", "unittest", *integration, "-v"],
+                command,
                 cwd=sdk,
                 env=dict(child_environment, TEST_PROFILE=options.profile),
                 check=True,
@@ -222,8 +241,10 @@ def main() -> None:
     if options.consumer:
         consumer = ROOT / "target/cpp/consumer" / options.profile
         prefix = consumer / "installed"
+        # Run the Native Command
+        command = ["cmake", "--install", str(directory), "--prefix", str(prefix)]
         subprocess.run(
-            ["cmake", "--install", str(directory), "--prefix", str(prefix)],
+            command,
             env=child_environment,
             check=True,
             stdout=sys.stdout,
@@ -231,29 +252,33 @@ def main() -> None:
             creationflags=spawn_flags(),
         )
         toolchain = Path(child_environment["VCPKG_ROOT"]) / "scripts/buildsystems/vcpkg.cmake"
+        # Run the Native Command
+        command = [
+            "cmake",
+            "-S",
+            str(sdk / "examples/conformance"),
+            "-B",
+            str(consumer),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
+            f"-DCMAKE_PREFIX_PATH={prefix}",
+            f"-DVCPKG_INSTALLED_DIR={ROOT / 'target/cpp/vcpkg_installed'}",
+            "-DVCPKG_MANIFEST_INSTALL=OFF",
+            f"-DCMAKE_BUILD_TYPE={'Debug' if options.profile == 'dev' else 'Release'}",
+        ]
         subprocess.run(
-            [
-                "cmake",
-                "-S",
-                str(sdk / "examples/conformance"),
-                "-B",
-                str(consumer),
-                "-G",
-                "Ninja",
-                f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
-                f"-DCMAKE_PREFIX_PATH={prefix}",
-                f"-DVCPKG_INSTALLED_DIR={ROOT / 'target/cpp/vcpkg_installed'}",
-                "-DVCPKG_MANIFEST_INSTALL=OFF",
-                f"-DCMAKE_BUILD_TYPE={'Debug' if options.profile == 'dev' else 'Release'}",
-            ],
+            command,
             env=child_environment,
             check=True,
             stdout=sys.stdout,
             stderr=sys.stderr,
             creationflags=spawn_flags(),
         )
+        # Run the Native Command
+        command = ["cmake", "--build", str(consumer), "--parallel", "4"]
         subprocess.run(
-            ["cmake", "--build", str(consumer), "--parallel", "4"],
+            command,
             env=child_environment,
             check=True,
             stdout=sys.stdout,
@@ -300,7 +325,9 @@ def main() -> None:
             clang = Path(child_environment["VCINSTALLDIR"]) / "Tools/Llvm/bin/clang-tidy.exe"
             if not clang.is_file():
                 raise RuntimeError("Check C++ Shadowing: install the Visual Studio C++ Clang tools component")
-            commands = json.loads((directory / "compile_commands.json").read_text(encoding="utf-8"))
+            # Read Structured Input
+            text = (directory / "compile_commands.json").read_text(encoding="utf-8")
+            commands = json.loads(text)
             # Translate the MSVC-Only Preprocessor Flag for the Clang Frontend.
             for command in commands:
                 command["command"] = command["command"].replace(" /Zc:preprocessor", "")
@@ -308,20 +335,22 @@ def main() -> None:
             clang_directory.mkdir(exist_ok=True)
             (clang_directory / "compile_commands.json").write_text(json.dumps(commands), encoding="utf-8")
             sources = sorted({entry["file"] for entry in commands if Path(entry["file"]).suffix == ".cpp"})
+            # Run the Native Command
+            command = [
+                str(clang),
+                "--checks=-*,clang-diagnostic-*,clang-analyzer-core.CallAndMessage",
+                "--warnings-as-errors=*",
+                "--extra-arg=-Wshadow",
+                "--extra-arg=-Wshadow-all",
+                "--extra-arg=-Werror=shadow",
+                "--extra-arg=-Werror=shadow-all",
+                "--extra-arg=-D_CRT_USE_BUILTIN_OFFSETOF",
+                "-p",
+                str(clang_directory),
+                *sources,
+            ]
             subprocess.run(
-                [
-                    str(clang),
-                    "--checks=-*,clang-diagnostic-*,clang-analyzer-core.CallAndMessage",
-                    "--warnings-as-errors=*",
-                    "--extra-arg=-Wshadow",
-                    "--extra-arg=-Wshadow-all",
-                    "--extra-arg=-Werror=shadow",
-                    "--extra-arg=-Werror=shadow-all",
-                    "--extra-arg=-D_CRT_USE_BUILTIN_OFFSETOF",
-                    "-p",
-                    str(clang_directory),
-                    *sources,
-                ],
+                command,
                 env=child_environment,
                 check=True,
                 stdout=sys.stdout,
@@ -332,8 +361,10 @@ def main() -> None:
 
     # Install the SDK Before Any Compile-Contract Consumer Runs.
     if not options.generate:
+        # Run the Native Command
+        command = ["cmake", "--install", str(directory), "--prefix", str(directory / "installed")]
         subprocess.run(
-            ["cmake", "--install", str(directory), "--prefix", str(directory / "installed")],
+            command,
             env=child_environment,
             check=True,
             stdout=sys.stdout,
@@ -343,9 +374,9 @@ def main() -> None:
 
     # Stage the SDK Sources, Manifest and Conformance Consumer Together.
     if not options.generate:
-        from .paths import output as build_output
+        import harmos_tools.build.paths
 
-        destination = build_output(ROOT, "build", options.profile) / "cpp"
+        destination = harmos_tools.build.paths.output(ROOT, "build", options.profile) / "cpp"
         destination.mkdir(parents=True, exist_ok=True)
         package = tarfile.open(destination / "harmos-cpp.tar.gz", "w:gz")
         try:

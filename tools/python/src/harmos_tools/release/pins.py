@@ -52,8 +52,11 @@ def check(directory: Path, *, warn: bool = False) -> bool:
         raise policy.ToolError(message)
     print("::warning::" + message + "; skipping crate publication dry run")
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-        with Path(summary).open("a", encoding="utf-8") as stream:
+        stream = Path(summary).open("a", encoding="utf-8")
+        try:
             stream.write("\n### Release Pin Warning\n\n" + message + "\n")
+        finally:
+            stream.close()
     return False
 
 

@@ -135,24 +135,34 @@ def assemble(directory: Path, language: str, profile: str, target: str, staging:
             documentation.append((changelog_file, "CHANGELOG.md"))
             contents = [(source, item["binary"]), *documentation]
             if output.name.endswith(".zip"):
-                with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+                archive = zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED)
+                try:
                     for original, name in contents:
                         metadata = zipfile.ZipInfo.from_file(original, name)
                         metadata.create_system = 3
                         metadata.external_attr = (stat.S_IFREG | (0o755 if original == source else 0o644)) << 16
                         metadata.compress_type = zipfile.ZIP_DEFLATED
                         archive.writestr(metadata, original.read_bytes())
+                finally:
+                    archive.close()
             else:
-                with tarfile.open(output, "x:gz") as archive:
+                archive = tarfile.open(output, "x:gz")
+                try:
                     for original, name in contents:
                         metadata = archive.gettarinfo(str(original), arcname=name)
                         metadata.mode = 0o755 if original == source else 0o644
-                        with original.open("rb") as stream:
+                        stream = original.open("rb")
+                        try:
                             archive.addfile(metadata, stream)
+                        finally:
+                            stream.close()
+                finally:
+                    archive.close()
             changelog_file.unlink()
             continue
         destinations = set()
-        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive = zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED)
+        try:
             for entry in item["inputs"]:
                 prefix = "target/build/{profile}/{target}/"
                 if not entry["path"].startswith(prefix):
@@ -185,27 +195,44 @@ def assemble(directory: Path, language: str, profile: str, target: str, staging:
                 metadata.create_system = 3
                 metadata.external_attr = (stat.S_IFREG | mode) << 16
                 metadata.compress_type = zipfile.ZIP_DEFLATED
-                with source.open("rb") as original, archive.open(metadata, "w") as destination:
-                    shutil.copyfileobj(original, destination)
+                original = source.open("rb")
+                try:
+                    destination = archive.open(metadata, "w")
+                    try:
+                        shutil.copyfileobj(original, destination)
+                    finally:
+                        destination.close()
+                finally:
+                    original.close()
+        finally:
+            archive.close()
 
 
 def binary_bytes(source: Path, name: str) -> bytes:
     """Read Only The Declared Root Binary, Without Extracting Archive Paths."""
     if source.name.endswith(".zip"):
-        with zipfile.ZipFile(source) as archive:
+        archive = zipfile.ZipFile(source)
+        try:
             matches = [entry for entry in archive.infolist() if entry.filename == name]
             if len(matches) != 1 or matches[0].is_dir():
                 raise policy.ToolError("tool archive must contain one declared binary")
             return archive.read(matches[0])
-    with tarfile.open(source, "r:gz") as archive:
+        finally:
+            archive.close()
+    archive = tarfile.open(source, "r:gz")
+    try:
         matches = [entry for entry in archive.getmembers() if entry.name == name]
         if len(matches) != 1 or not matches[0].isfile() or not matches[0].mode & 0o111:
             raise policy.ToolError("tool archive must contain one executable regular binary")
         stream = archive.extractfile(matches[0])
         if stream is None:
             raise policy.ToolError("tool archive binary has no file content")
-        with stream:
+        try:
             return stream.read()
+        finally:
+            stream.close()
+    finally:
+        archive.close()
 
 
 def verify(directory: Path, profile: str, target: str, root: Path | None = None) -> None:
@@ -217,12 +244,16 @@ def verify(directory: Path, profile: str, target: str, root: Path | None = None)
         source = (root / item["output"]) if root else paths.output(directory, "package", profile, target) / "rust" / item["output"]
         if not source.is_file() or source.is_symlink():
             raise policy.ToolError("missing packaged executable")
-        with temporary.directory() as install:
+        install_directory = temporary.Directory()
+        install = install_directory.path
+        try:
             executable = install / item["binary"]
             executable.write_bytes(binary_bytes(source, item["binary"]))
             executable.chmod(0o755)
+            # Run the Native Command
+            command = [str(executable), *item["verify"]]
             subprocess.run(
-                [str(executable), *item["verify"]],
+                command,
                 stdin=sys.stdin,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
@@ -230,6 +261,8 @@ def verify(directory: Path, profile: str, target: str, root: Path | None = None)
                 cwd=install,
                 check=True,
             )
+        finally:
+            install_directory.close()
 
 
 def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
@@ -241,13 +274,17 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
         provider = settings["provider"]
         repository = settings.get("repository") if provider == "github" else settings["project_id"]
         for installer in item["installers"]:
-            with temporary.directory() as install:
+            install_directory = temporary.Directory()
+            install = install_directory.path
+            try:
                 if installer == "mise":
                     tool = f"{provider}:{repository}[asset_pattern={item['output']},bin={item['binary']}]@{version}"
                     environment = os.environ.copy()
                     environment.pop("MISE_ENABLE_TOOLS", None)
+                    # Run the Native Command
+                    command = ["mise", "install-into", tool, str(install)]
                     subprocess.run(
-                        ["mise", "install-into", tool, str(install)],
+                        command,
                         stdin=sys.stdin,
                         stdout=sys.stdout,
                         stderr=sys.stderr,
@@ -289,8 +326,10 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                 expected = hashlib.sha256(binary_bytes(root / item["output"], item["binary"])).digest()
                 if hashlib.sha256(matches[0].read_bytes()).digest() != expected:
                     raise policy.ToolError(f"{installer} did not install the exact published asset")
+                # Run the Native Command
+                command = [str(matches[0]), *item["verify"]]
                 subprocess.run(
-                    [str(matches[0]), *item["verify"]],
+                    command,
                     stdin=sys.stdin,
                     stdout=sys.stdout,
                     stderr=sys.stderr,
@@ -298,6 +337,8 @@ def installed(directory: Path, settings: dict, root: Path, target: str) -> None:
                     cwd=install,
                     check=True,
                 )
+            finally:
+                install_directory.close()
 
 
 def main() -> None:
@@ -315,11 +356,17 @@ def main() -> None:
     products = definitions(directory, options.profile, target)
     canonical = policy.config(directory).get("languages", {}).get("python", {}).get("build_target") == "any"
     if target == "any" and not any(item["language"] == language for item in products) and not (language == "python" and canonical):
-        with temporary.directory() as staging:
+        staging_directory = temporary.Directory()
+        staging = staging_directory.path
+        try:
             paths.replace(directory, staging, destination / language, origin=staging)
+        finally:
+            staging_directory.close()
         return
     if any(item["language"] == language for item in products):
-        with temporary.directory() as staging:
+        staging_directory = temporary.Directory()
+        staging = staging_directory.path
+        try:
             assemble(directory, language, options.profile, target, staging)
             existing = paths.output(directory, "package", options.profile, target)
             for item in products:
@@ -329,18 +376,24 @@ def main() -> None:
                 if foreign:
                     raise policy.ToolError("package output collides with another language")
             paths.replace(directory, staging, destination / language, origin=staging)
+        finally:
+            staging_directory.close()
         if language == "rust":
             verify(directory, options.profile, target)
         return
     if options.language == "rust":
-        metadata = json.loads(
-            policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"], capture=True)
-        )
+        # Read Structured Input
+        text = policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1", "--locked"], capture=True)
+        metadata = json.loads(text)
         members = set(metadata["workspace_members"])
         crates = {item["name"]: item for item in metadata["packages"] if item["id"] in members and item.get("publish") != []}
-        with temporary.directory() as scratch, changelog.staged(directory, crates):
-            subprocess.run(
-                [
+        scratch_directory = temporary.Directory()
+        scratch = scratch_directory.path
+        try:
+            staged_notes = changelog.StagedNotes(directory, crates)
+            try:
+                # Run the Native Command
+                command = [
                     "cargo",
                     "package",
                     "--workspace",
@@ -349,20 +402,26 @@ def main() -> None:
                     "--allow-dirty",
                     "--target-dir",
                     str(scratch),
-                ],
-                stdin=sys.stdin,
-                stdout=sys.stdout,
-                stderr=sys.stderr,
-                creationflags=spawn_flags(),
-                cwd=directory,
-                check=True,
-            )
-            paths.replace(
-                directory,
-                scratch / "package",
-                destination / options.language,
-                origin=scratch,
-            )
+                ]
+                subprocess.run(
+                    command,
+                    stdin=sys.stdin,
+                    stdout=sys.stdout,
+                    stderr=sys.stderr,
+                    creationflags=spawn_flags(),
+                    cwd=directory,
+                    check=True,
+                )
+                paths.replace(
+                    directory,
+                    scratch / "package",
+                    destination / options.language,
+                    origin=scratch,
+                )
+            finally:
+                staged_notes.close()
+        finally:
+            scratch_directory.close()
         return
     else:
         kind = {"python": "python", "typescript": "web", "native": "bin"}[options.language]

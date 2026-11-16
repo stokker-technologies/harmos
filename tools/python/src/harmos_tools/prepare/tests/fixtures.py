@@ -18,16 +18,18 @@ import os
 import subprocess
 from pathlib import Path
 
+import harmos_tools.build.fixtures
+
 # Third Party Imports
 # Local Imports
-from ...build import fixtures as staging
+from harmos_tools.process import spawn_flags
+
 from ...build import paths
 from ...build.cargo import Artifact
 from ...build.fixtures import ROOT
 from ...test import archive
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -78,7 +80,10 @@ def prepare_focused(
     required = set(requested)
     invalid_names = any(not _valid_target_name(name) for name in required)
     if not required or invalid_names:
-        raise ValueError("focused library names must be nonempty Cargo target names")
+        raise ValueError(
+            "focused library names must be nonempty Cargo target names; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     libraries: dict[str, dict[str, str]] = {}
     dependencies: set[Path] = set()
     events = _compiler_artifacts(_cargo_events([messages]))
@@ -93,9 +98,12 @@ def prepare_focused(
             continue
         library = emitted[0].resolve()
         dependencies.add(library.parent if library.parent.name == "deps" else library.parent / "deps")
-        libraries[name] = {"path": str(library), "sha256": staging.digest(library)}
+        libraries[name] = {"path": str(library), "sha256": harmos_tools.build.fixtures.digest(library)}
     if set(libraries) != required or len(dependencies) != 1:
-        raise RuntimeError(f"focused Cargo messages did not produce the requested libraries unambiguously: {sorted(libraries)}")
+        raise RuntimeError(
+            f"focused Cargo messages did not produce the requested libraries unambiguously: {sorted(libraries)}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
 
     dependency = next(iter(dependencies))
     dependency_directory = str(dependency)
@@ -111,16 +119,22 @@ def prepare_focused(
             module = path.with_suffix(".core.wasm")
             path.replace(module)
             request = {"action": "component", "module": str(module), "output": str(path)}
-            subprocess.run([str(componentizer.resolve())], input=json.dumps(request), text=True, check=True)
+            # Run the Native Command
+            command = [str(componentizer.resolve())]
+            subprocess.run(command, input=json.dumps(request), text=True, check=True, creationflags=spawn_flags())
     metadata["inspections"] = {name: str(path) for name, path in inspection_paths.items()}
-    metadata["inspection_sha256"] = {name: staging.digest(path) for name, path in inspection_paths.items()}
+    metadata["inspection_sha256"] = {name: harmos_tools.build.fixtures.digest(path) for name, path in inspection_paths.items()}
     metadata["artifacts"] = {name: str(path) for name, path in inspection_paths.items()}
     for name, library in libraries.items():
         library_path = Path(library["path"])
-        digest = staging.digest(library_path)
-        staging.verify(digest, library["sha256"], f"focused library changed while stamping: {name}")
+        digest = harmos_tools.build.fixtures.digest(library_path)
+        harmos_tools.build.fixtures.verify(digest, library["sha256"], f"focused library changed while stamping: {name}")
     for name, path in inspection_paths.items():
-        staging.verify(staging.digest(path), metadata["inspection_sha256"][name], f"focused inspection changed while stamping: {name}")
+        harmos_tools.build.fixtures.verify(
+            harmos_tools.build.fixtures.digest(path),
+            metadata["inspection_sha256"][name],
+            f"focused inspection changed while stamping: {name}",
+        )
     manifest = ROOT / "target" / "build" / "focused-fixtures" / "fixtures.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps({"schema": 1, "metadata": metadata}, indent=2) + "\n", encoding="utf-8")
@@ -133,9 +147,14 @@ def _inspection_artifacts(messages: list[Path], requested: list[str]) -> dict[st
     if not requested:
         return {}
     if len(set(requested)) != len(requested):
-        raise ValueError("focused inspection names must be unique")
+        raise ValueError(
+            "focused inspection names must be unique; Build the selected fixture targets and pass their complete compiler messages"
+        )
     if any(not _valid_target_name(name) for name in requested):
-        raise ValueError("focused inspection names must be Cargo target names")
+        raise ValueError(
+            "focused inspection names must be Cargo target names; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     events = _cargo_events(messages)
 
     resolved: dict[str, Path] = {}
@@ -143,7 +162,10 @@ def _inspection_artifacts(messages: list[Path], requested: list[str]) -> dict[st
         target_name = name.replace("-", "_")
         matches = _inspection_matches(events, target_name)
         if len(matches) != 1:
-            raise RuntimeError(f"focused Cargo messages did not produce one inspection artifact for {name}: {matches}")
+            raise RuntimeError(
+                f"focused Cargo messages did not produce one inspection artifact for {name}: {matches}; "
+                "Build the selected fixture targets and pass their complete compiler messages"
+            )
         resolved[name] = matches[0]
     return resolved
 
@@ -155,9 +177,9 @@ def _stage_inspections(sources: dict[str, Path]) -> dict[str, Path]:
     copied_files = {}
     for name, source in sources.items():
         destination = directory / f"{name}{source.suffix}"
-        source_digest = staging.digest(source)
-        copied_digest = staging.copy(source, destination, copied_files)
-        staging.verify(copied_digest, source_digest, f"focused inspection changed while staging: {name}")
+        source_digest = harmos_tools.build.fixtures.digest(source)
+        copied_digest = harmos_tools.build.fixtures.copy(source, destination, copied_files)
+        harmos_tools.build.fixtures.verify(copied_digest, source_digest, f"focused inspection changed while staging: {name}")
         staged[name] = destination.resolve()
     return staged
 
@@ -175,9 +197,15 @@ def _successful_capture(message_path: Path) -> list[Artifact]:
     captured: list[Artifact] = [json.loads(line) for line in lines if line.startswith("{")]
     completions = [event for event in captured if event.get("reason") == "build-finished"]
     if not completions:
-        raise RuntimeError(f"Cargo capture has no build-finished event: {message_path}")
+        raise RuntimeError(
+            f"Cargo capture has no build-finished event: {message_path}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     if any(event.get("success") is not True for event in completions):
-        raise RuntimeError(f"Cargo capture reports an unsuccessful build: {message_path}")
+        raise RuntimeError(
+            f"Cargo capture reports an unsuccessful build: {message_path}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     return captured
 
 
@@ -224,15 +252,21 @@ def prepare(profile: str) -> None:
     """Join Independently Exported Product And Tests Inputs Without Compilation."""
     export = paths.output(ROOT, "build", profile)
     fixtures = export / "fixtures"
-    stamp = json.loads((fixtures / "stamp.json").read_text(encoding="utf-8"))
-    staging.verify(stamp["profile"], profile, "test fixtures belong to another profile")
-    staging.verify(stamp["target"], paths.target(), "test fixtures belong to another native target")
-    catalog = json.loads((export / "product/examples/catalog.json").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (fixtures / "stamp.json").read_text(encoding="utf-8")
+    stamp = json.loads(text)
+    harmos_tools.build.fixtures.verify(stamp["profile"], profile, "test fixtures belong to another profile")
+    harmos_tools.build.fixtures.verify(stamp["target"], paths.target(), "test fixtures belong to another native target")
+    # Read Structured Input
+    text = (export / "product/examples/catalog.json").read_text(encoding="utf-8")
+    catalog = json.loads(text)
     product = (export / "product").relative_to(ROOT).as_posix() + "/"
     files = {name: digest for name, digest in stamp["files"].items() if not name.startswith(product)}
     files.update(catalog["files"])
     for relative, expected in files.items():
-        staging.verify(staging.digest(ROOT / relative), expected, f"fixture bytes differ from their producer: {relative}")
+        harmos_tools.build.fixtures.verify(
+            harmos_tools.build.fixtures.digest(ROOT / relative), expected, f"fixture bytes differ from their producer: {relative}"
+        )
 
     metadata = stamp["metadata"]
     for key in ("artifacts", "builds", "libraries"):
@@ -246,7 +280,7 @@ def prepare(profile: str) -> None:
     for name in ("schematic-sidecar", "schematic-guest"):
         source = export / catalog["artifacts"][name]
         destination = fixtures / "inspection" / source.name
-        staging.copy(source, destination, files)
+        harmos_tools.build.fixtures.copy(source, destination, files)
         metadata["inspections"][name] = destination.relative_to(fixtures).as_posix()
     archive.stamp(ROOT, profile, sorted(files), metadata)
 

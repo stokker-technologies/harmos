@@ -10,19 +10,18 @@
 # === Imports === #
 
 # Standard Library Imports
-import contextlib
 import json
 import os
 import time
-from collections.abc import Generator
 from pathlib import Path
 
 # Third Party Imports
 
+
 # Local Imports
 
-# Type Checking Imports
 
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -31,6 +30,27 @@ from pathlib import Path
 # === Types === #
 
 # === Classes === #
+
+
+class Phase:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.started_s = time.monotonic()
+
+    def close(self) -> None:
+        destination = os.environ.get("BUILD_PHASE_FILE")
+        if not destination:
+            return
+        try:
+            record = {"name": self.name, "seconds": time.monotonic() - self.started_s}
+            stream = Path(destination).open("a", encoding="utf-8")
+            try:
+                stream.write(json.dumps(record) + "\n")
+            finally:
+                stream.close()
+        except OSError:
+            print(f"{self.name}: phase telemetry unavailable", flush=True)
+
 
 # === Public Functions === #
 
@@ -64,7 +84,8 @@ def render(label: str, elapsed: float | None, statistics: dict | None, *, phases
     print(f"{label}: " + "; ".join(f"{name}={value}" for name, value in measured), flush=True)
     if destination := os.environ.get("GITHUB_STEP_SUMMARY"):
         try:
-            with Path(destination).open("a", encoding="utf-8") as stream:
+            stream = Path(destination).open("a", encoding="utf-8")
+            try:
                 stream.write(f"## {label}\n\n")
                 if statistics is not None:
                     stream.write("Compiler Cache: sccache.\n\n")
@@ -75,22 +96,10 @@ def render(label: str, elapsed: float | None, statistics: dict | None, *, phases
                     stream.write("\n<details><summary>Cache Diagnostics</summary>\n\n")
                     stream.write("```json\n" + json.dumps(errors, indent=2) + "\n```\n\n</details>\n")
                 stream.write("\n")
+            finally:
+                stream.close()
         except OSError:
             print(f"{label}: summary unavailable", flush=True)
-
-
-@contextlib.contextmanager
-def phase(name: str) -> Generator[None]:
-    started = time.monotonic()
-    try:
-        yield
-    finally:
-        if destination := os.environ.get("BUILD_PHASE_FILE"):
-            try:
-                with Path(destination).open("a", encoding="utf-8") as stream:
-                    stream.write(json.dumps({"name": name, "seconds": time.monotonic() - started}) + "\n")
-            except OSError:
-                print(f"{name}: phase telemetry unavailable", flush=True)
 
 
 def phases(path: Path) -> dict[str, float]:
@@ -105,7 +114,7 @@ def phases(path: Path) -> dict[str, float]:
             item = json.loads(line)
             name, seconds = item["name"], item["seconds"]
             if not isinstance(name, str) or type(seconds) not in (int, float) or not 0 <= seconds < float("inf"):
-                raise ValueError("invalid phase metric")
+                raise ValueError("invalid phase metric; Pass a supported numeric phase metric")
             result[name] = result.get(name, 0) + seconds
         except (ValueError, TypeError, KeyError):
             print("Phase telemetry record unavailable", flush=True)
@@ -117,5 +126,7 @@ def phases(path: Path) -> dict[str, float]:
 # === Entry Point === #
 
 if __name__ == "__main__":
-    caches = json.loads(os.environ.get("CACHE_RESTORES", "{}"))
+    # Read Structured Input
+    text = os.environ.get("CACHE_RESTORES", "{}")
+    caches = json.loads(text)
     render("Cache Summary", None, None, caches={name: {"Restore": status} for name, status in caches.items()})

@@ -25,7 +25,6 @@ from . import bench, fixtures, paths
 
 # Type Checking Imports
 
-
 # === Public Exports === #
 
 # === Constants === #
@@ -46,17 +45,23 @@ def build(extra: list[str]) -> Path:
     messages = bench.build(root, arguments)
     output = paths.output(root, "build", "bench")
     directory = output / "fixtures"
-    stamp = json.loads((directory / "stamp.json").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (directory / "stamp.json").read_text(encoding="utf-8")
+    stamp = json.loads(text)
     files = dict(stamp["files"])
     artifacts = {}
 
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         tool = fixtures.driver("bench", scratch)
         for package, backend, target in (("schematic-guest", "guest", ["--features", "benchmark", "--target", "wasm32-unknown-unknown"]),):
             capture = fixtures.capture(package, fixtures.SCHEMATIC.parent, "bench", ["-p", package, *target], scratch)
             built, receipt = fixtures.collect(tool, fixtures.SCHEMATIC, package, backend, "bench", capture, scratch)
             artifact, _ = fixtures.stage_build(built, receipt, package, files, directory)
             artifacts[package] = artifact
+    finally:
+        scratch_directory.close()
     archive.stamp(root, "bench", list(files), {"artifacts": artifacts, "cargo_arguments": arguments})
     return messages
 

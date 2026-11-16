@@ -59,7 +59,9 @@ def run(
 ) -> list[str]:
     """One pytest lane with a terminating per-story hang guard."""
     if not (project / suite).is_dir():
-        raise policy.TestError(f"missing Python suite {project / suite}")
+        raise policy.TestError(
+            f"missing Python suite {project / suite}; Select an existing Python test or benchmark suite in its owning project"
+        )
     return [
         sys.executable,
         "-m",
@@ -83,7 +85,9 @@ def coverage(project: Path, cobertura: Path) -> list[str]:
 def bench(project: Path, category: str, output: Path, arguments: Sequence[str]) -> list[str]:
     suite = f"benchmarks/{category}"
     if not (project / suite).is_dir():
-        raise policy.TestError(f"missing Python benchmarks {project / suite}")
+        raise policy.TestError(
+            f"missing Python benchmarks {project / suite}; Select an existing Python test or benchmark suite in its owning project"
+        )
     return [
         sys.executable,
         "-m",

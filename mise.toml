@@ -38,7 +38,6 @@ git-cliff = "2.14.2"
 
 [env]
 RUFF_CACHE_DIR = "{{ config_root }}/tools/python/.ruff_cache"
-TAPLO_CONFIG = "{{ config_root }}/tools/config/taplo.toml"
 
 # === Variables === #
 
@@ -142,10 +141,6 @@ hide = true
 description = "CI / Mirror"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:mirror"
 
-[tasks."ci:runners"]
-hide = true
-description = "CI / Runners"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:runners"
 
 [tasks."ci:release-mode"]
 hide = true
@@ -157,10 +152,6 @@ hide = true
 description = "CI / Review"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:review"
 
-[tasks."ci:release-checks"]
-hide = true
-description = "CI / Release Checks"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:release-checks"
 
 [tasks."ci:required"]
 hide = true
@@ -242,7 +233,7 @@ description = "Check Generated Python"
 run = [
   "uv run --locked --no-sync --project tools/python ty check target/generated/python/src",
   "uv run --locked --no-sync --project tools/python ruff check --config tools/python/ruff.toml --extend-exclude=_wire target/generated/python/src",
-  "uv run --locked --no-sync --project tools/python python -c \"import sys, pkgutil, importlib; sys.path.insert(0, 'target/generated/python/src'); [importlib.import_module(m.name) for m in pkgutil.walk_packages(['target/generated/python/src'])]\"",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.source.imports --directory target/generated/python/src",
 ]
 
 [tasks."check:repository"]
@@ -282,10 +273,6 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo focused check --locked --profile test --manifest-path examples/schematic/Cargo.toml --workspace --all-targets",
 ]
 
-[tasks."build:rust:focused"]
-hide = true
-description = "Compile a Focused Rust Selection"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cargo focused"
 
 [tasks."build:rust:tests"]
 hide = true
@@ -304,20 +291,15 @@ run = [
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks test --language python --package harmos-sdk --target integration --profile {{usage.profile}}",
 ]
 
-[tasks."test:python:examples"]
-hide = true
-description = "Test the Python SDK Examples Through gRPC"
-usage = 'flag "--profile <profile>" default="dev"'
-run = "mise -C sdk/python run test:examples -- --profile {{usage.profile}}"
 
 [tasks."check:python:sdk"]
 hide = true
 description = "Check Python SDK and Protocol Drift"
 run = [
   "mise -C sdk/python run check",
-  "uv run --locked --no-sync --project tools/python ruff format tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py --check",
-  "uv run --locked --no-sync --project tools/python ruff check tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
-  "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python ruff format tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py --check",
+  "uv run --locked --no-sync --project tools/python ruff check tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
+  "uv run --locked --no-sync --project tools/python ty check --project tools/python tools/python/src/harmos_tools/build/python_protocol.py tools/python/src/harmos_tools/build/resources tools/python/src/harmos_tools/task tools/python/src/harmos_tools/ci/tasks.py",
 ]
 
 [tasks."test:rust:unit"]
@@ -425,9 +407,3 @@ hide = true
 description = "Build Packageable Products"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build --profile {{usage.profile}}"
-
-[tasks."build:rust:csharp-fixture"]
-hide = true
-description = "Build and Stage the Rust Producer C# Fixture"
-usage = 'flag "--profile <profile>" default="dev"'
-run = "mise -C sdk/csharp run build:rust-fixture -- --profile {{usage.profile}}"
