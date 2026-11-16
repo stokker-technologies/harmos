@@ -18,21 +18,29 @@ Harmos owns the generic plugin lifecycle and registration machinery; products ow
 | --- | --- |
 | Paired verbs | Verbs come only in pairs and each placement uses only the pairs it needs: `initialize` ↔ `finalize` acquire and release resources, and finalize always runs once initialize was attempted, including after a failed initialize; `start` ↔ `stop` begin and end activity. `register` is the declaration and admission phase and has no counterpart. |
 | Host verbs | **BREAKING.** A product-built runtime goes new → register → start → stop; `run` is start, wait, stop. `launch` becomes `start`, `shutdown` becomes `stop` and `serve` becomes `run` wherever they denote these. |
-| Plugin phases | **BREAKING.** A plugin goes register (admission) → initialize → finalize. Native `on_stop` and Wasm `on_shutdown`/`on_cleanup` merge into finalize: the host cancels in-flight work, then calls finalize. Plugins have no start or stop. |
+| Plugin phases | **BREAKING.** Local register → host admission → initialize → finalize. Native `on_stop` and Wasm `on_shutdown`/`on_cleanup` merge into finalize: the host cancels in-flight work, then calls finalize. Plugins have no start or stop. |
 | Registration is admission | The plugin declares streams, operations, settings, requirements and product sections; the host only checks definitions (identities, schemas, references, permissions, limits). Registration runs no handler, prompts nothing and acquires nothing. It is local declaration composition completed before serving, reported through the existing `Instance.Get` declarations and frozen per activation; no new host-invoked registration phase. |
 | Registration API | **BREAKING.** `fn register(ctx: &mut Registrar) -> Result<()>` with `ctx.register(x::catalog())`; typed `register<T: Registration>` accumulates descriptors internally, removing builder type growth. Every language uses `register`, except C++, where it is a reserved keyword and the call is `add` (the phase is still named register). |
 | Module entry points | Every module that contributes declarations exposes `catalog()`; `declarations()` stays the frozen host-facing description. |
 | One vocabulary | Verbs, names and structure are the same across Rust, Python, C# and C++ with idiomatic casing only, and match the product SDKs built on them. |
-| No aliases or path overrides | Code refers to types and modules by their qualified path. No import aliases (Rust `use x as y`, Python `import x as y`, C# `using X = Y;`, C++ renaming aliases) and no path overrides (`#[path]`, `sys.path` edits), except named unavoidable exceptions. |
-| SDK ownership | The four plugin SDKs stay in Harmos; product kinds stay in product SDKs and compose through Harmos declaration sections. |
+| No aliases or path overrides | Import the names used; qualify clashes by module path. No import aliases or path overrides (`#[path]`, `sys.path` edits), except named unavoidable exceptions. |
+| SDK ownership (later owner amendment: plugin-boundary) | Harmos owns thin four-language carrier helpers and generic registration/lifecycle machinery. Products own contracts, registrars and the only author-facing SDKs/starters; Harmos types stay internal without import aliases. |
 
 - Add host-invoked plugin initialize and finalize to the native plugin carrier, replacing
   `Instance.Stop`; rename the Wasm guest shutdown command and policy to finalize.
-- Add the registrar, the `Registration` trait and its equivalents in all four SDKs; dissolve
+- Add generic registration accumulation in all four carrier helpers; products own
+  their public registrar and `Registration` contract and translate internally. Dissolve
   the Wasm `Registration` builder into the plugin value plus guest capacity.
 - Rename application, service and carrier `cleanup` hooks to `finalize`.
 - Security checks and prerequisite UI after admission and before initialize are a possible
   later phase, not part of this change.
+
+`plugin-boundary` keeps the internal manager and register → admission → initialize
+→ finalize state machine in Harmos; installation, registry, persisted settings,
+admission policy and management operations move to products. Registration is local
+and inert; host admission combines generic checks with the product kind's callback.
+Regenerate the carrier, facade and lifecycle together once with `operation-boundary`
+and `plugin-boundary`, preserving every phase guarantee below.
 
 Supersedes, in the `grpc-plugins` change: the Wasm registration sketch (`on_initialize`,
 `on_shutdown`), the "Plugin initialization and shutdown operations" row, "Before the host

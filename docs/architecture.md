@@ -19,6 +19,47 @@ Library-history references keep their saved-storage path; no application bytes o
 metadata enter library persistence. Diagnostics and bundle installation use the
 same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
 
+## Plugin Boundary
+
+**Locked owner decision, 2026-11-16; not implemented:** several products embed
+Harmos. Harmos owns plugin runtime machinery; a product owns policy and everything
+an author touches. [Plugin Boundary](../openspec/changes/plugin-boundary/design.md)
+amends `operation-boundary` and `plugin-lifecycle` together.
+
+| Harmos | A Product |
+| --- | --- |
+| Internal plugin manager; register → admission → initialize → finalize; operation routing | Plugin contract, four author SDKs, registrars and starters |
+| Descriptor closure, identities, fingerprints and declaration digests | Admission callback on its registered plugin kind; settings resolution |
+| Process/Wasm hosting, transport, reconnect/fencing, sampling/windows, deadlines/cancellation | Registry, startup selection, installation, persisted settings and management operations/projections |
+| Minimal carrier, Rust/Python/C#/C++ carrier helpers, shared descriptor/codegen tooling, bounded inspection, generic conformance | Bundle format/build/verification, manifests/artifact digests, distribution, product conformance and one self-contained contracts archive per release |
+
+The carrier contains connection identity/revision, admission descriptors, invocation
+correlation with opaque payloads, cancellation, host-call frames, window/sample
+framing and opaque product sections. Product SDKs hide Harmos types from authors
+without import aliases. Carrier helpers retain reusable cancellation and windows.
+Consolidate the consuming product's richer generators and fixes here; replace its
+spawn/connect/Get/Stop probe with bounded inspection. Move bundle code to the
+product and delete the duplicate builder. Preserve atomicity, replay receipts and
+explicit incompatible-root refusal; no migration or silent reset.
+
+Proposed API through the typed facade; these are not landed symbols:
+
+```rust
+setup.plugin_kind("product.grpc",
+    grpc::Kind::<ProductContract>::new().admit(product::admit));
+let host = runtime.for_call(&ctx);
+let plugin = host.plugins().load(Load {
+    kind, placement: Managed { command }, settings,
+}).await?;
+```
+
+The kind supplies admission and settings-resolution hooks. Generic validation
+precedes product admission; resolved settings precede initialize. Products decide
+what and when to load; their registry calls load at startup. Bind and start-samples
+return opaque generation-fenced handles. No `PluginBackend` trait. Installation
+policy never becomes a second activation owner. Regenerate once with the operation
+and lifecycle changes; generated output stays tracked pending the separate decision.
+
 ## Storage and Query Ownership
 
 **Locked direction, 2026-11-14:** the dependency order is
@@ -30,10 +71,10 @@ the runtime builder supplies the runtime clock (locked facade direction). Consum
 
 **Runtime composition, locked direction (2026-11-16):** storage remains
 always present and the builder owns backend/catalog/settings admission and every
-manager lifecycle. Plugins persist entries, settings and bundle content through
-storage. Products do not construct or register a manager. A storage-only assembly
-admits prerequisite writes and offline maintenance without listeners or plugins;
-the implementation is tracked in `operation-boundary`.
+manager lifecycle. Products persist plugin entries, settings and bundle content
+through storage under Plugin Boundary. Products do not construct or register a
+manager. A storage-only assembly admits prerequisite writes and offline maintenance
+without listeners or plugins; implementation is tracked in `operation-boundary`.
 
 Compound mutation now applies ordered conditional object writes, deletion and record
 appends in one backend commit, publishing a cut and replayable receipt together.
@@ -452,7 +493,9 @@ and caller-face authorization remain independent checks.
    publication/demand; StorageManager owns persistence/production; GrpcManager owns
    listeners/access; ServiceManager owns resident services/status and host clock;
    StateManager owns state/replay; RecordManager owns record registration/lifecycle;
-   plugin management owns entries, typed settings, placement, activation and shutdown.
+   the internal plugin manager owns live activation, placement execution, routing
+   and settlement. Products own installed entries, persisted settings and management
+   policy (locked amendment, 2026-11-16, Plugin Boundary).
    Existing owners live in `crates/harmos-runtime/src/operations/manager/mod.rs`,
    `crates/harmos-runtime/src/streams/manager.rs`,
    `crates/harmos-runtime/src/storage/manager.rs`,
@@ -465,21 +508,24 @@ and caller-face authorization remain independent checks.
    and `credential_store_unavailable` guard listener/credential atomicity.
    `client_reads_status`, `client_pages_and_watches_events` and
    `client_reads_diagnostics_ranges` guard contributions, histories and archives.
-   **Status:** landed; native proof is tracked separately from source.
+   **Status:** existing owners landed; the plugin runtime/policy split is locked
+   direction. The cited entry tests describe behavior to transfer, not proof of it.
 
-9. **Library and Product Composition.** The library owns hosting, access, status,
-   invocations, time, plugin management and typed plugin settings. Products compose
-   these capabilities through product-owned wrappers (locked direction). Storage and publication remain Private
-   in-process capabilities; products declare their own typed wire operations and
-   policy over them. Products own schemas, indexes/projections, objects, operations,
-   authorization, secrets, UI, archives and credential integration.
-   **Why:** one owner per atomic operation and no duplicate wire twins. The library
-   stores plugin settings beside entries; product secrets remain outside that store.
-   **Where:** Owner Amendments of 2026-11-13 and the boundary mapping below.
+9. **Library Runtime and Product Policy.** Harmos owns hosting, access, status,
+   invocations, time and live plugin machinery. Products own plugin contracts,
+   registry, installation, bundles, distribution, persisted settings, admission
+   policy and management operations/projections, plus schemas, indexes/projections,
+   objects, authorization, secrets, UI, archives and credential integration.
+   Host operations become in-process only under `operation-boundary`; products
+   declare wrappers for generic operations their clients need. Plugin management
+   is product policy, not a wrapper around library installation services.
+   **Why:** one runtime owner and one policy owner preserve atomic behavior.
+   **Where:** Plugin Boundary above and the two amended boundary/lifecycle changes.
    **Proof:** settings, replacement and trusted caller journeys under
    `crates/harmos-runtime/tests/plugin_grpc/manager`; application upload and discovery
    under `examples/schematic/app/tests/storage`.
-   **Status:** landed source; candidate validation is separate.
+   **Status:** locked direction, amended by the owner on 2026-11-16; the cited
+   stories prove current behavior to preserve during the ownership transfer.
 
 10. **Resource Operation Grammar.** Services name resources, methods use the closed
     ordinary verb set Get/List/Watch/Set/Create/Delete/Append; only declared domain
@@ -606,14 +652,26 @@ and caller-face authorization remain independent checks.
     target production dependencies across all six libraries, excluding derive support.
     **Status:** landed.
 
-17. **Generic Library SDKs.** One SDK package per language, amended by the owner on
+17. **Carrier Helpers and Product Author SDKs.** Locked amendment, 2026-11-16:
+    Harmos retains thin Rust, Python, C# and C++ carrier helpers, shared generation,
+    supported guest ABI and generic conformance. Products own their contracts and
+    the only author-facing SDKs and starters; Harmos types, attributes, namespaces,
+    exceptions and escape hatches are invisible to authors. No import aliases.
+    **Why:** several products reuse cancellation, windows and transport without
+    inheriting another product's policy or copying carrier engines.
+    **Where:** `openspec/changes/plugin-boundary/`, `operation-boundary` D7 and
+    `plugin-lifecycle`'s amended registration contract.
+    **Status:** locked direction; the following package inventory describes the
+    landed implementation that will be reduced to helpers, not the target API.
+
+    One SDK package per language, amended by the owner on
     2026-11-13: Python `harmos-sdk` (import `harmos`), Rust `harmos`, NuGet `Harmos`
     and CMake `Harmos` (`Harmos::Cpp`) include authoring, client roots and host
     protocol needs. Audience-specific builds and stub guards are removed. The host
     enforces faces and visibility at runtime, regardless of available bindings.
-    Keep all four SDKs in this repository, with
+    The current four SDKs live in this repository, with
     the same concepts named consistently using each language's normal casing;
-    product SDKs compose them. Library contracts, conformance and guides use generic
+    product SDKs currently compose them. Library contracts, conformance and guides use generic
     vocabulary without product objects or private identities.
     **Why:** independent hosts must reuse the same library, not inherit another
     application's model. Common naming does not claim unresolved semantic parity.
@@ -770,6 +828,11 @@ and caller-face authorization remain independent checks.
 | Deterministic stories (agreed 2026-11-10) | Correctness must not depend on workstation speed or measurement noise. | `openspec/changes/test-stories/` |
 
 ## Protocol Boundary Definition and Consumer Migration
+
+This section records the landed protocol and its earlier consumer migration.
+Its direct service composition, plugin administration and author-SDK assignments
+are superseded by Plugin Boundary and `operation-boundary`. Message maps remain
+source evidence, not the future carrier or product contract inventory.
 
 ### Executor Layout and Definition Status
 
@@ -1270,6 +1333,10 @@ guest module cache or native child holding the uploaded module.
 
 ## Guest Entries and Reported Declarations
 
+The durable-entry description below is landed behavior to preserve at the product
+owner. Under Plugin Boundary the product owns guest entries/settings and explicitly
+loads selected modules; Harmos retains guest admission, initialization and fencing.
+
 Every host-registered WebAssembly plugin has a durable `PluginEntry` keyed by its
 registered identity with `PluginPlacement { guest: PluginGuest {} }`. Configure and
 start the plugin entry manager before `PluginHost.register_guest`. Registration
@@ -1292,6 +1359,10 @@ Consumers must regenerate bindings, rename the reported message/fields and SDK
 builder calls, and configure the entry manager before registering guest modules.
 
 ## SDK Call Contracts
+
+The manager/getter examples below describe landed source. `operation-boundary`
+replaces those public paths with typed facade calls and opaque handles; Plugin
+Boundary retains their scope, clock, sampling and settlement guarantees.
 
 ### Scoped Plugin Bindings
 

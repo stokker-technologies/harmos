@@ -18,9 +18,9 @@ Owner decisions locked on 2026-11-16. Status per row: **proposed** until its tas
 | --- | --- |
 | Storage only through operations | A product registers its storage backend and calls storage operations for every other persistence need. Harmos closes the operation gaps that force direct access. |
 | One statistics home | All aggregation and statistics kernels live in `harmos-query::statistics` and are reachable only through `storage.list_rows` transforms. Floating-point RMS and standard deviation are accepted; no exact-integer statistics machinery is added. |
-| Idiomatic public surface | Public Harmos is runtime building and initialization, operation calling, backend authoring contracts and the plugin authoring SDK. No manager `Deref`, no manager getters, no engine, query or reader types, no engine types in operation results. |
+| Idiomatic public surface | Public embedding APIs are runtime building, typed operation calls and backend authoring; carrier helpers stay internal to product SDKs. No manager getters, manager `Deref` or engine types in results. |
 | Typed in-process facade | Products call Harmos in-process through a typed Rust facade over native operations (`runtime.for_call(&ctx).storage().append_samples(..)`, `.plugins().load(..)`). Each facade method dispatches its operation with its registered policy; native in-process calls pass typed values without encoding; built-ins that use `call_protobuf` get native declarations. No managers or engine types are exposed. |
-| Harmos SDK scope | Harmos keeps its four plugin SDKs, protocol generation, Wasm guest support and conformance. Harmos host-client resource roots and host RPC client surfaces are deleted once every host operation is in-process only; products generate clients from their wrapper operations; reusable connection plumbing stays. |
+| SDK scope (later owner amendment: plugin-boundary) | Harmos keeps four-language carrier helpers, shared generation, supported guest ABI and generic conformance. Products own contracts, the only author-facing SDKs and starters; no Harmos type leaks or import aliases. Host-client roots disappear; connection plumbing stays. |
 | Wrapper and plugin protocol defaults | Product wrappers declare their audience with the `callers` option; plugin-to-host calls the plugin SDK makes become plugin protocol facilities; wrappers reuse Harmos request and response messages. |
 | Private host operations | **BREAKING.** Every Harmos host operation is in-process only and carries no gRPC exposure marker. A product exposes one by declaring its own wrapper operation that calls it in-process. Caller narrowing (`composition`) is deleted; glob exposure filters are rejected. |
 | Plugin protocol stays on the wire | The plugin carrier (instance, invocation, windows, samples, child calls), plugin-declared operations and their Private/Protected/Public visibility remain unchanged. |
@@ -38,6 +38,13 @@ Owner decisions locked on 2026-11-16. Status per row: **proposed** until its tas
 Precedent, landed: "Storage remains Private and in-process. Products own typed file, upload,
 query, record and object wire operations over those native calls" (docs/architecture.md,
 Native Type Ownership). This change applies the same rule to every host operation.
+
+`plugin-boundary` further moves installation, registry, bundles, persisted settings
+and management operations/projections to products. The internal plugin manager
+retains live lifecycle/routing; products register kinds with admission/settings
+hooks and explicitly call load through the typed facade, without `PluginBackend`.
+Generic payload reuse stays internal to product author SDKs; product management
+messages are product-owned. Regenerate once with that change and `plugin-lifecycle`.
 
 Supersedes: the caller narrowing contract in docs/architecture.md (Product Composition and
 Narrowing), the `storage-interface` statement that no cross-method transaction is assumed

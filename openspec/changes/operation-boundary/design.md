@@ -71,7 +71,7 @@ completed groups, overriding its original instruction to omit them.
 
 **Goals:**
 
-- A product depends on `harmos-runtime` (host facade) and `harmos` (plugin and client SDK)
+- A product depends on `harmos-runtime` (host facade) and `harmos` (internal carrier helpers)
   only; Rust privacy enforces the facade and a manifest check enforces the dependency fence.
 - Every storage need a product has is one storage operation; no product keeps a parallel
   persistence or statistics path.
@@ -144,8 +144,9 @@ startup errors, shutdown handle); operation calling through the typed facade of 
 (call context, scope, request/response DTOs, cancellation, results, failures, retry
 policies, upload/download/watch sessions); backend authoring (`StorageBackend`, `StateBackend`,
 `StorageBackends`, their futures, errors and complete DTO closure, object and index
-catalogs, payload and schema codecs) through one authoring module. `harmos` keeps plugin
-authoring and the client connection.
+catalogs, payload and schema codecs) through one authoring module. `harmos` keeps
+internal carrier helpers and reusable connection plumbing; products own author APIs
+under the later `plugin-boundary` owner amendment.
 
 ```rust
 let runtime = harmos_runtime::Runtime::new()
@@ -199,6 +200,16 @@ descriptors alone.
 | What stays on the wire | `harmos.plugin.v1` Instance Get/Invoke/Samples and the plugin lifecycle calls, windows, sample batches, child frames, the new plugin host facilities, plugin-declared operations with Protected/Public visibility and their client gRPC projections, and product-declared wrappers. |
 | Schematic example | Declares wrappers for the host operations its client uses. |
 
+**Later owner amendment (`plugin-boundary`, 2026-11-16):** the rows above
+describe generic capabilities, not author-facing Harmos types. Helpers implement
+time, own-invocation and admitted discovery facilities behind the minimal carrier's
+host-call frames; own settings come from the product kind's resolver. Product SDKs
+expose those capabilities through product-owned APIs. No capability is silently
+removed. Plugin installation/registry/settings management and their messages move
+to products; they are excluded from the generic host-message reuse row. Remaining
+Harmos payload reuse is internal and cannot leak types to plugin authors. Remove
+superseded management services rather than retaining an in-process install API.
+
 Alternatives rejected: runtime glob filters with allow/deny sets (research proposal), caller
 narrowing kept beside private defaults, and products wrapping time and settings for plugins
 (that would bind product-neutral plugins to product operation identities).
@@ -216,7 +227,9 @@ operations, not through raw operation calls and not through managers.
 ```rust
 let host = runtime.for_call(&ctx);                       // binds caller, scope, cancellation
 let receipt = host.storage().append_samples(AppendSamples { mutation, scope, batch }).await?;
-let plugin = host.plugins().load(PluginSource::Process(command)).await?;
+let plugin = host.plugins().load(Load {
+    kind, placement: Managed { command }, settings,
+}).await?;
 ```
 
 - Each facade method dispatches exactly one native operation with that operation's registered
@@ -234,16 +247,30 @@ let plugin = host.plugins().load(PluginSource::Process(command)).await?;
 - Alternatives rejected: typed APIs beside operations with their own policy (two policy
   authorities), and products calling operations by untyped identity (no compile-time contract).
 
-### D7. Harmos SDK Scope (Decided by the Owner, 2026-11-16)
+### D7. Carrier Helpers and Product SDKs (Owner Amendment, 2026-11-16)
 
-Harmos keeps its four plugin SDKs (Rust, Python, C#, C++), protocol and message generation,
-Wasm guest support and conformance: an embedded host still talks to external plugins, and
-without these SDKs every product would reimplement the plugin protocol in four languages. The
-Harmos host-client resource roots and host RPC client surfaces are deleted once every host
-operation is in-process only, since no Harmos endpoint remains for them to call. Products
-generate clients from their own wrapper operations; reusable connection plumbing stays.
+`plugin-boundary` supersedes the earlier library-owned author SDK assignment.
+Harmos retains thin Rust/Python/C#/C++ carrier helpers, cancellation/windows,
+supported Wasm guest ABI, shared descriptor/codegen tooling and generic conformance.
+Products own plugin contracts, the only author-facing SDKs and starters, and hide
+Harmos types, attributes, errors and escape hatches without import aliases.
+Products supply registrars and translate public values internally; they do not
+copy carrier engines. Consolidate the consuming product's richer renderers/fixes
+upstream and regenerate once with this change and `plugin-lifecycle`.
 
-## Risks / Trade-offs
+Harmos host-client roots and host RPC clients are deleted when host operations
+become in-process only. Reusable connection plumbing stays. Generic host payload
+reuse is internal to product SDKs where necessary; author APIs expose product
+values. Plugin administration, installed registry, bundles and persisted settings
+move to products, so they have product operations rather than generic wrappers.
+
+The internal plugin manager remains. Products register kinds with admission and
+settings-resolution hooks, explicitly select placements and call `load`, `bind`
+and `start_samples` through D6's facade with opaque handles. No `PluginBackend`
+trait. Admission mechanics stay in Harmos; policy and startup selection stay in
+the product. See `plugin-boundary` for the ownership table and bounded inspection.
+
+## Risks / Trade-Offs
 
 - [Breaking every product at once] → Breaking groups land last, each with its own Harmos
   revision; products pin a breaking revision only in the task that removes their usage.

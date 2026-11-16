@@ -95,16 +95,21 @@ keeping `launch`/`shutdown` beside `start`/`stop` as aliases.
 
 ### D2. Plugin Phases (Proposed)
 
+The sketch uses a fixture product's author API; helper types are internal under
+the later `plugin-boundary` owner amendment. Local register freezes declarations,
+then host admission runs generic checks and the registered product-kind callback;
+initialize follows only after both accept and effective settings resolve.
+
 ```rust
 fn main() -> Result<()> {
-    Plugin::new("thermal", env!("CARGO_PKG_VERSION"))
+    fixture::Plugin::new("thermal", env!("CARGO_PKG_VERSION"))
         .register(register)?
         .initialize(initialize)
         .finalize(finalize)
         .run()
 }
 
-fn register(ctx: &mut Registrar) -> Result<()> {
+fn register(ctx: &mut fixture::Registrar) -> Result<()> {
     ctx.register(settings::catalog())?;
     ctx.register(operations::catalog())?;
     ctx.register(streams::catalog())?;
@@ -142,12 +147,19 @@ async fn finalize(ctx: &Context, reason: Finalization) -> Result<()> { Chamber::
 
 ### D3. Registrar and Typed Registration (Proposed)
 
+**Owner amendment, 2026-11-16 (`plugin-boundary`):** products own the public
+registrar and typed registration contract in each language. The generic
+accumulation described below is internal carrier-helper machinery, not a public
+Harmos author SDK or types re-exported to authors. Product APIs translate to it
+without aliases or copying cancellation/window engines. No `PluginBackend` trait;
+product admission/settings-resolution hooks are registered on a plugin kind.
+
 `Registrar` accumulates operations, streams, observers, settings, requirements and product
 sections; `register<T: Registration>(&mut self, item: T) -> Result<()>` is typed at entry,
 erases handlers and appends descriptors, so `Plugin` keeps one type however many records are
-declared. `Registration` is implemented by every Harmos declaration value and by catalogs
-(collections returned from `catalog()`), and products implement it for their kinds, appending
-to their typed declaration section. Duplicate identities, missing requirements and descriptor
+declared. Internal helper registrations accumulate generic declarations and
+sections; product-owned registrations collect product kinds and translate them
+into their typed declaration section. Duplicate identities, missing requirements and descriptor
 closure are checked when the plugin freezes its declarations, as today.
 
 | Language | Phase Function | Registration Call | Hooks | Serving |
@@ -187,7 +199,7 @@ see Open Questions.
 
 ### D6. Qualified Paths Instead of Aliases (Proposed, Owner Direction)
 
-Every Harmos source refers to imported types and modules by their qualified path. Removed:
+Sources import the names they use and qualify clashes by module path. Removed:
 Rust `use x as y` and `pub use x as y`, Python `import x as y` and `from x import y as z`,
 C# `using X = Y;`, C++ `namespace x = y;` and `using X = other::Y;` renames, Rust `#[path]`
 and Python `sys.path` edits. Defining a new name for a composed type (for example a callback
@@ -198,7 +210,7 @@ integration-test targets that share one support module, or third-party generated
 project does not author) and keeps only those with no alternative such as a support crate or
 an ordinary module tree.
 
-## Risks / Trade-offs
+## Risks / Trade-Offs
 
 - [Every plugin and product breaks at once] → one revision lands all renames; products adopt
   it in their own change; development policy allows clean breaks.
@@ -211,6 +223,10 @@ an ordinary module tree.
   ordinary module tree or a dev-only crate; named exceptions remain where neither works.
 
 ## Migration Plan
+
+Coordinate one final regeneration with `operation-boundary` and `plugin-boundary`;
+the SDK tasks implement helper behavior and fixture product APIs, while real
+products own their author surfaces. Generated code remains tracked.
 
 1. Inventory and documentation contract (group 1).
 2. Host verbs and hook renames (group 2), then registration (group 3), then plugin phases and
