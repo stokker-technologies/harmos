@@ -411,7 +411,6 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(10),
         stream_window: NonZeroUsize::new(8).expect("stream window"),
-        interval_window: std::time::Duration::from_secs(1),
         interval_window: Duration::from_secs(1),
     };
     let result = async {
