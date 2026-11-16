@@ -123,6 +123,9 @@ let host = runtime.for_call(&ctx);
 let object = host.storage().get_object(GetObject { .. }).await?;
 ```
 
+`Runtime::new()` returns the unstarted runtime builder; `register` and `start` follow the
+host verbs of the `plugin-lifecycle` change.
+
 - Managers are crate-internal owners; plugin activation, clock binding and sample start/stop
   that products did through managers become in-process host operations.
 - Operation results use operation-owned DTOs (an Arrow IPC batch payload plus schema) instead

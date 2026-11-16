@@ -15,13 +15,13 @@ change; never name revisions in this file.
 
 - [ ] 2.1 Add the compound mutation request/result to the native storage contracts in `harmos-domain/src/model/storage` and `harmos-operations/src/storage/native` (create, conditional set, delete, record append items; one mutation identity). Accept when the declaration registers in the storage catalog; prove with `mise run build -- --package harmos-operations --check`.
 - [ ] 2.2 Add the backend capability and one-commit primitive to `harmos-storage/src/backend.rs`, implement it in the in-memory backend and the reference SQLite backend, and refuse with a capability error elsewhere. Prove with new stories `compound_mutation_commits_atomically`, `compound_mutation_conflict_leaves_no_effect` and `compound_mutation_replays_receipt` under `crates/harmos-storage/tests/integration` run by `mise run test -- --paths <story file>`.
-- [ ] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through the operation caller. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/storage.md`.
+- [ ] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through operation dispatch. Prove with `mise run test -- --package harmos-runtime --target integration --exact compound_mutation_through_operations`; document the operation in `docs/storage.md`.
 
 ## 3. Object and Scoped Deletion
 
 - [ ] 3.1 Add object deletion (optional expected revision, deletion revision) as a native storage operation and backend primitive in both bundled backends. Prove with `object_delete_hides_at_new_cuts_only` in `crates/harmos-storage/tests/integration`.
 - [ ] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
-- [ ] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through the operation caller; document deletion and reclamation semantics in `docs/storage.md`.
+- [ ] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through operation dispatch; document deletion and reclamation semantics in `docs/storage.md`.
 
 ## 4. Storage Before Full Startup
 
@@ -30,7 +30,7 @@ change; never name revisions in this file.
 
 ## 5. Expression Transforms
 
-- [ ] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through the operation caller; update `docs/storage.md`.
+- [ ] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
 
 ## 6. Statistics Consolidation
 

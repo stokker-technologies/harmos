@@ -37,9 +37,9 @@ Harmos owns the generic plugin lifecycle and registration machinery; products ow
 Supersedes, in the `grpc-plugins` change: the Wasm registration sketch (`on_initialize`,
 `on_shutdown`), the "Plugin initialization and shutdown operations" row, "Before the host
 shuts down or removes a plugin it calls `Stop` on it. The plugin runs its stop and cleanup
-hooks" and the Authoring sketch's `plugin.serve()`, together with the `plugin-protocol` delta
-scenario where each plugin runs its stop and cleanup hooks. In the `operation-boundary`
-change, the D3 sketch's construction and registration verbs follow this change.
+hooks" and the Authoring sketch's builder chain (`.operation(..)`, `.stream(..)`,
+`.observer(..)`) and `plugin.serve()`, together with the `plugin-protocol` delta scenario
+where each plugin runs its stop and cleanup hooks.
 
 ## Capabilities
 

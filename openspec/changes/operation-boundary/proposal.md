@@ -66,7 +66,7 @@ Boundary and Manager Ownership. Its three visibility levels stay.
 
 ## Impact
 
-`crates/harmos-runtime` (facade, builder, operation caller), `crates/harmos-operations`
+`crates/harmos-runtime` (typed facade, builder, operation dispatch), `crates/harmos-operations`
 (storage native operations, result DTOs, host catalog), `crates/harmos-storage` (compound
 mutation, deletion, maintenance hooks), `crates/harmos-query` (statistics, transforms),
 `crates/harmos-domain` (query plan contracts), `proto/harmos/{host,plugin,model}/v1`,

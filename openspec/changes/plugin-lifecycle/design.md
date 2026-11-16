@@ -59,6 +59,20 @@ author-side module contribution, never the payload, and `declarations()` stays.
 
 ## Decisions
 
+Decision sources. Owner-locked (proposal.md): paired verbs, host verbs, plugin phases,
+registration as admission, the registrar API with C++ `add`, module `catalog()`, one
+vocabulary, no aliases or path overrides, SDK ownership. Derived by this design to make them
+implementable; the owner may override each before its group starts:
+
+- `Instance.Initialize` as a new host-invoked RPC: the owner's "no new host-invoked phase"
+  is read as covering registration only, since initialize must follow host admission.
+- Finalize reasons (`Stopped`, `InitializeFailed`, `Disconnected`) and SDK-local finalize on
+  carrier loss.
+- Initialize and finalize policies moving into the model declarations.
+- `Runtime::new()` as the construction step, `harmos::wasm::Guest` for guest capacity, and
+  C++ `add` also on the plugin builder method that takes the register function.
+- Python endpoint `close` becoming `stop`, and deleting the superseded builder chain methods.
+
 ### D1. Host Verbs (Proposed)
 
 ```rust
