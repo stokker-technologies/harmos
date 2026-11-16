@@ -21,6 +21,7 @@ mod durable_watch;
 #[path = "../../support/events.rs"]
 pub(crate) mod events;
 mod exhaustion;
+mod file_mutations_wait_for_write_capacity;
 mod file_ranges;
 mod files;
 #[path = "../../support/fixture.rs"]
