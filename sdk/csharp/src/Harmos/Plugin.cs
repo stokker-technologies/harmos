@@ -82,8 +82,12 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     {
       var rows = new IMessage[Columns.Capacity(window, stream)];
       for (var index = 0; index < rows.Length; index++)
+      {
+        // Demand Closure Stops the Window Before Its Remaining Samples.
+        context.CancellationToken.ThrowIfCancellationRequested();
         rows[index] = await observer(context.Sample(window.Sequence + (ulong)index, window.SampleTime((ulong)index)))
             ?? throw Columns.Failed($"Observe {stream}: Return a Row for Every Sample");
+      }
       return Columns.FromRows(row, fields, rows);
     });
   }

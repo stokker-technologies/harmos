@@ -343,8 +343,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
       throw Invalid("Read Samples: Send a Positive Window Period");
     if (window.Count == 0)
       throw Invalid("Read Samples: Send a Window Count of at Least One");
-    if (window.Sequence == 0 || window.Sequence - 1 > ulong.MaxValue - window.Count)
-      throw Invalid("Read Samples: Send a One-Based Window Sequence That Numbers Every Sample");
+    if (window.Sequence > ulong.MaxValue - (window.Count - 1))
+      throw Invalid("Read Samples: Send a Window Sequence That Numbers Every Sample Within 64 Bits");
     var start = (Int128)window.Start.Seconds * 1_000_000_000 + window.Start.Nanos;
     var end = (Int128)253_402_300_799 * 1_000_000_000 + 999_999_999;
     if (window.Count - 1 > (end - start) / ((Int128)period.Seconds * 1_000_000_000 + period.Nanos))

@@ -488,10 +488,11 @@ public sealed class Context
       root.watches.Clear();
       nested = children.ToArray();
     }
+    // Cancel Before Releasing Waiters, So a Released Observer Sees Its Demand Closed.
+    cancellation.Cancel();
     foreach (var child in nested)
       child.Released("Connection Closed");
     cancelled.TrySetResult("Connection Closed");
-    cancellation.Cancel();
   }
 
   private void Released(string reason)

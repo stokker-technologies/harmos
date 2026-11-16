@@ -119,8 +119,10 @@ internal sealed class Columns
   internal static RpcException Failed(string message) => new(new Status(StatusCode.Internal, message));
 
   /// <summary>Split the window into parts whose framed samples response fits the message limit.</summary>
+  /// <remarks>Every boundary is found before the first part is encoded, so an oversized sample sends nothing.</remarks>
   internal IEnumerable<SampleBatch> Parts(int limit, string stream)
   {
+    var bounds = new List<(int Start, int Samples, long[] Lengths)>();
     var payload = new long[fields.Length];
     var sizes = new long[fields.Length];
     var start = 0;
@@ -133,28 +135,27 @@ internal sealed class Columns
       }
       if (Framed(payload, start, sample + 1 - start, sample + 1 == count) <= limit)
         continue;
-      if (sample == start)
-        throw TooLarge(stream, Framed(payload, start, 1, sample + 1 == count), limit);
-      yield return Part(payload, sizes, start, sample - start, false);
-      start = sample;
-      Array.Copy(sizes, payload, sizes.Length);
-      if (Framed(payload, start, 1, sample + 1 == count) > limit)
-        throw TooLarge(stream, Framed(payload, start, 1, sample + 1 == count), limit);
+      if (sample > start)
+      {
+        var lengths = new long[fields.Length];
+        for (var column = 0; column < fields.Length; column++)
+          lengths[column] = payload[column] - sizes[column];
+        bounds.Add((start, sample - start, lengths));
+        start = sample;
+        Array.Copy(sizes, payload, sizes.Length);
+      }
+      var single = Framed(payload, start, 1, sample + 1 == count);
+      if (single > limit)
+        throw new RpcException(new Status(StatusCode.ResourceExhausted,
+            $"Answer {stream}: One {row} Sample Needs {single} Bytes but the Plugin Message Limit Is {limit}; " +
+            "Raise the Plugin's message_bytes or Shrink the Row"));
     }
-    yield return Part(payload, sizes, start, count - start, true);
+    bounds.Add((start, count - start, payload));
+    return bounds.Select((bound, index) => Part(bound.Lengths, bound.Start, bound.Samples, index == bounds.Count - 1));
   }
 
-  private RpcException TooLarge(string stream, long needed, int limit) => new(new Status(StatusCode.ResourceExhausted,
-      $"Answer {stream}: One {row} Sample Needs {needed} Bytes but the Plugin Message Limit Is {limit}; " +
-      "Raise the Plugin's message_bytes or Shrink the Row"));
-
-  private SampleBatch Part(long[] payload, long[] sizes, int start, int samples, bool last)
+  private SampleBatch Part(long[] lengths, int start, int samples, bool last)
   {
-    // The Caller's Running Sums May Include the Next Part's First Sample.
-    var lengths = (long[])payload.Clone();
-    if (!last)
-      for (var column = 0; column < fields.Length; column++)
-        lengths[column] -= sizes[column];
     var bytes = new byte[ColumnBytes(lengths)];
     var output = new CodedOutputStream(bytes);
     for (var column = 0; column < fields.Length; column++)

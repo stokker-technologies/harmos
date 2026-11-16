@@ -216,6 +216,24 @@ public sealed class SamplesCalls
     await Assert.ThrowsAsync<RpcException>(async () => await pending!);
   }
 
+  [Fact]
+  public async Task StreamEndSkipsTheWindowsRemainingSamples()
+  {
+    var observed = 0;
+    var service = Service(async context =>
+    {
+      observed++;
+      await context.CancelledAsync();
+      return new StringValue();
+    });
+    var call = new Call();
+    var serving = service.Samples(call, call, call.Context);
+    await call.Grant(1, 2);
+    call.Close();
+    await serving;
+    Assert.Equal(1, observed);
+  }
+
   [Theory]
   [InlineData(false)]
   [InlineData(true)]
@@ -237,7 +255,7 @@ public sealed class SamplesCalls
   [InlineData("zero period")]
   [InlineData("negative period")]
   [InlineData("zero count")]
-  [InlineData("zero sequence")]
+  [InlineData("sequence overflow")]
   [InlineData("last sample past range")]
   [InlineData("repeated open")]
   [InlineData("device window")]
@@ -271,8 +289,9 @@ public sealed class SamplesCalls
       case "zero count":
         window.Count = 0;
         break;
-      case "zero sequence":
-        window.Sequence = 0;
+      case "sequence overflow":
+        window.Sequence = ulong.MaxValue;
+        window.Count = 2;
         break;
       case "last sample past range":
         window.Start.Seconds = 253_402_300_798;
@@ -294,14 +313,15 @@ public sealed class SamplesCalls
   [Fact]
   public async Task BothObserverFormsEncodeOneColumnPerFieldInSampleOrder()
   {
-    var rows = new[] { new Reading { Level = 1.5, Count = -2, Label = "a", Tag = new Tag { Name = "x" } }, new Reading() };
-    var columns = new ReadingColumns { Level = { 1.5, 0 }, Count = { -2, 0 }, Label = { "a", "" }, Tag = { new Tag { Name = "x" }, new Tag() } };
+    var rows = new[] { new Reading { Level = 1.5, Count = -2, Label = "a", Tag = new Tag { Name = "x" }, Total = 7 }, new Reading() };
+    var columns = new ReadingColumns { Level = { 1.5, 0 }, Count = { -2, 0 }, Label = { "a", "" }, Tag = { new Tag { Name = "x" }, new Tag() }, Total = { 7, 0 } };
     byte[] expected =
     [
       0x0A, 0x10, 0, 0, 0, 0, 0, 0, 0xF8, 0x3F, 0, 0, 0, 0, 0, 0, 0, 0,
       0x12, 0x0B, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x00,
       0x1A, 0x01, 0x61, 0x1A, 0x00,
-      0x22, 0x03, 0x0A, 0x01, 0x78, 0x22, 0x00
+      0x22, 0x03, 0x0A, 0x01, 0x78, 0x22, 0x00,
+      0x2A, 0x02, 0x08, 0x07, 0x2A, 0x00
     ];
     var plugins = new[]
     {
@@ -351,19 +371,22 @@ public sealed class SamplesCalls
     await serving;
   }
 
-  [Fact]
-  public async Task SampleLargerThanTheMessageLimitFailsTheWindow()
+  [Theory]
+  [InlineData(1UL)]
+  [InlineData(3UL)]
+  public async Task SampleLargerThanTheMessageLimitFailsTheWindowBeforeAnyPart(ulong large)
   {
     const ulong limit = 24;
     var plugin = new SdkPlugin("fixture", "1.0.0").Observer("fixture", new Duration { Seconds = 1 },
-        context => Task.FromResult(new StringValue { Value = new string('x', 32) }));
+        context => Task.FromResult(new StringValue { Value = new string('x', context.Sequence == large ? 32 : 1) }));
     var call = new Call();
     var serving = Serve(plugin, limit).Samples(call, call, call.Context);
-    await call.Grant(1);
+    await call.Grant(1, 4);
     var refusal = await Assert.ThrowsAsync<RpcException>(() => serving);
     Assert.Equal(StatusCode.ResourceExhausted, refusal.StatusCode);
     Assert.Contains(StringValue.Descriptor.FullName, refusal.Status.Detail);
     Assert.Contains(limit.ToString(), refusal.Status.Detail);
+    Assert.False(call.TryRead(out _));
   }
 
   [Fact]
@@ -416,6 +439,7 @@ public sealed class SamplesCalls
     });
     public ValueTask Reply(ulong id, IMessage value) => Send(new InstanceSamplesRequest { Child = new ChildResponse { Call = id, Payload = value.ToByteString() } });
     public ValueTask<InstanceSamplesResponse> Read() => output.Reader.ReadAsync();
+    public bool TryRead(out InstanceSamplesResponse? response) => output.Reader.TryRead(out response);
     public async Task<SampleBatch> ReadBatch()
     {
       var response = await Read();
