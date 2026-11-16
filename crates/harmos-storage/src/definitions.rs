@@ -260,8 +260,6 @@ impl StorageManager {
                                 },
                             );
                             retry = false;
-                            state.reserved += bytes;
-                            state.reserved_batches += 1;
                             state.collect();
                             notify = true;
                         } else {
@@ -309,6 +307,11 @@ impl StorageManager {
     }
 }
 impl State {
+    /// Pending Definitions Hold Their Budget Share Until Completed, Apart From The Exclusive Admission Permit.
+    pub(super) fn definition_load(&self) -> (usize, usize) {
+        let bytes = self.definition_mutations.values().map(|pending| pending.work.bytes).sum();
+        (bytes, self.definition_mutations.len())
+    }
     pub(super) fn request_definitions(&mut self) {
         for pending in self.definition_mutations.values().filter(|pending| pending.failure.is_none()) {
             let target = pending.work.target;
@@ -336,8 +339,6 @@ impl State {
         self.receipts.complete(&receipt.mutation, receipt.value.clone());
         self.receipts.saved(std::slice::from_ref(&receipt));
         self.definition_mutations.remove(&receipt.mutation);
-        self.reserved -= work.bytes;
-        self.reserved_batches -= 1;
         Ok(())
     }
     pub(super) fn definition_failed(&mut self, mutation: &MutationId, source: Arc<Error>, retrying: bool) {

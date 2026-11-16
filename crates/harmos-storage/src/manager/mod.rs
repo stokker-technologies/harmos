@@ -83,6 +83,8 @@ pub(super) struct Inner {
     pub(super) execution: Execution,
     pub(super) measurement_admission: tokio::sync::Mutex<()>,
     pub(super) control_admission: tokio::sync::Mutex<()>,
+    // FIFO Turn of File Mutations Waiting for the Shared Write Budget.
+    pub(super) file_mutation_admission: tokio::sync::Mutex<()>,
     measurement_waiting: std::sync::atomic::AtomicUsize,
     control_waiting: std::sync::atomic::AtomicUsize,
     pub(super) object_writes: tokio::sync::Mutex<()>,
@@ -315,6 +317,7 @@ impl StorageManager {
                 execution: execution.clone(),
                 measurement_admission: tokio::sync::Mutex::new(()),
                 control_admission: tokio::sync::Mutex::new(()),
+                file_mutation_admission: tokio::sync::Mutex::new(()),
                 measurement_waiting: std::sync::atomic::AtomicUsize::new(0),
                 control_waiting: std::sync::atomic::AtomicUsize::new(0),
                 object_writes: tokio::sync::Mutex::new(()),

@@ -60,11 +60,11 @@ impl StorageManager {
         self.mutate_file(mutation, fingerprint, |state| {
             let (id, file) = active(state, token)?;
             file.check_session(Some(token))?;
-            if file.command.is_some() || file.in_flight { return Ok(false); }
+            if file.command.is_some() || file.in_flight { return Ok(Admit::Busy); }
             let digest: [u8; 32] = file.hash.clone().finalize().into();
             let valid = expected.is_none_or(|(length, sha256)| length == file.length && sha256 == digest) && file.metadata.expected_length.is_none_or(|length| length == file.length) && file.metadata.expected_sha256.is_none_or(|expected| expected == digest);
             let bytes = file.reference_bytes;
-            reserve(state, mutation, fingerprint, bytes, &self.inner.settings)?;
+            if !reserve(&self.inner, state, mutation, fingerprint, bytes)? { return Ok(Admit::Full); }
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Finish });
             if valid { file.context = crate::execution::Context::current();
@@ -78,7 +78,7 @@ impl StorageManager {
                         file.command = Some(Command::Abort);
                 file.progress.lock().unwrap().closed = true;
             }
-            Ok(true)
+            Ok(Admit::Queued)
         }).await?.reference()
     }
 
@@ -93,9 +93,11 @@ impl StorageManager {
                 return Err(invalid("finish is already being reconciled"));
             }
             if file.command.is_some() || file.in_flight {
-                return Ok(false);
+                return Ok(Admit::Busy);
             }
-            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
+            if !reserve(&self.inner, state, mutation, fingerprint, 0)? {
+                return Ok(Admit::Full);
+            }
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation {
                 id: mutation.clone(),
@@ -107,7 +109,7 @@ impl StorageManager {
             file.queued = Some(tracing::debug_span!("storage.file.queue"));
             file.command = Some(Command::Abort);
             file.progress.lock().unwrap().closed = true;
-            Ok(true)
+            Ok(Admit::Queued)
         })
         .await?
         .progress()

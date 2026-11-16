@@ -694,6 +694,12 @@ Carriers use the separate 8 MiB message default, validate framing and refuse cei
 that cannot carry a chunk. Consumers can override their transfer and message settings.
 Each bounded append or read retains ordinary cancellation, replay and receipt rules.
 
+File mutations share `request.max_pending_write_bytes` and `request.max_pending_write_batches`
+with other queued writes. When that budget is full, a mutation waits for capacity in arrival
+order, so a large append is not overtaken by smaller ones. The calling operation's deadline
+bounds the wait and reports the timed-out operation and its policy. Only a command larger
+than the whole budget is refused at once, as an invalid file mutation.
+
 ## Application-Owned Content
 
 A host can serve immutable bytes it already owns through a product operation over

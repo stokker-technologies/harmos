@@ -65,9 +65,11 @@ impl State {
     pub(crate) fn collect(&mut self) {
         let now = self.execution.now();
         self.receipts.purge(now);
+        let (definition_bytes, definition_batches) = self.definition_load();
         self.status.pending_batches =
-            self.reserved_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
-        self.status.pending_bytes = self.reserved + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
+            self.reserved_batches + definition_batches + self.queue.len() + self.files.values().filter(|file| file.pending_batch()).count();
+        self.status.pending_bytes =
+            self.reserved + definition_bytes + self.queue.bytes() + self.files.values().map(|file| file.bytes()).sum::<usize>();
     }
 
     pub(crate) fn needs_write(&self, entry: &Pending) -> bool {

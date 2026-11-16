@@ -13,6 +13,7 @@ use harmos_operations::storage::CreateFileWriterRequest;
 
 // Standard Library Imports
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 // Third Party Imports
 
@@ -117,6 +118,48 @@ async fn duplicate_resumes_share() {
     let (first, second) = tokio::join!(first, second);
     assert_eq!(first.unwrap(), second);
     assert_eq!(second.session.generation, 2);
+    f.finish().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn append_waits_for_write_capacity_until_its_operation_deadline() {
+    let mut settings = config();
+    settings.request.max_pending_write_bytes = std::num::NonZeroUsize::new(4096).unwrap();
+    // The Held Chunk and Idle Sessions Outlive the Operation Deadline Under Test.
+    settings.policy.io_timeout = Duration::from_secs(3600);
+    settings.policy.file_session_timeout = Duration::from_secs(3600);
+    let f = Fixture::new(settings).await;
+    crate::support::app::register(&f.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    let holder = f.storage.create_file_once(&identity(&f.storage, "create-holder"), &metadata("holder")).await.unwrap();
+    let waiter = f.storage.create_file_once(&identity(&f.storage, "create-waiter"), &metadata("waiter")).await.unwrap();
+
+    // A Slow Backend Holds the Whole Write Budget.
+    f.data.control.block_chunk.store(true, Ordering::SeqCst);
+    let held = identity(&f.storage, "hold");
+    let mut hold = Box::pin(f.storage.append_file_once(&held, &holder.session, 0, vec![1; 4096]));
+    tokio::select! { biased; _ = &mut hold => panic!("the held chunk must block"), _ = f.data.control.chunk_entered.notified() => {} }
+
+    // The Append Waits Rather Than Failing, Until Its Operation Deadline Names the Operation and Policy.
+    let request = harmos_operations::storage::AppendFileBytesRequest {
+        session: Some(waiter.session.clone()),
+        offset: 0,
+        data: b"report".to_vec(),
+        mutation: Some(identity(&f.storage, "append")),
+    };
+    let error = f.runtime.operations.call_native::<harmos_operations::storage::AppendFileBytes>(request.clone()).await.unwrap_err();
+    assert!(
+        matches!(&error, harmos_runtime::Error::OperationRefused(harmos_runtime::Refusal::TimedOut { operation, .. }) if operation == "storage.append_file_bytes"),
+        "{error}"
+    );
+
+    // Once the Budget Drains, the Same Request Is Admitted.
+    f.data.control.block_chunk.store(false, Ordering::SeqCst);
+    f.data.control.chunk_release.notify_one();
+    hold.await.unwrap();
+    let appended = f.runtime.operations.call_native::<harmos_operations::storage::AppendFileBytes>(request).await.unwrap();
+    assert_eq!(appended.production.unwrap().length, 6);
     f.finish().await;
 }
 

@@ -190,8 +190,11 @@ pub enum Error {
     )]
     WindowFailed { stream: String, status: tonic::Code, message: String },
 
+    /// The Load Exceeded Its `plugins.load` Deadline; the Text Is the Plugin's Operator-Facing Status.
+    ///
+    /// A direct library caller can replace the deadline for one load with [`LoadOptions`].
     #[error(
-        "Load Plugin {plugin}: the plugin did not load within {timeout:?} (configured by {configured_by}); make the plugin start faster, or raise the plugins.load timeout for this load with LoadOptions"
+        "Load Plugin {plugin}: the plugin did not load within {timeout:?} (configured by {configured_by}); check the plugin's startup, or raise the plugins.load deadline in the plugin settings (GrpcPluginSettings.policy.load)"
     )]
     LoadDeadline { plugin: String, timeout: std::time::Duration, configured_by: &'static str },
 

@@ -24,6 +24,7 @@ mod end;
 // Local Imports
 use super::*;
 use crate::MemorySize;
+use crate::manager::Inner;
 use crate::receipts::ReceiptState;
 use crate::{FileProducer, MutationId, MutationValue};
 
@@ -51,6 +52,16 @@ pub(super) enum Kind {
     Abandon,
 }
 
+/// Outcome of One Admission Attempt of a File Mutation.
+pub(super) enum Admit {
+    /// The Command Owns Its Receipt and Budget Share; the Worker Runs It.
+    Queued,
+    /// The File Still Runs Another Command; Retry Once It Settles.
+    Busy,
+    /// The Shared Write Budget Is Full; Wait for Capacity in FIFO Order.
+    Full,
+}
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -67,22 +78,29 @@ impl StorageManager {
                 return Err(invalid("production is ending or another resume owns it"));
             }
             if file.command.is_some() || file.in_flight {
-                return Ok(false);
+                return Ok(Admit::Busy);
             }
-            reserve(state, mutation, fingerprint, 0, &self.inner.settings)?;
+            if !reserve(&self.inner, state, mutation, fingerprint, 0)? {
+                return Ok(Admit::Full);
+            }
             let file = state.files.get_mut(&id).expect("selected file");
             file.mutation = Some(Mutation { id: mutation.clone(), kind: Kind::Resume });
             file.command = Some(Command::Resume { expected: token.generation, next });
             file.progress.lock().unwrap().generation = next;
-            Ok(true)
+            Ok(Admit::Queued)
         })
         .await?
         .producer()
     }
 
+    /// Admits One File Mutation, Waiting While the Shared Write Budget Is Full.
+    ///
+    /// A full budget applies back-pressure: waiters hold a FIFO turn, so a large command is never starved by smaller
+    /// ones, and the caller's operation deadline bounds the wait by dropping this future, which releases the turn.
+    /// Only a command larger than the whole budget fails at once.
     #[tracing::instrument(name = "storage.staging.mutations.mutate_file", level = "debug", skip_all)]
     async fn mutate_file(
-        &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<bool>,
+        &self, mutation: &MutationId, fingerprint: [u8; 32], mut admit: impl FnMut(&mut State) -> Result<Admit>,
     ) -> Result<MutationValue> {
         if !self.inner.primary.capabilities().mutation_receipts {
             return Err(invalid("backend does not support mutation receipts"));
@@ -90,8 +108,11 @@ impl StorageManager {
         let mut retry = true;
         let mut completion = None;
         let mut changed = self.inner.changed.subscribe();
+        let mut turn = None;
         loop {
             let mut queued = false;
+            let mut full = false;
+            let mut take_turn = false;
             {
                 let mut state = self.inner.state.lock().unwrap();
                 if state.status.closing {
@@ -137,15 +158,31 @@ impl StorageManager {
                     }
                     ReceiptState::Missing => {
                         admission(&state)?;
-                        queued = admit(&mut state)?;
-                        if queued {
-                            let owner = state.receipts.completion(mutation);
-                            completion = Some(owner);
-                            retry = false;
+                        if turn.is_none() {
+                            // Even a Command That Fits Queues Behind Earlier Waiters.
+                            take_turn = true;
+                        } else {
+                            match admit(&mut state)? {
+                                Admit::Queued => {
+                                    queued = true;
+                                    let owner = state.receipts.completion(mutation);
+                                    completion = Some(owner);
+                                    retry = false;
+                                }
+                                Admit::Busy => {}
+                                Admit::Full => full = true,
+                            }
                         }
                     }
                 }
                 state.collect();
+            }
+            if take_turn {
+                turn = Some(self.inner.file_mutation_admission.lock().await);
+                continue;
+            }
+            if !full {
+                turn = None;
             }
             if queued {
                 self.inner.notify();
@@ -195,16 +232,28 @@ fn active<'a>(state: &'a State, token: &FileSession) -> Result<(u64, &'a FileSta
     Ok((*id, file))
 }
 
-fn reserve(
-    state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], command_bytes: usize, settings: &StorageSettings,
-) -> Result<()> {
-    let bytes = command_bytes;
-    if bytes > settings.request.max_pending_write_bytes.get().saturating_sub(state.status.pending_bytes)
-        || state.status.pending_batches >= settings.request.max_pending_write_batches.get()
-    {
-        return Err(Error::ResourceExhausted { resource: "file mutation command" });
+/// Reserves One Command's Share of the Shared Write Budget; False Means Wait for Capacity.
+fn reserve(inner: &Inner, state: &mut State, mutation: &MutationId, fingerprint: [u8; 32], bytes: usize) -> Result<bool> {
+    let budget = inner.settings.request.max_pending_write_bytes.get();
+    if bytes > budget {
+        return Err(invalid(
+            "one command exceeds the whole storage write budget; raise request.max_pending_write_bytes or send smaller chunks",
+        ));
     }
-    state.receipts.insert(mutation, fingerprint)
+    if bytes > budget.saturating_sub(state.status.pending_bytes)
+        || state.status.pending_batches >= inner.settings.request.max_pending_write_batches.get()
+    {
+        tracing::debug!(
+            bytes,
+            pending_bytes = state.status.pending_bytes,
+            pending_batches = state.status.pending_batches,
+            "file mutation waits for storage write capacity"
+        );
+        inner.relieve_pressure(state, bytes, 1);
+        return Ok(false);
+    }
+    state.receipts.insert(mutation, fingerprint)?;
+    Ok(true)
 }
 
 fn invalid(reason: &'static str) -> Error {
