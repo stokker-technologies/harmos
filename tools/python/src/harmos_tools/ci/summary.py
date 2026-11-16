@@ -114,7 +114,7 @@ def phases(path: Path) -> dict[str, float]:
             item = json.loads(line)
             name, seconds = item["name"], item["seconds"]
             if not isinstance(name, str) or type(seconds) not in (int, float) or not 0 <= seconds < float("inf"):
-                raise ValueError("invalid phase metric")
+                raise ValueError("invalid phase metric; Pass a supported numeric phase metric")
             result[name] = result.get(name, 0) + seconds
         except (ValueError, TypeError, KeyError):
             print("Phase telemetry record unavailable", flush=True)

@@ -52,7 +52,10 @@ RATE_BUDGET = 5400
 def publish(directory: Path, *, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> None:
     """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
     if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
-        raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
+        raise policy.ToolError(
+            "crate publication requires clean source before generated CHANGELOG staging; "
+            "Inspect the crate publication response and correct the package metadata or registry credentials"
+        )
     pins.check(directory)
     packages = publishable(directory)
     deadline = clock() + RATE_BUDGET
@@ -83,10 +86,16 @@ def publish(directory: Path, *, sleep: Callable[[float], None] = time.sleep, clo
                     print(f"{name} {version}: already published")
                     break
                 if "429" not in output and "Too Many Requests" not in output:
-                    raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
+                    raise policy.ToolError(
+                        f"cargo publish {name} failed with exit code {result.returncode}: {output}; "
+                        "Inspect the crate publication response and correct the package metadata or registry credentials"
+                    )
                 wait = retry_after(output)
                 if clock() + wait > deadline:
-                    raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
+                    raise policy.ToolError(
+                        f"{name} {version}: crates.io rate limit outlasted the publication budget; "
+                        "Inspect the crate publication response and correct the package metadata or registry credentials"
+                    )
                 print(f"{name} {version}: rate limited; retrying in {wait}s")
                 sleep(wait)
     finally:
@@ -157,11 +166,17 @@ def published(name: str, version: str | None = None) -> bool:
         error.close()
         if error.code == 404:
             return False
-        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
+        raise policy.ToolError(
+            f"crates.io index read failed: HTTP {error.code}; "
+            "Inspect the crate publication response and correct the package metadata or registry credentials"
+        ) from error
     except urllib.error.URLError as error:
         if isinstance(error.reason, FileNotFoundError):
             return False
-        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
+        raise policy.ToolError(
+            f"crates.io index read failed: {error.reason}; "
+            "Inspect the crate publication response and correct the package metadata or registry credentials"
+        ) from error
     entries = [json.loads(line) for line in lines if line.strip()]
     return bool(entries) if version is None else any(entry.get("vers") == version for entry in entries)
 
@@ -193,8 +208,8 @@ def publication_order(packages: dict) -> list[str]:
         if name in visiting:
             cycle = ", ".join(sorted(visiting))
             raise policy.ToolError(
-                f"publishable crates {cycle} require each other at {name}; a dev-dependency on a sibling that carries a version stays in the "
-                'published manifest, so declare it path-only ({ path = "../sibling" }, no version) and cargo strips it on packaging'
+                f'publishable crates {cycle} require each other at {name}; a dev-dependency on a sibling that carries a version stays in the published manifest, so declare it path-only ({{ path = "../sibling" }}, no version) and cargo strips it on packaging; '
+                "Inspect the crate publication response and correct the package metadata or registry credentials"
             )
         visiting.add(name)
         for dependency in requires[name]:

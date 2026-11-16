@@ -56,7 +56,9 @@ def scratch(directory: Path, key: str, profile: str) -> temporary.Directory:
     if not key.startswith("bench-"):
         output = report.location(directory, profile, key)
         if output.is_symlink() or not output.resolve().is_relative_to(directory.resolve()):
-            raise policy.TestError("lane output escapes the repository")
+            raise policy.TestError(
+                "lane output escapes the repository; Correct the native runner report paths and rerun the selected tests"
+            )
         shutil.rmtree(output, ignore_errors=True)
     return temporary.Directory()
 
@@ -89,19 +91,27 @@ def collect(
         or destination.is_symlink()
         or not destination.resolve().is_relative_to(directory.resolve())
     ):
-        raise policy.TestError(f"{key}: native evidence escapes its owned report paths")
+        raise policy.TestError(
+            f"{key}: native evidence escapes its owned report paths; Correct the native runner report paths and rerun the selected tests"
+        )
     for evidence in junit.parent.rglob("*"):
         if evidence.is_symlink() or not evidence.resolve().is_relative_to(junit.parent.resolve()):
-            raise policy.TestError(f"{key}: native evidence escapes its report directory")
+            raise policy.TestError(
+                f"{key}: native evidence escapes its report directory; Correct the native runner report paths and rerun the selected tests"
+            )
         if evidence == junit or not evidence.is_file():
             continue
         target = destination / evidence.relative_to(junit.parent)
         if target.is_symlink() or not target.resolve().is_relative_to(destination.resolve()):
-            raise policy.TestError(f"{key}: native evidence destination escapes its lane")
+            raise policy.TestError(
+                f"{key}: native evidence destination escapes its lane; Correct the native runner report paths and rerun the selected tests"
+            )
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(evidence, target)
     if not junit.is_file():
-        raise policy.TestError(f"{key}: the runner exited {status} without a JUnit report")
+        raise policy.TestError(
+            f"{key}: the runner exited {status} without a JUnit report; Correct the native runner report paths and rerun the selected tests"
+        )
 
     # Stories And Measurements
     text = junit.read_text(encoding="utf-8")

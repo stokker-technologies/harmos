@@ -426,7 +426,10 @@ def client(
             ]
         for method in operations:
             if method["client_streaming"]:
-                raise ValueError(f"Generate C++ Client {method['method']}: Managed Contract Required")
+                raise ValueError(
+                    f"Generate C++ Client {method['method']}: Managed Contract Required; "
+                    "Correct the protocol resource contract and regenerate the C++ SDK"
+                )
             prefix = "".join(title(part) for part in method["path"])
             request, response, service = (f"detail::{prefix}{suffix}" for suffix in ("Request", "Response", "Service"))
             parameters = [f"const {field_type(field)}& {field['name']}" for field in method["fields"] if not field["optional"]]

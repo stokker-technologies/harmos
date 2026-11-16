@@ -50,7 +50,7 @@ def main(arguments: list[str] | None = None) -> None:
     text = stamp_path.read_text(encoding="utf-8")
     stamp = json.loads(text)
     if stamp.get("profile") != profile or stamp.get("target") != paths.target():
-        sys.exit("fixture stamp belongs to another profile or native target")
+        sys.exit("fixture stamp belongs to another profile or native target; rebuild the fixtures for the selected profile and target")
     selectors = stamp["metadata"]
     if category == "integration":
         selected = [selectors["inspections"][name] for name in ("schematic-sidecar", "schematic-guest", "harmos-sandbox-guest")]
@@ -86,7 +86,9 @@ def main(arguments: list[str] | None = None) -> None:
 def _input(fixtures: Path, relative: str) -> Path:
     path = (fixtures / relative).resolve()
     if not path.is_relative_to(fixtures.parent.resolve()):
-        sys.exit(f"fixture input escapes its profile and native target: {relative}")
+        sys.exit(
+            f"fixture input escapes its profile and native target: {relative}; regenerate the fixture inventory with repository-owned paths"
+        )
     return path
 
 

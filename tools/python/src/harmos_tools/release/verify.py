@@ -43,22 +43,32 @@ def run(directory: Path, settings: dict) -> None:
     tag = harmos_tools.release.source.release_tag(directory)
     sha = harmos_tools.release.source.revision(directory)
     if registry.remote_tag(settings, tag) != sha:
-        raise policy.ToolError(f"{tag} does not identify the checked-out revision")
+        raise policy.ToolError(
+            f"{tag} does not identify the checked-out revision; "
+            "Inspect the published release inventory and repair the release inputs before verification"
+        )
     inventory = {item["name"]: item for item in layout.uploads(directory)}
     quoted = urllib.parse.quote(tag, safe="")
     if settings["provider"] == "github":
         remote = registry.document(settings, "releases/tags/" + quoted)
         if not isinstance(remote, dict) or remote.get("draft") or remote.get("prerelease"):
-            raise policy.ToolError("release is not published")
+            raise policy.ToolError(
+                "release is not published; Inspect the published release inventory and repair the release inputs before verification"
+            )
         downloads = {item["name"]: f"releases/assets/{item['id']}" for item in registry.pages(settings, f"releases/{remote['id']}/assets")}
     else:
         remote = registry.document(settings, "releases/" + quoted)
         if not isinstance(remote, dict):
-            raise policy.ToolError("release is not published")
+            raise policy.ToolError(
+                "release is not published; Inspect the published release inventory and repair the release inputs before verification"
+            )
         prefix = f"packages/generic/{urllib.parse.quote(harmos_tools.release.assets.package(settings), safe='')}/{quoted}/"
         downloads = {item["name"]: prefix + urllib.parse.quote(item["name"], safe="") for item in remote["assets"]["links"]}
     if set(downloads) != set(inventory):
-        raise policy.ToolError("published downloads differ from upload.json")
+        raise policy.ToolError(
+            "published downloads differ from upload.json; "
+            "Inspect the published release inventory and repair the release inputs before verification"
+        )
     root_directory = temporary.Directory()
     root = root_directory.path
     try:

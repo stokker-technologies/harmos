@@ -116,7 +116,9 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 for face in faces:
                     leaf = (face, *path)
                     if leaf in leaves:
-                        raise ValueError(f"Client Resource Collision: {'.'.join(path)}")
+                        raise ValueError(
+                            f"Client Resource Collision: {'.'.join(path)}; Correct the protocol declarations and regenerate the descriptors"
+                        )
                     leaves.add(leaf)
                     methods.append(
                         Method(
@@ -141,7 +143,9 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                     )
     for leaf in leaves:
         if any(leaf[:length] in leaves for length in range(2, len(leaf))):
-            raise ValueError(f"Client Resource Collision: {'.'.join(leaf[1:])}")
+            raise ValueError(
+                f"Client Resource Collision: {'.'.join(leaf[1:])}; Correct the protocol declarations and regenerate the descriptors"
+            )
     return methods
 
 

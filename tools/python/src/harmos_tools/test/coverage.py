@@ -77,7 +77,9 @@ def run(
             command = pytest.run(cwd, suite, deadline, junit, [*extra, *pytest.coverage(cwd, cobertura)])
             environment = {**pytest.environment(directory), VARIABLE: "1"}
         else:
-            raise policy.TestError("coverage is measured for rust and python")
+            raise policy.TestError(
+                "coverage is measured for rust and python; Select Rust or Python coverage and verify the native runner report configuration"
+            )
 
         environment["STKR_TEST_PROFILE"] = profile
         environment.pop("STKR_TEST_REPORT_DIR", None)
@@ -98,7 +100,9 @@ def run(
         if language == "rust" and harmos_tools.test.execution.execute(nextest.report(profile, cobertura), directory, environment) != 0:
             lane["outcome"] = "failed"
         if not cobertura.is_file():
-            raise policy.TestError(f"{key}: no coverage report was written")
+            raise policy.TestError(
+                f"{key}: no coverage report was written; Select Rust or Python coverage and verify the native runner report configuration"
+            )
         lane["kind"] = "coverage"
         lane["arguments"] = list(extra)
         lane["coverage"] = (report.location(directory, profile, key) / "coverage.xml").relative_to(directory).as_posix()

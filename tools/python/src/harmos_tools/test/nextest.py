@@ -208,7 +208,7 @@ def _split(arguments: Sequence[str]) -> tuple[list[str], list[str], list[str]]:
         if flag in PACKAGE_FLAGS + FILTER_FLAGS:
             value = inline or next(values, "")
             if not value:
-                raise policy.TestError(f"{flag} needs a value")
+                raise policy.TestError(f"{flag} needs a value; Pass the required nextest selector value after its flag")
             (packages if flag in PACKAGE_FLAGS else filters).append(value)
         elif argument.startswith("-p") and len(argument) > 2:
             packages.append(argument[2:])

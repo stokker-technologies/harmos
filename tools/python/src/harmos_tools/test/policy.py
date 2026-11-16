@@ -108,21 +108,24 @@ def root(start: Path | None = None) -> Path:
     for candidate in (current, *current.parents):
         if (candidate / "tools/project.toml").is_file():
             return candidate
-    raise TestError("no project policy file found above the working directory")
+    raise TestError(
+        "no project policy file found above the working directory; Correct conventions.testing in the owning tools/project.toml"
+    )
 
 
 def load(directory: Path) -> Policy:
     document = _toml(directory / "tools/project.toml")
     testing = document.get("conventions", {}).get("testing", {})
     if not isinstance(testing, dict):
-        raise TestError("[conventions.testing] must be a table")
+        raise TestError("[conventions.testing] must be a table; Correct conventions.testing in the owning tools/project.toml")
 
     limits = _numbers(testing.get("limits", {}), "limits", LIMITS, 0)
     deadlines = _numbers(testing.get("deadlines", {}), "deadlines", DEADLINES, MINIMUM_TIMEOUT)
     retired = [key for key in ("hosts", "lanes") if key in testing]
     if retired:
         raise TestError(
-            f"conventions.testing.{retired[0]} is retired; acceptance and system lanes receive the whole Product and Tests builds"
+            f"conventions.testing.{retired[0]} is retired; acceptance and system lanes receive the whole Product and Tests builds; "
+            "Correct conventions.testing in the owning tools/project.toml"
         )
 
     overrides = []
@@ -130,13 +133,18 @@ def load(directory: Path) -> Policy:
         if not isinstance(entry, dict) or set(entry) != OVERRIDE_KEYS:
             raise TestError("each override declares " + ", ".join(sorted(OVERRIDE_KEYS)))
         if entry["category"] not in CATEGORIES or entry["language"] not in LANGUAGES:
-            raise TestError(f"override names an unknown lane: {entry}")
+            raise TestError(f"override names an unknown lane: {entry}; Correct conventions.testing in the owning tools/project.toml")
         if not _positive(entry["timeout_seconds"], MINIMUM_TIMEOUT) or not str(entry["reason"]).strip():
-            raise TestError(f"override needs a timeout of at least 30 seconds and a reason: {entry}")
+            raise TestError(
+                f"override needs a timeout of at least 30 seconds and a reason: {entry}; "
+                "Correct conventions.testing in the owning tools/project.toml"
+            )
         overrides.append(Override(**entry))
     threshold = testing.get("bench_regression_percent", 20)
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or threshold <= 0:
-        raise TestError("bench_regression_percent must be finite and positive")
+        raise TestError(
+            "bench_regression_percent must be finite and positive; Correct conventions.testing in the owning tools/project.toml"
+        )
     return Policy(
         limits,
         deadlines,
@@ -166,14 +174,18 @@ def _toml(path: Path) -> dict[str, dict]:
         text = path.read_text(encoding="utf-8")
         return tomllib.loads(text)
     except (OSError, tomllib.TOMLDecodeError) as error:
-        raise TestError(f"read {path.name}: {error}") from error
+        raise TestError(f"read {path.name}: {error}; Correct conventions.testing in the owning tools/project.toml") from error
 
 
 def _numbers(value: object, name: str, defaults: dict[str, int], minimum: int) -> dict[str, int]:
     if not isinstance(value, dict) or not set(value) <= set(defaults):
-        raise TestError(f"conventions.testing.{name} keys are {', '.join(defaults)}")
+        raise TestError(
+            f"conventions.testing.{name} keys are {', '.join(defaults)}; Correct conventions.testing in the owning tools/project.toml"
+        )
     if not all(_positive(number, minimum) for number in value.values()):
-        raise TestError(f"conventions.testing.{name} values must be integers >= {minimum}")
+        raise TestError(
+            f"conventions.testing.{name} values must be integers >= {minimum}; Correct conventions.testing in the owning tools/project.toml"
+        )
     return {**defaults, **value}
 
 

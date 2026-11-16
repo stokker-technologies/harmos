@@ -84,7 +84,9 @@ def run(
         }
         rows, status = python(directory, category, project, refresh, measure, extra, identity)
     else:
-        raise policy.TestError("benchmarks run for rust and python")
+        raise policy.TestError(
+            "benchmarks run for rust and python; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+        )
 
     from ..release import reports
 
@@ -92,7 +94,10 @@ def run(
     measurements = reports.measurements(rows, f"{category}-{language}", revision, rules.bench_regression_percent)
     harmos_tools.release.policy.write_json(directory / report.BENCHMARKS / f"benchmarks-{category}-{language}.json", measurements)
     if not rows:
-        raise policy.TestError(f"no {category} {language} benchmark produced results")
+        raise policy.TestError(
+            f"no {category} {language} benchmark produced results; "
+            "Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+        )
 
     for name, median, baseline in rows:
         if baseline is None:
@@ -134,10 +139,14 @@ def rust(
         manifest = Path(message["manifest_path"])
         owner = manifest.parent / name
         if manifest.is_absolute() or ".." in owner.parts:
-            raise policy.TestError("benchmark owner escapes the repository")
+            raise policy.TestError(
+                "benchmark owner escapes the repository; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+            )
         home = report.native_directory(directory, CRITERION / compatibility / owner)
         if any(path.is_symlink() or path.is_junction() for path in home.rglob("*")):
-            raise policy.TestError("native benchmark files must not be linked")
+            raise policy.TestError(
+                "native benchmark files must not be linked; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+            )
         baselines = criterion_baselines(home)
         since = time.time()
         environment = dict(os.environ, CRITERION_HOME=str(home.resolve()))
@@ -149,7 +158,9 @@ def rust(
         )
         status = status or code
         if any(path.is_symlink() or path.is_junction() for path in home.rglob("*")):
-            raise policy.TestError("native benchmark files must not be linked")
+            raise policy.TestError(
+                "native benchmark files must not be linked; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+            )
         for path in sorted(home.rglob("new/estimates.json")) if home.is_dir() else []:
             if path.stat().st_mtime < since:
                 continue
@@ -191,13 +202,17 @@ def python(
 ) -> tuple[list[tuple[str, float, float | None]], int]:
     owner = Path(project)
     if owner.is_absolute() or ".." in owner.parts:
-        raise policy.TestError("benchmark project escapes the repository")
+        raise policy.TestError(
+            "benchmark project escapes the repository; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+        )
     compatibility = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     home = report.native_directory(directory, report.BENCHMARKS / "python" / compatibility / owner / category)
     output = home / "new.json"
     stored = home / f"{BASELINE}.json"
     if output.is_symlink() or stored.is_symlink():
-        raise policy.TestError("native benchmark files must not be linked")
+        raise policy.TestError(
+            "native benchmark files must not be linked; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+        )
     try:
         previous = json.loads(stored.read_text(encoding="utf-8")) if stored.is_file() else {}
         baselines = {entry.get("fullname", entry["name"]): entry["stats"]["median"] * 1e9 for entry in previous.get("benchmarks", [])}
@@ -214,7 +229,9 @@ def python(
     environment.pop("STKR_TEST_REPORT_DIR", None)
     status, peak = harmos_tools.test.execution.measured(pytest.bench(cwd, category, output, extra), cwd, environment)
     if not output.is_file():
-        raise policy.TestError("pytest-benchmark wrote no results")
+        raise policy.TestError(
+            "pytest-benchmark wrote no results; Select Rust or Python benchmarks and rebuild their native benchmark artifacts"
+        )
     rows = []
     for entry in json.loads(output.read_text(encoding="utf-8"))["benchmarks"]:
         name = entry.get("fullname", entry["name"])

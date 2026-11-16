@@ -192,7 +192,7 @@ def compose(
     check: bool = False,
 ) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
-        raise ValueError("Generate Client: Invalid Output Namespace")
+        raise ValueError("Generate Client: Invalid Output Namespace; Correct the composition inputs and rerun mise run generate")
     merged = FileDescriptorSet()
     files = {}
     libraries = []
@@ -202,7 +202,7 @@ def compose(
         text = composition.read_text(encoding="utf-8")
         settings = tomllib.loads(text)
         if set(settings) - {"libraries", "callers"}:
-            raise ValueError("Compose SDK: Unknown Composition Fields")
+            raise ValueError("Compose SDK: Unknown Composition Fields; Correct the composition inputs and rerun mise run generate")
         libraries = [(composition.parent / library["descriptors"], library["packages"]) for library in settings.get("libraries", [])]
     else:
         libraries = [(repository / "crates/harmos-protocol/src/descriptors.bin", [])]
@@ -210,7 +210,9 @@ def compose(
         library = FileDescriptorSet.FromString(path.read_bytes())
         existing_packages = {file.package for file in library.file}
         if set(packages) - existing_packages:
-            raise ValueError("Compose SDK: Library Package Is Absent from Its Descriptors")
+            raise ValueError(
+                "Compose SDK: Library Package Is Absent from Its Descriptors; Correct the composition inputs and rerun mise run generate"
+            )
         for file in library.file:
             if (
                 packages
@@ -220,7 +222,9 @@ def compose(
                 continue
             file.ClearField("source_code_info")
             if file.name in files and files[file.name] != file:
-                raise ValueError(f"Generate Client: Conflicting Descriptor File {file.name}")
+                raise ValueError(
+                    f"Generate Client: Conflicting Descriptor File {file.name}; Correct the composition inputs and rerun mise run generate"
+                )
             files[file.name] = file
     merged.file.extend(files[name] for name in sorted(files))
     if settings.get("callers"):

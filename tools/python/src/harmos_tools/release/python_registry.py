@@ -43,7 +43,10 @@ def publish(directory: Path, settings: dict, *, dry_run: bool) -> None:
     profile = policy.profile()
     selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/build/{profile}/any/python/*") if path.is_file())
     if not selected:
-        raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
+        raise policy.ToolError(
+            f"release:publish:python has no {profile} Python packages; "
+            "Inspect the Python registry response and correct package metadata or credentials"
+        )
     if dry_run:
         # Build and check only: uv validates every file without credentials or upload.
         credentials = policy.CredentialScope(settings, profile=profile)
@@ -73,7 +76,10 @@ def publish(directory: Path, settings: dict, *, dry_run: bool) -> None:
                 missing.append(relative)
                 continue
             if hashlib.sha256(path.read_bytes()).hexdigest() != published[path.name]:
-                raise policy.ToolError(f"PyPI file already exists with a different SHA-256: {path.name}")
+                raise policy.ToolError(
+                    f"PyPI file already exists with a different SHA-256: {path.name}; "
+                    "Inspect the Python registry response and correct package metadata or credentials"
+                )
             print(f"PyPI file already published with matching SHA-256: {path.name}")
         if missing:
             policy.execute(
@@ -84,7 +90,10 @@ def publish(directory: Path, settings: dict, *, dry_run: bool) -> None:
     project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
     token = os.environ.get("CI_JOB_TOKEN")
     if not token or not project:
-        raise policy.ToolError("GitLab Python publication requires the native CI_JOB_TOKEN")
+        raise policy.ToolError(
+            "GitLab Python publication requires the native CI_JOB_TOKEN; "
+            "Inspect the Python registry response and correct package metadata or credentials"
+        )
     destination = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/packages/pypi"
     command = ["uv", "publish", "--publish-url", destination, "--username", "gitlab-ci-token", "--password", token, *selected]
     policy.execute(directory, command)

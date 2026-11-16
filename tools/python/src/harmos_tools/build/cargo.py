@@ -66,7 +66,11 @@ class Artifact(TypedDict, total=False):
 
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
-    selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
+    selected = dict(
+        os.environ if environment is None else environment,
+        CARGO_BUILD_WARNINGS="deny",
+        CARGO_TARGET_DIR=str(directory / "target"),
+    )
     phase = summary.Phase("Clippy")
     try:
         # Run the Native Command
@@ -91,7 +95,7 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     from ..test import policy
 
     if profile not in policy.PROFILES:
-        raise policy.TestError("unknown build profile")
+        raise policy.TestError("unknown build profile; Select a supported Cargo operation and canonical profile, then rerun the task")
     path = harmos_tools.test.archive.location(directory, profile)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
@@ -141,7 +145,10 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
             diagnostic = message.get("message", {}).get("rendered")
             if diagnostic:
                 print(diagnostic, file=sys.stderr, end="")
-        raise policy.TestError(f"nextest archive build failed; compiler messages: {path.with_name(harmos_tools.test.archive.MESSAGES)}")
+        raise policy.TestError(
+            f"nextest archive build failed; compiler messages: {path.with_name(harmos_tools.test.archive.MESSAGES)}; "
+            "Inspect the retained compiler messages and repair the failing build"
+        )
     harmos_tools.test.archive.require(directory, profile)
     harmos_tools.test.archive.prune(path.parent, {harmos_tools.test.archive.ARCHIVE, harmos_tools.test.archive.MESSAGES}, archives=True)
     return path
@@ -149,20 +156,28 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
 
 def focused(directory: Path, operation: str, arguments: Sequence[str], *, messages: Path | None = None) -> int:
     if operation not in ("build", "check", "test", "clippy", "run"):
-        raise ValueError("focused compilation requires build, check, test, clippy or run")
+        raise ValueError(
+            "focused compilation requires build, check, test, clippy or run; "
+            "Select a supported Cargo operation and canonical profile, then rerun the task"
+        )
     profile = None
     compiler_arguments = list(arguments[: arguments.index("--")]) if "--" in arguments else list(arguments)
     if any(argument == "--target-dir" or argument.startswith("--target-dir=") for argument in compiler_arguments):
-        raise ValueError("focused tasks use the repository Cargo target")
+        raise ValueError("focused tasks use the repository Cargo target; Remove --target-dir and use the worktree's root target directory")
     for index, argument in enumerate(compiler_arguments):
         if argument == "--profile" and index + 1 < len(compiler_arguments):
             profile = compiler_arguments[index + 1]
         elif argument.startswith("--profile="):
             profile = argument.partition("=")[2]
     if profile is not None and profile not in ("dev", "release", "test", "bench"):
-        raise ValueError("focused compilation requires a canonical Cargo profile")
+        raise ValueError(
+            "focused compilation requires a canonical Cargo profile; "
+            "Select a supported Cargo operation and canonical profile, then rerun the task"
+        )
     if operation == "test" and ("--release" in compiler_arguments or profile not in (None, "test")):
-        raise ValueError("focused tests use Cargo's default test profile")
+        raise ValueError(
+            "focused tests use Cargo's default test profile; Select a supported Cargo operation and canonical profile, then rerun the task"
+        )
     command = ["cargo", operation, "--timings", *arguments]
     if messages is not None:
         messages.parent.mkdir(parents=True, exist_ok=True)
@@ -209,10 +224,10 @@ def record_target(directory: Path, messages: Path, profile: str, native: str | N
             if "-linux-" in candidate or "-windows-" in candidate or candidate.endswith("-apple-darwin"):
                 compiled_targets.add(candidate)
     if len(compiled_targets) > 1:
-        raise ValueError("Product Build exported more than one Rust target")
+        raise ValueError("Product Build exported more than one Rust target; Select exactly one native Rust target for the product build")
     actual = next(iter(compiled_targets), triple)
     if "CARGO_BUILD_TARGET" in os.environ and actual != triple:
-        raise ValueError("Product Build target differs from CARGO_BUILD_TARGET")
+        raise ValueError("Product Build target differs from CARGO_BUILD_TARGET; Build for the target selected by CARGO_BUILD_TARGET")
     destination = paths.output(directory, "build", profile, native) / "product/target.txt"
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(actual + "\n")

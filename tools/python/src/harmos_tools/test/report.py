@@ -57,9 +57,13 @@ class Case:
 def native_directory(root: Path, relative: Path) -> Path:
     path = root / relative
     if not path.resolve().is_relative_to(root.resolve()):
-        raise policy.TestError("native report directory escapes the repository")
+        raise policy.TestError(
+            "native report directory escapes the repository; Select a supported language and layer with a regular native report directory"
+        )
     if any(item.is_symlink() or item.is_junction() for item in (path, *path.parents) if item.is_relative_to(root)):
-        raise policy.TestError("native report directory must not contain links")
+        raise policy.TestError(
+            "native report directory must not contain links; Select a supported language and layer with a regular native report directory"
+        )
     path.mkdir(parents=True, exist_ok=True)
     return path.resolve()
 
@@ -67,13 +71,13 @@ def native_directory(root: Path, relative: Path) -> Path:
 def location(directory: Path, profile: str, key: str) -> Path:
     parts = key.split("-")
     if parts[-1] not in policy.LANGUAGES:
-        raise policy.TestError("unknown report language")
+        raise policy.TestError("unknown report language; Select a supported language and layer with a regular native report directory")
     if parts[0] == "coverage" and len(parts) in (2, 3):
         if len(parts) == 3 and parts[1] not in policy.CATEGORIES:
-            raise policy.TestError("unknown coverage layer")
+            raise policy.TestError("unknown coverage layer; Select a supported language and layer with a regular native report directory")
         return paths.output(directory, "tests", profile).joinpath("coverage", parts[-1], *parts[1:-1])
     if len(parts) != 2 or parts[0] not in policy.CATEGORIES:
-        raise policy.TestError("unknown report layer")
+        raise policy.TestError("unknown report layer; Select a supported language and layer with a regular native report directory")
     return paths.output(directory, "tests", profile) / key
 
 
@@ -137,7 +141,9 @@ def _parse(text: str) -> ElementTree.Element:
     try:
         return ElementTree.fromstring(text)
     except ElementTree.ParseError as error:
-        raise policy.TestError(f"invalid JUnit report: {error}") from error
+        raise policy.TestError(
+            f"invalid JUnit report: {error}; Select a supported language and layer with a regular native report directory"
+        ) from error
 
 
 def _testcases(root: ElementTree.Element) -> Iterator[tuple[str, ElementTree.Element]]:

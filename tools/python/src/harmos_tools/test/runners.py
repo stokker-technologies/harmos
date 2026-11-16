@@ -64,7 +64,10 @@ def main() -> None:
                     eligible.append(group)
             for reference in references:
                 if not any(permitted(group, repository, workflow, reference) for group in eligible):
-                    raise RuntimeError(f"runner group allowlist does not permit {workflow}@{reference} with labels {required}")
+                    raise RuntimeError(
+                        f"runner group allowlist does not permit {workflow}@{reference} with labels {required}; "
+                        "Correct the runner group workflow allowlist and labels"
+                    )
 
 
 # === Private Functions === #

@@ -50,7 +50,10 @@ def refuse_overrides(directory: Path) -> None:
         if package["source"] is None and not Path(package["manifest_path"]).resolve().is_relative_to(directory.resolve())
     ]
     if outside:
-        raise policy.ToolError(f"unpublished local dependency override: {', '.join(sorted(outside))}")
+        raise policy.ToolError(
+            f"unpublished local dependency override: {', '.join(sorted(outside))}; "
+            "Configure the declared release prerequisites before preparation"
+        )
 
 
 def require_publication(directory: Path, settings: dict) -> None:

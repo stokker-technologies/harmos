@@ -134,10 +134,8 @@ def parse(arguments: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
         "nightly-freshness",
         "nightly-report",
         "mirror",
-        "runners",
         "review",
         "release-mode",
-        "release-checks",
         "required",
     )
     for name in helpers:

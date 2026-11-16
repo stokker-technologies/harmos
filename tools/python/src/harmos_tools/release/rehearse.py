@@ -61,7 +61,10 @@ def dry(
     present = [selected for selected in targets if (directory / "target/package" / profile / selected).is_dir()]
     missing = sorted(set(targets) - set(present))
     if missing and (require_all or harmos_tools.release.source.continuous_integration()):
-        raise policy.ToolError(f"{profile} packages are missing for release targets: {', '.join(missing)}")
+        raise policy.ToolError(
+            f"{profile} packages are missing for release targets: {', '.join(missing)}; "
+            "Build complete packages for the selected profile and declared release targets before rehearsal"
+        )
     if missing:
         print(f"note: no local {profile} packages for {', '.join(missing)}; CI stages every release target")
     harmos_tools.release.assets.stage(
@@ -84,15 +87,27 @@ def run(directory: Path, settings: dict, *, target: str | None = None, profile: 
     """Verify Selected Local Packages Or Every Hosted Target Without Publishing Credentials."""
     hosted = harmos_tools.release.source.continuous_integration()
     if profile not in {"dev", "release"}:
-        raise policy.ToolError("rehearsal profile must be dev or release")
+        raise policy.ToolError(
+            "rehearsal profile must be dev or release; "
+            "Build complete packages for the selected profile and declared release targets before rehearsal"
+        )
     if hosted and (profile != "release" or stage_only):
-        raise policy.ToolError("hosted rehearsal requires complete release-profile verification")
+        raise policy.ToolError(
+            "hosted rehearsal requires complete release-profile verification; "
+            "Build complete packages for the selected profile and declared release targets before rehearsal"
+        )
     if hosted and target not in (None, "all"):
-        raise policy.ToolError("hosted rehearsal requires all declared release targets")
+        raise policy.ToolError(
+            "hosted rehearsal requires all declared release targets; "
+            "Build complete packages for the selected profile and declared release targets before rehearsal"
+        )
     target = target or ("all" if hosted else "native")
     selected = harmos_tools.release.source.native_target(settings) if target == "native" else target
     if selected != "all" and selected not in settings.get("targets", []):
-        raise policy.ToolError(f"undeclared release target: {selected}")
+        raise policy.ToolError(
+            f"undeclared release target: {selected}; "
+            "Build complete packages for the selected profile and declared release targets before rehearsal"
+        )
     targets = list(settings.get("targets", [])) if selected == "all" else [selected]
     credentials = policy.CredentialScope(settings, profile=profile)
     try:

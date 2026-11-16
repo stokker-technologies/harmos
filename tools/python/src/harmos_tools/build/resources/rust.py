@@ -161,7 +161,10 @@ def client(root: Path, methods: list[harmos_tools.build.resources.descriptor.Met
         lines += ["        }", "    }"]
         for method in operations:
             if method["client_streaming"]:
-                raise ValueError(f"Generate Rust Client {method['method']}: Managed Contract Required")
+                raise ValueError(
+                    f"Generate Rust Client {method['method']}: Managed Contract Required; "
+                    "Correct the protocol resource contract and regenerate the Rust SDK"
+                )
             request, response = (aliases[method[key]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             parameters = [

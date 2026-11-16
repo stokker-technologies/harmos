@@ -38,7 +38,7 @@ def run() -> int:
     from ..release.review import pages, request
 
     if os.environ["GITHUB_REF"] != "refs/heads/dev":
-        raise ValueError("nightly requires dev")
+        raise ValueError("nightly requires dev; Run Nightly from dev and verify access to its remote tag")
     build = True
     if os.environ["GITHUB_EVENT_NAME"] == "schedule":
         # A Missing Tag Is The First Nightly; Other API Failures Must Fail Closed.
@@ -52,7 +52,7 @@ def run() -> int:
             creationflags=spawn_flags(),
         )
         if result.returncode and not re.search(r"HTTP/\S+ 404", result.stdout) and "HTTP 404" not in result.stderr:
-            raise RuntimeError("nightly tag lookup failed")
+            raise RuntimeError("nightly tag lookup failed; Run Nightly from dev and verify access to its remote tag")
         if not result.returncode:
             published = request("git/ref/tags/nightly")
             build = published["object"]["sha"] != os.environ["GITHUB_SHA"]

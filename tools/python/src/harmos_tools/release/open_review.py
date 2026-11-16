@@ -46,7 +46,10 @@ def run(directory: Path, settings: dict) -> None:
     """Commit The Prepared Tree To release/v<version> And Open Its Review Into dev With The Release Token."""
     token = os.environ.get("RELEASE_TOKEN", "")
     if not harmos_tools.release.source.continuous_integration() or not token:
-        raise policy.ToolError("the release review opens from Release / Prepare with the RELEASE_TOKEN secret")
+        raise policy.ToolError(
+            "the release review opens from Release / Prepare with the RELEASE_TOKEN secret; "
+            "Inspect the release preparation response and repair the review inputs or signing configuration"
+        )
     tag = harmos_tools.release.source.release_tag(directory)
     version.run(directory, "check")
     branch = registry.RELEASE_BRANCH + tag
@@ -92,7 +95,10 @@ def run(directory: Path, settings: dict) -> None:
         env=environment,
         check=False,
     ).returncode:
-        raise policy.ToolError(f"opening the release review failed; {branch} is pushed and can be reviewed by hand")
+        raise policy.ToolError(
+            f"opening the release review failed; {branch} is pushed and can be reviewed by hand; "
+            "Inspect the release preparation response and repair the review inputs or signing configuration"
+        )
     registry.arm_auto_merge(settings, branch, title)
 
 
@@ -109,7 +115,10 @@ def commit(directory: Path, settings: dict, branch: str, title: str) -> None:
             continue
         path = policy.inside(directory, name)
         if status not in {"A", "M"} or path.is_symlink() or not path.is_file():
-            raise policy.ToolError(f"unsupported release file change: {status} {name}")
+            raise policy.ToolError(
+                f"unsupported release file change: {status} {name}; "
+                "Inspect the release preparation response and repair the review inputs or signing configuration"
+            )
         content = base64.b64encode(path.read_bytes()).decode("ascii")
         additions.append({"path": name, "contents": content})
         actions.append({"action": "create" if status == "A" else "update", "file_path": name, "content": content, "encoding": "base64"})
@@ -149,13 +158,19 @@ def commit(directory: Path, settings: dict, branch: str, title: str) -> None:
             },
         )
         if commit is None:
-            raise policy.ToolError("preparation commit returned no document")
+            raise policy.ToolError(
+                "preparation commit returned no document; "
+                "Inspect the release preparation response and repair the review inputs or signing configuration"
+            )
         signature = registry.document(settings, "repository/commits/" + urllib.parse.quote(commit["id"], safe="") + "/signature")
         verified = signature and signature.get("verification_status") in {"verified", "verified_system"}
         if not verified:
             registry.request(settings, "repository/branches/" + urllib.parse.quote(branch, safe=""), "DELETE")
     if not verified:
-        raise policy.ToolError("preparation API commit is not verified; GitLab requires web-based commit signing enabled")
+        raise policy.ToolError(
+            "preparation API commit is not verified; GitLab requires web-based commit signing enabled; "
+            "Inspect the release preparation response and repair the review inputs or signing configuration"
+        )
 
 
 # === Private Functions === #

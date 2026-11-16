@@ -94,7 +94,9 @@ def export(values: dict[str, str]) -> None:
         try:
             for name, value in values.items():
                 if "\n" in value or "\r" in value:
-                    raise ValueError(f"invalid environment value: {name}")
+                    raise ValueError(
+                        f"invalid environment value: {name}; Correct the pinned CI image prerequisites and bootstrap configuration"
+                    )
                 stream.write(f"{name}={value}\n")
         finally:
             stream.close()
@@ -129,14 +131,16 @@ def download(
             cause = f"{type(error).__name__}: {error}"
         if attempt == DOWNLOAD_ATTEMPTS:
             raise RuntimeError(
-                f"bootstrap archive download failed after {DOWNLOAD_ATTEMPTS} attempts: {url}: {cause}; "
-                "GitHub release downloads are degraded, rerun the job"
+                f"bootstrap archive download failed after {DOWNLOAD_ATTEMPTS} attempts: {url}: {cause}; GitHub release downloads are degraded, rerun the job; "
+                "Correct the pinned CI image prerequisites and bootstrap configuration"
             )
         wait = DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1) + random.uniform(0, 1)
         print(f"bootstrap archive download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {cause}; retrying in {wait:.1f} s", flush=True)
         sleep(wait)
     if hashlib.sha256(content).hexdigest() != checksum:
-        raise ValueError(f"pinned bootstrap archive checksum mismatch: {url}")
+        raise ValueError(
+            f"pinned bootstrap archive checksum mismatch: {url}; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     # A Partial Or Interrupted Write Never Passes As The Archive.
     partial = destination.with_name(destination.name + ".partial")
     partial.write_bytes(content)
@@ -161,7 +165,9 @@ def windows(workspace: Path) -> None:
         creationflags=spawn_flags(),
     ).strip()
     if not installation:
-        raise RuntimeError("the Windows image requires Visual Studio C++ tools")
+        raise RuntimeError(
+            "the Windows image requires Visual Studio C++ tools; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     vcvars = Path(installation) / "VC/Auxiliary/Build/vcvars64.bat"
     # Preserve Cmd Quoting Through CreateProcess.
     # Run the Native Command
@@ -193,13 +199,15 @@ def windows(workspace: Path) -> None:
         None,
     )
     if tar is None:
-        raise RuntimeError("GNU tar is required from the standard Git image")
+        raise RuntimeError(
+            "GNU tar is required from the standard Git image; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     compiler = shutil.which("cl")
     if compiler is None:
-        raise RuntimeError("MSVC compiler is required")
+        raise RuntimeError("MSVC compiler is required; Correct the pinned CI image prerequisites and bootstrap configuration")
     export({"PATH": os.pathsep.join([str(Path(compiler).parent), str(compressor), str(tar.parent), os.environ["PATH"]])})
     if not shutil.which("cl") or not shutil.which("link"):
-        raise RuntimeError("MSVC compiler and linker are required")
+        raise RuntimeError("MSVC compiler and linker are required; Correct the pinned CI image prerequisites and bootstrap configuration")
 
     if shutil.which("mise") is None:
         archive = workspace / ".cache/bootstrap/mise-2026.10.17/mise.zip"
@@ -269,7 +277,7 @@ def unix() -> None:
         else:
             raise RuntimeError("provide native CI prerequisites through the declared image or bootstrap")
     if "GNU tar" not in subprocess.check_output(["tar", "--version"], text=True, creationflags=spawn_flags()):
-        raise RuntimeError("GNU tar is required")
+        raise RuntimeError("GNU tar is required; Correct the pinned CI image prerequisites and bootstrap configuration")
 
 
 def atomic_available() -> bool:
@@ -305,7 +313,9 @@ def rustup() -> None:
 
 def glab(version: str) -> None:
     if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
-        raise ValueError("GitLab CLI bootstrap requires an exact version")
+        raise ValueError(
+            "GitLab CLI bootstrap requires an exact version; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     # This Explicit CI Tool Is Outside The Project Lock; Project Installs Remain Locked.
     # Run the Native Command
     command = ["mise", "install", "--yes", f"glab@{version}"]
@@ -374,7 +384,9 @@ def main() -> None:
                         for variable in ("MISE_DATA_DIR", "MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "CI_RUNNER_IMAGE_ID"):
                             value = value.replace("<" + variable + ">", os.environ[variable])
                         if field == "path" and not value.strip():
-                            raise ValueError(f"cache path is empty: {name}")
+                            raise ValueError(
+                                f"cache path is empty: {name}; Correct the pinned CI image prerequisites and bootstrap configuration"
+                            )
                         stream.write(f"{name}-{field}<<CACHE_VALUE\n{value}\nCACHE_VALUE\n")
             finally:
                 stream.close()

@@ -70,7 +70,10 @@ def download(
             if isinstance(error, urllib.error.HTTPError):
                 error.close()
             if not retry or attempt == DOWNLOAD_ATTEMPTS:
-                raise policy.ToolError(f"{operation} failed: {address} after {attempt} attempts: {error}") from error
+                raise policy.ToolError(
+                    f"{operation} failed: {address} after {attempt} attempts: {error}; "
+                    "Regenerate compliance metadata from the locked dependencies"
+                ) from error
             delay_s = min(DOWNLOAD_MAX_DELAY_S, DOWNLOAD_BASE_DELAY_S * 2 ** (attempt - 1))
             time.sleep(random.uniform(delay_s / 2, delay_s))
             if before_retry is not None:
@@ -97,7 +100,10 @@ def python_notices(lock: dict) -> tuple[str, int]:
             continue
         wheels = package.get("wheels", [])
         if not wheels:
-            raise policy.ToolError(f"no locked wheel available for license inventory: {package['name']}")
+            raise policy.ToolError(
+                f"no locked wheel available for license inventory: {package['name']}; "
+                "Regenerate compliance metadata from the locked dependencies"
+            )
         wheel = min(wheels, key=lambda item: item.get("size", 0))
         digest = wheel["hash"].removeprefix("sha256:")
         filename = Path(urllib.parse.unquote(urllib.parse.urlsplit(wheel["url"]).path)).name
@@ -115,7 +121,10 @@ def python_notices(lock: dict) -> tuple[str, int]:
             cache_hits += 1
         actual = "sha256:" + hashlib.sha256(data).hexdigest()
         if actual != wheel["hash"]:
-            raise policy.ToolError(f"locked wheel hash mismatch: {package['name']} ({wheel['url']})")
+            raise policy.ToolError(
+                f"locked wheel hash mismatch: {package['name']} ({wheel['url']}); "
+                "Regenerate compliance metadata from the locked dependencies"
+            )
         sections.append(f"\n{package['name']} {package['version']}")
         archive = zipfile.ZipFile(io.BytesIO(data))
         try:
@@ -125,7 +134,9 @@ def python_notices(lock: dict) -> tuple[str, int]:
             if not license_name:
                 license_name = "; ".join(value for value in metadata.get_all("Classifier", []) if value.startswith("License ::"))
             if not license_name:
-                raise policy.ToolError(f"missing Python license metadata: {package['name']}")
+                raise policy.ToolError(
+                    f"missing Python license metadata: {package['name']}; Regenerate compliance metadata from the locked dependencies"
+                )
             sections.append(license_name)
             files = [
                 name
@@ -134,7 +145,9 @@ def python_notices(lock: dict) -> tuple[str, int]:
                 and (".dist-info/licenses/" in name or Path(name).name.lower().startswith(("license", "licence", "copying", "notice")))
             ]
             if not files:
-                raise policy.ToolError(f"missing Python license text: {package['name']}")
+                raise policy.ToolError(
+                    f"missing Python license text: {package['name']}; Regenerate compliance metadata from the locked dependencies"
+                )
             for name in sorted(files):
                 sections.append(archive.read(name).decode("utf-8"))
         finally:

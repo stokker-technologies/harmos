@@ -68,7 +68,7 @@ def root() -> Path:
     for candidate in (current, *current.parents):
         if (candidate / "tools/project.toml").is_file():
             return candidate
-    raise ToolError("no project policy file found")
+    raise ToolError("no project policy file found; Correct the owning release configuration in tools/project.toml")
 
 
 def config(directory: Path) -> dict[str, dict]:
@@ -80,7 +80,7 @@ def config(directory: Path) -> dict[str, dict]:
 def policy(directory: Path, name: str) -> dict:
     value = config(directory).get(name, {})
     if not isinstance(value, dict):
-        raise ToolError(f"[{name}] must be a table")
+        raise ToolError(f"[{name}] must be a table; Correct the owning release configuration in tools/project.toml")
     return value
 
 
@@ -113,20 +113,20 @@ def profile(default: str = "release") -> str:
     """The Package Profile Passed By The Rendered Job Or A Local Invocation."""
     selected = os.environ.get("RELEASE_PROFILE") or default
     if selected not in ("dev", "release"):
-        raise ToolError("RELEASE_PROFILE must be dev or release")
+        raise ToolError("RELEASE_PROFILE must be dev or release; Correct the owning release configuration in tools/project.toml")
     return selected
 
 
 def inside(directory: Path, relative: str) -> Path:
     candidate = directory / relative
     if Path(relative).is_absolute() or not candidate.resolve().is_relative_to(directory.resolve()):
-        raise ToolError(f"path must stay inside the repository: {relative}")
+        raise ToolError(f"path must stay inside the repository: {relative}; Correct the owning release configuration in tools/project.toml")
     return candidate
 
 
 def command(value: object, name: str) -> list[str]:
     if not isinstance(value, list) or not value or any(not isinstance(part, str) or not part for part in value):
-        raise ToolError(f"{name} must be a nonempty argument array")
+        raise ToolError(f"{name} must be a nonempty argument array; Correct the owning release configuration in tools/project.toml")
     return value
 
 
@@ -143,17 +143,20 @@ def execute(directory: Path, arguments: Sequence[str], *, capture: bool = False)
         stderr=subprocess.PIPE if capture else sys.stderr,
     )
     if result.returncode:
-        raise ToolError(f"{arguments[0]} failed with exit code {result.returncode}: {result.stderr or ''}")
+        raise ToolError(
+            f"{arguments[0]} failed with exit code {result.returncode}: {result.stderr or ''}; "
+            "Correct the owning release configuration in tools/project.toml"
+        )
     return result.stdout or ""
 
 
 def write_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_symlink():
-        raise ToolError(f"refusing linked output: {path}")
+        raise ToolError(f"refusing linked output: {path}; Correct the owning release configuration in tools/project.toml")
     temporary = path.with_suffix(path.suffix + ".tmp")
     if temporary.is_symlink():
-        raise ToolError(f"refusing linked staging file: {temporary}")
+        raise ToolError(f"refusing linked staging file: {temporary}; Correct the owning release configuration in tools/project.toml")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
     temporary.replace(path)
 

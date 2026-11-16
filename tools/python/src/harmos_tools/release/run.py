@@ -74,7 +74,10 @@ def main(arguments: list[str] | None = None) -> int:
 
 def run(directory: Path, verb: str, *, target: str | None = None, profile: str | None = None, stage_only: bool = False) -> None:
     if verb != "rehearse" and (target is not None or profile is not None or stage_only):
-        raise policy.ToolError("--target, --profile and --stage-only are supported only by rehearsal")
+        raise policy.ToolError(
+            "--target, --profile and --stage-only are supported only by rehearsal; "
+            "Select the supported release operation and pass only its declared arguments"
+        )
     settings = policy.policy(directory, "release")
     match verb:
         case "prepare":

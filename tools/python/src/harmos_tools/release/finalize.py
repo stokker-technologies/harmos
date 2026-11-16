@@ -48,12 +48,17 @@ def run(directory: Path, settings: dict) -> None:
     if state.get("sha") != harmos_tools.release.source.revision(directory) or state.get("tag") != harmos_tools.release.source.release_tag(
         directory
     ):
-        raise policy.ToolError("the staged publication belongs to another revision or version")
+        raise policy.ToolError(
+            "the staged publication belongs to another revision or version; "
+            "Verify the staged revision, tag and uploaded assets before finalizing publication"
+        )
     inventory = {item["name"]: item for item in layout.uploads(directory, staged=True)}
     if set(inventory) != set(state["files"]) or any(
         any(entry.get(key) != value for key, value in inventory[name].items()) for name, entry in state["files"].items()
     ):
-        raise policy.ToolError("publication state differs from upload.json")
+        raise policy.ToolError(
+            "publication state differs from upload.json; Verify the staged revision, tag and uploaded assets before finalizing publication"
+        )
     downloads_directory = temporary.Directory()
     downloads = downloads_directory.path
     try:
@@ -63,18 +68,26 @@ def run(directory: Path, settings: dict) -> None:
     finally:
         downloads_directory.close()
     if registry.remote_tag(settings, state["tag"]) != state["sha"]:
-        raise policy.ToolError("the release tag is absent or identifies another revision")
+        raise policy.ToolError(
+            "the release tag is absent or identifies another revision; "
+            "Verify the staged revision, tag and uploaded assets before finalizing publication"
+        )
     if settings["provider"] == "github":
         current = registry.document(settings, f"releases/{state['release_id']}")
         if not isinstance(current, dict) or not current.get("draft") or current.get("tag_name") != state["tag"]:
             raise policy.ToolError("the release is no longer the staged draft; verify it manually")
         listed = {item["name"] for item in registry.pages(settings, f"releases/{state['release_id']}/assets")}
         if listed != set(inventory):
-            raise policy.ToolError("draft assets differ from upload.json")
+            raise policy.ToolError(
+                "draft assets differ from upload.json; Verify the staged revision, tag and uploaded assets before finalizing publication"
+            )
         registry.document(settings, f"releases/{state['release_id']}", "PATCH", {"draft": False})
         visible = registry.document(settings, "releases/tags/" + urllib.parse.quote(state["tag"], safe=""))
         if not isinstance(visible, dict) or visible.get("draft") or visible.get("prerelease"):
-            raise policy.ToolError("published release visibility cannot be verified")
+            raise policy.ToolError(
+                "published release visibility cannot be verified; "
+                "Verify the staged revision, tag and uploaded assets before finalizing publication"
+            )
         return
     created = registry.document(
         settings,
@@ -89,10 +102,15 @@ def run(directory: Path, settings: dict) -> None:
         },
     )
     if not isinstance(created, dict) or created.get("tag_name") != state["tag"] or (created.get("commit") or {}).get("id") != state["sha"]:
-        raise policy.ToolError("published release tag identity cannot be verified")
+        raise policy.ToolError(
+            "published release tag identity cannot be verified; "
+            "Verify the staged revision, tag and uploaded assets before finalizing publication"
+        )
     remote = registry.document(settings, "releases/" + urllib.parse.quote(state["tag"], safe="")) or {}
     if {link.get("name") for link in (remote.get("assets") or {}).get("links", [])} != set(inventory):
-        raise policy.ToolError("release links differ from upload.json")
+        raise policy.ToolError(
+            "release links differ from upload.json; Verify the staged revision, tag and uploaded assets before finalizing publication"
+        )
 
 
 # === Private Functions === #

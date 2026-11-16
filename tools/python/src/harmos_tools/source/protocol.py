@@ -46,7 +46,10 @@ def caller_options(descriptors: FileDescriptorSet) -> dict[str, str]:
     while pending:
         ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
         if not ready:
-            raise ValueError("Protocol Callers: Unresolved Descriptor Dependencies")
+            raise ValueError(
+                "Protocol Callers: Unresolved Descriptor Dependencies; "
+                "Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         for file in ready:
             pool.AddSerializedFile(file.SerializeToString())
             del pending[file.name]
@@ -60,15 +63,24 @@ def caller_options(descriptors: FileDescriptorSet) -> dict[str, str]:
                 try:
                     extension = pool.FindExtensionByName("harmos.model.v1.callers")
                 except KeyError as error:
-                    raise ValueError(f"Protocol Callers: {identity} Has No Callers Declaration") from error
+                    raise ValueError(
+                        f"Protocol Callers: {identity} Has No Callers Declaration; "
+                        "Correct the source protocol declarations or explicit public exports before regenerating"
+                    ) from error
                 if extension.enum_type is None:
-                    raise ValueError("Protocol Callers: Option Must Be an Enum")
+                    raise ValueError(
+                        "Protocol Callers: Option Must Be an Enum; "
+                        "Correct the source protocol declarations or explicit public exports before regenerating"
+                    )
                 options = cast(Any, message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))())
                 options.ParseFromString(method.options.SerializeToString())
                 value = options.Extensions[extension]
                 allowed = extension.enum_type.values_by_number.get(value)
                 if not options.HasExtension(extension) or allowed is None or allowed.name not in {"CLIENTS", "PLUGINS", "ALL"}:
-                    raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
+                    raise ValueError(
+                        f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; "
+                        "Correct the source protocol declarations or explicit public exports before regenerating"
+                    )
                 result[identity] = allowed.name
     return result
 
@@ -80,7 +92,10 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
     for identity, selected in overrides.items():
         original = declared.get(identity)
         if original is None or selected not in audiences or not audiences[selected] <= audiences[original]:
-            raise ValueError(f"Narrow {identity}: Callers Must Be a Subset of the Declaration")
+            raise ValueError(
+                f"Narrow {identity}: Callers Must Be a Subset of the Declaration; "
+                "Correct the source protocol declarations or explicit public exports before regenerating"
+            )
     # The Extension Number and Its Definition Are Owned by the Descriptor, Not This Tool.
     pool = descriptor_pool.DescriptorPool()
     pending = {file.name: file for file in descriptors.file}
@@ -91,7 +106,10 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
             del pending[file.name]
     extension = pool.FindExtensionByName("harmos.model.v1.callers")
     if extension.enum_type is None:
-        raise ValueError("Protocol Callers: Option Must Be an Enum")
+        raise ValueError(
+            "Protocol Callers: Option Must Be an Enum; "
+            "Correct the source protocol declarations or explicit public exports before regenerating"
+        )
     options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
     for file in descriptors.file:
         for service in file.service:

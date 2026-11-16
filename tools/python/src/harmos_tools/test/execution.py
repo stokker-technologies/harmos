@@ -91,7 +91,7 @@ def execute(command: Sequence[str], cwd: Path, environment: dict[str, str] | Non
                 process.stdin.close()
             process.wait()
     except OSError as error:
-        raise policy.TestError(f"{command[0]} is unavailable: {error}") from error
+        raise policy.TestError(f"{command[0]} is unavailable: {error}; Install the declared test tool through mise run prepare") from error
 
 
 def measured(command: Sequence[str], cwd: Path, environment: dict[str, str]) -> tuple[int, int | None]:
@@ -99,7 +99,7 @@ def measured(command: Sequence[str], cwd: Path, environment: dict[str, str]) -> 
     try:
         process = subprocess.Popen(list(command), cwd=cwd, env=environment, **console())
     except OSError as error:
-        raise policy.TestError(f"{command[0]} is unavailable: {error}") from error
+        raise policy.TestError(f"{command[0]} is unavailable: {error}; Install the declared test tool through mise run prepare") from error
     if not hasattr(os, "wait4"):
         return process.wait(), None
     _, status, usage = os.wait4(process.pid, 0)

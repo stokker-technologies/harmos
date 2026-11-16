@@ -44,7 +44,15 @@ def main() -> int:
             parser.error("Generate the Python sources before checking their imports")
         # Run from the Generated Package Root
         command = [sys.executable, "-m", "harmos_tools.source.imports"]
-        result = subprocess.run(command, cwd=options.directory, creationflags=spawn_flags(), check=False)
+        result = subprocess.run(
+            command,
+            cwd=options.directory,
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            creationflags=spawn_flags(),
+            check=False,
+        )
         return result.returncode
 
     # Import Every Generated Module

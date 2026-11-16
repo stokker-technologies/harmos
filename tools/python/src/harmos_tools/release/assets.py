@@ -65,18 +65,29 @@ def stage(
 ) -> list[dict]:
     """Replace Release Staging With The Exact Channel Inventory From Existing Packages."""
     if channel not in {"stable", "nightly"}:
-        raise policy.ToolError("release channel must be stable or nightly")
+        raise policy.ToolError(
+            "release channel must be stable or nightly; Rebuild and stage the declared release packages before verifying their inventory"
+        )
     if not targets:
-        raise policy.ToolError("release staging requires at least one packaged target")
+        raise policy.ToolError(
+            "release staging requires at least one packaged target; "
+            "Rebuild and stage the declared release packages before verifying their inventory"
+        )
     profile = policy.profile() if profile is None else profile
     root = staging_root(directory)
     if root.is_symlink() or root.exists() and not root.is_dir():
-        raise policy.ToolError(f"release staging requires a regular directory: {root}")
+        raise policy.ToolError(
+            f"release staging requires a regular directory: {root}; "
+            "Rebuild and stage the declared release packages before verifying their inventory"
+        )
     # Validate Directory Shapes Before Removing Any Owned Staging.
     for owned in [*targets, SHARED]:
         destination = policy.inside(root, owned)
         if destination == root or destination.is_symlink() or destination.exists() and not destination.is_dir():
-            raise policy.ToolError(f"release staging requires a regular directory: {destination}")
+            raise policy.ToolError(
+                f"release staging requires a regular directory: {destination}; "
+                "Rebuild and stage the declared release packages before verifying their inventory"
+            )
     for owned in [*targets, SHARED]:
         destination = policy.inside(root, owned)
         if destination.exists():
@@ -96,7 +107,9 @@ def stage(
     source = directory / "proto"
     definitions = sorted(source.rglob("*.proto"))
     if not definitions:
-        raise policy.ToolError("protocol archive requires definitions")
+        raise policy.ToolError(
+            "protocol archive requires definitions; Rebuild and stage the declared release packages before verifying their inventory"
+        )
     behaviour = harmos_tools.package.run.regular(directory, "proto/harmos/plugin/v1/behaviour.md")
     archive = zipfile.ZipFile(protocol, "w", compression=zipfile.ZIP_DEFLATED)
     try:
@@ -112,7 +125,10 @@ def stage(
         for selected in targets:
             source = directory / "target/package" / profile / selected / "compliance"
             if not source.is_dir() or source.is_symlink():
-                raise policy.ToolError(f"missing regular compliance directory: {source}")
+                raise policy.ToolError(
+                    f"missing regular compliance directory: {source}; "
+                    "Rebuild and stage the declared release packages before verifying their inventory"
+                )
             abi = layout.triple(directory, settings, selected)
             for name in ("NOTICE", "THIRD-PARTY-NOTICES", f"crates/{abi}/workspace.cdx.json", "python/any/sdk.cdx.json"):
                 original = harmos_tools.package.run.regular(source, name)
@@ -120,7 +136,10 @@ def stage(
                 if name.startswith("python/") and selected != targets[0]:
                     first = directory / "target/package" / profile / targets[0] / "compliance" / name
                     if original.read_bytes() != first.read_bytes():
-                        raise policy.ToolError(f"Stage Python Compliance: inventories differ between {targets[0]} and {selected}: {name}")
+                        raise policy.ToolError(
+                            f"Stage Python Compliance: inventories differ between {targets[0]} and {selected}: {name}; "
+                            "Rebuild and stage the declared release packages before verifying their inventory"
+                        )
                     continue
                 member = f"notices/{selected}/{name}" if "/" not in name else name
                 archive.write(original, member)
@@ -153,16 +172,23 @@ def checksums(path: Path, inventory: dict) -> None:
     for line in path.read_text(encoding="utf-8").splitlines():
         digest, separator, name = line.partition("  ")
         if not separator or name in actual:
-            raise policy.ToolError("invalid or duplicate SHA256SUMS entry")
+            raise policy.ToolError(
+                "invalid or duplicate SHA256SUMS entry; Rebuild and stage the declared release packages before verifying their inventory"
+            )
         actual[name] = digest
     if actual != expected:
-        raise policy.ToolError("SHA256SUMS differs from upload.json")
+        raise policy.ToolError(
+            "SHA256SUMS differs from upload.json; Rebuild and stage the declared release packages before verifying their inventory"
+        )
 
 
 def read(root: Path, item: dict) -> bytes:
     data = policy.inside(root, item["path"]).read_bytes()
     if hashlib.sha256(data).hexdigest() != item["sha256"]:
-        raise policy.ToolError(f"staged release bytes changed: {item['name']}")
+        raise policy.ToolError(
+            f"staged release bytes changed: {item['name']}; "
+            "Rebuild and stage the declared release packages before verifying their inventory"
+        )
     return data
 
 

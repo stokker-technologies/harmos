@@ -52,14 +52,20 @@ def release_tag(directory: Path) -> str:
     """The Stable Tag Of The Prepared Version: `v` Plus `[version] value`."""
     value = policy.policy(directory, "version").get("value")
     if not isinstance(value, str) or re.fullmatch(STABLE, value) is None:
-        raise policy.ToolError("version.value must declare a stable MAJOR.MINOR.PATCH version")
+        raise policy.ToolError(
+            "version.value must declare a stable MAJOR.MINOR.PATCH version; "
+            "Verify the committed release source and correct the declared version, target or credentials"
+        )
     return "v" + value
 
 
 def native_target(settings: dict) -> str:
     selected = native()
     if selected not in settings.get("targets", []):
-        raise policy.ToolError(f"native target {selected} is not one of release.targets")
+        raise policy.ToolError(
+            f"native target {selected} is not one of release.targets; "
+            "Verify the committed release source and correct the declared version, target or credentials"
+        )
     return selected
 
 
@@ -72,7 +78,10 @@ def native() -> str:
 def revision(directory: Path) -> str:
     sha = archive.revision(directory)
     if not sha:
-        raise policy.ToolError("release operations require a committed HEAD")
+        raise policy.ToolError(
+            "release operations require a committed HEAD; "
+            "Verify the committed release source and correct the declared version, target or credentials"
+        )
     return sha
 
 
@@ -102,7 +111,10 @@ def execute(directory: Path, command: list[str], secret: str) -> str:
         stdout = stdout.replace(secret, "***")
     print(stderr, end="", file=sys.stderr)
     if result.returncode:
-        raise policy.ToolError(f"{command[0]} {command[1]} failed with exit code {result.returncode}")
+        raise policy.ToolError(
+            f"{command[0]} {command[1]} failed with exit code {result.returncode}; "
+            "Verify the committed release source and correct the declared version, target or credentials"
+        )
     return stdout
 
 

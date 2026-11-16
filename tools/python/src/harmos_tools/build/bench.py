@@ -95,7 +95,7 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
             events.append(json.dumps(event))
 
         if not benchmarks:
-            raise ValueError("no benchmark target was built")
+            raise ValueError("no benchmark target was built; Build the selected benchmark targets before running benchmarks")
         for kind in ("bin", "bench"):
             paths.replace(directory, staging / kind, output / kind, origin=staging)
         messages.write_text("\n".join(events) + "\n", encoding="utf-8")

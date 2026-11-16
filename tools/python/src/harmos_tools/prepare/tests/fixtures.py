@@ -80,7 +80,10 @@ def prepare_focused(
     required = set(requested)
     invalid_names = any(not _valid_target_name(name) for name in required)
     if not required or invalid_names:
-        raise ValueError("focused library names must be nonempty Cargo target names")
+        raise ValueError(
+            "focused library names must be nonempty Cargo target names; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     libraries: dict[str, dict[str, str]] = {}
     dependencies: set[Path] = set()
     events = _compiler_artifacts(_cargo_events([messages]))
@@ -97,7 +100,10 @@ def prepare_focused(
         dependencies.add(library.parent if library.parent.name == "deps" else library.parent / "deps")
         libraries[name] = {"path": str(library), "sha256": harmos_tools.build.fixtures.digest(library)}
     if set(libraries) != required or len(dependencies) != 1:
-        raise RuntimeError(f"focused Cargo messages did not produce the requested libraries unambiguously: {sorted(libraries)}")
+        raise RuntimeError(
+            f"focused Cargo messages did not produce the requested libraries unambiguously: {sorted(libraries)}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
 
     dependency = next(iter(dependencies))
     dependency_directory = str(dependency)
@@ -141,9 +147,14 @@ def _inspection_artifacts(messages: list[Path], requested: list[str]) -> dict[st
     if not requested:
         return {}
     if len(set(requested)) != len(requested):
-        raise ValueError("focused inspection names must be unique")
+        raise ValueError(
+            "focused inspection names must be unique; Build the selected fixture targets and pass their complete compiler messages"
+        )
     if any(not _valid_target_name(name) for name in requested):
-        raise ValueError("focused inspection names must be Cargo target names")
+        raise ValueError(
+            "focused inspection names must be Cargo target names; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     events = _cargo_events(messages)
 
     resolved: dict[str, Path] = {}
@@ -151,7 +162,10 @@ def _inspection_artifacts(messages: list[Path], requested: list[str]) -> dict[st
         target_name = name.replace("-", "_")
         matches = _inspection_matches(events, target_name)
         if len(matches) != 1:
-            raise RuntimeError(f"focused Cargo messages did not produce one inspection artifact for {name}: {matches}")
+            raise RuntimeError(
+                f"focused Cargo messages did not produce one inspection artifact for {name}: {matches}; "
+                "Build the selected fixture targets and pass their complete compiler messages"
+            )
         resolved[name] = matches[0]
     return resolved
 
@@ -183,9 +197,15 @@ def _successful_capture(message_path: Path) -> list[Artifact]:
     captured: list[Artifact] = [json.loads(line) for line in lines if line.startswith("{")]
     completions = [event for event in captured if event.get("reason") == "build-finished"]
     if not completions:
-        raise RuntimeError(f"Cargo capture has no build-finished event: {message_path}")
+        raise RuntimeError(
+            f"Cargo capture has no build-finished event: {message_path}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     if any(event.get("success") is not True for event in completions):
-        raise RuntimeError(f"Cargo capture reports an unsuccessful build: {message_path}")
+        raise RuntimeError(
+            f"Cargo capture reports an unsuccessful build: {message_path}; "
+            "Build the selected fixture targets and pass their complete compiler messages"
+        )
     return captured
 
 

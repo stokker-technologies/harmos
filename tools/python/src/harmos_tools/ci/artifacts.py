@@ -41,25 +41,34 @@ def pack(directory: Path, archive: Path, patterns: list[str], profile: str, nati
     root = directory.resolve()
     owned = root / "target"
     if not archive.resolve().is_relative_to(owned / "ci"):
-        raise ValueError("artifact archive escapes its owned transport directory")
+        raise ValueError(
+            "artifact archive escapes its owned transport directory; "
+            "Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     selected: set[str] = set()
     for pattern in patterns:
         pattern = pattern.replace("{profile}", profile).replace("{target}", native)
         if not pattern.startswith("target/") or any(part in (".", "..") for part in pattern.split("/")) or "\\" in pattern:
-            raise ValueError("unsafe artifact path")
+            raise ValueError("unsafe artifact path; Correct the workflow artifact paths and regenerate the selected artifacts")
         matches = glob.glob(pattern.rstrip("/"), root_dir=root, recursive=True)
         if not matches:
-            raise ValueError(f"required artifact output is missing: {pattern}")
+            raise ValueError(
+                f"required artifact output is missing: {pattern}; Correct the workflow artifact paths and regenerate the selected artifacts"
+            )
         for name in matches:
             path = root / name
             if not path.resolve().is_relative_to(owned):
-                raise ValueError("artifact path escapes the repository")
+                raise ValueError(
+                    "artifact path escapes the repository; Correct the workflow artifact paths and regenerate the selected artifacts"
+                )
             for child in [path] if path.is_file() else [path, *path.rglob("*")]:
                 if child.is_symlink() and not child.resolve().is_relative_to(owned):
-                    raise ValueError("artifact link escapes the repository")
+                    raise ValueError(
+                        "artifact link escapes the repository; Correct the workflow artifact paths and regenerate the selected artifacts"
+                    )
             selected.add(Path(name).as_posix())
     if not selected:
-        raise ValueError("artifact has no required outputs")
+        raise ValueError("artifact has no required outputs; Correct the workflow artifact paths and regenerate the selected artifacts")
     archive.parent.mkdir(parents=True, exist_ok=True)
     # Run the Native Command
     command = [
@@ -86,7 +95,10 @@ def pack(directory: Path, archive: Path, patterns: list[str], profile: str, nati
 def extract(directory: Path, archive: Path) -> None:
     root = directory.resolve()
     if not archive.resolve().is_relative_to(root / "target/ci"):
-        raise ValueError("artifact archive escapes its owned transport directory")
+        raise ValueError(
+            "artifact archive escapes its owned transport directory; "
+            "Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     # Run the Native Command
     command = ["zstd", "-dc", str(archive)]
     decompressor = subprocess.Popen(
@@ -96,7 +108,9 @@ def extract(directory: Path, archive: Path) -> None:
     )
     try:
         if decompressor.stdout is None:
-            raise RuntimeError("artifact decompressor has no output stream")
+            raise RuntimeError(
+                "artifact decompressor has no output stream; Correct the workflow artifact paths and regenerate the selected artifacts"
+            )
         try:
             source = tarfile.open(fileobj=decompressor.stdout, mode="r|")
             try:
@@ -150,7 +164,10 @@ def main() -> None:
 def _tar() -> str:
     found = shutil.which("tar")
     if found is None:
-        raise RuntimeError("artifact transport requires GNU tar from the configured image")
+        raise RuntimeError(
+            "artifact transport requires GNU tar from the configured image; "
+            "Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     # Run the Native Command
     command = [found, "--version"]
     version = subprocess.run(
@@ -170,7 +187,10 @@ def _tar() -> str:
         check=True,
     ).stdout
     if not version.startswith("tar (GNU tar)") or not all(option in capabilities for option in ("--force-local", "--use-compress-program")):
-        raise RuntimeError("configured tar lacks required GNU archive capabilities")
+        raise RuntimeError(
+            "configured tar lacks required GNU archive capabilities; "
+            "Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     return found
 
 
@@ -179,18 +199,24 @@ def _member(member: tarfile.TarInfo, destination: str) -> tarfile.TarInfo:
     owned = root / "target"
     name = PurePosixPath(member.name)
     if name.is_absolute() or not name.parts or name.parts[0] != "target" or any(part == ".." for part in name.parts) or "\\" in member.name:
-        raise ValueError("artifact member escapes target outputs")
+        raise ValueError(
+            "artifact member escapes target outputs; Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     if not (root / member.name).resolve().is_relative_to(owned):
-        raise ValueError("artifact member escapes target outputs")
+        raise ValueError(
+            "artifact member escapes target outputs; Correct the workflow artifact paths and regenerate the selected artifacts"
+        )
     if member.issym() or member.islnk():
         link = PurePosixPath(member.linkname)
         origin = root / member.name if member.issym() else root / "anchor"
         resolved = origin.parent / member.linkname
         if link.is_absolute() or "\\" in member.linkname or not resolved.resolve().is_relative_to(owned):
-            raise ValueError("artifact link escapes target outputs")
+            raise ValueError(
+                "artifact link escapes target outputs; Correct the workflow artifact paths and regenerate the selected artifacts"
+            )
     result = tarfile.data_filter(member, destination)
     if result is None:
-        raise ValueError("artifact contains a disallowed member")
+        raise ValueError("artifact contains a disallowed member; Correct the workflow artifact paths and regenerate the selected artifacts")
     return result
 
 

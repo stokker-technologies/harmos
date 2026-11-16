@@ -143,12 +143,18 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_nested_manifest_shares_repository_target(self) -> None:
         directory = Path.cwd()
-        with (
-            patch.dict(os.environ, CARGO_TARGET_DIR="elsewhere"),
-            patch.object(cargo.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run,
-        ):
-            cargo.focused(directory, "build", ["--manifest-path", "examples/schematic/Cargo.toml"])
-        self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
+        for operation in ("build", "clippy"):
+            with (
+                self.subTest(operation=operation),
+                patch.dict(os.environ, CARGO_TARGET_DIR="elsewhere"),
+                patch.object(cargo.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run,
+            ):
+                arguments = ["--manifest-path", "examples/schematic/Cargo.toml"]
+                if operation == "clippy":
+                    cargo.clippy(directory, arguments)
+                else:
+                    cargo.focused(directory, operation, arguments)
+            self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
 
     def test_rejects_target_redirection_before_dispatch(self) -> None:
         with patch.object(cargo.subprocess, "run") as run:

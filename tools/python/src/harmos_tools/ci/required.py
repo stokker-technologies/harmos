@@ -40,7 +40,7 @@ def run() -> int:
     if os.environ.get("RELEASE_REVIEW") != "true":
         optional.add("release_rehearsal")
     if any(job["result"] != "success" and not (name in optional and job["result"] == "skipped") for name, job in results.items()):
-        raise ValueError("required CI jobs failed or were skipped")
+        raise ValueError("required CI jobs failed or were skipped; Inspect the required jobs and rerun failed or incorrectly skipped jobs")
     return 0
 
 

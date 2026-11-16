@@ -44,19 +44,19 @@ def target() -> str:
     machine = platform.machine().lower()
     architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(machine, machine)
     if system is None or re.fullmatch(r"[a-z0-9_]+", architecture) is None:
-        raise ValueError("unsupported native artifact target")
+        raise ValueError("unsupported native artifact target; Use repository-owned paths and a declared native target")
     return f"{system}-{architecture}"
 
 
 def output(directory: Path, stage: str, profile: str, native: str | None = None) -> Path:
     if stage not in STAGES or profile not in PROFILES or profile == "bench" and stage != "build":
-        raise ValueError("unknown task stage or profile")
+        raise ValueError("unknown task stage or profile; Use repository-owned paths and a declared native target")
     native = target() if native is None else native
     if re.fullmatch(r"(?:linux|windows|macos)-[a-z0-9_]+|any", native) is None:
-        raise ValueError("invalid artifact target")
+        raise ValueError("invalid artifact target; Use repository-owned paths and a declared native target")
     result = directory / "target" / stage / profile / native
     if not result.resolve().is_relative_to(directory.resolve()):
-        raise ValueError("task output escapes the repository")
+        raise ValueError("task output escapes the repository; Use repository-owned paths and a declared native target")
     return result
 
 
@@ -65,15 +65,15 @@ def replace(directory: Path, source: Path, destination: Path, *, origin: Path | 
     root = directory.resolve()
     source_root = root if origin is None else origin.resolve()
     if not source.resolve().is_relative_to(source_root) or not destination.resolve().is_relative_to(root):
-        raise ValueError("artifact path escapes the repository")
+        raise ValueError("artifact path escapes the repository; Use repository-owned paths and a declared native target")
     overlap = source.resolve().is_relative_to(destination.resolve()) or destination.resolve().is_relative_to(source.resolve())
     if destination.is_symlink() or overlap:
-        raise ValueError("artifact source overlaps its destination")
+        raise ValueError("artifact source overlaps its destination; Use repository-owned paths and a declared native target")
     if not source.is_dir():
-        raise ValueError(f"missing built artifacts: {source}")
+        raise ValueError(f"missing built artifacts: {source}; Build the selected artifacts before staging their output")
     for path in source.rglob("*"):
         if path.is_symlink() and not path.resolve().is_relative_to(source_root):
-            raise ValueError(f"artifact link escapes the repository: {path}")
+            raise ValueError(f"artifact link escapes the repository: {path}; Use repository-owned paths and a declared native target")
     if destination.exists():
         shutil.rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)

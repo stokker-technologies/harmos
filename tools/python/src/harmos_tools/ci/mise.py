@@ -92,22 +92,22 @@ def check(root: Path) -> list[str]:
     tasks = {}
     configuration = document.get("task_config", {})
     if not isinstance(configuration, dict):
-        raise TypeError("task_config must be a table")
+        raise TypeError("task_config must be a table; Declare task_config as a table in the owning mise.toml")
     includes = configuration.get("includes", [])
     if not isinstance(includes, list):
-        raise TypeError("task_config.includes must be an array of paths")
+        raise TypeError("task_config.includes must be an array of paths; Correct task_config.includes in the owning mise.toml")
     for relative in includes:
         if not isinstance(relative, str) or not relative.strip():
-            raise ValueError("task_config.includes must contain paths")
+            raise ValueError("task_config.includes must contain paths; Correct task_config.includes in the owning mise.toml")
         path = (root / relative).resolve()
         if not path.is_relative_to(root):
-            raise ValueError("included Mise tasks must stay inside the repository")
+            raise ValueError("included Mise tasks must stay inside the repository; Correct task_config.includes in the owning mise.toml")
         if not path.is_file():
-            raise ValueError("task_config.includes must name TOML files")
+            raise ValueError("task_config.includes must name TOML files; Correct task_config.includes in the owning mise.toml")
         tasks.update(tomllib.loads(path.read_text(encoding="utf-8")))
     project = document.get("tasks", {})
     if not isinstance(project, dict):
-        raise TypeError("tasks must be a table")
+        raise TypeError("tasks must be a table; Declare tasks as a table in the owning mise.toml")
     tasks.update(project)
     return [f"mise.toml: task {task}: {finding}" for task, definition in tasks.items() for finding in forms(definition)]
 

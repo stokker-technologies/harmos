@@ -56,12 +56,17 @@ IMMUTABLE = (
 def publish(directory: Path) -> None:
     settings = policy.policy(directory, "release")
     if settings.get("nightly") is not True:
-        raise policy.ToolError("release.nightly must opt in to nightly publication")
+        raise policy.ToolError(
+            "release.nightly must opt in to nightly publication; Enable release.nightly in tools/project.toml before publication"
+        )
     github = settings["provider"] == "github"
     sha, identifier, url = _github_source() if github else _gitlab_source()
     matching = re.fullmatch(r"[0-9a-f]{40,64}", sha) and identifier.isdecimal() and source.revision(directory) == sha
     if not matching:
-        raise policy.ToolError(f"{TAG} checkout must match the source CI commit")
+        raise policy.ToolError(
+            f"{TAG} checkout must match the source CI commit; "
+            "Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
 
     source_run = f"[{identifier}]({url})"
     endpoint = f"releases/tags/{TAG}" if github else f"releases/{TAG}"
@@ -90,14 +95,22 @@ def verify(directory: Path) -> None:
     current = registry.document(settings, "releases/tags/nightly", channel=True)
     identity = f"| CI Run | [{identifier}]({url}) |"
     if not current or identity not in current["body"].splitlines():
-        raise policy.ToolError("Nightly verification belongs to a replaced publication")
+        raise policy.ToolError(
+            "Nightly verification belongs to a replaced publication; "
+            "Verify the current Nightly publication instead of the replaced inventory"
+        )
     if _tag(settings) != sha:
-        raise policy.ToolError("Nightly tag differs from the source commit")
+        raise policy.ToolError(
+            "Nightly tag differs from the source commit; "
+            "Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     files = layout.uploads(directory)
     endpoint = f"releases/{current['id']}"
     remote = {item["name"]: item for item in registry.pages(settings, endpoint + "/assets", channel=True)}
     if set(remote) != {item["name"] for item in files}:
-        raise policy.ToolError("Nightly verification inventory differs")
+        raise policy.ToolError(
+            "Nightly verification inventory differs; Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     verified = []
     downloads_directory = temporary.Directory()
     downloads = downloads_directory.path
@@ -105,11 +118,17 @@ def verify(directory: Path) -> None:
         for item in files:
             data = registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", binary=True, channel=True)
             if data is None:
-                raise policy.ToolError("Nightly download is unavailable")
+                raise policy.ToolError(
+                    "Nightly download is unavailable; "
+                    "Inspect the Nightly provider response and repair its publication inputs or credentials"
+                )
             digest = hashlib.sha256(data).hexdigest()
             mutable = item["name"] in {"release.json", "benchmarks.json", assets.SUMS} or item["name"].startswith("harmos-reports-")
             if not mutable and (digest != item["sha256"] or len(data) != item["size"]):
-                raise policy.ToolError("Nightly download differs from the publication inventory")
+                raise policy.ToolError(
+                    "Nightly download differs from the publication inventory; "
+                    "Inspect the Nightly provider response and repair its publication inputs or credentials"
+                )
             (downloads / item["name"]).write_bytes(data)
             verified.append({**item, "sha256": digest, "size": len(data)})
         assets.checksums(downloads / assets.SUMS, {item["name"]: item for item in verified})
@@ -124,7 +143,10 @@ def report(directory: Path, results: dict, url: str) -> bool:
     settings = policy.policy(directory, "release")
     sha, identifier, source_url = _github_source()
     if url != source_url or source.revision(directory) != sha:
-        raise policy.ToolError("Nightly report must match the source CI commit and run")
+        raise policy.ToolError(
+            "Nightly report must match the source CI commit and run; "
+            "Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     current = registry.document(settings, "releases/tags/nightly", channel=True)
     identity = f"| CI Run | [{identifier}]({url}) |"
     if not current or identity not in current["body"].splitlines() or _tag(settings) != sha:
@@ -134,22 +156,36 @@ def report(directory: Path, results: dict, url: str) -> bool:
     endpoint = f"releases/{current['id']}"
     remote = {item["name"]: item for item in registry.pages(settings, endpoint + "/assets", channel=True)}
     if set(remote) != {item["name"] for item in files}:
-        raise policy.ToolError("Nightly report asset names differ from publication inventory")
+        raise policy.ToolError(
+            "Nightly report asset names differ from publication inventory; "
+            "Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     sums_data = registry.request(settings, f"releases/assets/{remote[assets.SUMS]['id']}", binary=True, channel=True)
     if sums_data is None:
-        raise policy.ToolError("Nightly checksums are unavailable")
+        raise policy.ToolError(
+            "Nightly checksums are unavailable; Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     checksums = dict(line.split("  ", 1)[::-1] for line in sums_data.decode("utf-8").splitlines())
     root = directory / assets.ASSETS
     for item in files:
         data = registry.request(settings, f"releases/assets/{remote[item['name']]['id']}", binary=True, channel=True)
         if data is None:
-            raise policy.ToolError("Nightly report input is unavailable")
+            raise policy.ToolError(
+                "Nightly report input is unavailable; "
+                "Inspect the Nightly provider response and repair its publication inputs or credentials"
+            )
         digest = hashlib.sha256(data).hexdigest()
         mutable = item["name"] in {"release.json", "benchmarks.json", assets.SUMS} or item["name"].startswith("harmos-reports-")
         if item["name"] != assets.SUMS and digest != checksums.get(item["name"]):
-            raise policy.ToolError("Nightly report input checksum differs")
+            raise policy.ToolError(
+                "Nightly report input checksum differs; "
+                "Inspect the Nightly provider response and repair its publication inputs or credentials"
+            )
         if not mutable and (digest != item["sha256"] or len(data) != item["size"]):
-            raise policy.ToolError("Nightly report input digest differs")
+            raise policy.ToolError(
+                "Nightly report input digest differs; "
+                "Inspect the Nightly provider response and repair its publication inputs or credentials"
+            )
         destination = policy.inside(directory, item["path"])
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
@@ -197,9 +233,11 @@ def _github_source() -> tuple[str, str, str]:
     """The Commit, Run Identifier And Run URL Of A Scheduled Or Dispatched Dev Run."""
     event_name = os.environ.get("GITHUB_EVENT_NAME")
     if event_name not in GITHUB_EVENTS:
-        raise policy.ToolError(f"nightly cannot publish from a {event_name} event")
+        raise policy.ToolError(
+            f"nightly cannot publish from a {event_name} event; Run Nightly from its configured schedule or manual pipeline event"
+        )
     if os.environ.get("GITHUB_REF") != "refs/heads/dev":
-        raise policy.ToolError("nightly publishes only from dev")
+        raise policy.ToolError("nightly publishes only from dev; Run Nightly from dev")
     identifier = os.environ["GITHUB_RUN_ID"]
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
     return os.environ["GITHUB_SHA"], identifier, f"{server}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{identifier}"
@@ -210,7 +248,10 @@ def _gitlab_source() -> tuple[str, str, str]:
     source = os.environ.get("PIPELINE_SOURCE") or os.environ.get("CI_PIPELINE_SOURCE")
     eligible = source in GITLAB_SOURCES and os.environ.get("CI_COMMIT_BRANCH") == "dev"
     if not eligible or os.environ.get("CI_DEFAULT_BRANCH") != "dev":
-        raise policy.ToolError(f"GitLab nightly requires a {'/'.join(sorted(GITLAB_SOURCES))} pipeline on default dev")
+        raise policy.ToolError(
+            f"GitLab nightly requires a {'/'.join(sorted(GITLAB_SOURCES))} pipeline on default dev; "
+            "Run the configured scheduled or web pipeline on dev"
+        )
     return os.environ["CI_COMMIT_SHA"], os.environ["CI_PIPELINE_ID"], os.environ["CI_PIPELINE_URL"]
 
 
@@ -340,7 +381,9 @@ def _github(
         channel=True,
     )
     if staged is None:
-        raise policy.ToolError("release creation returned no document")
+        raise policy.ToolError(
+            "release creation returned no document; Inspect the Nightly provider response and repair its publication inputs or credentials"
+        )
     endpoint = f"releases/{staged['id']}"
     try:
         for item in files:
@@ -375,7 +418,10 @@ def _github(
             or published.get("draft") is not False
             or published.get("prerelease") is not True
         ):
-            raise policy.ToolError(f"{TAG} publication could not be verified at releases/tags/{TAG}")
+            raise policy.ToolError(
+                f"{TAG} publication could not be verified at releases/tags/{TAG}; "
+                "Inspect the Nightly provider response and repair its publication inputs or credentials"
+            )
         _verify_assets(settings, f"releases/{published['id']}", files, "published asset inventory differs from the staged downloads")
     except Exception:
         _restore(settings, (staged or {})["id"], previous, original)
@@ -394,7 +440,7 @@ def _workflows_moved(settings: dict, sha: str) -> bool:
     """Whether Dev's Head Now Carries Different Workflow Files Than The Build Commit."""
     reference = registry.document(settings, "git/ref/heads/dev", channel=True)
     if reference is None:
-        raise policy.ToolError("dev reference unavailable")
+        raise policy.ToolError("dev reference unavailable; Verify provider access to the dev branch reference")
     head = reference["object"]["sha"]
     return head != sha and _workflows(settings, head) != _workflows(settings, sha)
 
@@ -438,12 +484,14 @@ def _verify_assets(settings: dict, endpoint: str, files: list[dict], failure: st
         or "SHA256SUMS" not in actual
         or any(asset.get("state") != "uploaded" for asset in assets)
     ):
-        raise policy.ToolError(f"{TAG} {failure}")
+        raise policy.ToolError(f"{TAG} {failure}; Inspect the Nightly provider response and repair its publication inputs or credentials")
     inventory = {item["name"]: item for item in files}
     for asset in assets:
         item = inventory[asset["name"]]
         if asset.get("digest") not in (None, "sha256:" + item["sha256"]):
-            raise policy.ToolError(f"{TAG} upload digest differs")
+            raise policy.ToolError(
+                f"{TAG} upload digest differs; Inspect the Nightly provider response and repair its publication inputs or credentials"
+            )
         registry.verify_download(settings, f"releases/assets/{asset['id']}", item, channel=True)
 
 

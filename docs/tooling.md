@@ -84,6 +84,7 @@ Keep it enabled for edited workspace crates. Sccache reuses matching cacheable
 dependencies; it does not cache incremental crates, linked executables or procedural
 macro libraries. See [sccache's Rust limits](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
 Each worktree keeps its own `target/`; Cargo owns its normal compilation lock.
+Clippy uses that same target directory for nested workspace manifests.
 Retain that directory across edits and source revisions. Project tooling never
 scans or reclaims compiler output before compilation.
 

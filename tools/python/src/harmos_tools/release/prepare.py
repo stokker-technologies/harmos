@@ -46,7 +46,10 @@ def planned_version(directory: Path, current: str) -> str:
     if planned == current:
         since = policy.execute(directory, ["git", "log", "--format=%h %s", f"v{current}..HEAD"], capture=True).strip()
         listing = "\n".join("  " + line for line in since.splitlines()) or "  (no commits)"
-        raise policy.ToolError(f"v{current} is released and no Conventional Commit since warrants a new version; commits since:\n{listing}")
+        raise policy.ToolError(
+            f"v{current} is released and no Conventional Commit since warrants a new version; commits since:\n{listing}; "
+            "Correct the release version and commit the intended source before preparing the release"
+        )
     return planned
 
 
@@ -58,7 +61,10 @@ def run(directory: Path, settings: dict) -> None:
     current = harmos_tools.release.source.release_tag(directory)[1:]
     planned = planned_version(directory, current)
     if re.fullmatch(harmos_tools.release.source.STABLE, planned) is None:
-        raise policy.ToolError(f"the next version is not a stable version: {planned}")
+        raise policy.ToolError(
+            f"the next version is not a stable version: {planned}; "
+            "Correct the release version and commit the intended source before preparing the release"
+        )
     version.run(directory, "sync", value=planned)
     sync_policy_version(directory, planned)
     commands = settings.get("lock_commands")

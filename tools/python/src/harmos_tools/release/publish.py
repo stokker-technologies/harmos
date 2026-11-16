@@ -48,7 +48,10 @@ def run(directory: Path, settings: dict) -> None:
     harmos_tools.release.requirements.refuse_overrides(directory)
     targets = list(settings.get("targets", []))
     if not targets:
-        raise policy.ToolError("release.targets must declare the required OS/architecture targets")
+        raise policy.ToolError(
+            "release.targets must declare the required OS/architecture targets; "
+            "Inspect the protected release revision and staged inventory before publishing"
+        )
     root = harmos_tools.release.assets.staging_root(directory)
     harmos_tools.release.assets.stage(directory, settings, tag, targets)
     files = layout.uploads(directory, staged=True)

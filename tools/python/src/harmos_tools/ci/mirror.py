@@ -38,13 +38,21 @@ from ..process import spawn_flags
 def run() -> int:
     branch = os.environ["GITHUB_REF_NAME"]
     if branch not in ("dev", "main") or os.environ["GITHUB_REPOSITORY"] != "stokker-technologies/harmos":
-        raise ValueError("mirror requires Harmos dev or main")
+        raise ValueError(
+            "mirror requires Harmos dev or main; Run the mirror from the published dev or main revision with its configured SSH credentials"
+        )
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, creationflags=spawn_flags()).strip()
     if head != os.environ["GITHUB_SHA"]:
-        raise ValueError("mirror checkout differs from the published SHA")
+        raise ValueError(
+            "mirror checkout differs from the published SHA; "
+            "Run the mirror from the published dev or main revision with its configured SSH credentials"
+        )
     key, hosts = os.environ["GITLAB_MIRROR_SSH_KEY"], os.environ["GITLAB_MIRROR_KNOWN_HOSTS"]
     if not key or not hosts:
-        raise ValueError("mirror requires its SSH key and known hosts")
+        raise ValueError(
+            "mirror requires its SSH key and known hosts; "
+            "Run the mirror from the published dev or main revision with its configured SSH credentials"
+        )
     directory_directory = tempfile.TemporaryDirectory(prefix="harmos-mirror-")
     directory = directory_directory.name
     try:
