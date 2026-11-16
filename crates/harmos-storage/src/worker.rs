@@ -584,6 +584,10 @@ impl Operation {
             })
         }
         match self {
+            Self::Compound(exchange) => {
+                exchange.validate()?;
+                super::manager::encoded_size(&(&exchange.position, &exchange.items))
+            }
             Self::Conditional(exchange) => {
                 exchange.validate()?;
                 exchange.schema.encoded_bytes()?;
@@ -649,6 +653,7 @@ impl Operation {
     pub(super) fn sequence(&self) -> u64 {
         match self {
             Self::Conditional(exchange) => exchange.value.position.sequence,
+            Self::Compound(exchange) => exchange.position.sequence,
             Self::SetSchema(exchange) => exchange.value.position.sequence,
             Self::Schema(schema) => schema.as_slice().last().unwrap().position.sequence,
             Self::File(file) => file.as_slice().last().unwrap().position.sequence,

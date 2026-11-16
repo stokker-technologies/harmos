@@ -9,12 +9,10 @@
 
 /* === Modules === */
 
-#[path = "record_store.rs"]
+mod compound;
 mod record_store;
 
-#[path = "file_backend.rs"]
 mod file_backend;
-#[path = "read_backend.rs"]
 mod read_backend;
 /* === Re-Exports === */
 
@@ -97,6 +95,7 @@ pub struct Control {
     pub receipt_entered: Notify,
     pub receipt_release: Notify,
     pub definition_lost_replies: AtomicUsize,
+    pub compound_lost_replies: AtomicUsize,
     pub block_definition: AtomicBool,
     pub definition_entered: Notify,
     pub definition_release: Notify,
@@ -197,6 +196,7 @@ struct Snapshot {
     blobs: BTreeMap<String, (FileReference, Vec<u8>)>,
     lost_objects_through: u64,
     objects: BTreeMap<u64, ObjectEntry>,
+    deleted_objects: BTreeMap<u64, (Identifier, ObjectKey)>,
     files: BTreeMap<u64, FileReference>,
     schemas: BTreeMap<u64, StorageSchema>,
     records: RecordStore,
@@ -213,6 +213,7 @@ pub struct Release {
 #[derive(Default)]
 struct Conditional {
     floor: u64,
+    compound_ranges: BTreeMap<u64, u64>,
     receipts: BTreeMap<u64, ([u8; 32], CompareExchange)>,
 }
 
@@ -225,6 +226,7 @@ pub struct Backend {
     pub object_releases: Mutex<Vec<Release>>,
     catalog: ObjectCatalog,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
+    deleted_objects: Mutex<BTreeMap<u64, (Identifier, ObjectKey)>>,
     pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>>,
     pub staged: Mutex<BTreeMap<String, (FileMetadata, Vec<u8>)>>,
     pub abandoned_files: Mutex<std::collections::BTreeSet<String>>,
@@ -342,6 +344,7 @@ impl Backend {
             object_releases: Mutex::new(Vec::new()),
             catalog,
             objects: Mutex::default(),
+            deleted_objects: Mutex::default(),
             object_schemas: Mutex::default(),
             staged: Mutex::default(),
             abandoned_files: Mutex::default(),
@@ -381,6 +384,10 @@ impl Backend {
 }
 
 impl StorageBackend for Backend {
+    fn mutate<'a>(&'a self, exchange: &'a CompoundExchange) -> StorageFuture<'a, MutationReceipt> {
+        self.commit_compound(exchange)
+    }
+
     fn set_object<'a>(&'a self, exchange: &'a ObjectExchange) -> StorageFuture<'a, CompareExchange> {
         Box::pin(async move {
             exchange.validate()?;
@@ -405,10 +412,16 @@ impl StorageBackend for Backend {
                 return Err(failure(BackendFailure::Conflict));
             }
             let mut objects = self.objects.lock().unwrap();
+            let deleted = self.deleted_objects.lock().unwrap();
             let current = objects
                 .values()
                 .rev()
                 .find(|object| object.value.schema.id == exchange.value.value.schema.id && object.value.item == exchange.value.value.item)
+                .filter(|object| {
+                    !deleted.iter().any(|(position, (schema, item))| {
+                        *position > object.position.sequence && schema == &object.value.schema.id && item == &object.value.item
+                    })
+                })
                 .map(|object| object.version.clone());
             let outcome = if current == exchange.expected {
                 self.catalog.validate_value(&exchange.value.value, NonZeroUsize::MAX)?;
@@ -450,6 +463,7 @@ impl StorageBackend for Backend {
             mutation_receipts: true,
             durable_projections: true,
             conditional_objects: !self.control.unsupported_conditional.load(Ordering::Acquire),
+            compound_mutations: !self.control.unsupported_conditional.load(Ordering::Acquire),
             ..Default::default()
         }
     }

@@ -14,12 +14,13 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::{self, Write};
+use std::io;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 // Third Party Imports
 use sha2::{Digest, Sha256};
 // Local Imports
+use super::admissions::Fingerprint;
 use super::manager::{Domain, Operation};
 use super::{
     ObjectEntry, ObjectPoint, ObjectReceipt, ObjectRevision, ObjectValue, ObjectVersion, ObjectVersionToken, StorageManager, StorageSchema,
@@ -55,8 +56,6 @@ pub struct ObjectExchange {
     pub value: ObjectEntry,
 }
 
-struct Fingerprint(Sha256);
-
 /* === Enums === */
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -90,16 +89,6 @@ impl ObjectExchange {
         serde_json::to_writer(&mut writer, self)
             .map_err(|source| crate::Error::backend("fingerprint conditional object", crate::BackendFailure::Permanent, source))?;
         Ok(writer.0.finalize().into())
-    }
-}
-
-impl Write for Fingerprint {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.update(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
     }
 }
 

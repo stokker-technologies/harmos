@@ -42,6 +42,7 @@ pub fn storage_catalog() -> crate::execution::operations::Catalog {
 pub fn storage_catalog_batch() -> crate::execution::__private::Catalog {
     let mut batch = crate::execution::__private::Catalog::new();
     batch.operations.extend([
+        crate::execution::operations::OperationFactory::native::<super::Mutate>().expect("native storage declaration"),
         crate::execution::operations::OperationFactory::native::<super::CreateFileProduction>().expect("native storage declaration"),
         crate::execution::operations::OperationFactory::native::<super::GetFileProduction>().expect("native storage declaration"),
         crate::execution::operations::OperationFactory::native::<super::AppendFileBytes>().expect("native storage declaration"),

@@ -35,14 +35,16 @@ storage. Products do not construct or register a manager. A storage-only assembl
 admits prerequisite writes and offline maintenance without listeners or plugins;
 the implementation is tracked in `operation-boundary`.
 
-Compound mutation applies ordered conditional object writes, deletion and record
+Compound mutation now applies ordered conditional object writes, deletion and record
 appends in one backend commit, publishing a cut and replayable receipt together.
+`harmos-storage/src/compound.rs` owns admission; `memory/compound.rs` stages bounded
+changes and publishes through the backend hook; `storage.mutate` is the native declaration.
 Unsupported backends refuse; sequential compensation is not an implementation.
 Object/scoped deletion preserves retained cuts and delays file reclamation until
 those cuts release. All statistics kernels consolidate under the crate-internal
 `harmos-query::statistics` module and products use `storage.list_rows` transforms,
 including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries and
-bounded mergeable bucket summaries. These additions remain proposed until their
+bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their
 task group closes. Floating-point population RMS/standard deviation are accepted.
 
 ### Inventory Before the Split
@@ -304,6 +306,11 @@ drift test compares committed sources and descriptor projections byte for byte.
 See the mapping below for the migrated identities and consumer ownership.
 
 ## Invariants
+
+The `operation-boundary` contracts above supersede the wire composition and host-client
+root direction in invariants 1, 9 and 17. Those entries describe the preceding migration's
+landed source until the breaking groups replace it; new product consumers follow the
+native facade and product-wrapper direction. Manager ownership remains internal.
 
 Wire operation admission uses the protocol-owned validator in
 `crates/harmos-protocol/src/schema.rs`, independently of native dotted identities.

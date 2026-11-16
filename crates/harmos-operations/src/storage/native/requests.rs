@@ -18,9 +18,10 @@
 use harmos_domain::MemorySize;
 pub use harmos_domain::model::storage::query::transform::Transform;
 pub use harmos_domain::model::storage::{
-    ByteRange, CaptureConsistency, DataBatch, DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection, FileBatch,
-    FileCompletion, FileEvent, FileHash, FileMetadata, FileProgress, FileReference, FileSession, FileSource, FollowStart, MutationId,
-    MutationWindow, ObjectEntry, ObjectValue, SchemaKey, StagedFile, StorageCursor, StoreHistory, StoredRecord, StoredRow,
+    ByteRange, CaptureConsistency, CompoundOutcome, DataBatch, DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection,
+    FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FileProgress, FileReference, FileSession, FileSource, FollowStart,
+    MutationId, MutationItem, MutationWindow, ObjectEntry, ObjectValue, SchemaKey, StagedFile, StorageCursor, StoreHistory, StoredRecord,
+    StoredRow,
 };
 use harmos_domain::schema::graph::Schema;
 use harmos_protocol::model::PageRequest;
@@ -61,6 +62,18 @@ macro_rules! memory {
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct MutateRequest {
+    pub mutation: Option<MutationId>,
+    pub items: Vec<MutationItem>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MutateResponse {
+    pub outcome: CompoundOutcome,
+    pub receipt: Option<Receipt>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SavedSnapshot {
@@ -620,6 +633,13 @@ pub mod watch_file_production_response {
 /* === Traits === */
 
 /* === Implementations === */
+
+memory!(MutateRequest, mutation, items);
+impl MemorySize for MutateResponse {
+    fn memory_size(&self) -> usize {
+        size_of::<Self>().saturating_add(self.outcome.memory_size()).saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+    }
+}
 
 impl From<harmos_storage::StorageInfo> for InfoResponse {
     fn from(value: harmos_storage::StorageInfo) -> Self {

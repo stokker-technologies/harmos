@@ -66,6 +66,13 @@ impl Backend {
                     available: lost_objects_through,
                 });
             }
+            let conditional = self.conditional.lock().unwrap();
+            if conditional.compound_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
+                return Err(Error::InvalidInput {
+                    field: "storage cut",
+                    reason: "select a complete compound receipt frontier",
+                });
+            }
             let records = self.records.lock().unwrap();
             let retained = records.clone();
             let copied = if records.shares(&retained) { 0 } else { records.len() };
@@ -77,6 +84,7 @@ impl Backend {
                 blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
                 objects: self.objects.lock().unwrap().clone(),
+                deleted_objects: self.deleted_objects.lock().unwrap().clone(),
                 files: self.files.lock().unwrap().clone(),
                 schemas: self.schemas.lock().unwrap().clone(),
                 records: retained,
@@ -86,6 +94,7 @@ impl Backend {
                 format!("{}:{}:{}", std::any::type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst))
                     .into_bytes();
             self.snapshots.lock().unwrap().insert(token.clone(), Arc::new(snapshot));
+            drop(conditional);
             Ok(BackendSnapshot { at: at.clone(), token })
         })
     }
@@ -144,6 +153,12 @@ impl Backend {
             let selected = |object: &ObjectEntry| {
                 selection.schema.as_ref().is_none_or(|schema| schema == &object.value.schema)
                     && selection.key.as_ref().is_none_or(|item| item == &object.value.item)
+                    && !image.deleted_objects.iter().any(|(position, (schema, item))| {
+                        *position <= snapshot.at.sequence
+                            && *position > object.position.sequence
+                            && schema == &object.value.schema.id
+                            && item == &object.value.item
+                    })
             };
             // Latest Keeps Each Selected Key's Newest Revision At The Snapshot.
             let latest = (selection.versions == ObjectVersions::Latest).then(|| {
@@ -262,7 +277,12 @@ impl Backend {
                     && object.value.schema.id == query.schema
                     && object.value.item == query.item
                     && match &query.version {
-                        ObjectVersion::Latest => true,
+                        ObjectVersion::Latest => !image.deleted_objects.iter().any(|(position, (schema, item))| {
+                            *position <= snapshot.at.sequence
+                                && *position > object.position.sequence
+                                && schema == &query.schema
+                                && item == &query.item
+                        }),
                         ObjectVersion::Exact(version) => version == &object.version,
                     }
             });

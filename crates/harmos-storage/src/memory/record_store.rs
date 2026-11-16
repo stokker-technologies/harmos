@@ -70,19 +70,24 @@ impl RowStore<StoredRecord> for RecordStore {
         if self.get(&position) == Some(&value) {
             return Ok(());
         }
-        let key = serde_json::to_string(&value.schema).unwrap();
         let view = RecordView::new(value)?;
+        self.insert_view(view);
+        Ok(())
+    }
+}
+
+impl RecordStore {
+    pub(super) fn insert_view(&mut self, view: RecordView) {
+        let position = view.record().position.sequence;
+        let key = serde_json::to_string(&view.record().schema).unwrap();
         let ranks = Arc::make_mut(&mut self.ranks).entry(key).or_default();
         let ranks = Arc::make_mut(ranks);
         if let Err(index) = ranks.binary_search(&position) {
             ranks.insert(index, position);
         }
         Arc::make_mut(&mut self.values).insert(position, view);
-        Ok(())
     }
-}
 
-impl RecordStore {
     pub(super) fn shares(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.values, &other.values) && Arc::ptr_eq(&self.ranks, &other.ranks)
     }

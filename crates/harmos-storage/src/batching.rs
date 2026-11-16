@@ -176,6 +176,21 @@ impl Batch {
 #[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation, encoded_bound: usize) -> Result<StorageCursor> {
     match operation {
+        Operation::Compound(exchange) => {
+            let through = &exchange.position;
+            inner.state.lock().unwrap().data_attempted = through.sequence;
+            let receipt = inner.bounded("primary.mutate", inner.primary.mutate(exchange)).await?;
+            exchange.replay(&receipt)?;
+            let saved = inner.bounded("primary.get_saved_position", inner.primary.get_saved_position()).await?;
+            let mut state = inner.state.lock().unwrap();
+            if !saved.covers(through)? || saved.sequence > state.data_attempted {
+                return Err(invalid("compound receipt does not cover its admitted frontier; repair the backend"));
+            }
+            state.receipts.complete(&receipt.mutation, receipt.value.clone());
+            state.receipts.saved(&[receipt]);
+            state.status.saved = saved.clone();
+            Ok(saved)
+        }
         Operation::Conditional(exchange) => {
             let through = &exchange.value.position;
             {

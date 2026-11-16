@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::io::{self, Write};
 use std::time::UNIX_EPOCH;
 
 // Third Party Imports
@@ -37,6 +38,8 @@ pub(super) struct Mutation<'a> {
     pub(super) id: &'a MutationId,
     pub(super) fingerprint: [u8; 32],
 }
+
+pub(super) struct Fingerprint(pub(super) Sha256);
 
 /* === Enums === */
 
@@ -87,6 +90,16 @@ impl StorageManager {
             }),
         )
         .await
+    }
+}
+
+impl Write for Fingerprint {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 

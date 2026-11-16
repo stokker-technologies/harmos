@@ -14,6 +14,12 @@ removed in the breaking group. These are agreed contracts with implementation pe
 existing examples below migrate with their owning task groups. Completed groups and
 product pins are recorded in `openspec/changes/operation-boundary/tasks.md`.
 
+Compound atomic mutation is available through the native `storage.mutate` operation:
+ordered conditional object writes, deletion and record appends share a backend commit
+and replayable durable receipt. See [Compound Atomic Mutation](storage.md#compound-atomic-mutation)
+for requests, conflict handling and backend authoring. The remaining boundary work is
+tracked separately; this additive group does not remove existing callers.
+
 Embedded language bindings can stage runtime-owned unary operations with
 `operations::EncodedBinding::new(contract, decoding_memory, prepare)` and
 `Bindings::encoded(binding, lane)`. `Contract::from_schema` derives the canonical
