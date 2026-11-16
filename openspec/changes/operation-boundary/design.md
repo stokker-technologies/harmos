@@ -105,23 +105,26 @@ benchmark helper uses them too. Exposure is only through `storage.list_rows` tra
 
 `harmos-runtime` exports exactly: builder and initialization (`Application`, `Setup`,
 `Lifecycle`, builder registration, catalogs, operation factories and definitions, settings,
-startup errors, shutdown handle); operation calling (an opaque operation caller, invocation,
-context, scope, request/response DTOs, cancellation, results, failures, retry policies,
-upload/download/watch sessions); backend authoring (`StorageBackend`, `StateBackend`,
+startup errors, shutdown handle); operation calling through the typed facade of D6
+(call context, scope, request/response DTOs, cancellation, results, failures, retry
+policies, upload/download/watch sessions); backend authoring (`StorageBackend`, `StateBackend`,
 `StorageBackends`, their futures, errors and complete DTO closure, object and index
 catalogs, payload and schema codecs) through one authoring module. `harmos` keeps plugin
 authoring and the client connection.
 
 ```rust
-let runtime = harmos_runtime::Runtime::builder()
+let runtime = harmos_runtime::Runtime::new()
     .storage(backends, catalog, storage_settings)
     .settings(settings)
-    .catalog(product::catalog())
+    .register(product::catalog())
     .start()
     .await?;
-let caller = runtime.operations();
-let reply = caller.call(storage::GetObject { .. }, &invocation).await?;
+let host = runtime.for_call(&ctx);
+let object = host.storage().get_object(GetObject { .. }).await?;
 ```
+
+`Runtime::new()` returns the unstarted runtime builder; `register` and `start` follow the
+host verbs of the `plugin-lifecycle` change.
 
 - Managers are crate-internal owners; plugin activation, clock binding and sample start/stop
   that products did through managers become in-process host operations.
@@ -140,7 +143,7 @@ operations are registered in-process only, have no gRPC binding and are absent f
 discovery. `Builder::composition`, the `[libraries]` and `[callers]` composition input and
 the generator `--composition` option are deleted.
 
-**Wrapper audience (proposed default):** the `callers` method option stays in
+**Wrapper audience (decided by the owner, 2026-11-16):** the `callers` method option stays in
 `proto/harmos/model/v1/callers.proto` as a product authoring contract. A product wrapper
 service declares CLIENTS, PLUGINS or ALL on its own methods; runtime admission and generators
 read it exactly as today. This keeps invariant 1's purpose (a plugin cannot acquire client
@@ -152,13 +155,13 @@ descriptors alone.
 
 | Area | Consequence |
 | --- | --- |
-| Client SDKs (Rust, Python, C#, C++) | Generated `Client` resources over Harmos host operations (Access, Invocations, Operations, Plugins, Schemas, Status, Streams, Time) are deleted. The SDKs keep connection, credentials, call options, failures, transfer helpers and the generators that project a product's descriptors into typed client and plugin resources. |
-| Plugin-to-host calls | Proposed default: every call the plugin SDK context makes today independent of product (time get/sleep, own settings list, Get/Cancel/Watch of the plugin's own invocations, admitted discovery List/Get) becomes a plugin protocol host facility served on the carrier, versioned with `harmos.plugin.v1`, not a host operation. `ChildDemand`/`ChildCancel` control child calls on the same carrier, but whether they make the invocation facilities redundant is not established; none is removed in this change. Removing any of them later requires establishing its purpose first and an owner decision. |
+| Client SDKs (Rust, Python, C#, C++) | Decided by the owner on 2026-11-16 (D7): the Harmos host-client resource roots and host RPC client surfaces (generated `Client` resources over Access, Invocations, Operations, Plugins, Schemas, Status, Streams, Time) are deleted once every host operation is in-process only. Reusable connection plumbing stays: connection, credentials, call options, failures, transfer helpers and the generators that project a product's descriptors into typed client and plugin resources. |
+| Plugin-to-host calls | Decided by the owner on 2026-11-16: every call the plugin SDK context makes today independent of product (time get/sleep, own settings list, Get/Cancel/Watch of the plugin's own invocations, admitted discovery List/Get) becomes a plugin protocol host facility served on the carrier, versioned with `harmos.plugin.v1`, not a host operation. `ChildDemand`/`ChildCancel` control child calls on the same carrier, but whether they make the invocation facilities redundant is not established; none is removed in this change. Removing any of them later requires establishing its purpose first and an owner decision. |
 | Requirement calls | Unchanged on the wire: child requests to Public plugin operations under declared requirements and fingerprints. A child request naming a Harmos host operation is refused as unknown; a product wrapper with PLUGINS or ALL is reachable. |
 | Discovery gap | gRPC plugin origins carry `scope: None` (`src/operations/caller.rs`), so List/Get can reveal entries child dispatch refuses. Not moot: the plugin discovery facility and product wrappers forwarding plugin callers both use in-process discovery, which must apply the dispatch predicate. |
-| Host messages | Harmos host request/response messages stay exported from the SDK roots as payload values, so product wrappers reuse them without declaring twins; only the Harmos services lose their wire binding. |
+| Host messages | Decided by the owner on 2026-11-16: Harmos host request/response messages stay exported from the SDK roots as payload values, so product wrappers reuse them without declaring twins; only the Harmos services lose their wire binding. |
 | Conformance | Wrong-caller rules move to a fixture product in `tools/conformance` and `sdk/tests/fixtures` that wraps the operations it exposes. New rules: a Harmos host operation is unreachable over gRPC and over a child request; a wrapper is reachable for its declared audience only. Plugin protocol rules are unchanged. |
-| What stays on the wire | `harmos.plugin.v1` Instance Get/Invoke/Samples/Stop, windows, sample batches, child frames, the new plugin host facilities, plugin-declared operations with Protected/Public visibility and their client gRPC projections, and product-declared wrappers. |
+| What stays on the wire | `harmos.plugin.v1` Instance Get/Invoke/Samples and the plugin lifecycle calls, windows, sample batches, child frames, the new plugin host facilities, plugin-declared operations with Protected/Public visibility and their client gRPC projections, and product-declared wrappers. |
 | Schematic example | Declares wrappers for the host operations its client uses. |
 
 Alternatives rejected: runtime glob filters with allow/deny sets (research proposal), caller
@@ -169,6 +172,41 @@ narrowing kept beside private defaults, and products wrapping time and settings 
 
 `runtime-registration` keeps register/unregister, but on the builder and running runtime,
 which route to the internal owning manager. See the delta spec.
+
+### D6. Typed In-Process Facade (Decided by the Owner, 2026-11-16)
+
+Products that embed Harmos call it in-process through a typed Rust facade over native
+operations, not through raw operation calls and not through managers.
+
+```rust
+let host = runtime.for_call(&ctx);                       // binds caller, scope, cancellation
+let receipt = host.storage().append_samples(AppendSamples { mutation, scope, batch }).await?;
+let plugin = host.plugins().load(PluginSource::Process(command)).await?;
+```
+
+- Each facade method dispatches exactly one native operation with that operation's registered
+  policy; a one-call override travels on the call context. Admission, cancellation, retries,
+  tracing and receipts are those of the operation, so the facade adds no second policy
+  authority or scheduler.
+- Native in-process dispatch passes typed values; there is no encoding round trip.
+  Built-ins that currently dispatch through `call_protobuf` (an encode/decode path even
+  in-process) receive native declarations so the facade never encodes.
+- The facade exposes capability groups (`storage()`, `plugins()`, `streams()`, `invocations()`,
+  `time()` and the like, one per host operation family) and call handles; no manager, engine,
+  query or reader type and no scheduler is reachable through it.
+- Product wire handlers authorize product actions, map product values, then call the same
+  facade, so product wrappers (D4) and product-internal calls share one path.
+- Alternatives rejected: typed APIs beside operations with their own policy (two policy
+  authorities), and products calling operations by untyped identity (no compile-time contract).
+
+### D7. Harmos SDK Scope (Decided by the Owner, 2026-11-16)
+
+Harmos keeps its four plugin SDKs (Rust, Python, C#, C++), protocol and message generation,
+Wasm guest support and conformance: an embedded host still talks to external plugins, and
+without these SDKs every product would reimplement the plugin protocol in four languages. The
+Harmos host-client resource roots and host RPC client surfaces are deleted once every host
+operation is in-process only, since no Harmos endpoint remains for them to call. Products
+generate clients from their own wrapper operations; reusable connection plumbing stays.
 
 ## Risks / Trade-offs
 
@@ -182,6 +220,9 @@ which route to the internal owning manager. See the delta spec.
   context already makes; any further plugin need is a product wrapper.
 - [Losing SDK client convenience] → generators keep producing typed resources from the
   product's descriptors; only the Harmos-owned resource roots go.
+- [Facade dispatch overhead on hot paths] → batching is preserved (one operation per batch,
+  never per sample) and native dispatch does not encode; costs are reported from existing
+  benchmarks, budgets unchanged.
 
 ## Migration Plan
 
@@ -193,18 +234,3 @@ which route to the internal owning manager. See the delta spec.
 4. Products pin each breaking revision in the task that removes their use of the removed
    surface. Development storage policy permits clean breaks; there are no migrations or
    compatibility shims. Rollback is the previous pin.
-
-## Open Questions
-
-1. **Embedded products and operations (owner assessment running, 2026-11-16).** Should a
-   product that embeds Harmos as a Rust library call Harmos through a public Rust API rather
-   than through operations? The tasks stay as written; the answer may later change D3 and D4.
-2. **Language SDK justification (owner assessment running, 2026-11-16).** If Harmos is a
-   building block of an application, do the Python, C# and C++ SDKs remain justified, or do
-   products own their language SDKs? The tasks stay as written.
-3. **Wrapper audience and plugin host facilities.** D4 records proposed defaults (keep the
-   `callers` option for product wrappers; time, own settings, own invocation Get/Cancel/Watch
-   and admitted discovery as plugin protocol facilities). The tasks implement them; the owner
-   may override before group 10 starts. Whether the invocation and discovery facilities are
-   redundant with child frames and admission is unestablished; removing them is a separate
-   owner decision after their purpose is established.
