@@ -111,6 +111,46 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 
 # === Internal Steps === #
 
+[tasks."ci:impact"]
+hide = true
+description = "CI / Impact"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.impact"
+
+[tasks."ci:docs"]
+hide = true
+description = "CI / Docs"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.docs"
+
+[tasks."ci:native-dependencies"]
+hide = true
+description = "CI / Native Dependencies"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native native-dependencies"
+
+[tasks."ci:restore-permissions"]
+hide = true
+description = "CI / Restore Permissions"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native restore-permissions"
+
+[tasks."ci:sdk-tools"]
+hide = true
+description = "CI / Sdk Tools"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native sdk-tools"
+
+[tasks."ci:csharp-runtime"]
+hide = true
+description = "CI / Csharp Runtime"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native csharp-runtime"
+
+[tasks."ci:cpp-cache"]
+hide = true
+description = "CI / Cpp Cache"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native cpp-cache"
+
+[tasks."ci:quick-check"]
+hide = true
+description = "CI / Quick Check"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.native quick-check"
+
 [tasks."ci:pack"]
 hide = true
 description = "CI / Pack"
@@ -243,6 +283,7 @@ run = [
   "buf format --diff --exit-code",
   "buf lint",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.source.protocol",
+  { task = "ci:docs" },
   { task = "format:toml --check" },
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.mise",
   "shellcheck --version",

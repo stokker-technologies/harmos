@@ -63,7 +63,7 @@ client example has no application protocol dependency.
 
 [The separate dynamic example](../sdk/rust/examples/dynamic.rs) discovers
 `conformance.step.0`, an echo operation using `Value` from the
-[shared conformance fixture](../sdk/tests/fixtures/conformance/proto/harmos/conformance/v1/fixture.proto).
+[shared conformance fixture](../sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto).
 It passes an encoded payload and the discovered fingerprint to
 `client.invocations.create(operation, fingerprint, payload)`. Use this path when
 choosing a contract at runtime rather than binding generated application messages.

@@ -64,14 +64,43 @@ jobs:
         path: ${{ steps.setup.outputs.uv-path }}
     env:
       MISE_ENABLE_TOOLS: python,uv
+  impact:
+    needs: [freshness]
+    if: needs.freshness.outputs.build == 'true'
+    name: Plan / Impact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      check_matrix: ${{ steps.impact.outputs.check_matrix }}
+      test_matrix: ${{ steps.impact.outputs.test_matrix }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - name: Plan Every Job
+      id: impact
+      run: mise run ci:impact -- --event nightly
+    env:
+      MISE_ENABLE_TOOLS: python,uv
+  docs:
+    needs: [freshness]
+    if: needs.freshness.outputs.build == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: nightly
+      selection: docs
+      profile: release
   check:
     needs:
     - freshness
+    - impact
     if: needs.freshness.outputs.build == 'true'
     uses: ./.github/workflows/validation.yml
     with:
       channel: nightly
       selection: check
+      check-matrix: ${{ needs.impact.outputs.check_matrix }}
       profile: release
   build_product:
     needs:
@@ -128,10 +157,12 @@ jobs:
   test:
     needs:
     - prepare_test_fixtures
+    - impact
     uses: ./.github/workflows/validation.yml
     with:
       channel: nightly
       selection: test
+      test-matrix: ${{ needs.impact.outputs.test_matrix }}
       profile: release
   coverage:
     needs:
@@ -214,6 +245,8 @@ jobs:
       attestations: write
   report:
     needs:
+    - impact
+    - docs
     - check
     - release_dry
     - coverage

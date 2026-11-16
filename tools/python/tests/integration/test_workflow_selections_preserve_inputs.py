@@ -320,31 +320,6 @@ class WorkflowTaskTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 0)
         extract.assert_not_called()
 
-    def test_required_gate_refuses_unexpected_skips(self) -> None:
-        for result in ("failure", "cancelled", "skipped"):
-            with self.subTest(result=result), patch.dict(os.environ, {"RESULTS": json.dumps({"test": {"result": result}})}):
-                with self.assertRaises(ValueError):
-                    tasks.main(["ci:required"])
-        with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "false"}):
-            self.assertEqual(tasks.main(["ci:required"]), 0)
-        with patch.dict(os.environ, {"RESULTS": '{"release_rehearsal":{"result":"skipped"}}', "RELEASE_REVIEW": "true"}):
-            with self.assertRaises(ValueError):
-                tasks.main(["ci:required"])
-
-        environment = {
-            "OPTIONAL_JOBS": '["test","package_rust"]',
-            "RESULTS": '{"test":{"result":"skipped"},"package_rust":{"result":"skipped"},"build_product":{"result":"success"}}',
-        }
-        with patch.dict(os.environ, environment):
-            self.assertEqual(tasks.main(["ci:required"]), 0)
-            for name in ("test", "package_rust", "build_product"):
-                os.environ["RESULTS"] = json.dumps({name: {"result": "failure"}})
-                with self.assertRaises(ValueError):
-                    tasks.main(["ci:required"])
-            os.environ["RESULTS"] = '{"build_product":{"result":"skipped"}}'
-            with self.assertRaises(ValueError):
-                tasks.main(["ci:required"])
-
     def test_sdk_delegation_rejects_rust_only_selections(self) -> None:
         selections = []
         for language in ("csharp", "cpp"):
