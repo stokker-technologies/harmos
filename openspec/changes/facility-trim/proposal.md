@@ -21,36 +21,35 @@ State management stays. It is a Harmos feature that applications build on.
 
 ### Signal Processing
 
-- FFT, including the disk-backed variant, moves to Dokime, its only consumer.
-- Statistics and downsampling are used by the storage query and by stream summaries. They stay
-  as internals of storage queries, with no public namespace or statistical stream-batch API.
-- The hand-maintained downsampling kernels (min/max, largest-triangle, decimation) stay, private
-  to storage. Replacing them with `tsdownsample` was tried and dropped: the crate needs nightly
-  Rust (`argminmax/nightly_simd`, error `E0554` on stable). Consumer applications own their
-  private FFT, statistics and downsampling outside storage.
+- FFT belongs to its consuming product.
+- The public signal namespace and statistical stream-batch API are removed.
+- The original kernel-retention choice is superseded by [operation-boundary](../operation-boundary/tasks.md), which owns one
+  crate-internal statistics/aggregation home in `harmos-query`, available through storage
+  `list_rows` transforms, and removal of duplicate kernels. This is locked direction;
+  consolidation is not claimed landed by this removal change.
 
 ### Simulation
 
 Simulation stays. It was built to accelerate time in tests, and until now nothing could use it
 for that, because a plugin in another process has its own clock. The host-owned clock in
 `grpc-plugins` removes that obstacle: the simulation clock becomes the host's virtual clock, and
-Dokime runs its stories on it. Its tests of state recovery, replay identity and inverse laws
+A product runs its stories on it. Its tests of state recovery, replay identity and inverse laws
 stay as they are.
 
 ## Impact
 
 - Breaking for a consumer that enables the `signal`, `signal-fft` or JSON storage features.
-  Dokime moves FFT in its own change.
+  A product moves FFT in its own change.
 - Benchmarks that used the JSON backend are removed with it.
 
 ## Storage Removal Contract
 
 The JSON backend removal is part of this combined branch; do not reimplement it in a later
 slice. Its persistence benchmarks and JSON-only fixtures are removed with it. Consumer backends
-supply persistence; Harmos retains its state-file journal and backend-neutral query kernels.
+supply persistence. Harmos retains recovery interfaces, the default in-memory adapter and
+backend-neutral query kernels; products own disk recovery.
 
-## Open Points
+## Replacement Ownership
 
-### Awaiting Owner Confirmation
-
-- Keep the hand-maintained storage downsampling kernels and drop `tsdownsample` on stable Rust.
+The former downsampling-retention question belongs to [operation-boundary](../operation-boundary/tasks.md) group 6. This change
+retains its unperformed native storage, stream and state proof in task 3.1 and is not archived.

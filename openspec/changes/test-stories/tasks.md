@@ -28,7 +28,7 @@
 
 ## 6. Final Validation
 
-- [ ] 6.1 Run the affected unit and integration lanes on Linux and Windows and record test counts and lines before and after.
+- [ ] 6.1 After the combined candidate is source complete, run the affected native Linux/Windows unit and integration selections and report actual test counts; retain the before/after story inventory from the rewrite. Known flake repair and proof remain explicitly owned by operation-grammar FL.1–FL.3; keep this change active until its platform proof exists.
 
 ## 7. Developer Feedback
 
