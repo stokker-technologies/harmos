@@ -20,14 +20,6 @@ import "google/protobuf/duration.proto";
 
 // === Resources === //
 
-// === Options === //
-
-// === Services === //
-
-// === Requests and Responses === //
-
-// === Resources === //
-
 // Declares a row type and either host-driven interval sampling or device-driven publication.
 message StreamDeclaration {
   // Stream identity unique within its admitted provider inventory.

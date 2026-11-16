@@ -87,6 +87,7 @@ message HostStatus {
 
 // === Enums === //
 
+// The Health Reported by One Contributing Component.
 enum ComponentState {
   COMPONENT_STATE_UNSPECIFIED = 0;
   COMPONENT_STATE_HEALTHY = 1;

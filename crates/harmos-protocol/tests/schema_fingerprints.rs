@@ -19,6 +19,7 @@
 
 // Third Party Imports
 use prost::Message;
+use prost_types::{FileOptions, MessageOptions};
 use sha2::{Digest, Sha256};
 
 // Local Imports
@@ -64,7 +65,7 @@ fn fingerprints_follow_the_message_graph_instead_of_catalog_composition() {
     let mut merged = types.clone();
     merged.file[0].message_type.reverse();
     merged.file[0].source_code_info = Some(Default::default());
-    merged.file[0].options = Some(prost_types::FileOptions {
+    merged.file[0].options = Some(FileOptions {
         java_package: Some("compiler.generated".into()),
         ..Default::default()
     });
@@ -72,7 +73,7 @@ fn fingerprints_follow_the_message_graph_instead_of_catalog_composition() {
     assert_eq!(fingerprint, schema::fingerprint("fixture.echo", &merged, ".fixture.Value", "fixture.Value").unwrap());
 
     // Preserve Message Options In The Fingerprint
-    merged.file[0].message_type[1].options = Some(prost_types::MessageOptions {
+    merged.file[0].message_type[1].options = Some(MessageOptions {
         deprecated: Some(true),
         ..Default::default()
     });

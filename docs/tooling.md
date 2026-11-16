@@ -167,17 +167,25 @@ Windows measurements and remaining unmeasured cases are recorded in
 
 ## Protocol Generation
 
-The checked-in Rust messages and descriptor set come from the client, context and
-instance service files under `proto/harmos/`:
+The checked-in Rust messages and descriptor set come from the model, host and
+plugin contract files under `proto/harmos/`:
 
 ```sh
 mise run build -- --package harmos-protocol --example generate
 mise run generate -- --sdk rust
-mise run test -- --package harmos-protocol --target integration --exact generated_code_matches_proto::generated_code_matches_proto
+mise run test -- --package harmos-protocol --target integration --exact tests::generated_code_matches_proto
 mise run generate -- --sdk python
 mise run generate -- --sdk csharp
 mise run generate -- --sdk cpp
 ```
+
+The native generator is an ordinary module tree in
+`crates/harmos-protocol/codegen/`, shared by the generation example and integration
+target. SDK descriptor composition remains in
+`tools/python/src/harmos_tools/build/resource_roots.py`; its `build/protocol/`
+modules own the descriptor inventory and each language's renderer. Generator
+function names and arguments stay stable. Regenerate tracked output through the
+tasks above; edit its owning generator rather than the output.
 
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.

@@ -40,6 +40,7 @@ message Failure {
 
 // === Enums === //
 
+// The Failure Category Used for Admission and Retry Decisions.
 enum Classification {
   CLASSIFICATION_UNSPECIFIED = 0;
   // Retrying will not help.

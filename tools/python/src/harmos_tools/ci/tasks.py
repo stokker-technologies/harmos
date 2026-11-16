@@ -402,7 +402,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
             )
         return 0
     if options.command == "generate":
-        from ..build.resource_roots import generate as resource_roots
+        from ..build import resource_roots
 
         if options.descriptors:
             from ..build.resource_roots import compose
@@ -418,7 +418,7 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.sdk == "cpp":
             return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":
-            result = cargo.focused(root, "build", ["--locked", "-p", "harmos-protocol", "--example", "generate"])
+            result = cargo.focused(root, "build", ["--locked", "--profile", options.profile, "-p", "harmos-protocol", "--example", "generate"])
             if result:
                 return result
             binary = (
@@ -429,9 +429,20 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 / ("generate.exe" if os.name == "nt" else "generate")
             )
             result = _execute([str(binary)])
-            if result == 0:
-                resource_roots(root)
-            return result
+            if result:
+                return result
+
+            # The Example Owns Its Generator, Rather Than Sharing Source by Path.
+            arguments = ["--locked", "--profile", options.profile, "--manifest-path", "examples/schematic/Cargo.toml", "-p", "schematic-protocol", "--example", "generate"]
+            result = cargo.focused(root, "build", arguments)
+            if result:
+                return result
+            result = _execute([str(binary)])
+            if result:
+                return result
+
+            resource_roots.generate(root)
+            return 0
         from ..build.__main__ import generate
 
         generate(options.profile)

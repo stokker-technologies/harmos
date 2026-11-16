@@ -56,8 +56,6 @@ GENERATED = tuple(
 
 def generate(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    for name in ["harmos/v1/__init__.py", "harmos/plugin/v1/__init__.py"]:
-        (output / name).unlink(missing_ok=True)
     for path in (output / "harmos").rglob("*_pb2*"):
         name = path.relative_to(output).as_posix()
         if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in GENERATED:
@@ -120,9 +118,6 @@ def generate_client_fixture(output: Path) -> None:
     generated = {name.removesuffix(".proto") + suffix for name in inputs for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")}
     for path in wire.rglob("*_pb2*"):
         if path.is_file() and path.name.endswith((".py", ".pyi")) and path.relative_to(wire).as_posix() not in generated:
-            path.unlink()
-    for path in (output / "application").rglob("*_pb2*"):
-        if path.is_file() and path.name.endswith((".py", ".pyi")):
             path.unlink()
     scratch = Path(tempfile.mkdtemp())
     try:
@@ -198,13 +193,11 @@ def generate_conformance(output: Path) -> None:
         schema = FileDescriptorSet.FromString((Path(scratch) / "descriptors.bin").read_bytes())
         names = sorted(message.name for file in schema.file if file.name in inputs for message in file.message_type)
         package = output.parents[2]
-        for folder in (package / "v1", package / "_wire/v1"):
-            for obsolete in folder.glob("*_pb2*"):
-                if obsolete.is_file():
-                    obsolete.unlink()
         types = [
             "# @generated from protocol descriptors; do not edit.",
-            *[f"from ._wire.model.v1.fixture_pb2 import {name} as {name}" for name in names],
+            *[f"from ._wire.model.v1.fixture_pb2 import {name}" for name in names],
+            "",
+            f"__all__ = {names!r}",
         ]
         (package / "_types.py").write_text("\n".join(types) + "\n", encoding="utf-8", newline="\n")
     finally:

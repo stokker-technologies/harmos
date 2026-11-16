@@ -20,6 +20,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 // Local Imports
+use crate::model;
 
 /* === Constants === */
 
@@ -90,19 +91,19 @@ pub enum ReplaySafety {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PolicyError {
-    #[error("invalid protobuf policy duration")]
+    #[error("Declare Operation Policy: Supply a Valid Protobuf Duration")]
     InvalidDuration,
 
-    #[error("operation deadlines must be positive (overall {timeout:?}, attempt {attempt_timeout:?})")]
+    #[error("Declare Operation Policy: Use Positive Deadlines (overall {timeout:?}, attempt {attempt_timeout:?})")]
     Deadline { timeout: Duration, attempt_timeout: Duration },
 
-    #[error("retry requires at least two total attempts; use Never for one attempt")]
+    #[error("Declare Retry Policy: Use at Least Two Total Attempts or Select Never")]
     EmptyRetries,
 
-    #[error("a restart policy needs positive credit and sustained health; use Never for zero")]
+    #[error("Declare Restart Policy: Use Positive Credit and Sustained Health or Select Never")]
     EmptyRestarts,
 
-    #[error("retry delays must be positive and ordered (initial {initial:?}, maximum {maximum:?})")]
+    #[error("Declare Backoff: Use Positive, Ordered Delays (initial {initial:?}, maximum {maximum:?})")]
     Backoff { initial: Duration, maximum: Duration },
 }
 
@@ -136,10 +137,15 @@ impl RetryPolicy {
         let Self::OnTransient { total_attempts, backoff } = self else {
             return None;
         };
-        if self.validate().is_err() || failed_attempt.saturating_add(1) >= total_attempts || replay == ReplaySafety::Unknown {
+        let invalid = self.validate().is_err();
+        let exhausted = failed_attempt.saturating_add(1) >= total_attempts;
+        let unsafe_replay = replay == ReplaySafety::Unknown;
+        if invalid || exhausted || unsafe_replay {
             return None;
         }
-        if !matches!(failure, FailureKind::Transient) && !(failure == FailureKind::Ambiguous && replay != ReplaySafety::Unknown) {
+        let transient = failure == FailureKind::Transient;
+        let ambiguous_replay = failure == FailureKind::Ambiguous && replay != ReplaySafety::Unknown;
+        if !transient && !ambiguous_replay {
             return None;
         }
 
@@ -188,38 +194,20 @@ impl Backoff {
     }
 }
 
-impl TryFrom<Option<&crate::model::OperationPolicy>> for OperationPolicy {
+impl TryFrom<Option<&model::OperationPolicy>> for OperationPolicy {
     type Error = PolicyError;
-    fn try_from(wire: Option<&crate::model::OperationPolicy>) -> Result<Self, Self::Error> {
+
+    fn try_from(wire: Option<&model::OperationPolicy>) -> Result<Self, Self::Error> {
         let wire = wire.cloned().unwrap_or_default();
-        let duration = |value: Option<prost_types::Duration>, default| -> Result<Duration, PolicyError> {
-            value.map(Duration::try_from).transpose().map(|value| value.unwrap_or(default)).map_err(|_| PolicyError::InvalidDuration)
-        };
+        let timeout = duration(wire.timeout, UNBOUNDED)?;
+        let attempt_timeout = duration(wire.attempt_timeout, UNBOUNDED)?;
+        let cancellation_timeout = duration(wire.cancellation_timeout, Duration::ZERO)?;
+        let retries = wire.retries.as_ref().map(retry_policy).transpose()?.unwrap_or(RetryPolicy::Never);
         let policy = Self {
-            timeout: duration(wire.timeout, UNBOUNDED)?,
-            attempt_timeout: duration(wire.attempt_timeout, UNBOUNDED)?,
-            cancellation_timeout: duration(wire.cancellation_timeout, Duration::ZERO)?,
-            retries: match wire.retries {
-                None => RetryPolicy::Never,
-                Some(retry) if retry.total_attempts == 0 => return Err(PolicyError::EmptyRetries),
-                Some(retry) if retry.total_attempts == 1 => RetryPolicy::Never,
-                Some(retry) => {
-                    let initial = duration(retry.initial, Duration::ZERO)?;
-                    let jitter = if retry.deterministic_jitter { Jitter::Deterministic } else { Jitter::None };
-                    let backoff = match retry.maximum {
-                        Some(maximum) => Backoff::Exponential {
-                            initial,
-                            maximum: duration(Some(maximum), Duration::ZERO)?,
-                            jitter,
-                        },
-                        None => Backoff::Fixed { delay: initial, jitter },
-                    };
-                    RetryPolicy::OnTransient {
-                        total_attempts: usize::try_from(retry.total_attempts).map_err(|_| PolicyError::EmptyRetries)?,
-                        backoff,
-                    }
-                }
-            },
+            timeout,
+            attempt_timeout,
+            cancellation_timeout,
+            retries,
         };
         policy.validate()?;
         Ok(policy)
@@ -229,6 +217,33 @@ impl TryFrom<Option<&crate::model::OperationPolicy>> for OperationPolicy {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn duration(value: Option<prost_types::Duration>, default: Duration) -> Result<Duration, PolicyError> {
+    let duration = value.map(Duration::try_from).transpose().map_err(|_| PolicyError::InvalidDuration)?;
+    Ok(duration.unwrap_or(default))
+}
+
+fn retry_policy(retry: &model::RetryPolicy) -> Result<RetryPolicy, PolicyError> {
+    if retry.total_attempts == 0 {
+        return Err(PolicyError::EmptyRetries);
+    }
+    if retry.total_attempts == 1 {
+        return Ok(RetryPolicy::Never);
+    }
+
+    let initial = duration(retry.initial, Duration::ZERO)?;
+    let jitter = if retry.deterministic_jitter { Jitter::Deterministic } else { Jitter::None };
+    let backoff = match retry.maximum {
+        Some(maximum) => Backoff::Exponential {
+            initial,
+            maximum: duration(Some(maximum), Duration::ZERO)?,
+            jitter,
+        },
+        None => Backoff::Fixed { delay: initial, jitter },
+    };
+    let total_attempts = usize::try_from(retry.total_attempts).map_err(|_| PolicyError::EmptyRetries)?;
+    Ok(RetryPolicy::OnTransient { total_attempts, backoff })
+}
 
 // Every caller bounds nanos by a representable Duration before this conversion.
 fn from_nanos(nanos: u128) -> Duration {
