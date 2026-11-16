@@ -38,7 +38,7 @@ The runtime and generators SHALL NOT accept a composition or caller narrowing in
 
 ### Requirement: Plugin Protocol Stays on the Wire
 
-The plugin carrier SHALL keep instance, invocation, window, sample and child frames, plugin-declared operations and their Private, Protected and Public visibility, and a fixed set of plugin host facilities for time and the plugin's own settings.
+The plugin carrier SHALL keep instance, invocation, window, sample and child frames, plugin-declared operations and their Private, Protected and Public visibility, and a fixed set of plugin host facilities: time, the plugin's own settings, its own invocations and admitted discovery.
 
 #### Scenario: Plugin Reads Time
 

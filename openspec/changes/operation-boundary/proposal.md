@@ -38,8 +38,12 @@ Native Type Ownership). This change applies the same rule to every host operatio
 
 Supersedes: the caller narrowing contract in docs/architecture.md (Product Composition and
 Narrowing), the `storage-interface` statement that no cross-method transaction is assumed
-(compound mutation is now an operation), and the direct `StorageManager` construction
-contract in docs/product-guide.md.
+(compound mutation is now an operation), the direct `StorageManager` construction
+contract in docs/product-guide.md, and in the `operation-grammar` change: the Audience
+Separation and One SDK per Language decisions as far as they serve Harmos host operations to
+clients and plugins, the client-facing rows of its Complete Face Inventory and Decided
+Built-In Visibility Mapping, its SDK Ownership client roots and the public manager surface in
+Boundary and Manager Ownership. Its three visibility levels stay.
 
 ## Capabilities
 

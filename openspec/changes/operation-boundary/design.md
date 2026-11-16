@@ -153,9 +153,10 @@ descriptors alone.
 | Area | Consequence |
 | --- | --- |
 | Client SDKs (Rust, Python, C#, C++) | Generated `Client` resources over Harmos host operations (Access, Invocations, Operations, Plugins, Schemas, Status, Streams, Time) are deleted. The SDKs keep connection, credentials, call options, failures, transfer helpers and the generators that project a product's descriptors into typed client and plugin resources. |
-| Plugin-to-host calls | Proposed default: the calls every plugin needs independent of product (time get/sleep, own settings list) become plugin protocol host facilities served on the carrier, versioned with `harmos.plugin.v1`, not host operations. Plugin SDK Invocations Get/Cancel/Watch are deleted: `ChildDemand`/`ChildCancel` already control child calls. Plugin SDK Operations List/Get are deleted: admission delivers requirements. |
+| Plugin-to-host calls | Proposed default: every call the plugin SDK context makes today independent of product (time get/sleep, own settings list, Get/Cancel/Watch of the plugin's own invocations, admitted discovery List/Get) becomes a plugin protocol host facility served on the carrier, versioned with `harmos.plugin.v1`, not a host operation. `ChildDemand`/`ChildCancel` control child calls on the same carrier, but whether they make the invocation facilities redundant is not established; none is removed in this change. Removing any of them later requires establishing its purpose first and an owner decision. |
 | Requirement calls | Unchanged on the wire: child requests to Public plugin operations under declared requirements and fingerprints. A child request naming a Harmos host operation is refused as unknown; a product wrapper with PLUGINS or ALL is reachable. |
-| Discovery gap | gRPC plugin origins carry `scope: None` (`src/operations/caller.rs`), so List/Get can reveal entries child dispatch refuses. Harmos List/Get leave the wire; the in-process discovery operation still repairs the gap by applying the dispatch predicate, because product wrappers forward plugin callers into it. |
+| Discovery gap | gRPC plugin origins carry `scope: None` (`src/operations/caller.rs`), so List/Get can reveal entries child dispatch refuses. Not moot: the plugin discovery facility and product wrappers forwarding plugin callers both use in-process discovery, which must apply the dispatch predicate. |
+| Host messages | Harmos host request/response messages stay exported from the SDK roots as payload values, so product wrappers reuse them without declaring twins; only the Harmos services lose their wire binding. |
 | Conformance | Wrong-caller rules move to a fixture product in `tools/conformance` and `sdk/tests/fixtures` that wraps the operations it exposes. New rules: a Harmos host operation is unreachable over gRPC and over a child request; a wrapper is reachable for its declared audience only. Plugin protocol rules are unchanged. |
 | What stays on the wire | `harmos.plugin.v1` Instance Get/Invoke/Samples/Stop, windows, sample batches, child frames, the new plugin host facilities, plugin-declared operations with Protected/Public visibility and their client gRPC projections, and product-declared wrappers. |
 | Schematic example | Declares wrappers for the host operations its client uses. |
@@ -177,8 +178,8 @@ which route to the internal owning manager. See the delta spec.
   sequential emulation.
 - [Scoped deletion racing retained cuts] → deletion is logical at its cut; reclamation waits
   for cut release, preserving read-at-cut semantics.
-- [Plugin host facilities widen the plugin protocol] → limited to time and own settings; any
-  further plugin need is a product wrapper.
+- [Plugin host facilities widen the plugin protocol] → limited to the calls the plugin SDK
+  context already makes; any further plugin need is a product wrapper.
 - [Losing SDK client convenience] → generators keep producing typed resources from the
   product's descriptors; only the Harmos-owned resource roots go.
 
@@ -202,5 +203,8 @@ which route to the internal owning manager. See the delta spec.
    building block of an application, do the Python, C# and C++ SDKs remain justified, or do
    products own their language SDKs? The tasks stay as written.
 3. **Wrapper audience and plugin host facilities.** D4 records proposed defaults (keep the
-   `callers` option for product wrappers; time and own settings as plugin protocol
-   facilities). The tasks implement them; the owner may override before group 10 starts.
+   `callers` option for product wrappers; time, own settings, own invocation Get/Cancel/Watch
+   and admitted discovery as plugin protocol facilities). The tasks implement them; the owner
+   may override before group 10 starts. Whether the invocation and discovery facilities are
+   redundant with child frames and admission is unestablished; removing them is a separate
+   owner decision after their purpose is established.
