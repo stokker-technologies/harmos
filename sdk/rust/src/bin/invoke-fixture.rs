@@ -24,7 +24,7 @@ use std::{
     result::Result as StdResult,
     sync::{
         OnceLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -55,6 +55,7 @@ use harmos_protocol::model::setting_value;
 /* === Constants === */
 
 static DEVICE_ACTIVE: AtomicBool = AtomicBool::new(false);
+static SCOPED_TICKS: AtomicU64 = AtomicU64::new(0);
 
 static HOST: OnceLock<(FileDescriptorSet, String, String, u32, u32)> = OnceLock::new();
 
@@ -304,6 +305,14 @@ fn main() -> Result<()> {
             .requires_host(HostOperation::TimeSleep)
             .stream(stream)
             .observer(observer)
+    } else if mode == "counted-sleep" {
+        let stream = Stream::<Value>::new("fixture.counted_ticks");
+        let observer = Observer::new(&stream, counted_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        Plugin::new("counted_sleep", "1.0.0")
+            .requires_host(HostOperation::TimeSleep)
+            .stream(stream)
+            .observer(observer)
+            .operation(Operation::new("fixture.count_after", count_after).visibility(Visibility::Protected))
     } else if mode == "scoped-publications" {
         let stream = Stream::<Value>::new("fixture.scoped_ticks");
         let observer = Observer::new(&stream, scoped_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
@@ -470,6 +479,26 @@ async fn scoped_observe(context: &Context) -> Result<Value> {
     let now = context.now().await?;
     Ok(Value {
         value: format!("{scope}:{}", now.seconds).into_bytes(),
+    })
+}
+
+/// Count Each Scoped Tick This Plugin Answers.
+async fn counted_observe(context: &Context) -> Result<Value> {
+    let count = if context.scope().is_ok() {
+        SCOPED_TICKS.fetch_add(1, Ordering::SeqCst) + 1
+    } else {
+        0
+    };
+    Ok(Value { value: count.to_le_bytes().to_vec() })
+}
+
+/// Sleep the Requested Seconds Once, Then Report the Scoped Ticks Answered So Far.
+async fn count_after(context: &Context, request: Value) -> Result<Value> {
+    let seconds =
+        u64::from_le_bytes(request.value.as_slice().try_into().map_err(|_| harmos::Error::Invalid("Count After: eight bytes".into()))?);
+    context.sleep(Duration::from_secs(seconds)).await?;
+    Ok(Value {
+        value: SCOPED_TICKS.load(Ordering::SeqCst).to_le_bytes().to_vec(),
     })
 }
 

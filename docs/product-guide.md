@@ -40,7 +40,9 @@ meaning to the scope and does not require it for operations that do not ask for 
 
 For a scoped unit of work that owns its time and sample ingestion, use
 `runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
-binding's `operations()` and await `close()` when the unit ends. `close()` returns
+binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
+demand: call `start_samples()` once the plugin has registered the unit and `stop_samples()`
+before its cleanup ends it, so no tick reaches the plugin outside that interval. `close()` returns
 within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
 not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
 share the admitted connection and retain independent clocks and Samples selections;
@@ -1177,6 +1179,9 @@ the connection and reconnects independently after transport loss.
 
 Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window }`
 with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
+Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
+`stop_grace` before a managed child is killed and reaped within another; see
+[Managed Process Ownership](architecture.md#managed-process-ownership).
 `Attached::status()` watches connection state and failures; `activation()` captures
 the current connection. An activation exposes its `description`, monotonic `number`,
 `previous_started_at`, optional `executable_digest` and managed `process_id`. Compare the current and

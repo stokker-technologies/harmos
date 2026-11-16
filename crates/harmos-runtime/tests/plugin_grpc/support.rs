@@ -57,6 +57,8 @@ use harmos_runtime::{
 type Output<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 pub type App = crate::support::Bank;
 type SamplesHandler = Arc<dyn Fn(Streaming<InstanceSamplesRequest>) -> Output<InstanceSamplesResponse> + Send + Sync>;
+/// Signals for a Withheld Samples Response: Arrival, Then Abandonment.
+type WithheldSamples = (oneshot::Sender<()>, oneshot::Sender<()>);
 
 /* === Structs === */
 
@@ -87,8 +89,12 @@ struct Fixture {
     message_bytes: Arc<std::sync::atomic::AtomicU64>,
     pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    pending_samples: Arc<Mutex<Option<WithheldSamples>>>,
     samples: Arc<Mutex<Option<SamplesHandler>>>,
 }
+
+/// Reports a Withheld Samples Request the Host Abandoned.
+struct Abandoned(Option<oneshot::Sender<()>>);
 
 /* === Implementations === */
 
@@ -191,6 +197,7 @@ impl Remote {
             message_bytes: Arc::new(std::sync::atomic::AtomicU64::new(harmos_protocol::transfer::default_message_bytes().get() as u64)),
             pending_description: Arc::new(Mutex::new(None)),
             pending_stop: Arc::new(Mutex::new(None)),
+            pending_samples: Arc::new(Mutex::new(None)),
             samples: Arc::new(Mutex::new(None)),
         };
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -278,9 +285,23 @@ impl Remote {
         receiver
     }
 
+    /// Withhold the Next Samples Response; Report When It Arrives and When the Host Abandons It.
+    pub fn hold_samples(&self) -> (oneshot::Receiver<()>, oneshot::Receiver<()>) {
+        let (entered, entering) = oneshot::channel();
+        let (abandoned, abandoning) = oneshot::channel();
+        *self.service.pending_samples.lock().unwrap() = Some((entered, abandoned));
+        (entering, abandoning)
+    }
+
     pub async fn get(&self) -> InstanceGetResponse {
         let mut client = InstanceClient::connect(self.address.clone()).await.unwrap();
         client.get(InstanceGetRequest { revision: 1, ..Default::default() }).await.unwrap().into_inner()
+    }
+}
+
+impl Drop for Abandoned {
+    fn drop(&mut self) {
+        let _ = self.0.take().unwrap().send(());
     }
 }
 
@@ -319,6 +340,12 @@ impl Instance for Fixture {
     }
     type SamplesStream = Output<InstanceSamplesResponse>;
     async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> Result<Response<Self::SamplesStream>, Status> {
+        let pending = self.pending_samples.lock().unwrap().take();
+        if let Some((entered, abandoned)) = pending {
+            let _abandoned = Abandoned(Some(abandoned));
+            let _ = entered.send(());
+            return std::future::pending().await;
+        }
         let handler = self.samples.lock().unwrap().clone().ok_or_else(|| Status::not_found("Unknown Stream"))?;
         Ok(Response::new(handler(request.into_inner())))
     }
@@ -435,6 +462,16 @@ pub fn running(process: u32) -> bool {
             queried != 0 && code == STILL_ACTIVE as u32
         }
     }
+}
+
+/// Fail Rather Than Hang: Bound a Wait That Only a Defect Could Prolong by a Placement Duration.
+pub async fn bounded<T>(bound: Duration, future: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(bound, future).await.expect("Finish Within the Placement Bound")
+}
+
+/// Resolve When the Attachment's Supervisor Has Ended.
+pub async fn ended(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::Status>) {
+    while status.changed().await.is_ok() {}
 }
 
 pub async fn activation(status: &mut watch::Receiver<harmos_runtime::plugin::grpc::Status>, number: u64) -> Activation {

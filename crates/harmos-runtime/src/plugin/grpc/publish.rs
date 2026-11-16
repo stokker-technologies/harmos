@@ -37,7 +37,7 @@ use tokio::{
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, model};
-use crate::operations::clock::Unit;
+use crate::operations::clock::{TickCall, Unit};
 use crate::streams::protobuf::Row;
 use crate::{
     Application,
@@ -95,6 +95,7 @@ struct Demand {
     row: Row,
     interval: Option<Duration>,
     lease: Arc<StreamWriter>,
+    host: Clock,
     close: watch::Receiver<bool>,
     parent: Option<watch::Receiver<bool>>,
     closed: watch::Receiver<bool>,
@@ -164,7 +165,7 @@ impl Publications {
         operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
         let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
-        let mut publications = Self::start(prepared.demands, registration.clone(), activation, clock, operations, None);
+        let mut publications = Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None);
         activation
             .publications
             .set(ScopeSource {
@@ -179,15 +180,22 @@ impl Publications {
         Ok(publications)
     }
 
+    /// A Scope's Publications Before Its Samples Start: No Demand, but Settlement Still Covers Its Calls.
+    pub(super) fn idle(
+        source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &crate::operations::Manager,
+    ) -> Self {
+        Self::start(Vec::new(), source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()))
+    }
+
     pub(super) fn scoped(
-        prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock,
+        prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock,
         operations: &crate::operations::Manager,
     ) -> Self {
-        Self::start(prepared.demands, source.registration.clone(), activation, clock, operations, Some(source.close.clone()))
+        Self::start(prepared.demands, source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()))
     }
 
     fn start(
-        demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock,
+        demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock, host: &Clock,
         operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>,
     ) -> Self {
         let close = watch::channel(false).0;
@@ -211,6 +219,7 @@ impl Publications {
             let parent = publications.parent.clone();
             let connection = activation.connection.clone();
             let clock = clock.clone();
+            let host = host.clone();
             let operations = operations.clone();
             let caller = Arc::new(super::CallingPlugin {
                 name: activation.entry_name.clone(),
@@ -225,6 +234,7 @@ impl Publications {
                     row: prepared.row,
                     interval: prepared.interval,
                     lease,
+                    host,
                     close,
                     parent,
                     closed: connection.closed.subscribe(),
@@ -248,7 +258,6 @@ impl Publications {
     pub(super) async fn settle(
         &mut self, clock: &Clock, deadline: Instant, unit: Option<&Unit>, action: &'static str,
     ) -> Result<(), Error> {
-        let _activity = clock.activity(action);
         // Close Scoped Admission Before Signalling So No Binding Joins After This Snapshot.
         let bindings = self.source.as_ref().and_then(|source| source.get()).map(|source| {
             let mut bindings = source.bindings.lock().expect("scoped bindings lock is healthy");
@@ -258,36 +267,45 @@ impl Publications {
         });
         self.close.send_replace(true);
         let pending = unit.map(Unit::stop).unwrap_or_default();
-        let mut failure = None;
         let scoped = self.parent.is_some();
         let jobs = &mut self.jobs;
-        let drained = clock
-            .timeout_at(deadline, async {
-                while let Some(result) = jobs.join_next().await {
-                    if let Err(error) = result.map_err(invalid).and_then(|result| result)
-                        && scoped
-                    {
-                        failure.get_or_insert(error);
-                    }
-                }
-            })
-            .await;
-        if drained.is_err() {
-            jobs.abort_all();
-            while jobs.join_next().await.is_some() {}
-            failure = Some(Error::Deadline { action });
-        }
-        for instance in pending {
-            match clock.timeout_at(deadline, instance.settle()).await {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    failure.get_or_insert_with(|| invalid(format!("{action}: {error}")));
-                }
-                Err(_) => {
-                    failure.get_or_insert(Error::Deadline { action });
+        // Demands Drain and Cancelled Calls Settle Together, So Each Has the Whole Grace.
+        let drain = clock.timeout_at(deadline, async {
+            let mut failure = None;
+            while let Some(result) = jobs.join_next().await {
+                if let Err(error) = result.map_err(invalid).and_then(|result| result)
+                    && scoped
+                {
+                    failure.get_or_insert(error);
                 }
             }
-        }
+            failure
+        });
+        let calls = async {
+            let mut failure = None;
+            for instance in &pending {
+                match clock.timeout_at(deadline, instance.settle()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => {
+                        failure.get_or_insert_with(|| invalid(format!("{action}: {error}")));
+                    }
+                    Err(_) => {
+                        failure.get_or_insert(Error::Deadline { action });
+                    }
+                }
+            }
+            failure
+        };
+        let (drained, called) = tokio::join!(drain, calls);
+        let mut failure = match drained {
+            Ok(failure) => failure,
+            Err(_) => {
+                self.jobs.abort_all();
+                while self.jobs.join_next().await.is_some() {}
+                Some(Error::Deadline { action })
+            }
+        };
+        failure = failure.or(called);
         if let Some((mut tasks, open)) = bindings {
             let joined = clock.timeout_at(deadline, async { while tasks.join_next().await.is_some() {} }).await;
             if joined.is_err() {
@@ -369,6 +387,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         row,
         interval,
         lease,
+        host,
         close,
         mut parent,
         closed,
@@ -378,10 +397,21 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
+    // A Scoped Interval Demand Joins Its Unit's Tick Schedule; Its Ticks' Call Trees Are Marked.
+    let unit = interval.and(operations.call_context().get::<Arc<Unit>>().cloned());
+    let operations = match &unit {
+        Some(_) => {
+            let mut context = operations.call_context().clone();
+            context.insert(TickCall).map_err(invalid)?;
+            operations.with_context(context)
+        }
+        None => operations,
+    };
     let outcome = {
         let work = async {
             let mut sequence = 0;
             let mut next_tick = interval.map(|period| clock.now() + period);
+            let schedule = unit.as_ref().zip(next_tick).map(|(unit, due)| unit.ticks.schedule(due));
             loop {
                 let tick = if let Some(period) = interval {
                     let next = clock.sleep_until(next_tick.expect("interval streams have a next tick"));
@@ -469,6 +499,9 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                     .map_err(invalid)?;
                 ingested_through = Some(receipt);
                 lease.ingested_at(receipt).await.map_err(invalid)?;
+                if let Some((schedule, next)) = schedule.as_ref().zip(next_tick) {
+                    schedule.due(next);
+                }
             }
         };
         tokio::pin!(work);
@@ -500,6 +533,8 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         }
     };
     if let Some(published) = ingested_through {
+        // Accepted Ingestion Is Host Work, So It Holds the Runtime Clock Until It Completes.
+        let _ingesting = host.activity("Drain Accepted Samples");
         if parent.is_some() {
             lease.drained_at(published).await.map_err(|error| invalid(format!("Close Scoped Samples: {error}")))?;
         } else {
@@ -508,9 +543,13 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     }
     outcome?;
     drop(output);
-    // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup.
-    while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}
-    Ok(())
+    // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup; That Wait Is on the Plugin.
+    activity
+        .wait(async {
+            while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}
+            Ok(())
+        })
+        .await
 }
 
 /* === Tests === */

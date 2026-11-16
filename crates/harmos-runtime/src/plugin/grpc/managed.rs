@@ -11,6 +11,7 @@
 
 /* === Modules === */
 
+mod spawner;
 #[cfg(unix)]
 mod unix;
 #[cfg(target_os = "windows")]
@@ -43,12 +44,15 @@ use tokio::{
 // Local Imports
 use super::Error;
 use crate::{Error as RuntimeError, clock::Clock, runtime::StopParticipant};
+use spawner::Spawner;
 #[cfg(unix)]
-use unix::{command, spawn};
+use unix::command;
 #[cfg(target_os = "windows")]
-use windows::{command, spawn};
+use windows::command;
 
 /* === Constants === */
+
+static SPAWNER: Spawner = Spawner::new();
 
 /* === Macros === */
 
@@ -93,18 +97,21 @@ impl Process {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
-        let mut child = spawn(command)
+        let executable = placement.executable.clone();
+        SPAWNER
+            .spawn(command, move |mut child| {
+                let stdout = child.stdout.take().expect("managed stdout is piped");
+                Self {
+                    child: Some(child),
+                    lines: Some(BufReader::new(stdout).lines()),
+                    drain: None,
+                    executable,
+                    participant: Some(participant),
+                    digest,
+                }
+            })
             .await
-            .map_err(|error| Error::Invalid(format!("Start Managed Plugin: spawn {}: {error}", placement.executable.display())))?;
-        let stdout = child.stdout.take().expect("managed stdout is piped");
-        Ok(Self {
-            child: Some(child),
-            lines: Some(BufReader::new(stdout).lines()),
-            drain: None,
-            executable: placement.executable.clone(),
-            participant: Some(participant),
-            digest,
-        })
+            .map_err(|error| Error::Invalid(format!("Start Managed Plugin: spawn {}: {error}", placement.executable.display())))
     }
 
     pub(super) async fn ready(&mut self, placement: &Managed) -> Result<String, Error> {

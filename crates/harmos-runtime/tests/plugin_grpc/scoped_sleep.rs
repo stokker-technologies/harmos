@@ -20,7 +20,11 @@ use std::{
     collections::BTreeMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex, mpsc as blocking},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc as blocking,
+    },
     task::{Context, Poll},
     time::{Duration, SystemTime},
 };
@@ -35,7 +39,7 @@ use tokio::{
 
 // Local Imports
 use super::{
-    invoke_support::{HostFixture, pending},
+    invoke_support::{HostFixture, payload, pending},
     support,
 };
 use harmos_operations::clock::{ClockAccess, Sleep as SleepOperation};
@@ -120,9 +124,12 @@ impl Source for Controlled {
         } else {
             state.timers.insert(id, (deadline, sender));
         }
+        // Claim the Hold Before Announcing This Registration, So a Hold Set After the
+        // Announcement Applies Only to the Next Registration.
+        let hold = self.hold.lock().unwrap().take();
         drop(state);
         self.registered.notify_one();
-        if let Some(registration) = self.hold.lock().unwrap().take() {
+        if let Some(registration) = hold {
             registration.entered.send(()).unwrap();
             registration.release.recv().unwrap();
         }
@@ -247,6 +254,7 @@ async fn retain_rows(requested: usize) {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
 
     // Start the First Tick on the Controlled Clock.
     source.wait_registered().await;
@@ -280,6 +288,31 @@ async fn retain_rows(requested: usize) {
     host.runtime.shutdown().await.unwrap();
 }
 
+/// One Sleep Spanning `requested` Ticks Observes Every One of Them.
+async fn count_after_sleep(requested: u64) {
+    // A Plugin Counts Its Scoped Ticks on a Virtual Unit Clock.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("counted-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/counted", clock).await.unwrap();
+    unit.start_samples().await.unwrap();
+
+    // The Plugin Sleeps Once, Then Reads Its Count; the Last Tick Shares the Sleep's Instant.
+    let finished = AtomicBool::new(false);
+    let call = async {
+        let result = unit.operations().submit_encoded("fixture.count_after", payload(&requested.to_le_bytes())).unwrap().await;
+        finished.store(true, Ordering::SeqCst);
+        result
+    };
+    let (result, advanced) = tokio::join!(call, time.advance_until(Duration::from_secs(requested + 1), || finished.load(Ordering::SeqCst)));
+    advanced.unwrap();
+    assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Tick It Spans");
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
 /* === Tests === */
 
 #[tokio::test]
@@ -291,6 +324,7 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     let request = TimeSleepRequest {
         duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
     };
@@ -324,6 +358,7 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/cancel", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     source.wait_registered().await;
     let (entered, registering) = oneshot::channel();
     let (release, held) = blocking::channel();
@@ -362,6 +397,21 @@ async fn admitted_sleeps_retain_exactly_1025_rows() {
 }
 
 #[tokio::test]
+async fn a_sleep_spanning_1023_ticks_observes_1023() {
+    count_after_sleep(1023).await;
+}
+
+#[tokio::test]
+async fn a_sleep_spanning_1024_ticks_observes_1024() {
+    count_after_sleep(1024).await;
+}
+
+#[tokio::test]
+async fn a_sleep_spanning_1025_ticks_observes_1025() {
+    count_after_sleep(1025).await;
+}
+
+#[tokio::test]
 async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     // Share One Connection Between Two Independent Units.
     let (admitted, mut admissions) = mpsc::unbounded_channel();
@@ -372,7 +422,9 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     let left_source = Controlled::new();
     let right_source = Controlled::new();
     let left = host.runtime.bind_grpc(&activation, "unit/left", Clock::with_clock(left_source.clone())).await.unwrap();
+    left.start_samples().await.unwrap();
     let right = host.runtime.bind_grpc(&activation, "unit/right", Clock::with_clock(right_source.clone())).await.unwrap();
+    right.start_samples().await.unwrap();
 
     // Start Both Timelines Before Receiving Either Unit's Sleep.
     left_source.wait_registered().await;
@@ -439,6 +491,7 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/native", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
 
     // Admission Owns the Timer Before Middleware Sees the Native Call.
     let call = unit.operations().submit_native::<NativeSleep>(Wait(Duration::from_secs(2)), ()).unwrap();
@@ -462,6 +515,7 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/racing", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));
     loop {
@@ -480,6 +534,48 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
     host.runtime.shutdown().await.unwrap();
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stopping_samples_during_an_in_flight_tick_keeps_calls_and_restarts_demand() {
+    // Hold One Tick In Flight While the Plugin Sleeps on the Unit Clock.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("scoped-sleep").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let source = Controlled::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/paused", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    source.wait_registered().await;
+
+    // Stopping Samples Cancels the Tick, Publishes Nothing and Leaves No Timer.
+    unit.stop_samples().await.unwrap();
+    assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
+    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+
+    // Calls Stay Bound: a Scoped Sleep Still Runs on the Unit Clock.
+    let request = TimeSleepRequest {
+        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+    };
+    let (call, _) = unit.operations().submit_protobuf::<SleepOperation>(request, None).unwrap();
+    assert_eq!(source.pending(), 1, "Register the Call's Sleep After Samples Stopped");
+    source.advance_by(Duration::from_secs(1));
+    call.await.unwrap();
+
+    // Demand Starts Again and Ticks the Same Unit.
+    unit.start_samples().await.unwrap();
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    source.wait_registered().await;
+    source.advance_by(Duration::from_secs(1));
+    while host.rows().is_empty() {
+        host.signals.storage_ingested.notified().await;
+    }
+    unit.close().await.unwrap();
+    assert_eq!(host.rows().len(), 1, "Publish the Restarted Demand's Sample");
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn typed_child_sleeps_register_at_admission() {
     // A Host Operation Calls Time.Sleep as a Typed Child Inside the Unit.
@@ -490,6 +586,7 @@ async fn typed_child_sleeps_register_at_admission() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
     let request = TimeSleepRequest {
         duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
     };

@@ -61,7 +61,9 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     let (left_clock, left_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (right_clock, right_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH + Duration::from_secs(100));
     let left = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.unwrap();
+    left.start_samples().await.unwrap();
     let right = host.runtime.bind_grpc(&activation, "unit/right", right_clock.clone()).await.unwrap();
+    right.start_samples().await.unwrap();
     assert!(host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.is_err());
     let left_call = left.operations().submit_encoded("fixture.clock", payload(b"clock")).unwrap();
     let right_call = right.operations().submit_encoded("fixture.clock", payload(b"clock")).unwrap();
@@ -148,10 +150,12 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     controller.advance_until(Duration::from_secs(5), || host.rows().iter().any(|row| row.context.is_none())).await.unwrap();
     assert!(activation.is_connected());
     let dropped = host.runtime.bind_grpc(&activation, "unit/dropped", left_clock.clone()).await.unwrap();
+    dropped.start_samples().await.unwrap();
     drop(dropped);
 
     // A Lost Connection Still Settles the Scope's Already Accepted Ingestion.
     let rebound = host.runtime.bind_grpc(&activation, "unit/left", left_clock.clone()).await.unwrap();
+    rebound.start_samples().await.unwrap();
     let previous = rows_for("unit/left").len();
     host.signals.storage_hold.store(true, std::sync::atomic::Ordering::SeqCst);
     let delivering = left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous);
@@ -187,6 +191,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     assert_eq!(reconnected.number, activation.number + 1);
     assert!(status.borrow().failure.is_none());
     let resumed = host.runtime.bind_grpc(&reconnected, "unit/left", left_clock).await.unwrap();
+    resumed.start_samples().await.unwrap();
     let previous = rows_for("unit/left").len();
     left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous).await.unwrap();
     resumed.close().await.unwrap();

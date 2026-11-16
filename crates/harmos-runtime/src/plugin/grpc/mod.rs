@@ -211,32 +211,29 @@ impl<A: Application> Runtime<A> {
     ) -> Result<PreparedPlugin, Error> {
         let operations = self.operations.execution();
         let clock = operations.clock();
-        let mut process = None;
         let mut participant = self.stop_participant();
+        let Placement::Managed(managed) = placement else {
+            return Err(Error::Invalid("Replace Plugin: managed placement required".into()));
+        };
+        if participant.is_stopping() {
+            return Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into()));
+        }
+        let deadline = clock.now() + settings.connect_timeout;
+        // Spawning Is Never Raced Against Shutdown, So Every Forked Child Reaches This Owner.
+        let mut process = clock
+            .timeout_at(deadline, Process::spawn(&managed, self.stop_participant()))
+            .await
+            .map_err(|_| Error::Timeout("Replace startup"))??;
         let stage = async {
-            let address = match placement {
-                Placement::Managed(managed) => {
-                    process = Some(Process::spawn(&managed, self.stop_participant()).await?);
-                    process.as_mut().expect("spawned process").ready(&managed).await?
-                }
-                Placement::Remote(_) => return Err(Error::Invalid("Replace Plugin: managed placement required".into())),
-            };
-            let mut activation = connect(
-                clock,
-                &address,
-                1,
-                None,
-                process.as_ref().map(|process| process.digest),
-                operations.transfer_message_bytes().get(),
-            )
-            .await?;
+            let address = process.ready(&managed).await?;
+            let mut activation = connect(clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get()).await?;
             activation.entry_name = Some(name);
             activation.settings = crate::plugin::manager::settings::select(
                 activation.description.declarations.as_ref().expect("admitted description"),
                 values,
             )
             .map_err(|error| Error::Invalid(error.to_string()))?;
-            activation.process_id = process.as_ref().and_then(Process::id);
+            activation.process_id = process.id();
             let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
             let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
             Ok((address, activation, admission, publications))
@@ -244,20 +241,18 @@ impl<A: Application> Runtime<A> {
         let result = tokio::select! {
             biased;
             () = participant.stopping() => Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into())),
-            result = clock.timeout(settings.connect_timeout, stage) => result.map_err(|_| Error::Timeout("Replace startup")).and_then(|result| result),
+            result = clock.timeout_at(deadline, stage) => result.map_err(|_| Error::Timeout("Replace startup")).and_then(|result| result),
         };
         match result {
             Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
-                process,
+                process: Some(process),
                 address,
                 activation,
                 admission,
                 publications,
             }),
             Err(error) => {
-                if let Some(process) = &mut process {
-                    process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
-                }
+                process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
                 Err(error)
             }
         }
@@ -392,13 +387,20 @@ impl Attached {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
         let _activity = clock.activity("plugin startup");
-        let mut process = None;
+        let deadline = clock.now() + settings.connect_timeout;
+        // Spawning Is Never Raced Against Cancellation, So Every Forked Child Reaches This Owner.
+        let mut process = match &placement {
+            Placement::Managed(managed) => Some(
+                clock
+                    .timeout_at(deadline, Process::spawn(managed, process_participant.take().expect("managed process participant")))
+                    .await
+                    .map_err(|_| Error::Timeout("startup"))??,
+            ),
+            Placement::Remote(_) => None,
+        };
         let setup = async {
             let address = match &placement {
-                Placement::Managed(managed) => {
-                    process = Some(Process::spawn(managed, process_participant.take().expect("managed process participant")).await?);
-                    process.as_mut().expect("spawned process").ready(managed).await?
-                }
+                Placement::Managed(managed) => process.as_mut().expect("spawned process").ready(managed).await?,
                 Placement::Remote(address) => address.clone(),
             };
             let mut activation = connect(
@@ -440,7 +442,7 @@ impl Attached {
             _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
             () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
             () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
-            result = clock.timeout(settings.connect_timeout, setup) => result.map_err(|_| Error::Timeout("startup")).and_then(|result| result),
+            result = clock.timeout_at(deadline, setup) => result.map_err(|_| Error::Timeout("startup")).and_then(|result| result),
         };
         let (address, activation, publications) = match result {
             Ok(connected) => connected,
@@ -641,45 +643,56 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             result = exited => Ending::Exit(result),
             () = disconnected(activation.connection.closed.subscribe()) => Ending::Disconnect,
         };
-        // Every Ending Settles Its Bindings Before the Connection or Process Is Released.
-        let _activity = clock.activity("plugin teardown");
-        let deadline = clock.now() + settings.stop_grace;
+        // Every Ending Settles Its Bindings Before the Connection or Process Is Released. Teardown
+        // Parks Its Activity While It Waits on the Plugin, So Every Clock Kind Reaches Its Deadlines.
+        let teardown = clock.activity("plugin teardown");
         if !matches!(ending, Ending::Stop(_)) {
             activation.connection.closed.send_replace(true);
         }
-        let settled = publications.settle(&clock, deadline, None, "Settle Plugin Publications").await;
+        let settling = publications.settle(&clock, clock.now() + settings.stop_grace, None, "Settle Plugin Publications");
+        let settled = teardown.wait(settling).await;
+        if let Err(error) = &settled {
+            tracing::warn!(plugin = %activation.description.id, action = "Settle Plugin Publications", %error, "plugin publications did not settle");
+        }
         activation.admission.as_ref().unwrap().remove();
+        // The Plugin Is Told to Stop Before It Is Killed: Stop and Its Exit Get a Fresh `stop_grace`.
+        let deadline = clock.now() + settings.stop_grace;
         match ending {
             Ending::Stop(reason) => {
                 let mut client = activation.connection.client();
-                let stopped = clock
-                    .timeout_at(deadline, client.stop(InstanceStopRequest { reason }))
+                let stopped = teardown
+                    .wait(clock.timeout_at(deadline, client.stop(InstanceStopRequest { reason })))
                     .await
                     .map_err(|_| Error::Timeout("Stop"))
                     .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
-                let result = settled.and(stopped);
-                if let Err(error) = &result {
-                    tracing::warn!(plugin = %activation.description.id, %error, "plugin Stop failed; closing its connection");
+                if let Err(error) = &stopped {
+                    tracing::warn!(plugin = %activation.description.id, action = "Stop Plugin", %error, "plugin Stop failed; closing its connection");
                 }
                 activation.connection.closed.send_replace(true);
-                if let Some(process) = &mut process {
-                    let exit = match process.stop(&clock, deadline, settings.stop_grace, "Stop Managed Plugin").await {
-                        Ok(exit) if exit.success() => Ok(()),
-                        Ok(exit) => Err(Error::Exit(exit)),
-                        Err(error) => Err(error),
-                    };
-                    return result.and(exit).map_err(Arc::new);
-                }
-                return result.map_err(Arc::new);
+                let exit = match &mut process {
+                    Some(process) => {
+                        match teardown.wait(process.stop(&clock, deadline, settings.stop_grace, "Stop Managed Plugin")).await {
+                            Ok(exit) if exit.success() => Ok(()),
+                            Ok(exit) => Err(Error::Exit(exit)),
+                            Err(error) => Err(error),
+                        }
+                    }
+                    None => Ok(()),
+                };
+                // A Reap Failure Wins So the Owner Retains the Installation.
+                return match exit {
+                    Err(error @ Error::Reap(_)) => Err(Arc::new(error)),
+                    exit => settled.and(stopped).and(exit).map_err(Arc::new),
+                };
             }
             Ending::Exit(result) => return Err(Arc::new(result.map_or_else(|error| error, Error::Exit))),
             Ending::Disconnect => {}
         }
         if let Some(process) = &mut process {
-            process.terminate(&clock, settings.stop_grace, "Stop Disconnected Managed Plugin").await.map_err(Arc::new)?;
+            teardown.wait(process.terminate(&clock, settings.stop_grace, "Stop Disconnected Managed Plugin")).await.map_err(Arc::new)?;
             return Err(Arc::new(Error::Disconnected));
         }
-        drop(_activity);
+        drop(teardown);
         let failure = settled.err().unwrap_or(Error::Disconnected);
         status.send_replace(Status {
             activation: None,
@@ -694,58 +707,76 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
-            let reconnect = clock.timeout(
-                settings.connect_timeout,
-                connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()),
-            );
-            let result = tokio::select! {
+            // One Deadline Bounds the Whole Attempt, and Stop Interrupts Every Step of It.
+            let deadline = clock.now() + settings.connect_timeout;
+            let connecting =
+                clock.timeout_at(deadline, connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()));
+            let connected = tokio::select! {
                 biased;
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),
-                result = reconnect => result,
+                result = connecting => result,
             };
-            match result {
-                Ok(Ok(mut next)) => {
-                    if next.description.id != activation.description.id {
-                        next.connection.closed.send_replace(true);
-                        status.send_modify(|status| {
-                            status.failure = Some(Arc::new(Error::Invalid("Reconnect Changed Plugin Identity".into())))
-                        });
-                        continue;
-                    }
-                    next.entry_name = activation.entry_name.clone();
-                    next.provider = activation.provider.clone();
-                    next.settings = crate::plugin::manager::settings::select(
-                        next.description.declarations.as_ref().expect("admitted description"),
-                        Some(activation.settings.clone()),
-                    )
-                    .map_err(|error| Arc::new(Error::Invalid(error.to_string())))?;
-                    match operations.admit_grpc(&next, lane) {
-                        Ok(admission) => next.admission = Some(Arc::new(admission)),
-                        Err(error) => {
-                            next.connection.closed.send_replace(true);
-                            status.send_modify(|status| status.failure = Some(Arc::new(error)));
-                            continue;
-                        }
-                    }
-                    match Publications::open(&streams, &next, &clock, &settings, &operations).await {
-                        Ok(opened) => publications = opened,
-                        Err(error) => {
-                            next.connection.closed.send_replace(true);
-                            next.admission.as_ref().unwrap().remove();
-                            status.send_modify(|status| status.failure = Some(Arc::new(error)));
-                            continue;
-                        }
-                    }
-                    activation = next;
-                    status.send_replace(Status {
-                        activation: Some(activation.clone()),
-                        failure: None,
-                    });
-                    break;
+            let mut next = match connected {
+                Ok(Ok(next)) => next,
+                Ok(Err(error)) => {
+                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                    continue;
                 }
-                Ok(Err(error)) => status.send_modify(|status| status.failure = Some(Arc::new(error))),
-                Err(_) => status.send_modify(|status| status.failure = Some(Arc::new(Error::Timeout("reconnect")))),
+                Err(_) => {
+                    status.send_modify(|status| status.failure = Some(Arc::new(Error::Timeout("reconnect"))));
+                    continue;
+                }
+            };
+            if next.description.id != activation.description.id {
+                next.connection.closed.send_replace(true);
+                status.send_modify(|status| status.failure = Some(Arc::new(Error::Invalid("Reconnect Changed Plugin Identity".into()))));
+                continue;
             }
+            next.entry_name = activation.entry_name.clone();
+            next.provider = activation.provider.clone();
+            let selected = crate::plugin::manager::settings::select(
+                next.description.declarations.as_ref().expect("admitted description"),
+                Some(activation.settings.clone()),
+            );
+            next.settings = match selected {
+                Ok(settings) => settings,
+                Err(error) => {
+                    next.connection.closed.send_replace(true);
+                    let error = Error::Invalid(format!("Reconnect Plugin Settings: {error}"));
+                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                    continue;
+                }
+            };
+            match operations.admit_grpc(&next, lane) {
+                Ok(admission) => next.admission = Some(Arc::new(admission)),
+                Err(error) => {
+                    next.connection.closed.send_replace(true);
+                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                    continue;
+                }
+            }
+            let opening = clock.timeout_at(deadline, Publications::open(&streams, &next, &clock, &settings, &operations));
+            let opened = tokio::select! {
+                biased;
+                _ = stopping(&mut stop, &mut participant) => Err(None),
+                result = opening => result.map_err(|_| Some(Error::Timeout("reconnect"))).and_then(|result| result.map_err(Some)),
+            };
+            match opened {
+                Ok(opened) => publications = opened,
+                Err(failure) => {
+                    next.connection.closed.send_replace(true);
+                    next.admission.as_ref().unwrap().remove();
+                    let Some(error) = failure else { return Ok(()) };
+                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
+                    continue;
+                }
+            }
+            activation = next;
+            status.send_replace(Status {
+                activation: Some(activation.clone()),
+                failure: None,
+            });
+            break;
         }
     }
 }

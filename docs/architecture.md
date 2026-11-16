@@ -1207,21 +1207,39 @@ Samples.Append service is recreated. Compose the library's host resources direct
 
 `crates/harmos-runtime/src/plugin/grpc/managed.rs` owns a native child immediately
 after spawn, before readiness. Startup has a retained task and runtime stop
-participant; cancelling the caller or a manager worker signals that owner and
+participant. The spawn is never raced against cancellation, so cancelling the
+caller or a manager worker signals that owner once the child exists, and the owner
 awaits termination and exit. Readiness failures, connection failures and staged
-replacement rollback settle the same child. Ready processes retain graceful Stop
-through the existing placement deadline. Reaping never waits on a child the host
-has not signalled: Stop awaits the requested exit until the teardown deadline, then
-kills; a disconnected child is killed at once. After a kill, the exit is reaped
-within a fresh `stop_grace` measured from the kill, so a slow drain cannot turn
-into a reap failure.
+replacement rollback settle the same child.
+
+Reaping never waits on a child the host has not signalled. Every ending first
+settles its bindings, then releases the plugin in phases that each get their own
+`PlacementSettings::stop_grace`, measured when the phase starts:
+
+1. Settle: bindings and publications drain, or are cancelled at the deadline.
+2. Stop: the host sends Stop and awaits the requested exit, so the plugin is always
+   told to stop before it is killed, even when settling spent its whole grace.
+3. Kill: a child still running is killed and reaped within a fresh grace measured
+   from the kill, so a slow drain cannot turn into a reap failure.
+
+A disconnected child cannot receive Stop, so it is killed as soon as its bindings
+settle; a child that exited is only reported. Teardown therefore ends within
+`2 × stop_grace` for a remote plugin and within `3 × stop_grace` for a managed one.
+
+Every managed child is forked from one process-lifetime spawner thread
+(`managed/spawner.rs`) on every platform. A request whose caller is gone is dropped
+unforked. A child forked for a caller that left meanwhile is handed to its process
+owner, which kills it and reaps it under the runtime stop participant. A panic
+answers only the request that raised it, with an error naming the start; the thread
+keeps serving. Should the thread end anyway, the next spawn starts a new one.
 
 The host's death ends its managed children on Linux: the spawn sets
 `PR_SET_PDEATHSIG` to `SIGKILL` and rechecks the parent to close the fork race.
-Linux delivers that signal when the forking thread exits, so every managed child
-is forked from one process-lifetime spawner thread rather than a runtime worker
-that may retire. macOS is not covered. On Windows the hosting product owns
-process-tree lifetime, for example with a job object that kills on close.
+Linux delivers that signal when the forking thread exits, which is why the spawner
+thread lives for the whole process rather than on a runtime worker that may retire.
+If the spawner thread ended anyway, Linux kills the children it forked and their
+attachments report the exit. macOS is not covered. On Windows the hosting product
+owns process-tree lifetime, for example with a job object that kills on close.
 
 Manager Delete and installation reuse follow successful settlement. Candidate
 bundles are kept out of synchronous temporary-directory cleanup once launch is
@@ -1267,7 +1285,11 @@ own clock for the lifetime of a scoped unit of work:
 ```rust,ignore
 let activation = plugins.activation("plugins/example").await?;
 let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
-binding.operations().call_encoded(operation, payload).await?;
+binding.operations().call_encoded(initialize, payload).await?; // the plugin registers the unit
+binding.start_samples().await?;
+// ... the unit runs; the host ticks its streams on the unit clock ...
+binding.stop_samples().await?;
+binding.operations().call_encoded(cleanup, payload).await?; // the plugin ends the unit
 binding.close().await?;
 ```
 
@@ -1279,9 +1301,19 @@ The activation must belong to that runtime and still be admitted; duplicate live
 same activation and scope refuse. The product owns the scope's meaning, time
 advancement and admission policy. Scope text is selection context, never authority.
 Binding does not change declarations, endpoints, the plugin process or its single
-physical connection. It opens additional Samples demands with the existing
-`SamplesSelection.scope` and retains the activation's admitted stream writers.
-Opening uses the attachment's configured connect timeout on the runtime clock.
+physical connection, and it opens no Samples demand: calls are bound at once,
+sample demand is controlled separately. `start_samples()` opens one Samples demand
+per declared stream with the existing `SamplesSelection.scope` and retains the
+activation's admitted stream writers; opening uses the attachment's configured
+connect timeout on the runtime clock. `stop_samples()` settles only that demand
+within `stop_grace`: in-flight ticks either answer or are cancelled, accepted
+samples are drained and committed, and the demand's Samples responses end. Calls
+stay bound. The host grants a scope ticks only between start and stop, so a product
+starts demand after its plugin has registered the unit and stops it before the
+plugin's cleanup ends the unit; no tick reaches the plugin outside that interval.
+Demand may start again after a stop. Start and stop bound the windows the host
+grants under the windowed-batch direction. `close()` settles any demand still open
+together with the unit's calls.
 
 The binding's operation handle carries a local clock resource through descendants,
 including plugin child calls to Time.Get and Time.Sleep. Portable context cannot
@@ -1311,6 +1343,22 @@ unit_time.advance_by(sample_interval).await;
 binding.close().await?;
 ```
 
+A scoped sleep settles after the ticks it spans. A clock wait of a scoped call that
+ends at instant `t` (Time.Sleep or an operation's admitted wait) settles only after
+every sample tick of the same unit due at or before `t` has been answered and its
+sample committed, on every clock kind. "Due" follows the demand's schedule, which
+anchors each next tick at the instant the previous one fired: on a controlled clock
+a sleep of N periods spans exactly N ticks, while on the real clock firing latency
+delays later ticks and the sleep may span fewer. A plugin that sleeps and then reads
+its observer state sees every tick due by the sleep's end. Waits inside a sample
+tick's own call tree are exempt, since that tick cannot be answered before them. A
+tick whose handler waits on something the sleeping call holds therefore holds that
+sleep until the call's own policy deadline. Each scoped interval demand records its next unanswered tick in the unit
+(`operations/clock.rs`); under windowed batches the rule becomes: the window ending
+at `t` is committed before a sleep ending at `t` settles.
+`plugin_grpc::scoped_sleep::a_sleep_spanning_1024_ticks_observes_1024` and its 1,023
+and 1,025 siblings read the count after one sleep with no wait in the plugin.
+
 Concurrent and nested waits inside one operation share its activity without a
 lock; the activity parks only while all of its waits park, so joined waits never
 serialize or stall virtual time.
@@ -1320,8 +1368,8 @@ settles; no binding task outlives its attachment.
 
 | State | Entered when | Leaves when |
 | ----- | ------------ | ----------- |
-| Preparing | `bind_grpc` admits the scope under the attachment's bindings lock | Samples demands open, preparation fails, or the attachment starts settling |
-| Serving | Demands are open and `bind_grpc` returns the handle | `close()`, the handle is dropped, or the attachment settles |
+| Serving | `bind_grpc` admits the scope under the attachment's bindings lock and returns the handle | `start_samples()`, `close()`, the handle is dropped, or the attachment settles |
+| Sampling | `start_samples()` opened the demands | `stop_samples()` settles them back to Serving, `close()`, the handle is dropped, or the attachment settles |
 | Settling | Close was requested | The steps below finish or their deadline passes |
 | Settled | The outcome is published | `close()` returns it |
 
@@ -1337,15 +1385,34 @@ withdraws its operations. Only then does it send Stop, kill and reap a managed
 process, or start reconnecting a remote one.
 
 The deadline is `PlacementSettings::stop_grace` on the runtime clock, measured
-when settling starts. The unit clock never bounds it. `ScopedBinding::close`
-returns within that bound. On `Error::Deadline { action: "Close Scoped Plugin" }`
+when settling starts. The unit clock never bounds it. Cancelled calls settle
+alongside the drain, so each has the whole grace. `ScopedBinding::close` returns
+within that bound. On `Error::Deadline { action: "Close Scoped Plugin" }`
 the demands were cancelled; rows accepted before the deadline remain delivered.
 The plugin did not end its Samples response after the host half-closed it, which
-the SDK conformance suite requires. Teardown holds a runtime-clock activity, so a
-virtual runtime clock never expires settlement work that is still in progress.
+the SDK conformance suite requires.
+
+The bound holds on every clock kind. Teardown parks its runtime-clock activity
+while it waits on the plugin, and a demand parks its activity while it awaits the
+plugin's end of its Samples response, so a virtual runtime clock reaches the
+deadline once its controller advances. Accepted host ingestion holds a
+runtime-clock activity until it completes, so virtual time never expires host work
+in progress. A controller that advances while a stop, close or disconnect waits on
+the plugin may therefore expire that wait even for a plugin that would answer;
+advance past `stop_grace` only to exercise the deadline. A cancelled call that is
+still running at the deadline remains owned by its operation entry, whose own
+policy and settlement govern it.
+
 Connection loss or plugin exit still awaits accepted scoped ingestion before the
-binding reports the transport failure. Remote attachments retain that failure in
-their disconnected status and continue reconnecting under the placement policy.
+binding reports the transport failure. A settlement failure is logged with its
+action on every ending, returned by `stop()` after a Stop request and kept in a
+remote attachment's disconnected status. Remote attachments continue reconnecting
+under the placement policy. One `connect_timeout` bounds each reconnect attempt,
+including opening its publications, and stop interrupts every step. An attempt
+that cannot select the retained settings, admit its operations or open its
+publications closes its connection, reports the failure in the status and retries
+after `reconnect_delay`. Leases belong to their activation, so a cleanup that
+missed its deadline never affects the next one.
 Retained operation handles refuse new work after closure. Closing one binding
 leaves the other scopes and the original unscoped publication active.
 
@@ -1354,8 +1421,12 @@ and demands after attachment, holds one ingestion boundary, closes that scope,
 then settles only the other scope's sleep by advancing its clock. It checks
 scope-stamped rows and proves the original unscoped demand still operates.
 `plugin_grpc::binding_lifecycle` drives each ending with a live binding: a drain
-outliving `stop_grace`, a plugin that ignores half-close, plugin exit, managed
-disconnect, runtime shutdown, a bind racing stop and a bind during reconnect.
+outliving `stop_grace`, a plugin that ignores half-close on the manual and on a
+virtual runtime clock, Stop after a spent drain, plugin exit, managed disconnect,
+runtime shutdown, both orders of a bind and stop at the bindings lock, a bind
+during reconnect, a remote cleanup that misses its deadline then reconnects, and
+sample demand that ticks the plugin only between `start_samples()` and
+`stop_samples()` while the binding stays bound.
 
 Rust client retained admission bounds each generated oneof by its largest variant,
 with presence/alignment and boxed recursive edges, and scans the actual wire values
