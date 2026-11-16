@@ -59,6 +59,7 @@ fn main() {
             reconnect_delay: Duration::from_secs(1),
             stop_grace: Duration::from_secs(30),
             stream_window: NonZeroUsize::new(8).unwrap(),
+            interval_window: std::time::Duration::from_secs(1),
         };
         let attached = runtime.attach_grpc(placement, settings).await.unwrap();
         let process = attached.activation().unwrap().process_id.unwrap();

@@ -407,6 +407,7 @@ pub fn settings() -> PlacementSettings {
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(30),
         stream_window: std::num::NonZeroUsize::new(64).unwrap(),
+        interval_window: std::time::Duration::from_secs(1),
     }
 }
 

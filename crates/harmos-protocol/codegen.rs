@@ -69,7 +69,7 @@ pub fn generate_conformance(compiler: &Path, includes: &Path, output: &Path) -> 
     };
     std::fs::write(output.join("caller-request.bin"), prost::Message::encode_to_vec(&request))?;
     let descriptors =
-        harmos_protocol::schema::operation_types(&descriptors, &["conformance.model.v1.Graph", "conformance.model.v1.PayloadOnly"])?;
+        harmos_protocol::schema::operation_types(&descriptors, &["conformance.model.v1.Graph", "conformance.model.v1.PayloadOnly", "conformance.model.v1.Values"])?;
     std::fs::write(output.join("conformance-descriptors.bin"), prost::Message::encode_to_vec(&descriptors))?;
     Ok(())
 }

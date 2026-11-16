@@ -5,5 +5,6 @@ namespace harmos::conformance {
 using Graph = ::conformance::model::v1::Graph;
 using PayloadOnly = ::conformance::model::v1::PayloadOnly;
 using Value = ::conformance::model::v1::Value;
+using Values = ::conformance::model::v1::Values;
 using Zebra = ::conformance::model::v1::Zebra;
 } // namespace harmos::conformance
