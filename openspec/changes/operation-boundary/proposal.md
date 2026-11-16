@@ -1,0 +1,69 @@
+# Operation Boundary
+
+## Why
+
+Products reach Harmos through six crates, public manager fields, two manager `Deref`
+implementations, whole-crate re-exports and engine types inside operation results. A product
+can therefore bypass storage operations and re-implement statistics beside the query engine,
+and every Harmos host operation is served on the wire unless a product narrows it. The owner
+locked one boundary on 2026-11-16: products build a runtime and call operations; everything
+else is internal, and nothing a product does not wrap leaves the process.
+
+## What Changes
+
+Owner decisions locked on 2026-11-16. Status per row: **proposed** until its tasks land;
+**landed** only where stated.
+
+| Decision | Direction |
+| --- | --- |
+| Storage only through operations | A product registers its storage backend and calls storage operations for every other persistence need. Harmos closes the operation gaps that force direct access. |
+| One statistics home | All aggregation and statistics kernels live in `harmos-query::statistics` and are reachable only through `storage.list_rows` transforms. Floating-point RMS and standard deviation are accepted; no exact-integer statistics machinery is added. |
+| Idiomatic public surface | Public Harmos is runtime building and initialization, operation calling, backend authoring contracts and the plugin authoring SDK. No manager `Deref`, no manager getters, no engine, query or reader types, no engine types in operation results. |
+| Private host operations | **BREAKING.** Every Harmos host operation is in-process only and carries no gRPC exposure marker. A product exposes one by declaring its own wrapper operation that calls it in-process. Caller narrowing (`composition`) is deleted; glob exposure filters are rejected. |
+| Plugin protocol stays on the wire | The plugin carrier (instance, invocation, windows, samples, child calls), plugin-declared operations and their Private/Protected/Public visibility remain unchanged. |
+
+- Add storage operations for compound atomic mutation, object and scoped deletion, and
+  bootstrap/offline maintenance without a fully started runtime.
+- Add query transforms for scale, offset and contains; consolidate shared multi-percentile,
+  box summaries and mergeable summaries; add a bounded mergeable bucket-summary transform.
+- **BREAKING:** the builder takes backends, catalog and settings and owns every manager;
+  `harmos-runtime` narrows to the facade; operation results use operation-owned DTOs.
+- **BREAKING:** client SDK resources over Harmos host operations are deleted; product
+  generators project the product's own wrappers. Plugin-to-host facilities the plugin SDK
+  needs move into the plugin protocol (proposed default, see design.md).
+
+Precedent, landed: "Storage remains Private and in-process. Products own typed file, upload,
+query, record and object wire operations over those native calls" (docs/architecture.md,
+Native Type Ownership). This change applies the same rule to every host operation.
+
+Supersedes: the caller narrowing contract in docs/architecture.md (Product Composition and
+Narrowing), the `storage-interface` statement that no cross-method transaction is assumed
+(compound mutation is now an operation), and the direct `StorageManager` construction
+contract in docs/product-guide.md.
+
+## Capabilities
+
+### New Capabilities
+
+- `host-facade`: the public Rust surface of the host runtime and its dependency fence.
+- `host-operation-exposure`: private-by-default host operations, product wrappers and the
+  plugin protocol facilities that stay on the wire.
+- `storage-operation-coverage`: compound mutation, deletion and bootstrap/offline storage
+  operations.
+- `query-statistics`: expression transforms and the single statistics kernel home.
+
+### Modified Capabilities
+
+- `runtime-registration`: registration verbs live on the runtime and builder; managers are
+  internal owners, not public registration surfaces.
+
+## Impact
+
+`crates/harmos-runtime` (facade, builder, operation caller), `crates/harmos-operations`
+(storage native operations, result DTOs, host catalog), `crates/harmos-storage` (compound
+mutation, deletion, maintenance hooks), `crates/harmos-query` (statistics, transforms),
+`crates/harmos-domain` (query plan contracts), `proto/harmos/{host,plugin,model}/v1`,
+all four SDKs and their generators, conformance, the Schematic example, runtime and storage
+stories, `docs/architecture.md`, `docs/product-guide.md` and `docs/storage.md`.
+Products adopt each landed revision in their own change; development storage policy allows
+clean breaks without migrations.
