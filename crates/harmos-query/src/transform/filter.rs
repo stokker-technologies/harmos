@@ -16,13 +16,14 @@ pub use harmos_domain::model::storage::query::transform::filter::{Clause, Compar
 /* === Imports === */
 
 // Standard Library Imports
+use std::slice;
 
 // Third Party Imports
 use arrow_array::RecordBatch;
 use arrow_schema::Schema;
 
 // Local Imports
-use super::{invalid, scalar_type, take};
+use super::{invalid, literal_matches, scalar_type, take};
 use crate::Result;
 use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
@@ -64,7 +65,7 @@ impl FilterExecution for Filter {
                 return Err(invalid("filter requires scalar fields"));
             }
             let values: &[ScalarValue] = match &term.condition {
-                Condition::Compare { value, .. } => std::slice::from_ref(value),
+                Condition::Compare { value, .. } => slice::from_ref(value),
                 Condition::In { values } if values.len() <= 4096 => values,
                 Condition::In { .. } => return Err(invalid("filter set is too large")),
                 Condition::IsNull => &[],
@@ -74,30 +75,7 @@ impl FilterExecution for Filter {
                 if matches!(value, ScalarValue::Null | ScalarValue::Missing) {
                     return Err(invalid("use IsNull for absent value tests"));
                 }
-                let compatible = match (field.data_type(), value) {
-                    (arrow_schema::DataType::Boolean, ScalarValue::Bool(_)) => true,
-                    (
-                        arrow_schema::DataType::Int8
-                        | arrow_schema::DataType::Int16
-                        | arrow_schema::DataType::Int32
-                        | arrow_schema::DataType::Int64,
-                        ScalarValue::Signed(_),
-                    ) => true,
-                    (
-                        arrow_schema::DataType::UInt8
-                        | arrow_schema::DataType::UInt16
-                        | arrow_schema::DataType::UInt32
-                        | arrow_schema::DataType::UInt64,
-                        ScalarValue::Unsigned(_),
-                    ) => true,
-                    (arrow_schema::DataType::Float32 | arrow_schema::DataType::Float64, ScalarValue::Float(_)) => true,
-                    (arrow_schema::DataType::Utf8, ScalarValue::Text(_)) => true,
-                    (arrow_schema::DataType::Timestamp(_, _), ScalarValue::Datetime(_)) => true,
-                    (kind, ScalarValue::Exact(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_)) if kind == &super::exact_type() => {
-                        true
-                    }
-                    _ => false,
-                };
+                let compatible = literal_matches(field.data_type(), value);
                 if !compatible {
                     return Err(invalid("filter literal type differs from field"));
                 }

@@ -11,6 +11,7 @@
 
 pub mod aggregate;
 pub mod downsample;
+pub mod expression;
 pub mod filter;
 pub mod histogram;
 pub mod project;
@@ -21,6 +22,8 @@ pub mod sort;
 /* === Imports === */
 
 // Standard Library Imports
+use std::mem;
+use std::num::{NonZeroU64, NonZeroUsize};
 
 // Third Party Imports
 
@@ -43,19 +46,22 @@ pub struct FieldPath {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TimeBucketPlan {
     pub origin_ns: i64,
-    pub width_ns: std::num::NonZeroU64,
+    pub width_ns: NonZeroU64,
     pub time: String,
     pub value: String,
     pub identity: String,
     pub group: Vec<String>,
-    pub max_samples: std::num::NonZeroUsize,
-    pub max_bytes: std::num::NonZeroUsize,
+    pub max_samples: NonZeroUsize,
+    pub max_bytes: NonZeroUsize,
 }
 
 /* === Enums === */
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Transform {
+    Scale(expression::Scale),
+    Offset(expression::Offset),
+    Contains(expression::Contains),
     Filter(filter::Filter),
     Project(project::Project),
     Aggregate(aggregate::Aggregate),
@@ -78,36 +84,39 @@ impl From<&str> for FieldPath {
 }
 impl Transform {
     pub fn is_streaming(&self) -> bool {
-        matches!(self, Self::Filter(_) | Self::Project(_))
+        matches!(self, Self::Scale(_) | Self::Offset(_) | Self::Contains(_) | Self::Filter(_) | Self::Project(_))
     }
 }
 impl MemorySize for FieldPath {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.fields.memory_size().saturating_sub(std::mem::size_of_val(&self.fields))
+        mem::size_of::<Self>() + self.fields.memory_size().saturating_sub(mem::size_of_val(&self.fields))
     }
 }
 impl MemorySize for Transform {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             + match self {
-                Self::Filter(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Project(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Aggregate(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Histogram(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Downsample(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::Sort(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
-                Self::TimeBuckets(value) => value.memory_size().saturating_sub(std::mem::size_of_val(value)),
+                Self::Scale(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Offset(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Contains(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Filter(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Project(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Aggregate(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Histogram(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Downsample(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::Sort(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::TimeBuckets(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
             }
     }
 }
 
 impl MemorySize for TimeBucketPlan {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             + self.time.capacity()
             + self.value.capacity()
             + self.identity.capacity()
-            + self.group.memory_size().saturating_sub(std::mem::size_of_val(&self.group))
+            + self.group.memory_size().saturating_sub(mem::size_of_val(&self.group))
     }
 }
 

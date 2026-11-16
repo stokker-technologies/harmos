@@ -38,6 +38,9 @@ mod snapshot;
 
 /* === Re-Exports === */
 
+pub use harmos_domain::model::storage::query::scalar::ScalarValue;
+pub use harmos_domain::model::storage::query::transform::expression::{Contains, Offset, Scale};
+
 pub use maintenance::{CopyBackend, CopyBackendRequest, DisposeBackend, DisposeBackendRequest};
 
 pub use compound::{DeleteObject, DeleteScope};

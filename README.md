@@ -41,6 +41,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Managed State**: Apply typed transactions, inspect history and scope undo or redo to selected changes.
 - **Operations and Services**: Define requests and streams with explicit timeout, retry and cancellation policies, including typed final responses from cooperative cancellation; keep resources with the work that owns them.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
+  Query rows with [scale, offset and containment transforms](docs/storage.md#expression-transforms).
   Run [storage operations during preparation](docs/storage.md#storage-before-full-startup) or offline maintenance before full startup.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.

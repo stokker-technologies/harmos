@@ -54,6 +54,40 @@ It cannot erase the minimal assembly's active backend. The memory reference impl
 both hooks, refuses nonempty or active copy targets and keeps the copied data independent
 of later source writes. Products implement physical copy and disposal in their backends.
 
+## Expression Transforms
+
+`storage.list_rows` accepts streaming `Transform::Scale`, `Transform::Offset` and
+`Transform::Contains` values exported with their plan types from
+`harmos_runtime::builtins::storage`. Each names an input
+`field` and an output `name`; a new name appends a column and an existing name replaces
+that column. Chain transforms to scale a numeric field, offset the result and project
+only the columns a product needs.
+
+```rust
+use harmos_runtime::builtins::storage::{Contains, Offset, ScalarValue, Scale, Transform};
+
+let transforms = vec![
+    Transform::Scale(Scale { field: "payload.value".into(), name: "scaled".into(), factor: 2.0 }),
+    Transform::Offset(Offset { field: "scaled".into(), name: "shifted".into(), amount: -1.0 }),
+    Transform::Contains(Contains {
+        field: "_storage.item".into(), name: "selected".into(), value: ScalarValue::Text("first".into()),
+    }),
+];
+```
+
+Scale takes a finite `factor`; Offset takes a finite `amount`. They produce Float64
+columns, including the usual floating conversion of integer and exact inputs. Arithmetic
+overflow refuses the query and asks the caller to reduce the operand. Null values, null
+parent structures and nonfinite source values remain null. Missing schema paths retain
+the existing field-validation refusal.
+
+Contains takes a typed scalar `value`. Text containment is case-sensitive substring
+matching; scalar-list containment uses the same typed equality as filters. Null parent
+structures and null input fields produce null; null or nonfinite list members do not
+match a nonnull needle. Empty lists produce false. Incompatible field/needle types and
+null needles refuse during schema validation. All three transforms preserve source row
+order, use the ordinary row-page bounds and observe query cancellation while scanning.
+
 ## Operational Policy and Admission
 
 `StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the

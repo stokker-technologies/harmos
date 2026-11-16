@@ -1130,6 +1130,15 @@ The source still exposes the older managers and host services until the breaking
 groups close; those are migration inputs, not the agreed product contract. See
 `openspec/changes/operation-boundary/tasks.md` for completed groups and usable pins.
 
+### Streaming Field Expressions
+
+Scale, Offset and Contains are domain query declarations executed in `harmos-query`
+through native `storage.list_rows`. Scale and Offset derive Float64 columns; Contains
+supports strings and scalar lists. The streaming prefix preserves row order and parent
+nulls without spooling the source. Field-path null handling and typed literal matching
+have one owner shared with filters, so containment does not define a second comparison
+or missing-value policy. Products select output names and query/page bounds.
+
 ### Storage-Only Assembly
 
 The builder's `storage_only()` borrows assembly until its storage session is released.

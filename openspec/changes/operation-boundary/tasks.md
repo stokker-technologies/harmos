@@ -40,7 +40,7 @@ Group 4 Pin: `db49e1e7dc7da0549edaa4f231af6b4e2382ca02` (drain/reopen assembly, 
 
 ## 5. Expression Transforms
 
-- [ ] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
+- [x] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
 
 ## 6. Statistics Consolidation
 

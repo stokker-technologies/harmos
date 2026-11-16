@@ -11,6 +11,7 @@
 
 pub mod aggregate;
 pub mod downsample;
+pub mod expression;
 pub mod filter;
 pub mod histogram;
 pub mod project;
@@ -29,12 +30,13 @@ pub use sort::SortExecution;
 /* === Imports === */
 
 // Standard Library Imports
+use std::num::NonZeroU128;
 use std::sync::Arc;
 
 // Third Party Imports
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BooleanArray, Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, NullArray,
-    RecordBatch, StringArray, StructArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    RecordBatch, RecordBatchOptions, StringArray, StructArray, TimestampNanosecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 
@@ -79,12 +81,13 @@ impl FieldPathExecution for FieldPath {
         let mut found = None;
         let mut nullable = false;
         for (index, name) in self.fields.iter().enumerate() {
-            let field = fields.iter().find(|field| field.name() == name).ok_or_else(|| invalid("query field does not exist"))?;
+            let field =
+                fields.iter().find(|field| field.name() == name).ok_or_else(|| invalid("select a field present in the query schema"))?;
             nullable |= field.is_nullable();
             found = Some(field.as_ref().clone().with_nullable(nullable));
             if index + 1 < self.fields.len() {
                 let DataType::Struct(children) = field.data_type() else {
-                    return Err(invalid("field path traverses a non-struct value"));
+                    return Err(invalid("traverse only struct fields in a query path"));
                 };
                 fields = children;
             }
@@ -93,37 +96,30 @@ impl FieldPathExecution for FieldPath {
     }
 
     fn array<'a>(&self, batch: &'a RecordBatch) -> Result<&'a ArrayRef> {
-        let first = self.fields.first().ok_or_else(|| invalid("empty field path"))?;
-        let mut array = batch.column_by_name(first).ok_or_else(|| invalid("query field does not exist"))?;
+        let first = self.fields.first().ok_or_else(|| invalid("supply a nonempty query field path"))?;
+        let mut array = batch.column_by_name(first).ok_or_else(|| invalid("select a field present in the query schema"))?;
         for name in self.fields.iter().skip(1) {
             let structure =
-                array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("field path traverses a non-struct value"))?;
-            array = structure.column_by_name(name).ok_or_else(|| invalid("query child field does not exist"))?;
+                array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("traverse only struct fields in a query path"))?;
+            array = structure.column_by_name(name).ok_or_else(|| invalid("select a child present in the query schema"))?;
         }
         Ok(array)
     }
 
     fn value(&self, batch: &RecordBatch, row: usize) -> Result<ScalarValue> {
-        let first = self.fields.first().ok_or_else(|| invalid("empty field path"))?;
-        let mut array = batch.column_by_name(first).ok_or_else(|| invalid("query field does not exist"))?;
-        if array.is_null(row) {
-            return Ok(ScalarValue::Null);
+        match array_at(self, batch, row)? {
+            Some(array) => scalar(array.as_ref(), row),
+            None => Ok(ScalarValue::Null),
         }
-        for name in self.fields.iter().skip(1) {
-            let structure =
-                array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("field path traverses a non-struct value"))?;
-            array = structure.column_by_name(name).ok_or_else(|| invalid("query child field does not exist"))?;
-            if array.is_null(row) {
-                return Ok(ScalarValue::Null);
-            }
-        }
-        scalar(array.as_ref(), row)
     }
 }
 
 impl TransformExecution for Transform {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
         match self {
+            Self::Scale(value) => expression::numeric_schema(input, &value.field, &value.name, value.factor),
+            Self::Offset(value) => expression::numeric_schema(input, &value.field, &value.name, value.amount),
+            Self::Contains(value) => expression::contains_schema(input, value),
             Self::Filter(value) => value.output_schema(input),
             Self::Project(value) => value.output_schema(input),
             Self::Aggregate(value) => value.output_schema(input),
@@ -136,6 +132,13 @@ impl TransformExecution for Transform {
 
     fn apply(&self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<RecordBatch> {
         match self {
+            Self::Scale(value) => {
+                expression::numeric(input, &value.field, &value.name, value.factor, |number| number * value.factor, check)
+            }
+            Self::Offset(value) => {
+                expression::numeric(input, &value.field, &value.name, value.amount, |number| number + value.amount, check)
+            }
+            Self::Contains(value) => expression::contains(input, value, check),
             Self::Filter(value) => value.apply(input, check),
             Self::Project(value) => value.apply(input, check),
             Self::Aggregate(value) => value.apply(input, check),
@@ -144,6 +147,36 @@ impl TransformExecution for Transform {
             Self::Sort(value) => value.apply(input, check),
             Self::TimeBuckets(value) => super::time_buckets::apply(value, input, check),
         }
+    }
+}
+
+pub(super) fn array_at<'a>(field: &FieldPath, batch: &'a RecordBatch, row: usize) -> Result<Option<&'a ArrayRef>> {
+    let first = field.fields.first().ok_or_else(|| invalid("supply a nonempty query field path"))?;
+    let mut array = batch.column_by_name(first).ok_or_else(|| invalid("select a field present in the query schema"))?;
+    if array.is_null(row) {
+        return Ok(None);
+    }
+    for name in field.fields.iter().skip(1) {
+        let structure =
+            array.as_any().downcast_ref::<StructArray>().ok_or_else(|| invalid("traverse only struct fields in a query path"))?;
+        array = structure.column_by_name(name).ok_or_else(|| invalid("select a child present in the query schema"))?;
+        if array.is_null(row) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(array))
+}
+
+pub(super) fn literal_matches(data_type: &DataType, value: &ScalarValue) -> bool {
+    match (data_type, value) {
+        (DataType::Boolean, ScalarValue::Bool(_)) => true,
+        (DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64, ScalarValue::Signed(_)) => true,
+        (DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64, ScalarValue::Unsigned(_)) => true,
+        (DataType::Float32 | DataType::Float64, ScalarValue::Float(_)) => true,
+        (DataType::Utf8, ScalarValue::Text(_)) => true,
+        (DataType::Timestamp(_, _), ScalarValue::Datetime(_)) => true,
+        (kind, ScalarValue::Exact(_) | ScalarValue::Signed(_) | ScalarValue::Unsigned(_)) if kind == &exact_type() => true,
+        _ => false,
     }
 }
 
@@ -162,7 +195,7 @@ pub(super) fn take(input: &RecordBatch, indices: Vec<u64>) -> Result<RecordBatch
         .iter()
         .map(|column| arrow_select::take::take(column.as_ref(), &indices, None).map_err(|_| invalid("Arrow row selection failed")))
         .collect::<Result<Vec<_>>>()?;
-    RecordBatch::try_new_with_options(input.schema(), columns, &arrow_array::RecordBatchOptions::new().with_row_count(Some(indices.len())))
+    RecordBatch::try_new_with_options(input.schema(), columns, &RecordBatchOptions::new().with_row_count(Some(indices.len())))
         .map_err(|_| invalid("Arrow selected batch is invalid"))
 }
 
@@ -216,7 +249,7 @@ fn exact_value(value: &StructArray, row: usize) -> Result<ScalarValue> {
     let denominator = value.column(2).as_any().downcast_ref::<BinaryArray>().expect("validated exact denominator");
     let numerator = u128::from_le_bytes(numerator.value(row).try_into().map_err(|_| invalid("exact numerator requires 16 bytes"))?);
     let denominator = u128::from_le_bytes(denominator.value(row).try_into().map_err(|_| invalid("exact denominator requires 16 bytes"))?);
-    let denominator = std::num::NonZeroU128::new(denominator).ok_or_else(|| invalid("zero exact denominator"))?;
+    let denominator = NonZeroU128::new(denominator).ok_or_else(|| invalid("zero exact denominator"))?;
     let exact = ExactNumber::new(sign.value(row), numerator, denominator);
     if exact.numerator != numerator || exact.denominator != denominator || exact.negative != sign.value(row) {
         return Err(invalid("noncanonical exact number"));
