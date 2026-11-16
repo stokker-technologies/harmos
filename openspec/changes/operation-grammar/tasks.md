@@ -353,7 +353,7 @@ No push or specification lifecycle command is authorized.
 
 ## Scoped Binding Lifecycle Restructure
 
-An independent review of the scoped binding at `dev` the merged candidate found defects in two seams: teardown and clock registration. Point repairs have not closed them, so both seams are restructured. `bind_grpc`, `operations` and `close` keep their signatures; binding no longer opens Samples demand, which `start_samples()` and `stop_samples()` now open and settle.
+Scoped binding admission, settlement and clock registration are implemented below; the remaining second-sleep refusal stays open under SB.2. The original review identified teardown and registration defects. Binding still separates call ownership from explicit start_samples()/stop_samples() demand; facade and lifecycle API replacement belong to the replacing changes.
 
 - [x] SB.1 Implement attachment-owned binding admission and one bounded settlement path for close, stop, drop, disconnect and plugin exit. scoped.rs registers under the attachment lock and settles through Publications within stop_grace; managed attachment teardown cancels and reaps the placement. Native platform reruns remain 6.2.
 - [ ] SB.2 Complete the remaining second-sleep contract: return a typed error when the same call requests an unsupported second sleep, with a deterministic native/typed-call guard. Admission registration is implemented under SB.2.1, but Registered::sleep currently creates a new timer after its registered timer is consumed; do not mark this whole requirement complete from the registration repair.
@@ -364,7 +364,7 @@ An independent review of the scoped binding at `dev` the merged candidate found 
 
 ## Interval Tick Throughput
 
-A product measured, at the merged candidate in a debug build, that one interval stream runs strictly serially (`plugin/grpc/publish.rs`): sleep to the tick, send the tick to the plugin as a full admitted operation call, wait for the sample, and only then schedule the next tick. An observer that reads the time adds a second full call. On the real clock, a 1 ms observer reached about 470 samples per second; under the controlled clock, each tick cost about 6.7 ms.
+The former per-tick sampling path is replaced by host-granted windows. IT.4 records the completed source contract and benchmark inventory; IT.2 retains the unverified product slowdown and long-run preparation-budget investigation.
 
 - [x] IT.1 The per-tick benchmark inventory is superseded by the implemented window benchmark in IT.4.8: real/controlled clocks, one-sample/window observers and 1/16/128 streams at the declared rates. Product-guide figures describe that benchmark; unperformed native/hosted measurements remain 6.2.
 - [ ] IT.2 Verify the reported product publication slowdown after adopting the window implementation, and establish whether preparation bytes accumulate over a long run. Encoder scratch/preparation release is implemented under IT.4.4; it alone does not establish the cause of the product observation. Retain measurements outside deterministic tests.
