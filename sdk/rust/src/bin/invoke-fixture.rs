@@ -350,6 +350,17 @@ fn main() -> Result<()> {
         let stream = Stream::<Reading>::new("fixture.split");
         let observer = Observer::window(&stream, split_observe).every(ProtoDuration { seconds: 0, nanos: 1_000 }).window_setting("window");
         Plugin::new("split", "1.0.0").settings(duration_setting("window", "Window", 2, 0)).stream(stream).observer(observer)
+    } else if mode == "bulky" {
+        // One-Mebibyte Samples Every Second: One Long Window Outgrows the Shared Publication Pool.
+        let stream = Stream::<Value>::new("fixture.bulky");
+        let observer =
+            Observer::new(&stream, async |_: &Context| Ok(Value { value: vec![0; 1 << 20] })).every(ProtoDuration { seconds: 1, nanos: 0 });
+        Plugin::new("bulky", "1.0.0").stream(stream).observer(observer)
+    } else if mode == "dense" {
+        // One-Microsecond Readings Without a Window Setting: the Host's Window Length Alone Sizes Each Window.
+        let stream = Stream::<Reading>::new("fixture.dense");
+        let observer = Observer::window(&stream, split_observe).every(ProtoDuration { seconds: 0, nanos: 1_000 });
+        Plugin::new("dense", "1.0.0").stream(stream).observer(observer)
     } else if mode == "interval" {
         let stream = Stream::<Value>::new("fixture.interval");
         let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");

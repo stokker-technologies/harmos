@@ -126,7 +126,7 @@ impl Table {
             pump,
             visibility: Arc::new(RwLock::new(())),
             publications: Arc::new(super::publication::Pool::new()),
-            ingest: Arc::new(super::ingest::Ingest::new()),
+            ingest: Arc::new(super::ingest::Ingest::new(resume.0)),
             #[cfg(feature = "plugin-guest")]
             listeners: Mutex::new(BTreeMap::new()),
         };

@@ -30,9 +30,11 @@ use tokio::sync::watch;
 /* === Structs === */
 
 // The cursor each live feed has taken in. A plugin publication never evicts
-// a row past the slowest feed, and a sidecar publication waits for it.
+// a row past the slowest feed or past what storage consumers have drained,
+// and a sidecar publication waits for the feeds.
 pub(crate) struct Ingest {
     taken: watch::Sender<BTreeMap<u64, u64>>,
+    drained: AtomicU64,
     next: AtomicU64,
     work: Mutex<BTreeMap<u64, Vec<crate::clock::Activity>>>,
 }
@@ -62,6 +64,7 @@ impl Ingest {
     }
 
     pub(crate) fn drained(&self, cursor: u64) {
+        self.drained.store(cursor, Ordering::Release);
         self.work.lock().expect("stream work lock is healthy").retain(|pending, _| *pending > cursor);
         self.wake();
     }
@@ -70,9 +73,10 @@ impl Ingest {
         self.work.lock().expect("stream work lock is healthy").contains_key(&cursor)
     }
 
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(drained: u64) -> Self {
         Self {
             taken: watch::channel(BTreeMap::new()).0,
+            drained: AtomicU64::new(drained),
             next: AtomicU64::new(0),
             work: Mutex::new(BTreeMap::new()),
         }
@@ -86,9 +90,10 @@ impl Ingest {
         Intake { ingest: Arc::clone(self), id }
     }
 
-    // Every row at or below this cursor is in every live feed's hands.
+    // Every row at or below this cursor is in every live feed's and every storage consumer's hands.
     pub(crate) fn taken(&self) -> u64 {
-        self.taken.borrow().values().min().copied().unwrap_or(u64::MAX)
+        let fed = self.taken.borrow().values().min().copied().unwrap_or(u64::MAX);
+        fed.min(self.drained.load(Ordering::Acquire))
     }
 
     pub(crate) fn watch(&self) -> watch::Receiver<BTreeMap<u64, u64>> {

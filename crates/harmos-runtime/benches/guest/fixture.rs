@@ -179,6 +179,7 @@ async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
                 stop_grace: Duration::from_secs(10),
                 stream_window: nz(4),
                 interval_window: std::time::Duration::from_secs(1),
+                interval_lag: Default::default(),
             },
             bundle: Default::default(),
             entries: nz(16),

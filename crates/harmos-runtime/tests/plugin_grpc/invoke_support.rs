@@ -211,6 +211,14 @@ impl HostFixture {
         }
     }
 
+    /// Watch a Plugin Stream: While a Watch Is Held, the Activation's Unscoped Demand Grants Its Windows.
+    pub fn watch(
+        &self, stream: &str,
+    ) -> impl futures_core::Stream<Item = harmos_runtime::streams::Item<harmos_runtime::streams::PublicationRow>> + Send + Unpin + use<>
+    {
+        self.runtime.streams.current_publication(stream).expect("an attached plugin stream").watch()
+    }
+
     pub fn rows(&self) -> Vec<harmos_runtime::streams::PublicationRow> {
         self.stored.lock().unwrap().iter().map(|(_, row)| row.clone()).collect()
     }

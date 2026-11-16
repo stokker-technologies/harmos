@@ -22,6 +22,7 @@ async fn publish_reopens_with_a_fresh_sequence_after_connection_loss() {
         .attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), super::support::settings())
         .await
         .unwrap();
+    let _watching = host.watch("fixture.interval");
     let mut status = attached.status();
     controller.advance_until(std::time::Duration::from_secs(10), || host.rows().len() == 1).await.unwrap();
     let old = attached.activation().unwrap();

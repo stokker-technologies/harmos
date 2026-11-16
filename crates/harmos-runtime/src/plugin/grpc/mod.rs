@@ -21,7 +21,7 @@ pub(crate) mod samples;
 mod scoped;
 /* === Re-Exports === */
 
-pub use config::PlacementSettings;
+pub use config::{IntervalLag, PlacementSettings};
 pub use harmos_protocol::model;
 pub use invoke::CallError;
 pub use managed::Managed;
@@ -166,6 +166,21 @@ pub enum Error {
 
     #[error("{action}: the plugin did not settle within PlacementSettings.stop_grace; its remaining work was cancelled")]
     Deadline { action: &'static str },
+
+    #[error(
+        "Grant Sample Window: stream `{stream}` fell {lag:?} behind its window end, past PlacementSettings::interval_lag ({limit:?}); lower the stream's declared rate, the number of streams or the window length"
+    )]
+    Lagging { stream: String, lag: std::time::Duration, limit: std::time::Duration },
+
+    #[error(
+        "Publish Samples: stream `{stream}` found the shared plugin publication pool ({bytes} bytes, {rows} rows) full of rows storage has not taken in; lower the declared rates, the number of streams or the window length"
+    )]
+    PoolFull { stream: String, bytes: usize, rows: usize },
+
+    #[error(
+        "Grant Sample Window: stream `{stream}` needs at least {needed} bytes for one window of {samples} samples, more than the shared plugin publication pool holds ({bytes} bytes, {rows} rows); shorten the window length or lower the stream's declared rate"
+    )]
+    WindowExceedsPool { stream: String, samples: u64, needed: u128, bytes: usize, rows: usize },
 
     #[error("managed plugin exited with {0}")]
     Exit(std::process::ExitStatus),
@@ -639,17 +654,21 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         mut participant,
     } = session;
     loop {
-        let exited = async {
-            match &mut process {
-                Some(process) => process.exited().await,
-                None => std::future::pending().await,
+        let ending = loop {
+            let exited = async {
+                match &mut process {
+                    Some(process) => process.exited().await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                biased;
+                reason = stopping(&mut stop, &mut participant) => break Ending::Stop(reason),
+                result = exited => break Ending::Exit(result),
+                () = disconnected(activation.connection.closed.subscribe()) => break Ending::Disconnect,
+                // A Failed Unscoped Demand Ends Its Stream Only; the Attachment's Owner Reads Why.
+                failure = publications.failure() => status.send_modify(|status| status.failure = Some(failure)),
             }
-        };
-        let ending = tokio::select! {
-            biased;
-            reason = stopping(&mut stop, &mut participant) => Ending::Stop(reason),
-            result = exited => Ending::Exit(result),
-            () = disconnected(activation.connection.closed.subscribe()) => Ending::Disconnect,
         };
         // Every Ending Settles Its Bindings Before the Connection or Process Is Released. Teardown
         // Parks Its Activity While It Waits on the Plugin, So Every Clock Kind Reaches Its Deadlines.

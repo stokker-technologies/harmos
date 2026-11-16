@@ -411,6 +411,9 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     host.client.create(manager::remote("window_owner", &remote.address)).await.unwrap();
     manager::state(&mut watch, "window_owner", host::PluginState::Ready, 1).await;
     drop(watch);
+    // The Unscoped Demand Grants Windows Only on Watched Streams.
+    let _watching = ["alpha", "beta", "outside", "duplicate", "mixed", "unknown_demand"]
+        .map(|id| host.runtime.streams.current_publication(id).unwrap().watch());
     signals.rejected.notified().await;
     let mut feed = host.runtime.streams.follow(harmos_runtime::storage::Cursor::ORIGIN);
     let collect = async {

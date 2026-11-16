@@ -101,7 +101,10 @@ Managed executables receive `HARMOS_ADDRESS=127.0.0.1:0` and announce their actu
 bound endpoint through the existing readiness line. Windows launches use
 `CREATE_NO_WINDOW`. Existing attachment code owns declaration admission, dispatch,
 streams, reconnect and process supervision. A managed process exit reports an
-unavailable entry with its failure; explicit Restart replaces it. Remote
+unavailable entry with its failure; explicit Restart replaces it. A Ready entry whose
+interval stream failed fast (lag, a full or too small publication pool) keeps its
+other streams and reports the stream's error as a `plugin_stream_failed` failure until
+Restart replaces the activation. Remote
 attachments reconnect under their existing placement policy. Delete stops and
 reaps managed processes and removes their installation. Startup cancellation and
 readiness failure also await native process exit before Delete, Restart or Replace

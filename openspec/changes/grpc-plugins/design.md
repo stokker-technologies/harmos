@@ -544,6 +544,12 @@ auto reply = ctx.operation(thermal::v1::SetTemperature{.target = 85});
   Missing, unresolved, zero or malformed values refuse admission.
 - A stream without an interval is driven by the plugin, which sends a sample when its device
   produces one.
+- The connection's own (unscoped) demand, which the host opens on attach, reconnect and
+  replacement, samples an interval stream only while something watches it: a
+  `PublishedStream::watch()` handle or a plugin listener. It starts from a fresh origin when the first watcher appears and stops when the last
+  leaves. Interval sampling is granted as windows (operation-grammar design, Windowed Interval
+  Batches), and a demand that cannot keep up fails fast with an error naming its stream and
+  action (Overload Fails Fast there).
 - Guests cannot hold a call open, so they declare no streams and no observers.
 - `PlacementSettings.stream_window` is required and is a positive retained-row capacity per
   stream supplied by the consumer. Harmos supplies no implicit storage budget.

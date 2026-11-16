@@ -22,6 +22,7 @@ async fn independent_intervals_keep_each_streams_order_and_host_time() {
         .attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), super::support::settings())
         .await
         .unwrap();
+    let _watching = (host.watch("fixture.left"), host.watch("fixture.right"));
 
     // Advance Until Both Independent Streams Have Answered
     controller

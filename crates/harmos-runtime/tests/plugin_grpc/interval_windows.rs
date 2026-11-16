@@ -74,6 +74,7 @@ async fn windows_cover_exact_sample_ranges_on_a_controlled_clock() {
     let host = HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("windows").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings()).await.unwrap();
+    let _watching = (host.watch("fixture.counts"), host.watch("fixture.override"));
 
     // Twelve Seconds Hold Three Host Windows and Four Overridden Windows, Each Stored Whole.
     controller.advance_until(Duration::from_secs(30), || host.batches_of("fixture.counts").len() == 3).await.unwrap();
@@ -104,6 +105,7 @@ async fn a_window_larger_than_one_message_arrives_in_contiguous_parts() {
     let host = HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("split").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings()).await.unwrap();
+    let _watching = host.watch("fixture.split");
     let total = |host: &HostFixture| host.batches_of("fixture.split").iter().map(|(_, count, _)| count).sum::<u64>();
     controller.advance_until(Duration::from_secs(5), || total(&host) >= 2_000_000).await.unwrap();
 
@@ -132,6 +134,7 @@ async fn a_sampling_scope_pauses_the_unscoped_schedule_without_duplicate_windows
     let host = HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("windows").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings()).await.unwrap();
+    let _watching = host.watch("fixture.counts");
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000));
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/windows", unit_clock).await.unwrap();
     let scoped = |host: &HostFixture| host.batches_of("fixture.counts").into_iter().filter(|(_, _, scope)| scope.is_some()).count();

@@ -197,6 +197,7 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
     let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
+    let _watching = host.runtime.streams.current_publication("caller_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || complete.load(Ordering::SeqCst)).await.unwrap();
     let first = observed.recv().await.unwrap();
     assert!(matches!(first.result, Some(child_response::Result::Payload(_))));

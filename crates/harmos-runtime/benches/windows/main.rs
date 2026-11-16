@@ -36,7 +36,7 @@ use tokio::sync::Notify;
 use harmos_runtime::{
     Runtime,
     clock::{Clock, Controller},
-    plugin::grpc::{Attached, Managed, Placement, PlacementSettings},
+    plugin::grpc::{Attached, Error, Managed, Placement, PlacementSettings},
     storage::{Batch, Cursor, StreamConsumer},
 };
 
@@ -76,6 +76,8 @@ struct Host {
     controller: Option<Controller>,
     counter: Arc<Counter>,
     attached: Attached,
+    /// One Watch per Stream: the Unscoped Demand Samples Only Watched Streams.
+    _watching: Vec<Box<dyn Send>>,
 }
 
 struct Case<'a> {
@@ -137,31 +139,50 @@ impl Host {
             stop_grace: Duration::from_secs(30),
             stream_window: std::num::NonZeroUsize::new(64).unwrap(),
             interval_window: case.window,
+            interval_lag: Default::default(),
         };
         let attached = runtime.attach_grpc(placement, settings).await.unwrap();
-        let host = Self { runtime, controller, counter, attached };
-        // Every Stream Has Published Its First Window Before Measurement.
-        host.advance(case.samples() / WINDOWS).await;
-        host
+        let _watching = (0..case.streams)
+            .map(|index| {
+                let stream = runtime.streams.current_publication(&format!("benchmark.readings_{index}")).unwrap();
+                Box::new(stream.watch()) as Box<dyn Send>
+            })
+            .collect();
+        Self {
+            runtime,
+            controller,
+            counter,
+            attached,
+            _watching,
+        }
     }
 
     fn samples(&self) -> u64 {
         self.counter.samples.load(Ordering::SeqCst)
     }
 
-    async fn advance(&self, target: u64) {
-        if let Some(controller) = &self.controller {
-            controller.advance_until(Duration::from_secs(1_000_000), || self.samples() >= target).await.unwrap();
-            return;
-        }
-        loop {
-            let changed = self.counter.changed.notified();
-            tokio::pin!(changed);
-            changed.as_mut().enable();
-            if self.samples() >= target {
+    /// Wait Until `target` Samples Arrived, or Return the Failure a Demand Reported First.
+    async fn advance(&self, target: u64) -> Result<(), Arc<Error>> {
+        let mut status = self.attached.status();
+        let arrived = async {
+            if let Some(controller) = &self.controller {
+                let _ = controller.advance_until(Duration::from_secs(1_000_000), || self.samples() >= target).await;
                 return;
             }
-            changed.await;
+            loop {
+                let changed = self.counter.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if self.samples() >= target {
+                    return;
+                }
+                changed.await;
+            }
+        };
+        tokio::select! {
+            biased;
+            failed = status.wait_for(|status| status.failure.is_some()) => Err(failed.unwrap().failure.clone().unwrap()),
+            () = arrived => Ok(()),
         }
     }
 
@@ -181,29 +202,59 @@ impl Case<'_> {
     fn measure(&self, group: &mut BenchmarkGroup<'_, WallTime>, executor: &tokio::runtime::Runtime) {
         let samples = self.samples();
         let host = executor.block_on(Host::start(self));
-        // A Host That Falls Behind the Declared Rate Grants Ever Longer Windows Until Storage Refuses
-        // Them; Such a Case Is Reported as Not Sustained Instead of Measured.
-        let probe = executor.block_on(async { tokio::time::timeout(PROBE, host.advance(host.samples() + samples)).await });
-        if probe.is_err() {
-            println!("windows/{}/{}: not sustained, {} of {} probe samples in {PROBE:?}", self.name, self.streams, host.samples(), samples);
-            executor.block_on(host.stop());
-            return;
+        // Every Stream Publishes Its First Window, Then One Iteration Probes the Case. A Host That Falls
+        // Behind the Declared Rate Fails Fast With the Demand's Named Error; One That Neither Keeps Up
+        // Nor Fails Within the Probe Is Reported as Not Sustained. Neither Case Is Measured.
+        let probe = executor.block_on(async {
+            tokio::time::timeout(PROBE, async {
+                host.advance(samples / WINDOWS).await?;
+                host.advance(host.samples() + samples).await
+            })
+            .await
+        });
+        match probe {
+            Ok(Ok(())) => {}
+            Ok(Err(failure)) => {
+                println!("windows/{}/{}: failed fast: {failure}", self.name, self.streams);
+                executor.block_on(host.stop());
+                return;
+            }
+            Err(_) => {
+                println!(
+                    "windows/{}/{}: not sustained, {} of {} probe samples in {PROBE:?}",
+                    self.name,
+                    self.streams,
+                    host.samples(),
+                    samples
+                );
+                executor.block_on(host.stop());
+                return;
+            }
         }
+        let failed = std::sync::Mutex::new(None);
         group.throughput(Throughput::Elements(samples));
         group.bench_function(BenchmarkId::new(self.name, self.streams), |bencher| {
             bencher.iter_custom(|iterations| {
                 executor.block_on(async {
                     let mut elapsed = Duration::ZERO;
                     for _ in 0..iterations {
+                        if failed.lock().unwrap().is_some() {
+                            break;
+                        }
                         let target = host.samples() + samples;
                         let started = Instant::now();
-                        host.advance(target).await;
+                        if let Err(failure) = host.advance(target).await {
+                            *failed.lock().unwrap() = Some(failure);
+                        }
                         elapsed += started.elapsed();
                     }
                     elapsed
                 })
             });
         });
+        if let Some(failure) = failed.into_inner().unwrap() {
+            println!("windows/{}/{}: failed fast during measurement, figures void: {failure}", self.name, self.streams);
+        }
         executor.block_on(host.stop());
     }
 }

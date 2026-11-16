@@ -23,8 +23,10 @@ use super::{PublicationRow, StreamPublicationError};
 
 /* === Constants === */
 
-const RETAINED_BYTES: usize = 64 * 1024 * 1024;
-const RETAINED_ROWS: usize = 65_536;
+/// Bytes the Shared Plugin Publication Pool Retains Across Every Stream.
+pub(crate) const RETAINED_BYTES: usize = 64 * 1024 * 1024;
+/// Rows the Shared Plugin Publication Pool Retains Across Every Stream.
+pub(crate) const RETAINED_ROWS: usize = 65_536;
 
 // Includes requested row/receipt headers, queue cell and Arc counters.
 const OWNER_BYTES: usize = 1024;
@@ -164,6 +166,12 @@ impl ManagedPublication {
 }
 
 /* === Public Functions === */
+
+/// The Bytes `rows` Rows of `payload` Payload Bytes Claim, and Whether Even the Empty Pool Holds Them.
+pub(crate) fn claim(rows: u64, payload: u128) -> (u128, bool) {
+    let bytes = payload.saturating_add(u128::from(rows).saturating_mul(OWNER_BYTES as u128));
+    (bytes, rows <= RETAINED_ROWS as u64 && bytes <= RETAINED_BYTES as u128)
+}
 
 pub(crate) fn row_value<S: 'static>(row: &dyn Any) -> Option<&S> {
     row.downcast_ref::<S>().or_else(|| {
