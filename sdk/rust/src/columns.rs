@@ -19,12 +19,14 @@
 use std::result::Result as StdResult;
 
 // Third Party Imports
+#[cfg(not(target_arch = "wasm32"))]
 use prost::Message as _;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor, Value};
 use tonic::Status;
 
 // Local Imports
 use crate::Message;
+#[cfg(not(target_arch = "wasm32"))]
 use harmos_protocol::plugin::{InstanceSamplesResponse, SampleBatch, instance_samples_response::Frame};
 
 /* === Constants === */
@@ -94,6 +96,7 @@ impl Columns {
     }
 
     /// Decode a Window Observer's Columns for Splitting.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn decode(&self, columns: &[u8]) -> StdResult<DynamicMessage, Status> {
         DynamicMessage::decode(self.columns.clone(), columns)
             .map_err(|error| Status::internal(format!("Answer Sample Window: decode the observer's columns: {error}")))
@@ -103,6 +106,7 @@ impl Columns {
 /* === Public Functions === */
 
 /// Split `count` Samples Into Parts Whose Encoded Responses Each Fit `limit` Bytes.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn parts(columns: &Columns, encoded: Vec<u8>, count: u64, limit: usize) -> StdResult<Vec<InstanceSamplesResponse>, Status> {
     let whole = response(0, count, encoded, true);
     if whole.encoded_len() <= limit {
@@ -124,6 +128,7 @@ fn descriptor(types: prost_types::FileDescriptorSet, name: &str) -> StdResult<Me
     pool.get_message_by_name(name).ok_or_else(|| format!("Declare Observer: `{name}` is missing from its own descriptors"))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn response(offset: u64, count: u64, columns: Vec<u8>, last: bool) -> InstanceSamplesResponse {
     InstanceSamplesResponse {
         samples: Vec::new(),
@@ -131,6 +136,7 @@ fn response(offset: u64, count: u64, columns: Vec<u8>, last: bool) -> InstanceSa
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn split(
     columns: &Columns, message: &DynamicMessage, offset: u64, count: u64, total: u64, limit: usize,
     parts: &mut Vec<InstanceSamplesResponse>,
