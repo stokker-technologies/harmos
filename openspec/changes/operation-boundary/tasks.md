@@ -4,12 +4,16 @@ Groups 2–7 are additive and land before the breaking groups 9–10. Each group
 Conventional Commits on the integration branch and proves only its changed behavior through
 focused `mise run test`, `mise run build` and `mise run generate` invocations; full lanes run
 only after group 11 closes. Products adopt the revision that landed a group in their own
-change; never name revisions in this file.
+change; each completed group records the revision a product can pin below.
+
+Owner amendments: products use a typed `runtime.for_call(&ctx)` Rust facade over
+registered native operations. All four plugin SDKs, protocol generation, Wasm guests
+and conformance remain. The task's owner decisions supersede older design examples.
 
 ## 1. Inventory and Contract
 
-- [ ] 1.1 Lock the source inventory against design.md: every public export of `harmos-runtime`, `harmos`, `harmos-operations`, `harmos-storage`, `harmos-query` and `harmos-domain`, every manager `Deref` and getter, every engine type in an operation signature, every `callers` option under `proto/harmos/host/v1`, every composition reader and every statistics kernel; record any surprise in design.md before editing. Accept when the inventory lists owners and consumers (runtime, operations, SDKs, conformance, Schematic, stories) for each item.
-- [ ] 1.2 Update `docs/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
+- [x] 1.1 Lock the source inventory against design.md: every public export of `harmos-runtime`, `harmos`, `harmos-operations`, `harmos-storage`, `harmos-query` and `harmos-domain`, every manager `Deref` and getter, every engine type in an operation signature, every `callers` option under `proto/harmos/host/v1`, every composition reader and every statistics kernel; record any surprise in design.md before editing. Accept when the inventory lists owners and consumers (runtime, operations, SDKs, conformance, Schematic, stories) for each item.
+- [x] 1.2 Update `docs/architecture.md`: quote and replace Product Composition and Narrowing, record the facade, private host operations, plugin protocol facilities, storage coverage and statistics home as locked direction with proposed status, and update Storage and Query Ownership and Consumer Work Lists. Accept when the document names no manager registration or narrowing contract as current; prove with `mise run check -- --repository`.
 
 ## 2. Compound Atomic Mutation
 
