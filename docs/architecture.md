@@ -1094,6 +1094,8 @@ C# `Harmos.Clients` (the context uses that same public payload type).
 
 Repository checks reject wire packages and version namespaces in public C++ headers,
 Python modules, stubs and exports, Rust wire module declarations and SDK guides.
+`source/protocol.py` owns code surfaces and export inventories; CI documentation
+checking in `ci/docs.py` owns SDK guides and local documentation links.
 The allow-list is internal generated directories (`detail`, `_generated`, `_wire`),
 canonical gRPC method paths, and protocol documentation that maps packages (`proto/**/*.md`
 and this architecture guide). Markdown link destinations may name protocol source files.
