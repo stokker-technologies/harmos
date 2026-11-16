@@ -183,7 +183,7 @@ impl Case<'_> {
         let host = executor.block_on(Host::start(self));
         // A Host That Falls Behind the Declared Rate Grants Ever Longer Windows Until Storage Refuses
         // Them; Such a Case Is Reported as Not Sustained Instead of Measured.
-        let probe = executor.block_on(tokio::time::timeout(PROBE, host.advance(host.samples() + samples)));
+        let probe = executor.block_on(async { tokio::time::timeout(PROBE, host.advance(host.samples() + samples)).await });
         if probe.is_err() {
             println!("windows/{}/{}: not sustained, {} of {} probe samples in {PROBE:?}", self.name, self.streams, host.samples(), samples);
             executor.block_on(host.stop());
