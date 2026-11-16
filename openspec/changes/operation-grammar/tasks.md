@@ -360,7 +360,7 @@ Scoped binding admission, settlement and clock registration are implemented belo
 - [x] SB.2.1 Register declared native and encoded waits before middleware in execution/operations/registration/{native,generated}.rs; scoped_sleep.rs covers admission and typed children. Clock waiting releases activity while the wrapped future waits.
 - [x] SB.3 Retain the implemented binding_lifecycle.rs stories for hung/non-EOF plugins, exit, shutdown, disconnect, bind/stop races and reconnect, plus scoped_sleep.rs for close during a window and native/encoded/typed-child admission. Source inspection establishes coverage, not a new native Linux/Windows run; final proof remains 6.2.
 - [x] SB.4 Implement Samples completion with OK after host half-close in all four SDKs; the shared conformance suite includes Half-Close During an Unanswered Window, demand reopen and bounded child lifetime. Cross-platform conformance reruns remain 6.2.
-- [x] SB.5 Install Linux parent-death SIGKILL with the parent-race check for managed children; retain the documented product-owned kill-on-close job contract on Windows. Native platform proof remains 6.2.
+- [x] SB.5 Install Linux parent-death SIGKILL with the parent-race check for managed children; retain the documented product-owned kill-on-close job contract on Windows. Architecture explicitly leaves macOS uncovered: this corrects the old task's overbroad Unix claim, not an implementation of Unix-wide parent-death handling. Native Linux/Windows proof remains 6.2.
 
 ## Interval Tick Throughput
 
