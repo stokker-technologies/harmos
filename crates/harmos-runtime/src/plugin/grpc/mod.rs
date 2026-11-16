@@ -383,8 +383,16 @@ impl Attached {
             cancelled,
         } = startup;
         let clock = operations.clock().clone();
-        if settings.connect_timeout.is_zero() || settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() {
+        if settings.connect_timeout.is_zero()
+            || settings.reconnect_delay.is_zero()
+            || settings.stop_grace.is_zero()
+            || settings.interval_window.is_zero()
+        {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
+        }
+        // A Stopping Host Spawns Nothing It Would Immediately Have to Reap.
+        if participant.is_stopping() {
+            return Err(Error::Invalid("Start Plugin: the host is shutting down; attach the plugin after it restarts".into()));
         }
         let _activity = clock.activity("plugin startup");
         let deadline = clock.now() + settings.connect_timeout;
@@ -742,7 +750,9 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 Ok(settings) => settings,
                 Err(error) => {
                     next.connection.closed.send_replace(true);
-                    let error = Error::Invalid(format!("Reconnect Plugin Settings: {error}"));
+                    let error = Error::Invalid(format!(
+                        "Reconnect Plugin: the retained settings do not fit the reconnected plugin ({error}); set settings that match its declarations"
+                    ));
                     status.send_modify(|status| status.failure = Some(Arc::new(error)));
                     continue;
                 }

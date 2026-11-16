@@ -81,20 +81,24 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
    protobuf or attempt zero MUST return INVALID_ARGUMENT. No terminal application
    result follows a transport error. Retry policy remains owned by the operation;
    the conformance host does not retry a failed case.
-10. **Ticks and Samples.** Instance.Samples MUST open with SamplesSelection for one stream.
-    For an interval stream the host resolves the interval, sends ticks, and the
-    plugin MUST answer each tick once, in order, with exactly one sample per
-    sample-bearing InstanceSamplesResponse message at revision 1. Child-only frames
-    do not answer a tick. Sample.at MUST equal Tick.at exactly; sequence
-    MUST count from 1 per call. The conformance.ticks row is Value containing the
-    sequence encoded as eight little-endian bytes. A large tick-time jump MUST NOT
-    cause synthesized catch-up samples. No wall-clock scheduling is permitted.
-11. **Independent Calls.** A stream awaiting a tick MUST NOT block another stream
+10. **Windows and Batches.** Instance.Samples MUST open with SamplesSelection for one stream.
+    For an interval stream the host resolves the interval and grants Window frames;
+    the plugin MUST answer each window once, in order, with SampleBatch parts whose
+    offsets are contiguous from 0, whose counts are at least one and sum to
+    Window.count, and whose final part alone sets last. Child-only frames do not
+    answer a window. Sample `i` of a window has sequence Window.sequence + i and
+    time Window.start + i * Window.period; a one-sample observer runs once per sample
+    in that order. Columns mirror the row's field numbers and types, each repeated,
+    with one value per sample; numeric columns are packed. The conformance.interval
+    row is Value containing the sample's sequence as eight little-endian bytes. The
+    plugin answers exactly the samples granted: a window far from the previous one
+    MUST NOT cause synthesized catch-up samples. No wall-clock scheduling is permitted.
+11. **Independent Calls.** A stream awaiting a window MUST NOT block another stream
     or Invoke. gRPC flow control supplies backpressure, with no leases, byte credits
     or publication admission messages. The case opens two idle interval streams,
-    completes an echo, then ticks the streams in reverse opening order.
+    completes an echo, then grants windows to the streams in reverse opening order.
 12. **Device Samples.** A stream without an interval is plugin-driven and requires
-    no tick. An absent Sample.at means the host stamps arrival using its clock;
+    no window. An absent Sample.at means the host stamps arrival using its clock;
     a supplied device timestamp is source time and MUST NOT replace host evidence
     time. conformance.device emits one Value containing UTF-8 device, sequence 1,
     with at absent immediately after open, then awaits demand closure.
@@ -103,10 +107,12 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     EOF. Reopening is a fresh call with sequence 1, independent of previous calls.
     Closing one demand MUST leave the connection usable. Disconnected samples
     are lost; no replay or publication lease is implied.
-14. **Samples Frame Validation.** Empty input, unset first frame, Tick before
-    open, repeated open, or a tick without a valid Timestamp MUST return
-    INVALID_ARGUMENT. An unknown stream MUST return NOT_FOUND. The case checks
-    missing tick time; applications MUST also reject invalid timestamp ranges.
+14. **Samples Frame Validation.** Empty input, unset first frame, Window before
+    open, repeated open, a Window on a device stream, a Window while another is
+    unanswered, or a Window without a valid start Timestamp, without a positive
+    period or with a zero count MUST return INVALID_ARGUMENT. An unknown stream MUST
+    return NOT_FOUND. The case checks a missing start, a zero count and a missing
+    period; applications MUST also reject invalid timestamp ranges.
 15. **Child Correlation Validation.** Unknown or duplicate ChildResponse IDs
     during an active invocation MUST return INVALID_ARGUMENT. IDs MAY be reused
     on another Invoke. The case sends both invalid-ID and duplicate-ID replies
@@ -123,8 +129,8 @@ Operations served by a plugin over `harmos.plugin.v1` are unary (one request and
     and retained descriptor metadata, then invokes nested, recursive and projected
     messages, including an optional scalar explicitly set to zero.
 18. **Interval Setting.** The additional setting observer below MUST advertise
-    its typed section and both interval sources. It MUST answer only host ticks,
-    preserving each tick's timestamp and per-call sequence, and close on input EOF.
+    its typed section and both interval sources. It MUST answer only host windows,
+    preserving each window's per-call sequence, and close on input EOF.
     Resolution and invalid-setting admission remain host-runtime responsibilities.
     Cases 17, 18 and 19 run before case 16 so managed Stop remains the last RPC.
 19. **Built-In Clock Fingerprints.** Every fixture MUST require `harmos.host.v1.Time/Sleep`
@@ -161,8 +167,9 @@ For runtime attachments, `interval_setting` names a fully qualified section fiel
 positive `google.protobuf.Duration`; an unresolved or invalid setting MUST refuse
 admission. It overrides `interval` when both are present.
 
-The runtime stores interval evidence at the tick's host time and device evidence at
-host arrival time. A device's supplied timestamp is retained separately as
+The runtime stores each interval batch part as one row of the derived
+`harmos.batch.<row>` message (first sample time, period, count and the row's
+columns) at its first sample's host time, and device evidence at host arrival time. A device's supplied timestamp is retained separately as
 `context.source_time`, with `seconds` and `nanos` fields. Stored rows use the host's
 canonical storage encoding and the schema projected from the admitted protobuf row;
 this conversion does not change the protobuf-only transport contract.
@@ -242,9 +249,9 @@ field order; repeated order is as declared. Each requirement uses its operation'
 fingerprint. This defines reproducible fixture hashes; generic schema graph
 canonicalization is outside these cases.
 
-Declarations.streams MUST contain conformance.ticks then conformance.device, each with
-row harmos.conformance.v1.Value, empty description and interval_setting. Only ticks
-has interval, Duration(seconds=1, nanos=0). Sections are empty. Digest is SHA-256
+Declarations.streams MUST contain conformance.interval then conformance.device, each with
+row harmos.conformance.v1.Value, empty description, interval_setting and window_setting.
+Only interval has interval, Duration(seconds=1, nanos=0). Sections are empty. Digest is SHA-256
 of Declarations serialized in numeric field order with digest empty/omitted. Default
 scalar fields are omitted; repeated entries retain the order above.
 
@@ -302,7 +309,7 @@ clock types from `harmos/context/v1/time.proto`, Duration and Timestamp in Decla
 
 Append conformance.settings after the original streams, with row Value, default
 interval one second and interval_setting harmos.conformance.v1.Graph.interval.
-Its rows follow conformance.ticks. The single section has type
+Its rows follow conformance.interval. The single section has type
 harmos.conformance.v1.Graph and payload Graph(interval=Duration(seconds=2)).
 It overrides the default. Append requirement conformance.host.schema, using the Graph-to-Value fingerprint.
 Declarations digest
@@ -346,19 +353,19 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
     The declaring plugin's Protected self-call still crosses the host carrier and
     succeeds; Protected is never dispatched through the Private registry.
 
-30. **Samples Child Calls and Correlation.** Between receiving a tick and answering
-    it with its sample, the plugin MAY send the shared ChildRequest, ChildDemand
+30. **Samples Child Calls and Correlation.** Between receiving a window and answering
+    it with its last part, the plugin MAY send the shared ChildRequest, ChildDemand
     and ChildCancel frames on Instance.Samples. The host MUST answer with shared
-    ChildResponse frames on that same stream. Only one tick may be unanswered;
-    the host MUST wait for its sample before sending the next tick. Child-only
-    responses MUST have empty samples and MUST NOT count as tick answers; a
-    response carrying both samples and a child frame MUST fail with INVALID_ARGUMENT.
-    IDs MUST be unique for the entire Samples call, including across ticks;
-    separate calls MAY reuse IDs. Replies MUST correlate by ID even out of order.
+    ChildResponse frames on that same stream. Only one window may be unanswered;
+    the host MUST wait for its last part before granting the next window. Child-only
+    responses MUST have empty samples and no batch and MUST NOT count as window
+    answers; a response carrying samples together with a frame MUST fail with
+    INVALID_ARGUMENT. IDs MUST be unique for the entire Samples call, including across
+    windows; separate calls MAY reuse IDs. Replies MUST correlate by ID even out of order.
     Unknown or duplicate terminal reply IDs MUST fail that RPC with INVALID_ARGUMENT.
-    Consumers MUST prove reverse-order replies, two ticks without ID reuse and
+    Consumers MUST prove reverse-order replies, two windows without ID reuse and
     isolation between separate Samples calls and Invoke calls.
-31. **Samples Child Routing and Failures.** Tick children MUST inherit the admitted
+31. **Samples Child Routing and Failures.** Window children MUST inherit the admitted
     plugin's caller context, grants and SamplesSelection.scope. The same registry,
     visibility, requirement/fingerprint checks and call-local policy rules as Invoke
     apply, including host operations, peer operations, clock and caller-scoped settings.
@@ -366,17 +373,18 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
     Invoke (rule 25); rule 5's unary fixture does not exclude declared Watch children.
     Every field of a ChildResponse.failure MUST remain unchanged, including nested
     cause, details and diagnostics; it MUST NOT become a transport fault or answer
-    the tick. Consumers MUST prove ordinary, clock and settings calls from an observer,
-    structured failure preservation and demand-bounded Watch from a tick.
-32. **Samples Child Lifetime and Refusal.** Answering the tick or ending/cancelling
-    the Samples stream MUST cancel every child still open for that tick and suppress
+    the window. Consumers MUST prove ordinary, clock and settings calls from an observer,
+    structured failure preservation and demand-bounded Watch from a window.
+32. **Samples Child Lifetime and Refusal.** Answering the window or ending/cancelling
+    the Samples stream MUST cancel every child still open for that window and suppress
     later replies. ChildCancel MUST cancel only its child and suppress later replies
-    for that ID, without answering the tick; completed replies remain completed.
-    Child traffic before a tick, after its answer or on a device stream without ticks
-    MUST fail that RPC with INVALID_ARGUMENT. An unknown or duplicate terminal reply,
-    including a late reply from an earlier tick, MUST NOT be assigned to a later tick.
-    Consumers MUST prove explicit child cancellation, tick-answer and stream-end cleanup,
-    refusal outside a tick and continued usability of other streams and invocations.
+    for that ID, without answering the window; completed replies remain completed.
+    Child traffic before a window, after its last part or on a device stream without
+    windows MUST fail that RPC with INVALID_ARGUMENT. An unknown or duplicate terminal
+    reply, including a late reply from an earlier window, MUST NOT be assigned to a
+    later window. Consumers MUST prove explicit child cancellation, window-answer and
+    stream-end cleanup, refusal outside a window and continued usability of other
+    streams and invocations.
 
 33. **Client Caller Refusal.** The host MUST refuse a client call to an operation
     declared PLUGINS before invoking its handler, even when the client knows the
@@ -390,14 +398,23 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
 34. **Plugin Caller Refusal.** The host MUST refuse a plugin child call to a
     CLIENTS-only host operation before invoking its handler, even with a matching
     declared requirement and fingerprint. The fixture calls
-    `harmos.host.v1.Invocations/Create` from Invoke and an unanswered Samples tick;
+    `harmos.host.v1.Invocations/Create` from Invoke and an unanswered Samples window;
     both MUST refuse without creating an invocation. The returned failure retains
     classification REFUSED, code `-32604`, action `Call` and the refused operation.
     The message names the action and operation. This applies to sidecar child calls,
-    Samples ticks, WebAssembly imports and nested Invocations.Create calls: no wrapper
+    Samples windows, WebAssembly imports and nested Invocations.Create calls: no wrapper
     may turn the denial into INTERNAL or PERMANENT. Other
     calls on the connection MUST remain usable. Product narrowing of ALL to one
     caller MUST enforce the same refusal on the excluded direction.
+
+35. **Window Observers and Splitting.** A window observer receives the whole grant
+    and returns its columns; its columns message repeats every row field with the
+    same number and type. When a window's columns would make an
+    InstanceSamplesResponse exceed the plugin's configured maximum message size, the
+    plugin MUST split them at sample boundaries into several parts, each within that
+    size. conformance.window answers a window of 1,000,000 samples; the case checks
+    contiguous parts, more than one part, each part's encoded size, the last flag and
+    every value.
 
 ## Shared Operation Grammar
 
@@ -466,7 +483,7 @@ after Stop. HARMOS_ADDRESS selects its listener in either mode. The host prints
 one pass/fail table row per rule and exits 0 only if every case passes; exit 1 is
 case failure and exit 2 is setup/CLI failure. Each case and managed startup/shutdown
 has a 30-second transport hang guard. These guards do not advance scenario time.
-Cases use literal host tick timestamps and protocol events, never sleeps, elapsed
+Cases use literal host window timestamps and protocol events, never sleeps, elapsed
 time assertions, Tokio's paused transport clock, or a local SDK clock. Only the
 reference plugin's process startup timestamp reads the system clock once.
 

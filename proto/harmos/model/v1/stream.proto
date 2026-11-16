@@ -40,6 +40,9 @@ message StreamDeclaration {
   google.protobuf.Duration interval = 4;
   // Identifier of a plugin setting that gives the interval instead, if any.
   string interval_setting = 5;
+  // Identifier of a plugin Duration setting that overrides the host's window
+  // length for this interval stream, if any.
+  string window_setting = 6;
 }
 
 // === Enums === //

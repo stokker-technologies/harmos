@@ -12,10 +12,13 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <cstddef>
+#include <limits>
 
 // Third Party Imports
 
 // Local Imports
+#include "columns.hpp"
 #include "duplex.hpp"
 #include "invocation.hpp"
 
@@ -30,21 +33,22 @@
 namespace harmos::plugin::detail {
 class PublicationCall final : public Duplex<plugin::v1::InstanceSamplesRequest, plugin::v1::InstanceSamplesResponse> {
 public:
+  // `message_bytes` Bounds Every Encoded Response, So Window Answers Split to Fit It.
   PublicationCall(const std::vector<StreamDefinition> &streams, const std::vector<OperationDefinition> &operations,
-                  const std::map<std::string, std::string> &requirements, const std::string &plugin)
-      : streams_(streams), state_(std::make_shared<Invocation>()) {
-    state_->tick_scoped = true;
+                  const std::map<std::string, std::string> &requirements, const std::string &plugin, std::size_t message_bytes)
+      : streams_(streams), state_(std::make_shared<Invocation>()), message_bytes_(message_bytes) {
+    state_->window_scoped = true;
     state_->requirements = requirements;
     state_->plugin = plugin;
     for (const auto &operation : operations)
       if (operation.contract.visibility() == ::harmos::VISIBILITY_PRIVATE)
         state_->local.emplace(operation.contract.id(), operation);
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
-      std::lock_guard lock(tick_mutex_);
-      if (!state_->tick_active)
-        throw TransportError(3, "Send Samples Child: An Unanswered Tick Is Required");
+      std::lock_guard lock(window_mutex_);
+      if (!state_->window_active)
+        throw TransportError(3, "Send Samples Child: Call Children Only While Answering a Window");
       if (!state_->accepting_children && !frame.has_child_cancel())
-        throw TransportError(3, "Send Samples Child: Tick Is Answered");
+        throw TransportError(3, "Send Samples Child: Call Children Before the Window Is Answered");
       plugin::v1::InstanceSamplesResponse samples;
       if (frame.has_child())
         *samples.mutable_child() = std::move(*frame.mutable_child());
@@ -53,7 +57,7 @@ public:
       else if (frame.has_child_cancel())
         *samples.mutable_child_cancel() = frame.child_cancel();
       else
-        throw TransportError(3, "Send Samples Child: Invalid Child Frame");
+        throw TransportError(3, "Send Samples Child: Send a Child Request, Demand or Cancel");
       write(std::move(samples));
     };
     read_next();
@@ -113,61 +117,61 @@ public:
       return;
     }
     if (input.has_child()) {
-      // Retired IDs Belong Only to the Current Tick's Explicit Cancellations.
+      // Retired IDs Belong Only to the Current Window's Cancelled Children.
       if (!state_->receive(input.child())) {
-        refuse("Unknown, Duplicate or Outside-Tick Child Reply");
+        refuse("Reply Only to Open Children of the Unanswered Window");
         return;
       }
       read_next();
       return;
     }
-    if (!input.has_tick() || !input.tick().has_at() || !valid_timestamp(input.tick().at()) || !stream_->observer) {
-      refuse("Expected a Valid Observer Tick");
+    if (!input.has_window()) {
+      refuse("Send Only Window or Child Frames After Open");
+      return;
+    }
+    const auto &grant = input.window();
+    if (!stream_->sample && !stream_->window) {
+      refuse("Send Windows Only to Interval Streams");
+      return;
+    }
+    if (!grant.has_start() || !valid_timestamp(grant.start())) {
+      refuse("Send a Window with a Valid Start Timestamp");
+      return;
+    }
+    if (!grant.has_period() || !positive(grant.period())) {
+      refuse("Send a Window with a Positive Period");
+      return;
+    }
+    if (grant.count() == 0 || grant.sequence() > std::numeric_limits<std::uint64_t>::max() - (grant.count() - 1)) {
+      refuse("Send a Window with at Least One Sample and a Representable Sequence");
       return;
     }
     bool active;
     {
       std::lock_guard lock(state_->mutex);
-      active = state_->tick_active;
+      active = state_->window_active;
       if (!active) {
-        state_->tick_active = true;
+        state_->window_active = true;
         state_->accepting_children = true;
         state_->retired.clear();
       }
     }
     if (active) {
-      refuse("Previous Tick Is Unanswered");
+      refuse("Await the Last Part of the Unanswered Window");
       return;
     }
     if (worker.joinable())
       worker.join();
-    auto tick = std::make_shared<Invocation>();
-    tick->transport = state_;
-    tick->request = state_->request;
-    tick->requirements = state_->requirements;
-    tick->local = state_->local;
-    tick->plugin = state_->plugin;
-    const auto at = input.tick().at();
-    const auto sequence = ++sequence_;
-    worker = std::thread([this, tick, at, sequence] {
+    auto window_state = std::make_shared<Invocation>();
+    window_state->transport = state_;
+    window_state->request = state_->request;
+    window_state->requirements = state_->requirements;
+    window_state->local = state_->local;
+    window_state->plugin = state_->plugin;
+    const Window window{grant.start(), grant.period(), grant.count(), grant.sequence()};
+    worker = std::thread([this, window_state, window] {
       try {
-        Context context(tick);
-        context.sequence = sequence;
-        const auto row = stream_->observer(context);
-        // Cancel Open Children Before Answering and Retire This Tick's Context.
-        state_->accepting_children = false;
-        cancel_children(tick, "Sample: Tick Answered");
-        plugin::v1::InstanceSamplesResponse samples;
-        auto *sample = samples.add_samples();
-        *sample->mutable_at() = at;
-        sample->set_sequence(sequence);
-        sample->set_row(row);
-        std::lock_guard lock(tick_mutex_);
-        {
-          std::lock_guard state_lock(state_->mutex);
-          state_->tick_active = false;
-        }
-        write(std::move(samples));
+        answer(window_state, window);
       } catch (const TransportError &error) {
         end({static_cast<grpc::StatusCode>(error.code), error.what()});
         closed();
@@ -183,11 +187,53 @@ private:
   const std::vector<StreamDefinition> &streams_;
   const StreamDefinition *stream_ = nullptr;
   std::shared_ptr<Invocation> state_;
-  std::recursive_mutex tick_mutex_;
+  std::size_t message_bytes_;
+  std::recursive_mutex window_mutex_;
   std::uint64_t sequence_ = 0;
 
+  void answer(const std::shared_ptr<Invocation> &window_state, const Window &window) {
+    // Run the Observer, Then Close the Window's Children Before Any Part Is Sent.
+    Columns columns(stream_->row);
+    if (stream_->window) {
+      Context context(window_state);
+      context.sequence = window.sequence;
+      columns.extend(*stream_->window(context, window), window.count);
+    } else {
+      for (std::uint64_t index = 0; index < window.count; ++index) {
+        Context context(window_state);
+        context.sequence = window.sequence + index;
+        columns.append(*stream_->sample(context));
+      }
+    }
+    state_->accepting_children = false;
+    cancel_children(window_state, "Samples Window Answered");
+    const auto parts = columns.parts(message_bytes_);
+    for (const auto &[begin, end] : parts) {
+      plugin::v1::InstanceSamplesResponse response;
+      auto *batch = response.mutable_batch();
+      batch->set_offset(begin);
+      batch->set_count(end - begin);
+      batch->set_columns(columns.encode(begin, end));
+      batch->set_last(end == window.count);
+      if (!batch->last()) {
+        write(std::move(response));
+        continue;
+      }
+      // The Last Part Answers the Window; the Host May Grant the Next One Once It Arrives.
+      std::lock_guard lock(window_mutex_);
+      {
+        std::lock_guard state_lock(state_->mutex);
+        state_->window_active = false;
+      }
+      write(std::move(response));
+    }
+  }
   static bool valid_timestamp(const google::protobuf::Timestamp &at) {
     return at.seconds() >= -62135596800LL && at.seconds() <= 253402300799LL && at.nanos() >= 0 && at.nanos() < 1000000000;
+  }
+  static bool positive(const google::protobuf::Duration &period) {
+    const bool valid = period.seconds() >= 0 && period.seconds() <= 315576000000LL && period.nanos() >= 0 && period.nanos() < 1000000000;
+    return valid && (period.seconds() > 0 || period.nanos() > 0);
   }
   void refuse(const std::string &reason) {
     end({grpc::StatusCode::INVALID_ARGUMENT, "Sample: " + reason});

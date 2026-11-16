@@ -33,9 +33,9 @@ from harmos import (
 )
 from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, operation, publisher
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, Window, observer, operation, publisher, window_observer
 
-from . import Graph, PayloadOnly, Value
+from . import Graph, PayloadOnly, Value, Values
 from ._caller import REQUEST
 
 # Type Checking Imports
@@ -232,8 +232,8 @@ class Fixture:
             return Value(value=failure.value.SerializeToString())
         raise RuntimeError("Create Invocation: Client-Only Host Operation Was Admitted")
 
-    @observer("conformance.ticks", row=Value, interval=Duration(seconds=1))
-    async def ticks(self, ctx: Context) -> Value:
+    @observer("conformance.interval", row=Value, interval=Duration(seconds=1))
+    async def interval(self, ctx: Context) -> Value:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
 
     @publisher("conformance.device", row=Value)
@@ -245,13 +245,13 @@ class Fixture:
     async def settings(self, ctx: Context) -> Value:
         return Value(value=ctx.sequence.to_bytes(8, "little"))
 
-    @observer("conformance.tick_children", row=Value, interval=Duration(seconds=1))
-    async def tick_children(self, context: Context) -> Value:
+    @observer("conformance.window_children", row=Value, interval=Duration(seconds=1))
+    async def window_children(self, context: Context) -> Value:
         first, second = await asyncio.gather(context.call(HOST_ECHO, Value(value=b"\x01")), context.call(HOST_ECHO, Value(value=b"\x02")))
         return Value(value=first.value + second.value)
 
-    @observer("conformance.tick_context", row=Value, interval=Duration(seconds=1))
-    async def tick_context(self, context: Context) -> Value:
+    @observer("conformance.window_context", row=Value, interval=Duration(seconds=1))
+    async def window_context(self, context: Context) -> Value:
         echo = await context.call(HOST_ECHO, Value(value=context.scope().encode()))
         clock = TimeGetResponse(now=await context.host.time.get())
         settings = await context.host.plugins.settings.list()
@@ -261,15 +261,15 @@ class Fixture:
             value += len(payload).to_bytes(4, "little") + payload
         return Value(value=value)
 
-    @observer("conformance.tick_failure", row=Value, interval=Duration(seconds=1))
-    async def tick_failure(self, context: Context) -> Value:
+    @observer("conformance.window_failure", row=Value, interval=Duration(seconds=1))
+    async def window_failure(self, context: Context) -> Value:
         try:
             return await context.call(HOST_FAIL, Value())
         except Failure as failure:
             return Value(value=failure.value.SerializeToString())
 
-    @observer("conformance.tick_watch", row=Value, interval=Duration(seconds=1))
-    async def tick_watch(self, context: Context) -> Value:
+    @observer("conformance.window_watch", row=Value, interval=Duration(seconds=1))
+    async def window_watch(self, context: Context) -> Value:
         value = b""
         items = context.watch(HOST_WATCH, Value(value=context.scope().encode()), max_item_bytes=4096)
         try:
@@ -279,8 +279,8 @@ class Fixture:
             await items.aclose()
         return Value(value=value)
 
-    @observer("conformance.tick_cancel", row=Value, interval=Duration(seconds=1))
-    async def tick_cancel(self, context: Context) -> Value:
+    @observer("conformance.window_cancel", row=Value, interval=Duration(seconds=1))
+    async def window_cancel(self, context: Context) -> Value:
         started = Event()
 
         async def pending() -> Value:
@@ -303,9 +303,13 @@ class Fixture:
         await started.wait()
         return Value(value=b"cancelled")
 
-    @observer("conformance.tick_caller_refusal", row=Value, interval=Duration(seconds=1))
-    async def tick_caller_refusal(self, context: Context) -> Value:
+    @observer("conformance.window_caller_refusal", row=Value, interval=Duration(seconds=1))
+    async def window_caller_refusal(self, context: Context) -> Value:
         return await self.caller_refusal(context, Value())
+
+    @window_observer("conformance.window", row=Value, columns=Values, interval=Duration(seconds=1))
+    async def window(self, context: Context, window: Window) -> Values:
+        return Values(value=[(window.sequence + index).to_bytes(8, "little") for index in range(window.count)])
 
 
 class ClockFixture:

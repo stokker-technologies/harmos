@@ -146,8 +146,8 @@ one sample per message on it.
 
 #### Scenario: Observer
 - **WHEN** an observer is declared with an interval on a stream whose call is open
-- **THEN** the host sends one tick per interval and the plugin answers each with one sample
-  carrying the tick's time
+- **THEN** the host grants windows of samples due on the interval's grid and the plugin answers
+  each window with columnar batches, split at its maximum message size
 
 #### Scenario: Independent Streams
 - **WHEN** one stream's consumer is slow

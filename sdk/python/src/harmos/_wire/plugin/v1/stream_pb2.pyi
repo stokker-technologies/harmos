@@ -1,5 +1,6 @@
 import datetime
 
+from google.protobuf import duration_pb2 as _duration_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
@@ -8,11 +9,29 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class Tick(_message.Message):
-    __slots__ = ("at",)
-    AT_FIELD_NUMBER: _ClassVar[int]
-    at: _timestamp_pb2.Timestamp
-    def __init__(self, at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+class Window(_message.Message):
+    __slots__ = ("start", "period", "count", "sequence")
+    START_FIELD_NUMBER: _ClassVar[int]
+    PERIOD_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    start: _timestamp_pb2.Timestamp
+    period: _duration_pb2.Duration
+    count: int
+    sequence: int
+    def __init__(self, start: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., period: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., count: _Optional[int] = ..., sequence: _Optional[int] = ...) -> None: ...
+
+class SampleBatch(_message.Message):
+    __slots__ = ("offset", "count", "columns", "last")
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    COLUMNS_FIELD_NUMBER: _ClassVar[int]
+    LAST_FIELD_NUMBER: _ClassVar[int]
+    offset: int
+    count: int
+    columns: bytes
+    last: bool
+    def __init__(self, offset: _Optional[int] = ..., count: _Optional[int] = ..., columns: _Optional[bytes] = ..., last: _Optional[bool] = ...) -> None: ...
 
 class SamplesSelection(_message.Message):
     __slots__ = ("stream", "scope")

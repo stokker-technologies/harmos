@@ -10,6 +10,7 @@ package harmos.plugin.v1;
 
 // === Imports === //
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
 // === Options === //
@@ -20,10 +21,29 @@ import "google/protobuf/timestamp.proto";
 
 // === Resources === //
 
-// Requests one interval sample at the authoritative host timestamp.
-message Tick {
-  // Host time of the tick. The answering sample carries it.
-  google.protobuf.Timestamp at = 1;
+// Grants one interval window: `count` consecutive samples, the first at `start`, each one `period` later.
+message Window {
+  // Host time of the window's first sample.
+  google.protobuf.Timestamp start = 1;
+  // The stream's resolved interval.
+  google.protobuf.Duration period = 2;
+  // Samples in the window; at least one.
+  uint64 count = 3;
+  // One-based sequence of the window's first sample within the Samples call.
+  uint64 sequence = 4;
+}
+// Answers part of the unanswered window with consecutive samples as columns.
+message SampleBatch {
+  // Zero-based index of this part's first sample within the window.
+  uint64 offset = 1;
+  // Samples in this part; at least one.
+  uint64 count = 2;
+  // A serialized message whose fields mirror the stream row's field numbers and
+  // types, each repeated, holding one value per sample in sample order. Numeric
+  // columns are packed; every sample has a value in every column.
+  bytes columns = 3;
+  // Set on the part that completes the window. It answers the window and ends its child calls.
+  bool last = 4;
 }
 // Opens demand for one declared plugin stream under an opaque invocation scope.
 message SamplesSelection {
@@ -32,11 +52,10 @@ message SamplesSelection {
   // Opaque to Harmos. The product names what the stream belongs to.
   string scope = 2;
 }
-// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+// Carries one device stream row, its publication timestamp and one-based sequence within a Samples call.
 message Sample {
-  // For an interval stream, the time of the Tick this sample answers. For
-  // other streams, the device's own time if it supplies one; when unset
-  // the host stamps the sample on arrival.
+  // The device's own time if it supplies one; when unset the host stamps
+  // the sample on arrival.
   google.protobuf.Timestamp at = 1;
   // Serialized row message of the stream.
   bytes row = 2;

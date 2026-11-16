@@ -39,7 +39,13 @@ async fn independent_intervals_keep_each_streams_order_and_host_time() {
         for (index, (definition, row)) in rows.into_iter().enumerate() {
             assert_eq!(row.published_unix_micros, Some((index as i64 + 1) * interval));
             let codec = harmos_domain::schema::json::JsonCodec::new(definition.schema().root().unwrap(), &Default::default()).unwrap();
-            assert_eq!(codec.decode(&row.payload).unwrap(), serde_json::json!({"value": (index as u64 + 1).to_le_bytes().to_vec()}));
+            let batch = serde_json::json!({
+                "start_unix_nanos": (index as i64 + 1) * interval * 1000,
+                "period_nanos": interval * 1000,
+                "count": 1,
+                "columns": {"value": [(index as u64 + 1).to_le_bytes().to_vec()]},
+            });
+            assert_eq!(codec.decode(&row.payload).unwrap(), batch);
         }
     }
 

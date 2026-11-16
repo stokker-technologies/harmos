@@ -52,7 +52,7 @@ use harmos_runtime::{
         Registration as Batch, Resource, ServingError,
         middleware::{Enter, Invocation, Middleware},
     },
-    plugin::grpc::Placement,
+    plugin::grpc::{Placement, PlacementSettings},
 };
 
 /* === Constants === */
@@ -256,7 +256,7 @@ async fn retain_rows(requested: usize) {
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/boundary", Clock::with_clock(source.clone())).await.unwrap();
     unit.start_samples().await.unwrap();
 
-    // Start the First Tick on the Controlled Clock.
+    // Start the First Window on the Controlled Clock.
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));
 
@@ -282,23 +282,28 @@ async fn retain_rows(requested: usize) {
     let values = (1..=requested)
         .map(|sequence| serde_json::json!({ "value": format!("unit/boundary:{sequence}:{}", sequence + 1).into_bytes() }))
         .collect::<Vec<_>>();
-    assert_eq!(host.values(), values, "Retain Consecutive Scoped Samples");
+    assert_eq!(host.samples().into_iter().map(|(_, row)| row).collect::<Vec<_>>(), values, "Retain Consecutive Scoped Samples");
     assert_eq!(source.pending(), 0, "Remove Scoped Timers on Close");
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }
 
-/// One Sleep Spanning `requested` Ticks Observes Every One of Them.
+/// One Sleep Spanning `requested` Samples, in Several Windows, Observes Every One of Them.
 async fn count_after_sleep(requested: u64) {
-    // A Plugin Counts Its Scoped Ticks on a Virtual Unit Clock.
+    // A Plugin Counts Its Scoped Samples on a Virtual Unit Clock.
     let host = HostFixture::new().await;
     let sdk = host.sdk("counted-sleep").await;
-    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    // Windows of 100 Samples: the Sleep's End Cuts the Last Window Short.
+    let settings = PlacementSettings {
+        interval_window: Duration::from_secs(100),
+        ..support::settings()
+    };
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings).await.unwrap();
     let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/counted", clock).await.unwrap();
     unit.start_samples().await.unwrap();
 
-    // The Plugin Sleeps Once, Then Reads Its Count; the Last Tick Shares the Sleep's Instant.
+    // The Plugin Sleeps Once, Then Reads Its Count; the Last Sample Shares the Sleep's Instant.
     let finished = AtomicBool::new(false);
     let call = async {
         let result = unit.operations().submit_encoded("fixture.count_after", payload(&requested.to_le_bytes())).unwrap().await;
@@ -307,7 +312,7 @@ async fn count_after_sleep(requested: u64) {
     };
     let (result, advanced) = tokio::join!(call, time.advance_until(Duration::from_secs(requested + 1), || finished.load(Ordering::SeqCst)));
     advanced.unwrap();
-    assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Tick It Spans");
+    assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Sample It Spans");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
@@ -397,17 +402,17 @@ async fn admitted_sleeps_retain_exactly_1025_rows() {
 }
 
 #[tokio::test]
-async fn a_sleep_spanning_1023_ticks_observes_1023() {
+async fn a_sleep_spanning_1023_samples_observes_1023() {
     count_after_sleep(1023).await;
 }
 
 #[tokio::test]
-async fn a_sleep_spanning_1024_ticks_observes_1024() {
+async fn a_sleep_spanning_1024_samples_observes_1024() {
     count_after_sleep(1024).await;
 }
 
 #[tokio::test]
-async fn a_sleep_spanning_1025_ticks_observes_1025() {
+async fn a_sleep_spanning_1025_samples_observes_1025() {
     count_after_sleep(1025).await;
 }
 
@@ -508,8 +513,8 @@ async fn native_operations_register_their_declared_wait_at_admission() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn closing_during_an_in_flight_tick_settles_without_failure() {
-    // Hold One Tick In Flight While the Plugin Sleeps on the Unit Clock.
+async fn closing_during_an_in_flight_window_settles_without_failure() {
+    // Hold One Window In Flight While the Plugin Sleeps on the Unit Clock.
     let host = HostFixture::new().await;
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
@@ -526,17 +531,17 @@ async fn closing_during_an_in_flight_tick_settles_without_failure() {
         registered.await;
     }
 
-    // Close Wins Over the Tick It Cancels and Leaves Nothing Behind.
+    // Close Wins Over the Window It Cancels and Leaves Nothing Behind.
     unit.close().await.unwrap();
     assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
-    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Window");
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn stopping_samples_during_an_in_flight_tick_keeps_calls_and_restarts_demand() {
-    // Hold One Tick In Flight While the Plugin Sleeps on the Unit Clock.
+async fn stopping_samples_during_an_in_flight_window_keeps_calls_and_restarts_demand() {
+    // Hold One Window In Flight While the Plugin Sleeps on the Unit Clock.
     let host = HostFixture::new().await;
     let sdk = host.sdk("scoped-sleep").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
@@ -547,10 +552,10 @@ async fn stopping_samples_during_an_in_flight_tick_keeps_calls_and_restarts_dema
     source.advance_by(Duration::from_secs(1));
     source.wait_registered().await;
 
-    // Stopping Samples Cancels the Tick, Publishes Nothing and Leaves No Timer.
+    // Stopping Samples Cancels the Window, Publishes Nothing and Leaves No Timer.
     unit.stop_samples().await.unwrap();
     assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
-    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Tick");
+    assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Window");
 
     // Calls Stay Bound: a Scoped Sleep Still Runs on the Unit Clock.
     let request = TimeSleepRequest {
@@ -561,7 +566,7 @@ async fn stopping_samples_during_an_in_flight_tick_keeps_calls_and_restarts_dema
     source.advance_by(Duration::from_secs(1));
     call.await.unwrap();
 
-    // Demand Starts Again and Ticks the Same Unit.
+    // Demand Starts Again and Windows the Same Unit.
     unit.start_samples().await.unwrap();
     source.wait_registered().await;
     source.advance_by(Duration::from_secs(1));

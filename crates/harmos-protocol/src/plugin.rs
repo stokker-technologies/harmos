@@ -47,11 +47,11 @@ pub mod response {
         Failure(crate::model::Failure),
     }
 }
-/// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
+/// Submits a dependency call from the current attempt or unanswered samples window under its inherited caller context and checked grants.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildRequest {
-    /// Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
+    /// Chosen by the plugin, unique within this Invoke or Samples call, including across windows.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Complete admitted operation routing identity; no provider prefix or provider selection is added.
@@ -372,13 +372,41 @@ impl GuestChildAction {
         }
     }
 }
-/// Requests one interval sample at the authoritative host timestamp.
+/// Grants one interval window: `count` consecutive samples, the first at `start`, each one `period` later.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
-pub struct Tick {
-    /// Host time of the tick. The answering sample carries it.
+pub struct Window {
+    /// Host time of the window's first sample.
     #[prost(message, optional, tag = "1")]
-    pub at: ::core::option::Option<::prost_types::Timestamp>,
+    pub start: ::core::option::Option<::prost_types::Timestamp>,
+    /// The stream's resolved interval.
+    #[prost(message, optional, tag = "2")]
+    pub period: ::core::option::Option<::prost_types::Duration>,
+    /// Samples in the window; at least one.
+    #[prost(uint64, tag = "3")]
+    pub count: u64,
+    /// One-based sequence of the window's first sample within the Samples call.
+    #[prost(uint64, tag = "4")]
+    pub sequence: u64,
+}
+/// Answers part of the unanswered window with consecutive samples as columns.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SampleBatch {
+    /// Zero-based index of this part's first sample within the window.
+    #[prost(uint64, tag = "1")]
+    pub offset: u64,
+    /// Samples in this part; at least one.
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+    /// A serialized message whose fields mirror the stream row's field numbers and
+    /// types, each repeated, holding one value per sample in sample order. Numeric
+    /// columns are packed; every sample has a value in every column.
+    #[prost(bytes = "vec", tag = "3")]
+    pub columns: ::prost::alloc::vec::Vec<u8>,
+    /// Set on the part that completes the window. It answers the window and ends its child calls.
+    #[prost(bool, tag = "4")]
+    pub last: bool,
 }
 /// Opens demand for one declared plugin stream under an opaque invocation scope.
 #[allow(clippy::all)]
@@ -391,13 +419,12 @@ pub struct SamplesSelection {
     #[prost(string, tag = "2")]
     pub scope: ::prost::alloc::string::String,
 }
-/// Carries a declared row, publication timestamp and one-based sequence within a Samples call.
+/// Carries one device stream row, its publication timestamp and one-based sequence within a Samples call.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Sample {
-    /// For an interval stream, the time of the Tick this sample answers. For
-    /// other streams, the device's own time if it supplies one; when unset
-    /// the host stamps the sample on arrival.
+    /// The device's own time if it supplies one; when unset the host stamps
+    /// the sample on arrival.
     #[prost(message, optional, tag = "1")]
     pub at: ::core::option::Option<::prost_types::Timestamp>,
     /// Serialized row message of the stream.
@@ -495,12 +522,12 @@ pub mod instance_invoke_response {
         ChildDemand(super::ChildDemand),
     }
 }
-/// Carries a stream selection, clock tick or child reply for Instance.Samples.
+/// Carries a stream selection, window grant or child reply for Instance.Samples.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesRequest {
     /// Selects one variant; an unset discriminator carries no selected value.
-    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 2, 3")]
+    #[prost(oneof = "instance_samples_request::Frame", tags = "1, 3, 4")]
     pub frame: ::core::option::Option<instance_samples_request::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesRequest`.
@@ -512,27 +539,28 @@ pub mod instance_samples_request {
         /// First frame.
         #[prost(message, tag = "1")]
         Open(super::SamplesSelection),
-        #[prost(message, tag = "2")]
-        Tick(super::Tick),
-        /// Reply to a child of the unanswered tick; never before open or after its sample.
+        /// Reply to a child of the unanswered window; never before open or after its last part.
         #[prost(message, tag = "3")]
         Child(super::ChildResponse),
+        /// Grants one window of an interval stream; never while another is unanswered.
+        #[prost(message, tag = "4")]
+        Window(super::Window),
     }
 }
-/// Carries declared stream rows or child traffic for the unanswered tick within the active demand call.
+/// Carries device rows, window parts or child traffic for the unanswered window within the active demand call.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstanceSamplesResponse {
-    /// A tick answer ends its child-call scope. Must be empty when a child frame is selected.
+    /// Device streams only. Must be empty when a frame is selected.
     #[prost(message, repeated, tag = "1")]
     pub samples: ::prost::alloc::vec::Vec<Sample>,
-    /// Child frames do not answer the tick. Unset for sample-bearing responses.
-    #[prost(oneof = "instance_samples_response::Frame", tags = "2, 3, 4")]
+    /// Child frames do not answer the window.
+    #[prost(oneof = "instance_samples_response::Frame", tags = "2, 3, 4, 5")]
     pub frame: ::core::option::Option<instance_samples_response::Frame>,
 }
 /// Nested message and enum types in `InstanceSamplesResponse`.
 pub mod instance_samples_response {
-    /// Child frames do not answer the tick. Unset for sample-bearing responses.
+    /// Child frames do not answer the window.
     #[allow(clippy::all)]
     #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
     pub enum Frame {
@@ -542,6 +570,9 @@ pub mod instance_samples_response {
         ChildCancel(super::ChildCancel),
         #[prost(message, tag = "4")]
         ChildDemand(super::ChildDemand),
+        /// Interval streams only: one part of the unanswered window.
+        #[prost(message, tag = "5")]
+        Batch(super::SampleBatch),
     }
 }
 /// Carries the reason text for Instance.Stop.
@@ -705,17 +736,18 @@ pub mod instance_client {
         }
         /// One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
-        /// For a stream with an interval the host then sends one harmos.plugin.v1.Tick per interval
-        /// and the plugin answers each with one sample. Only one tick may be unanswered.
-        /// Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+        /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
+        /// the plugin answers each with harmos.plugin.v1.SampleBatch parts, the final part marked
+        /// last. Only one window may be unanswered.
+        /// Between receiving a window and sending its last part, the plugin may send ChildRequest,
         /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
         /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
         /// caller context and grants, with the same routing and policy checks as Invoke.
         /// Replies may arrive out of order and are matched by call ID, unique for the whole
-        /// Samples call, not reused on later ticks. Failures retain every field unchanged.
-        /// Answering the tick or ending the stream cancels its outstanding children and
+        /// Samples call, not reused on later windows. Failures retain every field unchanged.
+        /// Answering the window or ending the stream cancels its outstanding children and
         /// suppresses their later replies. ChildCancel does the same for its child only.
-        /// Child traffic outside an unanswered tick (including device streams), unknown or
+        /// Child traffic outside an unanswered window (including device streams), unknown or
         /// duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
         pub async fn samples(
             &mut self,
@@ -816,17 +848,18 @@ pub mod instance_server {
             + 'static;
         /// One declared stream. The host opens the call with a harmos.plugin.v1.SamplesSelection;
         /// opening it is the demand for the stream and closing it ends the demand.
-        /// For a stream with an interval the host then sends one harmos.plugin.v1.Tick per interval
-        /// and the plugin answers each with one sample. Only one tick may be unanswered.
-        /// Between receiving a tick and sending its sample, the plugin may send ChildRequest,
+        /// For a stream with an interval the host then grants harmos.plugin.v1.Window frames and
+        /// the plugin answers each with harmos.plugin.v1.SampleBatch parts, the final part marked
+        /// last. Only one window may be unanswered.
+        /// Between receiving a window and sending its last part, the plugin may send ChildRequest,
         /// ChildDemand and ChildCancel frames; the host replies with ChildResponse on this
         /// same stream. Child calls inherit SamplesSelection.scope and the admitted plugin's
         /// caller context and grants, with the same routing and policy checks as Invoke.
         /// Replies may arrive out of order and are matched by call ID, unique for the whole
-        /// Samples call, not reused on later ticks. Failures retain every field unchanged.
-        /// Answering the tick or ending the stream cancels its outstanding children and
+        /// Samples call, not reused on later windows. Failures retain every field unchanged.
+        /// Answering the window or ending the stream cancels its outstanding children and
         /// suppresses their later replies. ChildCancel does the same for its child only.
-        /// Child traffic outside an unanswered tick (including device streams), unknown or
+        /// Child traffic outside an unanswered window (including device streams), unknown or
         /// duplicate terminal reply IDs, and mixed sample/child responses are refused with INVALID_ARGUMENT.
         async fn samples(
             &self,

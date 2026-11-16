@@ -7,7 +7,7 @@
  * ***
  */
 
-// Connection-Owned Publication Demand and Host Ticks
+// Connection-Owned Publication Demand and Host Interval Windows
 
 /* === Modules === */
 
@@ -18,14 +18,16 @@
 use harmos_protocol::plugin::InstanceSamplesRequest;
 use harmos_protocol::plugin::InstanceSamplesResponse;
 use harmos_protocol::plugin::SamplesSelection;
+use harmos_protocol::plugin::Window as WireWindow;
 use harmos_protocol::plugin::instance_samples_request::Frame;
+use harmos_protocol::plugin::instance_samples_response::Frame as ResponseFrame;
 
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error as StdError,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 // Third Party Imports
@@ -37,7 +39,7 @@ use tokio::{
 
 // Local Imports
 use super::{Activation, Error, PlacementSettings, model};
-use crate::operations::clock::{TickCall, Unit};
+use crate::operations::clock::{Unit, WindowCall};
 use crate::streams::protobuf::Row;
 use crate::{
     Application,
@@ -67,7 +69,12 @@ pub(super) struct ScopeSource {
     pub(super) settings: PlacementSettings,
     pub(super) operations: crate::operations::Manager,
     pub(super) bindings: Mutex<Bindings>,
+    /// Scopes Sampling This Activation; the Unscoped Demand Grants No Windows While Any Do.
+    pub(super) sampling: watch::Sender<usize>,
 }
+
+/// One Scope's Share of `ScopeSource::sampling`, Released When Dropped.
+pub(super) struct Sampling(watch::Sender<usize>);
 
 /// Scoped Bindings the Attachment Owns; Admission Ends When Its Settlement Starts.
 #[derive(Default)]
@@ -86,14 +93,22 @@ struct PreparedDemand {
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
-    interval: Option<Duration>,
+    cadence: Option<Cadence>,
+}
+
+/// An Interval Stream's Sample Period and Window Length.
+#[derive(Clone, Copy)]
+struct Cadence {
+    period: Duration,
+    window: Duration,
 }
 
 struct Demand {
     output: mpsc::Sender<InstanceSamplesRequest>,
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
-    interval: Option<Duration>,
+    cadence: Option<Cadence>,
+    sampling: Option<watch::Receiver<usize>>,
     lease: Arc<StreamWriter>,
     host: Clock,
     close: watch::Receiver<bool>,
@@ -129,8 +144,12 @@ impl Publications {
             let descriptor = pool
                 .get_message_by_name(stream.row.trim_start_matches('.'))
                 .ok_or_else(|| invalid("Prepare Samples: missing stream row"))?;
-            let row = Row::new(descriptor)?;
-            let interval = interval(stream, &activation.settings)?;
+            let cadence = cadence(stream, &activation.settings, settings)?;
+            // An Interval Stream Stores One Batch Row per Part: Its Row's Columns and Their Times.
+            let row = match cadence {
+                Some(_) => Row::new(harmos_protocol::columns::derive(&descriptor).map_err(invalid)?.batch)?,
+                None => Row::new(descriptor)?,
+            };
             declarations.push(harmos_operations::StreamDeclaration {
                 id: stream.id.clone(),
                 window: settings.stream_window.get(),
@@ -138,11 +157,11 @@ impl Publications {
                 metadata: crate::Metadata::new(crate::Identifier::new(&stream.id).map_err(invalid)?, stream.id.clone(), None),
                 row_metadata: Vec::new(),
             });
-            rows.push((stream.id.clone(), row, interval));
+            rows.push((stream.id.clone(), row, cadence));
         }
         streams.validate_connection(activation.owner(), &declarations, replace).map_err(invalid)?;
         let mut demands = Vec::new();
-        for (id, row, interval) in rows {
+        for (id, row, cadence) in rows {
             let (output, input) = mpsc::channel(1);
             output
                 .send(InstanceSamplesRequest {
@@ -156,7 +175,7 @@ impl Publications {
             let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
             let input =
                 activation.connection.client().samples(input).await.map_err(|error| Error::Transport(error.to_string()))?.into_inner();
-            demands.push(PreparedDemand { id, output, input, row, interval });
+            demands.push(PreparedDemand { id, output, input, row, cadence });
         }
         Ok(PreparedPublications { declarations, demands })
     }
@@ -165,7 +184,9 @@ impl Publications {
         operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
         let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
-        let mut publications = Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None);
+        let sampling = watch::channel(0).0;
+        let mut publications =
+            Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None, Some(sampling.subscribe()));
         activation
             .publications
             .set(ScopeSource {
@@ -174,6 +195,7 @@ impl Publications {
                 settings: settings.clone(),
                 operations: operations.clone(),
                 bindings: Mutex::default(),
+                sampling,
             })
             .map_err(|_| invalid("Activate Samples: activation already has publications"))?;
         publications.source = Some(activation.publications.clone());
@@ -184,19 +206,20 @@ impl Publications {
     pub(super) fn idle(
         source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock, operations: &crate::operations::Manager,
     ) -> Self {
-        Self::start(Vec::new(), source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()))
+        Self::start(Vec::new(), source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()), None)
     }
 
     pub(super) fn scoped(
         prepared: PreparedPublications, source: &ScopeSource, activation: &Activation, clock: &Clock, host: &Clock,
         operations: &crate::operations::Manager,
     ) -> Self {
-        Self::start(prepared.demands, source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()))
+        Self::start(prepared.demands, source.registration.clone(), activation, clock, host, operations, Some(source.close.clone()), None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn start(
         demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock, host: &Clock,
-        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>,
+        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>, sampling: Option<watch::Receiver<usize>>,
     ) -> Self {
         let close = watch::channel(false).0;
         let mut publications = Self {
@@ -221,6 +244,7 @@ impl Publications {
             let clock = clock.clone();
             let host = host.clone();
             let operations = operations.clone();
+            let sampling = sampling.clone();
             let caller = Arc::new(super::CallingPlugin {
                 name: activation.entry_name.clone(),
                 connection: activation.connection.clone(),
@@ -232,7 +256,8 @@ impl Publications {
                     output: prepared.output,
                     input: prepared.input,
                     row: prepared.row,
-                    interval: prepared.interval,
+                    cadence: prepared.cadence,
+                    sampling,
                     lease,
                     host,
                     close,
@@ -327,6 +352,20 @@ impl Publications {
     }
 }
 
+impl ScopeSource {
+    /// Count One Sampling Scope Until the Returned Share Is Dropped.
+    pub(super) fn sampling(&self) -> Sampling {
+        self.sampling.send_modify(|scopes| *scopes += 1);
+        Sampling(self.sampling.clone())
+    }
+}
+
+impl Drop for Sampling {
+    fn drop(&mut self) {
+        self.0.send_modify(|scopes| *scopes -= 1);
+    }
+}
+
 impl Drop for Publications {
     fn drop(&mut self) {
         self.close.send_replace(true);
@@ -342,31 +381,55 @@ fn invalid(error: impl std::fmt::Display) -> Error {
     Error::Invalid(error.to_string())
 }
 
-fn interval(stream: &model::StreamDeclaration, settings: &model::SettingValues) -> Result<Option<Duration>, Error> {
+/// Resolve an Interval Stream's Period and Window Length; Device Streams Have Neither.
+fn cadence(
+    stream: &model::StreamDeclaration, values: &model::SettingValues, settings: &PlacementSettings,
+) -> Result<Option<Cadence>, Error> {
     let mut interval = stream.interval;
     if !stream.interval_setting.is_empty() {
-        let value = settings
-            .values
-            .get(&stream.interval_setting)
-            .and_then(|value| value.value.as_ref())
-            .ok_or_else(|| invalid("Read Stream Interval: setting is not declared"))?;
-        let model::setting_value::Value::Duration(value) = value else {
-            return Err(invalid("Read Stream Interval: setting must be a duration"));
-        };
-        interval = Some(*value);
+        interval = Some(duration_setting(values, &stream.interval_setting, "Read Stream Interval")?);
     }
-    interval
-        .map(|value| {
-            if value.seconds < 0 || !(0..1_000_000_000).contains(&value.nanos) || value.seconds > 315_576_000_000 {
-                return Err(invalid("Invalid Stream Interval"));
-            }
-            let period = Duration::new(value.seconds as u64, value.nanos as u32);
-            if period.is_zero() {
-                return Err(invalid("Stream Interval Must Be Positive"));
-            }
-            Ok(period)
-        })
-        .transpose()
+    let Some(interval) = interval else {
+        if !stream.window_setting.is_empty() {
+            return Err(invalid("Read Stream Window: a device stream has no window; remove its window_setting"));
+        }
+        return Ok(None);
+    };
+    let period = positive(interval, "Stream Interval")?;
+    if period.as_nanos() > u128::from(u64::MAX) {
+        return Err(invalid("Read Stream Interval: declare an interval shorter than 584 years"));
+    }
+    let window = match stream.window_setting.as_str() {
+        "" => settings.interval_window,
+        setting => positive(duration_setting(values, setting, "Read Stream Window")?, "Stream Window")?,
+    };
+    if window.is_zero() {
+        return Err(invalid("Read Stream Window: configure a positive PlacementSettings::interval_window"));
+    }
+    Ok(Some(Cadence { period, window }))
+}
+
+fn duration_setting(values: &model::SettingValues, id: &str, action: &str) -> Result<prost_types::Duration, Error> {
+    let value = values
+        .values
+        .get(id)
+        .and_then(|value| value.value.as_ref())
+        .ok_or_else(|| invalid(format!("{action}: setting `{id}` is not declared; declare it in the plugin's settings")))?;
+    let model::setting_value::Value::Duration(value) = value else {
+        return Err(invalid(format!("{action}: setting `{id}` must be a duration")));
+    };
+    Ok(*value)
+}
+
+fn positive(value: prost_types::Duration, name: &str) -> Result<Duration, Error> {
+    if value.seconds < 0 || !(0..1_000_000_000).contains(&value.nanos) || value.seconds > 315_576_000_000 {
+        return Err(invalid(format!("Invalid {name}")));
+    }
+    let period = Duration::new(value.seconds as u64, value.nanos as u32);
+    if period.is_zero() {
+        return Err(invalid(format!("{name} Must Be Positive")));
+    }
+    Ok(period)
 }
 
 fn sample_error(error: crate::Error) -> Error {
@@ -380,12 +443,44 @@ fn sample_error(error: crate::Error) -> Error {
     invalid(error)
 }
 
+/// The Span of `nanos` Nanoseconds, Refused Past the Clock's Range.
+fn span(nanos: u128) -> Result<Duration, Error> {
+    let seconds = u64::try_from(nanos / 1_000_000_000).map_err(|_| invalid("Grant Sample Window: the schedule left the clock's range"))?;
+    Ok(Duration::new(seconds, (nanos % 1_000_000_000) as u32))
+}
+
+fn unix_nanos(date: SystemTime) -> Result<i64, Error> {
+    let nanos = match date.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(after) => i128::try_from(after.as_nanos()).ok(),
+        Err(before) => i128::try_from(before.duration().as_nanos()).ok().map(|nanos| -nanos),
+    };
+    nanos
+        .and_then(|nanos| i64::try_from(nanos).ok())
+        .ok_or_else(|| invalid("Grant Sample Window: sample times must fall between 1678 and 2262; move the clock's date"))
+}
+
+/// The Context JSON Each Stored Row Carries: the Trusted Scope and a Device's Own Time.
+fn row_context(operations: &crate::operations::Manager, source_time: Option<prost_types::Timestamp>) -> Option<String> {
+    match operations.call_context().get::<crate::Scope>() {
+        Some(scope) => {
+            let mut context = serde_json::Map::new();
+            context.insert("scope".into(), serde_json::json!(scope.as_str()));
+            if let Some(at) = source_time {
+                context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
+            }
+            Some(serde_json::Value::Object(context).to_string())
+        }
+        None => source_time.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos)),
+    }
+}
+
 async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) -> Result<(), Error> {
     let Demand {
         output,
         input,
         row,
-        interval,
+        cadence,
+        mut sampling,
         lease,
         host,
         close,
@@ -397,52 +492,22 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
-    // A Scoped Interval Demand Joins Its Unit's Tick Schedule; Its Ticks' Call Trees Are Marked.
-    let unit = interval.and(operations.call_context().get::<Arc<Unit>>().cloned());
+    // A Scoped Interval Demand Joins Its Unit's Window Schedule; Its Windows' Call Trees Are Marked.
+    let unit = cadence.and(operations.call_context().get::<Arc<Unit>>().cloned());
     let operations = match &unit {
         Some(_) => {
             let mut context = operations.call_context().clone();
-            context.insert(TickCall).map_err(invalid)?;
+            context.insert(WindowCall).map_err(invalid)?;
             operations.with_context(context)
         }
         None => operations,
     };
     let outcome = {
         let work = async {
-            let mut sequence = 0;
-            let mut next_tick = interval.map(|period| clock.now() + period);
-            let schedule = unit.as_ref().zip(next_tick).map(|(unit, due)| unit.ticks.schedule(due));
-            loop {
-                let tick = if let Some(period) = interval {
-                    let next = clock.sleep_until(next_tick.expect("interval streams have a next tick"));
-                    let wait = async {
-                        tokio::select! {
-                            biased;
-                            frame = async { input.lock().await.message().await } => Err(invalid(format!("Read Interval Samples Outside Tick: {frame:?}"))),
-                            () = next => Ok(()),
-                        }
-                    };
-                    activity.wait(wait).await?;
-                    let reading = clock.read();
-                    next_tick = Some(reading.instant + period);
-                    let at = reading.date.into();
-                    Some(at)
-                } else {
-                    None
-                };
-                let samples = if let Some(at) = tick {
-                    activity
-                        .wait(operations.call_native::<super::samples::Tick>(super::samples::Request {
-                            input: input.clone(),
-                            output: output.clone(),
-                            caller: caller.clone(),
-                            seen: seen.clone(),
-                            lease: lease.clone(),
-                            at,
-                        }))
-                        .await
-                        .map_err(sample_error)?
-                } else {
+            let Some(Cadence { period, window }) = cadence else {
+                // A Device Stream Publishes Whenever Its Device Produces a Sample.
+                let mut sequence = 0;
+                loop {
                     let response = input
                         .lock()
                         .await
@@ -450,57 +515,157 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                         .await
                         .map_err(|error| Error::Transport(error.to_string()))?
                         .ok_or_else(|| invalid("Read Device Samples: demand ended"))?;
+                    if matches!(response.frame, Some(ResponseFrame::Batch(_))) {
+                        return Err(invalid("Read Device Samples: a device stream answers with samples, not batches"));
+                    }
                     if response.frame.is_some() {
-                        return Err(invalid("Read Device Samples: child calls require an unanswered tick"));
+                        return Err(invalid("Read Device Samples: child calls require an unanswered window"));
                     }
-                    response
-                };
-                if samples.samples.len() != 1 {
-                    return Err(invalid("Expected One Sample per Message"));
+                    if response.samples.len() != 1 {
+                        return Err(invalid("Expected One Sample per Message"));
+                    }
+                    let _sample = clock.activity("plugin sample ingest");
+                    let _ingesting = host.activity("Ingest Accepted Samples");
+                    let sample = response.samples.into_iter().next().expect("one sample");
+                    sequence += 1;
+                    if sample.sequence != sequence {
+                        return Err(invalid("Invalid Stream Sequence"));
+                    }
+                    if sample.at.is_some_and(|at| {
+                        !(-62_135_596_800..=253_402_300_799).contains(&at.seconds) || !(0..1_000_000_000).contains(&at.nanos)
+                    }) {
+                        return Err(invalid("Invalid Sample Time"));
+                    }
+                    let published: prost_types::Timestamp = clock.date().into();
+                    let payload = row.decode(&sample.row)?;
+                    let receipt = lease
+                        .admit_clocked_row(
+                            PublicationRow {
+                                payload,
+                                published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
+                                context: row_context(&operations, sample.at),
+                            },
+                            &[clock, &host],
+                        )
+                        .map_err(invalid)?;
+                    ingested_through = Some(receipt);
+                    lease.ingested_at(receipt).await.map_err(invalid)?;
                 }
-                let _sample = clock.activity("plugin sample ingest");
-                let sample = samples.samples.into_iter().next().unwrap();
-                sequence += 1;
-                if sample.sequence != sequence {
-                    return Err(invalid("Invalid Stream Sequence"));
-                }
-                if tick.is_some() && sample.at != tick {
-                    return Err(invalid("Sample Time Differs from Its Tick"));
-                }
-                if sample
-                    .at
-                    .is_some_and(|at| !(-62_135_596_800..=253_402_300_799).contains(&at.seconds) || !(0..1_000_000_000).contains(&at.nanos))
+            };
+            // Samples Sit on a Fixed Grid From the Origin; Window Ends Sit on Their Own Grid From It.
+            let period_nanos = period.as_nanos();
+            let window_nanos = window.as_nanos();
+            let wire_period = prost_types::Duration::try_from(period).map_err(invalid)?;
+            let mut origin = clock.read();
+            let mut granted = 0_u128;
+            let mut sequence = 0_u64;
+            let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
+            loop {
+                // The Unscoped Demand Grants No Windows While a Scope of Its Activation Samples.
+                if let Some(sampling) = &mut sampling
+                    && *sampling.borrow_and_update() > 0
                 {
-                    return Err(invalid("Invalid Sample Time"));
+                    activity
+                        .wait(async {
+                            let _ = sampling.wait_for(|scopes| *scopes == 0).await;
+                        })
+                        .await;
+                    origin = clock.read();
+                    granted = 0;
+                    continue;
                 }
-                let published = tick.unwrap_or_else(|| clock.date().into());
-                let source_time = if interval.is_none() { sample.at } else { None };
-                let context = match operations.call_context().get::<crate::Scope>() {
-                    Some(scope) => {
-                        let mut context = serde_json::Map::new();
-                        context.insert("scope".into(), serde_json::json!(scope.as_str()));
-                        if let Some(at) = source_time {
-                            context.insert("source_time".into(), serde_json::json!({"seconds": at.seconds, "nanos": at.nanos}));
+                let due_nanos = (granted + 1) * period_nanos;
+                let due = origin.instant + span(due_nanos)?;
+                let end = origin.instant + span(due_nanos.div_ceil(window_nanos) * window_nanos)?;
+                let paused = async {
+                    match &mut sampling {
+                        Some(sampling) => {
+                            let _ = sampling.wait_for(|scopes| *scopes > 0).await;
                         }
-                        Some(serde_json::Value::Object(context).to_string())
+                        None => std::future::pending().await,
                     }
-                    None => source_time.map(|at| format!("{{\"source_time\":{{\"seconds\":{},\"nanos\":{}}}}}", at.seconds, at.nanos)),
                 };
-                let payload = row.decode(&sample.row)?;
-                let receipt = lease
-                    .admit_clocked_row(
-                        PublicationRow {
-                            payload,
-                            published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
-                            context,
-                        },
-                        clock,
-                    )
-                    .map_err(invalid)?;
+                let cut = async {
+                    match &schedule {
+                        Some(schedule) => schedule.cut(due).await,
+                        None => std::future::pending().await,
+                    }
+                };
+                let wake = async {
+                    tokio::select! {
+                        biased;
+                        frame = async { input.lock().await.message().await } => {
+                            Err(invalid(format!("Read Interval Samples Outside a Window: {frame:?}")))
+                        }
+                        () = paused => Ok(false),
+                        () = clock.sleep_until(end) => Ok(true),
+                        () = cut => Ok(true),
+                    }
+                };
+                if !activity.wait(wake).await? {
+                    continue;
+                }
+                // One Reading Ends the Window: a Late or Advanced Clock Extends It to Where Time Reached.
+                let reading = clock.read();
+                let through = reading.instant.saturating_duration_since(origin.instant).as_nanos() / period_nanos;
+                if through <= granted {
+                    continue;
+                }
+                let count = u64::try_from(through - granted).map_err(|_| invalid("Grant Sample Window: too many samples are due"))?;
+                let start = origin.date + span((granted + 1) * period_nanos)?;
+                let start_nanos = unix_nanos(start)?;
+                let grant = WireWindow {
+                    start: Some(start.into()),
+                    period: Some(wire_period),
+                    count,
+                    sequence: sequence + 1,
+                };
+                let parts = activity
+                    .wait(operations.call_native::<super::samples::Window>(super::samples::Request {
+                        input: input.clone(),
+                        output: output.clone(),
+                        caller: caller.clone(),
+                        seen: seen.clone(),
+                        lease: lease.clone(),
+                        window: grant,
+                    }))
+                    .await
+                    .map_err(sample_error)?;
+                // Accepted Ingestion Is Host Work: It Holds Both the Demand's and the Runtime Clock.
+                let _window = clock.activity("plugin window ingest");
+                let _ingesting = host.activity("Ingest Accepted Samples");
+                let context = row_context(&operations, None);
+                let mut receipt = None;
+                for part in parts {
+                    let first = i128::from(start_nanos) + i128::try_from(u128::from(part.offset) * period_nanos).map_err(invalid)?;
+                    let first = i64::try_from(first).map_err(|_| invalid("Grant Sample Window: sample times must fall before 2262"))?;
+                    let mut stored = Vec::with_capacity(part.columns.len() + 32);
+                    prost::encoding::int64::encode(harmos_protocol::columns::batch::START_UNIX_NANOS, &first, &mut stored);
+                    prost::encoding::uint64::encode(harmos_protocol::columns::batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
+                    prost::encoding::uint64::encode(harmos_protocol::columns::batch::COUNT, &part.count, &mut stored);
+                    prost::encoding::bytes::encode(harmos_protocol::columns::batch::COLUMNS, &part.columns, &mut stored);
+                    for (first, _, payload) in row.decode_batch(&stored, part.count, period_nanos as u64)? {
+                        receipt = Some(
+                            lease
+                                .admit_clocked_row(
+                                    PublicationRow {
+                                        payload,
+                                        published_unix_micros: Some(first.div_euclid(1000)),
+                                        context: context.clone(),
+                                    },
+                                    &[clock, &host],
+                                )
+                                .map_err(invalid)?,
+                        );
+                    }
+                }
+                let receipt = receipt.expect("an answered window has at least one part");
                 ingested_through = Some(receipt);
                 lease.ingested_at(receipt).await.map_err(invalid)?;
-                if let Some((schedule, next)) = schedule.as_ref().zip(next_tick) {
-                    schedule.due(next);
+                granted = through;
+                sequence += count;
+                if let Some(schedule) = &schedule {
+                    schedule.due(origin.instant + span((granted + 1) * period_nanos)?);
                 }
             }
         };

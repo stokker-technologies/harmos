@@ -255,12 +255,20 @@ impl<W, E: Encode<W>> Encoder<W, E> {
     }
 }
 
+impl<W, E> Encoder<W, E> {
+    /// Release the Scratch Buffer and Its Preparation Claim After a Send: an Idle Encoder Retains Nothing.
+    fn release(&mut self) -> Result<(), Status> {
+        self.scratch = Vec::new();
+        retain(&self.preparation, &mut self.claim, 0)
+    }
+}
+
 impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
     type Item = E;
     type Error = Status;
     fn encode(&mut self, item: E, destination: &mut EncodeBuf<'_>) -> Result<(), Status> {
         destination.put_slice(self.message(&item)?);
-        Ok(())
+        self.release()
     }
 
     fn buffer_settings(&self) -> BufferSettings {
@@ -390,6 +398,16 @@ mod tests {
         assert_eq!(budget.available_permits(), 48 * 1024 - retained);
         drop(encoder);
         assert_eq!(budget.available_permits(), 48 * 1024);
+    }
+
+    #[test]
+    fn a_sent_message_releases_its_scratch_and_claim() {
+        let budget = Arc::new(Semaphore::new(48 * 1024));
+        let mut encoder = encoder(Some(budget.clone()));
+        encoder.message(&Response::new(Row { bytes: vec![37; 16384] })).unwrap();
+        assert!(budget.available_permits() < 48 * 1024);
+        encoder.release().unwrap();
+        assert_eq!((encoder.scratch.capacity(), budget.available_permits()), (0, 48 * 1024));
     }
 
     #[test]

@@ -48,27 +48,29 @@ namespace Harmos.Internal.Plugin;
             "Y2VsEjgKCHJlc3BvbnNlGAMgASgLMhouaGFybW9zLnBsdWdpbi52MS5SZXNw",
             "b25zZUgAUghyZXNwb25zZRJCCgxjaGlsZF9kZW1hbmQYBCABKAsyHS5oYXJt",
             "b3MucGx1Z2luLnYxLkNoaWxkRGVtYW5kSABSC2NoaWxkRGVtYW5kQgcKBWZy",
-            "YW1lIsIBChZJbnN0YW5jZVNhbXBsZXNSZXF1ZXN0EjgKBG9wZW4YASABKAsy",
-            "Ii5oYXJtb3MucGx1Z2luLnYxLlNhbXBsZXNTZWxlY3Rpb25IAFIEb3BlbhIs",
-            "CgR0aWNrGAIgASgLMhYuaGFybW9zLnBsdWdpbi52MS5UaWNrSABSBHRpY2sS",
-            "NwoFY2hpbGQYAyABKAsyHy5oYXJtb3MucGx1Z2luLnYxLkNoaWxkUmVzcG9u",
-            "c2VIAFIFY2hpbGRCBwoFZnJhbWUilgIKF0luc3RhbmNlU2FtcGxlc1Jlc3Bv",
-            "bnNlEjIKB3NhbXBsZXMYASADKAsyGC5oYXJtb3MucGx1Z2luLnYxLlNhbXBs",
-            "ZVIHc2FtcGxlcxI2CgVjaGlsZBgCIAEoCzIeLmhhcm1vcy5wbHVnaW4udjEu",
-            "Q2hpbGRSZXF1ZXN0SABSBWNoaWxkEkIKDGNoaWxkX2NhbmNlbBgDIAEoCzId",
-            "Lmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRDYW5jZWxIAFILY2hpbGRDYW5jZWwS",
-            "QgoMY2hpbGRfZGVtYW5kGAQgASgLMh0uaGFybW9zLnBsdWdpbi52MS5DaGls",
-            "ZERlbWFuZEgAUgtjaGlsZERlbWFuZEIHCgVmcmFtZSItChNJbnN0YW5jZVN0",
-            "b3BSZXF1ZXN0EhYKBnJlYXNvbhgBIAEoCVIGcmVhc29uIhYKFEluc3RhbmNl",
-            "U3RvcFJlc3BvbnNlMvoCCghJbnN0YW5jZRJSCgNHZXQSJC5oYXJtb3MucGx1",
-            "Z2luLnYxLkluc3RhbmNlR2V0UmVxdWVzdBolLmhhcm1vcy5wbHVnaW4udjEu",
-            "SW5zdGFuY2VHZXRSZXNwb25zZRJfCgZJbnZva2USJy5oYXJtb3MucGx1Z2lu",
-            "LnYxLkluc3RhbmNlSW52b2tlUmVxdWVzdBooLmhhcm1vcy5wbHVnaW4udjEu",
-            "SW5zdGFuY2VJbnZva2VSZXNwb25zZSgBMAESYgoHU2FtcGxlcxIoLmhhcm1v",
-            "cy5wbHVnaW4udjEuSW5zdGFuY2VTYW1wbGVzUmVxdWVzdBopLmhhcm1vcy5w",
-            "bHVnaW4udjEuSW5zdGFuY2VTYW1wbGVzUmVzcG9uc2UoATABElUKBFN0b3AS",
-            "JS5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlU3RvcFJlcXVlc3QaJi5oYXJt",
-            "b3MucGx1Z2luLnYxLkluc3RhbmNlU3RvcFJlc3BvbnNlYgZwcm90bzM="));
+            "YW1lItQBChZJbnN0YW5jZVNhbXBsZXNSZXF1ZXN0EjgKBG9wZW4YASABKAsy",
+            "Ii5oYXJtb3MucGx1Z2luLnYxLlNhbXBsZXNTZWxlY3Rpb25IAFIEb3BlbhI3",
+            "CgVjaGlsZBgDIAEoCzIfLmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRSZXNwb25z",
+            "ZUgAUgVjaGlsZBIyCgZ3aW5kb3cYBCABKAsyGC5oYXJtb3MucGx1Z2luLnYx",
+            "LldpbmRvd0gAUgZ3aW5kb3dCBwoFZnJhbWVKBAgCEANSBHRpY2sizQIKF0lu",
+            "c3RhbmNlU2FtcGxlc1Jlc3BvbnNlEjIKB3NhbXBsZXMYASADKAsyGC5oYXJt",
+            "b3MucGx1Z2luLnYxLlNhbXBsZVIHc2FtcGxlcxI2CgVjaGlsZBgCIAEoCzIe",
+            "Lmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRSZXF1ZXN0SABSBWNoaWxkEkIKDGNo",
+            "aWxkX2NhbmNlbBgDIAEoCzIdLmhhcm1vcy5wbHVnaW4udjEuQ2hpbGRDYW5j",
+            "ZWxIAFILY2hpbGRDYW5jZWwSQgoMY2hpbGRfZGVtYW5kGAQgASgLMh0uaGFy",
+            "bW9zLnBsdWdpbi52MS5DaGlsZERlbWFuZEgAUgtjaGlsZERlbWFuZBI1CgVi",
+            "YXRjaBgFIAEoCzIdLmhhcm1vcy5wbHVnaW4udjEuU2FtcGxlQmF0Y2hIAFIF",
+            "YmF0Y2hCBwoFZnJhbWUiLQoTSW5zdGFuY2VTdG9wUmVxdWVzdBIWCgZyZWFz",
+            "b24YASABKAlSBnJlYXNvbiIWChRJbnN0YW5jZVN0b3BSZXNwb25zZTL6AgoI",
+            "SW5zdGFuY2USUgoDR2V0EiQuaGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZUdl",
+            "dFJlcXVlc3QaJS5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlR2V0UmVzcG9u",
+            "c2USXwoGSW52b2tlEicuaGFybW9zLnBsdWdpbi52MS5JbnN0YW5jZUludm9r",
+            "ZVJlcXVlc3QaKC5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNlSW52b2tlUmVz",
+            "cG9uc2UoATABEmIKB1NhbXBsZXMSKC5oYXJtb3MucGx1Z2luLnYxLkluc3Rh",
+            "bmNlU2FtcGxlc1JlcXVlc3QaKS5oYXJtb3MucGx1Z2luLnYxLkluc3RhbmNl",
+            "U2FtcGxlc1Jlc3BvbnNlKAEwARJVCgRTdG9wEiUuaGFybW9zLnBsdWdpbi52",
+            "MS5JbnN0YW5jZVN0b3BSZXF1ZXN0GiYuaGFybW9zLnBsdWdpbi52MS5JbnN0",
+            "YW5jZVN0b3BSZXNwb25zZWIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.DescriptionReflection.Descriptor, global::Harmos.Internal.Plugin.InvocationReflection.Descriptor, global::Harmos.Internal.Plugin.StreamReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
@@ -76,8 +78,8 @@ namespace Harmos.Internal.Plugin;
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceGetResponse), global::Harmos.Internal.Plugin.InstanceGetResponse.Parser, new[]{ "Id", "Version", "StartedAt", "Declarations", "Revision", "Sdk", "SdkVersion", "MessageBytes" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceInvokeRequest), global::Harmos.Internal.Plugin.InstanceInvokeRequest.Parser, new[]{ "Request", "Child", "Cancel" }, new[]{ "Frame" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceInvokeResponse), global::Harmos.Internal.Plugin.InstanceInvokeResponse.Parser, new[]{ "Child", "ChildCancel", "Response", "ChildDemand" }, new[]{ "Frame" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesRequest), global::Harmos.Internal.Plugin.InstanceSamplesRequest.Parser, new[]{ "Open", "Tick", "Child" }, new[]{ "Frame" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesResponse), global::Harmos.Internal.Plugin.InstanceSamplesResponse.Parser, new[]{ "Samples", "Child", "ChildCancel", "ChildDemand" }, new[]{ "Frame" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesRequest), global::Harmos.Internal.Plugin.InstanceSamplesRequest.Parser, new[]{ "Open", "Child", "Window" }, new[]{ "Frame" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceSamplesResponse), global::Harmos.Internal.Plugin.InstanceSamplesResponse.Parser, new[]{ "Samples", "Child", "ChildCancel", "ChildDemand", "Batch" }, new[]{ "Frame" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceStopRequest), global::Harmos.Internal.Plugin.InstanceStopRequest.Parser, new[]{ "Reason" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Internal.Plugin.InstanceStopResponse), global::Harmos.Internal.Plugin.InstanceStopResponse.Parser, null, null, null, null, null)
           }));
@@ -1619,11 +1621,11 @@ namespace Harmos.Internal.Plugin;
         case FrameOneofCase.Open:
           Open = other.Open.Clone();
           break;
-        case FrameOneofCase.Tick:
-          Tick = other.Tick.Clone();
-          break;
         case FrameOneofCase.Child:
           Child = other.Child.Clone();
+          break;
+        case FrameOneofCase.Window:
+          Window = other.Window.Clone();
           break;
       }
 
@@ -1648,18 +1650,6 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
-    /// <summary>Field number for the "tick" field.</summary>
-    public const int TickFieldNumber = 2;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Harmos.Internal.Plugin.Tick Tick {
-      get { return frameCase_ == FrameOneofCase.Tick ? (global::Harmos.Internal.Plugin.Tick) frame_ : null; }
-      set {
-        frame_ = value;
-        frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Tick;
-      }
-    }
-
     /// <summary>Field number for the "child" field.</summary>
     public const int ChildFieldNumber = 3;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1672,13 +1662,25 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "window" field.</summary>
+    public const int WindowFieldNumber = 4;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.Internal.Plugin.Window Window {
+      get { return frameCase_ == FrameOneofCase.Window ? (global::Harmos.Internal.Plugin.Window) frame_ : null; }
+      set {
+        frame_ = value;
+        frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Window;
+      }
+    }
+
     private object frame_;
     /// <summary>Enum of possible cases for the "frame" oneof.</summary>
     public enum FrameOneofCase {
       None = 0,
       Open = 1,
-      Tick = 2,
       Child = 3,
+      Window = 4,
     }
     private FrameOneofCase frameCase_ = FrameOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1710,8 +1712,8 @@ namespace Harmos.Internal.Plugin;
         return true;
       }
       if (!object.Equals(Open, other.Open)) return false;
-      if (!object.Equals(Tick, other.Tick)) return false;
       if (!object.Equals(Child, other.Child)) return false;
+      if (!object.Equals(Window, other.Window)) return false;
       if (FrameCase != other.FrameCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1721,8 +1723,8 @@ namespace Harmos.Internal.Plugin;
     public override int GetHashCode() {
       int hash = 1;
       if (frameCase_ == FrameOneofCase.Open) hash ^= Open.GetHashCode();
-      if (frameCase_ == FrameOneofCase.Tick) hash ^= Tick.GetHashCode();
       if (frameCase_ == FrameOneofCase.Child) hash ^= Child.GetHashCode();
+      if (frameCase_ == FrameOneofCase.Window) hash ^= Window.GetHashCode();
       hash ^= (int) frameCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1746,13 +1748,13 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(10);
         output.WriteMessage(Open);
       }
-      if (frameCase_ == FrameOneofCase.Tick) {
-        output.WriteRawTag(18);
-        output.WriteMessage(Tick);
-      }
       if (frameCase_ == FrameOneofCase.Child) {
         output.WriteRawTag(26);
         output.WriteMessage(Child);
+      }
+      if (frameCase_ == FrameOneofCase.Window) {
+        output.WriteRawTag(34);
+        output.WriteMessage(Window);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -1768,13 +1770,13 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(10);
         output.WriteMessage(Open);
       }
-      if (frameCase_ == FrameOneofCase.Tick) {
-        output.WriteRawTag(18);
-        output.WriteMessage(Tick);
-      }
       if (frameCase_ == FrameOneofCase.Child) {
         output.WriteRawTag(26);
         output.WriteMessage(Child);
+      }
+      if (frameCase_ == FrameOneofCase.Window) {
+        output.WriteRawTag(34);
+        output.WriteMessage(Window);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
@@ -1789,11 +1791,11 @@ namespace Harmos.Internal.Plugin;
       if (frameCase_ == FrameOneofCase.Open) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Open);
       }
-      if (frameCase_ == FrameOneofCase.Tick) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Tick);
-      }
       if (frameCase_ == FrameOneofCase.Child) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Child);
+      }
+      if (frameCase_ == FrameOneofCase.Window) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Window);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1814,17 +1816,17 @@ namespace Harmos.Internal.Plugin;
           }
           Open.MergeFrom(other.Open);
           break;
-        case FrameOneofCase.Tick:
-          if (Tick == null) {
-            Tick = new global::Harmos.Internal.Plugin.Tick();
-          }
-          Tick.MergeFrom(other.Tick);
-          break;
         case FrameOneofCase.Child:
           if (Child == null) {
             Child = new global::Harmos.Internal.Plugin.ChildResponse();
           }
           Child.MergeFrom(other.Child);
+          break;
+        case FrameOneofCase.Window:
+          if (Window == null) {
+            Window = new global::Harmos.Internal.Plugin.Window();
+          }
+          Window.MergeFrom(other.Window);
           break;
       }
 
@@ -1856,15 +1858,6 @@ namespace Harmos.Internal.Plugin;
             Open = subBuilder;
             break;
           }
-          case 18: {
-            global::Harmos.Internal.Plugin.Tick subBuilder = new global::Harmos.Internal.Plugin.Tick();
-            if (frameCase_ == FrameOneofCase.Tick) {
-              subBuilder.MergeFrom(Tick);
-            }
-            input.ReadMessage(subBuilder);
-            Tick = subBuilder;
-            break;
-          }
           case 26: {
             global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
@@ -1872,6 +1865,15 @@ namespace Harmos.Internal.Plugin;
             }
             input.ReadMessage(subBuilder);
             Child = subBuilder;
+            break;
+          }
+          case 34: {
+            global::Harmos.Internal.Plugin.Window subBuilder = new global::Harmos.Internal.Plugin.Window();
+            if (frameCase_ == FrameOneofCase.Window) {
+              subBuilder.MergeFrom(Window);
+            }
+            input.ReadMessage(subBuilder);
+            Window = subBuilder;
             break;
           }
         }
@@ -1902,15 +1904,6 @@ namespace Harmos.Internal.Plugin;
             Open = subBuilder;
             break;
           }
-          case 18: {
-            global::Harmos.Internal.Plugin.Tick subBuilder = new global::Harmos.Internal.Plugin.Tick();
-            if (frameCase_ == FrameOneofCase.Tick) {
-              subBuilder.MergeFrom(Tick);
-            }
-            input.ReadMessage(subBuilder);
-            Tick = subBuilder;
-            break;
-          }
           case 26: {
             global::Harmos.Internal.Plugin.ChildResponse subBuilder = new global::Harmos.Internal.Plugin.ChildResponse();
             if (frameCase_ == FrameOneofCase.Child) {
@@ -1918,6 +1911,15 @@ namespace Harmos.Internal.Plugin;
             }
             input.ReadMessage(subBuilder);
             Child = subBuilder;
+            break;
+          }
+          case 34: {
+            global::Harmos.Internal.Plugin.Window subBuilder = new global::Harmos.Internal.Plugin.Window();
+            if (frameCase_ == FrameOneofCase.Window) {
+              subBuilder.MergeFrom(Window);
+            }
+            input.ReadMessage(subBuilder);
+            Window = subBuilder;
             break;
           }
         }
@@ -1972,6 +1974,9 @@ namespace Harmos.Internal.Plugin;
           break;
         case FrameOneofCase.ChildDemand:
           ChildDemand = other.ChildDemand.Clone();
+          break;
+        case FrameOneofCase.Batch:
+          Batch = other.Batch.Clone();
           break;
       }
 
@@ -2031,6 +2036,18 @@ namespace Harmos.Internal.Plugin;
       }
     }
 
+    /// <summary>Field number for the "batch" field.</summary>
+    public const int BatchFieldNumber = 5;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::Harmos.Internal.Plugin.SampleBatch Batch {
+      get { return frameCase_ == FrameOneofCase.Batch ? (global::Harmos.Internal.Plugin.SampleBatch) frame_ : null; }
+      set {
+        frame_ = value;
+        frameCase_ = value == null ? FrameOneofCase.None : FrameOneofCase.Batch;
+      }
+    }
+
     private object frame_;
     /// <summary>Enum of possible cases for the "frame" oneof.</summary>
     public enum FrameOneofCase {
@@ -2038,6 +2055,7 @@ namespace Harmos.Internal.Plugin;
       Child = 2,
       ChildCancel = 3,
       ChildDemand = 4,
+      Batch = 5,
     }
     private FrameOneofCase frameCase_ = FrameOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -2072,6 +2090,7 @@ namespace Harmos.Internal.Plugin;
       if (!object.Equals(Child, other.Child)) return false;
       if (!object.Equals(ChildCancel, other.ChildCancel)) return false;
       if (!object.Equals(ChildDemand, other.ChildDemand)) return false;
+      if (!object.Equals(Batch, other.Batch)) return false;
       if (FrameCase != other.FrameCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -2084,6 +2103,7 @@ namespace Harmos.Internal.Plugin;
       if (frameCase_ == FrameOneofCase.Child) hash ^= Child.GetHashCode();
       if (frameCase_ == FrameOneofCase.ChildCancel) hash ^= ChildCancel.GetHashCode();
       if (frameCase_ == FrameOneofCase.ChildDemand) hash ^= ChildDemand.GetHashCode();
+      if (frameCase_ == FrameOneofCase.Batch) hash ^= Batch.GetHashCode();
       hash ^= (int) frameCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -2116,6 +2136,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(34);
         output.WriteMessage(ChildDemand);
       }
+      if (frameCase_ == FrameOneofCase.Batch) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Batch);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -2139,6 +2163,10 @@ namespace Harmos.Internal.Plugin;
         output.WriteRawTag(34);
         output.WriteMessage(ChildDemand);
       }
+      if (frameCase_ == FrameOneofCase.Batch) {
+        output.WriteRawTag(42);
+        output.WriteMessage(Batch);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -2158,6 +2186,9 @@ namespace Harmos.Internal.Plugin;
       }
       if (frameCase_ == FrameOneofCase.ChildDemand) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(ChildDemand);
+      }
+      if (frameCase_ == FrameOneofCase.Batch) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Batch);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -2190,6 +2221,12 @@ namespace Harmos.Internal.Plugin;
             ChildDemand = new global::Harmos.Internal.Plugin.ChildDemand();
           }
           ChildDemand.MergeFrom(other.ChildDemand);
+          break;
+        case FrameOneofCase.Batch:
+          if (Batch == null) {
+            Batch = new global::Harmos.Internal.Plugin.SampleBatch();
+          }
+          Batch.MergeFrom(other.Batch);
           break;
       }
 
@@ -2243,6 +2280,15 @@ namespace Harmos.Internal.Plugin;
             ChildDemand = subBuilder;
             break;
           }
+          case 42: {
+            global::Harmos.Internal.Plugin.SampleBatch subBuilder = new global::Harmos.Internal.Plugin.SampleBatch();
+            if (frameCase_ == FrameOneofCase.Batch) {
+              subBuilder.MergeFrom(Batch);
+            }
+            input.ReadMessage(subBuilder);
+            Batch = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -2291,6 +2337,15 @@ namespace Harmos.Internal.Plugin;
             }
             input.ReadMessage(subBuilder);
             ChildDemand = subBuilder;
+            break;
+          }
+          case 42: {
+            global::Harmos.Internal.Plugin.SampleBatch subBuilder = new global::Harmos.Internal.Plugin.SampleBatch();
+            if (frameCase_ == FrameOneofCase.Batch) {
+              subBuilder.MergeFrom(Batch);
+            }
+            input.ReadMessage(subBuilder);
+            Batch = subBuilder;
             break;
           }
         }

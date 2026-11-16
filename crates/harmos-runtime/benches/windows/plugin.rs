@@ -21,11 +21,11 @@
 use prost_types::Duration as ProtoDuration;
 
 // Local Imports
-use harmos::plugin::{Context, HostOperation, Observer, Plugin, Stream};
+use harmos::plugin::{Context, Observer, Plugin, Stream, Window};
 
 /* === Constants === */
 
-pub const MODE: &str = "--tick-plugin";
+pub const MODE: &str = "--window-plugin";
 
 /* === Macros === */
 
@@ -38,9 +38,10 @@ struct Reading {
     value: f64,
 }
 
+/// The Columns of `Reading`.
 #[derive(harmos::Message)]
-struct Window {
-    values: Vec<f64>,
+struct Readings {
+    value: Vec<f64>,
 }
 
 /* === Enums === */
@@ -51,7 +52,7 @@ struct Window {
 
 /* === Public Functions === */
 
-/// Serve `streams` Interval Observers; `observer` Is `plain`, `time` or `window:<values>`.
+/// Serve `streams` Interval Observers; `observer` Is `window` (Whole Windows) or `sample` (One Sample per Call).
 pub fn serve(mut arguments: impl Iterator<Item = String>) {
     let streams: usize = arguments.next().unwrap().parse().unwrap();
     let nanos: u64 = arguments.next().unwrap().parse().unwrap();
@@ -60,27 +61,14 @@ pub fn serve(mut arguments: impl Iterator<Item = String>) {
         seconds: (nanos / 1_000_000_000) as i64,
         nanos: (nanos % 1_000_000_000) as i32,
     };
-    let mut plugin = Plugin::new("tick_benchmark", "1.0.0").requires_host(HostOperation::TimeGet);
+    let mut plugin = Plugin::new("window_benchmark", "1.0.0");
     for index in 0..streams {
-        let id = format!("benchmark.ticks_{index}");
-        if let Some(values) = observer.strip_prefix("window:") {
-            let values: usize = values.parse().unwrap();
-            let stream = Stream::<Window>::new(id);
-            let window = Observer::new(&stream, async move |context: &Context| {
-                let first = context.sequence() as f64;
-                Ok(Window {
-                    values: (0..values).map(|offset| first + offset as f64).collect(),
+        let stream = Stream::<Reading>::new(format!("benchmark.readings_{index}"));
+        let reading = if observer == "window" {
+            Observer::window(&stream, async |_: &Context, window: &Window| {
+                Ok(Readings {
+                    value: (0..window.count).map(|offset| (window.sequence + offset) as f64).collect(),
                 })
-            })
-            .every(interval);
-            plugin = plugin.stream(stream).observer(window);
-            continue;
-        }
-        let stream = Stream::<Reading>::new(id);
-        let reading = if observer == "time" {
-            Observer::new(&stream, async |context: &Context| {
-                let now = context.now().await?;
-                Ok(Reading { value: now.seconds as f64 })
             })
         } else {
             Observer::new(&stream, async |context: &Context| Ok(Reading { value: context.sequence() as f64 }))

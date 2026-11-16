@@ -1379,6 +1379,240 @@ library-owned settings declarations and context host-value delivery under their
 existing owners. The manager adds neither a second resolver nor a settings store.
 The catalog's meaning and which plugins a unit of work uses remain with the product.
 
+## Windowed Interval Batches
+
+Owner direction, locked 2026-11-15 (IT.4): the host keeps the schedule and the
+clock and grants each interval stream a time window; the plugin answers the whole
+window with columnar batches on the open Samples call. The per-sample `Tick` and
+its `samples.tick` operation are deleted; nothing keeps them beside windows.
+Device streams, which have no interval, keep their per-sample `Sample` messages.
+
+### Wire Shape
+
+```proto
+// harmos/plugin/v1/stream.proto
+// Grants one interval window: `count` consecutive samples, the first at `start`,
+// each following one `period` later.
+message Window {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Duration period = 2;
+  // At least one.
+  uint64 count = 3;
+  // One-based sequence of the first sample within the Samples call.
+  uint64 sequence = 4;
+}
+// Answers part of the unanswered window with consecutive samples as columns.
+message SampleBatch {
+  // Zero-based index of this part's first sample within the window.
+  uint64 offset = 1;
+  // Samples in this part; at least one.
+  uint64 count = 2;
+  // A serialized message whose fields mirror the stream row's field numbers and
+  // types, each repeated, holding one value per sample in sample order. Numeric
+  // columns are packed; every sample has a value in every column.
+  bytes columns = 3;
+  // Set on the part that completes the window. It answers the window and ends its child calls.
+  bool last = 4;
+}
+
+// harmos/plugin/v1/instance.proto
+message InstanceSamplesRequest {
+  reserved 2;
+  reserved "tick";
+  oneof frame {
+    harmos.plugin.v1.SamplesSelection open = 1;
+    // Reply to a child of the unanswered window.
+    harmos.plugin.v1.ChildResponse child = 3;
+    harmos.plugin.v1.Window window = 4;
+  }
+}
+message InstanceSamplesResponse {
+  // Device streams only.
+  repeated harmos.plugin.v1.Sample samples = 1;
+  oneof frame {
+    harmos.plugin.v1.ChildRequest child = 2;
+    harmos.plugin.v1.ChildCancel child_cancel = 3;
+    harmos.plugin.v1.ChildDemand child_demand = 4;
+    // Interval streams only.
+    harmos.plugin.v1.SampleBatch batch = 5;
+  }
+}
+
+// harmos/model/v1/stream.proto
+message StreamDeclaration {
+  // ...fields 1-5 unchanged...
+  // Identifier of a plugin setting (a Duration) that overrides the host's window
+  // length for this interval stream.
+  string window_setting = 6;
+}
+```
+
+`Sample.at` no longer describes interval samples. Only one window is unanswered at
+a time per Samples call. Between a window and its `last` part the plugin may send
+child frames; children inherit the scope as before, are scoped to the unanswered
+window and are cancelled when it is answered or the call ends. A part whose offset
+is not the count received so far, an empty part, a part past the window, a `last`
+flag that disagrees with the count, columns that do not decode as the row's
+columns or hold another count, a batch on a device stream and a device `Sample` on
+an interval stream all fail the call with INVALID_ARGUMENT.
+
+### Sample Grid and Windows
+
+Each interval demand has a schedule origin `o`, the instant its demand opened (for
+a resumed unscoped demand, the instant it resumed). Sample `i`, for `i >= 1`, is due
+at `o + i * period` in integer nanoseconds; its time is the origin's date plus the
+same offset. A window covers the samples due in `(a, b]`, with
+`count = floor((b - o) / period) - floor((a - o) / period)`; batch size is never set
+directly. The first window starts at `a = o`; each next window starts where the
+previous one ended.
+
+The demand's timer is the first window end `o + k * L` (window length `L`) at or
+after the next sample's due instant, so empty windows are skipped and ends never
+drift from the origin. When the timer fires, or when a scoped wait asks for the
+windows due by its end (below), the host reads the clock once and grants the window
+up to that reading. A late wake therefore extends the window to the instant the
+clock reached; the following end stays on the `o + k * L` grid. On a controlled
+clock the reading is the instant the controller advanced to, so a step that reaches a
+window end, or ends a scoped wait, grants one window covering exactly the advanced
+step; a shorter step grants nothing until a later step reaches the next window end.
+This is the implemented reading of "the window equals the advanced step". Grants are serial per demand: the next timer is set only
+after the window's batches have been admitted and ingested.
+
+`L` is `PlacementSettings::interval_window` on the host, a latency-against-efficiency
+setting the product owns. A stream that names `window_setting` takes `L` from that
+plugin Duration setting instead, resolved at admission like `interval_setting` and
+refused when missing, not a Duration or not positive.
+
+### Scoped Waits, Start, Stop and Close
+
+`start_samples()` and `stop_samples()` gate windows exactly as they gated ticks: no
+window reaches the plugin outside them. A scoped wait (Time.Sleep or an admitted
+wait) ending at `t` settles after every window of the unit whose samples are due by
+`t` has been answered and committed: on reaching `t` it asks each demand of the unit
+to grant through `t`, so a demand whose window end lies after `t` wakes early and
+grants the window up to its current reading. Waits inside a window's own call tree
+are exempt. Stop and close interrupt an in-flight window within `stop_grace` on the
+runtime clock: they cancel the window operation and its children, publish nothing
+from the unanswered window, drain parts already admitted and await the plugin's end
+of its Samples response. The scoped stories keep their exact 1,023, 1,024 and 1,025
+counts, as samples in windows, on controlled clocks only.
+
+### One Schedule per Stream
+
+Today every stream of an activation ticks for the unscoped connection demand and
+again for each sampling scope. A stream now has one live schedule per activation
+and scope: while any scope of the activation samples, the activation's unscoped
+demand grants no windows; when the last scope stops, it resumes from a fresh origin
+at that instant on the runtime clock. The gap holds no unscoped samples. Concurrent
+scopes keep one schedule each on their own clocks. `scoped_publications` keeps
+proving that the unscoped demand operates once the scopes have closed.
+
+### Storage Shape
+
+The host hands each `SampleBatch` part to storage as one publication row; it does no
+per-sample admission, sequencing, window entry or ingestion wait. For an interval
+stream of row `R` the host derives and registers the stored row `harmos.batch.R`
+(`R` is the row's full name with dots replaced by underscores; its columns are
+`harmos.columns.R`):
+
+```proto
+message Batch {                // derived per interval row R
+  int64 start_unix_nanos = 1;  // time of the part's first sample
+  uint64 period_nanos = 2;
+  uint64 count = 3;
+  Columns columns = 4;         // R's fields, same names and numbers, each repeated
+}
+```
+
+The host builds the part's wire bytes by prefixing fields 1-3 to `columns` as field 4
+and converts them with the stream row converter it already uses
+(`streams/protobuf.rs`). `PublicationRow.published_unix_micros` is the part's first
+sample time. An interval row must hold one value per field: repeated, map and oneof
+fields (including proto3 `optional`) are refused at admission with an action. Stream
+retention (`stream_window`) and the publication byte and slot budgets count stored
+rows, now one per part, and are not loosened. A part holding more structural values
+than one stored row may (`harmos_domain::message::postcard::MAX_VALUES`) is stored as
+consecutive rows, each with its own first-sample time and count. Sample times must fit
+signed 64-bit Unix nanoseconds and periods unsigned 64-bit nanoseconds.
+
+### Message Splitting
+
+The plugin splits a window whose columns exceed its transport's configured maximum
+message size into several parts at sample boundaries; each part, framed, fits the
+limit. A single sample that cannot fit fails the window with an action naming the
+row and the limit.
+
+### Plugin Authoring
+
+The one-sample observer keeps its form; the SDK calls it once per sample of each
+window, in order, with that sample's sequence, transposes the rows into columns and
+splits them. The window observer receives the grant and returns the columns itself;
+its columns message must repeat every field of the row with the same number and
+type, checked when the plugin is declared.
+
+```rust
+// Rust
+let stream = Stream::<Reading>::new("bench.reading");
+let observer = Observer::new(&stream, async |context: &Context| Ok(Reading { value: read() }))
+    .every(interval)
+    .window_setting("window");
+let observer = Observer::window(&stream, async |context: &Context, window: &Window| {
+    Ok(ReadingColumns { value: read_many(window.count) })
+})
+.every(interval);
+// Window { start: Timestamp, period: Duration, count: u64, sequence: u64 }
+```
+
+```python
+# Python
+@observer("bench.reading", row=Reading, interval=Duration(nanos=1_000), window_setting="window")
+async def reading(context: Context) -> Reading: ...
+
+@window_observer("bench.reading", row=Reading, columns=ReadingColumns, interval=Duration(nanos=1_000))
+async def readings(context: Context, window: Window) -> ReadingColumns: ...
+# Window(start: Timestamp, period: Duration, count: int, sequence: int)
+```
+
+```csharp
+// C#
+plugin.Observer<Reading>("bench.reading", interval, async context => Read(), windowSetting: "window");
+plugin.WindowObserver<Reading, ReadingColumns>("bench.reading", interval,
+    async (context, window) => ReadMany(window.Count));
+// record Window(Timestamp Start, Duration Period, ulong Count, ulong Sequence)
+```
+
+```cpp
+// C++
+plugin.observer(harmos::Observer<Reading>(stream, [](harmos::Context &context) { return read(); })
+                    .every(interval)
+                    .window_setting("window"));
+plugin.observer(harmos::Observer<Reading>::window<ReadingColumns>(
+                    stream, [](harmos::Context &context, const harmos::Window &window) {
+                      return read_many(window.count);
+                    })
+                    .every(interval));
+// struct Window { Timestamp start; Duration period; std::uint64_t count; std::uint64_t sequence; };
+```
+
+### Encoders
+
+The host's gRPC encoder releases its scratch buffer and its operation-preparation
+byte claim after every message instead of keeping its largest buffer.
+
+### Deleted Surface
+
+`harmos.plugin.v1.Tick`, `InstanceSamplesRequest.tick`, the `samples.tick` native
+operation and its unit tick registry, interval `Sample` messages, the SDKs' tick
+dispatch, their tick tests and the tick bench's Samples-wire and window-row groups.
+
+### Product Adoption
+
+A product reads an interval stream's publications as `harmos.batch.R` rows: sample
+`i` of a row is at `start_unix_nanos + i * period_nanos` with the `i`-th value of
+each column. It sets `PlacementSettings::interval_window`, rebuilds its plugins on
+an SDK that answers windows, and regenerates protocol bindings. Rows stored as one
+row per sample are not converted; use a fresh storage root.
+
 ## Risks and Trade-offs
 
 ### Access Client Services

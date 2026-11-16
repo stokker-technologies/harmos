@@ -23,8 +23,7 @@ use harmos_protocol::host::time_client::TimeClient;
 use harmos_protocol::host::{InvocationsCreateRequest, OperationsListRequest, OperationsListResponse, TimeGetRequest, TimeGetResponse};
 use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
 use harmos_protocol::plugin::{
-    ChildRequest, InstanceSamplesResponse, Sample, child_response, instance_samples_request as request,
-    instance_samples_response as response,
+    ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request as request, instance_samples_response as response,
 };
 use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
 use prost::Message;
@@ -141,7 +140,7 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         .unwrap_err();
     assert!(refused.to_string().contains("harmos.host.v1.Time/Get"));
 
-    // The Plugin Declares The Same Contracts And Calls Them During A Controlled Tick.
+    // The Plugin Declares The Same Contracts And Calls Them During A Controlled Window.
     let remote = Remote::start().await;
     let mut declarations = Declarations {
         requires: contracts
@@ -172,7 +171,7 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         let contracts = contracts.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            let Some(request::Frame::Tick(tick)) = input.message().await.unwrap().unwrap().frame else { panic!("Expected Tick") };
+            let Some(request::Frame::Window(window)) = input.message().await.unwrap().unwrap().frame else { panic!("Expected a Window") };
             for (index, contract) in contracts.iter().enumerate() {
                 output
                     .send(Ok(InstanceSamplesResponse {
@@ -192,17 +191,7 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
                 };
                 results.send(reply).unwrap();
             }
-            output
-                .send(Ok(InstanceSamplesResponse {
-                    samples: vec![Sample {
-                        at: tick.at,
-                        sequence: 1,
-                        row: TimeGetResponse::default().encode_to_vec(),
-                    }],
-                    frame: None,
-                }))
-                .await
-                .unwrap();
+            output.send(Ok(support::answer(1, TimeGetResponse { now: window.start }.encode_to_vec()))).await.unwrap();
             complete.store(true, Ordering::SeqCst);
         });
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))

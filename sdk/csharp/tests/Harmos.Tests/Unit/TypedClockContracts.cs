@@ -10,6 +10,7 @@ using Google.Protobuf.WellKnownTypes;
 using Google.Protobuf;
 using Harmos.Clients;
 using Harmos.Plugins;
+using Harmos.Tests.Columns;
 using Harmos;
 using Xunit;
 using SdkPlugin = Harmos.Plugins.Plugin;
@@ -35,6 +36,34 @@ public sealed class TypedClockContracts
     Assert.Equal(setting, Assert.Single(settings.Values).Default);
     Assert.Throws<ArgumentException>(() => new SdkPlugin("invalid", "1.0.0")
         .Observer("settings.missing", null, context => Task.FromResult(new TimeGetRequest())));
+  }
+
+  [Fact]
+  public void WindowObserversDeclareWindowSettingsAndMirroredOneValueRows()
+  {
+    var declarations = new SdkPlugin("windows", "1.0.0")
+        .Observer("windows.sample", new Duration { Seconds = 1 }, context => Task.FromResult(new Reading()), windowSetting: "window")
+        .WindowObserver<Reading, ReadingColumns>("windows.columns", new Duration { Seconds = 1 },
+            (context, window) => Task.FromResult(new ReadingColumns()), windowSetting: "window")
+        .Declarations();
+    Assert.Equal(["window", "window"], declarations.Streams.Select(stream => stream.WindowSetting));
+    Assert.Equal([Reading.Descriptor.FullName, Reading.Descriptor.FullName], declarations.Streams.Select(stream => stream.Row));
+
+    // Columns Repeat Every Row Field with the Same Number and Type.
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Reading, RetypedColumns>(
+        "windows.retyped", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new RetypedColumns())));
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Reading, PartialColumns>(
+        "windows.partial", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new PartialColumns())));
+
+    // Interval Rows Hold One Value per Field in Both Forms.
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
+        .Observer("windows.listed", new Duration { Seconds = 1 }, context => Task.FromResult(new Listed())));
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
+        .Observer("windows.present", new Duration { Seconds = 1 }, context => Task.FromResult(new Present())));
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
+        .Observer("windows.choice", new Duration { Seconds = 1 }, context => Task.FromResult(new Choice())));
+    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Listed, Listed>(
+        "windows.listed", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new Listed())));
   }
 
   [Fact]

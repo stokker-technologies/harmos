@@ -16,6 +16,7 @@
 from unittest import IsolatedAsyncioTestCase
 
 import grpc
+from google.protobuf.duration_pb2 import Duration
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
@@ -27,11 +28,11 @@ from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, Tim
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
-from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
+from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Window
 
 # Local Imports
 from harmos.plugin import HostOperation, Plugin
-from tests.fixtures.conformance import Value, plugin
+from tests.fixtures.conformance import Value, Values, plugin
 from tests.support import calls
 from tests.support.author import Author
 
@@ -47,7 +48,7 @@ from tests.support.author import Author
 
 
 class HostClockAndState(IsolatedAsyncioTestCase):
-    async def test_fixture_reports_wrong_caller_failures_from_invocations_and_ticks(self) -> None:
+    async def test_fixture_reports_wrong_caller_failures_from_invocations_and_windows(self) -> None:
         # Serve the Contributions Used by the Reference Host's Caller Refusal Journey.
         endpoint = await plugin().start("127.0.0.1:0")
         self.addAsyncCleanup(endpoint.close)
@@ -74,17 +75,19 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         self.assertEqual(WireFailure.FromString(value.value), failure)
         self.assertIs(await call.read(), EOF)
 
-        # Preserve the Same Refusal From an Unanswered Tick at Controlled Host Time.
+        # Preserve the Same Refusal From an Unanswered Window at Controlled Host Time.
         stream = client.Samples()
         self.addCleanup(stream.cancel)
-        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.tick_caller_refusal")))
-        await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=101))))
+        await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="conformance.window_caller_refusal")))
+        await stream.write(
+            InstanceSamplesRequest(window=Window(start=Timestamp(seconds=101), period=Duration(seconds=1), count=1, sequence=1))
+        )
         child = (await stream.read()).child
         self.assertEqual(child.operation, failure.operation)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
-        row = (await stream.read()).samples[0]
-        value = Value.FromString(row.row)
-        self.assertEqual(WireFailure.FromString(value.value), failure)
+        batch = (await stream.read()).batch
+        self.assertTrue(batch.last)
+        self.assertEqual(WireFailure.FromString(Values.FromString(batch.columns).value[0]), failure)
         stream.cancel()
 
         # Keep the Plugin Connection Usable After Both Refusals.
@@ -137,7 +140,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # Closing Demand Cancels an Observer's In-Progress Read.
         demand = client.Samples()
         await demand.write(InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
-        await demand.write(InstanceSamplesRequest(tick=Tick(at=at)))
+        await demand.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await author.reading.wait()
         await demand.done_writing()
         self.assertIs(await demand.read(), EOF)
@@ -146,7 +149,9 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # Reject Invalid Timestamp Ranges Without Losing the Connection.
         invalid = client.Samples()
         await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="author.reading")))
-        await invalid.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=0, nanos=-1))))
+        await invalid.write(
+            InstanceSamplesRequest(window=Window(start=Timestamp(seconds=0, nanos=-1), period=Duration(seconds=1), count=1, sequence=1))
+        )
         with self.assertRaises(AioRpcError) as error:
             await invalid.read()
         self.assertEqual(error.exception.code(), StatusCode.INVALID_ARGUMENT)

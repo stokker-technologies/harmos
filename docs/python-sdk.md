@@ -62,8 +62,8 @@ PLUGINS and ALL operations appear on Context.host. Plugin connection services ne
 appear as host resources. SDK projection does not replace host authorization.
 
 Storage remains in-process. Applications supply their own operations for data,
-uploads and queries. Plugin observers answer ticks; publishers send device rows
-while demand is open.
+uploads and queries. Plugin observers answer host-granted interval windows;
+publishers send device rows while demand is open.
 
 ## Plugin Settings and Host Calls
 
@@ -79,7 +79,7 @@ plugin = Plugin(
     settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
 )
 
-# Inside an operation handler or observer tick:
+# Inside an operation handler or an observer answering a window:
 settings = await context.host.plugins.settings.list()
 prefix = settings.value.values["prefix"].text
 ```
@@ -97,14 +97,46 @@ project single payloads. Declare the corresponding `HostOperation` requirements.
 Host clock convenience methods `context.now()` and `context.sleep(duration)` use the
 same contracts. Host policies own retries and deadlines.
 
-## Tick-Owned Child Calls
+## Interval Observers and Windows
+
+The host owns an interval stream's schedule and clock. It grants a `Window` of
+`count` consecutive samples, the first at `start` and each following one `period`
+later; the plugin answers the whole window before the host grants the next one.
+
+```python
+from google.protobuf.duration_pb2 import Duration
+from harmos.plugin import Context, Window, observer, window_observer
+
+@observer("bench.reading", row=Reading, interval=Duration(nanos=1_000), window_setting="window")
+async def reading(context: Context) -> Reading:
+    return Reading(value=read())
+
+@window_observer("bench.readings", row=Reading, columns=ReadingColumns, interval=Duration(nanos=1_000))
+async def readings(context: Context, window: Window) -> ReadingColumns:
+    return ReadingColumns(value=read_many(window.count))
+```
+
+The one-sample observer is called once per sample of each window, in order;
+`context.sequence` is the sample's sequence, `window.sequence + i`. The SDK transposes
+the rows into columns. The window observer receives the grant and returns the
+columns itself, one value per sample in every column. Its columns message must
+repeat every field of the row with the same number and type; the SDK checks this
+when the observer is declared. An interval row holds one value per field: rows with
+repeated, map or oneof fields, including proto3 `optional`, are refused at declaration.
+
+`interval_setting` names a plugin Duration setting that replaces `interval`.
+`window_setting` names a plugin Duration setting that overrides the host's window
+length for the stream. The SDK splits a window's columns at sample boundaries so
+each part fits the plugin's advertised `message_bytes`; a single sample that cannot
+fit fails the window, naming the row and the limit.
 
 Observer Context can call declared operations, read settings, use the host clock
-and consume watches while answering a tick. Children inherit scope, admitted caller
-and grants. IDs remain unique across ticks; responses may arrive out of order.
-Structured failures retain all fields. Returning a row cancels outstanding children;
-ending demand cancels the active tick. Retained contexts cannot start children after
-answering. Device publishers have no tick and cannot make child calls.
+and consume watches while answering a window. Children inherit scope, admitted caller
+and grants. IDs remain unique across windows of a Samples call; responses may arrive
+out of order. Structured failures retain all fields. Answering the window cancels
+outstanding children; ending demand cancels the unanswered window. Retained contexts
+cannot start children after answering. Device publishers have no windows and cannot
+make child calls.
 
 ## Product Roots
 
@@ -153,8 +185,8 @@ uv run --locked --no-sync --project sdk/python python sdk/python/examples/invoca
 
 Application-specific typed calls belong in the application's own generated client.
 The separate conformance fixture
-covers the reference-host rules, including caller refusal from operations and ticks,
-tick children, typed settings and discovery.
+covers the reference-host rules, including caller refusal from operations and windows,
+window children, window observers, typed settings and discovery.
 
 See [Python Plugin SDK](tooling.md#python-plugin-sdk) for declarations, child calls
 and packaging, and [Repository Tooling](tooling.md) for generation drift checks.

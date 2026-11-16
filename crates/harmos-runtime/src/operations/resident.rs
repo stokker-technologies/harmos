@@ -11,7 +11,7 @@
 // operation manager. One registry owns their definitions, the resources each
 // activation shares, the instances keyed by definition and resources, and the
 // leases that keep an instance running. A kind contributes only its driver:
-// observers tick at their declared interval, services run until stopped under
+// observers run at their declared interval, services run until stopped under
 // their restart policy.
 
 /* === Modules === */

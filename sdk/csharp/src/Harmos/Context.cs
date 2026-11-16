@@ -115,7 +115,7 @@ public sealed class Context
       where TResponse : IMessage<TResponse>, new()
   {
     if (output is null)
-      throw new InvalidOperationException($"Call {operation.Contract.Id}: An Unanswered Tick or Invocation Is Required");
+      throw new InvalidOperationException($"Call {operation.Contract.Id}: Call Only While a Window or Invocation Is Unanswered");
     var contract = operation.Contract;
     if (operation.IsWatch)
       throw new InvalidOperationException($"Call {contract.Id}: Use Watch for a Streaming Contract");
@@ -453,8 +453,30 @@ public sealed class Context
     await Task.WhenAll(writes);
   }
 
+  /// <summary>One sample of the unanswered window; its children share the window's call IDs and lifetime.</summary>
+  internal Context Sample(ulong sequence, Timestamp at)
+  {
+    var context = new Context(new Request { Operation = Operation, Invocation = Invocation, Scope = scope, Attempt = Attempt },
+        Plugin, requires, cancellation, output, local)
+    {
+      pending = pending,
+      root = root,
+      Sequence = sequence,
+      At = at
+    };
+    lock (pending)
+    {
+      context.cancelReason = cancelReason;
+      children.Add(context);
+    }
+    if (context.cancelReason is not null)
+      context.cancelled.TrySetResult(context.cancelReason);
+    return context;
+  }
+
   internal void Disconnected()
   {
+    Context[] nested;
     lock (pending)
     {
       cancelReason ??= "Connection Closed";
@@ -464,9 +486,26 @@ public sealed class Context
       foreach (var watching in root.watches.Values)
         watching.Channel.Writer.TryComplete(new RpcException(new Status(StatusCode.Unavailable, "Watch: Host Closed")));
       root.watches.Clear();
+      nested = children.ToArray();
     }
-    cancelled.TrySetResult("Connection Closed");
+    // Cancel Before Releasing Waiters, So a Released Observer Sees Its Demand Closed.
     cancellation.Cancel();
+    foreach (var child in nested)
+      child.Released("Connection Closed");
+    cancelled.TrySetResult("Connection Closed");
+  }
+
+  private void Released(string reason)
+  {
+    Context[] nested;
+    lock (pending)
+    {
+      cancelReason ??= reason;
+      nested = children.ToArray();
+    }
+    foreach (var child in nested)
+      child.Released(reason);
+    cancelled.TrySetResult(reason);
   }
 
   internal bool HasPendingCalls

@@ -191,8 +191,9 @@ SHALL refuse admission or invocation, never bind by arrival order.
 
 Plugin waits and interval publication SHALL use the authoritative host clock.
 Virtual time SHALL NOT advance past active unsettled plugin work. Device-driven
-samples SHALL remain independent of host ticks and preserve source time separately
-from host evidence time.
+samples SHALL remain independent of host windows and preserve source time separately
+from host evidence time. Interval samples SHALL sit on a fixed grid from their demand's
+origin; the host SHALL grant them in windows and store each answered part whole.
 
 #### Scenario: Active Invocation
 
@@ -202,4 +203,9 @@ from host evidence time.
 #### Scenario: Interval and Device Publication
 
 - **WHEN** interval publication and device-driven samples are consumed
-- **THEN** host ticks select interval timing while device samples require no tick, with source time separate from host timestamps
+- **THEN** host windows select interval timing while device samples require no window, with source time separate from host timestamps
+
+#### Scenario: Windows on a Controlled Clock
+
+- **WHEN** a controlled clock advances an interval demand across a window end
+- **THEN** the host grants one window covering every sample due up to the advanced instant and stores its samples as columns

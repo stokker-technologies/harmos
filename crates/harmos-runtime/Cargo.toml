@@ -308,8 +308,8 @@ harness = false
 required-features = ["grpc"]
 
 [[bench]]
-name = "system-ticks"
-path = "benches/ticks/main.rs"
+name = "system-windows"
+path = "benches/windows/main.rs"
 harness = false
 required-features = ["grpc"]
 

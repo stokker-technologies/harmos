@@ -49,7 +49,7 @@ def run_managed() -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("Build the SDK: mise run build -- --language cpp")
     environment = dict(os.environ)
     environment.pop("HARMOS_ADDRESS", None)
-    # The Bound Is a Transport Hang Guard; the Scenario Uses Protocol Events and Literal Ticks.
+    # The Bound Is a Transport Hang Guard; the Scenario Uses Protocol Events and Literal Windows.
     result = subprocess.run(
         [str(host), "--plugin", str(plugin)],
         env=environment,

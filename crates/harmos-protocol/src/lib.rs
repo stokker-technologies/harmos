@@ -13,6 +13,7 @@
 /* === Modules === */
 
 pub mod clock;
+pub mod columns;
 pub mod guest;
 pub mod policy;
 pub mod service;

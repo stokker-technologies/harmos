@@ -64,6 +64,9 @@ enum Samples {
     Stop(oneshot::Sender<Result<(), Error>>),
 }
 
+/// Cancels the Unit's Calls When the Binding Task Ends, Even When Its Attachment Aborts It.
+struct StopUnit(Arc<Unit>);
+
 /* === Traits === */
 
 /* === Implementations === */
@@ -130,8 +133,12 @@ impl<A: Application> Binding<A> {
         } = self;
         let source = activation.publications.get().expect("bound activations are admitted");
         let parent = source.close.clone();
+        let _stop = StopUnit(unit.clone());
         let mut publications = Publications::idle(source, &activation, &clock, &host, &operations);
-        let mut sampling = false;
+        // Holding a Share Pauses the Activation's Unscoped Windows While This Scope Samples.
+        let mut sampling = None;
+        // A Stop Interrupted by Close Keeps Its Deadline, So Close Still Settles Within One `stop_grace`.
+        let mut deadline = None;
         loop {
             // A Dropped Handle Closes Like an Explicit Close.
             let request = tokio::select! {
@@ -144,40 +151,81 @@ impl<A: Application> Binding<A> {
                 },
             };
             match request {
-                Samples::Start(reply) if sampling => {
+                Samples::Start(reply) if sampling.is_some() => {
                     let _ = reply.send(Err(Error::Invalid("Start Scoped Samples: demand is already open; stop it first".into())));
                 }
-                Samples::Start(reply) => {
+                Samples::Start(mut reply) => {
                     let _activity = host.activity("Start Scoped Samples");
                     let prepare = Publications::prepare(&streams, &activation, &source.settings, &operations, true);
                     let prepared = tokio::select! {
                         biased;
                         () = super::disconnected(parent.clone()) => Err(Error::Invalid("Start Scoped Samples: activation is closing; bind to its next activation".into())),
-                        () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing".into())),
+                        () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing; bind the scope again after close() returns".into())),
+                        // A Caller That Stopped Waiting Has Withdrawn Its Start.
+                        () = reply.closed() => continue,
                         prepared = host.timeout(source.settings.connect_timeout, prepare) => prepared.map_err(|_| Error::Timeout("Start Scoped Samples")).and_then(|prepared| prepared),
                     };
+                    if reply.is_closed() {
+                        continue;
+                    }
                     let started = prepared.map(|prepared| {
+                        sampling = Some(source.sampling());
                         publications = Publications::scoped(prepared, source, &activation, &clock, &host, &operations);
-                        sampling = true;
                     });
                     let _ = reply.send(started);
                 }
                 Samples::Stop(reply) => {
                     // Calls Stay Open: Only the Demand Settles, Within `stop_grace` on the Runtime Clock.
                     let activity = host.activity("Stop Scoped Samples");
-                    let deadline = host.now() + source.settings.stop_grace;
-                    let stopped = activity.wait(publications.settle(&host, deadline, None, "Stop Scoped Samples")).await;
+                    let stopping = *deadline.get_or_insert(host.now() + source.settings.stop_grace);
+                    let stopped = {
+                        let settle = activity.wait(publications.settle(&host, stopping, None, "Stop Scoped Samples"));
+                        tokio::select! {
+                            biased;
+                            stopped = settle => Some(stopped),
+                            () = super::disconnected(closing.clone()) => None,
+                            () = super::disconnected(parent.clone()) => None,
+                        }
+                    };
+                    let Some(stopped) = stopped else {
+                        let _ = reply.send(Err(Error::Invalid(
+                            "Stop Scoped Samples: the binding closed while samples stopped; await close() for the outcome".into(),
+                        )));
+                        break;
+                    };
+                    deadline = None;
                     publications = Publications::idle(source, &activation, &clock, &host, &operations);
-                    sampling = false;
+                    sampling = None;
                     let _ = reply.send(stopped);
                 }
             }
         }
-        // Settling Parks Its Runtime-Clock Activity While It Waits on the Plugin.
+        // Settling Parks Its Runtime-Clock Activity While It Waits on the Plugin; Requests Are Refused at Once.
         let activity = host.activity("Close Scoped Plugin");
-        let deadline = host.now() + source.settings.stop_grace;
-        let result = activity.wait(publications.settle(&host, deadline, Some(&unit), "Close Scoped Plugin")).await;
+        let deadline = deadline.unwrap_or_else(|| host.now() + source.settings.stop_grace);
+        let result = {
+            let settle = activity.wait(publications.settle(&host, deadline, Some(&unit), "Close Scoped Plugin"));
+            tokio::pin!(settle);
+            loop {
+                tokio::select! {
+                    biased;
+                    result = &mut settle => break result,
+                    Some(request) = requests.recv() => refuse(request),
+                }
+            }
+        };
+        drop(sampling);
+        requests.close();
+        while let Ok(request) = requests.try_recv() {
+            refuse(request);
+        }
         completed.send_replace(Some(result.map_err(Arc::new)));
+    }
+}
+
+impl Drop for StopUnit {
+    fn drop(&mut self) {
+        self.0.stop();
     }
 }
 
@@ -186,7 +234,7 @@ impl ScopedBinding {
         &self.operations
     }
 
-    /// Open the Scope's Samples Demand; the Host Grants Ticks Only Until `stop_samples` or `close`.
+    /// Open the Scope's Samples Demand; the Host Grants Windows Only Until `stop_samples` or `close`.
     pub async fn start_samples(&self) -> Result<(), Error> {
         self.request(Samples::Start, "Start Scoped Samples").await
     }
@@ -226,5 +274,10 @@ impl Drop for ScopedBinding {
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+fn refuse(request: Samples) {
+    let (Samples::Start(reply) | Samples::Stop(reply)) = request;
+    let _ = reply.send(Err(Error::Invalid("Scoped Samples: the binding is closing; bind the scope again after close() returns".into())));
+}
 
 /* === Tests === */

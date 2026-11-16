@@ -27,7 +27,9 @@
 #include <vector>
 
 // Third Party Imports
+#include <google/protobuf/duration.pb.h>
 #include <google/protobuf/message.h>
+#include <google/protobuf/timestamp.pb.h>
 
 // Local Imports
 #include "harmos/_generated/client.hpp"
@@ -49,11 +51,22 @@ template <class R> class Watching;
 template <class R> class Stream;
 template <class R> class Observer;
 
+// One Host Grant of an Interval Stream: Sample i Is at start + i * period with Sequence sequence + i.
+struct Window {
+  google::protobuf::Timestamp start;
+  google::protobuf::Duration period;
+  std::uint64_t count = 0;
+  std::uint64_t sequence = 0;
+};
+
 namespace detail {
 std::string encode(const google::protobuf::Message &message);
 std::string sha256(const std::string &bytes);
 google::protobuf::FileDescriptorSet types(const google::protobuf::Descriptor *descriptor);
 void merge(google::protobuf::FileDescriptorSet &target, const google::protobuf::FileDescriptorSet &source);
+// Interval Rows Hold One Value per Field; Window Columns Repeat Every Row Field.
+void validate_row(const google::protobuf::Descriptor *row);
+void validate_columns(const google::protobuf::Descriptor *row, const google::protobuf::Descriptor *columns);
 struct OperationDefinition {
   OperationContract contract;
   bool watch = false;
@@ -63,7 +76,11 @@ struct OperationDefinition {
 struct StreamDefinition {
   StreamDeclaration declaration;
   google::protobuf::FileDescriptorSet types;
-  std::function<std::string(Context &)> observer;
+  const google::protobuf::Descriptor *row = nullptr;
+  // A One-Sample Observer Answers Each Sample of a Window with One Row.
+  std::function<std::unique_ptr<google::protobuf::Message>(Context &)> sample;
+  // A Window Observer Answers a Whole Window with One Columns Message.
+  std::function<std::unique_ptr<google::protobuf::Message>(Context &, const Window &)> window;
   std::function<void(Context &, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>)> producer;
 };
 struct Invocation;
@@ -319,6 +336,7 @@ public:
     definition.declaration.set_id(std::move(id));
     definition.declaration.set_row(R::descriptor()->full_name());
     definition.types = detail::types(R::descriptor());
+    definition.row = R::descriptor();
   }
   Stream &publish_on(std::function<void(Context &, Publisher<R>)> producer) {
     definition.producer = [producer](Context &ctx, typename Publisher<R>::Send send) {
@@ -336,12 +354,29 @@ template <class R> class Observer {
 private:
   friend class Plugin;
   detail::StreamDefinition definition;
+  google::protobuf::FileDescriptorSet columns_;
+
+  explicit Observer(const Stream<R> &stream) : definition(stream.definition) {
+    detail::validate_row(R::descriptor());
+  }
 
 public:
-  Observer(const Stream<R> &stream, std::function<R(Context &)> handler) : definition(stream.definition) {
-    definition.observer = [handler](Context &ctx) {
-      return detail::encode(handler(ctx));
+  // Answers One Sample per Call; the SDK Calls It for Each Sample of a Window in Order.
+  Observer(const Stream<R> &stream, std::function<R(Context &)> handler) : Observer(stream) {
+    definition.sample = [handler](Context &ctx) -> std::unique_ptr<google::protobuf::Message> {
+      return std::make_unique<R>(handler(ctx));
     };
+  }
+  // Answers a Whole Window; C Repeats Every Field of R with the Same Number and Type.
+  template <class C> static Observer window(const Stream<R> &stream, std::function<C(Context &, const Window &)> handler) {
+    static_assert(std::is_base_of_v<google::protobuf::Message, C>);
+    Observer observer(stream);
+    detail::validate_columns(R::descriptor(), C::descriptor());
+    observer.columns_ = detail::types(C::descriptor());
+    observer.definition.window = [handler](Context &ctx, const Window &grant) -> std::unique_ptr<google::protobuf::Message> {
+      return std::make_unique<C>(handler(ctx, grant));
+    };
+    return observer;
   }
   Observer &every(const google::protobuf::Duration &interval) {
     *definition.declaration.mutable_interval() = interval;
@@ -349,6 +384,11 @@ public:
   }
   Observer &interval_setting(std::string id) {
     definition.declaration.set_interval_setting(std::move(id));
+    return *this;
+  }
+  // Names a Plugin Duration Setting That Overrides the Host's Window Length for This Stream.
+  Observer &window_setting(std::string id) {
+    definition.declaration.set_window_setting(std::move(id));
     return *this;
   }
 };
@@ -361,17 +401,20 @@ template <class R> Plugin &Plugin::observer(const Observer<R> &observer) {
   for (auto &stream : streams_) {
     if (stream.declaration.id() != observer.definition.declaration.id())
       continue;
-    if (stream.observer || stream.producer || observer.definition.producer)
+    if (stream.sample || stream.window || stream.producer || observer.definition.producer)
       throw std::invalid_argument("Duplicate Stream Producer");
     const bool same_row = stream.declaration.row() == observer.definition.declaration.row();
     const bool same_types = detail::encode(stream.types) == detail::encode(observer.definition.types);
     if (!same_row || !same_types)
       throw std::invalid_argument("Observer Row Differs from Its Stream");
-    stream.observer = observer.definition.observer;
+    stream.sample = observer.definition.sample;
+    stream.window = observer.definition.window;
     if (observer.definition.declaration.has_interval()) {
       *stream.declaration.mutable_interval() = observer.definition.declaration.interval();
     }
     stream.declaration.set_interval_setting(observer.definition.declaration.interval_setting());
+    stream.declaration.set_window_setting(observer.definition.declaration.window_setting());
+    detail::merge(stream.types, observer.columns_);
     return *this;
   }
   throw std::invalid_argument("Observer Requires a Declared Stream");

@@ -45,7 +45,7 @@ use harmos_protocol::model::RetryPolicy;
 use harmos_protocol::model::{Classification, Failure, OperationPolicy};
 use harmos_protocol::plugin::{
     ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request as InvocationRequest, Response as InvocationResponse, Sample,
-    SamplesSelection,
+    SampleBatch, SamplesSelection,
 };
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
@@ -131,8 +131,8 @@ impl Instance for Reference {
         let Some(instance_samples_request::Frame::Open(open)) = first else {
             return Err(Status::invalid_argument("Open Must Be First"));
         };
-        if !["conformance.ticks", "conformance.device", "conformance.settings"].contains(&open.stream.as_str())
-            && !fixture::TICK_STREAMS.contains(&open.stream.as_str())
+        if !["conformance.interval", "conformance.device", "conformance.settings", fixture::WINDOW].contains(&open.stream.as_str())
+            && !fixture::WINDOW_STREAMS.contains(&open.stream.as_str())
         {
             return Err(Status::not_found("Unknown Stream"));
         }
@@ -642,7 +642,6 @@ async fn samples(
         };
         output.send(Ok(samples)).await.map_err(|_| Status::cancelled("Host Closed"))?;
     }
-    let mut sequence = 0_u64;
     let mut next_call = 0_u64;
     loop {
         let frame = tokio::select! {
@@ -652,34 +651,90 @@ async fn samples(
         let Some(frame) = frame else {
             return Ok(());
         };
-        let Some(instance_samples_request::Frame::Tick(tick)) = frame.frame else {
-            return Err(Status::invalid_argument("Expected Tick"));
+        let Some(instance_samples_request::Frame::Window(window)) = frame.frame else {
+            return Err(Status::invalid_argument("Receive Samples: Expected a Window"));
         };
-        let Some(at) = tick.at else {
-            return Err(Status::invalid_argument("Tick Time Required"));
-        };
-        if open.stream == "conformance.device"
-            || at.nanos < 0
-            || at.nanos >= 1_000_000_000
-            || !(-62_135_596_800..=253_402_300_799).contains(&at.seconds)
-        {
-            return Err(Status::invalid_argument("Invalid Tick"));
+        if open.stream == "conformance.device" {
+            return Err(Status::invalid_argument("Sample Window: a device stream takes no windows"));
         }
-        sequence += 1;
-        let row = if fixture::TICK_STREAMS.contains(&open.stream.as_str()) {
-            match samples_children(&open, input, output, &mut next_call).await {
-                Ok(row) => row,
-                Err(error) if error.code() == tonic::Code::Cancelled => return Ok(()),
-                Err(error) => return Err(error),
-            }
+        let Some(start) = window.start else {
+            return Err(Status::invalid_argument("Sample Window: start time required"));
+        };
+        if start.nanos < 0 || start.nanos >= 1_000_000_000 || !(-62_135_596_800..=253_402_300_799).contains(&start.seconds) {
+            return Err(Status::invalid_argument("Sample Window: start time out of range"));
+        }
+        let positive = window.period.is_some_and(|period| {
+            period.seconds >= 0 && (0..1_000_000_000).contains(&period.nanos) && (period.seconds > 0 || period.nanos > 0)
+        });
+        if !positive {
+            return Err(Status::invalid_argument("Sample Window: a positive period is required"));
+        }
+        if window.count == 0 {
+            return Err(Status::invalid_argument("Sample Window: a window holds at least one sample"));
+        }
+        // A Window Observer Answers the Whole Grant; One-Sample Observers Run Once per Sample, in Order.
+        let values = if open.stream == fixture::WINDOW {
+            (0..window.count).map(|index| (window.sequence + index).to_le_bytes().to_vec()).collect()
         } else {
-            fixture::payload(&sequence.to_le_bytes())
+            let mut values = Vec::new();
+            for index in 0..window.count {
+                let value = if fixture::WINDOW_STREAMS.contains(&open.stream.as_str()) {
+                    match samples_children(&open, input, output, &mut next_call).await {
+                        Ok(value) => value,
+                        Err(error) if error.code() == tonic::Code::Cancelled => return Ok(()),
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    (window.sequence + index).to_le_bytes().to_vec()
+                };
+                values.push(value);
+            }
+            values
         };
-        let samples = InstanceSamplesResponse {
-            samples: vec![Sample { at: Some(at), row, sequence }],
-            frame: None,
-        };
-        output.send(Ok(samples)).await.map_err(|_| Status::cancelled("Host Closed"))?;
+        for part in parts(values, harmos_protocol::transfer::default_message_bytes().get())? {
+            output.send(Ok(part)).await.map_err(|_| Status::cancelled("Host Closed"))?;
+        }
+    }
+}
+
+/// Split a Window's Values at Sample Boundaries Into Parts That Each Fit the Advertised Message Size.
+fn parts(values: Vec<Vec<u8>>, message_bytes: usize) -> StdResult<Vec<InstanceSamplesResponse>, Status> {
+    // Upper Bound of the Response, Batch Offset, Count, Last and Columns Framing Around the Columns' Values.
+    const FRAMING: usize = 64;
+    let budget = message_bytes
+        .checked_sub(FRAMING)
+        .ok_or_else(|| Status::resource_exhausted("Answer Window: Raise the message size above the batch framing"))?;
+    let mut parts = Vec::new();
+    let mut columns = fixture::Values::default();
+    let mut size = 0;
+    let mut offset = 0_u64;
+    for value in values {
+        let cost = 1 + prost::encoding::encoded_len_varint(value.len() as u64) + value.len();
+        if cost > budget {
+            return Err(Status::resource_exhausted("Answer Window: a conformance.model.v1.Value sample exceeds the message size"));
+        }
+        if size + cost > budget {
+            let count = columns.value.len() as u64;
+            parts.push(batch(offset, std::mem::take(&mut columns), false));
+            offset += count;
+            size = 0;
+        }
+        size += cost;
+        columns.value.push(value);
+    }
+    parts.push(batch(offset, columns, true));
+    Ok(parts)
+}
+
+fn batch(offset: u64, columns: fixture::Values, last: bool) -> InstanceSamplesResponse {
+    InstanceSamplesResponse {
+        samples: Vec::new(),
+        frame: Some(instance_samples_response::Frame::Batch(SampleBatch {
+            offset,
+            count: columns.value.len() as u64,
+            columns: columns.encode_to_vec(),
+            last,
+        })),
     }
 }
 
@@ -718,7 +773,7 @@ async fn samples_reply(
         return Err(Status::cancelled("Samples: Demand Closed"));
     };
     let Some(instance_samples_request::Frame::Child(child)) = frame.frame else {
-        return Err(Status::invalid_argument("Samples: Expected Tick Child Reply"));
+        return Err(Status::invalid_argument("Samples: Expected Window Child Reply"));
     };
     Ok(child)
 }
@@ -730,15 +785,15 @@ async fn samples_children(
     *next_call += 1;
     let first = *next_call;
     match open.stream.as_str() {
-        "conformance.tick_caller_refusal" => {
+        "conformance.window_caller_refusal" => {
             samples_child(output, first, "harmos.host.v1.Invocations/Create", crate::callers::request(), false).await?;
             let reply = samples_reply(input, output).await?;
             let Some(child_response::Result::Failure(failure)) = reply.result else {
-                return Err(Status::invalid_argument("Tick Client Operation: Expected Caller Refusal"));
+                return Err(Status::invalid_argument("Window Client Operation: Expected Caller Refusal"));
             };
-            Ok(fixture::payload(&failure.encode_to_vec()))
+            Ok(failure.encode_to_vec())
         }
-        "conformance.tick_children" => {
+        "conformance.window_children" => {
             *next_call += 1;
             let second = *next_call;
             samples_child(output, first, "conformance.host.echo", fixture::payload(&[1]), false).await?;
@@ -755,9 +810,9 @@ async fn samples_children(
                 let value = fixture::Value::decode(payload.as_slice()).map_err(|_| Status::invalid_argument("Samples: Invalid Echo"))?;
                 replies.insert(reply.call, value.value);
             }
-            Ok(fixture::payload(&replies.into_values().flatten().collect::<Vec<_>>()))
+            Ok(replies.into_values().flatten().collect())
         }
-        "conformance.tick_context" => {
+        "conformance.window_context" => {
             let mut value = Vec::new();
             for (operation, payload) in [
                 ("conformance.host.echo", fixture::payload(open.scope.as_bytes())),
@@ -778,9 +833,9 @@ async fn samples_children(
                 value.extend(payload);
                 *next_call += 1;
             }
-            Ok(fixture::payload(&value))
+            Ok(value)
         }
-        "conformance.tick_failure" => {
+        "conformance.window_failure" => {
             samples_child(output, first, "conformance.host.fail", fixture::payload(&[]), false).await?;
             let reply = samples_reply(input, output).await?;
             if reply.call != first {
@@ -789,9 +844,9 @@ async fn samples_children(
             let Some(child_response::Result::Failure(failure)) = reply.result else {
                 return Err(Status::invalid_argument("Samples: Expected Failure"));
             };
-            Ok(fixture::payload(&failure.encode_to_vec()))
+            Ok(failure.encode_to_vec())
         }
-        "conformance.tick_watch" => {
+        "conformance.window_watch" => {
             samples_child(output, first, "conformance.host.watch", fixture::payload(open.scope.as_bytes()), true).await?;
             let mut value = Vec::new();
             loop {
@@ -804,12 +859,12 @@ async fn samples_children(
                     Some(child_response::Result::Item(item)) => value.extend(
                         fixture::Value::decode(item.as_slice()).map_err(|_| Status::invalid_argument("Samples: Invalid Watch Item"))?.value,
                     ),
-                    Some(child_response::Result::Payload(_)) => return Ok(fixture::payload(&value)),
+                    Some(child_response::Result::Payload(_)) => return Ok(value),
                     _ => return Err(Status::invalid_argument("Samples: Expected Watch Item or Completion")),
                 }
             }
         }
-        "conformance.tick_cancel" => {
+        "conformance.window_cancel" => {
             samples_child(output, first, "conformance.host.pending", fixture::payload(&[]), false).await?;
             *next_call += 1;
             let echo = *next_call;
@@ -826,9 +881,9 @@ async fn samples_children(
             let pending = *next_call;
             samples_child(output, pending, "conformance.host.pending", fixture::payload(&[]), false).await?;
             samples_frame(output, instance_samples_response::Frame::ChildCancel(ChildCancel { call: pending })).await?;
-            Ok(fixture::payload(b"cancelled"))
+            Ok(b"cancelled".to_vec())
         }
-        _ => Err(Status::not_found("Samples: Unknown Tick Fixture")),
+        _ => Err(Status::not_found("Samples: Unknown Window Fixture")),
     }
 }
 

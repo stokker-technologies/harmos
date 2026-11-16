@@ -16,6 +16,8 @@ using Graph = Harmos.Conformance.Graph;
 using SdkContext = global::Harmos.Plugins.Context;
 using SdkPlugin = global::Harmos.Plugins.Plugin;
 using Value = Harmos.Conformance.Value;
+using Values = Harmos.Conformance.Values;
+using Window = global::Harmos.Plugins.Window;
 using InvocationsCreateRequest = Harmos.Conformance.Wire.InvocationsCreateRequest;
 using InvocationsCreateResponse = Harmos.Conformance.Wire.InvocationsCreateResponse;
 
@@ -72,15 +74,16 @@ public sealed class Fixture
       .Requires(HostOperation.PluginsSettingsList)
       .Requires(HostOperation.OperationsList)
       .Requires(HostOperation.OperationsGet)
-      .Observer("conformance.ticks", new Duration { Seconds = 1 }, Tick)
+      .Observer("conformance.interval", new Duration { Seconds = 1 }, Sequence)
       .Stream<Value>("conformance.device", Device)
-      .Observer("conformance.settings", new Duration { Seconds = 1 }, Tick, intervalSetting: "interval")
-      .Observer("conformance.tick_children", new Duration { Seconds = 1 }, context => Children(context, new Value()))
-      .Observer("conformance.tick_context", new Duration { Seconds = 1 }, TickContext)
-      .Observer("conformance.tick_failure", new Duration { Seconds = 1 }, TickFailure)
-      .Observer("conformance.tick_watch", new Duration { Seconds = 1 }, context => Watch(context, new Value { Value_ = ByteString.CopyFromUtf8("fixture") }))
-      .Observer("conformance.tick_cancel", new Duration { Seconds = 1 }, TickCancel)
-      .Observer("conformance.tick_caller_refusal", new Duration { Seconds = 1 }, context => CallerRefusal(context, new Value()))
+      .Observer("conformance.settings", new Duration { Seconds = 1 }, Sequence, intervalSetting: "interval")
+      .Observer("conformance.window_children", new Duration { Seconds = 1 }, context => Children(context, new Value()))
+      .Observer("conformance.window_context", new Duration { Seconds = 1 }, SampleContext)
+      .Observer("conformance.window_failure", new Duration { Seconds = 1 }, SampleFailure)
+      .Observer("conformance.window_watch", new Duration { Seconds = 1 }, context => Watch(context, new Value { Value_ = ByteString.CopyFromUtf8("fixture") }))
+      .Observer("conformance.window_cancel", new Duration { Seconds = 1 }, SampleCancel)
+      .Observer("conformance.window_caller_refusal", new Duration { Seconds = 1 }, context => CallerRefusal(context, new Value()))
+      .WindowObserver<Value, Values>("conformance.window", new Duration { Seconds = 1 }, Sequences)
       .Section(new Graph { Interval = new Duration { Seconds = 2 } })
       .Setting("count", new SettingValue { Integer = 3 }, "count", "Conformance count")
       .Setting("enabled", new SettingValue { Flag = false }, "enabled", "Conformance enabled")
@@ -118,7 +121,7 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFromUtf8(operation.Contract.Id) };
   }
 
-  private async Task<Value> TickContext(SdkContext context)
+  private async Task<Value> SampleContext(SdkContext context)
   {
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
@@ -135,7 +138,7 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
   }
 
-  private async Task<Value> TickFailure(SdkContext context)
+  private async Task<Value> SampleFailure(SdkContext context)
   {
     try
     {
@@ -144,7 +147,7 @@ public sealed class Fixture
     catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
 
-  private async Task<Value> TickCancel(SdkContext context)
+  private async Task<Value> SampleCancel(SdkContext context)
   {
     using var cancelled = new CancellationTokenSource();
     var pending = context.CallAsync(hostPending, new Value(), cancellationToken: cancelled.Token);
@@ -281,11 +284,23 @@ public sealed class Fixture
     }
   });
 
-  private Task<Value> Tick(SdkContext context)
+  private Task<Value> Sequence(SdkContext context)
   {
     var bytes = new byte[sizeof(ulong)];
     BinaryPrimitives.WriteUInt64LittleEndian(bytes, context.Sequence);
     return Task.FromResult(new Value { Value_ = ByteString.CopyFrom(bytes) });
+  }
+
+  private Task<Values> Sequences(SdkContext context, Window window)
+  {
+    var columns = new Values();
+    var bytes = new byte[sizeof(ulong)];
+    for (ulong index = 0; index < window.Count; index++)
+    {
+      BinaryPrimitives.WriteUInt64LittleEndian(bytes, window.Sequence + index);
+      columns.Value.Add(ByteString.CopyFrom(bytes));
+    }
+    return Task.FromResult(columns);
   }
 
   private async Task Device(SdkContext context, Publisher<Value> publisher)

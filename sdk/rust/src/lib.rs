@@ -44,7 +44,8 @@
 //! over their generated protobuf type. Required requests implement `OperationRequest`.
 //!
 //! `Context` resources live for one invocation or publication call. Observers answer
-//! host ticks and may call declared host operations, clock, settings and Watches until answering the tick. Device streams use `Stream::publish_on`
+//! host windows, once per sample or, with `Observer::window`, once per window, and may call declared host
+//! operations, clock, settings and Watches until answering the window. Device streams use `Stream::publish_on`
 //! and `Publisher::publish`, with backpressure and no replay after demand closes.
 //! Declare clock requirements with `HostOperation::TimeSleep` and `HostOperation::TimeGet`; every wait and
 //! evidence-time read then travels on the invoking call. Independently spawned
@@ -64,6 +65,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 mod clock;
+mod columns;
 #[cfg(not(target_arch = "wasm32"))]
 mod connection;
 mod context;

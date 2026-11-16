@@ -101,6 +101,7 @@ impl Fixture {
             reconnect_delay: std::time::Duration::from_millis(100),
             stop_grace: std::time::Duration::from_secs(30),
             stream_window: NonZeroUsize::new(8).unwrap(),
+            interval_window: std::time::Duration::from_secs(1),
         };
         let attached = runtime.attach_grpc(placement, settings).await.unwrap();
 

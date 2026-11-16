@@ -7,7 +7,7 @@
  * ***
  */
 
-// Sample Tick Child Call Journeys
+// Sample Window Child Call Journeys
 
 /* === Imports === */
 
@@ -21,7 +21,7 @@ use harmos_protocol::plugin::Sample as WireSample;
 use super::{
     invoke_support::{Host, Reply},
     manager::support::{self as manager, Backends, Host as ManagedHost},
-    support::Remote,
+    support::{self, Remote},
 };
 use futures_util::stream;
 use harmos_operations::{
@@ -63,7 +63,7 @@ use tonic::Status;
 /* === Constants === */
 
 static DECLARATION: WireDeclaration = WireDeclaration::request::<Host>(
-    "fixture.tick_child",
+    "fixture.window_child",
     OperationPolicy {
         timeout: Duration::from_secs(30),
         attempt_timeout: Duration::from_secs(30),
@@ -72,7 +72,7 @@ static DECLARATION: WireDeclaration = WireDeclaration::request::<Host>(
     },
 )
 .visibility(Visibility::Public)
-.grpc(Grpc::new("fixture.host.v1", "TickChildren", "Call"));
+.grpc(Grpc::new("fixture.host.v1", "WindowChildren", "Call"));
 
 /* === Structs === */
 
@@ -99,7 +99,7 @@ impl ProtobufOperation for Watch {
     type Request = TimeGetRequest;
     type Response = TimeGetResponse;
     type Endpoints = ProtobufOutput<TimeGetResponse>;
-    const ID: &'static str = "fixture.tick_watch";
+    const ID: &'static str = "fixture.window_watch";
     const POLICY: OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     async fn run(context: ExecutionContext, _: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
@@ -137,8 +137,8 @@ fn payload(value: &[u8]) -> Vec<u8> {
 fn expected_failure() -> ProtocolFailure {
     model::Failure {
         classification: model::Classification::Transient as i32,
-        code: "tick_failure".into(),
-        operation: "fixture.tick_child".into(),
+        code: "window_failure".into(),
+        operation: "fixture.window_child".into(),
         plugin: "host".into(),
         message: "fixture message".into(),
         diagnostics: "fixture diagnostics".into(),
@@ -201,7 +201,7 @@ async fn child(
 /* === Tests === */
 
 #[tokio::test]
-async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
+async fn samples_children_correlate_preserve_failures_and_end_with_the_window() {
     let root = tempfile::tempdir().unwrap();
     let backends = Backends::new();
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
@@ -213,7 +213,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
     let descriptor = harmos_runtime::grpc::descriptor(&binding.package, &binding.service, &[(&binding.method, &contract)]).unwrap();
     let method = descriptor.methods().next().unwrap();
     let fingerprint = harmos_protocol::schema::fingerprint(
-        "fixture.tick_child",
+        "fixture.window_child",
         &prost_types::FileDescriptorSet {
             file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
         },
@@ -249,7 +249,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 fingerprint: watch_fingerprint.clone(),
             },
             model::Requirement {
-                id: "fixture.tick_child".into(),
+                id: "fixture.window_child".into(),
                 fingerprint: fingerprint.clone(),
             },
             model::Requirement {
@@ -287,7 +287,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 panic!("Expected Open");
             };
             if open.stream == "outside" || open.stream == "device" {
-                child(&output, 1, "fixture.tick_child", fingerprint, payload(b"outside")).await;
+                child(&output, 1, "fixture.window_child", fingerprint, payload(b"outside")).await;
                 assert!(input.message().await.unwrap().is_none());
                 signals.refusals.fetch_add(1, Ordering::SeqCst);
                 if open.stream == "outside" {
@@ -297,28 +297,18 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
             }
             let mut sequence = 0;
             while let Some(next) = input.message().await.unwrap() {
-                let Some(request::Frame::Tick(tick)) = next.frame else {
-                    panic!("Expected Tick");
+                let Some(request::Frame::Window(window)) = next.frame else {
+                    panic!("Expected a Window");
                 };
                 sequence += 1;
                 if open.stream == "duplicate" {
-                    child(&output, 1, "fixture.tick_child", fingerprint.clone(), payload(b"duplicate")).await;
+                    child(&output, 1, "fixture.window_child", fingerprint.clone(), payload(b"duplicate")).await;
                     if sequence == 1 {
                         let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                             panic!("Expected Child Reply");
                         };
                         assert_eq!(reply.call, 1);
-                        output
-                            .send(Ok(plugin::InstanceSamplesResponse {
-                                samples: vec![WireSample {
-                                    at: tick.at,
-                                    sequence,
-                                    row: host::TimeGetResponse { now: tick.at }.encode_to_vec(),
-                                }],
-                                frame: None,
-                            }))
-                            .await
-                            .unwrap();
+                        output.send(Ok(support::answer(1, host::TimeGetResponse { now: window.start }.encode_to_vec()))).await.unwrap();
                         continue;
                     }
                     assert!(input.message().await.unwrap().is_none());
@@ -328,7 +318,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 if open.stream == "mixed" {
                     output
                         .send(Ok(plugin::InstanceSamplesResponse {
-                            samples: vec![WireSample { at: tick.at, sequence, row: vec![] }],
+                            samples: vec![WireSample { at: window.start, sequence, row: vec![] }],
                             frame: Some(response::Frame::ChildCancel(ChildCancel { call: 1 })),
                         }))
                         .await
@@ -345,13 +335,14 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 }
                 let base = sequence * 10;
                 let key = format!("{}:{sequence}", open.stream);
-                // Equal IDs On Independent Streams Are Independent; IDs Change On Later Ticks.
-                child(&output, base + 1, "fixture.tick_child", fingerprint.clone(), payload(format!("first:{key}").as_bytes())).await;
-                child(&output, base + 2, "fixture.tick_child", fingerprint.clone(), payload(b"second")).await;
-                child(&output, base + 3, "fixture.tick_child", fingerprint.clone(), payload(b"fail")).await;
+                // Equal IDs On Independent Streams Are Independent; IDs Change On Later Windows.
+                child(&output, base + 1, "fixture.window_child", fingerprint.clone(), payload(format!("first:{key}").as_bytes())).await;
+                child(&output, base + 2, "fixture.window_child", fingerprint.clone(), payload(b"second")).await;
+                child(&output, base + 3, "fixture.window_child", fingerprint.clone(), payload(b"fail")).await;
                 child(&output, base + 4, settings_id, settings_fingerprint.clone(), vec![]).await;
                 let cancelled = format!("{key}:cancel");
-                child(&output, base + 5, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{cancelled}").as_bytes())).await;
+                child(&output, base + 5, "fixture.window_child", fingerprint.clone(), payload(format!("park:{cancelled}").as_bytes()))
+                    .await;
                 signals.parked(&cancelled).entered.notified().await;
                 frame(&output, response::Frame::ChildCancel(ChildCancel { call: base + 5 })).await;
                 signals.parked(&cancelled).cancelled.notified().await;
@@ -406,20 +397,10 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
                 assert!(WireSettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
                 assert!(matches!(&replies[&(base + 7)], Some(child_response::Result::Payload(_))));
                 let ended = format!("{key}:end");
-                child(&output, base + 6, "fixture.tick_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
+                child(&output, base + 6, "fixture.window_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
                 signals.parked(&ended).entered.notified().await;
-                let at = tick.at.unwrap();
-                output
-                    .send(Ok(plugin::InstanceSamplesResponse {
-                        samples: vec![WireSample {
-                            at: Some(at),
-                            sequence,
-                            row: host::TimeGetResponse { now: Some(at) }.encode_to_vec(),
-                        }],
-                        frame: None,
-                    }))
-                    .await
-                    .unwrap();
+                let at = window.start.unwrap();
+                output.send(Ok(support::answer(1, host::TimeGetResponse { now: Some(at) }.encode_to_vec()))).await.unwrap();
                 signals.parked(&ended).cancelled.notified().await;
                 signals.answered.fetch_add(1, Ordering::SeqCst);
             }
@@ -427,8 +408,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
     let mut watch = host.client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
-    host.client.create(manager::remote("tick_owner", &remote.address)).await.unwrap();
-    manager::state(&mut watch, "tick_owner", host::PluginState::Ready, 1).await;
+    host.client.create(manager::remote("window_owner", &remote.address)).await.unwrap();
+    manager::state(&mut watch, "window_owner", host::PluginState::Ready, 1).await;
     drop(watch);
     signals.rejected.notified().await;
     let mut feed = host.runtime.streams.follow(harmos_runtime::storage::Cursor::ORIGIN);
@@ -448,6 +429,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_tick() {
         Ok(())
     };
     tokio::try_join!(collected, drive).unwrap();
-    assert!(signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("tick_owner") && reported == "remote"));
+    assert!(
+        signals.callers.lock().unwrap().iter().all(|(entry, reported)| entry.as_deref() == Some("window_owner") && reported == "remote")
+    );
     host.close().await;
 }

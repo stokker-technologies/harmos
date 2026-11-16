@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"conformance/model/v1/fixture.proto\x12\x14\x63onformance.model.v1\x1a\x1egoogle/protobuf/duration.proto\"\x16\n\x05Value\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x1c\n\x0bPayloadOnly\x12\r\n\x05value\x18\x01 \x01(\x0c\"3\n\x05Zebra\x12*\n\x05value\x18\x01 \x01(\x0b\x32\x1b.conformance.model.v1.Value\"\xc2\x02\n\x05Graph\x12\x31\n\x05items\x18\x01 \x03(\x0b\x32\".conformance.model.v1.Graph.Nested\x12)\n\x04tail\x18\x02 \x01(\x0b\x32\x1b.conformance.model.v1.Zebra\x12)\n\x04next\x18\x03 \x01(\x0b\x32\x1b.conformance.model.v1.Graph\x12+\n\x08interval\x18\x04 \x01(\x0b\x32\x19.google.protobuf.Duration\x12,\n\x06status\x18\x05 \x01(\x0e\x32\x1c.conformance.model.v1.Status\x1aQ\n\x06Nested\x12\x12\n\x05\x63ount\x18\x01 \x01(\x05H\x00\x88\x01\x01\x12)\n\x04next\x18\x02 \x01(\x0b\x32\x1b.conformance.model.v1.GraphB\x08\n\x06_count:\x02\x18\x00*2\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\x10\n\x0cSTATUS_READY\x10\x01\x42\x15\xaa\x02\x12Harmos.Conformanceb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\"conformance/model/v1/fixture.proto\x12\x14\x63onformance.model.v1\x1a\x1egoogle/protobuf/duration.proto\"\x16\n\x05Value\x12\r\n\x05value\x18\x01 \x01(\x0c\"\x17\n\x06Values\x12\r\n\x05value\x18\x01 \x03(\x0c\"\x1c\n\x0bPayloadOnly\x12\r\n\x05value\x18\x01 \x01(\x0c\"3\n\x05Zebra\x12*\n\x05value\x18\x01 \x01(\x0b\x32\x1b.conformance.model.v1.Value\"\xc2\x02\n\x05Graph\x12\x31\n\x05items\x18\x01 \x03(\x0b\x32\".conformance.model.v1.Graph.Nested\x12)\n\x04tail\x18\x02 \x01(\x0b\x32\x1b.conformance.model.v1.Zebra\x12)\n\x04next\x18\x03 \x01(\x0b\x32\x1b.conformance.model.v1.Graph\x12+\n\x08interval\x18\x04 \x01(\x0b\x32\x19.google.protobuf.Duration\x12,\n\x06status\x18\x05 \x01(\x0e\x32\x1c.conformance.model.v1.Status\x1aQ\n\x06Nested\x12\x12\n\x05\x63ount\x18\x01 \x01(\x05H\x00\x88\x01\x01\x12)\n\x04next\x18\x02 \x01(\x0b\x32\x1b.conformance.model.v1.GraphB\x08\n\x06_count:\x02\x18\x00*2\n\x06Status\x12\x16\n\x12STATUS_UNSPECIFIED\x10\x00\x12\x10\n\x0cSTATUS_READY\x10\x01\x42\x15\xaa\x02\x12Harmos.Conformanceb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -35,16 +35,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._serialized_options = b'\252\002\022Harmos.Conformance'
   _globals['_GRAPH']._loaded_options = None
   _globals['_GRAPH']._serialized_options = b'\030\000'
-  _globals['_STATUS']._serialized_start=524
-  _globals['_STATUS']._serialized_end=574
+  _globals['_STATUS']._serialized_start=549
+  _globals['_STATUS']._serialized_end=599
   _globals['_VALUE']._serialized_start=92
   _globals['_VALUE']._serialized_end=114
-  _globals['_PAYLOADONLY']._serialized_start=116
-  _globals['_PAYLOADONLY']._serialized_end=144
-  _globals['_ZEBRA']._serialized_start=146
-  _globals['_ZEBRA']._serialized_end=197
-  _globals['_GRAPH']._serialized_start=200
-  _globals['_GRAPH']._serialized_end=522
-  _globals['_GRAPH_NESTED']._serialized_start=437
-  _globals['_GRAPH_NESTED']._serialized_end=518
+  _globals['_VALUES']._serialized_start=116
+  _globals['_VALUES']._serialized_end=139
+  _globals['_PAYLOADONLY']._serialized_start=141
+  _globals['_PAYLOADONLY']._serialized_end=169
+  _globals['_ZEBRA']._serialized_start=171
+  _globals['_ZEBRA']._serialized_end=222
+  _globals['_GRAPH']._serialized_start=225
+  _globals['_GRAPH']._serialized_end=547
+  _globals['_GRAPH_NESTED']._serialized_start=462
+  _globals['_GRAPH_NESTED']._serialized_end=543
 # @@protoc_insertion_point(module_scope)

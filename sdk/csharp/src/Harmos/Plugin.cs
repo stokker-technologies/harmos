@@ -72,21 +72,38 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     return this;
   }
 
+  /// <summary>Declare an interval stream answered one sample at a time, in order, for every sample of each host window.</summary>
   public Plugin Observer<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
-      string description = "", string intervalSetting = "") where TRow : IMessage<TRow>, new()
+      string description = "", string intervalSetting = "", string windowSetting = "") where TRow : IMessage<TRow>, new()
   {
-    if (interval is null && string.IsNullOrEmpty(intervalSetting))
-      throw new ArgumentException("Observer Requires an Interval or Setting");
-    if (interval is not null && (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
-        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0)))
-      throw new ArgumentException("Interval Must Be a Positive Protobuf Duration", nameof(interval));
-    return AddStream<TRow>(new StreamDeclaration
+    var row = new TRow().Descriptor;
+    var fields = Columns.RowFields(row, stream);
+    return AddInterval<TRow>(stream, interval, description, intervalSetting, windowSetting, async (context, window) =>
     {
-      Id = stream,
-      Interval = interval?.Clone(),
-      Description = description,
-      IntervalSetting = intervalSetting
-    }, new Publication(async context => (await observer(context)).ToByteString(), null));
+      var rows = new IMessage[Columns.Capacity(window, stream)];
+      for (var index = 0; index < rows.Length; index++)
+      {
+        // Demand Closure Stops the Window Before Its Remaining Samples.
+        context.CancellationToken.ThrowIfCancellationRequested();
+        rows[index] = await observer(context.Sample(window.Sequence + (ulong)index, window.SampleTime((ulong)index)))
+            ?? throw Columns.Failed($"Observe {stream}: Return a Row for Every Sample");
+      }
+      return Columns.FromRows(row, fields, rows);
+    });
+  }
+
+  /// <summary>Declare an interval stream whose observer answers each host window with its columns message.</summary>
+  /// <remarks>TColumns repeats every TRow field with the same number and type and holds one value per sample.</remarks>
+  public Plugin WindowObserver<TRow, TColumns>(string stream, Duration? interval, Func<Context, Window, Task<TColumns>> observer,
+      string description = "", string intervalSetting = "", string windowSetting = "")
+      where TRow : IMessage<TRow>, new()
+      where TColumns : IMessage<TColumns>, new()
+  {
+    var row = new TRow().Descriptor;
+    var fields = Columns.Mirror(row, new TColumns().Descriptor, stream);
+    return AddInterval<TRow>(stream, interval, description, intervalSetting, windowSetting, async (context, window) =>
+        Columns.FromColumns(row, fields, await observer(context, window)
+            ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream));
   }
 
   public Plugin Stream<TRow>(string stream, Func<Context, Publisher<TRow>, Task> producer, string description = "")
@@ -159,17 +176,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
         listener => listener.Protocols = HttpProtocols.Http2));
     var maximum = Transfer.MessageBytes(transferSettings);
     builder.Services.AddGrpc(options => { options.MaxReceiveMessageSize = maximum; options.MaxSendMessageSize = maximum; });
-    builder.Services.AddSingleton(provider => new PluginService(new InstanceGetResponse
-    {
-      Id = id,
-      Version = version,
-      StartedAt = StartedAt.Clone(),
-      Declarations = snapshot,
-      Revision = 1,
-      Sdk = "harmos_csharp",
-      SdkVersion = "0.1.0",
-      MessageBytes = (ulong)maximum
-    }, new(operations), new(streams), cleanup.ToArray(), remote, provider.GetRequiredService<IHostApplicationLifetime>()));
+    builder.Services.AddSingleton(provider => Service(snapshot, (ulong)maximum, remote, provider.GetRequiredService<IHostApplicationLifetime>()));
 
     await using var app = builder.Build();
     app.MapGrpcService<PluginService>();
@@ -178,6 +185,37 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     Console.WriteLine($"harmos listening {bound.Authority}");
     await Console.Out.FlushAsync(cancellationToken);
     await app.WaitForShutdownAsync(cancellationToken);
+  }
+
+  /// <summary>The served instance; message_bytes bounds every response, including each window part.</summary>
+  internal PluginService Service(Declarations snapshot, ulong messageBytes, bool remote, IHostApplicationLifetime lifetime) => new(new InstanceGetResponse
+  {
+    Id = id,
+    Version = version,
+    StartedAt = StartedAt.Clone(),
+    Declarations = snapshot,
+    Revision = 1,
+    Sdk = "harmos_csharp",
+    SdkVersion = "0.1.0",
+    MessageBytes = messageBytes
+  }, new(operations), new(streams), cleanup.ToArray(), remote, lifetime);
+
+  private Plugin AddInterval<TRow>(string stream, Duration? interval, string description, string intervalSetting, string windowSetting,
+      Func<Context, Window, Task<Columns>> observer) where TRow : IMessage<TRow>, new()
+  {
+    if (interval is null && string.IsNullOrEmpty(intervalSetting))
+      throw new ArgumentException($"Declare {stream}: Give an Interval or Interval Setting");
+    if (interval is not null && (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
+        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0)))
+      throw new ArgumentException($"Declare {stream}: Give a Positive Protobuf Duration Interval", nameof(interval));
+    return AddStream<TRow>(new StreamDeclaration
+    {
+      Id = stream,
+      Interval = interval?.Clone(),
+      Description = description,
+      IntervalSetting = intervalSetting,
+      WindowSetting = windowSetting
+    }, new Publication(observer, null));
   }
 
   private Plugin AddStream<TRow>(StreamDeclaration declaration, Publication publication) where TRow : IMessage<TRow>, new()
@@ -194,5 +232,5 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
 
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);
 
-internal sealed record Publication(Func<Context, Task<ByteString>>? Observer,
+internal sealed record Publication(Func<Context, Window, Task<Columns>>? Observer,
     Func<Context, ChannelWriter<Sample>, Task>? Producer);

@@ -4,9 +4,10 @@
 
 The active local repair branch is `fix/product-integration-gaps`. This repair adds
 `Runtime::bind_grpc(&Activation, scope, Clock) -> ScopedBinding` for an already
-admitted activation. The lease owns scoped calls, clock propagation and additional
-Samples selections on the same connection; close settles calls, captured ingestion
-and producer cleanup. Shared admitted writers retain separate wire-sequence
+admitted activation. The lease owns scoped calls and clock propagation on the same
+connection. Binding opens no Samples demand: `start_samples()` opens the scope's
+Samples selections and `stop_samples()` settles them while calls stay bound; close
+settles calls, captured ingestion and producer cleanup. Shared admitted writers retain separate wire-sequence
 validation and scope-stamped rows. The runtime clock still owns policy deadlines.
 See `docs/architecture.md#scoped-plugin-bindings` for the complete usage contract.
 

@@ -36,14 +36,16 @@ use harmos_protocol::model::{
 pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
 pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.host.v1.Time/Sleep", "harmos.host.v1.Time/Get"];
 
-pub const TICK_STREAMS: &[&str] = &[
-    "conformance.tick_children",
-    "conformance.tick_context",
-    "conformance.tick_failure",
-    "conformance.tick_watch",
-    "conformance.tick_cancel",
-    "conformance.tick_caller_refusal",
+pub const WINDOW_STREAMS: &[&str] = &[
+    "conformance.window_children",
+    "conformance.window_context",
+    "conformance.window_failure",
+    "conformance.window_watch",
+    "conformance.window_cancel",
+    "conformance.window_caller_refusal",
 ];
+/// The Window Observer Stream: One Call Answers the Whole Window With Values Columns.
+pub const WINDOW: &str = "conformance.window";
 pub const HOST_OPERATIONS: &[(&str, &str, &str)] = &[
     ("harmos.host.v1.Invocations/Create", "harmos.host.v1.InvocationsCreateRequest", "harmos.host.v1.InvocationsCreateResponse"),
     ("harmos.host.v1.plugins.Settings/List", "harmos.host.v1.plugins.SettingsListRequest", "harmos.host.v1.plugins.SettingsListResponse"),
@@ -63,6 +65,13 @@ pub const ROW: &str = "conformance.model.v1.Value";
 pub struct Value {
     #[prost(bytes = "vec", tag = "1")]
     pub value: Vec<u8>,
+}
+
+/// The Columns of Value: One Value per Sample of a Window Part.
+#[derive(Clone, PartialEq, Message)]
+pub struct Values {
+    #[prost(bytes = "vec", repeated, tag = "1")]
+    pub value: Vec<Vec<u8>>,
 }
 
 /* === Enums === */
@@ -226,12 +235,12 @@ pub fn declarations() -> Declarations {
         fingerprint: fingerprint(id),
     })
     .collect();
-    let mut streams: Vec<_> = ["ticks", "device"]
+    let mut streams: Vec<_> = ["interval", "device"]
         .into_iter()
         .map(|name| StreamDeclaration {
             id: format!("conformance.{name}"),
             row: ROW.into(),
-            interval: (name == "ticks").then_some(Duration { seconds: 1, nanos: 0 }),
+            interval: (name == "interval").then_some(Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         })
         .collect();
@@ -319,7 +328,7 @@ pub fn declarations() -> Declarations {
             ..Default::default()
         });
     }
-    for name in TICK_STREAMS {
+    for name in WINDOW_STREAMS.iter().chain([&WINDOW]) {
         streams.push(StreamDeclaration {
             id: (*name).into(),
             row: ROW.into(),

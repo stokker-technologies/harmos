@@ -42,7 +42,7 @@ For a scoped unit of work that owns its time and sample ingestion, use
 `runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
 binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
 demand: call `start_samples()` once the plugin has registered the unit and `stop_samples()`
-before its cleanup ends it, so no tick reaches the plugin outside that interval. `close()` returns
+before its cleanup ends it, so no window reaches the plugin outside that interval. `close()` returns
 within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
 not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
 share the admitted connection and retain independent clocks and Samples selections;
@@ -914,7 +914,7 @@ timer IDs and their deadlines at the virtual bound. Active external work can kee
 clock frozen; the test runner's separate hang guard bounds that case.
 
 Register work before scheduling it with `let mut activity = clock.activity("operation");`
-and retain the guard through settlement. Calls, unanswered observer ticks and host disk,
+and retain the guard through settlement. Calls, unanswered observer windows and host disk,
 process or transport work each need a guard; concurrent branches need separate guards.
 Use `activity.wait(clock.sleep(duration)).await` only when that branch's sole outstanding
 work is the clock wait. A timeout guarding active work must retain active accounting.
@@ -1195,13 +1195,24 @@ reference fixture and host use `harmos-protocol` for this computation. Inconsist
 hashes or unresolved message names refuse admission before an activation becomes visible.
 
 The host opens one `Instance.Samples` call for each catalog stream at admission. Interval streams
-answer host-clock ticks; device streams publish without ticks. Each sample enters
-the existing stream storage consumer path in arrival order. Incoming protobuf rows
-are validated against their catalog type and converted to the host's canonical
-stored row encoding with its derived schema. Interval rows carry their tick time;
-device rows carry host arrival time in `published_unix_micros` and retain an optional
-device timestamp as `context.source_time` (seconds and nanos). Disconnect and stop
-close demand; reconnect opens fresh calls with sequence one. Lost samples are not replayed.
+answer host-granted windows with columnar batches; device streams publish one sample
+per message without windows. Both enter the existing stream storage consumer path in
+arrival order. Device rows are validated against their catalog type and converted to
+the host's canonical stored row encoding with its derived schema; they carry host
+arrival time in `published_unix_micros` and retain an optional device timestamp as
+`context.source_time` (seconds and nanos). An interval stream of row `R` stores one
+`harmos.batch.R` row per batch part: `start_unix_nanos`, `period_nanos`, `count` and
+`columns`, which holds `R`'s fields as repeated values, one per sample. Sample `i` of
+a row is at `start_unix_nanos + i * period_nanos`; `published_unix_micros` is the first
+sample's time. Disconnect and stop close demand; reconnect opens fresh calls with
+sequence one. Lost samples are not replayed.
+
+`PlacementSettings::interval_window` sets how much time one window covers: longer
+windows batch more samples per message, shorter ones deliver sooner. A stream whose
+observer names `window_setting` takes its length from that plugin Duration setting.
+The batch size follows from the window length and the interval and is never set
+directly. A window whose columns exceed the plugin's maximum message size arrives in
+several parts, each stored as its own row.
 
 An `interval_setting` names a typed plugin setting, such as `interval`, whose
 value is a positive duration. The library materializes its declared default and
@@ -1211,7 +1222,7 @@ over the declared interval; an absent or invalid setting refuses admission.
 Plugins declare requirements for the Public `harmos.host.v1.Time/Sleep` and
 `harmos.host.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
 Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
-`advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
+`advance_until(bound, condition)`. An invocation or unanswered window keeps virtual time
 still while work is in flight; only clock waits park that activity. Device streams
 remain active until demand closes. Transport uses its normal scheduler.
 
@@ -1326,7 +1337,7 @@ cases measure crossing the carrier boundary.
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: bidirectional unary protobuf transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
-| [Interval Ticks](../crates/harmos-runtime/benches/ticks/main.rs) | Host-owned interval ticks against a managed Rust SDK plugin process, packed-row windows and the Samples call alone. |
+| [Interval Windows](../crates/harmos-runtime/benches/windows/main.rs) | Host-granted interval windows against a managed Rust SDK plugin process at 1 kHz and 1 MHz on the controlled and the real clock. |
 
 Build matching executables and carrier fixtures with `mise run build -- --artifact bench`,
 then run `mise run bench`.
@@ -1340,65 +1351,43 @@ partitioned by compatibility identity and benchmark executable. The runner compa
 against the compatible `dev` baseline and reports missing baselines or regressions
 in its output. HTML rendering uses Plotters and does not require Gnuplot.
 
-### Interval Tick Figures
+### Interval Window Figures
 
-The interval tick suite re-executes its benchmark binary as a managed Rust SDK
-plugin with 1 to 128 interval observers. A `plain` observer returns its sequence;
-a `time` observer first calls `Time.Get` as a tick child. Each case times rows
-reaching a counting stream consumer, so it includes the Tick, the observer, the
-sample's admission, the consumer drain and the per-tick ingestion wait. Controlled
-cases advance a virtual clock until the rows arrive; real cases use the host clock
-with a 1 ms interval, or a 1 µs interval that is due whenever the previous sample
-settles. Window-row cases return one row holding N repeated `double` values per
-tick; the SDK derive encodes repeated scalars unpacked, one tag per value.
-The Samples wire cases skip the host loop: a separate carrier process answers each
-Tick with N `Sample` messages or one row of N packed `double` values on the Samples
-call, and the host decodes every value. Before the timed cases, a breakdown pass
-aggregates the existing `operations.*` span lifetimes per tick by operation.
+The interval window suite re-executes its benchmark binary as a managed Rust SDK
+plugin with 1, 16 or 128 interval streams of one `double` per sample. A `window`
+observer returns each granted window's column at once; a `sample` observer is the
+one-sample form, which the SDK calls once per sample and transposes into columns.
+Each case times samples reaching a counting stream consumer, so it includes the
+window grant, the observer, the columnar answer, one admission per stored row, the
+consumer drain and the per-window ingestion wait. A 1 kHz stream uses 100 ms windows
+(100 samples), a 1 MHz stream 10 ms windows (10,000 samples), through
+`PlacementSettings::interval_window`. Controlled cases advance a virtual clock until
+the samples arrive; real cases use the host clock, so a stream cannot exceed its
+declared rate there and real 1 kHz figures saturate at streams × 1,000.
 
-Figures below are medians at `af8b9a0c` in the bench profile on Windows x86-64
-(AMD Ryzen 9 5950X), 2026-11-15, from `mise run bench -- --layer system` with one
-unrelated compilation running on the same machine. They are rows (or values) per
-second, summed over all streams.
+Before each case a probe waits up to 30 s for one iteration's samples; a host that
+falls behind its declared rate grants ever longer windows until its demand fails, and
+such a case is reported as not sustained instead of measured.
 
-| Case | 1 | 4 | 16 | 64 | 128 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Controlled, plain | 4,679 | 5,478 | 3,006 | 7,325 | 12,407 |
-| Controlled, `Time.Get` | 2,179 | 3,603 | 2,170 | 4,918 | 7,696 |
-| Real 1 ms, plain | 485 | 1,809 | 5,062 | 20,397 | 21,220 |
-| Real 1 ms, `Time.Get` | 474 | 1,536 | 3,292 | 8,490 | 11,901 |
-| Real 1 µs, plain | 842 | 2,883 | 7,017 | 23,745 | 35,154 |
-| Real 1 µs, `Time.Get` | 863 | 2,291 | 3,850 | 8,633 | 11,848 |
+Figures below are medians at `68e35ecb` in the bench profile on Windows x86-64
+(AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are
+samples per second, summed over all streams.
 
-| Values per Message | 1 | 64 | 1,024 | 65,536 |
-| --- | ---: | ---: | ---: | ---: |
-| Window row, controlled, 1 stream | 4,337 | 272,750 | 3,102,500 | 8,581,700 |
-| Window row, real 1 µs, 1 stream | 841 | 56,454 | 875,360 | 9,249,700 |
-| Window row, controlled, 128 streams | 10,713 | 904,700 | 13,470,000 | Not measured |
-| Samples wire, repeated `Sample` | 12,449 | 576,460 | 2,593,000 | 2,832,800 |
-| Samples wire, one packed row | 12,611 | 725,600 | 10,903,000 | 52,176,000 |
+| Case | 1 Stream | 16 Streams | 128 Streams |
+| --- | ---: | ---: | ---: |
+| Controlled, 1 kHz, window observer | 572,020 | 317,420 | 1,475,800 |
+| Controlled, 1 MHz, window observer | 10,355,000 | 36,130,000 | 42,151,000 |
+| Real, 1 kHz, window observer | 952 | 15,612 | 127,940 |
+| Real, 1 MHz, window observer | 861,770 | 15,626,000 | Not sustained |
+| Controlled, 1 kHz, one-sample observer | 430,680 | 409,430 | 1,326,700 |
+| Real, 1 kHz, one-sample observer | 952 | 15,997 | 127,990 |
 
-128 retained windows of 65,536 values would hold gigabytes in stream windows, so
-that case is not run.
-
-A real interval stream schedules its next tick one period after the previous tick
-woke ([publish.rs](../crates/harmos-runtime/src/plugin/grpc/publish.rs),
-`next_tick = reading.instant + period`), and Tokio rounds each timer deadline up to
-the end of a millisecond. One 1 ms stream therefore ticks about every 2 ms, near
-480 rows per second, and a 1 µs stream about every 1.2 ms. Ticks never overlap on
-one stream, and the host accepts exactly one sample per Samples message.
-
-The breakdown pass runs before the timed cases and its tracing adds overhead, so
-its totals do not match the table. For one controlled `Time.Get` stream it measured
-498 µs of wall time per tick: the `samples.tick` attempt (Tick to sample, including
-the plugin and its child call) took 385 µs, of which the `Time.Get` child took
-125 µs from admission to completion; `samples.tick` admission, queueing and
-dispatch took a further 65 µs. The remaining 47 µs cover ingestion, the per-tick
-ingestion wait and clock settlement. A plain observer took 220 µs per tick, with a
-114 µs attempt. The Samples wire round trip alone is about 80 µs. With 128
-controlled `Time.Get` streams a row took 146 µs of aggregate wall time while each
-tick spent 11.4 ms in flight, including 0.8 ms queued for `Time.Get` and 0.4 ms
-for `samples.tick` admission.
+The per-sample tick path these windows replace measured 12,407 samples per second
+for 128 controlled 1 ms streams and 21,220 on the real clock at `af8b9a0c`. 128 real
+1 MHz streams need 128 million samples per second; the host converts each value from
+protobuf into the stored encoding and reached about 42 million per second on the
+controlled clock, so that case falls behind and its windows grow until its demand fails, most likely at
+the publication byte budget.
 
 Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
 identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
@@ -1513,15 +1502,16 @@ response retains declarations, values, revision and issued read cut; issued cuts
 and name selection use the generated call options. Declare every host operation,
 clock and Watch requirement through `Plugin::requires_host` or a typed requirement.
 
-Observer contexts can make declared child calls while answering one Samples tick.
-Unary calls and Watches use the same carrier as that tick, preserve structured
+Observer contexts can make declared child calls while answering one Samples window.
+Unary calls and Watches use the same carrier as that window, preserve structured
 failures and correlate replies by IDs unique across the entire Samples stream.
-Returning the sample cancels open children; ending demand cancels the active tick.
+Answering the window cancels open children; ending demand cancels the active window.
 Retained contexts refuse further calls after the answer, and device stream contexts
-have no child-call scope. Sample timestamps and sequences retain their existing
-meaning. WebAssembly contexts share the boundary types and settings API; any
-non-tick publication is an application-owned operation over native storage or
-stream publication.
+have no child-call scope. A one-sample observer runs once per sample of the window,
+in order, each with its own sequence; `Observer::window` answers the whole window at
+once with its columns. WebAssembly contexts share the boundary types and settings API;
+any non-interval publication is an application-owned operation over native storage
+or stream publication.
 
 ## Reloadable gRPC Certificates
 

@@ -41,6 +41,7 @@ using harmos::conformance::detail::steps_operation;
 
 using Graph = harmos::conformance::Graph;
 using Value = harmos::conformance::Value;
+using Values = ::conformance::model::v1::Values;
 using ValueOperation = harmos::plugin::Operation<Value, Value>;
 using harmos::host::v1::InvocationsCreateRequest;
 using harmos::host::v1::InvocationsCreateResponse;
@@ -233,9 +234,9 @@ authoring::Plugin fixture_types::plugin() {
                      return value(ctx.cancelled());
                    }).visibility(sdk::VISIBILITY_PUBLIC));
 
-  // Compose a Host-Ticked Observer and a Device-Driven Stream.
-  authoring::Stream<Value> ticks("conformance.ticks");
-  authoring::Observer<Value> observer(ticks, [](Context &ctx) {
+  // Compose a Host-Windowed Observer and a Device-Driven Stream.
+  authoring::Stream<Value> interval_stream("conformance.interval");
+  authoring::Observer<Value> observer(interval_stream, [](Context &ctx) {
     string bytes(8, '\0');
     for (unsigned index = 0; index < 8; ++index)
       bytes[index] = static_cast<char>(ctx.sequence >> (8 * index));
@@ -304,7 +305,7 @@ authoring::Plugin fixture_types::plugin() {
   Graph section;
   section.mutable_interval()->set_seconds(2);
   plugin.message<fixture_types::PayloadOnly>().message<fixture_types::PayloadOnly>();
-  plugin.stream(ticks).stream(device).stream(settings).observer(observer).observer(configured).section(section);
+  plugin.stream(interval_stream).stream(device).stream(settings).observer(observer).observer(configured).section(section);
 
   for (const auto *name : {"count", "enabled", "gain", "interval", "label"}) {
     sdk::SettingDeclaration setting;
@@ -325,7 +326,7 @@ authoring::Plugin fixture_types::plugin() {
     plugin.setting(std::move(setting));
   }
 
-  authoring::Stream<Value> children("conformance.tick_children");
+  authoring::Stream<Value> children("conformance.window_children");
   authoring::Observer<Value> child_observer(children, [echo](Context &context) {
     auto first = context.call(echo, value(string(1, '\1')));
     auto second = context.call(echo, value(string(1, '\2')));
@@ -333,7 +334,7 @@ authoring::Plugin fixture_types::plugin() {
   });
   plugin.stream(children).observer(child_observer.every(interval));
 
-  authoring::Stream<Value> calls("conformance.tick_context");
+  authoring::Stream<Value> calls("conformance.window_context");
   authoring::Observer<Value> call_observer(calls, [echo](Context &context) {
     const auto echoed = context.call(echo, value(context.scope())).get();
     sdk::TimeGetResponse time;
@@ -351,7 +352,7 @@ authoring::Plugin fixture_types::plugin() {
   });
   plugin.stream(calls).observer(call_observer.every(interval));
 
-  authoring::Stream<Value> failures("conformance.tick_failure");
+  authoring::Stream<Value> failures("conformance.window_failure");
   authoring::Observer<Value> failure_observer(failures, [fail](Context &context) {
     try {
       context.call(fail, Value{}).get();
@@ -362,7 +363,7 @@ authoring::Plugin fixture_types::plugin() {
   });
   plugin.stream(failures).observer(failure_observer.every(interval));
 
-  authoring::Stream<Value> watches("conformance.tick_watch");
+  authoring::Stream<Value> watches("conformance.window_watch");
   authoring::Observer<Value> watch_observer(watches, [host_watch](Context &context) {
     auto watching = context.watch(host_watch, value(context.scope()), 4096);
     string result;
@@ -372,7 +373,7 @@ authoring::Plugin fixture_types::plugin() {
   });
   plugin.stream(watches).observer(watch_observer.every(interval));
 
-  authoring::Stream<Value> cancellations("conformance.tick_cancel");
+  authoring::Stream<Value> cancellations("conformance.window_cancel");
   authoring::Observer<Value> cancel_observer(cancellations, [pending, echo](Context &context) {
     auto child = context.call(pending, Value{});
     context.call(echo, value("release")).get();
@@ -399,11 +400,26 @@ authoring::Plugin fixture_types::plugin() {
     throw runtime_error("Create Invocation: Client-Only Operation Was Admitted");
   };
   plugin.operation(ValueOperation("conformance.caller_refusal", sdk::VISIBILITY_PUBLIC, refuse)).requires_operation(create);
-  authoring::Stream<Value> refusals("conformance.tick_caller_refusal");
+  authoring::Stream<Value> refusals("conformance.window_caller_refusal");
   authoring::Observer<Value> refusal_observer(refusals, [refuse](Context &context) {
     return refuse(context, Value{});
   });
   plugin.stream(refusals).observer(refusal_observer.every(interval));
+
+  // Answer a Whole Window at Once: Each Value Holds Its Sample's Sequence.
+  authoring::Stream<Value> window("conformance.window");
+  auto columns = authoring::Observer<Value>::window<Values>(window, [](Context &, const authoring::Window &grant) {
+    Values result;
+    for (uint64_t index = 0; index < grant.count; ++index) {
+      const auto sequence = grant.sequence + index;
+      string bytes(8, '\0');
+      for (unsigned position = 0; position < 8; ++position)
+        bytes[position] = static_cast<char>(sequence >> (8 * position));
+      result.add_value(std::move(bytes));
+    }
+    return result;
+  });
+  plugin.stream(window).observer(columns.every(interval));
 
   return plugin;
 }

@@ -12,7 +12,7 @@
 /* === Modules === */
 
 mod wire;
-pub use wire::{Graph, PayloadOnly, Value, graph};
+pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 
 /* === Re-Exports === */
 
@@ -27,7 +27,7 @@ use harmos::plugin::HostOperation;
 // Local Imports
 use graph::Nested;
 use harmos::TimeGetResponse;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, Window};
 use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 use prost::Message as ProtoMessage;
@@ -123,6 +123,14 @@ impl Message for Value {
         wire::types()
     }
 }
+impl Message for Values {
+    fn name() -> String {
+        "conformance.model.v1.Values".into()
+    }
+    fn types() -> FileDescriptorSet {
+        wire::types()
+    }
+}
 impl Message for PayloadOnly {
     fn name() -> String {
         "conformance.model.v1.PayloadOnly".into()
@@ -182,23 +190,25 @@ impl OperationRequest for HostFail {
 /* === Private Functions === */
 
 pub fn plugin() -> Plugin {
-    let ticks = Stream::<Value>::new("conformance.ticks");
-    let observer = Observer::new(&ticks, tick).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let interval = Stream::<Value>::new("conformance.interval");
+    let observer = Observer::new(&interval, sequence).every(ProtoDuration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
     let settings = Stream::<Value>::new("conformance.settings");
-    let configured = Observer::new(&settings, tick).every(ProtoDuration { seconds: 1, nanos: 0 }).interval_setting("interval");
-    let children_stream = Stream::<Value>::new("conformance.tick_children");
-    let children_observer = Observer::new(&children_stream, tick_children).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let context_stream = Stream::<Value>::new("conformance.tick_context");
-    let context_observer = Observer::new(&context_stream, tick_context).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let failure_stream = Stream::<Value>::new("conformance.tick_failure");
-    let failure_observer = Observer::new(&failure_stream, tick_failure).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let watch_stream = Stream::<Value>::new("conformance.tick_watch");
-    let watch_observer = Observer::new(&watch_stream, tick_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let cancel_stream = Stream::<Value>::new("conformance.tick_cancel");
-    let cancel_observer = Observer::new(&cancel_stream, tick_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
-    let refusal_stream = Stream::<Value>::new("conformance.tick_caller_refusal");
-    let refusal_observer = Observer::new(&refusal_stream, tick_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let configured = Observer::new(&settings, sequence).every(ProtoDuration { seconds: 1, nanos: 0 }).interval_setting("interval");
+    let children_stream = Stream::<Value>::new("conformance.window_children");
+    let children_observer = Observer::new(&children_stream, window_children).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let context_stream = Stream::<Value>::new("conformance.window_context");
+    let context_observer = Observer::new(&context_stream, window_context).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let failure_stream = Stream::<Value>::new("conformance.window_failure");
+    let failure_observer = Observer::new(&failure_stream, window_failure).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let watch_stream = Stream::<Value>::new("conformance.window_watch");
+    let watch_observer = Observer::new(&watch_stream, window_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let cancel_stream = Stream::<Value>::new("conformance.window_cancel");
+    let cancel_observer = Observer::new(&cancel_stream, window_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let refusal_stream = Stream::<Value>::new("conformance.window_caller_refusal");
+    let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let window_stream = Stream::<Value>::new("conformance.window");
+    let window_observer = Observer::window(&window_stream, window).every(ProtoDuration { seconds: 1, nanos: 0 });
     Plugin::new("conformance", "1.0.0")
         .settings(SettingsDeclarations {
             values: vec![
@@ -280,7 +290,7 @@ pub fn plugin() -> Plugin {
         .requires_host(HostOperation::PluginsSettingsList)
         .requires_host(HostOperation::OperationsList)
         .requires_host(HostOperation::OperationsGet)
-        .stream(ticks)
+        .stream(interval)
         .stream(device)
         .stream(settings)
         .stream(children_stream)
@@ -295,6 +305,8 @@ pub fn plugin() -> Plugin {
         .observer(cancel_observer)
         .stream(refusal_stream)
         .observer(refusal_observer)
+        .stream(window_stream)
+        .observer(window_observer)
         .observer(observer)
         .observer(configured)
         .section(Graph {
@@ -313,7 +325,7 @@ async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
     }
 }
 
-async fn tick_caller_refusal(ctx: &Context) -> Result<Value> {
+async fn window_caller_refusal(ctx: &Context) -> Result<Value> {
     caller_refusal(ctx, Value::default()).await
 }
 
@@ -445,9 +457,15 @@ async fn failure(_: &Context, _: Value) -> Result<Value> {
     .into())
 }
 
-async fn tick(ctx: &Context) -> Result<Value> {
+async fn sequence(ctx: &Context) -> Result<Value> {
     Ok(Value {
         value: ctx.sequence().to_le_bytes().to_vec(),
+    })
+}
+
+async fn window(_: &Context, window: &Window) -> Result<Values> {
+    Ok(Values {
+        value: (0..window.count).map(|index| (window.sequence + index).to_le_bytes().to_vec()).collect(),
     })
 }
 
@@ -549,14 +567,14 @@ async fn discover(context: &Context, _: Value) -> Result<Value> {
     Ok(Value { value: first.id.into_bytes() })
 }
 
-async fn tick_children(context: &Context) -> Result<Value> {
+async fn window_children(context: &Context) -> Result<Value> {
     let (first, second) = tokio::join!(context.call(HostEcho { value: vec![1] }), context.call(HostEcho { value: vec![2] }));
     let mut value = first?.value;
     value.extend(second?.value);
     Ok(Value { value })
 }
 
-async fn tick_context(context: &Context) -> Result<Value> {
+async fn window_context(context: &Context) -> Result<Value> {
     let echo = context
         .call(HostEcho {
             value: context.scope()?.as_bytes().to_vec(),
@@ -570,14 +588,14 @@ async fn tick_context(context: &Context) -> Result<Value> {
     let settings = context.settings().list().await?.encode_to_vec();
     let mut value = Vec::new();
     for payload in [echo, clock, settings] {
-        let length = u32::try_from(payload.len()).map_err(|error| harmos::Error::Invalid(format!("Encode Tick Context: {error}")))?;
+        let length = u32::try_from(payload.len()).map_err(|error| harmos::Error::Invalid(format!("Encode Window Context: {error}")))?;
         value.extend(length.to_le_bytes());
         value.extend(payload);
     }
     Ok(Value { value })
 }
 
-async fn tick_failure(context: &Context) -> Result<Value> {
+async fn window_failure(context: &Context) -> Result<Value> {
     match context.call(HostFail { value: Vec::new() }).await {
         Err(harmos::Error::Failure(failure)) => Ok(Value { value: failure.encode_to_vec() }),
         Err(error) => Err(error),
@@ -585,7 +603,7 @@ async fn tick_failure(context: &Context) -> Result<Value> {
     }
 }
 
-async fn tick_watch(context: &Context) -> Result<Value> {
+async fn window_watch(context: &Context) -> Result<Value> {
     let mut watching = context
         .watch(
             HostWatch {
@@ -601,14 +619,14 @@ async fn tick_watch(context: &Context) -> Result<Value> {
     Ok(Value { value })
 }
 
-async fn tick_cancel(context: &Context) -> Result<Value> {
+async fn window_cancel(context: &Context) -> Result<Value> {
     {
         let pending = context.call(HostPending { value: Vec::new() });
         let release = context.call(HostEcho { value: b"release".to_vec() });
         tokio::pin!(pending, release);
         tokio::select! {
             biased;
-            result = &mut pending => { result?; return Err(harmos::Error::Invalid("Cancel Tick Child: Pending Child Answered".into())); },
+            result = &mut pending => { result?; return Err(harmos::Error::Invalid("Cancel Window Child: Pending Child Answered".into())); },
             result = &mut release => { result?; },
         }
     }

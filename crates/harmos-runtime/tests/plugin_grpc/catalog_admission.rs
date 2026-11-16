@@ -78,7 +78,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     // Refuse An Invalid Cadence Without Leaving Operations Admitted
     let mut catalog = support::catalog();
     catalog.streams.push(model::StreamDeclaration {
-        id: "fixture.ticks".into(),
+        id: "fixture.windows".into(),
         row: "fixture.Value".into(),
         interval: Some(prost_types::Duration { seconds: 0, nanos: 0 }),
         ..Default::default()
@@ -92,7 +92,7 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     // Refuse An Unresolved Interval Setting
     let mut catalog = support::catalog();
     catalog.streams.push(model::StreamDeclaration {
-        id: "fixture.ticks".into(),
+        id: "fixture.windows".into(),
         row: "fixture.Value".into(),
         interval_setting: "fixture.Settings.interval".into(),
         ..Default::default()

@@ -55,9 +55,9 @@ message Response {
     harmos.model.v1.Failure failure = 2;
   }
 }
-// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
+// Submits a dependency call from the current attempt or unanswered samples window under its inherited caller context and checked grants.
 message ChildRequest {
-  // Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
+  // Chosen by the plugin, unique within this Invoke or Samples call, including across windows.
   uint64 call = 1;
   // Complete admitted operation routing identity; no provider prefix or provider selection is added.
   string operation = 2;

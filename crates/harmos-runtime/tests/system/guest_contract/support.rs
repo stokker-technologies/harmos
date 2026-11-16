@@ -279,6 +279,7 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
             reconnect_delay: Duration::from_millis(100),
             stop_grace: Duration::from_secs(10),
             stream_window: NonZeroUsize::new(4).unwrap(),
+            interval_window: std::time::Duration::from_secs(1),
         },
         bundle: Default::default(),
         entries: NonZeroUsize::new(16).unwrap(),

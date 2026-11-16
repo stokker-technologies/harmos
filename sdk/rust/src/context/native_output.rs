@@ -57,7 +57,7 @@ impl ChildOutput {
         if let Self::Samples { active, .. } = self
             && !active.load(Ordering::Acquire)
         {
-            return Err(Status::invalid_argument("Call Child: No Unanswered Samples Tick").into());
+            return Err(Status::invalid_argument("Call Child: No Unanswered Samples Window").into());
         }
         Ok(())
     }

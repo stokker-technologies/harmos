@@ -7,7 +7,7 @@
  * ***
  */
 
-// Tick-Scoped Sample Child Calls
+// One Interval Window: Grant, Window-Scoped Child Calls and the Columnar Answer
 
 /* === Modules === */
 
@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::Tick as WireTick;
+use harmos_protocol::plugin::{SampleBatch, Window as WireWindow};
 
 use super::{
     CallingPlugin, Error,
@@ -35,7 +35,6 @@ use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
 use harmos_protocol::plugin::instance_samples_response::Frame as ResponseFrame;
 use prost::Message;
-use prost_types::Timestamp;
 use std::time::Duration;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -60,14 +59,14 @@ type Control = (Arc<Instance>, bool, Option<mpsc::Sender<()>>);
 
 /* === Structs === */
 
-pub(crate) struct Tick;
+pub(crate) struct Window;
 #[derive(Clone)]
 pub(crate) struct Request {
     pub(super) input: Arc<AsyncMutex<tonic::Streaming<InstanceSamplesResponse>>>,
     pub(super) output: mpsc::Sender<InstanceSamplesRequest>,
     pub(super) caller: Arc<CallingPlugin>,
     pub(super) seen: Arc<Mutex<BTreeSet<u64>>>,
-    pub(super) at: Timestamp,
+    pub(super) window: WireWindow,
     pub(super) lease: Arc<StreamWriter>,
 }
 struct Children(BTreeMap<u64, Control>);
@@ -90,11 +89,11 @@ impl MemorySize for Request {
         std::mem::size_of::<Self>().saturating_add(self.caller.description.encoded_len())
     }
 }
-impl NativeOperation for Tick {
+impl NativeOperation for Window {
     type Request = Request;
-    type Response = InstanceSamplesResponse;
+    type Response = Vec<SampleBatch>;
     type Endpoints = ();
-    const ID: &'static str = "samples.tick";
+    const ID: &'static str = "samples.window";
     const POLICY: OperationPolicy = OperationPolicy {
         timeout: UNBOUNDED,
         attempt_timeout: UNBOUNDED,
@@ -112,20 +111,23 @@ impl NativeOperation for Tick {
 
 /* === Private Functions === */
 
-async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<InstanceSamplesResponse, Error> {
+async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -> Result<Vec<SampleBatch>, Error> {
     let mut children = FuturesUnordered::<Child>::new();
     let mut controls = Children(BTreeMap::new());
     let mut cancelled = BTreeSet::new();
     let mut ended = BTreeSet::new();
     let mut input = request.input.lock().await;
     let output = ChildReplies::Samples(request.output.clone());
+    let granted = request.window.count;
     request
         .output
         .send(InstanceSamplesRequest {
-            frame: Some(RequestFrame::Tick(WireTick { at: Some(request.at) })),
+            frame: Some(RequestFrame::Window(request.window)),
         })
         .await
-        .map_err(|_| invalid("Send Sample Tick: stream closed"))?;
+        .map_err(|_| invalid("Grant Sample Window: stream closed"))?;
+    let mut parts = Vec::new();
+    let mut received = 0_u64;
     let result = loop {
         let has_children = !children.is_empty();
         enum Event {
@@ -144,27 +146,43 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
         };
         let event = if waiting { crate::clock::waiting(next).await } else { next.await };
         match event {
-            Event::Cancel => break Err(invalid("Answer Sample Tick: tick cancelled")),
+            Event::Cancel => break Err(invalid("Answer Sample Window: window cancelled")),
             Event::Frame(frame) => {
                 let Some(frame) = frame.map_err(|error| Error::Transport(error.to_string()))? else {
-                    break Err(invalid("Answer Sample Tick: stream ended"));
+                    break Err(invalid("Answer Sample Window: stream ended"));
                 };
                 if !frame.samples.is_empty() {
-                    if frame.frame.is_some() {
-                        break Err(invalid("Answer Sample Tick: sample and child traffic must be separate"));
-                    }
-                    break Ok(frame);
+                    break Err(invalid("Answer Sample Window: an interval stream answers with batches; send SampleBatch parts"));
                 }
                 let Some(frame) = frame.frame else {
-                    break Err(invalid("Answer Sample Tick: child-only response has no frame"));
+                    break Err(invalid("Answer Sample Window: response has no frame"));
                 };
+                if let ResponseFrame::Batch(part) = frame {
+                    if part.offset != received {
+                        break Err(invalid("Answer Sample Window: a part must start where the previous part ended"));
+                    }
+                    let end = part.offset.checked_add(part.count).filter(|end| part.count > 0 && *end <= granted);
+                    let Some(end) = end else {
+                        break Err(invalid("Answer Sample Window: a part must hold at least one sample and stay within the window"));
+                    };
+                    if part.last != (end == granted) {
+                        break Err(invalid("Answer Sample Window: only the part that completes the window sets last"));
+                    }
+                    received = end;
+                    let last = part.last;
+                    parts.push(part);
+                    if last {
+                        break Ok(std::mem::take(&mut parts));
+                    }
+                    continue;
+                }
                 if !request.lease.is_active() {
                     break Err(invalid("Call Sample Child: activation lease has been revoked"));
                 }
                 if let ResponseFrame::Child(child) = frame.clone() {
                     let call = child.call;
                     if !request.seen.lock().expect("sample child identity lock is healthy").insert(call) {
-                        break Err(invalid("Call Sample Child: duplicate child identity across ticks"));
+                        break Err(invalid("Call Sample Child: duplicate child identity across windows"));
                     }
                     let operation = child.operation.clone();
                     let background = child.background;
@@ -220,7 +238,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
         }
     };
     drop(controls);
-    // Carrier sends may be backpressured after the peer has answered its tick.
+    // Carrier sends may be backpressured after the peer has answered its window.
     // The operation scope awaits cancelled descendants without retaining those sends.
     drop(children);
     result
