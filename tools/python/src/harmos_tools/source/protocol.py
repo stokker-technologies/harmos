@@ -20,8 +20,9 @@ from pathlib import Path
 from typing import Any, cast
 
 # Third Party Imports
-from google.protobuf import descriptor_pool, message_factory
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
+from google.protobuf.descriptor_pool import DescriptorPool
+from google.protobuf.message_factory import GetMessageClass
 
 # Local Imports
 from ..process import spawn_flags
@@ -64,7 +65,7 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
             "Protocol Callers: Option Must Be an Enum; "
             "Correct the source protocol declarations or explicit public exports before regenerating"
         )
-    options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
+    options_type = GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
     for file in descriptors.file:
         for service in file.service:
             for method in service.method:
@@ -149,10 +150,8 @@ def check_public_surfaces(root: Path) -> None:
                 findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")
     if findings:
         raise ValueError(
-            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating
-"
-            + "
-".join(findings)
+            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating\n"
+            + "\n".join(findings)
         )
     print("Public Surfaces: Headers, Stubs and Exports Passed")
 
@@ -160,7 +159,7 @@ def check_public_surfaces(root: Path) -> None:
 # === Private Functions === #
 
 
-def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.DescriptorPool) -> dict[str, str]:
+def _read_callers(descriptors: FileDescriptorSet, pool: DescriptorPool) -> dict[str, str]:
     methods = [
         (f"{file.package}.{service.name}/{method.name}", method)
         for file in descriptors.file
@@ -183,7 +182,7 @@ def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.Descript
         raise ValueError(
             "Protocol Callers: Option Must Be an Enum; Correct the source protocol declarations or explicit public exports before regenerating"
         )
-    options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
+    options_type = GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
 
     result = {}
     for identity, method in methods:
@@ -204,9 +203,9 @@ def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.Descript
     return result
 
 
-def _descriptor_inventory(descriptors: FileDescriptorSet) -> descriptor_pool.DescriptorPool:
+def _descriptor_inventory(descriptors: FileDescriptorSet) -> DescriptorPool:
     """Load Dependencies Before Their Users Without Losing Custom Options."""
-    pool = descriptor_pool.DescriptorPool()
+    pool = DescriptorPool()
     pending = {file.name: file for file in descriptors.file}
     while pending:
         ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
