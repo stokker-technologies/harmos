@@ -43,14 +43,14 @@ const LOAD: Duration = Duration::from_secs(10);
 
 /* === Structs === */
 
-/// Releases a Hung Spawn's Blocked Read When Dropped, So No Blocking Read Outlives the Story.
+/// The Writing End of a Hung Spawn's Executable: the Spawn's Read Blocks Until It Is Dropped.
 #[cfg(windows)]
 struct Hung(#[allow(dead_code)] tokio::net::windows::named_pipe::NamedPipeServer);
 
-/// Releases a Hung Spawn's Blocked Read When Dropped, So No Blocking Read Outlives the Story.
+/// The Writing End of a Hung Spawn's Executable: the Spawn's Read Blocks Until It Is Dropped.
 #[cfg(unix)]
 struct Hung {
-    fifo: PathBuf,
+    _writer: std::fs::File,
     _directory: tempfile::TempDir,
 }
 
@@ -59,14 +59,6 @@ struct Hung {
 /* === Traits === */
 
 /* === Implementations === */
-
-#[cfg(unix)]
-impl Drop for Hung {
-    fn drop(&mut self) {
-        // Opening Both Ends Never Blocks; Closing Them Gives the Blocked Reader Its End of File.
-        let _ = std::fs::OpenOptions::new().read(true).write(true).open(&self.fifo);
-    }
-}
 
 /* === Public Functions === */
 
@@ -86,21 +78,41 @@ async fn configured(source: &Manual) -> Runtime<App> {
     .await
 }
 
-/// An Executable Path Whose Read Blocks Until the Returned Guard Is Dropped: a Plugin Whose Spawn Hangs.
+/// A Plugin Executable Whose Spawn Hangs Reading It, and the Hung Spawn Once It Has Opened the Executable.
+///
+/// The spawn's read blocks until the returned [`Hung`] is dropped, so the story ends a read it knows has started.
 #[cfg(windows)]
-fn hung_executable() -> (PathBuf, Hung) {
+fn hung_executable() -> (PathBuf, impl Future<Output = Hung>) {
     let name = format!(r"\\.\pipe\harmos-hung-spawn-{}", std::process::id());
     let server = tokio::net::windows::named_pipe::ServerOptions::new().first_pipe_instance(true).create(&name).unwrap();
-    (PathBuf::from(name), Hung(server))
+    let opened = async move {
+        server.connect().await.unwrap();
+        Hung(server)
+    };
+    (PathBuf::from(name), opened)
 }
 
-/// An Executable Path Whose Read Blocks Until the Returned Guard Is Dropped: a Plugin Whose Spawn Hangs.
+/// A Plugin Executable Whose Spawn Hangs Reading It, and the Hung Spawn Once It Has Opened the Executable.
+///
+/// The spawn's read blocks until the returned [`Hung`] is dropped, so the story ends a read it knows has started.
 #[cfg(unix)]
-fn hung_executable() -> (PathBuf, Hung) {
+fn hung_executable() -> (PathBuf, impl Future<Output = Hung>) {
     let directory = tempfile::tempdir().unwrap();
     let fifo = directory.path().join("hung-plugin");
     assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success(), "Create the Hung Executable");
-    (fifo.clone(), Hung { fifo, _directory: directory })
+    // Opening the Writing End Blocks Until the Spawn Opens the Reading End; a Plain Thread Never Holds Up the Runtime.
+    let (writer, opening) = tokio::sync::oneshot::channel();
+    let path = fifo.clone();
+    std::thread::spawn(move || {
+        let _ = writer.send(std::fs::OpenOptions::new().write(true).open(path));
+    });
+    let opened = async move {
+        Hung {
+            _writer: opening.await.unwrap().unwrap(),
+            _directory: directory,
+        }
+    };
+    (fifo, opened)
 }
 
 /* === Tests === */
@@ -168,7 +180,7 @@ async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
     // A Managed Plugin Whose Executable Never Finishes Reading, on a Controlled Host Clock.
     let source = Manual::new();
     let runtime = configured(&source).await;
-    let (executable, hung) = hung_executable();
+    let (executable, opened) = hung_executable();
     let placement = Placement::Managed(Managed {
         executable: executable.clone(),
         arguments: Vec::new(),
@@ -179,6 +191,11 @@ async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
     let deadline = source.read().instant + LOAD;
     let attaching = runtime.attach_grpc(placement, support::settings());
     tokio::pin!(attaching);
+    let hung = tokio::select! {
+        biased;
+        _ = &mut attaching => panic!("Keep Spawning While the Executable Read Hangs"),
+        hung = opened => hung,
+    };
     tokio::select! {
         biased;
         _ = &mut attaching => panic!("Keep Spawning Until the Deadline"),
@@ -195,7 +212,7 @@ async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
         refused.err()
     );
 
-    // Releasing the Blocked Read Lets the Abandoned Spawn End Before the Host Shuts Down.
+    // Ending the Blocked Read Lets the Abandoned Spawn Finish Before the Host Shuts Down.
     drop(hung);
     runtime.shutdown().await.unwrap();
 }
