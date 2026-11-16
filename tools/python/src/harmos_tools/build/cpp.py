@@ -187,10 +187,10 @@ def main() -> None:
         cpp(ROOT, [method for method in table(descriptors) if method["face"] == "client"])
         cpp_host(ROOT, [method for method in table(descriptors) if method["face"] == "context"])
 
-    # Tests Consume Existing Producer Outputs.
+    # Tests Consume Existing Producer Outputs; a Selection That Runs No Test Fails.
     if options.test:
         if options.layer != "integration":
-            arguments = ["ctest", "--preset", selected]
+            arguments = ["ctest", "--preset", selected, "--no-tests=error"]
             if options.verbose:
                 arguments.append("--verbose")
             if options.exact:
@@ -200,9 +200,15 @@ def main() -> None:
             subprocess.run(
                 arguments, cwd=sdk, env=child_environment, check=True, stdout=sys.stdout, stderr=sys.stderr, creationflags=spawn_flags()
             )
-        if options.layer != "unit" and not options.exact:
+        # An Exact Integration Selection Names One Python Story Module, Class or Test.
+        integration = None
+        if options.layer == "integration" and options.exact:
+            integration = [options.exact]
+        elif options.layer != "unit" and not options.exact:
+            integration = ["discover", "-s", "tests/integration"]
+        if integration is not None:
             subprocess.run(
-                [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-v"],
+                [sys.executable, "-m", "unittest", *integration, "-v"],
                 cwd=sdk,
                 env=dict(child_environment, TEST_PROFILE=options.profile),
                 check=True,
