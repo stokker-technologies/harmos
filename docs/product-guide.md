@@ -1391,25 +1391,26 @@ samples. A host that falls behind its declared rate fails fast with the demand's
 named error, which the case reports instead of figures; one that neither keeps up nor
 fails within the probe is reported as not sustained.
 
-Figures below are medians at `68e35ecb` in the bench profile on Windows x86-64
+Figures below are medians at `b6dd57d3` in the bench profile on Windows x86-64
 (AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are
 samples per second, summed over all streams.
 
 | Case | 1 Stream | 16 Streams | 128 Streams |
 | --- | ---: | ---: | ---: |
-| Controlled, 1 kHz, window observer | 572,020 | 317,420 | 1,475,800 |
-| Controlled, 1 MHz, window observer | 10,355,000 | 36,130,000 | 42,151,000 |
-| Real, 1 kHz, window observer | 952 | 15,612 | 127,940 |
-| Real, 1 MHz, window observer | 861,770 | 15,626,000 | Not sustained |
-| Controlled, 1 kHz, one-sample observer | 430,680 | 409,430 | 1,326,700 |
-| Real, 1 kHz, one-sample observer | 952 | 15,997 | 127,990 |
+| Controlled, 1 kHz, window observer | 472,120 | 294,140 | 1,288,400 |
+| Controlled, 1 MHz, window observer | 8,090,700 | 30,124,000 | 34,888,000 |
+| Real, 1 kHz, window observer | 930 | 16,001 | 127,970 |
+| Real, 1 MHz, window observer | 864,090 | 15,869,000 | Failed fast (`Error::Lagging`) |
+| Controlled, 1 kHz, one-sample observer | 392,290 | 415,170 | 1,166,500 |
+| Real, 1 kHz, one-sample observer | 930 | 15,996 | 127,960 |
 
 The per-sample tick path these windows replace measured 12,407 samples per second
 for 128 controlled 1 ms streams and 21,220 on the real clock at `af8b9a0c`. 128 real
 1 MHz streams need 128 million samples per second; the host converts each value from
-protobuf into the stored encoding and reached about 42 million per second on the
-controlled clock, so that case falls behind and its windows grow until its demand fails, most likely at
-the publication byte budget.
+protobuf into the stored encoding at about 35 million per second on the controlled
+clock, so that case falls behind. With the default `interval_lag` of ten 10 ms
+windows, one stream's window ended about 100 ms late and its demand failed with
+`Error::Lagging`, naming the stream and the action, instead of growing its windows.
 
 Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
 identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested
