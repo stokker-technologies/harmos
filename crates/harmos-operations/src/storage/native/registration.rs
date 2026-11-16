@@ -43,6 +43,8 @@ pub fn storage_catalog() -> operations::Catalog {
 pub fn storage_catalog_batch() -> __private::Catalog {
     let mut batch = __private::Catalog::new();
     batch.operations.extend([
+        operations::OperationFactory::native::<super::CopyBackend>().expect("native storage declaration"),
+        operations::OperationFactory::native::<super::DisposeBackend>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::DeleteScope>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::DeleteObject>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::Mutate>().expect("native storage declaration"),

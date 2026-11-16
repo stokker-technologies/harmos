@@ -41,10 +41,9 @@ impl Manager {
         instances: Arc<Instances>, settings: &crate::operations::Settings, plugins: &crate::plugin::grpc::GrpcPluginSettings,
         reserved: std::collections::BTreeSet<String>, identity: Arc<()>, schema_settings: Arc<crate::config::SchemaSettings>,
         callers: BTreeMap<String, Callers>,
-    ) -> Result<Self> {
-        plugins.policy.load.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })?;
+    ) -> Self {
         let status_started = instances.clock.date().into();
-        let manager = Self {
+        Self {
             schema_settings,
             resident: crate::operations::resident::Registry::new(&instances, reserved, identity),
             context: Arc::new(std::sync::OnceLock::from(crate::operations::CallContext::default())),
@@ -71,9 +70,7 @@ impl Manager {
                     grpc_services: std::collections::BTreeSet::new(),
                 }),
             }),
-        };
-        manager.register_grpc_clock()?;
-        Ok(manager)
+        }
     }
 
     pub fn register_middleware(&self, middleware: Arc<dyn crate::operations::middleware::Middleware>) -> Result<()> {

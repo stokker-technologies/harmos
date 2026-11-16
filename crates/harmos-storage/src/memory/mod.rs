@@ -10,6 +10,7 @@
 /* === Modules === */
 
 mod compound;
+mod maintenance;
 mod record_store;
 
 mod file_backend;
@@ -73,6 +74,7 @@ pub struct Control {
     pub date: Mutex<Option<SystemTime>>,
     pub fail_projection: AtomicBool,
     pub unsupported_conditional: AtomicBool,
+    pub unsupported_maintenance: AtomicBool,
     pub unsupported_sessions: AtomicBool,
     pub block_chunk_file: Mutex<Option<String>>,
     pub permanent_chunk_file: Mutex<Option<String>>,
@@ -201,6 +203,11 @@ struct Snapshot {
     schemas: BTreeMap<u64, StorageSchema>,
     records: RecordStore,
     rows: BTreeMap<u64, StoredRow>,
+    conditional: Conditional,
+    projections: ProjectionCatalog,
+    indexes: crate::query::index::IndexCatalog,
+    receipts: BTreeMap<MutationId, MutationReceipt>,
+    object_schemas: BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
@@ -210,7 +217,7 @@ pub struct Release {
     pub through: StorageCursor,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Conditional {
     floor: u64,
     compound_ranges: BTreeMap<u64, u64>,
@@ -386,6 +393,14 @@ impl Backend {
 }
 
 impl StorageBackend for Backend {
+    fn copy_to<'a>(&'a self, snapshot: &'a BackendSnapshot, target: &'a dyn StorageBackend) -> StorageFuture<'a, ()> {
+        self.copy_image(snapshot, target)
+    }
+
+    fn dispose(&self) -> StorageFuture<'_, ()> {
+        self.dispose_offline()
+    }
+
     fn mutate<'a>(&'a self, exchange: &'a CompoundExchange) -> StorageFuture<'a, MutationReceipt> {
         self.commit_compound(exchange)
     }
@@ -670,7 +685,10 @@ impl StorageBackend for Backend {
     }
     fn create_session(&self) -> StorageFuture<'_, StorageCursor> {
         Box::pin(async move {
-            self.control.open.store(true, Ordering::SeqCst);
+            {
+                let _transaction = self.conditional.lock().unwrap();
+                self.control.open.store(true, Ordering::SeqCst);
+            }
             if self.control.block_open.load(Ordering::SeqCst) {
                 self.control.open_entered.notify_one();
                 self.control.open_release.notified().await;
@@ -862,11 +880,7 @@ impl StorageBackend for Backend {
         })
     }
     fn delete_session(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async move {
-            self.control.close()?;
-            self.snapshots.lock().unwrap().clear();
-            Ok(())
-        })
+        Box::pin(async move { self.control.close() })
     }
     fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.open_snapshot(at)

@@ -28,7 +28,7 @@ use super::capacity::{Attempt, Refusal};
 use super::config::SNAPSHOT_BYTES;
 use super::manager::{Inner, State, encoded_size};
 use super::selection::Entry;
-use super::{FileReference, ObjectEntry, ObjectPoint, StorageCursor, StorageManager};
+use super::{FileReference, ObjectEntry, ObjectPoint, StorageBackend, StorageCursor, StorageManager};
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -154,6 +154,11 @@ impl StorageManager {
 }
 
 impl Snapshot {
+    /// Copy the Retained Data Cut Through Its Backend's Native Maintenance Hook.
+    pub async fn copy_to(&self, target: Arc<dyn StorageBackend>) -> Result<()> {
+        self.inner.primary.copy_to(&self.backend, target.as_ref()).await
+    }
+
     pub fn is_available(&self) -> bool {
         self.check().is_ok()
     }

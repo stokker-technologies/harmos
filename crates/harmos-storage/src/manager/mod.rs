@@ -263,6 +263,19 @@ impl Clone for StorageManager {
 }
 
 impl StorageManager {
+    /// Construct an Unopened Session Over the Same Registered Backends.
+    pub fn new_session(&self) -> Result<Self> {
+        Self::with_catalog_execution(
+            self.inner.catalog.clone(),
+            StorageBackends {
+                primary: self.inner.primary.clone(),
+                state: self.inner.recovery.clone(),
+            },
+            self.inner.settings.clone(),
+            self.inner.execution.clone(),
+        )
+    }
+
     /// Bind An Idle Storage Engine Before The Host Starts Its Worker.
     pub fn adopt_clock(&self, clock: &Execution) -> Result<()> {
         if self.inner.execution.same_source(clock) {

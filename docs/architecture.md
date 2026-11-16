@@ -1130,6 +1130,20 @@ The source still exposes the older managers and host services until the breaking
 groups close; those are migration inputs, not the agreed product contract. See
 `openspec/changes/operation-boundary/tasks.md` for completed groups and usable pins.
 
+### Storage-Only Assembly
+
+The builder's `storage_only()` borrows assembly until its storage session is released.
+It constructs an independent operation dispatcher and storage worker over the registered
+backends, with no application services, listeners or plugin lifecycle. Closing it settles
+operation admission, drains accepted storage work and closes both primary and recovery
+sessions. Full startup constructs a fresh manager over those same backend handles and
+reopens them. There is no worker ownership handoff or retained live-session upgrade. The builder
+retains a retryable cleanup receipt after cancellation or failure and refuses another
+opening or full startup until it settles.
+Primary-backend copy uses a retained source cut and a backend-owned empty offline target;
+disposal is an explicit destructive operation on an offline target. Recovery copy remains
+with the recovery-backend owner.
+
 ### Native Type Ownership
 
 Native revision hashing retains the protocol domain separators `harmos.stream.v1\0`

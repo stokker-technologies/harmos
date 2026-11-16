@@ -18,6 +18,7 @@ pub use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
 /* === Imports === */
 
 // Standard Library Imports
+use std::any::Any;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -105,7 +106,17 @@ pub struct StorageWork {
 
 /* === Traits === */
 
-pub trait StorageBackend: Send + Sync + 'static {
+pub trait StorageBackend: Any + Send + Sync + 'static {
+    /// Copy One Retained Cut to an Empty, Offline Backend of a Supported Kind.
+    fn copy_to<'a>(&'a self, _snapshot: &'a BackendSnapshot, _target: &'a dyn StorageBackend) -> StorageFuture<'a, ()> {
+        unsupported("copy backend; register a backend implementing consistent copies")
+    }
+
+    /// Dispose an Offline Backend; Refuse While Any Session or Snapshot Is Live.
+    fn dispose(&self) -> StorageFuture<'_, ()> {
+        unsupported("dispose backend; register a backend implementing offline disposal")
+    }
+
     /// Optional immutable record pages. Views retain their data and checked encoded size.
     fn list_record_views<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _selection: &'a RecordSelection, _page: ScanPage,

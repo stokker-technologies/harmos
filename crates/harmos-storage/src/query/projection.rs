@@ -81,12 +81,13 @@ pub struct ProjectionPublication {
     previous: Option<StorageCursor>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ProjectionCatalog {
     active: BTreeMap<Identifier, u64>,
     revisions: BTreeMap<(Identifier, u64), Revision>,
 }
 
+#[derive(Clone)]
 struct Revision {
     definition: ProjectionDefinition,
     retired: Option<u64>,
@@ -175,6 +176,21 @@ impl ProjectionPublication {
 }
 
 impl ProjectionCatalog {
+    pub(crate) fn at(&self, sequence: u64) -> Self {
+        let mut catalog = self.clone();
+        for revision in catalog.revisions.values_mut() {
+            revision.outputs.retain(|frontier, _| *frontier <= sequence);
+            if revision.retired.is_some_and(|retired| retired > sequence) {
+                revision.retired = None;
+            }
+        }
+        catalog
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.revisions.is_empty()
+    }
+
     pub(crate) fn reclaim_through(&mut self, through: u64) {
         for revision in self.revisions.values_mut() {
             revision.outputs.retain(|cut, _| *cut > through);

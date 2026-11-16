@@ -284,12 +284,18 @@ The public backend conformance module now proves both compound mutations and sco
 deletions; products add their own reopen and physical reclamation proofs. No durable
 product backend or plugin installation/registry/bundle implementation moved into Harmos.
 
-## Storage-Only Upgrade Question
+## Storage-Only Lifecycle Decision
 
-The current storage lifecycle binds a worker to one resident identity and rejects a
-different owner; it has no live worker-handoff operation. Group 4 must decide whether
-upgrading a minimal assembly drains/closes its session and reopens the same backends
-under the full runtime, or retains the exact live backend session through a new
-ownership-handoff contract. Drain/reopen is the simpler design; exact-session retention
-adds lifecycle and cancellation obligations. The owner has been asked to choose before
-this new lifecycle behavior is implemented. Groups 4 onward remain open.
+The owner selected drain and reopen for group 4. The minimal assembly opens the same
+registered backends under a separate manager and worker, admits native storage operations
+without listeners, plugins or application services, then drains and closes. Full assembly
+reopens those backend handles under a new manager and worker. No live-session retention or
+worker ownership-handoff contract is introduced. A borrowing session prevents the builder
+from continuing assembly while minimal operations are in use.
+
+Primary-backend maintenance takes a retained source cursor and an empty offline target
+backend. The backend owns its copy format and supported target kinds. The reference memory
+backend copies committed data and captured control metadata, retaining history identity;
+it refuses nonempty or active targets. Disposal explicitly removes an offline primary
+backend's data and refuses live sessions or retained images. These operations do not copy
+or dispose the separate recovery journal; that remains owned by its recovery backend.

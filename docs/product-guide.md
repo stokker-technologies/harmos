@@ -309,6 +309,16 @@ roots. Without a preparation failure, missing resources are roots themselves.
 This rule describes a failed pass, not a resource dependency graph; Display
 summarizes consequences as operations unavailable because startup failed.
 
+## Storage During Preparation
+
+Register storage before full startup, then use `setup.settings().storage_only().await?`
+for bootstrap reads, mutations or offline maintenance. Call its native storage operations,
+await `close()` and release the session before starting the application. The full runtime
+reopens the same backends after the earlier worker has drained. No listeners, plugins or
+application services start in the minimal assembly. See [Storage Before Full Startup](storage.md#storage-before-full-startup)
+for consistent primary-backend copies and permanent offline disposal. A primary copy does
+not include the separate application recovery journal.
+
 ## Examples
 
 The [Schematic Editor](schematic.md) is one application with two
