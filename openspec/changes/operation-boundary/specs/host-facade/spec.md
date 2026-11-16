@@ -11,11 +11,11 @@ The runtime builder SHALL accept the storage backends, object catalog, storage s
 #### Scenario: Product Assembles a Runtime
 
 - **WHEN** a product passes its backend pair, catalog and settings to the builder and starts it
-- **THEN** the runtime owns storage, operation, plugin, stream, record, state and service lifecycles and the product holds only the runtime handle and an operation caller
+- **THEN** the runtime owns storage, operation, plugin, stream, record, state and service lifecycles and the product holds only the runtime handle and its typed facade
 
 ### Requirement: Operations Are the Calling Surface
 
-After start, a product SHALL reach runtime behavior only by calling operations through an opaque operation caller. The runtime handle SHALL expose no manager, no manager getter and no `Deref` to a manager.
+After start, a product SHALL reach runtime behavior only through the typed in-process facade, whose methods each dispatch one registered native operation with that operation's registered policy. The runtime handle and the facade SHALL expose no manager, no manager getter and no `Deref` to a manager.
 
 #### Scenario: Manager Access Is Absent
 
@@ -48,3 +48,17 @@ Products and examples SHALL depend only on the host facade and the SDK crate. A 
 
 - **WHEN** an example manifest declares a direct dependency on the query crate
 - **THEN** the repository check fails naming the dependency and the facade to use instead
+
+### Requirement: Facade Calls Pass Typed Values
+
+A facade call SHALL hand its typed request to the native operation and return the typed response without encoding either. No Harmos built-in reachable through the facade SHALL require protobuf encoding in-process.
+
+#### Scenario: In-Process Storage Call
+
+- **WHEN** a product appends samples through the facade's storage group
+- **THEN** the native append operation receives the typed request under its registered policy and no protobuf encoding or decoding occurs
+
+#### Scenario: One-Call Override
+
+- **WHEN** a product passes a deadline override on the call context of one facade call
+- **THEN** only that invocation uses the override and later calls use the registered policy
