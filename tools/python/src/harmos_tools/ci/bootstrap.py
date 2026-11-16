@@ -31,20 +31,22 @@ import tomllib
 import urllib.error
 import urllib.request
 import zipfile
-from collections.abc import Callable, Generator, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import BinaryIO
 
 # Third Party Imports
+
+
 # Local Imports
+
+
 # Type Checking Imports
 
 # === Public Exports === #
 
 # === Constants === #
 
-spawn_flags = runpy.run_path(str(Path(__file__).resolve().parents[1] / "process/__init__.py"))["spawn_flags"]
 
 ZSTD_URL = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip"
 ZSTD_SHA256 = "acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9"
@@ -53,7 +55,6 @@ MISE_SHA256 = "32bcfda5f72bf7cb189e18ba93c2798bffcb4a678fd004e3127780363f2d8c8c"
 DOWNLOAD_ATTEMPTS = 6
 DOWNLOAD_PAUSE_SECONDS = 2
 DOWNLOAD_TIMEOUT_SECONDS = 120
-EXPORTED = {}
 
 # === Types === #
 
@@ -62,13 +63,11 @@ EXPORTED = {}
 # === Public Functions === #
 
 
-@contextlib.contextmanager
-def group(title: str) -> Generator[None]:
-    print(f"::group::{title}", flush=True)
-    try:
-        yield
-    finally:
-        print("::endgroup::", flush=True)
+def spawn_flags(flags: int = 0) -> int:
+    # Bootstrap Loads Before the Tooling Distribution Exists.
+    policy = Path(__file__).resolve().parents[1] / "process/__init__.py"
+    namespace = runpy.run_path(str(policy))
+    return namespace["spawn_flags"](flags)
 
 
 def roots(environment: Mapping[str, str], workspace: Path, home: Path) -> dict[str, str]:
@@ -89,21 +88,25 @@ def roots(environment: Mapping[str, str], workspace: Path, home: Path) -> dict[s
 
 
 def export(values: dict[str, str]) -> None:
-    EXPORTED.update(values)
     os.environ.update(values)
     if destination := os.environ.get("GITHUB_ENV"):
-        with Path(destination).open("a", encoding="utf-8") as stream:
+        stream = Path(destination).open("a", encoding="utf-8")
+        try:
             for name, value in values.items():
                 if "\n" in value or "\r" in value:
-                    raise ValueError(f"invalid environment value: {name}")
+                    raise ValueError(
+                        f"invalid environment value: {name}; Correct the pinned CI image prerequisites and bootstrap configuration"
+                    )
                 stream.write(f"{name}={value}\n")
+        finally:
+            stream.close()
 
 
 def download(
     url: str,
     checksum: str,
     destination: Path,
-    opener: Callable[..., AbstractContextManager[BinaryIO]] = urllib.request.urlopen,
+    opener: Callable[..., BinaryIO] = urllib.request.urlopen,
     sleep: Callable[[float], None] = time.sleep,
 ) -> bytes:
     """Fetch A Pinned Archive, Retrying Transient Release CDN Failures With Bounded Backoff."""
@@ -113,10 +116,14 @@ def download(
     cause = None
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
-            with opener(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+            response = opener(url, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+            try:
                 content = response.read()
+            finally:
+                response.close()
             break
         except urllib.error.HTTPError as error:
+            error.close()
             if error.code < 500 and error.code != 429:
                 raise RuntimeError(f"bootstrap archive download failed: {url}: HTTP {error.code}; check the pinned URL") from error
             cause = f"HTTP {error.code}"
@@ -124,14 +131,16 @@ def download(
             cause = f"{type(error).__name__}: {error}"
         if attempt == DOWNLOAD_ATTEMPTS:
             raise RuntimeError(
-                f"bootstrap archive download failed after {DOWNLOAD_ATTEMPTS} attempts: {url}: {cause}; "
-                "GitHub release downloads are degraded, rerun the job"
+                f"bootstrap archive download failed after {DOWNLOAD_ATTEMPTS} attempts: {url}: {cause}; GitHub release downloads are degraded, rerun the job; "
+                "Correct the pinned CI image prerequisites and bootstrap configuration"
             )
         wait = DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1) + random.uniform(0, 1)
         print(f"bootstrap archive download attempt {attempt}/{DOWNLOAD_ATTEMPTS} failed: {cause}; retrying in {wait:.1f} s", flush=True)
         sleep(wait)
     if hashlib.sha256(content).hexdigest() != checksum:
-        raise ValueError(f"pinned bootstrap archive checksum mismatch: {url}")
+        raise ValueError(
+            f"pinned bootstrap archive checksum mismatch: {url}; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     # A Partial Or Interrupted Write Never Passes As The Archive.
     partial = destination.with_name(destination.name + ".partial")
     partial.write_bytes(content)
@@ -156,17 +165,24 @@ def windows(workspace: Path) -> None:
         creationflags=spawn_flags(),
     ).strip()
     if not installation:
-        raise RuntimeError("the Windows image requires Visual Studio C++ tools")
+        raise RuntimeError(
+            "the Windows image requires Visual Studio C++ tools; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     vcvars = Path(installation) / "VC/Auxiliary/Build/vcvars64.bat"
     # Preserve Cmd Quoting Through CreateProcess.
-    output = subprocess.check_output(f'cmd.exe /d /s /c ""{vcvars}" >nul && set"', text=True, creationflags=spawn_flags())
+    # Run the Native Command
+    command = f'cmd.exe /d /s /c ""{vcvars}" >nul && set"'
+    output = subprocess.check_output(command, text=True, creationflags=spawn_flags())
     values = dict(line.split("=", 1) for line in output.splitlines() if "=" in line and not line.startswith("="))
     export({name.upper(): value for name, value in values.items() if name.upper() in {"PATH", "INCLUDE", "LIB", "LIBPATH"}})
 
     archive = workspace / ".cache/bootstrap/zstd-1.5.7/zstd.zip"
     download(ZSTD_URL, ZSTD_SHA256, archive)
-    with zipfile.ZipFile(archive) as bundle:
+    bundle = zipfile.ZipFile(archive)
+    try:
         bundle.extractall(archive.parent)
+    finally:
+        bundle.close()
     compressor = archive.parent / "zstd-v1.5.7-win64"
     candidates = [Path(item.strip('"')) / "tar.exe" for item in os.environ["PATH"].split(os.pathsep)]
     git = shutil.which("git")
@@ -183,22 +199,29 @@ def windows(workspace: Path) -> None:
         None,
     )
     if tar is None:
-        raise RuntimeError("GNU tar is required from the standard Git image")
+        raise RuntimeError(
+            "GNU tar is required from the standard Git image; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     compiler = shutil.which("cl")
     if compiler is None:
-        raise RuntimeError("MSVC compiler is required")
+        raise RuntimeError("MSVC compiler is required; Correct the pinned CI image prerequisites and bootstrap configuration")
     export({"PATH": os.pathsep.join([str(Path(compiler).parent), str(compressor), str(tar.parent), os.environ["PATH"]])})
     if not shutil.which("cl") or not shutil.which("link"):
-        raise RuntimeError("MSVC compiler and linker are required")
+        raise RuntimeError("MSVC compiler and linker are required; Correct the pinned CI image prerequisites and bootstrap configuration")
 
     if shutil.which("mise") is None:
         archive = workspace / ".cache/bootstrap/mise-2026.10.17/mise.zip"
         download(MISE_URL, MISE_SHA256, archive)
-        with zipfile.ZipFile(archive) as bundle:
+        bundle = zipfile.ZipFile(archive)
+        try:
             bundle.extractall(archive.parent)
+        finally:
+            bundle.close()
         binary = archive.parent / "mise/bin"
         export({"PATH": os.pathsep.join([str(binary), os.environ["PATH"]])})
-        subprocess.run(["mise", "--version"], check=True, stdout=sys.stderr, creationflags=spawn_flags())
+        # Run the Native Command
+        command = ["mise", "--version"]
+        subprocess.run(command, check=True, stdout=sys.stderr, creationflags=spawn_flags())
 
     if sys.platform == "win32" and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted" and ctypes.windll.shell32.IsUserAnAdmin():
         exclusions = [
@@ -213,9 +236,9 @@ def windows(workspace: Path) -> None:
             + ") -ErrorAction Stop"
         )
         # Hosted Image Provisioning Is The Only Place That Changes Defender Policy.
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script], check=True, stdout=sys.stderr, creationflags=spawn_flags()
-        )
+        # Run the Native Command
+        command = ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+        subprocess.run(command, check=True, stdout=sys.stderr, creationflags=spawn_flags())
 
 
 def unix() -> None:
@@ -236,26 +259,32 @@ def unix() -> None:
                 + (["build-essential", "pkg-config", "libssl-dev"] if compiler else [])
                 + (["libatomic1"] if atomic else [])
             )
-            subprocess.run([*elevate, "apt-get", "update"], check=True, creationflags=spawn_flags())
-            subprocess.run(
-                [*elevate, "apt-get", "install", "-y", "--no-install-recommends", *packages], check=True, creationflags=spawn_flags()
-            )
+            # Run the Native Command
+            command = [*elevate, "apt-get", "update"]
+            subprocess.run(command, check=True, creationflags=spawn_flags())
+            # Run the Native Command
+            command = [*elevate, "apt-get", "install", "-y", "--no-install-recommends", *packages]
+            subprocess.run(command, check=True, creationflags=spawn_flags())
         elif shutil.which("apk"):
             packages = (
                 ["tar", "zstd", "unzip", "zip"]
                 + (["build-base", "pkgconf", "openssl-dev"] if compiler else [])
                 + (["libatomic"] if atomic else [])
             )
-            subprocess.run([*elevate, "apk", "add", "--no-cache", *packages], check=True, creationflags=spawn_flags())
+            # Run the Native Command
+            command = [*elevate, "apk", "add", "--no-cache", *packages]
+            subprocess.run(command, check=True, creationflags=spawn_flags())
         else:
             raise RuntimeError("provide native CI prerequisites through the declared image or bootstrap")
     if "GNU tar" not in subprocess.check_output(["tar", "--version"], text=True, creationflags=spawn_flags()):
-        raise RuntimeError("GNU tar is required")
+        raise RuntimeError("GNU tar is required; Correct the pinned CI image prerequisites and bootstrap configuration")
 
 
 def atomic_available() -> bool:
     if shutil.which("ldconfig"):
-        result = subprocess.run(["ldconfig", "-p"], check=False, capture_output=True, text=True, creationflags=spawn_flags())
+        # Run the Native Command
+        command = ["ldconfig", "-p"]
+        result = subprocess.run(command, check=False, capture_output=True, text=True, creationflags=spawn_flags())
         if "libatomic.so.1" in result.stdout:
             return True
     directories = [Path(path) for path in ("/lib", "/lib64", "/usr/lib", "/usr/lib64")]
@@ -276,16 +305,22 @@ def rustup() -> None:
                 shutil.copy2(existing, destination)
     rustup = proxies / ("rustup.exe" if os.name == "nt" else "rustup")
     if rustup.is_file() and not (Path(os.environ["RUSTUP_HOME"]) / "settings.toml").is_file():
-        subprocess.run([str(rustup), "set", "profile", "default"], check=True, stdout=sys.stderr, creationflags=spawn_flags())
+        # Run the Native Command
+        command = [str(rustup), "set", "profile", "default"]
+        subprocess.run(command, check=True, stdout=sys.stderr, creationflags=spawn_flags())
     export({"PATH": os.pathsep.join([str(proxies), os.environ["PATH"]])})
 
 
 def glab(version: str) -> None:
     if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
-        raise ValueError("GitLab CLI bootstrap requires an exact version")
+        raise ValueError(
+            "GitLab CLI bootstrap requires an exact version; Correct the pinned CI image prerequisites and bootstrap configuration"
+        )
     # This Explicit CI Tool Is Outside The Project Lock; Project Installs Remain Locked.
+    # Run the Native Command
+    command = ["mise", "install", "--yes", f"glab@{version}"]
     subprocess.run(
-        ["mise", "install", "--yes", f"glab@{version}"],
+        command,
         env=os.environ | {"MISE_LOCKED": "0", "MISE_ENABLE_TOOLS": "glab"},
         stdout=sys.stderr,
         creationflags=spawn_flags(),
@@ -307,13 +342,17 @@ def main() -> None:
         glab(options.glab_version)
         return
     workspace = Path.cwd()
-    with group("Toolchain Roots"):
+    print("::group::" + "Toolchain Roots", flush=True)
+    try:
         export(roots(os.environ, workspace, Path.home()))
         export({name: os.environ[name] for name in ("COMPILER_CACHE_BACKEND", "COMPILER_CACHE_MODE") if os.environ.get(name)})
         rustup()
         if destination := os.environ.get("GITHUB_OUTPUT"):
-            with Path(destination).open("a", encoding="utf-8") as stream:
-                plan = json.loads(os.environ.get("CACHE_PLAN", "{}"))
+            stream = Path(destination).open("a", encoding="utf-8")
+            try:
+                # Read Structured Input
+                text = os.environ.get("CACHE_PLAN", "{}")
+                plan = json.loads(text)
                 if not plan:
                     system = os.environ["RUNNER_OS"] + "-" + os.environ["RUNNER_ARCH"]
                     rust = tomllib.loads((workspace / "mise.toml").read_text(encoding="utf-8"))["tools"]["rust"]["version"]
@@ -345,17 +384,33 @@ def main() -> None:
                         for variable in ("MISE_DATA_DIR", "MISE_ROOT_ID", "WORKSPACE_ROOT_ID", "CI_RUNNER_IMAGE_ID"):
                             value = value.replace("<" + variable + ">", os.environ[variable])
                         if field == "path" and not value.strip():
-                            raise ValueError(f"cache path is empty: {name}")
+                            raise ValueError(
+                                f"cache path is empty: {name}; Correct the pinned CI image prerequisites and bootstrap configuration"
+                            )
                         stream.write(f"{name}-{field}<<CACHE_VALUE\n{value}\nCACHE_VALUE\n")
+            finally:
+                stream.close()
+    finally:
+        print("::endgroup::", flush=True)
     if options.roots_only:
         return
-    with group("Native Prerequisites"):
+    print("::group::" + "Native Prerequisites", flush=True)
+    try:
         windows(workspace) if options.platform == "windows" else unix()
-    subprocess.run(["zstd", "--version"], check=True, stdout=sys.stderr, creationflags=spawn_flags())
-    with group("Project Bootstrap"):
+    finally:
+        print("::endgroup::", flush=True)
+    # Run the Native Command
+    command = ["zstd", "--version"]
+    subprocess.run(command, check=True, stdout=sys.stderr, creationflags=spawn_flags())
+    print("::group::" + "Project Bootstrap", flush=True)
+    try:
         shell = ["pwsh", "-NoProfile", "-NonInteractive", "-Command"] if os.name == "nt" else ["bash", "-eo", "pipefail", "-c"]
         for command in json.loads(os.environ.get("SETUP_BOOTSTRAP", "[]")):
-            subprocess.run([*shell, command], check=True, stdout=sys.stderr, creationflags=spawn_flags())
+            # Run the Native Command
+            command = [*shell, command]
+            subprocess.run(command, check=True, stdout=sys.stderr, creationflags=spawn_flags())
+    finally:
+        print("::endgroup::", flush=True)
 
 
 # === Private Functions === #
@@ -364,9 +419,11 @@ def main() -> None:
 
 if __name__ == "__main__":
     if "--emit-shell" in sys.argv:
+        previous = dict(os.environ)
         with contextlib.redirect_stdout(sys.stderr):
             main()
-        for name, value in EXPORTED.items():
+        exported = {name: value for name, value in os.environ.items() if previous.get(name) != value}
+        for name, value in exported.items():
             if os.name == "nt":
                 escaped = value.replace("'", "''")
                 print(f"$env:{name}='{escaped}'")

@@ -82,6 +82,7 @@ pub(super) struct Completion(Arc<()>);
 #[serde(tag = "kind", content = "value", rename_all = "snake_case", deny_unknown_fields)]
 pub enum MutationValue {
     Cursor(super::StorageCursor),
+    Compound(crate::CompoundReceipt),
     Schema { position: super::StorageCursor, key: super::SchemaKey, outcome: super::DefinitionOutcome },
     Definition { kind: super::DefinitionKind, name: Identifier, outcome: super::DefinitionOutcome },
     Deleted(super::StagedFile),
@@ -131,6 +132,7 @@ impl Receipts {
             entry.deadline > now
                 && match entry.value.as_ref() {
                     Some(MutationValue::Cursor(cursor) | MutationValue::Schema { position: cursor, .. }) => cursor == position,
+                    Some(MutationValue::Compound(receipt)) => &receipt.position == position,
                     Some(MutationValue::Reference(file)) => &file.position == position,
                     _ => false,
                 }
@@ -173,7 +175,7 @@ impl Receipts {
                 return Err(Error::backend(
                     "replay storage mutation",
                     crate::BackendFailure::Conflict,
-                    std::io::Error::other("request identifier reused with different normalized payload"),
+                    std::io::Error::other("request identifier reused with different normalized payload; use a new mutation identity"),
                 ));
             }
             return Ok(match &entry.value {
@@ -254,7 +256,12 @@ impl Receipts {
         if self.execution.now() >= entry.deadline {
             return Err(expired());
         }
-        if !matches!(&entry.value, Some(MutationValue::Cursor(saved)) if saved == position) {
+        let matches = match entry.value.as_ref() {
+            Some(MutationValue::Cursor(saved)) => saved == position,
+            Some(MutationValue::Compound(receipt)) => &receipt.position == position,
+            _ => false,
+        };
+        if !matches {
             return Err(Error::InvalidInput {
                 field: "Append receipt",
                 reason: "mutation owns a different accepted position",
@@ -473,6 +480,15 @@ impl StorageManager {
                     });
                 }
             }
+            if let MutationValue::Compound(compound) = &receipt.value {
+                let state = self.inner.state.lock().unwrap();
+                if !state.status.saved.covers(&compound.position)? {
+                    return Err(Error::InvalidInput {
+                        field: "mutation recovery",
+                        reason: "compound receipt exceeds saved data; repair the backend",
+                    });
+                }
+            }
             if let MutationValue::Producer(producer) = &receipt.value {
                 self.inner.primary.get_history().check(&producer.session.history)?;
                 if producer.session.generation == 0 {
@@ -560,6 +576,7 @@ impl MutationValue {
     pub(super) fn cursor(self) -> Result<super::StorageCursor> {
         match self {
             Self::Cursor(value) | Self::Schema { position: value, .. } => Ok(value),
+            Self::Compound(value) => Ok(value.position),
             _ => Err(rejected()),
         }
     }
@@ -592,6 +609,7 @@ impl MemorySize for MutationValue {
             + match self {
                 Self::Deleted(value) => value.memory_size() - std::mem::size_of::<super::StagedFile>(),
                 Self::Cursor(value) => value.memory_size() - std::mem::size_of::<super::StorageCursor>(),
+                Self::Compound(value) => value.memory_size(),
                 Self::Producer(value) => value.memory_size() - std::mem::size_of::<FileProducer>(),
                 Self::Reference(value) => value.as_ref().memory_size(),
                 Self::Definition { name, outcome, .. } => name.memory_size() - std::mem::size_of::<Identifier>() + outcome.heap_bytes(),

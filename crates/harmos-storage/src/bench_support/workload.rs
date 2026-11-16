@@ -198,6 +198,7 @@ impl Workload {
                 version: ObjectVersionToken::new(position.clone()),
                 position,
                 value: ObjectValue {
+                    scope: None,
                     schema: self.source.schema.clone(),
                     item: harmos_domain::model::storage::object_key(&0_u32, self.page().bytes).unwrap(),
                     payload: Sample { value: value as f64, ..sample(0) }.encode(),

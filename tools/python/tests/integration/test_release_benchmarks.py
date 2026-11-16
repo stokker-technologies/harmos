@@ -19,12 +19,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from harmos_tools import storage_bench
-from harmos_tools.release import reports
-
 # Third Party Imports
 # Local Imports
-from harmos_tools.test import run
+import harmos_tools.build.paths
+import harmos_tools.test.archive
+import harmos_tools.test.benchmark
+import harmos_tools.test.evidence
+import harmos_tools.test.execution
+import harmos_tools.test.policy
+from harmos_tools import storage_bench
+from harmos_tools.release import reports
 
 # Type Checking Imports
 
@@ -84,9 +88,11 @@ class BenchmarkRelease(unittest.TestCase):
         self.assertEqual(rows["maximum_commit_bytes"]["value"], 120)
 
     def test_ordinary_bench_runner_skips_large_storage_and_runs_other_integration_cases(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary)
-            messages = run.paths.output(directory, "build", "bench") / "bench/compiler.json"
+            messages = harmos_tools.build.paths.output(directory, "build", "bench") / "bench/compiler.json"
             messages.parent.mkdir(parents=True)
             messages.write_text(
                 "\n".join(
@@ -101,14 +107,21 @@ class BenchmarkRelease(unittest.TestCase):
                     for name in ("integration-multi-day", "integration-query")
                 )
             )
-            with patch.object(run.archive, "fixtures"), patch.object(run, "_measured", return_value=(0, None)) as execute:
-                rows, status = run._bench_rust(directory, "integration", False, True, [], [], {})
+            with (
+                patch.object(harmos_tools.test.archive, "fixtures"),
+                patch.object(harmos_tools.test.execution, "measured", return_value=(0, None)) as execute,
+            ):
+                rows, status = harmos_tools.test.benchmark.rust(directory, "integration", False, True, [], [], {})
             self.assertEqual((rows, status), ([], 0))
             self.assertEqual(execute.call_count, 1)
             self.assertEqual(Path(execute.call_args.args[0][0]).name, "integration-query")
+        finally:
+            temporary_directory.cleanup()
 
     def test_storage_events_keep_units_platforms_and_repeated_contention_in_release_inventory(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary)
             events = [
                 "STORAGE_MEASUREMENT "
@@ -186,20 +199,24 @@ class BenchmarkRelease(unittest.TestCase):
             )
             with self.assertRaises(reports.policy.ToolError):
                 storage_bench.measurements(events, "revision", "windows")
+        finally:
+            temporary_directory.cleanup()
 
     def test_native_measurements_survive_runner_failure_and_baseline_refresh(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary)
-            rules = run.policy.Policy(limits={}, deadlines={}, overrides=(), bench_regression_percent=10)
+            rules = harmos_tools.test.policy.Policy(limits={}, deadlines={}, overrides=(), bench_regression_percent=10)
             with (
                 patch.dict(os.environ, {"GITHUB_SHA": "a" * 40}),
-                patch.object(run.policy, "load", return_value=rules),
-                patch.object(run, "_preflight"),
-                patch.object(run.archive, "_toolchain", return_value={}),
-                patch.object(run.archive, "revision", return_value="a" * 40),
-                patch.object(run, "_bench_rust", return_value=([("read", 120.0, 100.0), ("new", 40.0, None)], 1)),
+                patch.object(harmos_tools.test.policy, "load", return_value=rules),
+                patch.object(harmos_tools.test.evidence, "preflight"),
+                patch.object(harmos_tools.test.archive, "_toolchain", return_value={}),
+                patch.object(harmos_tools.test.archive, "revision", return_value="a" * 40),
+                patch.object(harmos_tools.test.benchmark, "rust", return_value=([("read", 120.0, 100.0), ("new", 40.0, None)], 1)),
             ):
-                self.assertEqual(run.bench(directory, "unit", "rust", ".", True, []), 1)
+                self.assertEqual(harmos_tools.test.benchmark.run(directory, "unit", "rust", ".", True, []), 1)
             document = json.loads((directory / "target/benchmarks/benchmarks-unit-rust.json").read_text())
             self.assertEqual(
                 document,
@@ -226,19 +243,21 @@ class BenchmarkRelease(unittest.TestCase):
                     ]
                 },
             )
-            with self.assertRaises(run.policy.TestError):
+            with self.assertRaises(harmos_tools.test.policy.TestError):
                 with (
-                    patch.object(run.policy, "load", return_value=rules),
-                    patch.object(run, "_preflight"),
-                    patch.object(run.archive, "_toolchain", return_value={}),
-                    patch.object(run, "_bench_rust", return_value=([], 1)),
+                    patch.object(harmos_tools.test.policy, "load", return_value=rules),
+                    patch.object(harmos_tools.test.evidence, "preflight"),
+                    patch.object(harmos_tools.test.archive, "_toolchain", return_value={}),
+                    patch.object(harmos_tools.test.benchmark, "rust", return_value=([], 1)),
                 ):
-                    run.bench(directory, "unit", "rust", ".", False, [])
+                    harmos_tools.test.benchmark.run(directory, "unit", "rust", ".", False, [])
             self.assertEqual(json.loads((directory / "target/benchmarks/benchmarks-unit-rust.json").read_text()), {"benchmarks": []})
             # Native Values Must Remain Finite In Published JSON.
             for value, baseline in ((float("nan"), 1.0), (1.0, float("inf"))):
                 with self.assertRaises(reports.policy.ToolError):
                     reports.measurements([("invalid", value, baseline)], "unit-rust", "a" * 40, 10)
+        finally:
+            temporary_directory.cleanup()
 
 
 # === Public Functions === #

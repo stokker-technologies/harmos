@@ -38,7 +38,9 @@ def measurements(rows: list[tuple[str, float, float | None]], suite: str, revisi
     benchmarks = []
     for name, value, baseline in rows:
         if not math.isfinite(value) or (baseline is not None and not math.isfinite(baseline)):
-            raise policy.ToolError(f"non-finite benchmark measurement: {name}")
+            raise policy.ToolError(
+                f"non-finite benchmark measurement: {name}; Regenerate native reports with unique identities and finite measurements"
+            )
         benchmarks.append(
             {
                 "name": name,
@@ -57,14 +59,18 @@ def collect(directory: Path) -> tuple[dict, list[Path]]:
     """Collect This Run's Downloaded Reports Without Requiring Successful Jobs."""
     source = directory / "target/nightly-reports"
     if source.is_symlink() or source.exists() and not source.is_dir():
-        raise policy.ToolError("nightly reports require a regular directory")
+        raise policy.ToolError(
+            "nightly reports require a regular directory; Regenerate native reports with unique identities and finite measurements"
+        )
     benchmarks = []
     coverage = []
     errors = []
     files = sorted(path for path in source.rglob("*") if path.is_file())
     for path in files:
         if path.is_symlink():
-            raise policy.ToolError("nightly reports must not contain linked files")
+            raise policy.ToolError(
+                "nightly reports must not contain linked files; Regenerate native reports with unique identities and finite measurements"
+            )
         try:
             if path.name.startswith("benchmarks-") and path.suffix == ".json":
                 benchmarks.extend(json.loads(path.read_text(encoding="utf-8"))["benchmarks"])
@@ -83,7 +89,9 @@ def collect(directory: Path) -> tuple[dict, list[Path]]:
             errors.append({"report": path.relative_to(source).as_posix(), "error": str(error)})
     identities = [(row["suite"], row["name"]) for row in benchmarks]
     if len(identities) != len(set(identities)):
-        raise policy.ToolError("duplicate benchmark identity in nightly reports")
+        raise policy.ToolError(
+            "duplicate benchmark identity in nightly reports; Regenerate native reports with unique identities and finite measurements"
+        )
     return {"coverage": coverage, "benchmarks": benchmarks, "errors": errors}, files
 
 
@@ -95,11 +103,14 @@ def stage(directory: Path, shared: Path, version: str) -> list[Path]:
     benchmarks = sorted(summary["benchmarks"], key=lambda row: (row["suite"], row["name"]))
     policy.write_json(index, {"benchmarks": benchmarks})
     destination = shared / f"harmos-reports-{version}.zip"
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    archive = zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED)
+    try:
         archive.write(index, "benchmarks.json")
         archive.writestr("summary.json", json.dumps(summary, indent=2) + "\n")
         for path in files:
             archive.write(path, path.relative_to(source).as_posix())
+    finally:
+        archive.close()
     return [destination, index]
 
 

@@ -16,6 +16,7 @@ pub mod arrow;
 pub mod catalog;
 #[doc(hidden)]
 pub mod codec;
+pub mod compound;
 pub mod data;
 pub mod directory;
 pub mod files;
@@ -34,6 +35,7 @@ pub mod writes;
 
 pub use arrow::ArrowIpc;
 pub use catalog::{ObjectCatalog, ObjectDefinition, ObjectHandle, StoredObject};
+pub use compound::{CompoundOutcome, CompoundReceipt, MutationItem};
 pub use data::{RecordInput, RecordWrite, StoredRecord, StoredRow, StreamInput, StreamWrite};
 pub use directory::{DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectoryRule, DirectorySelection};
 pub use files::{

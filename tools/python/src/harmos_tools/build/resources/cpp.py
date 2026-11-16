@@ -22,8 +22,10 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
-from ...process import spawn_flags
-from .descriptors import Field, Method, payload_audiences, snake, table
+from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, snake, table
+from harmos_tools.process import spawn_flags
+
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -46,7 +48,7 @@ class PayloadExport:
 # === Public Functions === #
 
 
-def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
+def exports(root: Path, descriptors: FileDescriptorSet) -> None:
     methods = table(descriptors)
     audiences = payload_audiences(descriptors)
     requests = {method["request"] for method in methods}
@@ -120,16 +122,16 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
     (destination / "detail").mkdir(parents=True, exist_ok=True)
     (destination / "detail/messages.hpp").write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
     (destination / "messages.hpp").write_text("\n".join(public) + "\n", encoding="utf-8", newline="\n")
-    format_cpp([destination / "messages.hpp", destination / "detail/messages.hpp"])
+    format_code([destination / "messages.hpp", destination / "detail/messages.hpp"])
 
 
-def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, namespace: str = "harmos") -> None:
+def host(root: Path, methods: list[Method], *, target: Path | None = None, namespace: str = "harmos") -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
     def field_type(field: Field) -> str:
         value = (
-            cpp_message(field["type"])
+            message(field["type"])
             if field["type"]
             else {8: "bool", 9: "std::string", 12: "std::string", 4: "std::uint64_t", 13: "std::uint32_t"}.get(
                 field["kind"], "std::int64_t"
@@ -162,7 +164,7 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
         header += ["};"]
         if method["server_streaming"]:
             payload = method["payload_field"]
-            value = field_type(payload) if payload else cpp_message(method["response"])
+            value = field_type(payload) if payload else message(method["response"])
             header += [
                 f"class Host{name} {{",
                 "public:",
@@ -184,7 +186,7 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
             name = "".join(title(part) for part in method["path"])
             request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             payload = method["payload_field"]
-            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else cpp_message(method["response"])
+            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else message(method["response"])
             parameters = [f"const {field_type(field)}& {field['name']}" for field in method["fields"] if not field["optional"]]
             if method["server_streaming"]:
                 parameters += ["std::size_t max_item_bytes"]
@@ -211,7 +213,7 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
                     "  (void)options;",
                     "  operation.watch();",
                     f"  auto incoming = std::make_shared<Watching<{response_type}>>(context.watch(operation, request, max_item_bytes));",
-                    f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else cpp_message(method['response'])}> {{",
+                    f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else message(method['response'])}> {{",
                     "    auto response = incoming->next();",
                     "    if (!response) {",
                     "      return {};",
@@ -276,9 +278,9 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
     ]
     boundary = source.index("namespace harmos::plugin {")
     body = "\n".join(source[boundary:])
-    named = {cpp_message(method["response"]) for method in methods if method["payload_field"] is None}
+    named = {message(method["response"]) for method in methods if method["payload_field"] is None}
     named.update(
-        cpp_message(field["type"])
+        message(field["type"])
         for method in methods
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
@@ -330,7 +332,7 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(public, encoding="utf-8", newline="\n")
         target.with_suffix(".cpp").write_text(implementation, encoding="utf-8", newline="\n")
-        format_cpp([target, target.with_suffix(".cpp")])
+        format_code([target, target.with_suffix(".cpp")])
         return
     folder = root / "sdk/cpp/include/harmos/_generated"
     folder.mkdir(parents=True, exist_ok=True)
@@ -338,10 +340,10 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
     folder = root / "sdk/cpp/src/generated"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "host.cpp").write_text("\n".join(source) + "\n", encoding="utf-8", newline="\n")
-    format_cpp([root / "sdk/cpp/include/harmos/_generated/host.hpp", folder / "host.cpp"])
+    format_code([root / "sdk/cpp/include/harmos/_generated/host.hpp", folder / "host.cpp"])
 
 
-def cpp_message(full: str) -> str:
+def message(full: str) -> str:
     parts = full.split(".")
     if full.startswith("google.protobuf."):
         return "::google::protobuf::" + parts[-1]
@@ -353,7 +355,7 @@ def cpp_message(full: str) -> str:
     return "::" + parts[0] + "::client::" + parts[-1]
 
 
-def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None) -> None:
+def client(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None) -> None:
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -363,7 +365,7 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
 
     def field_type(field: Field) -> str:
         value = (
-            cpp_message(field["type"])
+            message(field["type"])
             if field["type"]
             else {
                 1: "double",
@@ -451,7 +453,9 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
             ]
         for method in operations:
             if method["client_streaming"]:
-                raise ValueError(f"Generate C++ Client {method['method']}: Managed Contract Required")
+                raise ValueError(
+                    f"Generate C++ Client {method['method']}: Managed Contract Required; Correct the source protocol declarations or explicit public exports before regenerating"
+                )
             prefix = "".join(title(part) for part in method["path"])
             request = f"detail::packages::{_private_name(method['request'])}"
             response = f"detail::packages::{_private_name(method['response'])}"
@@ -459,7 +463,7 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
             parameters = [f"const {field_type(field)}& {field['name']}" for field in method["fields"] if not field["optional"]]
             parameters += [f"client::{prefix}Options options = {{}}"]
             payload = method["payload_field"]
-            result = field_type(payload) if payload else cpp_message(method["response"])
+            result = field_type(payload) if payload else message(method["response"])
             stream = method["server_streaming"]
             returns = f"::harmos::ClientStream<{result}>" if stream else result
             name = method["path"][-1]
@@ -530,10 +534,10 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
         lines += ["};"]
     lines += ["}"]
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    format_cpp([destination, wire, *([destination.parent / "client_messages.hpp"] if namespace != "harmos" else [])])
+    format_code([destination, wire, *([destination.parent / "client_messages.hpp"] if namespace != "harmos" else [])])
 
 
-def format_cpp(paths: list[Path]) -> None:
+def format_code(paths: list[Path]) -> None:
     policy = Path(__file__).resolve().parents[6] / "sdk/cpp/.clang-format"
     subprocess.run(["clang-format", f"--style=file:{policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
 

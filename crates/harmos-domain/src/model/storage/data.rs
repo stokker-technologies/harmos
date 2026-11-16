@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::time::SystemTime as Timestamp;
+use std::time::SystemTime;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -31,13 +31,16 @@ use crate::{Identifier, MemorySize};
 
 /* === Structs === */
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordInput {
     pub schema: SchemaKey,
     pub scope: Option<Identifier>,
     pub item: Identifier,
     pub source: Option<Identifier>,
-    pub source_time: Option<Timestamp>,
+
+    #[serde(default, with = "crate::model::storage::time::optional")]
+    pub source_time: Option<SystemTime>,
+
     pub payload: Vec<u8>,
 }
 
@@ -58,7 +61,7 @@ pub struct StoredRecord<T = Vec<u8>> {
     pub source: Option<Identifier>,
 
     #[serde(default, with = "crate::model::storage::time::optional")]
-    pub source_time: Option<Timestamp>,
+    pub source_time: Option<SystemTime>,
 
     pub payload: T,
 }
@@ -77,7 +80,7 @@ pub struct RecordWrite<'a> {
     pub scope: Option<&'a Identifier>,
     pub item: &'a Identifier,
     pub source: Option<&'a Identifier>,
-    pub source_time: Option<Timestamp>,
+    pub source_time: Option<SystemTime>,
     pub payload: &'a [u8],
 }
 

@@ -15,7 +15,9 @@
 from pathlib import Path
 
 # Local Imports
-from .descriptors import Field, Method
+from harmos_tools.build.resources.descriptor import Field, Method
+
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -30,7 +32,7 @@ from .descriptors import Field, Method
 # === Public Functions === #
 
 
-def csharp_message(name: str) -> str:
+def message(name: str) -> str:
     return (
         name.replace("Harmos.Plugin.V1", "Harmos.Internal.Plugin")
         .replace("Harmos.Host.V1.StatusResources", "Harmos.Clients")
@@ -41,7 +43,7 @@ def csharp_message(name: str) -> str:
     )
 
 
-def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None, check: bool = False) -> None:
+def client(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None, check: bool = False) -> None:
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -97,7 +99,7 @@ def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         "Google.Protobuf",
         "Google.Protobuf.WellKnownTypes",
     }
-    namespaces.update(csharp_message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
+    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#nullable enable",
@@ -222,9 +224,7 @@ def csharp(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         destination.write_text(source, encoding="utf-8", newline="\n")
 
 
-def csharp_host(
-    root: Path, methods: list[Method], *, check: bool = False, target: Path | None = None, namespace: str = "Harmos.Plugins"
-) -> None:
+def host(root: Path, methods: list[Method], *, check: bool = False, target: Path | None = None, namespace: str = "Harmos.Plugins") -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
@@ -251,7 +251,7 @@ def csharp_host(
         "Google.Protobuf",
         "Google.Protobuf.WellKnownTypes",
     }
-    namespaces.update(csharp_message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
+    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
     if target is not None:
         namespaces.update({"Harmos", "Harmos.Plugins", "Harmos.Clients"})
     lines = [
@@ -383,7 +383,7 @@ def _csharp_names(used: set[str]) -> dict[str, str]:
     duplicates = {name for name in names.values() if list(names.values()).count(name) > 1}
     for full in used:
         if names[full] in duplicates or ".Types." in full:
-            names[full] = "global::" + csharp_message(full)
+            names[full] = "global::" + message(full)
     return names
 
 

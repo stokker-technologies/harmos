@@ -9,6 +9,11 @@
 
 /* === Modules === */
 
+mod compound_mutation_commits_atomically;
+mod compound_mutation_conflict_leaves_no_effect;
+mod compound_mutation_replays_receipt;
+mod deletion;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -79,6 +84,15 @@ impl StoredObject for Counter {
 fn nz(value: usize) -> NonZeroUsize {
     NonZeroUsize::new(value).unwrap()
 }
+fn compound_value(id: u64, value: u64) -> ObjectValue {
+    ObjectValue {
+        scope: None,
+        schema: object_schema::<Counter>().unwrap(),
+        item: object_key(&id, NonZeroUsize::MAX).unwrap(),
+        payload: Counter { id, value }.encode(),
+    }
+}
+
 fn catalog() -> ObjectCatalog {
     ObjectCatalog::new().entry(ObjectDefinition::of::<Counter>())
 }
@@ -358,6 +372,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             version: ObjectVersionToken::new(position.clone()),
             position: position.clone(),
             value: ObjectValue {
+                scope: None,
                 schema: definition.source.schema.clone(),
                 item: object_key(&value.id, work.bytes).unwrap(),
                 payload: value.encode(),

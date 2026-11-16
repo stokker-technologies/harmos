@@ -19,7 +19,9 @@ from typing import TypedDict
 from google.protobuf.descriptor_pb2 import DescriptorProto, FieldDescriptorProto, FileDescriptorSet
 
 # Local Imports
-from ...source.protocol import caller_options
+from harmos_tools.source.protocol import caller_options
+
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -116,7 +118,9 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 for face in faces:
                     leaf = (face, *path)
                     if leaf in leaves:
-                        raise ValueError(f"Client Resource Collision: {'.'.join(path)}")
+                        raise ValueError(
+                            f"Client Resource Collision: {'.'.join(path)}; Correct the source protocol declarations or explicit public exports before regenerating"
+                        )
                     leaves.add(leaf)
                     methods.append(
                         Method(
@@ -141,7 +145,9 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                     )
     for leaf in leaves:
         if any(leaf[:length] in leaves for length in range(2, len(leaf))):
-            raise ValueError(f"Client Resource Collision: {'.'.join(leaf[1:])}")
+            raise ValueError(
+                f"Client Resource Collision: {'.'.join(leaf[1:])}; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
     return methods
 
 

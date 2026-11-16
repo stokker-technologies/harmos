@@ -10,9 +10,8 @@
 
 # === Imports === #
 
-import http.client
-
 # Standard Library Imports
+import http.client
 import io
 import json
 import os
@@ -54,7 +53,7 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
         origin = urllib.parse.urlsplit(req.full_url)
         destination = urllib.parse.urlsplit(newurl)
         if destination.scheme != "https":
-            raise ValueError("insecure artifact redirect")
+            raise ValueError("insecure artifact redirect; Configure the artifact provider to redirect over HTTPS")
         if redirected is not None and (origin.scheme, origin.netloc) != (destination.scheme, destination.netloc):
             redirected.remove_header("PRIVATE-TOKEN")
         return redirected
@@ -85,7 +84,7 @@ def request(endpoint: str, *, binary: bool = False, collection: bool = False) ->
     else:
         token = os.environ["RELEASE_TOKEN"]
         if not token:
-            raise ValueError("provider token unavailable")
+            raise ValueError("provider token unavailable; Configure the provider token for the validation evidence API")
         base = os.environ["CI_API_V4_URL"]
         project = urllib.parse.quote(os.environ["CI_PROJECT_ID"], safe="")
         native = urllib.request.Request(f"{base}/projects/{project}/{endpoint}", headers={"PRIVATE-TOKEN": token})
@@ -99,10 +98,10 @@ def request(endpoint: str, *, binary: bool = False, collection: bool = False) ->
     document = json.loads(data)
     if collection:
         if not isinstance(document, list) or any(not isinstance(item, dict) for item in document):
-            raise TypeError("provider collection must contain objects")
+            raise TypeError("provider collection must contain objects; Check the configured provider endpoint and its response schema")
         return document
     if not isinstance(document, dict):
-        raise TypeError("provider response must be an object")
+        raise TypeError("provider response must be an object; Check the configured provider endpoint and its response schema")
     return document
 
 
@@ -113,14 +112,14 @@ def pages(endpoint: str, key: str | None = None) -> list[dict]:
         address = f"{endpoint}{separator}per_page=100&page={page}"
         response = request(address) if key is not None else request(address, collection=True)
         if key is not None and not isinstance(response, dict):
-            raise TypeError("provider page must be an object")
+            raise TypeError("provider page must be an object; Check the configured provider endpoint and its pagination response schema")
         batch = response[key] if key is not None and isinstance(response, dict) else response
         if not isinstance(batch, list):
-            raise TypeError("invalid provider page")
+            raise TypeError("invalid provider page; Check the configured provider endpoint and its pagination response schema")
         values.extend(batch)
         if len(batch) < 100:
             return values
-    raise ValueError("provider pagination limit")
+    raise ValueError("provider pagination limit; Narrow the provider evidence query to the intended release review")
 
 
 def same_tree(head: object, tree: str) -> bool:
@@ -177,10 +176,16 @@ def github_merged_reviews(sha: str) -> list[dict]:
 def github_release_mode() -> dict[str, str]:
     sha = command("git", "rev-parse", "HEAD")
     if sha != os.environ["GITHUB_SHA"]:
-        raise ValueError("release decision checkout differs from event revision")
+        raise ValueError(
+            "release decision checkout differs from event revision; "
+            "Inspect the review revision and restore its complete successful validation evidence"
+        )
     fallback = {"mode": "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip", "sha": ""}
-    with (policy.root() / "tools/project.toml").open("rb") as stream:
+    stream = (policy.root() / "tools/project.toml").open("rb")
+    try:
         version = tomllib.load(stream)["version"]["value"]
+    finally:
+        stream.close()
     tag = f"v{version}"
     if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
         return fallback
@@ -208,8 +213,11 @@ def github_release_mode() -> dict[str, str]:
     if target_version != version:
         return fallback
     if os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
-        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
+        stream = open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8")
+        try:
             completed = json.load(stream)["workflow_run"]
+        finally:
+            stream.close()
         if (
             completed.get("head_sha") != review["head"]["sha"]
             or completed.get("event") != "pull_request"
@@ -223,7 +231,7 @@ def lookup() -> dict:
     sha = command("git", "rev-parse", "HEAD")
     tree = command("git", "rev-parse", "HEAD^{tree}")
     if OID.fullmatch(tree) is None:
-        raise ValueError("invalid checkout tree")
+        raise ValueError("invalid checkout tree; Inspect the review revision and restore its complete successful validation evidence")
     github = bool(os.environ.get("GITHUB_ACTIONS"))
     if github:
         reviews = github_merged_reviews(sha)
@@ -236,7 +244,9 @@ def lookup() -> dict:
             and review.get("target_branch") == "dev"
         ]
     if len(reviews) != 1:
-        raise ValueError("no unambiguous merged review")
+        raise ValueError(
+            "no unambiguous merged review; Inspect the review revision and restore its complete successful validation evidence"
+        )
     review = reviews[0]
     head = review["head"]["sha"] if github else review["sha"]
     branch = review["head"]["ref"] if github else review["source_branch"]
@@ -245,8 +255,12 @@ def lookup() -> dict:
     profile = "release" if branch.startswith("release/v") and os.environ.get("REVIEW_RELEASE") == "true" else "dev"
     tag = os.environ.get("GITHUB_REF", "").startswith("refs/tags/") or bool(os.environ.get("CI_COMMIT_TAG"))
     if tag and profile != "release":
-        raise ValueError("tag requires release-profile evidence")
-    required = json.loads(os.environ.get("REVIEW_PACKAGES", "[]"))
+        raise ValueError(
+            "tag requires release-profile evidence; Inspect the review revision and restore its complete successful validation evidence"
+        )
+    # Read Structured Input
+    text = os.environ.get("REVIEW_PACKAGES", "[]")
+    required = json.loads(text)
     preparation = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" if github else os.environ.get("CI_PIPELINE_SOURCE") == "web"
     if tag or preparation:
         required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
@@ -289,17 +303,22 @@ def lookup() -> dict:
             if expiry and datetime.fromisoformat(expiry) <= datetime.now(UTC):
                 raise ValueError("review package expired")
     if not isinstance(run["id"], int) or run["id"] <= 0:
-        raise ValueError("invalid review run ID")
+        raise ValueError("invalid review run ID; Inspect the review revision and restore its complete successful validation evidence")
     if tag and not any(
         job.get("name", "").endswith("Release / Rehearsal") and job.get("conclusion" if github else "status") == "success" for job in jobs
     ):
-        raise ValueError("release review has no successful rehearsal")
+        raise ValueError(
+            "release review has no successful rehearsal; "
+            "Inspect the review revision and restore its complete successful validation evidence"
+        )
     protected = os.environ.get("GITHUB_REF_PROTECTED") == "true" or os.environ.get("CI_COMMIT_REF_PROTECTED") == "true"
     if tag and not protected:
-        raise ValueError("release tag must be protected")
+        raise ValueError(
+            "release tag must be protected; Inspect the review revision and restore its complete successful validation evidence"
+        )
     version = branch.removeprefix("release/") if profile == "release" else f"dev.{run['id']}+{head[:8]}"
     if re.fullmatch(r"(?:v\d+\.\d+\.\d+|dev\.\d+\+[0-9a-f]{8})", version) is None:
-        raise ValueError("invalid review version")
+        raise ValueError("invalid review version; Inspect the review revision and restore its complete successful validation evidence")
     return {
         "validated": "true",
         "review_run": str(run["id"]),
@@ -315,14 +334,15 @@ def restore() -> None:
         return
     run = os.environ["review_run"]
     if not run.isdecimal():
-        raise ValueError("invalid review pipeline")
+        raise ValueError("invalid review pipeline; Inspect the review revision and restore its complete successful validation evidence")
     jobs = pages(f"pipelines/{run}/jobs?include_retried=false")
     for name in json.loads(os.environ["REVIEW_PACKAGES"]) + json.loads(os.environ.get("REVIEW_BUILDS", "[]")):
         matches = [job for job in jobs if job.get("name") == name and job.get("status") == "success"]
         if len(matches) != 1:
             raise ValueError("review package producer unavailable")
         data = request(f"jobs/{matches[0]['id']}/artifacts", binary=True)
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        try:
             for member in archive.infolist():
                 path = Path(member.filename)
                 parent = member.is_dir() and member.filename in ("target/", "target/package/")
@@ -332,10 +352,17 @@ def restore() -> None:
                     or "\\" in member.orig_filename
                     or (member.external_attr >> 16) & 0o170000 == 0o120000
                 ):
-                    raise ValueError("unsafe package archive path")
+                    raise ValueError(
+                        "unsafe package archive path; Inspect the review revision and restore its complete successful validation evidence"
+                    )
                 if not parent and not member.filename.startswith(("target/package/", "target/ci/")):
-                    raise ValueError("unexpected package archive path")
+                    raise ValueError(
+                        "unexpected package archive path; "
+                        "Inspect the review revision and restore its complete successful validation evidence"
+                    )
             archive.extractall()
+        finally:
+            archive.close()
     print(f"Reusing packages from review pipeline {run}")
 
 
@@ -361,7 +388,10 @@ if __name__ == "__main__":
                 result = lookup()
             except Exception as error:
                 if os.environ.get("REVIEW_REQUIRED") == "true":
-                    raise ValueError("required release review evidence unavailable") from error
+                    raise ValueError(
+                        "required release review evidence unavailable; "
+                        "Inspect the review revision and restore its complete successful validation evidence"
+                    ) from error
                 # Never print provider responses, commands or credentials on lookup failure.
                 print(f"Review evidence unavailable ({type(error).__name__}); running the full pipeline")
             if not os.environ.get("GITHUB_ACTIONS"):
@@ -372,8 +402,11 @@ if __name__ == "__main__":
                 result["DEPLOY_EXPECTED_VERSION"] = result.get("review_version") or version
             output = os.environ.get("GITHUB_OUTPUT", "target/ci/validated.env")
             Path(output).parent.mkdir(parents=True, exist_ok=True)
-            with open(output, "a", encoding="utf-8", newline="\n") as stream:
+            stream = open(output, "a", encoding="utf-8", newline="\n")
+            try:
                 stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
+            finally:
+                stream.close()
             print(f"validated={result['validated']} review_run={result['review_run']}")
     finally:
         print("::endgroup::", flush=True)

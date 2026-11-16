@@ -36,7 +36,7 @@ from . import review
 def green(sha: str, pages: Callable[..., list[dict]]) -> bool:
     """Select The Latest Dev Push And Its Required Gate, Never A Prior Run Or PR."""
     if re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", sha) is None:
-        raise ValueError("invalid target revision")
+        raise ValueError("invalid target revision; Pass the complete hexadecimal target commit ID")
     runs = pages(f"actions/workflows/ci.yml/runs?branch=dev&event=push&head_sha={sha}", "workflow_runs")
     runs = [run for run in runs if run.get("head_sha") == sha and run.get("event") == "push" and run.get("head_branch") == "dev"]
     if not runs:
@@ -45,7 +45,7 @@ def green(sha: str, pages: Callable[..., list[dict]]) -> bool:
     if run.get("status") != "completed":
         return False
     if run.get("conclusion") != "success":
-        raise ValueError("target commit CI failed")
+        raise ValueError("target commit CI failed; Inspect the selected commit and repair or rerun its required CI jobs")
 
     checks = pages(f"commits/{sha}/check-runs?filter=latest", "check_runs")
     gates = [
@@ -58,7 +58,7 @@ def green(sha: str, pages: Callable[..., list[dict]]) -> bool:
     if len(gates) != 1 or gates[0].get("status") != "completed":
         return False
     if gates[0].get("conclusion") != "success":
-        raise ValueError("target commit required gate failed")
+        raise ValueError("target commit required gate failed; Inspect the selected commit and repair or rerun its required CI jobs")
 
     # Honor Additional Required Contexts In The Owner's Main Ruleset.
     rules = pages("rules/branches/main")
@@ -114,5 +114,5 @@ if __name__ == "__main__":
     sha = review.command("git", "rev-parse", "HEAD")
     expected = os.environ["RELEASE_TARGET_SHA"]
     if sha != expected:
-        raise ValueError("release checkout differs from target revision")
+        raise ValueError("release checkout differs from target revision; Use the checkout at RELEASE_TARGET_SHA")
     wait(sha, review.pages)

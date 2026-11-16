@@ -7,7 +7,7 @@
 # ***
 
 
-"""Compose Descriptor Inventories and Generate SDK Resources."""
+"""Generate Root Resource Contracts."""
 
 # === Imports === #
 
@@ -23,43 +23,19 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
-from ..process import spawn_flags
-from ..source.protocol import narrow_callers
-from .protocol.cpp import cpp, cpp_exports, cpp_host, cpp_message, format_cpp
-from .protocol.csharp import csharp, csharp_host, csharp_message
-from .protocol.descriptors import Field, Method, payload_audiences, snake, table
-from .protocol.python import python, python_exports, python_host
-from .protocol.rust import rust, rust_context, rust_exports, rust_host, rust_message
+import harmos_tools.build.resources.cpp
+import harmos_tools.build.resources.csharp
+import harmos_tools.build.resources.descriptor
+import harmos_tools.build.resources.python
+import harmos_tools.build.resources.rust
+from harmos_tools.process import spawn_flags
+from harmos_tools.source.protocol import narrow_callers
+
+# Type Checking Imports
 
 # === Public Exports === #
 
-__all__ = [
-    "Field",
-    "Method",
-    "compose",
-    "cpp",
-    "cpp_exports",
-    "cpp_host",
-    "cpp_message",
-    "csharp",
-    "csharp_host",
-    "csharp_message",
-    "format_cpp",
-    "generate",
-    "main",
-    "payload_audiences",
-    "python",
-    "python_exports",
-    "python_host",
-    "rust",
-    "rust_context",
-    "rust_exports",
-    "rust_host",
-    "rust_message",
-    "snake",
-    "table",
-]
-
+__all__ = ["compose", "generate", "main"]
 
 # === Constants === #
 
@@ -81,18 +57,20 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
         "sdk/cpp/include/harmos/_generated",
     ]:
         (root / folder).mkdir(parents=True, exist_ok=True)
-    methods = table(descriptors)
-    cpp_exports(root, descriptors)
-    rust_exports(root, descriptors)
-    python_exports(root / "sdk/python/src/harmos/_generated", descriptors)
+    methods = harmos_tools.build.resources.descriptor.table(descriptors)
+    harmos_tools.build.resources.cpp.exports(root, descriptors)
+    harmos_tools.build.resources.rust.exports(root, descriptors)
+    harmos_tools.build.resources.python.exports(root / "sdk/python/src/harmos/_generated", descriptors)
     conformance = root / "sdk/rust/tests/fixtures/conformance/descriptors.bin"
     if conformance.is_file():
         request = conformance.with_name("caller-request.bin").read_bytes()
         (root / "sdk/python/tests/fixtures/conformance/_caller.py").write_text(
             f"# @generated from caller probe descriptors; do not edit.\nREQUEST = {request!r}\n", encoding="utf-8", newline="\n"
         )
+        # Run the Native Command
+        command = [sys.executable, "-m", "ruff", "format", str(root / "sdk/python/tests/fixtures/conformance/_caller.py")]
         subprocess.run(
-            [sys.executable, "-m", "ruff", "format", str(root / "sdk/python/tests/fixtures/conformance/_caller.py")],
+            command,
             check=True,
             creationflags=spawn_flags(),
         )
@@ -115,7 +93,7 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
             encoding="utf-8",
             newline="\n",
         )
-        format_cpp([caller])
+        harmos_tools.build.resources.cpp.format_code([caller])
         schema = FileDescriptorSet.FromString(conformance.read_bytes())
         lines = [
             "// @generated from protocol descriptors; do not edit.",
@@ -140,23 +118,23 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
             encoding="utf-8",
             newline="\n",
         )
-        format_cpp([target, facade])
+        harmos_tools.build.resources.cpp.format_code([target, facade])
     clients = [method for method in methods if method["face"] == "client"]
-    python(root / "sdk/python/src/harmos/_generated/client.py", clients, descriptors)
+    harmos_tools.build.resources.python.client(root / "sdk/python/src/harmos/_generated/client.py", clients, descriptors)
     if namespace == "harmos":
-        python_host(
+        harmos_tools.build.resources.python.host(
             root / "sdk/python/src/harmos/_generated/host.py", [method for method in methods if method["face"] == "context"], descriptors
         )
-    rust(root, clients)
+    harmos_tools.build.resources.rust.client(root, clients)
     if namespace == "harmos":
-        rust_context(root, [method for method in methods if method["face"] == "context"])
-        rust_host(root, [method for method in methods if method["face"] == "context"])
-    csharp(root, clients, namespace=namespace)
+        harmos_tools.build.resources.rust.context(root, [method for method in methods if method["face"] == "context"])
+        harmos_tools.build.resources.rust.host(root, [method for method in methods if method["face"] == "context"])
+    harmos_tools.build.resources.csharp.client(root, clients, namespace=namespace)
     if namespace == "harmos":
-        csharp_host(root, [method for method in methods if method["face"] == "context"])
-    cpp(root, clients, namespace=namespace)
+        harmos_tools.build.resources.csharp.host(root, [method for method in methods if method["face"] == "context"])
+    harmos_tools.build.resources.cpp.client(root, clients, namespace=namespace)
     if namespace == "harmos":
-        cpp_host(root, [method for method in methods if method["face"] == "context"])
+        harmos_tools.build.resources.cpp.host(root, [method for method in methods if method["face"] == "context"])
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
         for language, target, fixture_namespace in [
@@ -188,8 +166,10 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     paths = [path for path in paths if path.is_file()]
     if fixture.is_file():
         paths.extend([fixture.parent / "resources.rs", fixture.parent / "client_types.rs", fixture.parent / "plugin.rs"])
+    # Run the Native Command
+    command = ["rustfmt", "--edition", "2024", "--config-path", str(root / "sdk/rust/rustfmt.toml"), *map(str, paths)]
     subprocess.run(
-        ["rustfmt", "--edition", "2024", "--config-path", str(root / "sdk/rust/rustfmt.toml"), *map(str, paths)],
+        command,
         check=True,
         creationflags=spawn_flags(),
     )
@@ -206,15 +186,17 @@ def compose(
     check: bool = False,
 ) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
-        raise ValueError("Generate Client: Invalid Output Namespace")
+        raise ValueError("Generate Client: Invalid Output Namespace; Correct the composition inputs and rerun mise run generate")
     merged = FileDescriptorSet()
     files = {}
     libraries = []
     settings = {}
     if composition is not None:
-        settings = tomllib.loads(composition.read_text(encoding="utf-8"))
+        # Read Structured Input
+        text = composition.read_text(encoding="utf-8")
+        settings = tomllib.loads(text)
         if set(settings) - {"libraries", "callers"}:
-            raise ValueError("Compose SDK: Unknown Composition Fields")
+            raise ValueError("Compose SDK: Unknown Composition Fields; Correct the composition inputs and rerun mise run generate")
         libraries = [(composition.parent / library["descriptors"], library["packages"]) for library in settings.get("libraries", [])]
     else:
         libraries = [(repository / "crates/harmos-protocol/src/descriptors.bin", [])]
@@ -222,7 +204,9 @@ def compose(
         library = FileDescriptorSet.FromString(path.read_bytes())
         existing_packages = {file.package for file in library.file}
         if set(packages) - existing_packages:
-            raise ValueError("Compose SDK: Library Package Is Absent from Its Descriptors")
+            raise ValueError(
+                "Compose SDK: Library Package Is Absent from Its Descriptors; Correct the composition inputs and rerun mise run generate"
+            )
         for file in library.file:
             if (
                 packages
@@ -232,24 +216,26 @@ def compose(
                 continue
             file.ClearField("source_code_info")
             if file.name in files and files[file.name] != file:
-                raise ValueError(f"Generate Client: Conflicting Descriptor File {file.name}")
+                raise ValueError(
+                    f"Generate Client: Conflicting Descriptor File {file.name}; Correct the composition inputs and rerun mise run generate"
+                )
             files[file.name] = file
     merged.file.extend(files[name] for name in sorted(files))
     if settings.get("callers"):
         narrow_callers(merged, settings["callers"])
-    methods = table(merged)
+    methods = harmos_tools.build.resources.descriptor.table(merged)
     clients = [method for method in methods if method["face"] == "client"]
     contexts = [method for method in methods if method["face"] == "context"]
     if language == "python":
         packages = {file.package.split(".", 1)[0] for file in merged.file if not file.package.startswith(("harmos.", "google."))}
-        python(
+        harmos_tools.build.resources.python.client(
             output,
             clients,
             merged,
             module_prefixes={package: f"{namespace}._wire.{package}" for package in packages},
         )
         plugin = output.with_name("plugin.py")
-        python_host(
+        harmos_tools.build.resources.python.host(
             plugin,
             contexts,
             merged,
@@ -257,8 +243,8 @@ def compose(
             context_wrapper=True,
         )
     elif language == "csharp":
-        csharp(repository, clients, namespace=namespace, target=output, check=check)
-        csharp_host(
+        harmos_tools.build.resources.csharp.client(repository, clients, namespace=namespace, target=output, check=check)
+        harmos_tools.build.resources.csharp.host(
             repository,
             contexts,
             target=output.with_name("Plugin.g.cs"),
@@ -266,11 +252,11 @@ def compose(
             check=check,
         )
     elif language == "rust":
-        rust(repository, clients, target=output)
-        rust_host(repository, contexts, target=output.with_name("plugin.rs"))
+        harmos_tools.build.resources.rust.client(repository, clients, target=output)
+        harmos_tools.build.resources.rust.host(repository, contexts, target=output.with_name("plugin.rs"))
     elif language == "cpp":
-        cpp(repository, clients, namespace=namespace, target=output)
-        cpp_host(repository, contexts, target=output.with_name("plugin.hpp"), namespace=namespace)
+        harmos_tools.build.resources.cpp.client(repository, clients, namespace=namespace, target=output)
+        harmos_tools.build.resources.cpp.host(repository, contexts, target=output.with_name("plugin.hpp"), namespace=namespace)
     else:
         generate(output, merged, namespace=namespace)
 
@@ -288,8 +274,12 @@ def main() -> None:
     if options.cpp_fixture:
         fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
         library = root / "crates/harmos-protocol/src/descriptors.bin"
-        methods = table(FileDescriptorSet.FromString(library.read_bytes())) + table(FileDescriptorSet.FromString(fixture.read_bytes()))
-        cpp(root, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.cpp_fixture)
+        methods = harmos_tools.build.resources.descriptor.table(
+            FileDescriptorSet.FromString(library.read_bytes())
+        ) + harmos_tools.build.resources.descriptor.table(FileDescriptorSet.FromString(fixture.read_bytes()))
+        harmos_tools.build.resources.cpp.client(
+            root, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.cpp_fixture
+        )
     elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")

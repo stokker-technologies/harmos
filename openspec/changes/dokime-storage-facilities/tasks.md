@@ -1,5 +1,14 @@
 # Tasks
 
+## Current Ownership
+
+[operation-boundary](../operation-boundary/tasks.md) owns the typed facade over native storage operations, the narrowed runtime
+surface, storage operation gaps and centralized query aggregation. Existing native storage
+behavior and unperformed platform/consumer proof below remain owned here; old direct-manager
+adoption instructions are replaced by that facade, with no adapters or compatibility aliases.
+Product backend durability and product consumer migration are verified in the consuming
+product; library source inspection does not close those obligations.
+
 ## Implementation and Focused Proof
 
 - [x] 1.1 Lock the current producer, consumer, fixture and guidance inventory in design.md.
@@ -40,8 +49,8 @@
 - [x] 1.24 Reconcile storage and authoring guides with claim-free ownership and named temporary lifetimes; review README claims.
 - [x] 1.25 Run focused native Windows decimation, retained-write, opened/frozen capture, mutation, query, state-journal and schema/listener fixtures.
 - [x] 1.25.1 Verify retained appends and ordinary writes share queue_append capacity refresh and the retained-write capacity-wait fixture.
-- [ ] 1.26 Review deletion_preserves_other against intended backend-neutral semantics and consumer backends; confirm retained pre-deletion reads and fresh-read refusal with the owner.
-- [ ] 1.27 Verify the private temporary-source repair against the reported Windows Access-is-denied failure and preserve evidence if it remains unreproduced.
+- [ ] 1.26 Review the reported deletion_preserves_other failure against backend-neutral retained-cut semantics and product backends: existing readers keep their pre-deletion view, while fresh reads refuse the deleted data. Align with operation-grammar 3.10 and operation-boundary group 3; obtain owner resolution before any data-loss change. This task owns the reported regression; the replacing change must preserve it.
+- [ ] 1.27 Verify the private temporary-source repair against the reported intermittent Windows Access-is-denied failure in frozen/capture paths. Establish a deterministic owner/handle journey where possible, preserve unreproduced evidence and keep native Windows proof open; no retries, sleeps or relaxed assertions.
 - [x] 2.1 Run targeted native project-task compiler checks for the storage and request ownership changes.
 - [ ] 2.2 Build the combined agreed prototype and regenerate affected assets after all source handoffs.
 - [ ] 3.1 Complete native Linux/Windows final proof, publish the authorized upstream revision and verify paired adoption without local overrides before retirement.

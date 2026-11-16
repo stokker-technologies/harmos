@@ -55,6 +55,11 @@ impl StorageManager {
         }
         let fingerprint = hash.finalize().into();
         self.mutate_file(mutation, fingerprint, |state| {
+            if metadata.scope.as_ref().is_some_and(|scope| state.deleting_scope(scope)) {
+                return Err(Error::NotReady {
+                    domain: "file scope; wait for its accepted deletion to complete before creating a file",
+                });
+            }
             if !self.inner.primary.capabilities().file_sessions {
                 return Err(invalid("backend does not support resumable production"));
             }

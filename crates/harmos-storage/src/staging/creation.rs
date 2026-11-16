@@ -66,6 +66,11 @@ impl StorageManager {
                 .admit_when(|state| {
                     admission(state)?;
                     let candidate = metadata.as_ref().expect("unadmitted file metadata");
+                    if candidate.scope.as_ref().is_some_and(|scope| state.deleting_scope(scope)) {
+                        return Err(Error::NotReady {
+                            domain: "file scope; wait for its accepted deletion to complete before creating a file",
+                        });
+                    }
                     if state.files.values().any(|file| file.metadata.id == candidate.id) || state.deleting(&candidate.id) {
                         return Err(Error::AlreadyRegistered {
                             domain: "storage file",

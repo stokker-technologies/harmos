@@ -12,6 +12,7 @@
 
 /* === Modules === */
 
+mod compound;
 mod definitions;
 mod file_access;
 mod file_watches;
@@ -36,6 +37,8 @@ mod snapshot;
 
 /* === Re-Exports === */
 
+pub use compound::{DeleteObject, DeleteScope};
+
 pub use crate::execution::operations::NativeOutput;
 pub use requests::*;
 
@@ -49,6 +52,7 @@ pub use handlers::{
 
 pub use snapshot::SavedSnapshots;
 
+pub use compound::Mutate;
 pub use delete_file::DeleteFile;
 pub use get_schema::GetSchema;
 pub use info::Info;
@@ -124,15 +128,15 @@ fn classify(error: &crate::Error) -> harmos_operations::operations::FailureKind 
 mod tests {
     use super::classify;
     use harmos_operations::operations::FailureKind;
-    use harmos_storage::{BackendFailure, Error as StorageError};
+    use harmos_storage::{self, BackendFailure};
 
     #[test]
     fn persistence_preserves_failure_kind() {
         for (backend, expected) in
             [(BackendFailure::Transient, FailureKind::Transient), (BackendFailure::Permanent, FailureKind::Permanent)]
         {
-            let source = StorageError::backend("write", backend, std::io::Error::other("backend failed"));
-            let error = StorageError::Persistence { source: std::sync::Arc::new(source) };
+            let source = harmos_storage::Error::backend("write", backend, std::io::Error::other("backend failed"));
+            let error = harmos_storage::Error::Persistence { source: std::sync::Arc::new(source) };
             assert_eq!(classify(&crate::Error::Storage(error)), expected);
         }
     }

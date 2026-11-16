@@ -20,8 +20,10 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
 # Local Imports
-from ...process import spawn_flags
-from .descriptors import Field, Method, payload_audiences, table
+from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, table
+from harmos_tools.process import spawn_flags
+
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -36,7 +38,7 @@ from .descriptors import Field, Method, payload_audiences, table
 # === Public Functions === #
 
 
-def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
+def exports(target: Path, descriptors: FileDescriptorSet) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
     methods = table(descriptors)
     audiences = payload_audiences(descriptors)
@@ -165,7 +167,7 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
     )
 
 
-def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
+def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
     """Generate Content Arguments and Exactly-One-Field Response Projection."""
     selected: list[Method] = []
     for method in methods:
@@ -179,13 +181,19 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
     for method in methods:
         path = tuple(method["path"])
         if method["face"] != "client" or path in leaves:
-            raise ValueError(f"Generate Python Client {'.'.join(path)}: Invalid or Duplicate Resource")
+            raise ValueError(
+                f"Generate Python Client {'.'.join(path)}: Invalid or Duplicate Resource; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         leaves.add(path)
         if method["client_streaming"]:
-            raise ValueError(f"Generate Python Client {method['method']}: Client Streaming Requires a Managed Contract")
+            raise ValueError(
+                f"Generate Python Client {method['method']}: Client Streaming Requires a Managed Contract; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
     if leaves & nodes:
-        raise ValueError("Generate Python Client: Resource Collides With a Method")
+        raise ValueError(
+            "Generate Python Client: Resource Collides With a Method; Correct the source protocol declarations or explicit public exports before regenerating"
+        )
     composed = any(method["owner"] != "harmos" for method in methods)
     composed_package = composed and target.parent.name == "_generated"
     root_name = "Client" if composed_package else "ClientRoot"
@@ -378,7 +386,7 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
     )
 
 
-def python_host(
+def host(
     target: Path,
     methods: list[Method],
     descriptors: FileDescriptorSet,

@@ -2,6 +2,24 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
+The locked `operation-boundary` direction moves product calls to a typed Rust facade:
+`runtime.for_call(&ctx).storage().append_samples(..)` and
+`runtime.for_call(&ctx).plugins().load(PluginSource::Process(..))`. Each method uses
+the registered native operation policy. The builder owns managers and accepts the
+backends, catalog and settings; backend-authoring contracts stay public. Storage-only
+assembly supports prerequisite writes and maintenance without listeners or plugins.
+Products declare wrappers for remote surfaces. The plugin protocol and all four plugin
+SDKs, generation, Wasm guests and conformance remain; host-client resource roots are
+removed in the breaking group. These are agreed contracts with implementation pending;
+existing examples below migrate with their owning task groups. Completed groups and
+product pins are recorded in `openspec/changes/operation-boundary/tasks.md`.
+
+Compound atomic mutation is available through the native `storage.mutate` operation:
+ordered conditional object writes, deletion and record appends share a backend commit
+and replayable durable receipt. See [Compound Atomic Mutation](storage.md#compound-atomic-mutation)
+for requests, conflict handling and backend authoring. The remaining boundary work is
+tracked separately; this additive group does not remove existing callers.
+
 Embedded language bindings can stage runtime-owned unary operations with
 `operations::EncodedBinding::new(contract, decoding_memory, prepare)` and
 `Bindings::encoded(binding, lane)`. `Contract::from_schema` derives the canonical

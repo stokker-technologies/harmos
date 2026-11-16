@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::any::type_name;
 
 // Third Party Imports
 
@@ -37,6 +38,37 @@ use super::*;
 /* === Implementations === */
 
 impl Backend {
+    fn retain_snapshot(&self, image: Arc<Snapshot>) -> BackendSnapshot {
+        let token =
+            format!("{}:{}:{}", type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst)).into_bytes();
+        let snapshot = BackendSnapshot { at: image.at.clone(), token };
+        self.snapshots.lock().unwrap().insert(snapshot.token.clone(), image);
+        snapshot
+    }
+
+    pub fn retained_file_bytes(&self) -> usize {
+        let _transaction = self.conditional.lock().unwrap();
+        let current = self.blobs.lock().unwrap().values().map(|(_, bytes)| bytes.len()).sum::<usize>();
+        let mut images = BTreeSet::new();
+        let retained = self
+            .snapshots
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|snapshot| images.insert(Arc::as_ptr(snapshot)))
+            .flat_map(|snapshot| snapshot.blobs.values())
+            .map(|(_, bytes)| bytes.len())
+            .sum::<usize>();
+        current.saturating_add(retained)
+    }
+
+    pub(super) fn reclaim_scoped_projections(&self) {
+        let floor = self.scoped_floor.load(Ordering::SeqCst) as u64;
+        if floor > 0 && self.snapshots.lock().unwrap().values().all(|snapshot| snapshot.at.sequence >= floor) {
+            self.projections.lock().unwrap().reclaim_through(floor - 1);
+        }
+    }
+
     #[allow(dead_code, reason = "Shared fixture also compiles in runtime stories without native snapshot reads.")]
     pub async fn snapshots_released(&self) {
         loop {
@@ -55,15 +87,30 @@ impl Backend {
                 self.control.view_release.notified().await;
             }
             self.history.check(&at.history)?;
+            let conditional = self.conditional.lock().unwrap();
+
             if at.sequence > self.saved.load(Ordering::SeqCst) as u64 {
                 return Err(Error::NotReady { domain: "requested storage cut" });
             }
-            let lost_objects_through = self.control.lost_objects_through.load(Ordering::SeqCst) as u64;
+            let lost_objects_through =
+                (self.control.lost_objects_through.load(Ordering::SeqCst) as u64).max(self.scoped_floor.load(Ordering::SeqCst) as u64);
+            if at.sequence < self.scoped_floor.load(Ordering::SeqCst) as u64 {
+                let retained = self.snapshots.lock().unwrap().values().find(|image| image.at == *at).cloned();
+                if let Some(image) = retained {
+                    return Ok(self.retain_snapshot(image));
+                }
+            }
             // Pruned Revisions No Longer Reconstruct An Older Image.
             if at.sequence < lost_objects_through {
                 return Err(Error::Gap {
                     requested: at.sequence,
                     available: lost_objects_through,
+                });
+            }
+            if conditional.compound_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
+                return Err(Error::InvalidInput {
+                    field: "storage cut",
+                    reason: "select a complete compound receipt frontier",
                 });
             }
             let records = self.records.lock().unwrap();
@@ -77,16 +124,15 @@ impl Backend {
                 blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
                 objects: self.objects.lock().unwrap().clone(),
+                deleted_objects: self.deleted_objects.lock().unwrap().clone(),
                 files: self.files.lock().unwrap().clone(),
                 schemas: self.schemas.lock().unwrap().clone(),
                 records: retained,
                 rows: self.rows.lock().unwrap().clone(),
             };
-            let token =
-                format!("{}:{}:{}", std::any::type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst))
-                    .into_bytes();
-            self.snapshots.lock().unwrap().insert(token.clone(), Arc::new(snapshot));
-            Ok(BackendSnapshot { at: at.clone(), token })
+            let snapshot = self.retain_snapshot(Arc::new(snapshot));
+            drop(conditional);
+            Ok(snapshot)
         })
     }
 
@@ -100,7 +146,9 @@ impl Backend {
             if self.control.fail_release.load(Ordering::SeqCst) {
                 return Err(failure(BackendFailure::Permanent));
             }
+            let _transaction = self.conditional.lock().unwrap();
             self.snapshots.lock().unwrap().remove(&snapshot.token);
+            self.reclaim_scoped_projections();
             self.control.releases_completed.fetch_add(1, Ordering::SeqCst);
             self.control.release_completed.notify_waiters();
             Ok(())
@@ -144,6 +192,12 @@ impl Backend {
             let selected = |object: &ObjectEntry| {
                 selection.schema.as_ref().is_none_or(|schema| schema == &object.value.schema)
                     && selection.key.as_ref().is_none_or(|item| item == &object.value.item)
+                    && !image.deleted_objects.iter().any(|(position, (schema, item))| {
+                        *position <= snapshot.at.sequence
+                            && *position > object.position.sequence
+                            && schema == &object.value.schema.id
+                            && item == &object.value.item
+                    })
             };
             // Latest Keeps Each Selected Key's Newest Revision At The Snapshot.
             let latest = (selection.versions == ObjectVersions::Latest).then(|| {
@@ -261,6 +315,12 @@ impl Backend {
                 object.position.sequence <= snapshot.at.sequence
                     && object.value.schema.id == query.schema
                     && object.value.item == query.item
+                    && !image.deleted_objects.iter().any(|(position, (schema, item))| {
+                        *position <= snapshot.at.sequence
+                            && *position > object.position.sequence
+                            && schema == &query.schema
+                            && item == &query.item
+                    })
                     && match &query.version {
                         ObjectVersion::Latest => true,
                         ObjectVersion::Exact(version) => version == &object.version,

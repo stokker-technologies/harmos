@@ -33,8 +33,10 @@ from ..process import spawn_flags
 
 
 def files(directory: Path, *patterns: str) -> list[str]:
+    # Run the Native Command
+    command = ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns]
     listing = subprocess.run(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns],
+        command,
         cwd=directory,
         check=True,
         capture_output=True,

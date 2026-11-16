@@ -91,6 +91,9 @@ impl StorageManager {
                             }
                             Ok(ReceiptState::Pending) => {
                                 if let Some(sequence) = state.queue.iter().find_map(|entry| match &entry.operation {
+                                    Operation::Compound(exchange) if &exchange.mutation().mutation == mutation.id => {
+                                        Some(exchange.position.sequence)
+                                    }
                                     Operation::SetSchema(exchange) if &exchange.mutation().mutation == mutation.id => {
                                         Some(exchange.value.position.sequence)
                                     }
@@ -162,7 +165,7 @@ impl StorageManager {
             }
             let bytes = match &operation {
                 Operation::ObjectGroup { bytes: retained, .. } => *retained,
-                Operation::Conditional(_) => encoded_bound,
+                Operation::Conditional(_) | Operation::Compound(_) => encoded_bound,
                 _ => bytes,
             };
             tracing::Span::current().record("sequence", last);
@@ -178,10 +181,24 @@ impl StorageManager {
                 if let Some(source) = &state.status.failure {
                     return Err(Error::Persistence { source: source.clone() });
                 }
+                if let Operation::Compound(exchange) = &pending.operation
+                    && let [crate::CompoundWrite::Scope { scope, .. }] = exchange.items.as_slice()
+                    && state.files.values().any(|file| file.belongs_to_scope(scope))
+                {
+                    return Err(Error::InvalidInput {
+                        field: "scope deletion",
+                        reason: "finish or abandon active file productions and await their cleanup before deleting their scope",
+                    });
+                }
                 if let Some(mutation) = mutation {
                     let outcome = MutationValue::Cursor(self.position(last));
                     state.receipts.insert(mutation.id, mutation.fingerprint)?;
-                    if let Operation::SetSchema(exchange) = &pending.operation {
+                    if let Operation::Compound(exchange) = &pending.operation {
+                        exchange.header.set(state.receipts.header(mutation.id)).map_err(|_| Error::InvalidInput {
+                            field: "compound mutation",
+                            reason: "mutation already published; use a new identity",
+                        })?;
+                    } else if let Operation::SetSchema(exchange) = &pending.operation {
                         exchange.header.set(state.receipts.header(mutation.id)).map_err(|_| Error::InvalidInput {
                             field: "SetSchema",
                             reason: "mutation already published",

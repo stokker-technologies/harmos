@@ -9,11 +9,15 @@
 
 // Continue Private Native Lists at Their Issued Composite Cuts
 
+/* === Modules === */
+
+mod compound_mutation_through_operations;
+
 /* === Imports === */
 
 use super::{Fixture, config};
 use harmos_domain::Message;
-use harmos_operations::storage as operations;
+use harmos_operations::storage;
 use harmos_operations::storage::{ColumnSelection, IndexSelection, ProjectionSelection};
 use harmos_protocol::model;
 use harmos_query::columnar::ColumnKind;
@@ -84,7 +88,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         page_token: String::new(),
     };
     fixture.data.control.record_page_rows.store(1, Ordering::Relaxed);
-    let mut request = operations::ListColumnRowsRequest {
+    let mut request = storage::ListColumnRowsRequest {
         selection: Some(ColumnSelection {
             source: Some(source.clone()),
             columns: vec!["payload.value".into()],
@@ -100,7 +104,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         at: None,
         page: Some(page.clone()),
     };
-    let first = fixture.runtime.operations.call_native::<operations::ListColumnRows>(request.clone()).await.unwrap();
+    let first = fixture.runtime.operations.call_native::<storage::ListColumnRows>(request.clone()).await.unwrap();
     let decoded = first.page.unwrap().batch;
     assert_eq!(decoded.num_rows(), 0);
     assert!(!first.next_page_token.is_empty());
@@ -108,16 +112,16 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     request.page.as_mut().unwrap().page_token = first.next_page_token;
     let mut changed = request.clone();
     changed.selection.as_mut().unwrap().columns = vec!["_storage.item".into()];
-    assert!(fixture.runtime.operations.call_native::<operations::ListColumnRows>(changed).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListColumnRows>(changed).await.is_err());
     let mut tampered = request.clone();
     tampered.page.as_mut().unwrap().page_token.push('0');
-    assert!(fixture.runtime.operations.call_native::<operations::ListColumnRows>(tampered).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListColumnRows>(tampered).await.is_err());
     let mut values = vec![];
     loop {
         let response = fixture
             .runtime
             .operations
-            .call_native::<operations::ListColumnRows>(operations::ListColumnRowsRequest {
+            .call_native::<storage::ListColumnRows>(storage::ListColumnRowsRequest {
                 selection: request.selection.clone(),
                 at: request.at.clone(),
                 page: request.page.clone(),
@@ -151,7 +155,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     let created = fixture
         .runtime
         .operations
-        .call_native::<operations::SetIndexDefinition>(operations::SetIndexDefinitionRequest {
+        .call_native::<storage::SetIndexDefinition>(storage::SetIndexDefinitionRequest {
             definition: Some(definition.clone()),
             expected_revision: vec![],
             create_if_absent: true,
@@ -161,7 +165,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         })
         .await
         .unwrap();
-    let mut index_request = operations::ListIndexEntriesRequest {
+    let mut index_request = storage::ListIndexEntriesRequest {
         selection: Some(IndexSelection {
             name: "ordered".into(),
             work: Some(work),
@@ -174,7 +178,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         at: None,
         page: Some(page.clone()),
     };
-    let indexed = fixture.runtime.operations.call_native::<operations::ListIndexEntries>(index_request.clone()).await.unwrap();
+    let indexed = fixture.runtime.operations.call_native::<storage::ListIndexEntries>(index_request.clone()).await.unwrap();
     assert_eq!(indexed.page.unwrap().entries.len(), 1);
     assert!(!indexed.next_page_token.is_empty());
     index_request.at = indexed.resolved_at;
@@ -182,7 +186,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     let next = fixture
         .runtime
         .operations
-        .call_native::<operations::ListIndexEntries>(operations::ListIndexEntriesRequest {
+        .call_native::<storage::ListIndexEntries>(storage::ListIndexEntriesRequest {
             selection: index_request.selection.clone(),
             source: index_request.source.clone(),
             at: index_request.at.clone(),
@@ -196,7 +200,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     fixture
         .runtime
         .operations
-        .call_native::<operations::SetIndexDefinition>(operations::SetIndexDefinitionRequest {
+        .call_native::<storage::SetIndexDefinition>(storage::SetIndexDefinitionRequest {
             definition: Some(rebuilt),
             expected_revision: created.revision,
             create_if_absent: false,
@@ -207,12 +211,12 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         .await
         .unwrap();
     let old_index_cut = index_request.at.clone();
-    assert!(fixture.runtime.operations.call_native::<operations::ListIndexEntries>(index_request).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListIndexEntries>(index_request).await.is_err());
     assert!(
         fixture
             .runtime
             .operations
-            .call_native::<operations::GetIndexDefinition>(operations::GetIndexDefinitionRequest {
+            .call_native::<storage::GetIndexDefinition>(storage::GetIndexDefinitionRequest {
                 name: "ordered".into(),
                 source: Some(source.clone()),
                 at: old_index_cut,
@@ -229,7 +233,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     let created = fixture
         .runtime
         .operations
-        .call_native::<operations::SetProjectionDefinition>(operations::SetProjectionDefinitionRequest {
+        .call_native::<storage::SetProjectionDefinition>(storage::SetProjectionDefinitionRequest {
             definition: Some(definition),
             expected_revision: vec![],
             create_if_absent: true,
@@ -239,11 +243,11 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         .await
         .unwrap();
     let lease =
-        fixture.runtime.operations.call_native::<operations::CreateSnapshot>(operations::CreateSnapshotRequest { at: None }).await.unwrap();
+        fixture.runtime.operations.call_native::<storage::CreateSnapshot>(storage::CreateSnapshotRequest { at: None }).await.unwrap();
     let projected = fixture
         .runtime
         .operations
-        .call_native::<operations::AdvanceProjection>(operations::AdvanceProjectionRequest {
+        .call_native::<storage::AdvanceProjection>(storage::AdvanceProjectionRequest {
             snapshot: lease.snapshot.clone(),
             source: Some(source.clone()),
             name: "projected".into(),
@@ -251,7 +255,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         })
         .await
         .unwrap();
-    let mut request = operations::ListProjectionRowsRequest {
+    let mut request = storage::ListProjectionRowsRequest {
         selection: Some(ProjectionSelection {
             name: "projected".into(),
             revision: created.revision,
@@ -262,14 +266,14 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         at: projected.resolved_at.clone(),
         page: Some(page),
     };
-    let first = fixture.runtime.operations.call_native::<operations::ListProjectionRows>(request.clone()).await.unwrap();
+    let first = fixture.runtime.operations.call_native::<storage::ListProjectionRows>(request.clone()).await.unwrap();
     assert_eq!(first.resolved_at, projected.resolved_at);
     assert!(!first.next_page_token.is_empty());
     request.page.as_mut().unwrap().page_token = first.next_page_token;
     let next = fixture
         .runtime
         .operations
-        .call_native::<operations::ListProjectionRows>(operations::ListProjectionRowsRequest {
+        .call_native::<storage::ListProjectionRows>(storage::ListProjectionRowsRequest {
             selection: request.selection,
             source: request.source,
             at: request.at.clone(),
@@ -282,7 +286,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     fixture
         .runtime
         .operations
-        .call_native::<operations::DeleteSnapshot>(operations::DeleteSnapshotRequest { snapshot: lease.snapshot })
+        .call_native::<storage::DeleteSnapshot>(storage::DeleteSnapshotRequest { snapshot: lease.snapshot })
         .await
         .unwrap();
     fixture.finish().await;

@@ -19,7 +19,9 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
 # Local Imports
-from .descriptors import Field, Method, payload_audiences, snake, table
+from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, snake, table
+
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -34,7 +36,7 @@ from .descriptors import Field, Method, payload_audiences, snake, table
 # === Public Functions === #
 
 
-def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
+def exports(root: Path, descriptors: FileDescriptorSet) -> None:
     requests = {method["request"] for method in table(descriptors)}
     audiences = payload_audiences(descriptors)
     groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
@@ -46,7 +48,7 @@ def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
             if full in requests or definition.name in {"Request", "Response"} or definition.name.startswith("Child"):
                 continue
             source = (
-                rust_message(full)
+                message_type(full)
                 .replace("harmos_protocol::model", "crate::wire::shared")
                 .replace("harmos_protocol::host", "crate::wire::host")
             )
@@ -71,7 +73,7 @@ def rust_exports(root: Path, descriptors: FileDescriptorSet) -> None:
         )
 
 
-def rust_message(full: str) -> str:
+def message_type(full: str) -> str:
     for package, module in [("harmos.host.v1.", "host"), ("harmos.plugin.v1.", "plugin"), ("harmos.model.v1.", "model")]:
         if full.startswith(package):
             return f"harmos_protocol::{module}::" + "::".join(full.removeprefix(package).split("."))
@@ -82,7 +84,7 @@ def rust_message(full: str) -> str:
     return snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parts[version + 1 :]])
 
 
-def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
+def client(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
     selected: list[Method] = []
     for method in methods:
         method = method.copy()
@@ -106,7 +108,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
     duplicates = reserved | {name for name in message_names.values() if list(message_names.values()).count(name) > 1}
     for full in used:
         if message_names[full] in duplicates:
-            message_names[full] = rust_message(full)
+            message_names[full] = message_type(full)
 
     def field_type(field: Field) -> str:
         value = (
@@ -136,7 +138,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         "use tonic::codegen::http::uri::PathAndQuery;",
     ]
     lines += [
-        f"use {rust_message(full)};" for full in sorted(used) if message_names[full] not in duplicates and "::" not in message_names[full]
+        f"use {message_type(full)};" for full in sorted(used) if message_names[full] not in duplicates and "::" not in message_names[full]
     ]
 
     for method in methods:
@@ -158,7 +160,9 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         lines += ["        }", "    }"]
         for method in operations:
             if method["client_streaming"]:
-                raise ValueError(f"Generate Rust Client {method['method']}: Managed Contract Required")
+                raise ValueError(
+                    f"Generate Rust Client {method['method']}: Managed Contract Required; Correct the source protocol declarations or explicit public exports before regenerating"
+                )
             request, response = (message_names[method[key]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             parameters = [
@@ -234,7 +238,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
     if target is not None:
         exports = sorted({method["response"] for method in methods if method["owner"] != "harmos"})
         facade = ["// @generated from protocol descriptors; do not edit."]
-        facade += [f"pub use {re.sub(r'^\w+_protocol::(?:host|plugin|model)', 'crate::wire', rust_message(name))};" for name in exports]
+        facade += [f"pub use {re.sub(r'^\w+_protocol::(?:host|plugin|model)', 'crate::wire', message_type(name))};" for name in exports]
         (target.parent / "client_types.rs").write_text("\n".join(facade) + "\n", encoding="utf-8", newline="\n")
     if target is None:
         exports = [*names.values(), *("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)]
@@ -247,7 +251,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         )
 
 
-def rust_context(root: Path, methods: list[Method]) -> None:
+def context(root: Path, methods: list[Method]) -> None:
     lines = ["// @generated from the protocol descriptor table; do not edit.", "use crate::{Message, OperationRequest};"]
     messages = sorted(
         {method[field] for method in methods for field in ("request", "response")}
@@ -255,7 +259,7 @@ def rust_context(root: Path, methods: list[Method]) -> None:
     )
 
     lines += ["use prost_types::FileDescriptorSet;"]
-    lines += [f"use {rust_message(message)};" for message in messages]
+    lines += [f"use {message_type(message)};" for message in messages]
 
     for message in messages:
         lines += [
@@ -278,7 +282,7 @@ def rust_context(root: Path, methods: list[Method]) -> None:
     (root / "sdk/rust/src/context/contracts.rs").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def rust_host(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
+def host(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
@@ -304,7 +308,7 @@ def rust_host(root: Path, methods: list[Method], *, target: Path | None = None) 
         "use crate::{Context, Error, Result, Plugin, OperationPolicy};",
         "use std::num::NonZeroUsize;",
     ]
-    lines += [f"use {rust_message(full)};" for full in sorted(used)]
+    lines += [f"use {message_type(full)};" for full in sorted(used)]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
     lines += ["}", "impl Plugin {", "    pub fn requires_host(self, operation: HostOperation) -> Self {", "        match operation {"]

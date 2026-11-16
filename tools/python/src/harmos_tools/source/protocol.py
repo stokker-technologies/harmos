@@ -14,7 +14,6 @@
 # Standard Library Imports
 import ast
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,7 +27,6 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 from ..process import spawn_flags
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -55,11 +53,17 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
     for identity, selected in overrides.items():
         original = declared.get(identity)
         if original is None or selected not in audiences or not audiences[selected] <= audiences[original]:
-            raise ValueError(f"Narrow {identity}: Callers Must Be a Subset of the Declaration")
+            raise ValueError(
+                f"Narrow {identity}: Callers Must Be a Subset of the Declaration; "
+                "Correct the source protocol declarations or explicit public exports before regenerating"
+            )
     # The Extension Number and Its Definition Are Owned by the Descriptor, Not This Tool.
     extension = pool.FindExtensionByName("harmos.model.v1.callers")
     if extension.enum_type is None:
-        raise ValueError("Protocol Callers: Option Must Be an Enum")
+        raise ValueError(
+            "Protocol Callers: Option Must Be an Enum; "
+            "Correct the source protocol declarations or explicit public exports before regenerating"
+        )
     options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
     for file in descriptors.file:
         for service in file.service:
@@ -74,14 +78,17 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
 
 def main() -> None:
     check_public_surfaces(Path(__file__).resolve().parents[5])
-    scratch = Path(tempfile.mkdtemp())
+    scratch_directory = tempfile.TemporaryDirectory()
+    scratch = scratch_directory.name
     try:
-        output = scratch / "descriptors.bin"
-        subprocess.run(["buf", "build", "--as-file-descriptor-set", "-o", str(output)], check=True, creationflags=spawn_flags())
+        output = Path(scratch) / "descriptors.bin"
+        # Run the Native Command
+        command = ["buf", "build", "--as-file-descriptor-set", "-o", str(output)]
+        subprocess.run(command, check=True, creationflags=spawn_flags())
         methods = caller_options(FileDescriptorSet.FromString(output.read_bytes()))
         print(f"Protocol Callers: {len(methods)} Annotated Operations")
     finally:
-        shutil.rmtree(scratch)
+        scratch_directory.cleanup()
 
 
 def check_public_surfaces(root: Path) -> None:
@@ -126,10 +133,14 @@ def check_public_surfaces(root: Path) -> None:
             ):
                 continue
             if not isinstance(node.value, (ast.List, ast.Tuple)):
-                raise ValueError(f"Check Public Exports: {path} Must Declare Its Names Explicitly")
+                raise ValueError(
+                    f"Check Public Exports: {path} Must Declare Its Names Explicitly; Correct the source protocol declarations or explicit public exports before regenerating"
+                )
             for item in node.value.elts:
                 if not isinstance(item, ast.Constant) or not isinstance(item.value, str):
-                    raise ValueError(f"Check Public Exports: {path} Must Declare String Names")
+                    raise ValueError(
+                        f"Check Public Exports: {path} Must Declare String Names; Correct the source protocol declarations or explicit public exports before regenerating"
+                    )
                 if item.value in exports:
                     findings.append(f"{path.relative_to(root)}: Duplicate Public Export {item.value}")
                 exports[item.value] = path
@@ -142,7 +153,10 @@ def check_public_surfaces(root: Path) -> None:
             if re.search(r"\bpub\s+mod\s+(?:wire|v\d+)\b", line):
                 findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")
     if findings:
-        raise ValueError("Check Public Surfaces:\n" + "\n".join(findings))
+        raise ValueError(
+            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating\n"
+            + "\n".join(findings)
+        )
     print("Public Surfaces: Headers, Stubs, Exports and Guides Passed")
 
 
@@ -165,9 +179,13 @@ def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.Descript
         extension = pool.FindExtensionByName("harmos.model.v1.callers")
     except KeyError as error:
         identity = methods[0][0]
-        raise ValueError(f"Protocol Callers: {identity} Has No Callers Declaration") from error
+        raise ValueError(
+            f"Protocol Callers: {identity} Has No Callers Declaration; Correct the source protocol declarations or explicit public exports before regenerating"
+        ) from error
     if extension.enum_type is None:
-        raise ValueError("Protocol Callers: Option Must Be an Enum")
+        raise ValueError(
+            "Protocol Callers: Option Must Be an Enum; Correct the source protocol declarations or explicit public exports before regenerating"
+        )
     options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
 
     result = {}
@@ -176,11 +194,15 @@ def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.Descript
         value = options.Extensions[extension]
         allowed = extension.enum_type.values_by_number.get(value)
         if allowed is None:
-            raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
+            raise ValueError(
+                f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         declared = options.HasExtension(extension)
         valid = allowed.name in {"CLIENTS", "PLUGINS", "ALL"}
         if not declared or not valid:
-            raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
+            raise ValueError(
+                f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         result[identity] = allowed.name
     return result
 
@@ -192,7 +214,9 @@ def _descriptor_inventory(descriptors: FileDescriptorSet) -> descriptor_pool.Des
     while pending:
         ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
         if not ready:
-            raise ValueError("Protocol Callers: Supply Resolvable Descriptor Dependencies")
+            raise ValueError(
+                "Protocol Callers: Supply Resolvable Descriptor Dependencies; Correct the source protocol declarations or explicit public exports before regenerating"
+            )
         for file in ready:
             pool.AddSerializedFile(file.SerializeToString())
             del pending[file.name]

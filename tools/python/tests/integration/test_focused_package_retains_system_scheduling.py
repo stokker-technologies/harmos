@@ -36,7 +36,9 @@ from harmos_tools.test import focused, policy
 
 class TestSelection(unittest.TestCase):
     def test_package_runs_system_serially_and_propagates_failure(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary)
             targets = [{"kind": ["test"], "name": name} for name in ("integration", "system")]
             metadata = {"packages": [{"name": "model", "targets": targets}]}
@@ -80,6 +82,8 @@ class TestSelection(unittest.TestCase):
             with patch.object(focused.policy, "load", return_value=rules), patch.object(focused.subprocess, "run", side_effect=empty):
                 with self.assertRaises(policy.TestError):
                     focused.run(directory, package="model")
+        finally:
+            temporary_directory.cleanup()
 
 
 # === Public Functions === #
