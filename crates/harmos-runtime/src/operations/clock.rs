@@ -51,31 +51,32 @@ pub(crate) struct Clock(pub(crate) clock::Clock);
 /// One Call's Unit Clock; Admission Registers the Call's Declared Wait Before Middleware Runs.
 pub(crate) struct Registered {
     clock: clock::Clock,
-    ticks: Option<Arc<Ticks>>,
+    windows: Option<Arc<Windows>>,
     timer: Mutex<Option<(Duration, Instant, Sleep)>>,
 }
 
 pub(crate) struct Unit {
     pub(crate) clock: clock::Clock,
     pending: Mutex<Option<Vec<Weak<Instance>>>>,
-    pub(crate) ticks: Arc<Ticks>,
+    pub(crate) windows: Arc<Windows>,
 }
 
-/// The Next Unanswered Tick of Each Interval Demand in One Unit.
+/// The Next Ungranted Sample of Each Interval Demand in One Unit, and the Latest Requested Cut.
 #[derive(Default)]
-pub(crate) struct Ticks {
+pub(crate) struct Windows {
     due: watch::Sender<BTreeMap<u64, Instant>>,
+    cut: watch::Sender<Option<Instant>>,
     next: AtomicU64,
 }
 
-/// One Demand's Place in Its Unit's Tick Schedule; Dropping It Leaves the Schedule.
+/// One Demand's Place in Its Unit's Window Schedule; Dropping It Leaves the Schedule.
 pub(crate) struct Schedule {
-    ticks: Arc<Ticks>,
+    windows: Arc<Windows>,
     id: u64,
 }
 
-/// Marks a Sample Tick's Call Tree, Whose Sleeps Its Own Tick Cannot Wait For.
-pub(crate) struct TickCall;
+/// Marks a Window's Call Tree, Whose Waits Its Own Window Cannot Settle Before.
+pub(crate) struct WindowCall;
 
 /* === Enums === */
 
@@ -88,7 +89,7 @@ impl Unit {
         Self {
             clock,
             pending: Mutex::new(Some(Vec::new())),
-            ticks: Arc::default(),
+            windows: Arc::default(),
         }
     }
 
@@ -112,43 +113,50 @@ impl Unit {
     }
 }
 
-impl Ticks {
+impl Windows {
     pub(crate) fn schedule(self: &Arc<Self>, due: Instant) -> Schedule {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        self.due.send_modify(|ticks| {
-            ticks.insert(id, due);
+        self.due.send_modify(|windows| {
+            windows.insert(id, due);
         });
-        Schedule { ticks: self.clone(), id }
+        Schedule { windows: self.clone(), id }
     }
 
-    /// Resolve Once Every Tick Due at or Before `at` Has Been Answered and Its Sample Committed.
-    async fn answered_through(&self, at: Instant) {
+    /// Ask Every Demand to Grant Through `at`, Then Resolve Once Each Has Committed Every Sample Due by Then.
+    async fn committed_through(&self, at: Instant) {
+        self.cut.send_modify(|cut| *cut = Some(cut.map_or(at, |cut| cut.max(at))));
         let mut due = self.due.subscribe();
-        let _ = due.wait_for(|ticks| ticks.values().all(|next| *next > at)).await;
+        let _ = due.wait_for(|windows| windows.values().all(|next| *next > at)).await;
     }
 }
 
 impl Schedule {
-    /// Record the Demand's Next Unanswered Tick After Its Previous Sample Committed.
+    /// Record the Demand's Next Ungranted Sample After Its Previous Window Committed.
     pub(crate) fn due(&self, next: Instant) {
-        self.ticks.due.send_modify(|ticks| {
-            ticks.insert(self.id, next);
+        self.windows.due.send_modify(|windows| {
+            windows.insert(self.id, next);
         });
+    }
+
+    /// Resolve When a Scoped Wait Asks for the Windows Due at or After `next`.
+    pub(crate) async fn cut(&self, next: Instant) {
+        let mut cut = self.windows.cut.subscribe();
+        let _ = cut.wait_for(|cut| cut.is_some_and(|cut| cut >= next)).await;
     }
 }
 
 impl Drop for Schedule {
     fn drop(&mut self) {
-        self.ticks.due.send_modify(|ticks| {
-            ticks.remove(&self.id);
+        self.windows.due.send_modify(|windows| {
+            windows.remove(&self.id);
         });
     }
 }
 
 impl Registered {
-    /// A Call Outside Its Unit's Sample Ticks Orders Its Sleeps After the Ticks They Span.
-    pub(crate) fn new(clock: clock::Clock, ticks: Option<Arc<Ticks>>) -> Self {
-        Self { clock, ticks, timer: Mutex::new(None) }
+    /// A Call Outside Its Unit's Windows Orders Its Sleeps After the Windows They Span.
+    pub(crate) fn new(clock: clock::Clock, windows: Option<Arc<Windows>>) -> Self {
+        Self { clock, windows, timer: Mutex::new(None) }
     }
 }
 
@@ -173,12 +181,12 @@ impl OperationClock for Registered {
                 (deadline, self.clock.sleep_until(deadline))
             }
         };
-        // A Sleep Ending at `deadline` Settles After Every Unit Tick Due by Then Has Committed.
-        let ticks = self.ticks.clone();
+        // A Sleep Ending at `deadline` Settles After Every Unit Sample Due by Then Has Committed.
+        let windows = self.windows.clone();
         Box::pin(clock::waiting(async move {
             timer.await;
-            if let Some(ticks) = ticks {
-                ticks.answered_through(deadline).await;
+            if let Some(windows) = windows {
+                windows.committed_through(deadline).await;
             }
         }))
     }

@@ -260,7 +260,9 @@ impl<W: Send + 'static, E: Encode<W>> tonic::codec::Encoder for Encoder<W, E> {
     type Error = Status;
     fn encode(&mut self, item: E, destination: &mut EncodeBuf<'_>) -> Result<(), Status> {
         destination.put_slice(self.message(&item)?);
-        Ok(())
+        // Release the Scratch Buffer and Its Preparation Claim: an Idle Encoder Retains Nothing.
+        self.scratch = Vec::new();
+        retain(&self.preparation, &mut self.claim, 0)
     }
 
     fn buffer_settings(&self) -> BufferSettings {

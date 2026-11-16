@@ -38,6 +38,9 @@ pub struct PlacementSettings {
     pub stop_grace: Duration,
     /// Maximum Retained Rows per Stream; The Consumer Owns This Budget.
     pub stream_window: std::num::NonZeroUsize,
+    /// Interval Window Length: Longer Windows Batch More Samples per Message, Shorter Ones Deliver Sooner.
+    /// A Stream's `window_setting` Overrides It.
+    pub interval_window: Duration,
 }
 
 /* === Enums === */

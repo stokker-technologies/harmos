@@ -218,8 +218,8 @@ impl Manager {
         // A Scoped Unit Gives Each Call Its Own Clock So Admission Can Register Its Wait.
         let clock = match self.call_context().get::<Arc<super::clock::Unit>>() {
             Some(unit) => {
-                let ticks = self.call_context().get::<super::clock::TickCall>().is_none().then(|| unit.ticks.clone());
-                harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(unit.clock.clone(), ticks)))
+                let windows = self.call_context().get::<super::clock::WindowCall>().is_none().then(|| unit.windows.clone());
+                harmos_operations::clock::ClockAccess(Arc::new(super::clock::Registered::new(unit.clock.clone(), windows)))
             }
             None => self
                 .call_context()

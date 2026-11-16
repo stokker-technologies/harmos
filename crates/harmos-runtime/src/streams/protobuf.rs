@@ -109,6 +109,32 @@ impl Row {
         encode(&message, &mut bytes, 0)?;
         Ok(bytes)
     }
+
+    /// Convert One Stored Batch Row Whose Every Column Holds Exactly `count` Values.
+    pub(crate) fn decode_batch(&self, payload: &[u8], count: u64) -> Result<Vec<u8>, Error> {
+        let message = DynamicMessage::decode(self.descriptor.clone(), payload).map_err(|error| Error::Invalid(error.to_string()))?;
+        let columns = message
+            .get_field_by_number(harmos_protocol::columns::batch::COLUMNS)
+            .ok_or_else(|| Error::Invalid("Answer Sample Window: the stored row is not a batch".into()))?;
+        let Value::Message(columns) = columns.as_ref() else {
+            return Err(Error::Invalid("Answer Sample Window: the stored row is not a batch".into()));
+        };
+        for field in columns.descriptor().fields() {
+            let length = match columns.get_field(&field).as_ref() {
+                Value::List(values) => values.len(),
+                _ => 0,
+            };
+            if length as u64 != count {
+                return Err(Error::Invalid(format!(
+                    "Answer Sample Window: column `{}` holds {length} values for {count} samples; send one value per sample in every column",
+                    field.name()
+                )));
+            }
+        }
+        let mut bytes = Vec::new();
+        encode(&message, &mut bytes, 0)?;
+        Ok(bytes)
+    }
 }
 
 /* === Public Functions === */
