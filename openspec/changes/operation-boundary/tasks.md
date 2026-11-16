@@ -24,6 +24,9 @@ and recursive `.mise/` ignore; repository check passed).
 - [ ] 2.2 Add the backend capability and one-commit primitive to `harmos-storage/src/backend.rs`, implement it in the in-memory backend and the reference SQLite backend, and refuse with a capability error elsewhere. Prove with new stories `compound_mutation_commits_atomically`, `compound_mutation_conflict_leaves_no_effect` and `compound_mutation_replays_receipt` under `crates/harmos-storage/tests/integration` run by `mise run test -- --paths <story file>`.
 - [x] 2.3 Wire the native handler through admission, receipts and cut publication, and add a runtime story calling it through the operation caller. Prove with `mise run test -- --package harmos-runtime --target integration --story storage::native_pages::compound_mutation_through_operations`; document the operation in `docs/storage.md`.
 
+Compound native/in-memory checkpoint pin: `6197796daee6feed793f33d3330e4c8a8356444f`
+(tasks 2.1, 2.3 and compound deletion in 3.3; group 2 remains open on 2.2).
+
 The backend hook, in-memory transaction and three compound stories in 2.2 are
 implemented. Its named SQLite backend does not exist here; a decision on adding
 that owner versus retaining product-owned durable backends remains open. The
@@ -36,7 +39,7 @@ refusal before admission; 3.3 reuses that proof instead of duplicating the same 
 
 - [ ] 3.1 Add object deletion (optional expected revision, deletion revision) as a native storage operation and backend primitive in both bundled backends. Prove with `object_delete_hides_at_new_cuts_only` in `crates/harmos-storage/tests/integration`.
 - [ ] 3.2 Add scoped deletion of objects, records, samples, projection rows and files under one opaque scope with replayable receipts and reclamation after retained cut release. Prove with `scoped_delete_reclaims_after_cut_release` and `scoped_delete_replays_receipt`.
-- [x] 3.3 Allow compound mutation items to include object deletion and prove `compound_mutation_deletes_and_appends` through the operation caller; document deletion and reclamation semantics in `docs/storage.md`.
+- [x] 3.3 Allow compound mutation items to include object deletion and prove deletion and append through the shared `compound_mutation_through_operations` runtime story; document deletion and reclamation semantics in `docs/storage.md`.
 
 ## 4. Storage Before Full Startup
 
