@@ -23,7 +23,7 @@ use std::time::{Duration, SystemTime};
 // Local Imports
 use super::{invoke_support::HostFixture, support};
 use harmos_runtime::{
-    clock::Clock,
+    clock::{Clock, Source as _},
     plugin::grpc::{Placement, PlacementSettings},
 };
 
@@ -156,6 +156,37 @@ async fn a_sampling_scope_pauses_the_unscoped_schedule_without_duplicate_windows
     controller.advance_until(Duration::from_secs(30), || unscoped(&host).len() == 2).await.unwrap();
     assert_eq!(unscoped(&host), [(21 * SECOND, 4), (25 * SECOND, 4)], "Resume at the Instant the Last Scope Stopped");
     assert_eq!(scoped(&host), 2);
+    unit.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_controlled_step_longer_than_the_window_is_one_window() {
+    // A Scope Samples on a Clock That Jumps Straight to Each Advanced Instant.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("windows").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings()).await.unwrap();
+    let unit_time = support::Manual::new();
+    let origin = unit_time.read().instant;
+    let origin_date = unit_time.read().date.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/step", Clock::with_clock(unit_time.clone())).await.unwrap();
+    unit.start_samples().await.unwrap();
+    unit_time.registered_at(origin + Duration::from_secs(4)).await;
+
+    // One Ten-Second Step Past the Four-Second Window End Grants One Window of Ten Samples.
+    unit_time.advance_by(Duration::from_secs(10));
+    loop {
+        let ingested = host.signals.storage_ingested.notified();
+        tokio::pin!(ingested);
+        ingested.as_mut().enable();
+        if !host.batches_of("fixture.counts").is_empty() {
+            break;
+        }
+        ingested.await;
+    }
+    let expected = [(origin_date + SECOND, 10, Some("unit/step".to_owned()))];
+    assert_eq!(host.batches_of("fixture.counts"), expected, "Cover Exactly the Advanced Step");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();

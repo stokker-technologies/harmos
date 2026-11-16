@@ -686,7 +686,7 @@ and caller-face authorization remain independent checks.
 
 23. **Authoritative Host Time.** Plugin waits and interval publication use the host
     clock; active work prevents virtual time from advancing past unsettled work.
-    Device-driven publication remains distinct from host interval ticks.
+    Device-driven publication remains distinct from host interval windows.
     **Why:** deterministic simulation must see plugin demand and work ownership,
     rather than race a plugin's independent wall clock.
     **Where:** `crates/harmos-runtime/src/clock.rs`,
@@ -696,9 +696,11 @@ and caller-face authorization remain independent checks.
     `openspec/changes/operation-grammar/specs/operation-invocation/spec.md`.
     **Proof:** `an_in_flight_plugin_call_blocks_virtual_time_until_settlement` in
     `crates/harmos-runtime/tests/plugin_grpc/active_call.rs`;
-    `host_ticks_are_stored_in_order_with_host_timestamps` in
-    `crates/harmos-runtime/tests/plugin_grpc/interval_stream.rs` and
-    `device_samples_need_no_tick_and_keep_source_time_separate` in
+    `host_windows_are_stored_in_order_with_host_timestamps` in
+    `crates/harmos-runtime/tests/plugin_grpc/interval_stream.rs`,
+    `windows_cover_exact_sample_ranges_on_a_controlled_clock` in
+    `crates/harmos-runtime/tests/plugin_grpc/interval_windows.rs` and
+    `device_samples_need_no_window_and_keep_source_time_separate` in
     `crates/harmos-runtime/tests/plugin_grpc/device_stream.rs`.
     **Status:** landed.
 
@@ -1009,7 +1011,7 @@ is new: `harmos.model.v1.callers` in `model/v1/callers.proto`.
 | `harmos.v1.SettingValue` | `harmos.model.v1.SettingValue` | `harmos/model/v1/setting.proto` |
 | `harmos.v1.SettingValues` | `harmos.model.v1.SettingValues` | `harmos/model/v1/setting.proto` |
 | `harmos.v1.StreamDeclaration` | `harmos.model.v1.StreamDeclaration` | `harmos/model/v1/stream.proto` |
-| `harmos.v1.Tick` | `harmos.plugin.v1.Tick` | `harmos/plugin/v1/stream.proto` |
+| `harmos.v1.Tick` (deleted) | `harmos.plugin.v1.Window` and `harmos.plugin.v1.SampleBatch` | `harmos/plugin/v1/stream.proto` |
 | `harmos.v1.SamplesSelection` | `harmos.plugin.v1.SamplesSelection` | `harmos/plugin/v1/stream.proto` |
 | `harmos.v1.Sample` | `harmos.plugin.v1.Sample` | `harmos/plugin/v1/stream.proto` |
 | `harmos.v1.StorageTransferSettings` | `harmos.model.v1.StorageTransferSettings` | `harmos/model/v1/transfer.proto` |
@@ -1287,7 +1289,7 @@ let activation = plugins.activation("plugins/example").await?;
 let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
 binding.operations().call_encoded(initialize, payload).await?; // the plugin registers the unit
 binding.start_samples().await?;
-// ... the unit runs; the host ticks its streams on the unit clock ...
+// ... the unit runs; the host grants its streams windows on the unit clock ...
 binding.stop_samples().await?;
 binding.operations().call_encoded(cleanup, payload).await?; // the plugin ends the unit
 binding.close().await?;
@@ -1306,14 +1308,18 @@ sample demand is controlled separately. `start_samples()` opens one Samples dema
 per declared stream with the existing `SamplesSelection.scope` and retains the
 activation's admitted stream writers; opening uses the attachment's configured
 connect timeout on the runtime clock. `stop_samples()` settles only that demand
-within `stop_grace`: in-flight ticks either answer or are cancelled, accepted
-samples are drained and committed, and the demand's Samples responses end. Calls
-stay bound. The host grants a scope ticks only between start and stop, so a product
-starts demand after its plugin has registered the unit and stops it before the
-plugin's cleanup ends the unit; no tick reaches the plugin outside that interval.
-Demand may start again after a stop. Start and stop bound the windows the host
-grants under the windowed-batch direction. `close()` settles any demand still open
-together with the unit's calls.
+within `stop_grace`: an in-flight window is cancelled and publishes nothing,
+accepted batches are drained and committed, and the demand's Samples responses
+end. Calls stay bound. The host grants a scope windows only between start and stop,
+so a product starts demand after its plugin has registered the unit and stops it
+before the plugin's cleanup ends the unit; no window reaches the plugin outside that
+interval. Demand may start again after a stop. `close()` settles any demand still
+open together with the unit's calls. A close or attachment settlement that begins
+while `stop_samples()` is settling ends that stop with an error naming `close()` and
+keeps its deadline, so close still returns within one `stop_grace`. Start and stop
+requests that arrive while the binding settles are refused at once, and a start
+whose caller stopped waiting does not open demand. The unit's calls are cancelled
+on every ending, including an attachment that aborts the binding at its deadline.
 
 The binding's operation handle carries a local clock resource through descendants,
 including plugin child calls to Time.Get and Time.Sleep. Portable context cannot
@@ -1343,21 +1349,48 @@ unit_time.advance_by(sample_interval).await;
 binding.close().await?;
 ```
 
-A scoped sleep settles after the ticks it spans. A clock wait of a scoped call that
-ends at instant `t` (Time.Sleep or an operation's admitted wait) settles only after
-every sample tick of the same unit due at or before `t` has been answered and its
-sample committed, on every clock kind. "Due" follows the demand's schedule, which
-anchors each next tick at the instant the previous one fired: on a controlled clock
-a sleep of N periods spans exactly N ticks, while on the real clock firing latency
-delays later ticks and the sleep may span fewer. A plugin that sleeps and then reads
-its observer state sees every tick due by the sleep's end. Waits inside a sample
-tick's own call tree are exempt, since that tick cannot be answered before them. A
-tick whose handler waits on something the sleeping call holds therefore holds that
-sleep until the call's own policy deadline. Each scoped interval demand records its next unanswered tick in the unit
-(`operations/clock.rs`); under windowed batches the rule becomes: the window ending
-at `t` is committed before a sleep ending at `t` settles.
-`plugin_grpc::scoped_sleep::a_sleep_spanning_1024_ticks_observes_1024` and its 1,023
-and 1,025 siblings read the count after one sleep with no wait in the plugin.
+A scoped sleep settles after the samples it spans. A clock wait of a scoped call
+that ends at instant `t` (Time.Sleep or an operation's admitted wait) settles only
+after every sample of the same unit due at or before `t` has been granted in a
+window, answered and committed, on every clock kind. On reaching `t` the wait asks
+each demand of the unit to grant through `t`; a demand whose window end lies later
+wakes early and grants the window up to its current reading. Samples sit on a
+fixed grid from the demand's origin, so a sleep of N periods spans exactly N
+samples on a controlled clock. A plugin that sleeps and then reads its observer
+state sees every sample due by the sleep's end. Waits inside a window's own call
+tree are exempt, since that window cannot be answered before them. A window whose
+handler waits on something the sleeping call holds therefore holds that sleep until
+the call's own policy deadline. Each scoped interval demand records its next
+ungranted sample and the latest requested cut in the unit (`operations/clock.rs`).
+`plugin_grpc::scoped_sleep::a_sleep_spanning_1024_samples_observes_1024` and its
+1,023 and 1,025 siblings read the count after one sleep, over 100-sample windows
+whose last one the sleep cuts short, with no wait in the plugin.
+
+### Interval Windows
+
+For an interval stream the host grants `harmos.plugin.v1.Window` frames and the
+plugin answers each with `SampleBatch` parts whose columns hold one value per
+sample ([behaviour rules 10 and 35](../proto/harmos/plugin/v1/behaviour.md)).
+Sample `i` of a demand is due at its origin plus `i` periods; a window covers the
+samples due since the previous window and ends on the `origin + k * window` grid at
+or after the next sample, extended to the clock's reading when the wake is late or
+the controlled clock advanced further. The window length is
+`PlacementSettings::interval_window`, or the plugin Duration setting named by the
+stream's `window_setting`. Each part becomes one stored row of the derived
+`harmos.batch.<row>` message (`<row>` is the row's full name with dots as underscores) (`harmos_protocol::columns::derive`): the first
+sample's Unix nanoseconds, the period, the count and the row's fields as repeated
+columns. The host validates each part's offset, count, last flag and column lengths,
+admits it once and waits for ingestion once per window; it does no per-sample
+admission, sequencing, window entry or ingestion wait, and converts the columns to
+the stored encoding in bulk.
+A part holding more structural values than one stored row may
+(`harmos_domain::message::postcard::MAX_VALUES`) is stored as consecutive rows.
+Rows with repeated, map or oneof fields cannot be interval rows. While any scope of
+an activation samples, the activation's unscoped demand grants no windows; it
+resumes from a fresh origin when the last scope stops, so each stream has one live
+schedule per activation and scope. `plugin_grpc::interval_windows` proves exact
+boundaries and counts on a controlled clock, per-stream window lengths, splitting at
+the plugin's maximum message size and the paused unscoped schedule.
 
 Concurrent and nested waits inside one operation share its activity without a
 lock; the activity parks only while all of its waits park, so joined waits never
@@ -1414,18 +1447,19 @@ publications closes its connection, reports the failure in the status and retrie
 after `reconnect_delay`. Leases belong to their activation, so a cleanup that
 missed its deadline never affects the next one.
 Retained operation handles refuse new work after closure. Closing one binding
-leaves the other scopes and the original unscoped publication active.
+leaves the other scopes active; the unscoped publication resumes once no scope of the
+activation samples.
 
 The fixture story `plugin_grpc::scoped_publications` starts two concurrent calls
 and demands after attachment, holds one ingestion boundary, closes that scope,
 then settles only the other scope's sleep by advancing its clock. It checks
-scope-stamped rows and proves the original unscoped demand still operates.
+scope-stamped rows and proves the original unscoped demand operates again once both scopes have closed.
 `plugin_grpc::binding_lifecycle` drives each ending with a live binding: a drain
 outliving `stop_grace`, a plugin that ignores half-close on the manual and on a
 virtual runtime clock, Stop after a spent drain, plugin exit, managed disconnect,
 runtime shutdown, both orders of a bind and stop at the bindings lock, a bind
 during reconnect, a remote cleanup that misses its deadline then reconnects, and
-sample demand that ticks the plugin only between `start_samples()` and
+sample demand that grants the plugin windows only between `start_samples()` and
 `stop_samples()` while the binding stays bound.
 
 Rust client retained admission bounds each generated oneof by its largest variant,

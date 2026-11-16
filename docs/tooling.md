@@ -313,9 +313,12 @@ stream correctly prevents virtual-clock advancement. The harness owns process
 shutdown through `--shutdown-on-stdin`, after the host has sent Stop.
 
 Background work started independently by the author
-is invisible to virtual time. Observers answer host ticks and cannot call
-undeclared operations or start child work after answering their tick. An observer may declare `interval_setting`
-instead of a default `interval`; the host resolves that setting. Product settings
+is invisible to virtual time. Observers answer host windows and cannot call
+undeclared operations or start child work after answering their window. A one-sample
+observer runs once per sample of each window; `@window_observer` answers the whole
+window with its columns. An observer may declare `interval_setting` instead of a
+default `interval`, and `window_setting` to choose its window length; the host
+resolves both settings. Product settings
 and contributions travel as typed protobuf values in `Plugin(..., sections=[...])`.
 
 For device-driven streams, decorate an async method with
@@ -323,7 +326,8 @@ For device-driven streams, decorate an async method with
 Call `await publisher.publish(Reading(...), at=optional_device_timestamp)` when
 the device supplies a row. Demand closure cancels the producer or in-progress
 observer and awaits its cleanup. Samples without device time are stamped by the
-host; interval samples carry the exact tick time. Each call has its own sequence.
+host; interval samples sit on the host's fixed grid from their window's start. Each
+call has its own sequence.
 
 ```sh
 mise run generate -- --sdk python

@@ -364,7 +364,7 @@ No push or specification lifecycle command is authorized.
 
 ## Scoped Binding Lifecycle Restructure
 
-An independent review of the scoped binding at `dev` 7181b5ed found defects in two seams: teardown and clock registration. Point repairs have not closed them, so both seams are restructured. The public binding API (`bind_grpc`, `operations`, `close`) stays the same.
+An independent review of the scoped binding at `dev` 7181b5ed found defects in two seams: teardown and clock registration. Point repairs have not closed them, so both seams are restructured. `bind_grpc`, `operations` and `close` keep their signatures; binding no longer opens Samples demand, which `start_samples()` and `stop_samples()` now open and settle.
 
 - [ ] SB.1 Teardown: one binding state machine, owned by the attachment and registered under its scopes lock, joined within `stop_grace`. It runs the same steps on every path (stop, plugin exit, disconnect, drop): signal close to the demand, cancel tracked work, drain within a deadline taken from the stop policy, revoke leases, then kill and reap a managed placement. This closes four defects: the stop path waiting on an unsignalled child, an unbounded `close()`, plugin exit skipping settlement, and a bind racing parent close. It also fixes the inverted close-then-cancel order.
 - [ ] SB.2 Clock registration at admission: every path registers its sleep on the unit clock before middleware observes the call, and the per-call-site registration is deleted. The Activity lock is no longer held across the wrapped future. A second sleep call returns a typed error instead of panicking.
@@ -395,15 +395,16 @@ Observer::new(&stream, async |context: &Context| Ok(Reading { value: read() })).
 Observer::window(&stream, async |context: &Context, window: &Window| Ok(ReadingColumns { value: read_many(window.count) })).every(interval);
 ```
 
-- [ ] IT.4.1 Protocol: add `Window`, `SampleBatch` and `StreamDeclaration.window_setting`, delete `Tick` and reserve its request field, rewrite behaviour rules 10, 14, 18 and 30-32 for windows, and regenerate every SDK binding and fixture.
-- [ ] IT.4.2 Host: one admitted `samples.window` operation per window replaces `samples.tick`; fixed-rate windows on the `o + k * L` grid with reading-extended ends; `PlacementSettings::interval_window` and the per-stream `window_setting`; derived `harmos.batch.R` rows admitted once per part; parts validated by offset, count and `last`; interval rows with repeated, map or oneof fields refused.
-- [ ] IT.4.3 Scoped units: scoped waits ask the unit's demands to grant through their end; start, stop and close gate and interrupt windows within `stop_grace`; the unscoped demand grants no windows while a scope of its activation samples and resumes from a fresh origin.
-- [ ] IT.4.4 Encoders release their scratch buffer and preparation claim after each message.
-- [ ] IT.4.5 SDKs (Rust, Python, C#, C++): answer windows, run one-sample observers per sample and transpose them into columns, add the window observer and `window_setting`, split parts at the transport's maximum message size, and delete tick dispatch, tests and docs.
-- [ ] IT.4.6 Conformance: the suite and every SDK fixture exercise windows, parts, window children and refusals.
-- [ ] IT.4.7 Stories: exact window boundaries and counts on a controlled clock, splitting at the maximum message size, a per-stream window override, a fixed-rate schedule without duplicate windows, and the 1,023/1,024/1,025 scoped stories adapted to windows.
+- [x] IT.4.1 Protocol: add `Window`, `SampleBatch` and `StreamDeclaration.window_setting`, delete `Tick` and reserve its request field, rewrite behaviour rules 10, 14, 18 and 30-32 for windows, and regenerate every SDK binding and fixture.
+- [x] IT.4.2 Host: one admitted `samples.window` operation per window replaces `samples.tick`; fixed-rate windows on the `o + k * L` grid with reading-extended ends; `PlacementSettings::interval_window` and the per-stream `window_setting`; derived `harmos.batch.R` rows admitted once per part; parts validated by offset, count and `last`; interval rows with repeated, map or oneof fields refused.
+- [x] IT.4.3 Scoped units: scoped waits ask the unit's demands to grant through their end; start, stop and close gate and interrupt windows within `stop_grace`; the unscoped demand grants no windows while a scope of its activation samples and resumes from a fresh origin.
+- [x] IT.4.4 Encoders release their scratch buffer and preparation claim after each message.
+- [x] IT.4.5 SDKs (Rust, Python, C#, C++): answer windows, run one-sample observers per sample and transpose them into columns, add the window observer and `window_setting`, split parts at the transport's maximum message size, and delete tick dispatch, tests and docs.
+- [x] IT.4.6 Conformance: the suite and every SDK fixture exercise windows, parts, window children and refusals.
+- [x] IT.4.7 Stories: exact window boundaries and counts on a controlled clock, splitting at the maximum message size, a per-stream window override, a fixed-rate schedule without duplicate windows, and the 1,023/1,024/1,025 scoped stories adapted to windows.
 - [ ] IT.4.8 Bench: samples per second at 1, 16 and 128 streams on the controlled and the real clock at 1 kHz and 1 MHz, figures recorded in `docs/product-guide.md`.
-- [ ] IT.4.9 Architecture, product guide and SDK guides describe windows and the product adoption steps.
+- [x] IT.4.9 Architecture, product guide and SDK guides describe windows and the product adoption steps.
+- [ ] IT.4.10 Owner decision: a window extends to the clock's reading, so a long real-clock stall or one large controlled step at 1 MHz grants one window of billions of samples, which the plugin builds in memory before splitting. Either keep one window per step as locked, or grant the backlog as consecutive windows of at most one window length each, keeping every sample.
 
 ## Known Flakes from #261
 

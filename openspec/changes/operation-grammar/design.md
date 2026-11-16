@@ -1509,7 +1509,9 @@ proving that the unscoped demand operates once the scopes have closed.
 
 The host hands each `SampleBatch` part to storage as one publication row; it does no
 per-sample admission, sequencing, window entry or ingestion wait. For an interval
-stream of row `R` the host derives and registers the stored row `harmos.batch.R`:
+stream of row `R` the host derives and registers the stored row `harmos.batch.R`
+(`R` is the row's full name with dots replaced by underscores; its columns are
+`harmos.columns.R`):
 
 ```proto
 message Batch {                // derived per interval row R
@@ -1526,8 +1528,10 @@ and converts them with the stream row converter it already uses
 sample time. An interval row must hold one value per field: repeated, map and oneof
 fields (including proto3 `optional`) are refused at admission with an action. Stream
 retention (`stream_window`) and the publication byte and slot budgets count stored
-rows, now one per part, and are not loosened. Sample times must fit signed 64-bit
-Unix nanoseconds and periods unsigned 64-bit nanoseconds.
+rows, now one per part, and are not loosened. A part holding more structural values
+than one stored row may (`harmos_domain::message::postcard::MAX_VALUES`) is stored as
+consecutive rows, each with its own first-sample time and count. Sample times must fit
+signed 64-bit Unix nanoseconds and periods unsigned 64-bit nanoseconds.
 
 ### Message Splitting
 

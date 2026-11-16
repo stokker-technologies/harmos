@@ -42,7 +42,7 @@ For a scoped unit of work that owns its time and sample ingestion, use
 `runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
 binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
 demand: call `start_samples()` once the plugin has registered the unit and `stop_samples()`
-before its cleanup ends it, so no tick reaches the plugin outside that interval. `close()` returns
+before its cleanup ends it, so no window reaches the plugin outside that interval. `close()` returns
 within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
 not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
 share the admitted connection and retain independent clocks and Samples selections;
@@ -914,7 +914,7 @@ timer IDs and their deadlines at the virtual bound. Active external work can kee
 clock frozen; the test runner's separate hang guard bounds that case.
 
 Register work before scheduling it with `let mut activity = clock.activity("operation");`
-and retain the guard through settlement. Calls, unanswered observer ticks and host disk,
+and retain the guard through settlement. Calls, unanswered observer windows and host disk,
 process or transport work each need a guard; concurrent branches need separate guards.
 Use `activity.wait(clock.sleep(duration)).await` only when that branch's sole outstanding
 work is the clock wait. A timeout guarding active work must retain active accounting.
@@ -1195,13 +1195,24 @@ reference fixture and host use `harmos-protocol` for this computation. Inconsist
 hashes or unresolved message names refuse admission before an activation becomes visible.
 
 The host opens one `Instance.Samples` call for each catalog stream at admission. Interval streams
-answer host-clock ticks; device streams publish without ticks. Each sample enters
-the existing stream storage consumer path in arrival order. Incoming protobuf rows
-are validated against their catalog type and converted to the host's canonical
-stored row encoding with its derived schema. Interval rows carry their tick time;
-device rows carry host arrival time in `published_unix_micros` and retain an optional
-device timestamp as `context.source_time` (seconds and nanos). Disconnect and stop
-close demand; reconnect opens fresh calls with sequence one. Lost samples are not replayed.
+answer host-granted windows with columnar batches; device streams publish one sample
+per message without windows. Both enter the existing stream storage consumer path in
+arrival order. Device rows are validated against their catalog type and converted to
+the host's canonical stored row encoding with its derived schema; they carry host
+arrival time in `published_unix_micros` and retain an optional device timestamp as
+`context.source_time` (seconds and nanos). An interval stream of row `R` stores one
+`harmos.batch.R` row per batch part: `start_unix_nanos`, `period_nanos`, `count` and
+`columns`, which holds `R`'s fields as repeated values, one per sample. Sample `i` of
+a row is at `start_unix_nanos + i * period_nanos`; `published_unix_micros` is the first
+sample's time. Disconnect and stop close demand; reconnect opens fresh calls with
+sequence one. Lost samples are not replayed.
+
+`PlacementSettings::interval_window` sets how much time one window covers: longer
+windows batch more samples per message, shorter ones deliver sooner. A stream whose
+observer names `window_setting` takes its length from that plugin Duration setting.
+The batch size follows from the window length and the interval and is never set
+directly. A window whose columns exceed the plugin's maximum message size arrives in
+several parts, each stored as its own row.
 
 An `interval_setting` names a typed plugin setting, such as `interval`, whose
 value is a positive duration. The library materializes its declared default and
@@ -1211,7 +1222,7 @@ over the declared interval; an absent or invalid setting refuses admission.
 Plugins declare requirements for the Public `harmos.host.v1.Time/Sleep` and
 `harmos.host.v1.Time/Get` operations. Both use the host clock through ordinary child calls.
 Tests can configure `clock::Clock::virtual_at(epoch)` and drive its controller with
-`advance_until(bound, condition)`. An invocation or unanswered tick keeps virtual time
+`advance_until(bound, condition)`. An invocation or unanswered window keeps virtual time
 still while work is in flight; only clock waits park that activity. Device streams
 remain active until demand closes. Transport uses its normal scheduler.
 
@@ -1326,7 +1337,7 @@ cases measure crossing the carrier boundary.
 | [Guest](../crates/harmos-runtime/benches/guest/main.rs) | Real Wasm component: bidirectional unary protobuf transfer workloads, plus startup and command latency. |
 | [External gRPC](../crates/harmos-runtime/benches/grpc/main.rs) | Separate server-process startup, client commands over a socket, and isolated Postcard/Protobuf codec costs. |
 | [Streams](../crates/harmos-runtime/benches/streams/main.rs) | Concurrent waveform work and codec costs. |
-| [Interval Ticks](../crates/harmos-runtime/benches/ticks/main.rs) | Host-owned interval ticks against a managed Rust SDK plugin process, packed-row windows and the Samples call alone. |
+| [Interval Windows](../crates/harmos-runtime/benches/windows/main.rs) | Host-granted interval windows against a managed Rust SDK plugin process at 1 kHz and 1 MHz on the controlled and the real clock. |
 
 Build matching executables and carrier fixtures with `mise run build -- --artifact bench`,
 then run `mise run bench`.
@@ -1513,15 +1524,16 @@ response retains declarations, values, revision and issued read cut; issued cuts
 and name selection use the generated call options. Declare every host operation,
 clock and Watch requirement through `Plugin::requires_host` or a typed requirement.
 
-Observer contexts can make declared child calls while answering one Samples tick.
-Unary calls and Watches use the same carrier as that tick, preserve structured
+Observer contexts can make declared child calls while answering one Samples window.
+Unary calls and Watches use the same carrier as that window, preserve structured
 failures and correlate replies by IDs unique across the entire Samples stream.
-Returning the sample cancels open children; ending demand cancels the active tick.
+Answering the window cancels open children; ending demand cancels the active window.
 Retained contexts refuse further calls after the answer, and device stream contexts
-have no child-call scope. Sample timestamps and sequences retain their existing
-meaning. WebAssembly contexts share the boundary types and settings API; any
-non-tick publication is an application-owned operation over native storage or
-stream publication.
+have no child-call scope. A one-sample observer runs once per sample of the window,
+in order, each with its own sequence; `Observer::window` answers the whole window at
+once with its columns. WebAssembly contexts share the boundary types and settings API;
+any non-interval publication is an application-owned operation over native storage
+or stream publication.
 
 ## Reloadable gRPC Certificates
 

@@ -687,7 +687,7 @@ A product chooses its wire resources. The recommended shape is `File` and `Uploa
 with Create, Get, Resume, Append, Publish, Delete, Read and Watch where needed. Each
 handler delegates to the corresponding native operation. A plugin that publishes
 stored rows or records calls a product-defined operation; interval samples answer
-host ticks on `Instance.Samples`.
+host windows on `Instance.Samples`.
 
 `StorageSettings.transfer.chunk_bytes` supplies the shared 4 MiB transfer default.
 Carriers use the separate 8 MiB message default, validate framing and refuse ceilings

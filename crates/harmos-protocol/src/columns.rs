@@ -57,7 +57,8 @@ pub struct Derived {
 
 /* === Public Functions === */
 
-/// Derive `harmos.columns.<row>` (Every Row Field Repeated) and `harmos.batch.<row>`.
+/// Derive `harmos.columns.<row>` (Every Row Field Repeated) and `harmos.batch.<row>`, Where
+/// `<row>` Is the Row's Full Name With Dots Replaced by Underscores.
 ///
 /// An interval row holds one value per field, so repeated, map and oneof fields
 /// (including proto3 `optional`) are refused with the action to take.
@@ -116,7 +117,7 @@ pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
         r#type: Some(kind as i32),
         ..Default::default()
     };
-    let file = FileDescriptorProto {
+    let columns_file = FileDescriptorProto {
         name: Some(format!("harmos/columns/{}.proto", row.full_name())),
         package: Some("harmos.columns".into()),
         dependency: {
@@ -124,36 +125,43 @@ pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
             dependency.dedup();
             dependency
         },
-        message_type: vec![
-            DescriptorProto {
-                name: Some(name.clone()),
-                field: fields,
-                ..Default::default()
-            },
-            DescriptorProto {
-                name: Some(format!("{name}_Batch")),
-                field: vec![
-                    scalar("start_unix_nanos", batch::START_UNIX_NANOS, Type::Int64),
-                    scalar("period_nanos", batch::PERIOD_NANOS, Type::Uint64),
-                    scalar("count", batch::COUNT, Type::Uint64),
-                    FieldDescriptorProto {
-                        type_name: Some(format!(".harmos.columns.{name}")),
-                        ..scalar("columns", batch::COLUMNS, Type::Message)
-                    },
-                ],
-                ..Default::default()
-            },
-        ],
+        message_type: vec![DescriptorProto {
+            name: Some(name.clone()),
+            field: fields,
+            ..Default::default()
+        }],
+        syntax: Some("proto3".into()),
+        ..Default::default()
+    };
+    let batch_file = FileDescriptorProto {
+        name: Some(format!("harmos/batch/{}.proto", row.full_name())),
+        package: Some("harmos.batch".into()),
+        dependency: vec![columns_file.name().to_owned()],
+        message_type: vec![DescriptorProto {
+            name: Some(name.clone()),
+            field: vec![
+                scalar("start_unix_nanos", batch::START_UNIX_NANOS, Type::Int64),
+                scalar("period_nanos", batch::PERIOD_NANOS, Type::Uint64),
+                scalar("count", batch::COUNT, Type::Uint64),
+                FieldDescriptorProto {
+                    type_name: Some(format!(".harmos.columns.{name}")),
+                    ..scalar("columns", batch::COLUMNS, Type::Message)
+                },
+            ],
+            ..Default::default()
+        }],
         syntax: Some("proto3".into()),
         ..Default::default()
     };
     let mut pool = row.parent_pool().clone();
     // A Second Derivation From the Same Pool Finds the Messages Already Added.
-    if pool.get_file_by_name(file.name()).is_none() {
-        pool.add_file_descriptor_proto(file).map_err(|error| format!("Declare Interval Stream: {error}"))?;
+    for file in [columns_file, batch_file] {
+        if pool.get_file_by_name(file.name()).is_none() {
+            pool.add_file_descriptor_proto(file).map_err(|error| format!("Declare Interval Stream: {error}"))?;
+        }
     }
     let columns = pool.get_message_by_name(&format!("harmos.columns.{name}")).expect("derived columns message");
-    let batch = pool.get_message_by_name(&format!("harmos.columns.{name}_Batch")).expect("derived batch message");
+    let batch = pool.get_message_by_name(&format!("harmos.batch.{name}")).expect("derived batch message");
     Ok(Derived { columns, batch })
 }
 

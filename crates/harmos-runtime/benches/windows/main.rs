@@ -51,6 +51,9 @@ const STREAMS: [usize; 3] = [1, 16, 128];
 /// Windows Measured per Iteration and Stream.
 const WINDOWS: u64 = 4;
 
+/// Wall Time One Probe Iteration May Take Before Its Case Counts as Not Sustained.
+const PROBE: Duration = Duration::from_secs(30);
+
 /* === Macros === */
 
 criterion::criterion_group!(benches, benchmarks);
@@ -177,10 +180,17 @@ impl Case<'_> {
 
     fn measure(&self, group: &mut BenchmarkGroup<'_, WallTime>, executor: &tokio::runtime::Runtime) {
         let samples = self.samples();
+        let host = executor.block_on(Host::start(self));
+        // A Host That Falls Behind the Declared Rate Grants Ever Longer Windows Until Storage Refuses
+        // Them; Such a Case Is Reported as Not Sustained Instead of Measured.
+        let probe = executor.block_on(tokio::time::timeout(PROBE, host.advance(host.samples() + samples)));
+        if probe.is_err() {
+            println!("windows/{}/{}: not sustained, {} of {} probe samples in {PROBE:?}", self.name, self.streams, host.samples(), samples);
+            executor.block_on(host.stop());
+            return;
+        }
         group.throughput(Throughput::Elements(samples));
-        let mut host = None;
         group.bench_function(BenchmarkId::new(self.name, self.streams), |bencher| {
-            let host = host.get_or_insert_with(|| executor.block_on(Host::start(self)));
             bencher.iter_custom(|iterations| {
                 executor.block_on(async {
                     let mut elapsed = Duration::ZERO;
@@ -194,9 +204,7 @@ impl Case<'_> {
                 })
             });
         });
-        if let Some(host) = host {
-            executor.block_on(host.stop());
-        }
+        executor.block_on(host.stop());
     }
 }
 

@@ -124,36 +124,43 @@ impl Row {
             return Err(invalid());
         };
         let fields = columns.descriptor().fields().collect::<Vec<_>>();
-        let mut lists = Vec::with_capacity(fields.len());
         for field in &fields {
-            let values = match columns.get_field(field).into_owned() {
-                Value::List(values) => values,
-                _ => Vec::new(),
+            let length = match columns.get_field(field).as_ref() {
+                Value::List(values) => values.len(),
+                _ => 0,
             };
-            if values.len() as u64 != count {
+            if length as u64 != count {
                 return Err(Error::Invalid(format!(
-                    "Answer Sample Window: column `{}` holds {} values for {count} samples; send one value per sample in every column",
-                    field.name(),
-                    values.len()
+                    "Answer Sample Window: column `{}` holds {length} values for {count} samples; send one value per sample in every column",
+                    field.name()
                 )));
             }
-            lists.push(values);
         }
         // Each Sample Claims Its Values in Every Column; the Header and List Lengths Claim the Rest.
         let per_sample = fields.iter().map(|field| 1 + cost(&field.kind(), 0)).sum::<usize>().max(1);
         let chunk = ((harmos_domain::message::postcard::MAX_VALUES - 64) / per_sample).max(1) as u64;
+        // A Part Within One Row's Limit Is Stored as Decoded, Without Copying Its Columns.
+        if count <= chunk {
+            let mut bytes = Vec::new();
+            encode(&message, &mut bytes, 0)?;
+            return Ok(vec![(start, count, bytes)]);
+        }
         let mut rows = Vec::new();
         let mut offset = 0_u64;
         while offset < count {
             let length = chunk.min(count - offset);
             let first = i64::try_from(i128::from(start) + i128::from(offset) * i128::from(period_nanos))
                 .map_err(|_| Error::Invalid("Grant Sample Window: sample times must fall before 2262".into()))?;
+            let range = offset as usize..(offset + length) as usize;
             let mut part = DynamicMessage::new(columns.descriptor());
-            for (field, values) in fields.iter().zip(&lists) {
-                part.set_field(field, Value::List(values[offset as usize..(offset + length) as usize].to_vec()));
+            for field in &fields {
+                if let Value::List(values) = columns.get_field(field).as_ref() {
+                    part.set_field(field, Value::List(values[range.clone()].to_vec()));
+                }
             }
-            let mut stored = message.clone();
+            let mut stored = DynamicMessage::new(self.descriptor.clone());
             stored.set_field_by_number(batch::START_UNIX_NANOS, Value::I64(first));
+            stored.set_field_by_number(batch::PERIOD_NANOS, Value::U64(period_nanos));
             stored.set_field_by_number(batch::COUNT, Value::U64(length));
             stored.set_field_by_number(batch::COLUMNS, Value::Message(part));
             let mut bytes = Vec::new();
