@@ -76,9 +76,9 @@ otherwise.
 ## Tests and Checks
 
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.
-Ready pull requests run impact-selected verification jobs; release reviews run
-the complete graph. Release rehearsal is
-limited to release reviews. Impact planning is removed. Each matrix job names one
+Ready pull requests run impact-selected verification jobs. Release reviews and
+manual full validation run the complete release-profile graph, including rehearsal.
+Draft and closed reviews receive planned skips. Each matrix job names one
 project task; see [Workflow Task Interface](tooling.md#workflow-task-interface).
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
