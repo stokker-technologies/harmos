@@ -36,6 +36,8 @@ Group 3 Pin: `1c4f3aec8cf12dd59fe636545e76f72d6d5860bf` (native object/scope del
 - [x] 4.1 Let the builder produce a storage-only runtime that owns the storage manager and admits storage operations without listeners, plugins or services, then drains and closes before the full runtime reopens the same registered backends, or closes for offline use. Prove with `storage_only_runtime_admits_operations` in `crates/harmos-runtime/tests/storage`.
 - [x] 4.2 Add maintenance operations for a consistent backend copy to a target and backend disposal through new backend hooks, with capability errors when absent; implement the hooks in the reference backend. Prove with `maintenance_copy_is_consistent_at_one_cut` and `maintenance_without_hook_refuses`; document both in `docs/storage.md` and `docs/product-guide.md`.
 
+Group 4 Pin: `db49e1e7dc7da0549edaa4f231af6b4e2382ca02` (drain/reopen assembly, consistent primary-backend copy and offline disposal; build, Rust lint, format, repository/dependency checks and 17 focused stories passed).
+
 ## 5. Expression Transforms
 
 - [ ] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
