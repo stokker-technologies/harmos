@@ -79,11 +79,13 @@ dir = "../.."
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.csharp check-generated"
 
 [tasks."test:unit"]
+hide = true
 description = "Test the C# SDK Units"
 usage = 'flag "--profile <profile>" default="dev"'
 run = "mise run test -- --layer unit --profile {{usage.profile}}"
 
 [tasks."test:tooling"]
+hide = true
 description = "Test Tooling and the C# Package Consumer"
 depends = ["restore"]
 dir = "../.."

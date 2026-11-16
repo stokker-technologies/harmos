@@ -94,15 +94,12 @@ def main() -> None:
 def check_public_surfaces(root: Path) -> None:
     """Keep Protocol Implementation Names Out of Consumer Entry Points.
 
-    Allow internal generated directories (detail, _generated, _wire), canonical
-    gRPC method paths, and protocol documentation that maps packages
-    (proto/**/*.md and docs/architecture.md). Markdown link destinations refer
-    to source files and are not SDK imports.
+    Allow internal generated directories (detail, _generated, _wire) and canonical
+    gRPC method paths. CI documentation checking owns the guide surface.
     """
     wire = re.compile(r"\b_wire\b|\w+_wire\b|\bHarmos\.Internal\b|\b(?:[A-Za-z_]\w*(?:\.|::))+v\d+\b|[/\\]v\d+[/\\]")
     grpc_path = re.compile(r"/?[a-zA-Z_]\w*(?:\.\w+)*\.v\d+(?:\.\w+)*/[A-Za-z_]\w*")
-    candidates = [root / "README.md", *sorted((root / "docs").glob("*.md"))]
-    candidates += sorted((root / "sdk/cpp/include").rglob("*.hpp"))
+    candidates = sorted((root / "sdk/cpp/include").rglob("*.hpp"))
     candidates += sorted((root / "sdk/cpp/examples").glob("*/generated/*.hpp"))
     candidates += [
         path
@@ -114,13 +111,11 @@ def check_public_surfaces(root: Path) -> None:
     findings = []
     for path in candidates:
         relative = path.relative_to(root)
-        if relative.as_posix() == "docs/architecture.md" or "detail" in relative.parts:
+        if "detail" in relative.parts:
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             line = grpc_path.sub("", line)
-            if path.suffix == ".md":
-                line = re.sub(r"\]\([^)]*\)", "]()", line)
-            if wire.search(line) or (path.suffix != ".md" and re.search(r"\bv\d+\b", line)):
+            if wire.search(line) or re.search(r"\bv\d+\b", line):
                 findings.append(f"{relative.as_posix()}:{number}: Public Surface Names a Wire Package")
     exports: dict[str, Path] = {}
     for name in ("__init__.py", "client.py", "plugin/__init__.py"):
@@ -154,10 +149,12 @@ def check_public_surfaces(root: Path) -> None:
                 findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")
     if findings:
         raise ValueError(
-            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating\n"
-            + "\n".join(findings)
+            "Check Public Surfaces: Correct the source protocol declarations or explicit public exports before regenerating
+"
+            + "
+".join(findings)
         )
-    print("Public Surfaces: Headers, Stubs, Exports and Guides Passed")
+    print("Public Surfaces: Headers, Stubs and Exports Passed")
 
 
 # === Private Functions === #

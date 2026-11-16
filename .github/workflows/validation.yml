@@ -11,6 +11,12 @@ name: Validation
       profile:
         type: string
         default: dev
+      check-matrix:
+        type: string
+        default: ''
+      test-matrix:
+        type: string
+        default: ''
 permissions:
   contents: read
 env:
@@ -25,6 +31,34 @@ env:
   GIT_CONFIG_KEY_0: core.longpaths
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
+  docs:
+    if: inputs.selection == 'docs'
+    name: Check / Documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - name: Check Guides and Links
+      run: mise run ci:docs --
+    env:
+      MISE_ENABLE_TOOLS: python,uv
+  check_quick:
+    if: inputs.selection == 'check_quick'
+    name: Check / Repository / Quick
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - name: Run Quick Checks
+      run: mise run ci:quick-check --
+    env:
+      MISE_ENABLE_TOOLS: python,uv,rust,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
   check:
     if: inputs.selection == 'check'
     name: Check / ${{ matrix.label }}
@@ -37,9 +71,13 @@ jobs:
     - id: setup
       uses: ./.github/actions/setup
       with:
-        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        platform: ${{ matrix.platform }}
+        sdk-tools: ${{ matrix.language == 'csharp' && 'csharp' || '' }}
         cache-backend: ${{ matrix.cache }}
-        cache-mode: ${{ matrix.mode }}
+        cache-mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
+    - name: Build the C# Solution
+      if: matrix.language == 'csharp'
+      run: mise run build -- --language csharp --profile ${{ env.PROFILE }}
     - name: Run Project Task
       run: mise run check -- ${{ matrix.arguments }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -69,59 +107,11 @@ jobs:
       COMPILER_CACHE_BACKEND: ${{ matrix.cache }}
       SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
       SCCACHE_CACHE_SIZE: 8G
-      COMPILER_CACHE_MODE: ${{ matrix.mode }}
+      COMPILER_CACHE_MODE: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' || 'READ_ONLY' }}
       CI_CACHE_PROFILE: test
     strategy:
       fail-fast: false
-      matrix:
-        include:
-        - label: Repository
-          runner: ubuntu-24.04
-          arguments: --repository
-          tools: python,uv,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
-          cache: ''
-          mode: ''
-        - label: Rust (unix)
-          runner: ubuntu-24.04
-          arguments: --language rust
-          tools: python,rust,uv,sccache,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
-          cache: disk
-          mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
-            'READ_ONLY' }}
-        - label: Rust (windows)
-          runner: windows-2022
-          arguments: --language rust
-          tools: python,rust,uv,sccache,aqua:nextest-rs/nextest/cargo-nextest,github:bnjbvr/cargo-machete,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
-          cache: disk
-          mode: ${{ (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'READ_WRITE' ||
-            'READ_ONLY' }}
-  check_csharp:
-    if: inputs.selection == 'check'
-    name: Check / C# (${{ matrix.platform }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      with:
-        fetch-depth: 0
-    - uses: ./.github/actions/setup
-      with:
-        platform: ${{ matrix.platform }}
-        sdk-tools: csharp
-    - name: Build the C# Solution
-      run: mise run build -- --language csharp --profile ${{ env.PROFILE }}
-    - name: Check the C# Solution
-      run: mise run check -- --language csharp
-    env:
-      MISE_ENABLE_TOOLS: python,uv,dotnet
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-        - platform: windows
-          runner: windows-2022
+      matrix: ${{ fromJSON(inputs.check-matrix) }}
   test_csharp:
     if: inputs.selection == 'test'
     name: Test / C# (${{ matrix.platform }})
@@ -145,7 +135,7 @@ jobs:
         path: target/ci
     - name: Restore C# Executable Permissions
       if: runner.os == 'Linux'
-      run: chmod +x "sdk/csharp/$(cat sdk/csharp/artifacts/paths/${{ env.PROFILE == 'release' && 'Release' || 'Debug' }}/Harmos.Conformance.txt)"
+      run: mise run ci:restore-permissions -- --profile ${{ env.PROFILE }}
     - name: Test the C# Solution
       run: mise run test -- --language csharp --profile ${{ env.PROFILE }}
       env:
@@ -259,7 +249,7 @@ jobs:
         path: target/build/${{ env.PROFILE }}/any/python
         github-token: ${{ github.token }}
     - name: Run Project Task
-      run: mise run release:rehearse --
+      run: mise run release:rehearse -- --profile ${{ env.PROFILE }}
       env:
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -383,7 +373,7 @@ jobs:
           || 'READ_ONLY' }}
     - name: Install Linux C++ Prerequisites
       if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool pkg-config
+      run: mise run ci:native-dependencies --
     - name: Run Project Task
       run: mise run build -- --artifact tests --profile ${{ env.PROFILE }}
       env:
@@ -642,17 +632,11 @@ jobs:
         name: build-product-${{ env.PROFILE }}-unix
         path: target/ci
     - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
-      if: matrix.suffix == '' && github.event_name != 'push'
+      if: matrix.suffix == ''
       with:
         name: build-python-${{ env.PROFILE }}
         path: target/build/${{ env.PROFILE }}/any/python/
-    - name: Check Python on Dev
-      if: github.event_name == 'push' && matrix.suffix == ''
-      run: |
-        mise run format -- --language python --check
-        mise run lint -- --language python
     - name: Run Project Task
-      if: github.event_name != 'push' || matrix.suffix != ''
       run: mise run check -- ${{ matrix.arguments }}
       env:
         CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst"]'
@@ -809,34 +793,7 @@ jobs:
       MISE_ENABLE_TOOLS: dotnet,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest
     strategy:
       fail-fast: false
-      matrix:
-        platform:
-        - unix
-        - windows
-        include:
-        - platform: unix
-          runner: ubuntu-24.04
-          minutes: 120
-          container: ''
-        - platform: windows
-          runner: windows-2022
-          minutes: 120
-          container: ''
-        - layer: integration
-          label: Integration
-          arguments: --layer integration
-        - layer: acceptance
-          label: Acceptance
-          arguments: --layer acceptance
-        - layer: system
-          label: System
-          arguments: --layer system
-        layer:
-        - integration
-        - acceptance
-        - system
-        language:
-        - rust
+      matrix: ${{ fromJSON(inputs.test-matrix) }}
   build_bench:
     if: inputs.selection == 'build_bench'
     name: Build / Bench

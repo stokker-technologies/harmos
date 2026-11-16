@@ -28,8 +28,8 @@ and coverage tasks use the machine-wide cache-directory lock, including focused
 checks, and share a capped local sccache across independent worktree targets.
 
 Harmos owns its workflows, composite actions and CI/release tooling. Pins, CI, release layout, binding generation and documentation are project-owned.
-PRs run selected suites. Dev pushes run only the quick checks and Product and
-Tests compilation; they package and publish nothing. Merges to dev remain
+PRs run suites selected by changed paths. Dev pushes run only quick checks,
+documentation checks and Product compilation; they package and publish nothing. Merges to dev remain
 ungated.
 
 Git dependencies are allowed on dev and ordinary PRs. Release PRs (`release/v*`
@@ -76,8 +76,9 @@ otherwise.
 ## Tests and Checks
 
 Run targeted tasks locally. Hosted CI and Nightly provide full validation.
-Every pull request runs all configured verification jobs; release rehearsal is
-limited to release reviews. Impact planning is removed. Each matrix job names one
+Ready pull requests run impact-selected verification jobs. Release reviews and
+manual full validation run the complete release-profile graph, including rehearsal.
+Draft and closed reviews receive planned skips. Each matrix job names one
 project task; see [Workflow Task Interface](tooling.md#workflow-task-interface).
 Merges into dev remain ungated. Required hosted checks gate main and stable
 releases. Report and investigate local failures.
