@@ -51,7 +51,6 @@ class ImpactPlanning(unittest.TestCase):
             "test",
         }
         sdk = {"docs", "check", "build_product", "build_tests", "check_product", "prepare_test_fixtures", "test"}
-        cpp = sdk - {"check_product"}
         cases = [
             (["README.md"], docs_only),
             (["sdk/python/README.md"], docs_only),
@@ -66,8 +65,8 @@ class ImpactPlanning(unittest.TestCase):
             (["sdk/python/uv.lock"], sdk),
             (["sdk/csharp/src/Harmos/Client.cs"], sdk),
             (["sdk/csharp/packages.lock.json"], sdk),
-            (["sdk/cpp/include/harmos/client.hpp"], cpp),
-            (["sdk/cpp/vcpkg.json"], cpp),
+            (["sdk/cpp/include/harmos/client.hpp"], sdk),
+            (["sdk/cpp/vcpkg.json"], sdk),
             (["proto/harmos/host/v1/time.proto"], rust),
             (["sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto"], rust),
             (["mise.toml"], rust),
@@ -78,7 +77,7 @@ class ImpactPlanning(unittest.TestCase):
             (["unexpected/new.input"], rust),
             (None, rust),
             ([], rust),
-            (["README.md", "sdk/cpp/src/client.cpp"], cpp),
+            (["README.md", "sdk/cpp/src/client.cpp"], sdk),
         ]
         for paths, expected in cases:
             with self.subTest(paths=paths):

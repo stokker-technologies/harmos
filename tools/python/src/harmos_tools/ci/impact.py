@@ -134,8 +134,8 @@ def plan(classes: frozenset[str], event: str) -> dict[str, Any]:
         languages.add("csharp")
         selected.update({"docs", "check", "check_product", "test"})
     if "cpp" in classes:
-        languages.add("cpp")
-        selected.update({"docs", "check", "test"})
+        languages.update({"cpp", "python"})
+        selected.update({"docs", "check", "check_product", "test"})
     if "package" in classes:
         selected.update({"check", "package_rust"})
     checks = [dict(row) for row in CHECKS if full or row["language"] in languages or row["language"] == "repository"]
