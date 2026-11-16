@@ -64,6 +64,7 @@ use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse,
     instance_client::InstanceClient,
+    instance_samples_response,
     instance_server::{Instance, InstanceServer},
 };
 use harmos_runtime::{
@@ -217,7 +218,7 @@ impl Instance for Forward {
             .as_mut()
             .ok_or_else(|| Status::invalid_argument("Admit Caller Fixture: Missing Declarations"))?;
         declarations.operations.retain(|operation| matches!(operation.id.as_str(), "conformance.caller_refusal" | "conformance.step.0"));
-        declarations.streams.retain(|stream| stream.id == "conformance.tick_caller_refusal");
+        declarations.streams.retain(|stream| stream.id == "conformance.window_caller_refusal");
         declarations.requires.retain(|requirement| requirement.id == CREATE);
         if declarations.operations.len() != 2 || declarations.streams.len() != 1 || declarations.requires.len() != 1 {
             return Err(Status::invalid_argument("Admit Caller Fixture: Missing Caller Refusal Contracts"));
@@ -240,10 +241,15 @@ impl Instance for Forward {
         let incoming = self.client.clone().samples(frames).await?.into_inner();
         let sample = self.sample.clone();
         let frames = incoming.map(move |frame| {
-            if let Ok(frame) = &frame
-                && let Some(row) = frame.samples.first()
+            // Keep the First Window Sample's Row, Rebuilt From the Part's Value Column.
+            if let Ok(InstanceSamplesResponse {
+                frame: Some(instance_samples_response::Frame::Batch(batch)),
+                ..
+            }) = &frame
+                && let Ok(columns) = fixture::Values::decode(batch.columns.as_slice())
+                && let Some(value) = columns.value.first()
             {
-                *sample.lock().expect("caller sample lock") = Some(row.row.clone());
+                sample.lock().expect("caller sample lock").get_or_insert_with(|| fixture::payload(value));
             }
             frame
         });
@@ -405,11 +411,12 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(10),
         stream_window: NonZeroUsize::new(8).expect("stream window"),
+        interval_window: Duration::from_secs(1),
     };
     let result = async {
         let attached = runtime.attach_grpc(Placement::Remote(address), settings).await.map_err(invalid)?;
         let result = async {
-            // Refuse the Same CLIENTS Operation From Invoke and an Unanswered Samples Tick.
+            // Refuse the Same CLIENTS Operation From Invoke and an Unanswered Samples Window.
             let payload = runtime.operations.call_encoded("conformance.caller_refusal", fixture::payload(&[])).await.map_err(invalid)?;
             refusal(&payload)?;
             controller
@@ -420,7 +427,7 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
                 .lock()
                 .expect("caller sample lock")
                 .clone()
-                .ok_or_else(|| Error::Invalid("Tick Caller Refusal: Missing Sample".into()))?;
+                .ok_or_else(|| Error::Invalid("Window Caller Refusal: Missing Sample".into()))?;
             refusal(&payload)?;
             require(counter.load(Ordering::SeqCst) == 1, "Create Invocation: Refused Plugin Dispatched a Nested Call")?;
 

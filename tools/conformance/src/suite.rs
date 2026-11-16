@@ -46,7 +46,7 @@ use harmos_protocol::model::{
 };
 use harmos_protocol::model::{RetryPolicy, StorageTransferSettings, TransferFraming};
 use harmos_protocol::plugin::{
-    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request, Response, Sample, SamplesSelection, Tick,
+    Cancel, ChildCancel, ChildDemand, ChildRequest, ChildResponse, Request, Response, Sample, SampleBatch, SamplesSelection, Window,
 };
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
@@ -65,7 +65,7 @@ pub const CASES: &[&str] = &[
     "Cancellation and Child Cancel",
     "Structured Failure",
     "Transport Failure",
-    "Ticks and Samples",
+    "Windows and Batches",
     "Independent Calls",
     "Device Samples",
     "Demand and Reopen",
@@ -90,14 +90,18 @@ pub const CASES: &[&str] = &[
     "Samples Child Lifetime and Refusal",
     "Client Caller Refusal",
     "Plugin Caller Refusal",
+    "Window Observers and Splitting",
     "Wire Operation Identities",
     "Message Ceiling Independent of Transfer Chunks",
     "Typed Settings Defaults and Stored Values",
     "Typed Operations Discovery",
-    "Half-Close During an Unanswered Tick",
+    "Half-Close During an Unanswered Window",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
+
+/// The Fixture Streams' Resolved Interval, Granted as Every Window's Period.
+const PERIOD: ProtoDuration = ProtoDuration { seconds: 1, nanos: 0 };
 
 /* === Macros === */
 
@@ -237,35 +241,59 @@ async fn open(client: &mut Client, name: &str) -> Result<Publish> {
     Ok((send, incoming))
 }
 
-async fn tick(
-    send: &mpsc::Sender<InstanceSamplesRequest>, input: &mut Streaming<InstanceSamplesResponse>, sequence: u64, seconds: i64,
-) -> Result<()> {
-    let at = fixture::timestamp(seconds);
-    send.send(InstanceSamplesRequest {
-        frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(at) })),
-    })
-    .await
-    .map_err(|error| Error::Invalid(error.to_string()))?;
-    let samples = input.message().await?.ok_or_else(|| Error::Invalid("Missing Tick Sample".into()))?;
-    let expected = Sample {
-        at: Some(at),
-        row: fixture::payload(&sequence.to_le_bytes()),
-        sequence,
-    };
-    require(samples.samples == [expected], "Tick Time, Row, Sequence or Sample Count Differs")
+fn window(sequence: u64, count: u64, seconds: i64) -> InstanceSamplesRequest {
+    InstanceSamplesRequest {
+        frame: Some(instance_samples_request::Frame::Window(Window {
+            start: Some(fixture::timestamp(seconds)),
+            period: Some(PERIOD),
+            count,
+            sequence,
+        })),
+    }
 }
 
-async fn samples_tick(send: &mpsc::Sender<InstanceSamplesRequest>, seconds: i64) -> Result<()> {
-    send.send(InstanceSamplesRequest {
-        frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(fixture::timestamp(seconds)) })),
-    })
-    .await
-    .map_err(|error| Error::Invalid(format!("Send Tick: {error}")))
+async fn grant(send: &mpsc::Sender<InstanceSamplesRequest>, sequence: u64, count: u64, seconds: i64) -> Result<()> {
+    send.send(window(sequence, count, seconds)).await.map_err(|error| Error::Invalid(format!("Grant Window: {error}")))
+}
+
+fn rows(sequence: u64, count: u64) -> Vec<Vec<u8>> {
+    (sequence..sequence + count).map(|sequence| sequence.to_le_bytes().to_vec()).collect()
+}
+
+/// Reads One Window's Parts and Returns Its Values With Each Part's Encoded Size.
+async fn answer(input: &mut Streaming<InstanceSamplesResponse>, count: u64) -> Result<(Vec<Vec<u8>>, Vec<usize>)> {
+    let mut values = Vec::new();
+    let mut sizes = Vec::new();
+    loop {
+        let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Window Answer: Missing Part".into()))?;
+        sizes.push(frame.encoded_len());
+        let Some(instance_samples_response::Frame::Batch(SampleBatch { offset, count: part, columns, last })) = frame.frame else {
+            return Err(Error::Invalid("Read Window Answer: Expected a Batch Part Without Child Traffic".into()));
+        };
+        require(frame.samples.is_empty(), "Read Window Answer: Interval Part Carries Device Samples")?;
+        require(offset == values.len() as u64 && part >= 1, "Read Window Answer: Part Offset Not Contiguous or Part Empty")?;
+        let columns = fixture::Values::decode(columns.as_slice())?;
+        require(columns.value.len() as u64 == part, "Read Window Answer: Column Length Differs From Part Count")?;
+        values.extend(columns.value);
+        require(values.len() as u64 <= count, "Read Window Answer: Parts Exceed the Window")?;
+        require(last == (values.len() as u64 == count), "Read Window Answer: Last Flag Disagrees With the Window Count")?;
+        if last {
+            return Ok((values, sizes));
+        }
+    }
+}
+
+async fn sequences(
+    send: &mpsc::Sender<InstanceSamplesRequest>, input: &mut Streaming<InstanceSamplesResponse>, sequence: u64, count: u64, seconds: i64,
+) -> Result<()> {
+    grant(send, sequence, count, seconds).await?;
+    let (values, _) = answer(input, count).await?;
+    require(values == rows(sequence, count), "Read Window Answer: Rows Differ From Their Sample Sequences")
 }
 
 async fn samples_child(input: &mut Streaming<InstanceSamplesResponse>, operation: &str, payload: &[u8]) -> Result<ChildRequest> {
     let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Samples Child: Missing Frame".into()))?;
-    require(frame.samples.is_empty(), "Read Samples Child: Child Frame Also Answers Tick")?;
+    require(frame.samples.is_empty(), "Read Samples Child: Child Frame Also Carries Samples")?;
     let Some(instance_samples_response::Frame::Child(child)) = frame.frame else {
         return Err(Error::Invalid("Read Samples Child: Expected Request".into()));
     };
@@ -284,12 +312,21 @@ async fn samples_reply(send: &mpsc::Sender<InstanceSamplesRequest>, call: u64, r
     .map_err(|error| Error::Invalid(format!("Reply to Samples Child: {error}")))
 }
 
-async fn samples_answer(input: &mut Streaming<InstanceSamplesResponse>, sequence: u64, seconds: i64) -> Result<Vec<u8>> {
-    let frame = input.message().await?.ok_or_else(|| Error::Invalid("Read Tick Answer: Missing Frame".into()))?;
-    require(frame.frame.is_none() && frame.samples.len() == 1, "Read Tick Answer: Expected One Sample Without Child Traffic")?;
-    let sample = &frame.samples[0];
-    require(sample.sequence == sequence && sample.at == Some(fixture::timestamp(seconds)), "Read Tick Answer: Sequence or Clock Differs")?;
-    Ok(fixture::Value::decode(sample.row.as_slice())?.value)
+async fn samples_answer(input: &mut Streaming<InstanceSamplesResponse>) -> Result<Vec<u8>> {
+    let (mut values, _) = answer(input, 1).await?;
+    Ok(values.remove(0))
+}
+
+/// Reads Until the Call Fails, Allowing Only Child Cancellation Frames Before the Status.
+async fn refused(input: &mut Streaming<InstanceSamplesResponse>, expected: Code) -> Result<()> {
+    loop {
+        match input.message().await {
+            Err(status) => return require(status.code() == expected, &format!("Expected {expected:?}, Got {status}")),
+            Ok(Some(frame))
+                if frame.samples.is_empty() && matches!(frame.frame, Some(instance_samples_response::Frame::ChildCancel(_))) => {}
+            Ok(frame) => return Err(Error::Invalid(format!("Expected {expected:?}, Got {frame:?}"))),
+        }
+    }
 }
 
 async fn samples_control(input: &mut Streaming<InstanceSamplesResponse>, expected: instance_samples_response::Frame) -> Result<()> {
@@ -318,40 +355,40 @@ async fn publish_status(
 async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
     match rule {
         30 => {
-            let (send, mut input) = open(client, "conformance.tick_children").await?;
+            let (send, mut input) = open(client, "conformance.window_children").await?;
             let mut used = BTreeSet::new();
             for (sequence, seconds) in [(1, 100), (2, 101)] {
-                samples_tick(&send, seconds).await?;
+                grant(&send, sequence, 1, seconds).await?;
                 let first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
                 let second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
-                require(used.insert(first.call) && used.insert(second.call), "Samples: Child ID Reused Across Ticks")?;
-                // Interleave Another Samples Call and Invoke Before Resolving the First Tick.
-                let (other_send, mut other) = open(client, "conformance.tick_children").await?;
-                samples_tick(&other_send, 200).await?;
+                require(used.insert(first.call) && used.insert(second.call), "Samples: Child ID Reused Across Windows")?;
+                // Interleave Another Samples Call and Invoke Before Answering the First Window.
+                let (other_send, mut other) = open(client, "conformance.window_children").await?;
+                grant(&other_send, 1, 1, 200).await?;
                 let other_first = samples_child(&mut other, "conformance.host.echo", &fixture::payload(&[1])).await?;
                 let other_second = samples_child(&mut other, "conformance.host.echo", &fixture::payload(&[2])).await?;
                 let payload = fixture::payload(b"independent");
                 let (_invoke_send, mut invocation) = invoke(client, "conformance.step.0", payload.clone()).await?;
-                require(terminal(&mut invocation).await? == response::Result::Payload(payload), "Samples: Tick Blocked Invoke")?;
+                require(terminal(&mut invocation).await? == response::Result::Payload(payload), "Samples: Window Blocked Invoke")?;
                 samples_reply(&other_send, other_second.call, child_response::Result::Payload(fixture::payload(&[8]))).await?;
                 samples_reply(&other_send, other_first.call, child_response::Result::Payload(fixture::payload(&[7]))).await?;
-                require(samples_answer(&mut other, 1, 200).await? == [7, 8], "Samples: Separate Call Correlation Differs")?;
+                require(samples_answer(&mut other).await? == [7, 8], "Samples: Separate Call Correlation Differs")?;
                 samples_reply(&send, second.call, child_response::Result::Payload(fixture::payload(&[2]))).await?;
                 samples_reply(&send, first.call, child_response::Result::Payload(fixture::payload(&[1]))).await?;
-                require(samples_answer(&mut input, sequence, seconds).await? == [1, 2], "Samples: Reverse Reply Correlation Differs")?;
+                require(samples_answer(&mut input).await? == [1, 2], "Samples: Reverse Reply Correlation Differs")?;
             }
-            samples_tick(&send, 102).await?;
+            grant(&send, 3, 1, 102).await?;
             let _first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
             let _second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
-            samples_reply(&send, *used.first().expect("earlier tick child"), child_response::Result::Payload(fixture::payload(&[9])))
+            samples_reply(&send, *used.first().expect("earlier window child"), child_response::Result::Payload(fixture::payload(&[9])))
                 .await?;
             require(
                 input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
-                "Samples: Earlier Tick Reply Assigned to Later Tick",
+                "Samples: Earlier Window Reply Assigned to Later Window",
             )?;
             for duplicate in [false, true] {
-                let (send, mut input) = open(client, "conformance.tick_children").await?;
-                samples_tick(&send, 300).await?;
+                let (send, mut input) = open(client, "conformance.window_children").await?;
+                grant(&send, 1, 1, 300).await?;
                 let first = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
                 let _second = samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
                 if duplicate {
@@ -370,8 +407,8 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             }
         }
         31 => {
-            let (send, mut input) = open(client, "conformance.tick_context").await?;
-            samples_tick(&send, 400).await?;
+            let (send, mut input) = open(client, "conformance.window_context").await?;
+            grant(&send, 1, 1, 400).await?;
             let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"fixture")).await?;
             let echo_reply = fixture::payload(b"scoped");
             samples_reply(&send, echo.call, child_response::Result::Payload(echo_reply.clone())).await?;
@@ -387,7 +424,7 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             }
             .encode_to_vec();
             samples_reply(&send, settings.call, child_response::Result::Payload(settings_reply.clone())).await?;
-            let answer = samples_answer(&mut input, 1, 400).await?;
+            let answer = samples_answer(&mut input).await?;
             let mut remaining = answer.as_slice();
             let mut replies = Vec::new();
             for _ in 0..3 {
@@ -412,16 +449,16 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
                 "Samples: Typed Settings Result Differs",
             )?;
 
-            let (send, mut input) = open(client, "conformance.tick_failure").await?;
-            samples_tick(&send, 401).await?;
+            let (send, mut input) = open(client, "conformance.window_failure").await?;
+            grant(&send, 1, 1, 401).await?;
             let child = samples_child(&mut input, "conformance.host.fail", &fixture::payload(&[])).await?;
             let failure = fixture::failure("conformance.host.fail");
             samples_reply(&send, child.call, child_response::Result::Failure(failure.clone())).await?;
-            let answer = samples_answer(&mut input, 1, 401).await?;
+            let answer = samples_answer(&mut input).await?;
             require(Failure::decode(answer.as_slice())? == failure, "Samples: Structured Failure Changed")?;
 
-            let (send, mut input) = open(client, "conformance.tick_watch").await?;
-            samples_tick(&send, 402).await?;
+            let (send, mut input) = open(client, "conformance.window_watch").await?;
+            grant(&send, 1, 1, 402).await?;
             let watch = samples_child(&mut input, "conformance.host.watch", &fixture::payload(b"fixture")).await?;
             require(watch.watch && watch.max_response_bytes == 4096, "Samples: Watch Bounds Differ")?;
             for item in [7, 8] {
@@ -430,10 +467,10 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             }
             samples_control(&mut input, instance_samples_response::Frame::ChildDemand(ChildDemand { call: watch.call })).await?;
             samples_reply(&send, watch.call, child_response::Result::Payload(fixture::payload(&[]))).await?;
-            require(samples_answer(&mut input, 1, 402).await? == [7, 8], "Samples: Watch Items Differ")?;
+            require(samples_answer(&mut input).await? == [7, 8], "Samples: Watch Items Differ")?;
         }
         32 => {
-            for name in ["conformance.ticks", "conformance.device"] {
+            for name in ["conformance.interval", "conformance.device"] {
                 let (send, mut input) = open(client, name).await?;
                 if name == "conformance.device" {
                     require(input.message().await?.is_some(), "Samples: Missing Device Row")?;
@@ -441,25 +478,25 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
                 samples_reply(&send, 1, child_response::Result::Payload(Vec::new())).await?;
                 require(
                     input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
-                    "Samples: Child Outside Tick Accepted",
+                    "Samples: Child Outside Window Accepted",
                 )?;
             }
-            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
-            samples_tick(&send, 500).await?;
+            let (send, mut input) = open(client, "conformance.window_cancel").await?;
+            grant(&send, 1, 1, 500).await?;
             let pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
             let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
             samples_reply(&send, echo.call, child_response::Result::Payload(fixture::payload(b"released"))).await?;
             samples_control(&mut input, instance_samples_response::Frame::ChildCancel(ChildCancel { call: pending.call })).await?;
             let automatic = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
             samples_control(&mut input, instance_samples_response::Frame::ChildCancel(ChildCancel { call: automatic.call })).await?;
-            require(samples_answer(&mut input, 1, 500).await? == b"cancelled", "Samples: Cancellation Answer Differs")?;
+            require(samples_answer(&mut input).await? == b"cancelled", "Samples: Cancellation Answer Differs")?;
             samples_reply(&send, pending.call, child_response::Result::Payload(Vec::new())).await?;
             require(
                 input.message().await.is_err_and(|status| status.code() == Code::InvalidArgument),
-                "Samples: Late Child After Tick Accepted",
+                "Samples: Late Child After Window Accepted",
             )?;
-            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
-            samples_tick(&send, 501).await?;
+            let (send, mut input) = open(client, "conformance.window_cancel").await?;
+            grant(&send, 1, 1, 501).await?;
             let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
             let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
             drop(send);
@@ -469,14 +506,14 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
                     "Samples: Row or New Child After Demand End",
                 )?;
             }
-            let (send, mut input) = open(client, "conformance.tick_cancel").await?;
-            samples_tick(&send, 501).await?;
+            let (send, mut input) = open(client, "conformance.window_cancel").await?;
+            grant(&send, 1, 1, 501).await?;
             let _pending = samples_child(&mut input, "conformance.host.pending", &fixture::payload(&[])).await?;
             let _echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"release")).await?;
             drop(input);
             drop(send);
-            let (send, mut input) = open(client, "conformance.ticks").await?;
-            tick(&send, &mut input, 1, 502).await?;
+            let (send, mut input) = open(client, "conformance.interval").await?;
+            sequences(&send, &mut input, 1, 2, 502).await?;
             let payload = fixture::payload(b"after samples cancellation");
             let (_send, mut input) = invoke(client, "conformance.step.0", payload.clone()).await?;
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Samples: Cancellation Broke Invoke")?;
@@ -491,7 +528,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     match rule {
         33 | 34 => crate::callers::run(rule, address).await?,
         30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
-        37 => {
+        38 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("List Settings: Missing Declarations".into()))?;
             let section = declarations
                 .sections
@@ -522,18 +559,25 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 require(SettingValues::decode(value.value.as_slice())? == values, "List Settings: Values Differ")?;
             }
         }
-        39 => {
-            // A Host Closing a Scope Half-Closes Without Awaiting Its Last Tick; the Demand Still Ends With OK.
-            let (send, mut input) = open(&mut client, "conformance.ticks").await?;
-            samples_tick(&send, 1_700_000_000).await?;
+        40 => {
+            // A Host Closing a Scope Half-Closes Without Awaiting Its Last Window; the Demand Still Ends With OK.
+            let (send, mut input) = open(&mut client, "conformance.interval").await?;
+            grant(&send, 1, 3, 1_700_000_000).await?;
             drop(send);
             let mut answered = 0;
             while let Some(frame) = input.message().await? {
-                answered += frame.samples.len();
-                require(frame.frame.is_none() && answered <= 1, "Half-Close: Unexpected Frame After the Last Tick")?;
+                let Some(instance_samples_response::Frame::Batch(batch)) = frame.frame else {
+                    return Err(Error::Invalid("Half-Close: Unexpected Frame After the Last Window".into()));
+                };
+                require(
+                    frame.samples.is_empty() && batch.offset == answered && batch.count >= 1,
+                    "Half-Close: Window Part Not Contiguous After the Last Window",
+                )?;
+                answered += batch.count;
+                require(answered <= 3, "Half-Close: Parts Exceed the Last Window")?;
             }
         }
-        38 => {
+        39 => {
             let (send, mut input) = invoke(&mut client, "conformance.discover", fixture::payload(&[])).await?;
             child(&mut input, 1, "harmos.host.v1.Operations/List", &[]).await?;
             let operation = DiscoveredOperation {
@@ -563,14 +607,31 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 "Discover Operation: Typed Contract Differs",
             )?;
         }
-        36 => {
+        35 => {
+            // A Window Observer Answers Small Windows Whole and Splits Large Ones at Sample Boundaries.
+            let limit = description.message_bytes;
+            let (send, mut input) = open(&mut client, fixture::WINDOW).await?;
+            sequences(&send, &mut input, 1, 3, 1_700_000_000).await?;
+            let count = 1_000_000;
+            grant(&send, 4, count, 1_700_000_003).await?;
+            let (values, sizes) = answer(&mut input, count).await?;
+            require(sizes.len() > 1, "Split Window: One Part Carries the Whole Window")?;
+            require(
+                sizes.iter().all(|size| *size as u64 <= limit),
+                &format!("Split Window: A Part Exceeds the Advertised {limit} Message Bytes: {sizes:?}"),
+            )?;
+            require(values == rows(4, count), "Split Window: Rows Differ From Their Sample Sequences")?;
+            drop(send);
+            require(input.message().await?.is_none(), "Split Window: Demand Survived Half-Close")?;
+        }
+        37 => {
             // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.
             let chunk = StorageTransferSettings::default().chunk_bytes() as usize;
             let payload = fixture::payload(&vec![0x5a; chunk + TransferFraming::Bytes as usize]);
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", payload.clone()).await?;
             require(terminal(&mut input).await? == response::Result::Payload(payload), "Invoke Large Echo: Payload Differs")?;
         }
-        35 => {
+        36 => {
             let declarations = description.declarations.ok_or_else(|| Error::Invalid("Declare: Missing Declarations".into()))?;
             for operation in &declarations.operations {
                 harmos_protocol::schema::plugin_operation_identity(&operation.id).map_err(|error| Error::Invalid(error.to_string()))?;
@@ -780,23 +841,24 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             invoke_status(client.invoke(stream::iter([frame])).await, Code::InvalidArgument).await?;
         }
         10 => {
-            let (send, mut input) = open(&mut client, "conformance.ticks").await?;
-            tick(&send, &mut input, 1, 1_700_000_000).await?;
-            tick(&send, &mut input, 2, 1_700_000_001).await?;
-            tick(&send, &mut input, 3, 1_700_003_600).await?;
+            // A Far Window Answers Only Its Granted Samples, Without Catch-Up.
+            let (send, mut input) = open(&mut client, "conformance.interval").await?;
+            sequences(&send, &mut input, 1, 3, 1_700_000_000).await?;
+            sequences(&send, &mut input, 4, 3, 1_700_000_003).await?;
+            sequences(&send, &mut input, 7, 2, 1_700_003_600).await?;
             drop(send);
-            require(input.message().await?.is_none(), "Samples Without Ticks After Half-Close")?;
+            require(input.message().await?.is_none(), "Samples Without Windows After Half-Close")?;
         }
         11 => {
-            let (first, mut first_input) = open(&mut client, "conformance.ticks").await?;
-            let (second, mut second_input) = open(&mut client, "conformance.ticks").await?;
+            let (first, mut first_input) = open(&mut client, "conformance.interval").await?;
+            let (second, mut second_input) = open(&mut client, "conformance.interval").await?;
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", fixture::payload(b"independent")).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"independent")),
                 "Idle Stream Blocked Invoke",
             )?;
-            tick(&second, &mut second_input, 1, 42).await?;
-            tick(&first, &mut first_input, 1, 43).await?;
+            sequences(&second, &mut second_input, 1, 2, 42).await?;
+            sequences(&first, &mut first_input, 1, 2, 43).await?;
         }
         12 => {
             let (send, mut input) = open(&mut client, "conformance.device").await?;
@@ -814,15 +876,15 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(input.message().await?.is_none(), "Device Demand Did Not End")?;
         }
         13 => {
-            let (send, mut input) = open(&mut client, "conformance.ticks").await?;
-            tick(&send, &mut input, 1, 100).await?;
+            let (send, mut input) = open(&mut client, "conformance.interval").await?;
+            sequences(&send, &mut input, 1, 2, 100).await?;
             drop(send);
             require(input.message().await?.is_none(), "Publish Half-Close Did Not End Demand")?;
-            let (send, mut input) = open(&mut client, "conformance.ticks").await?;
-            tick(&send, &mut input, 1, 101).await?;
+            let (send, mut input) = open(&mut client, "conformance.interval").await?;
+            sequences(&send, &mut input, 1, 1, 101).await?;
             drop(send);
             drop(input);
-            let (send, input) = open(&mut client, "conformance.ticks").await?;
+            let (send, input) = open(&mut client, "conformance.interval").await?;
             drop(input);
             drop(send);
             let (_send, mut input) = invoke(&mut client, "conformance.step.0", fixture::payload(b"after close")).await?;
@@ -832,34 +894,54 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )?;
         }
         14 => {
-            for frame in [
-                InstanceSamplesRequest { frame: None },
-                InstanceSamplesRequest {
-                    frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(fixture::timestamp(1)) })),
-                },
-            ] {
+            for frame in [InstanceSamplesRequest { frame: None }, window(1, 1, 1)] {
                 publish_status(client.samples(stream::iter([frame])).await, Code::InvalidArgument).await?;
             }
             publish_status(client.samples(stream::iter(Vec::<InstanceSamplesRequest>::new())).await, Code::InvalidArgument).await?;
-            let open = InstanceSamplesRequest {
+            let open_interval = InstanceSamplesRequest {
                 frame: Some(instance_samples_request::Frame::Open(SamplesSelection {
-                    stream: "conformance.ticks".into(),
+                    stream: "conformance.interval".into(),
                     scope: "fixture".into(),
                 })),
             };
-            publish_status(client.samples(stream::iter([open.clone(), open.clone()])).await, Code::InvalidArgument).await?;
-            // Rule 14 / Reject Missing and Out-of-Range Tick Timestamps.
-            for at in [
+            publish_status(client.samples(stream::iter([open_interval.clone(), open_interval.clone()])).await, Code::InvalidArgument)
+                .await?;
+            // Rule 14 / Reject Missing and Out-of-Range Starts, a Missing Period and an Empty Window.
+            let valid = Window {
+                start: Some(fixture::timestamp(1)),
+                period: Some(PERIOD),
+                count: 1,
+                sequence: 1,
+            };
+            let mut invalid = Vec::new();
+            for start in [
                 None,
                 Some(Timestamp { seconds: 253_402_300_800, nanos: 0 }),
                 Some(Timestamp { seconds: 0, nanos: -1 }),
                 Some(Timestamp { seconds: 0, nanos: 1_000_000_000 }),
             ] {
-                let tick = InstanceSamplesRequest {
-                    frame: Some(instance_samples_request::Frame::Tick(Tick { at })),
-                };
-                publish_status(client.samples(stream::iter([open.clone(), tick])).await, Code::InvalidArgument).await?;
+                invalid.push(Window { start, ..valid });
             }
+            invalid.push(Window { period: None, ..valid });
+            invalid.push(Window { count: 0, ..valid });
+            for window in invalid {
+                let window = InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Window(window)),
+                };
+                publish_status(client.samples(stream::iter([open_interval.clone(), window])).await, Code::InvalidArgument).await?;
+            }
+            // Rule 14 / Reject a Window on a Device Stream.
+            let (send, mut input) = open(&mut client, "conformance.device").await?;
+            require(input.message().await?.is_some_and(|frame| frame.samples.len() == 1), "Window Validation: Missing Device Row")?;
+            grant(&send, 1, 1, 1).await?;
+            refused(&mut input, Code::InvalidArgument).await?;
+            // Rule 14 / Reject a Second Window While the First Is Unanswered.
+            let (send, mut input) = open(&mut client, "conformance.window_children").await?;
+            grant(&send, 1, 1, 1).await?;
+            samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[1])).await?;
+            samples_child(&mut input, "conformance.host.echo", &fixture::payload(&[2])).await?;
+            grant(&send, 2, 1, 2).await?;
+            refused(&mut input, Code::InvalidArgument).await?;
             let missing = InstanceSamplesRequest {
                 frame: Some(instance_samples_request::Frame::Open(SamplesSelection {
                     stream: "conformance.absent".into(),
@@ -933,10 +1015,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     && declarations.streams == expected.streams,
                 "Interval Setting or Section Differs",
             )?;
-            // Host Stream Settings / Answer Only the Host's Resolved Ticks.
+            // Host Stream Settings / Answer Only the Host's Granted Windows.
             let (send, mut input) = open(&mut client, "conformance.settings").await?;
-            tick(&send, &mut input, 1, 100).await?;
-            tick(&send, &mut input, 2, 102).await?;
+            sequences(&send, &mut input, 1, 2, 100).await?;
+            sequences(&send, &mut input, 3, 1, 102).await?;
             drop(send);
             require(input.message().await?.is_none(), "Setting Observer Survived Demand Closure")?;
         }
