@@ -76,7 +76,8 @@ PR diffs compare merge-base to head; push diffs compare before to after. Git's
 NUL-delimited name-status output includes deletions and both sides of renames.
 Missing commits, malformed or unavailable diffs and empty comparisons select all
 eligible jobs. Draft and closed reviews plan explicit skips. Release reviews and
-manual full validation select everything. Dev pushes retain quick checks,
+manual full validation select everything in the release profile. Dev pushes retain
+quick checks,
 documentation checks and Product builds, excluding Tests, fixtures, SDK tests and
 packaging. Nightly runs everything after its freshness gate; publication depends
 only on packaging, while suite verdicts are appended by the final report.
@@ -649,7 +650,7 @@ merged release reviews so their validation can finish. Release evidence lookup u
 `REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. Tagging and publication invoke
 release checks directly for the exact `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
 cancellations, missing jobs and skips absent from the successful impact plan.
-`OPTIONAL_JOBS` and `RELEASE_REVIEW` no longer grant skip exceptions.
+The successful planner must name every selected job and deliberate skip.
 Dev pushes run quick checks, docs checks and Product builds. Their quick check
 uses format/lint and repository tasks because the complete Python check also runs
 SDK and tooling tests. Generated-client checks consume

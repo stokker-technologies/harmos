@@ -17,7 +17,7 @@ permissions:
   actions: read
   contents: read
 env:
-  PROFILE: ${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
+  PROFILE: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   MISE_LOCKED: '1'
   MISE_EXPERIMENTAL: '1'
   CARGO_INCREMENTAL: '0'
@@ -76,7 +76,7 @@ jobs:
       channel: stable
       selection: ${{ github.event_name == 'push' && 'check_quick' || 'check' }}
       check-matrix: ${{ needs.impact.outputs.check_matrix }}
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   release_dry:
     needs:
     - impact
@@ -86,7 +86,7 @@ jobs:
     with:
       channel: stable
       selection: release_dry
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   release_rehearsal:
     needs:
     - impact
@@ -96,7 +96,7 @@ jobs:
     with:
       channel: stable
       selection: release_rehearsal
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   build_product:
     needs: [impact]
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.build_product == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
@@ -104,7 +104,7 @@ jobs:
     with:
       channel: stable
       selection: build_product
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   build_tests:
     needs: [impact]
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.build_tests == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
@@ -112,7 +112,7 @@ jobs:
     with:
       channel: stable
       selection: build_tests
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   package_rust:
     needs:
     - impact
@@ -122,7 +122,7 @@ jobs:
     with:
       channel: stable
       selection: package_rust
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   prepare_test_fixtures:
     needs:
     - impact
@@ -133,7 +133,7 @@ jobs:
     with:
       channel: stable
       selection: prepare_test_fixtures
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   required:
     name: CI / Required
     runs-on: ubuntu-24.04
@@ -189,7 +189,7 @@ jobs:
     with:
       channel: stable
       selection: check_product
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   test_unit:
     needs:
     - impact
@@ -199,7 +199,7 @@ jobs:
     with:
       channel: stable
       selection: test_unit
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   test:
     needs: [impact, prepare_test_fixtures]
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.test == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
@@ -208,7 +208,7 @@ jobs:
       channel: stable
       selection: test
       test-matrix: ${{ needs.impact.outputs.test_matrix }}
-      profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
 
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.event.number || github.ref }}

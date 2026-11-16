@@ -20,6 +20,7 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+from .. import csharp
 from ..process import spawn_flags
 from ..task.execute import command, task
 
@@ -49,10 +50,9 @@ def main() -> None:
             command(["sudo", "apt-get", "update"])
             command(["sudo", "apt-get", "install", "-y", "autoconf", "automake", "libtool", "pkg-config"])
         case "restore-permissions":
-            configuration = "Release" if options.profile == "release" else "Debug"
+            root = Path.cwd()
             sdk = Path("sdk/csharp").resolve()
-            manifest = sdk / "artifacts/paths" / configuration / "Harmos.Conformance.txt"
-            executable = (sdk / manifest.read_text(encoding="utf-8").strip()).resolve()
+            executable = csharp.executable(root, options.profile).resolve()
             if not executable.is_relative_to(sdk):
                 raise ValueError("Restore C# Permissions: correct the executable path in its build manifest")
             executable.chmod(executable.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

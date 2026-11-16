@@ -249,7 +249,7 @@ jobs:
         path: target/build/${{ env.PROFILE }}/any/python
         github-token: ${{ github.token }}
     - name: Run Project Task
-      run: mise run release:rehearse --
+      run: mise run release:rehearse -- --profile ${{ env.PROFILE }}
       env:
         CI_INPUT_ARCHIVES: '["target/ci/package-${{ env.PROFILE }}-rust-unix.tar.zst","target/ci/package-${{ env.PROFILE }}-rust-windows.tar.zst"]'
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9

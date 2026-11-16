@@ -185,7 +185,9 @@ class ImpactPlanning(unittest.TestCase):
 
     def test_required_accepts_only_success_and_planned_skips(self) -> None:
         planned = impact.plan(impact.classify(["README.md"]), "review")
-        passing = {name: {"result": "success" if name in planned["selected"] else "skipped"} for name in impact.JOBS}
+        passing: dict[str, dict[str, object]] = {
+            name: {"result": "success" if name in planned["selected"] else "skipped"} for name in impact.JOBS
+        }
         passing["impact"] = {
             "result": "success",
             "outputs": {"selected": json.dumps(planned["selected"]), "skipped": json.dumps(planned["skipped"])},
