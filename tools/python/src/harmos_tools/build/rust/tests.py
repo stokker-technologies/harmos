@@ -22,15 +22,16 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+import harmos_tools.build.fixtures
+from harmos_tools.process import spawn_flags
+
 from ... import csharp, temporary
 from ...ci import summary
 from ...test import archive
 from .. import cargo, paths
-from .. import fixtures as staging
 from ..fixtures import GUESTS, ROOT, TARGET
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -54,8 +55,12 @@ def main() -> None:
         fixtures = paths.output(ROOT, "build", options.profile) / "fixtures"
         csharp_fixture(options.profile, fixtures, {}, {})
         return
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         build(options.profile, scratch, features=options.features, extended=options.extended)
+    finally:
+        scratch_directory.close()
 
 
 def build(profile: str, scratch: Path, *, features: str | None = None, extended: bool = False) -> None:
@@ -82,35 +87,44 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
         assert executable is not None
         source = Path(executable)
         destination = fixtures / "bin" / source.name
-        staging.copy(source, destination, files)
+        harmos_tools.build.fixtures.copy(source, destination, files)
         binaries[message["target"]["name"]] = destination.relative_to(fixtures).as_posix()
 
     # Build and Retain the Two Native-Language SDK Programs Used by Installation Stories.
     csharp_fixture(profile, fixtures, files, binaries)
-    subprocess.run(
-        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "cpp", "--profile", profile], cwd=Path.cwd(), check=True
-    )
+    # Run the Native Command
+    command = [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "cpp", "--profile", profile]
+    subprocess.run(command, cwd=Path.cwd(), check=True, creationflags=spawn_flags())
     suffix = ".exe" if os.name == "nt" else ""
     cpp = ROOT / "target/cpp" / ("tests" if profile == "dev" else "release")
     source = cpp / f"harmos-cpp-conformance{suffix}"
-    staging.copy(source, fixtures / "bin" / source.name, files)
+    harmos_tools.build.fixtures.copy(source, fixtures / "bin" / source.name, files)
     binaries["harmos-cpp-conformance"] = f"bin/{source.name}"
     for dependency in cpp.glob("*.dll"):
-        staging.copy(dependency, fixtures / "bin" / dependency.name, files)
+        harmos_tools.build.fixtures.copy(dependency, fixtures / "bin" / dependency.name, files)
 
-    with summary.phase("Fixture Driver"):
-        tool = staging.executable(artifacts, "fixture-driver")
+    phase = summary.Phase("Fixture Driver")
+    try:
+        tool = harmos_tools.build.fixtures.executable(artifacts, "fixture-driver")
+    finally:
+        phase.close()
 
     sandbox = "harmos-sandbox-guest"
     manifest = GUESTS[sandbox]
-    with summary.phase("Guest Fixture"):
-        capture = staging.capture(
+    phase = summary.Phase("Guest Fixture")
+    try:
+        capture = harmos_tools.build.fixtures.capture(
             sandbox, manifest.parent, compiler_profile, ["-p", sandbox, "--target", "wasm32-unknown-unknown"], scratch
         )
-    built, receipt = staging.collect(tool, manifest, sandbox, "guest", compiler_profile, capture, scratch)
-    artifact, build = staging.stage_build(built, receipt, sandbox, files, fixtures)
-    with summary.phase("Offline Inputs"):
-        inputs = staging.offline_inputs(fixtures / "inputs")
+    finally:
+        phase.close()
+    built, receipt = harmos_tools.build.fixtures.collect(tool, manifest, sandbox, "guest", compiler_profile, capture, scratch)
+    artifact, build = harmos_tools.build.fixtures.stage_build(built, receipt, sandbox, files, fixtures)
+    phase = summary.Phase("Offline Inputs")
+    try:
+        inputs = harmos_tools.build.fixtures.offline_inputs(fixtures / "inputs")
+    finally:
+        phase.close()
     # Artifact Transfer Drops File Modes, So The Stamp Names The Staged Inputs Consumers Must Mark Executable Again.
     selected_inputs = (path for path in inputs.rglob("*") if path.is_file() and path.stat().st_mode & stat.S_IXUSR)
     executables = [path.relative_to(fixtures).as_posix() for path in selected_inputs]
@@ -136,14 +150,14 @@ def build(profile: str, scratch: Path, *, features: str | None = None, extended:
 
 def csharp_fixture(profile: str, fixtures: Path, files: dict[str, str], binaries: dict[str, str]) -> None:
     # Build the Solution Through Its SDK Task.
-    subprocess.run(
-        [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "csharp", "--profile", profile], cwd=ROOT, check=True
-    )
+    # Run the Native Command
+    command = [sys.executable, "-m", "harmos_tools.ci.tasks", "build", "--language", "csharp", "--profile", profile]
+    subprocess.run(command, cwd=ROOT, check=True, creationflags=spawn_flags())
     # Stage the Executable and Runtime Closure from the MSBuild Output Manifest.
     plugin = csharp.executable(ROOT, profile)
     for source in plugin.parent.iterdir():
         if source.is_file():
-            staging.copy(source, fixtures / "csharp" / source.name, files)
+            harmos_tools.build.fixtures.copy(source, fixtures / "csharp" / source.name, files)
     binaries["harmos-csharp-conformance-plugin"] = f"csharp/{plugin.name}"
 
 

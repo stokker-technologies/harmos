@@ -20,9 +20,10 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
+import harmos_tools.release.policy
+
 from .. import temporary
 from ..process import spawn_flags
-from ..release import policy as release_policy
 from . import policy
 
 # Type Checking Imports
@@ -41,15 +42,17 @@ from . import policy
 def commands(directory: Path, rust: bool, wheels: list[str], scratch: Path) -> list[list[str]]:
     commands = []
     if rust:
-        metadata = json.loads(
-            subprocess.check_output(
-                ["cargo", "metadata", "--no-deps", "--format-version", "1"],
-                creationflags=spawn_flags(),
-                cwd=directory,
-            )
+        # Read Structured Input
+        # Run the Native Command
+        command = ["cargo", "metadata", "--no-deps", "--format-version", "1"]
+        text = subprocess.check_output(
+            command,
+            creationflags=spawn_flags(),
+            cwd=directory,
         )
+        metadata = json.loads(text)
         command = ["cargo", "publish", "--dry-run", "--locked"]
-        for package in release_policy.publishable(directory, metadata).values():
+        for package in harmos_tools.release.policy.publishable(directory, metadata).values():
             command.extend(["--package", package["name"]])
         if "--package" in command:
             commands.append(command)
@@ -74,7 +77,9 @@ def main() -> None:
     parser.add_argument("--python", action="append", default=[])
     options = parser.parse_args()
     directory = policy.root()
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         for command in commands(directory, options.rust, options.python, scratch):
             environment = dict(os.environ)
             target = str(directory / "target/publication")
@@ -94,6 +99,8 @@ def main() -> None:
                 check=True,
                 env=environment,
             )
+    finally:
+        scratch_directory.close()
 
 
 # === Private Functions === #

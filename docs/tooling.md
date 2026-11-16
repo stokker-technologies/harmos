@@ -6,6 +6,18 @@ Rust executable conformance lives in `tools/conformance`; reusable build, watch,
 componentization, inspection, bundle construction and generators live in `tools/packaging`.
 Runtime owns verified bundle reading at `harmos_runtime::bundle` and the descriptor
 projection required by its transport; its normal dependencies contain no packaging tools.
+
+Within `harmos_tools`, `task/` parses selections and gives each public operation its
+own module. `ci/` owns bootstrap, compiler-cache execution, artifact transport and
+individual workflow operations. `build/resources/` separates descriptor analysis
+from Python, Rust, C# and C++ generation. Release preparation, review creation,
+rehearsal, tagging, publication and verification have separate modules under
+`release/`; registry publication is separate from provider transport. The test
+runner separates lane execution, coverage, benchmarks and native evidence handling.
+Resource owners expose explicit `close()` operations, paired with `try`/`finally`.
+Bootstrap loads the shared console policy by file before the tooling package is
+installed; ordinary task children run installed modules in their own interpreter.
+
 The root uv workspace owns `.venv/` and `uv.lock`. The standalone SDK owns
 `sdk/python/.venv/` and `sdk/python/uv.lock`; tooling does not depend on the SDK.
 Run `mise run prepare` once after checkout or dependency changes to synchronize
@@ -72,6 +84,7 @@ Keep it enabled for edited workspace crates. Sccache reuses matching cacheable
 dependencies; it does not cache incremental crates, linked executables or procedural
 macro libraries. See [sccache's Rust limits](https://github.com/mozilla/sccache/blob/v0.19.0/docs/Rust.md).
 Each worktree keeps its own `target/`; Cargo owns its normal compilation lock.
+Clippy uses that same target directory for nested workspace manifests.
 Retain that directory across edits and source revisions. Project tooling never
 scans or reclaims compiler output before compilation.
 
@@ -181,6 +194,8 @@ mise run generate -- --sdk cpp
 
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
+C# generation reads its compiler version from `sdk/csharp/Directory.Packages.props`.
+The Rust generator builds and runs the executable for the selected `--profile`.
 
 Client roots follow package parents, service names and method names mechanically:
 `client.plugins.settings.list(name)`, `client.jobs.progress.watch(value)` and
@@ -590,7 +605,7 @@ notes should reflect the shared contracts above.
 
 ### Release Reviews
 
-`ci:runners` preserves the runner allowlist check. `ci:release-mode` emits `mode`
+Release preparation invokes the runner allowlist check directly. `ci:release-mode` emits `mode`
 and `sha` to `GITHUB_OUTPUT`: successful release-review CI completion selects its
 merged, untagged release squash for tagging; unrelated completions skip. A dispatch
 on dev retries that squash, including after later dev merges, or prepares the next
@@ -599,8 +614,8 @@ green review and package evidence, then `release:tag` checks exact-commit requir
 CI and the release rehearsal before tagging and fast-forwarding main. CI closure cancellation excludes
 merged release reviews so their validation can finish. Release evidence lookup uses
 `ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
-`REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. `ci:release-checks` checks the exact
-`RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
+`REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. Tagging and publication invoke
+release checks directly for the exact `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
 cancellations and unexpected skips; the release-review rehearsal may skip
 outside a release review (`RELEASE_REVIEW=false`). `OPTIONAL_JOBS` explicitly allows
 skipped suites, fixture preparation, packaging and dry publication on dev pushes.

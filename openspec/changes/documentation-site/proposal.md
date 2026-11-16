@@ -20,21 +20,22 @@ describes. With four SDK languages the reference has to be generated from source
 
 ## Decisions
 
-Agreed with the owner on 2026-11-13; proposed, not locked. Implementation waits for the owner.
+Publication scope was proposed on 2026-11-13. The owner settled release-line entries on
+2026-11-14; site implementation and the remaining generator choices are still pending.
 
 - Old releases are never copied into the repository. A release's documentation is the documentation
   at its tag. Maintained Markdown keeps stating current contracts only.
-- One entry per release, plus `latest` and `dev`.
+- One entry per supported release line showing its latest patch, plus `latest` and `dev`.
+  `latest` selects the newest stable line; `dev` follows the development branch.
 - Installers do not bundle the documentation. The website is the way documentation is read.
 - The documentation archive is a required asset of a stable release. In Nightly it is built by a
   parallel job that may fail; Nightly publication does not depend on it.
 
 ## Open
 
-- Whether "one entry per release" is one per release line showing its latest patch (proposed) or
-  one per tag.
-- The site generator. Starlight is proposed; Docusaurus is the alternative if snapshots in the
-  repository are ever wanted. A trial on the present guides decides.
+- Confirm the site generator: the release triage describes Starlight as selected, but the
+  recorded proposal still requires a guide trial against Docusaurus. Task 0.2 owns resolution;
+  this reconciliation does not invent a locked decision or a successful trial.
 - The reference generator per language, to be verified as current before adoption.
 
 ## Impact

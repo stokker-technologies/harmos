@@ -43,8 +43,10 @@ MESSAGES = "compiler.json"
 
 
 def revision(directory: Path) -> str | None:
+    # Run the Native Command
+    command = ["git", "rev-parse", "HEAD"]
     result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        command,
         creationflags=spawn_flags(),
         cwd=directory,
         capture_output=True,
@@ -74,7 +76,9 @@ def prune(directory: Path, keep: set[str], *, archives: bool = False) -> None:
 def binaries(directory: Path, profile: str) -> dict[str, str]:
     """Map Archive Binary IDs To Names, Retaining Package Identity For Measured Overrides."""
     path = require(directory, profile)
-    with temporary.directory() as listing:
+    listing_directory = temporary.Directory()
+    listing = listing_directory.path
+    try:
         extracted = listing / "extract"
         extracted.mkdir()
         command = [
@@ -101,8 +105,13 @@ def binaries(directory: Path, profile: str) -> dict[str, str]:
             check=False,
         )
         if result.returncode:
-            raise policy.TestError(f"nextest could not list test binaries: {result.stderr.strip()}")
+            raise policy.TestError(
+                f"nextest could not list test binaries: {result.stderr.strip()}; "
+                "Rebuild the selected profile artifacts and fixtures before running tests"
+            )
         return {identity: entry["binary-name"] for identity, entry in json.loads(result.stdout).get("rust-binaries", {}).items()}
+    finally:
+        listing_directory.close()
 
 
 def require(directory: Path, profile: str) -> Path:
@@ -118,21 +127,28 @@ def install_wheels(directory: Path, profile: str, native: str | None = None) -> 
     wheels = sorted(path for root in roots for path in root.glob("*.whl"))
     names = [path.name.split("-", 1)[0].replace("_", "-").lower() for path in wheels]
     if len(names) != len(set(names)):
-        raise policy.TestError("ambiguous built wheels across selected native/any outputs")
+        raise policy.TestError(
+            "ambiguous built wheels across selected native/any outputs; "
+            "Rebuild the selected profile artifacts and fixtures before running tests"
+        )
     if any(root.is_dir() for root in roots) and not wheels:
-        raise policy.TestError("missing built wheels in the selected profile/target")
+        raise policy.TestError(
+            "missing built wheels in the selected profile/target; Rebuild the selected profile artifacts and fixtures before running tests"
+        )
     if wheels:
+        # Run the Native Command
+        command = [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            sys.executable,
+            "--no-deps",
+            "--reinstall",
+            *map(str, wheels),
+        ]
         subprocess.run(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--python",
-                sys.executable,
-                "--no-deps",
-                "--reinstall",
-                *map(str, wheels),
-            ],
+            command,
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -168,13 +184,19 @@ def fixtures(
     path = paths.output(directory, "build", profile) / "fixtures/stamp.json"
     if not path.is_file():
         if required:
-            raise policy.TestError("missing fixture stamp")
+            raise policy.TestError("missing fixture stamp; Rebuild the selected profile artifacts and fixtures before running tests")
         return
-    record = json.loads(path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    record = json.loads(text)
     if record.get("profile") != profile:
-        raise policy.TestError("fixture stamp belongs to another profile")
+        raise policy.TestError(
+            "fixture stamp belongs to another profile; Rebuild the selected profile artifacts and fixtures before running tests"
+        )
     if record.get("target") != paths.target():
-        raise policy.TestError("fixture stamp belongs to another native target")
+        raise policy.TestError(
+            "fixture stamp belongs to another native target; Rebuild the selected profile artifacts and fixtures before running tests"
+        )
     files = record.get("files", {})
     selected = None if roots is None else [*roots, *required]
     for name, digest in files.items():
@@ -182,10 +204,14 @@ def fixtures(
             continue
         target = _inside(directory, name)
         if not target.is_file() or _digest(target) != digest:
-            raise policy.TestError(f"missing or stale fixture: {name}")
+            raise policy.TestError(
+                f"missing or stale fixture: {name}; Rebuild the selected profile artifacts and fixtures before running tests"
+            )
     for name in required:
         if name not in files or not _inside(directory, name).is_file():
-            raise policy.TestError(f"missing stamped fixture: {name}")
+            raise policy.TestError(
+                f"missing stamped fixture: {name}; Rebuild the selected profile artifacts and fixtures before running tests"
+            )
 
 
 def main(arguments: Sequence[str] | None = None) -> int:
@@ -211,13 +237,18 @@ def main(arguments: Sequence[str] | None = None) -> int:
 def _inside(directory: Path, name: str) -> Path:
     path = directory / name
     if Path(name).is_absolute() or not path.resolve().is_relative_to(directory.resolve()):
-        raise policy.TestError(f"fixture path escapes the workspace: {name}")
+        raise policy.TestError(
+            f"fixture path escapes the workspace: {name}; Rebuild the selected profile artifacts and fixtures before running tests"
+        )
     return path
 
 
 def _digest(path: Path) -> str:
-    with path.open("rb") as source:
+    source = path.open("rb")
+    try:
         return hashlib.file_digest(source, "sha256").hexdigest()
+    finally:
+        source.close()
 
 
 def _toolchain(directory: Path) -> str:

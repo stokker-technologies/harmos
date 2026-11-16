@@ -25,6 +25,7 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
+from ..process import spawn_flags
 from .cargo import Artifact, Profile
 
 # Type Checking Imports
@@ -67,11 +68,13 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
     shutil.rmtree(destination, ignore_errors=True)
     destination.mkdir(parents=True)
 
+    # Run the Native Command
+    command = ["rustc", "-Vv"]
     rustc = subprocess.check_output(
-        ["rustc", "-Vv"],
+        command,
         cwd=directory,
         text=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
         stderr=sys.stderr,
     )
@@ -82,29 +85,37 @@ def capture(name: str, directory: Path, profile: str, extra: list[str], scratch:
     features = ["--all-features"] if "--all-features" in extra else []
 
     metadata = destination / "metadata.json"
-    with metadata.open("w", encoding="utf-8") as output:
+    output = metadata.open("w", encoding="utf-8")
+    try:
+        # Run the Native Command
+        command = ["cargo", "metadata", "--locked", "--format-version", "1", *platforms, *features]
         subprocess.run(
-            ["cargo", "metadata", "--locked", "--format-version", "1", *platforms, *features],
+            command,
             cwd=directory,
             stdout=output,
             check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             stdin=sys.stdin,
             stderr=sys.stderr,
         )
+    finally:
+        output.close()
     messages = destination / "messages.json"
     arguments = ["--manifest-path", str(directory / "Cargo.toml"), "--locked", "--profile", profile, *extra]
     command = ["cargo", "build", "--timings", *arguments, "--message-format=json"]
-    with messages.open("w", encoding="utf-8") as output:
+    output = messages.open("w", encoding="utf-8")
+    try:
         completed = subprocess.run(
             command,
             cwd=ROOT,
             stdout=output,
             check=False,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             stdin=sys.stdin,
             stderr=sys.stderr,
         )
+    finally:
+        output.close()
     if completed.returncode:
         raise RuntimeError(f"cargo build failed for {name}")
 
@@ -160,18 +171,22 @@ def collect(tool: Path, manifest: Path, package: str, backend: str, profile: str
         "metadata": capture["metadata"]["path"],
         "receipt": capture["receipt"],
     }
+    # Run the Native Command
+    command = [str(tool)]
     output = subprocess.check_output(
-        [str(tool)],
+        command,
         input=json.dumps(request),
         text=True,
         cwd=ROOT,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stderr=sys.stderr,
     )
     build = json.loads(output)
     if package == "schematic-sidecar":
         # Client Bindings Describe the Host Endpoint, Including Its Native Streams.
-        metadata = json.loads(Path(capture["metadata"]["path"]).read_text(encoding="utf-8"))
+        # Read Structured Input
+        text = Path(capture["metadata"]["path"]).read_text(encoding="utf-8")
+        metadata = json.loads(text)
         producers = {item["id"] for item in metadata["packages"] if item["name"] == "schematic-cli"}
         for event in messages(capture):
             if event.get("reason") != "build-script-executed" or event.get("package_id") not in producers:
@@ -204,39 +219,52 @@ def offline_inputs(destination: Path) -> Path:
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
         stderr=sys.stderr,
     )
-    projects = [ROOT / "tools/python"]
-    requirements = []
-    for project in projects:
-        selected = destination / ("requirements.txt")
-        _requirements(project, selected)
-        requirements.append(selected)
+    # Export the Locked Tooling Requirements
+    requirements = destination / "requirements.txt"
+    environment = dict(os.environ)
+    environment.pop("UV_PROJECT_ENVIRONMENT", None)
+    command = [
+        "uv",
+        "export",
+        "--locked",
+        "--all-groups",
+        "--no-emit-project",
+        "--project",
+        str(ROOT / "tools/python"),
+        "--output-file",
+        str(requirements),
+    ]
+    subprocess.run(command, cwd=ROOT, env=environment, stdout=subprocess.DEVNULL, check=True, creationflags=spawn_flags())
     bundled = importlib.resources.files("ensurepip").joinpath("_bundled")
     wheels = [path for path in bundled.iterdir() if path.name.startswith("pip-") and path.name.endswith(".whl")]
     if len(wheels) != 1:
         raise RuntimeError("the pinned Python must provide its bundled pip wheel to stage offline inputs")
-    launch = "import runpy,sys; sys.path.insert(0,sys.argv.pop(1)); runpy.run_module('pip',run_name='__main__')"
-    # Each Project Locks Its Own Closure, So Each Downloads Separately Into The Shared Wheel Directory.
-    download = [sys.executable, "-c", launch, str(wheels[0]), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
-    for selected in requirements:
-        subprocess.run(
-            [*download, "--requirement", str(selected)],
-            cwd=ROOT,
-            check=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-    # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
+    # Download Each Project's Locked Closure Into the Shared Wheel Directory.
+    download = [sys.executable, str(wheels[0] / "pip"), "download", "--dest", str(destination / "wheels"), "--require-hashes"]
+
+    # Download the Locked Tooling Wheels
+    command = [*download, "--requirement", str(requirements)]
     subprocess.run(
-        [*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")],
+        command,
         cwd=ROOT,
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    # Hatchling Requests `editables` Only For Editable Installs, So No Project Lock Names It.
+    # Run the Native Command
+    command = [*download, "--no-deps", "--requirement", str(ROOT / "tools/python/editables.txt")]
+    subprocess.run(
+        command,
+        cwd=ROOT,
+        check=True,
+        creationflags=spawn_flags(),
         stdin=sys.stdin,
         stdout=sys.stdout,
         stderr=sys.stderr,
@@ -244,34 +272,11 @@ def offline_inputs(destination: Path) -> Path:
     return destination
 
 
-def _requirements(project: Path, destination: Path) -> None:
-    """Project Native Or Suffixed Starter Workspace Metadata Without Publishing A Second Source Tree."""
-    suffix = "" if (project / "pyproject.toml").is_file() else ".tmpl"
-    workspace = project.parents[1]
-    environment = dict(os.environ)
-    environment.pop("UV_PROJECT_ENVIRONMENT", None)
-    with temporary.directory() as projected, destination.open("w", encoding="utf-8") as output:
-        member = projected / "tools/python"
-        member.mkdir(parents=True)
-        shutil.copy2(workspace / f"pyproject.toml{suffix}", projected / "pyproject.toml")
-        shutil.copy2(workspace / f"uv.lock{suffix}", projected / "uv.lock")
-        shutil.copy2(project / f"pyproject.toml{suffix}", member / "pyproject.toml")
-        export = ["uv", "export", "--locked", "--all-groups", "--no-emit-project", "--project", str(member)]
-        subprocess.run(
-            export,
-            cwd=ROOT,
-            stdout=output,
-            check=True,
-            env=environment,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
-
-
 def generate_python(tool: Path, build: Path, protoc: Path, files: dict, *, source_root: Path = ROOT) -> None:
     """Generate the Schematic Host's Python Client From Its Captured Contracts."""
-    metadata = json.loads(build.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = build.read_text(encoding="utf-8")
+    metadata = json.loads(text)
     catalogs = {schema["catalog"] for schema in metadata["schemas"] if schema["producer"] == "schematic-cli"}
     if len(catalogs) != 1:
         raise RuntimeError(f"expected one schematic-cli catalog, found {sorted(catalogs)}")
@@ -288,34 +293,38 @@ def generate_python(tool: Path, build: Path, protoc: Path, files: dict, *, sourc
     for name, expected in schema["files"].items():
         verify(digest(directory / name), expected, f"Python client schema differs from captured bytes: {name}")
     request = {"action": "python", "export": str(directory), "output": str(output), "protoc": str(protoc)}
+    # Run the Native Command
+    command = [str(tool)]
     subprocess.run(
-        [str(tool)],
+        command,
         input=json.dumps(request),
         text=True,
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
         stderr=sys.stderr,
     )
     # Normalize Product Bindings Before Recording Their Published Digests.
+    # Run the Native Command
+    command = [
+        sys.executable,
+        "-m",
+        "ruff",
+        "check",
+        "--config",
+        str(ROOT / "tools/python/ruff.toml"),
+        "--select",
+        "I",
+        "--fix",
+        "--extend-exclude=_wire",
+        str(output / "src"),
+    ]
     subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "ruff",
-            "check",
-            "--config",
-            str(ROOT / "tools/python/ruff.toml"),
-            "--select",
-            "I",
-            "--fix",
-            "--extend-exclude=_wire",
-            str(output / "src"),
-        ],
+        command,
         cwd=ROOT,
         check=True,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        creationflags=spawn_flags(),
     )
     generated = sorted(output.rglob("*"))
     generated_files = (path for path in generated if path.is_file())
@@ -358,8 +367,11 @@ def copy(source: Path, destination: Path, files: dict) -> str:
 
 
 def digest(path: Path) -> str:
-    with path.open("rb") as source:
+    source = path.open("rb")
+    try:
         return hashlib.file_digest(source, "sha256").hexdigest()
+    finally:
+        source.close()
 
 
 def _digests(names: set[str]) -> dict[str, str]:
@@ -468,34 +480,40 @@ def _compatible_library(name: str, builds: dict[str, tuple[set[str], Profile]], 
             "    -> harmos::operations::ExecutionContext { value }\n"
         ),
     }
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         source = scratch / "library_selection.rs"
         source.write_text(sources[name], encoding="utf-8")
         for path, (features, _) in builds.items():
             if not required <= features:
                 continue
+            # Run the Native Command
+            command = [
+                "rustc",
+                "--edition=2024",
+                "--crate-type=lib",
+                "--emit=metadata",
+                str(source),
+                "-o",
+                str(scratch / "selection.rmeta"),
+                "-L",
+                f"dependency={libraries}",
+                "--extern",
+                f"harmos={harmos}",
+                "--extern",
+                f"{name}={libraries.parent / path}",
+            ]
             result = subprocess.run(
-                [
-                    "rustc",
-                    "--edition=2024",
-                    "--crate-type=lib",
-                    "--emit=metadata",
-                    str(source),
-                    "-o",
-                    str(scratch / "selection.rmeta"),
-                    "-L",
-                    f"dependency={libraries}",
-                    "--extern",
-                    f"harmos={harmos}",
-                    "--extern",
-                    f"{name}={libraries.parent / path}",
-                ],
+                command,
                 capture_output=True,
                 text=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=spawn_flags(),
             )
             if result.returncode == 0:
                 compatible.append(path)
+    finally:
+        scratch_directory.close()
     return compatible[0] if len(compatible) == 1 else None
 
 

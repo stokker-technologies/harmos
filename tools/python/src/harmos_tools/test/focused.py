@@ -72,7 +72,10 @@ def select(directory: Path, metadata: Metadata, paths: Sequence[Path]) -> dict[s
     for changed in paths:
         path = (directory / changed).resolve()
         if not path.is_relative_to(directory.resolve()):
-            raise policy.TestError(f"changed path escapes the repository: {changed}")
+            raise policy.TestError(
+                f"changed path escapes the repository: {changed}; "
+                "Select existing Rust packages and test targets, then rerun the focused test task"
+            )
         global_input = path.name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "mise.toml") and path.parent == directory.resolve()
         if global_input or path.is_relative_to(directory / "proto"):
             affected.update(packages)
@@ -152,8 +155,10 @@ def run(
     if target is not None and package is not None and manifest is None:
         selected = {package: [target]}
     else:
+        # Run the Native Command
+        command = ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1", *selectors]
         result = subprocess.run(
-            ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1", *selectors],
+            command,
             cwd=directory,
             capture_output=True,
             text=True,
@@ -171,10 +176,14 @@ def run(
         else:
             candidates = {item["name"]: item for item in metadata["packages"]}
             if package is None or package not in candidates:
-                raise policy.TestError(f"unknown Rust package: {package}")
+                raise policy.TestError(
+                    f"unknown Rust package: {package}; Select existing Rust packages and test targets, then rerun the focused test task"
+                )
             selected = {package: [target] if target is not None else _targets(candidates[package])}
     if not selected or not any(selected.values()):
-        raise policy.TestError("selection contains no Rust test targets")
+        raise policy.TestError(
+            "selection contains no Rust test targets; Select existing Rust packages and test targets, then rerun the focused test task"
+        )
 
     rules = policy.load(directory)
     names = sorted({name for targets in selected.values() for name in targets if name != "lib"})
@@ -196,7 +205,9 @@ def run(
     composite = target is None
     executed = 0
     output = report.native_directory(directory, Path("target/tests/focused"))
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         configuration = scratch / "nextest.toml"
         for name, targets in selected.items():
             # System Stories Retain Their Existing Serial Scheduling.
@@ -255,10 +266,17 @@ def run(
                     return result.returncode
                 if not no_run:
                     if not junit.is_file():
-                        raise policy.TestError(f"focused tests produced no native report: {junit}")
+                        raise policy.TestError(
+                            f"focused tests produced no native report: {junit}; "
+                            "Select existing Rust packages and test targets, then rerun the focused test task"
+                        )
                     executed += sum(case.find("skipped") is None for case in ElementTree.parse(junit).iter("testcase"))
+    finally:
+        scratch_directory.close()
     if not no_run and executed == 0:
-        raise policy.TestError("selection executed no tests")
+        raise policy.TestError(
+            "selection executed no tests; Select existing Rust packages and test targets, then rerun the focused test task"
+        )
     return 0
 
 

@@ -24,8 +24,11 @@ import grpc_tools
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
+import harmos_tools.build.resource_roots
+import harmos_tools.build.resources.descriptor
+import harmos_tools.build.resources.python
+
 from ..process import spawn_flags
-from .resource_roots import compose, python, python_exports, python_host, table
 
 # Type Checking Imports
 
@@ -34,19 +37,6 @@ from .resource_roots import compose, python, python_exports, python_host, table
 # === Constants === #
 
 ROOT = Path(__file__).resolve().parents[5]
-PROTOCOLS = tuple(
-    sorted(
-        path.relative_to(ROOT / "proto").as_posix()
-        for face in ("model", "host", "plugin")
-        for path in (ROOT / "proto/harmos" / face).rglob("*.proto")
-    )
-)
-GENERATED = tuple(
-    name.removesuffix(".proto").replace("harmos/", "harmos/_wire/", 1) + suffix
-    for name in PROTOCOLS
-    for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
-)
-
 # === Types === #
 
 # === Classes === #
@@ -54,13 +44,27 @@ GENERATED = tuple(
 # === Public Functions === #
 
 
+def protocols() -> tuple[str, ...]:
+    definitions = []
+    for face in ("model", "host", "plugin"):
+        for path in (ROOT / "proto/harmos" / face).rglob("*.proto"):
+            definitions.append(path.relative_to(ROOT / "proto").as_posix())
+    return tuple(sorted(definitions))
+
+
 def generate(output: Path) -> None:
+    definitions = protocols()
+    generated = tuple(
+        name.removesuffix(".proto").replace("harmos/", "harmos/_wire/", 1) + suffix
+        for name in definitions
+        for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
+    )
     output.mkdir(parents=True, exist_ok=True)
     for name in ["harmos/v1/__init__.py", "harmos/plugin/v1/__init__.py"]:
         (output / name).unlink(missing_ok=True)
     for path in (output / "harmos").rglob("*_pb2*"):
         name = path.relative_to(output).as_posix()
-        if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in GENERATED:
+        if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in generated:
             path.unlink()
     command = [
         sys.executable,
@@ -71,7 +75,7 @@ def generate(output: Path) -> None:
         f"--python_out={output}",
         f"--pyi_out={output}",
         f"--grpc_python_out={output}",
-        *PROTOCOLS,
+        *definitions,
     ]
     subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
     # All Protocol Packages Are Private Implementation Modules.
@@ -85,7 +89,7 @@ def generate(output: Path) -> None:
                 target = destination / path.relative_to(source)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(path), target)
-    for name in GENERATED:
+    for name in generated:
         path = output / name
         source = path.read_text(encoding="utf-8")
         for face in ("model", "host", "plugin"):
@@ -97,7 +101,7 @@ def generate(output: Path) -> None:
             )
         path.write_text(source, encoding="utf-8", newline="\n")
     # Generated Convenience Calls Require the Experimental Submodule Explicitly.
-    for name in GENERATED:
+    for name in generated:
         if name.endswith("_pb2_grpc.py"):
             path = output / name
             source = path.read_text(encoding="utf-8")
@@ -106,9 +110,17 @@ def generate(output: Path) -> None:
                     source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1), encoding="utf-8", newline="\n"
                 )
     descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    python_exports(output / "harmos/_generated", descriptors)
-    python_host(output / "harmos/_generated/host.py", [method for method in table(descriptors) if method["face"] == "context"], descriptors)
-    python(output / "harmos/_generated/client.py", [method for method in table(descriptors) if method["face"] == "client"], descriptors)
+    harmos_tools.build.resources.python.exports(output / "harmos/_generated", descriptors)
+    harmos_tools.build.resources.python.host(
+        output / "harmos/_generated/host.py",
+        [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"],
+        descriptors,
+    )
+    harmos_tools.build.resources.python.client(
+        output / "harmos/_generated/client.py",
+        [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"],
+        descriptors,
+    )
 
 
 def generate_client_fixture(output: Path) -> None:
@@ -127,20 +139,22 @@ def generate_client_fixture(output: Path) -> None:
     scratch = Path(tempfile.mkdtemp())
     try:
         descriptor_path = scratch / "client-descriptors.bin"
+        # Run the Native Command
+        command = [
+            sys.executable,
+            "-m",
+            "grpc_tools.protoc",
+            f"-I{proto}",
+            f"-I{ROOT / 'proto'}",
+            f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
+            f"--python_out={wire}",
+            f"--pyi_out={wire}",
+            f"--grpc_python_out={wire}",
+            f"--descriptor_set_out={descriptor_path}",
+            *inputs,
+        ]
         subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "grpc_tools.protoc",
-                f"-I{proto}",
-                f"-I{ROOT / 'proto'}",
-                f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
-                f"--python_out={wire}",
-                f"--pyi_out={wire}",
-                f"--grpc_python_out={wire}",
-                f"--descriptor_set_out={descriptor_path}",
-                *inputs,
-            ],
+            command,
             check=True,
             cwd=ROOT,
             creationflags=spawn_flags(),
@@ -155,7 +169,7 @@ def generate_client_fixture(output: Path) -> None:
             )
             source = source.replace("from harmos.model.", "from harmos._wire.model.")
             path.write_text(source, encoding="utf-8", newline="\n")
-        compose(
+        harmos_tools.build.resource_roots.compose(
             ROOT,
             [descriptor_path],
             output / "_generated/client.py",
@@ -172,20 +186,22 @@ def generate_conformance(output: Path) -> None:
     inputs = ["conformance/model/v1/fixture.proto"]
     scratch = tempfile.mkdtemp()
     try:
+        # Run the Native Command
+        command = [
+            sys.executable,
+            "-m",
+            "grpc_tools.protoc",
+            f"-I{proto}",
+            f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
+            f"--python_out={scratch}",
+            f"--pyi_out={scratch}",
+            f"--grpc_python_out={scratch}",
+            f"--descriptor_set_out={Path(scratch) / 'descriptors.bin'}",
+            "--include_imports",
+            *inputs,
+        ]
         subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "grpc_tools.protoc",
-                f"-I{proto}",
-                f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
-                f"--python_out={scratch}",
-                f"--pyi_out={scratch}",
-                f"--grpc_python_out={scratch}",
-                f"--descriptor_set_out={Path(scratch) / 'descriptors.bin'}",
-                "--include_imports",
-                *inputs,
-            ],
+            command,
             check=True,
             cwd=ROOT,
             creationflags=spawn_flags(),
@@ -215,6 +231,12 @@ def main() -> None:
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     options = parser.parse_args()
+    definitions = protocols()
+    generated = tuple(
+        name.removesuffix(".proto").replace("harmos/", "harmos/_wire/", 1) + suffix
+        for name in definitions
+        for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
+    )
     committed = ROOT / "sdk/python/src"
     if not options.check:
         generate(committed)
@@ -229,7 +251,7 @@ def main() -> None:
         changed = [
             name
             for name in (
-                *GENERATED,
+                *generated,
                 "harmos/_generated/client.py",
                 "harmos/_generated/shared.py",
                 "harmos/_generated/client_types.py",
@@ -246,7 +268,7 @@ def main() -> None:
             for path in (committed / "harmos").rglob("*_pb2*")
             if path.is_file()
             and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
-            and path.relative_to(committed).as_posix() not in GENERATED
+            and path.relative_to(committed).as_posix() not in generated
         ]
         generated_client = output / "client"
         generate_client_fixture(generated_client)

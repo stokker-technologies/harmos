@@ -22,8 +22,9 @@ from unittest.mock import patch
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
+import harmos_tools.build.fixtures
+import harmos_tools.build.rust.tests
 from harmos_tools import csharp
-from harmos_tools.build.rust import tests as producer
 from harmos_tools.source.protocol import narrow_callers
 
 # Type Checking Imports
@@ -48,6 +49,7 @@ class CSharpTooling(unittest.TestCase):
                     "crates/harmos-protocol/src/descriptors.bin",
                     "sdk/rust/tests/fixtures/client/client-descriptors.bin",
                     "sdk/tests/fixtures/client/composition.toml",
+                    "sdk/csharp/Directory.Packages.props",
                 ):
                     target = scratch / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +63,8 @@ class CSharpTooling(unittest.TestCase):
                 composition.write_text(source, encoding="utf-8")
 
                 # Generate the Actual Client and Context from the Restricted Input.
-                csharp.clients(scratch)
+                with patch.object(csharp, "protocols"):
+                    csharp.clients(scratch)
                 generated = scratch / "sdk/csharp/src/Harmos/Generated"
                 for filename, resource, has_get in (
                     ("Client.g.cs", "TimeResource", client_get),
@@ -84,12 +87,15 @@ class CSharpTooling(unittest.TestCase):
 
     def test_generated_root_checks_detect_drift_without_rewriting_sources(self) -> None:
         root = Path(__file__).resolve().parents[4]
-        with tempfile.TemporaryDirectory() as name:
+        name_directory = tempfile.TemporaryDirectory()
+        name = name_directory.name
+        try:
             scratch = Path(name)
             for relative in (
                 "crates/harmos-protocol/src/descriptors.bin",
                 "sdk/rust/tests/fixtures/client/client-descriptors.bin",
                 "sdk/tests/fixtures/client/composition.toml",
+                "sdk/csharp/Directory.Packages.props",
             ):
                 target = scratch / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -99,20 +105,24 @@ class CSharpTooling(unittest.TestCase):
             csharp.clients(scratch, check=True)
             roots = list((scratch / "sdk/csharp").rglob("*.g.cs"))
             # Detect Changed and Missing Output Without Repairing Either.
-            for target in roots:
-                original = target.read_bytes()
-                target.write_bytes(original + b"// drift\n")
-                with self.assertRaises(ValueError):
-                    csharp.clients(scratch, check=True)
-                self.assertEqual(target.read_bytes(), original + b"// drift\n")
-                target.unlink()
-                with self.assertRaises(ValueError):
-                    csharp.clients(scratch, check=True)
-                self.assertFalse(target.exists())
-                target.write_bytes(original)
+            # Reuse the Already Verified Protocol Inputs
+            with patch.object(csharp, "protocols"):
+                for target in roots:
+                    original = target.read_bytes()
+                    target.write_bytes(original + b"// drift\n")
+                    self.assertRaises(ValueError, csharp.clients, scratch, check=True)
+                    self.assertEqual(target.read_bytes(), original + b"// drift\n")
+                    target.unlink()
+                    self.assertRaises(ValueError, csharp.clients, scratch, check=True)
+                    self.assertFalse(target.exists())
+                    target.write_bytes(original)
+        finally:
+            name_directory.cleanup()
 
     def test_rust_producer_stages_the_msbuild_selected_runtime_closure(self) -> None:
-        with tempfile.TemporaryDirectory() as name:
+        name_directory = tempfile.TemporaryDirectory()
+        name = name_directory.name
+        try:
             root = Path(name)
             for profile, configuration in (("dev", "Debug"), ("release", "Release")):
                 with self.subTest(profile=profile):
@@ -130,16 +140,18 @@ class CSharpTooling(unittest.TestCase):
                     binaries = {}
                     # Run the Actual Producer Staging Path Without Compiling in This Test.
                     with (
-                        patch.object(producer, "ROOT", root),
-                        patch.object(producer.staging, "ROOT", root),
-                        patch.object(producer.subprocess, "run") as build,
+                        patch.object(harmos_tools.build.rust.tests, "ROOT", root),
+                        patch.object(harmos_tools.build.fixtures, "ROOT", root),
+                        patch.object(harmos_tools.build.rust.tests.subprocess, "run") as build,
                     ):
-                        producer.csharp_fixture(profile, fixtures, files, binaries)
+                        harmos_tools.build.rust.tests.csharp_fixture(profile, fixtures, files, binaries)
                     build.assert_called_once()
                     staged = fixtures / binaries["harmos-csharp-conformance-plugin"]
                     self.assertEqual(staged.read_bytes(), plugin.read_bytes())
                     self.assertEqual((staged.parent / "dependency.dll").read_bytes(), b"runtime dependency")
                     self.assertEqual(len(files), 2)
+        finally:
+            name_directory.cleanup()
 
 
 # === Public Functions === #

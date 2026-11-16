@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import xml.etree.ElementTree
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -57,16 +58,24 @@ def protocols(
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
     from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-    from .build.resource_roots import csharp_message, table
+    import harmos_tools.build.resources.csharp
+    import harmos_tools.build.resources.descriptor
 
     descriptors = descriptors or root / "crates/harmos-protocol/src/descriptors.bin"
     schema = FileDescriptorSet.FromString(descriptors.read_bytes())
-    requests = {method["request"].rsplit(".", 1)[-1] for method in table(schema)}
+    requests = {method["request"].rsplit(".", 1)[-1] for method in harmos_tools.build.resources.descriptor.table(schema)}
     requests.update(
         {"Request", "Response", "ChildRequest", "ChildResponse", "ChildCancel", "ChildWatch", "ChildWatchResponse", "ChildWatchCancel"}
     )
-    tools = Path.home() / ".nuget/packages/grpc.tools/2.76.0/tools"
-    system = "windows" if platform.system() == "Windows" else "macosx" if platform.system() == "Darwin" else "linux"
+    # Select the SDK's Pinned Protocol Compiler
+    properties = xml.etree.ElementTree.parse(root / "sdk/csharp/Directory.Packages.props")
+    versions = [item.attrib.get("Version") for item in properties.iter("PackageVersion") if item.attrib.get("Include") == "Grpc.Tools"]
+    version = versions[0] if len(versions) == 1 else None
+    if not version:
+        raise ValueError("Generate C# Protocol: Pin one Grpc.Tools version in sdk/csharp/Directory.Packages.props")
+    tools = Path.home() / ".nuget/packages/grpc.tools" / version / "tools"
+    systems = {"Windows": "windows", "Darwin": "macosx"}
+    system = systems.get(platform.system(), "linux")
     architecture = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x64"
     executable_suffix = ".exe" if system == "windows" else ""
     protoc = tools / f"{system}_{architecture}" / ("protoc" + executable_suffix)
@@ -88,9 +97,12 @@ def protocols(
             command = [str(protoc), f"--descriptor_set_in={descriptors}", f"--csharp_out={output}"]
             if file.service and namespace_override is None:
                 command += [f"--plugin=protoc-gen-grpc={plugin}", f"--grpc_out={output}", "--grpc_opt=internal_access"]
-            subprocess.run([*command, file.name], check=True, creationflags=spawn_flags())
+            # Run the Native Command
+            command = [*command, file.name]
+            subprocess.run(command, check=True, creationflags=spawn_flags())
             for path in output.glob("*.cs"):
-                source = csharp_message(path.read_text(encoding="utf-8"))
+                source = path.read_text(encoding="utf-8")
+                source = harmos_tools.build.resources.csharp.message(source)
                 if namespace_override is not None:
                     source = source.replace("namespace Harmos.Clients {", f"namespace {namespace_override} {{")
                     source = source.replace("global::Harmos.Clients.", f"global::{namespace_override}.")
@@ -99,7 +111,7 @@ def protocols(
                 if path.name.endswith("Grpc.cs"):
                     source = source.replace("namespace Harmos.Plugins {", "namespace Harmos.Internal.Host {")
                     source = source.replace("namespace Harmos.Clients {", "namespace Harmos.Internal.Client {")
-                    namespace = csharp_message(file.options.csharp_namespace)
+                    namespace = harmos_tools.build.resources.csharp.message(file.options.csharp_namespace)
                     if namespace.endswith(".Clients"):
                         source = source.replace(
                             f"namespace {namespace} {{", f"namespace {namespace.removesuffix('.Clients')}.Internal.Client {{"
@@ -130,10 +142,12 @@ def protocols(
 def clients(root: Path, *, check: bool = False) -> None:
     from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-    from .build.resource_roots import compose, csharp, csharp_host, table
+    import harmos_tools.build.resource_roots
+    import harmos_tools.build.resources.csharp
+    import harmos_tools.build.resources.descriptor
 
     descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    methods = [method for method in table(descriptors) if method["face"] == "client"]
+    methods = [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"]
     protocols(root, check=check)
     protocols(
         root,
@@ -150,9 +164,11 @@ def clients(root: Path, *, check: bool = False) -> None:
         check=check,
         package="application",
     )
-    csharp(root, methods, check=check)
-    csharp_host(root, [method for method in table(descriptors) if method["face"] == "context"], check=check)
-    compose(
+    harmos_tools.build.resources.csharp.client(root, methods, check=check)
+    harmos_tools.build.resources.csharp.host(
+        root, [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"], check=check
+    )
+    harmos_tools.build.resource_roots.compose(
         root,
         [fixture_path],
         root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs",

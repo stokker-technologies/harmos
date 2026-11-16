@@ -38,7 +38,7 @@ Final validation waits for source closure; completed source does not close nativ
 | Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and native Linux/Windows/hosted proof remain; SDK client source is implemented | Tests, SDK client, documentation and CI |
 
 After the last gRPC wave in both products, `storage-interface` designs and implements the Harmos
-extensions first. Dokime consumes them and extracts storage in its own `storage-interface` change.
+extensions first. A product consumes them and extracts storage in its own `storage-interface` change.
 Neither storage implementation nor extraction belongs to these gRPC waves.
 
 Give a worker one whole task, its specification section and an explicit disjoint path ownership list.
@@ -280,32 +280,32 @@ operation registration and `crates/harmos-operations/src/execution/operations/se
 A declaration owns its gRPC mapping; the host exposes that declaration without a per-service
 adapter or a duplicate native request/response model.
 
-### Dokime Consumer Layout and Sequence
+### Product Consumer Layout and Sequence
 
 ```text
-sdk/rust/                         dokime: plugin authoring + client half
-crates/dokime-protocol/            generated product messages + light helpers
-crates/dokime-storage/             application persistence (after gRPC waves)
-crates/dokime-operations/          declarations + handlers + gRPC mappings
-crates/dokime-runtime/             execution manager, state, transactions, cycles,
+sdk/rust/                         product: plugin authoring + client half
+crates/product-protocol/            generated product messages + light helpers
+crates/product-storage/             application persistence (after gRPC waves)
+crates/product-operations/          declarations + handlers + gRPC mappings
+crates/product-runtime/             execution manager, state, transactions, cycles,
                                   effects, plugin entries, listener and main.rs
-crates/dokime-cli/                 commands; hosts through runtime's library API
-crates/dokime-gui/src-tauri/        desktop host composition
-crates/dokime-tracing/             small development subscriber/export support
+crates/product-cli/                 commands; hosts through runtime's library API
+crates/product-gui/src-tauri/        desktop host composition
+crates/product-tracing/             small development subscriber/export support
 
 CLI / desktop -> runtime -> operations -> storage -> protocol
-dokime [sdk/rust] -> protocol; client crate becomes its client half
+product [sdk/rust] -> protocol; client crate becomes its client half
 ```
 
-`use dokime::prelude::*;` supplies authoring and client APIs with no host compilation. There is
-no Dokime domain crate: definitions are protocol messages; admission validation, parameter
+`use product::prelude::*;` supplies authoring and client APIs with no host compilation. There is
+no product domain crate: definitions are protocol messages; admission validation, parameter
 expansion and expression evaluation live with the operations applying them; persisted shapes
 live in storage. Keep transactions, state and execution/cycle transitions together in runtime.
 No separate presentation extraction is required by this target.
 
-In Dokime's host wave (wave 3), move handlers area by area from
-`crates/dokime-runtime/src/runtime/operations/`, `domains/` and
-`crates/dokime-server/src/grpc/` into operations and register directly. Delete each area's
+In a product's host wave (wave 3), move handlers area by area from
+`crates/product-runtime/src/runtime/operations/`, `domains/` and
+`crates/product-server/src/grpc/` into operations and register directly. Delete each area's
 `hosted!` and `hosting::{Host,Serve}` trampoline as it moves. Logs and trace replay, support
 bundles, transfers/upload commit and abandonment, paging/frontier closure, watches/heartbeats,
 plot deltas/reduction and redaction remain real operation behaviour. Retain their bounds,
@@ -315,19 +315,19 @@ pairing/key persistence, certificate rotation and shutdown. Runtime owns reusabl
 listener composition, with `main.rs` as its thin process entry, so CLI hosting calls the runtime
 library rather than depending on a binary. No server crate or per-service adapters remain.
 
-In the last Dokime waves (CLI wave 4, removal wave 5), redirect CLI and desktop hosting to
+In the last product waves (CLI wave 4, removal wave 5), redirect CLI and desktop hosting to
 runtime, remove the server crate, dead conversions and generation dependencies, dissolve
 domain into the owners above, and remove the operations `runtime` feature when no contract-only
-consumer remains. Retain `dokime-tracing` as small development support. Update manifests,
+consumer remains. Retain `product-tracing` as small development support. Update manifests,
 build scripts, examples and user guidance with these boundaries.
 
 Only after the last wave, Harmos `storage-interface` supplies the five generic extensions;
-Dokime's separate change of the same name then merges
-`crates/dokime-runtime/src/storage/` and `src/runtime/storage/` into `dokime-storage` through
+A product's separate change of the same name then merges
+`crates/product-runtime/src/storage/` and `src/runtime/storage/` into `product-storage` through
 the Harmos storage interface. Break reverse dependencies on runtime/query/plot first; runtime
 retains transaction and cycle orchestration, passing owned inputs and narrow resources.
 Execution/step statistics, history filters/tokens, finalization/seals, report capture, artifact
-inventory and fresh-root refusal remain Dokime behaviour built on those generic facilities.
+inventory and fresh-root refusal remain product behaviour built on those generic facilities.
 Logs, support bundles, exports/report spools, plugin installation, desktop root lease/backup,
 client pairing/download files, CLI and build tooling stay with their owners. Extraction covers
 application persistence, not all disk I/O. Both changes require before/after benchmarks,
@@ -662,7 +662,7 @@ host's internal operation machinery, and all SDKs exercise the same contract.
 
 `sdk/<language>` provides, over `harmos.v1`: serve operations, call required operations, declare
 and publish streams, observers, lifecycle and settings. Each passes the conformance suite. Product
-SDKs (Dokime's `sdk/<language>`) build on these and add their own concepts.
+SDKs (a product's `sdk/<language>`) build on these and add their own concepts.
 
 ### Python Authoring
 
@@ -681,7 +681,6 @@ internal; consumer messages live at the root and client/plugin boundary namespac
 Import shared types from `Harmos` and authoring types from `Harmos.Plugins`.
 The maintained [plugin example](../../../sdk/csharp/examples/Plugin/Program.cs)
 shows the builder and unary handler using only those public paths.
-
 
 `ServeAsync(address: "127.0.0.1:53124", remote: true)` serves an explicitly chosen remote
 endpoint and remains alive after Stop. `HARMOS_ADDRESS` overrides the address in either
@@ -709,7 +708,6 @@ spells the dependency method `requires_operation`.
 Import shared types from `harmos` and authoring types from `harmos::plugin`.
 The maintained [plugin example](../../../sdk/cpp/examples/plugin/main.cpp)
 shows named imports, a typed operation and managed serving.
-
 
 `serve()` selects managed lifecycle and reads `HARMOS_ADDRESS`, defaulting to an
 ephemeral loopback port. `serve("127.0.0.1:53124")` selects remote lifecycle and
@@ -828,7 +826,7 @@ placement change. Declaration migration follows `authoring-without-macros`; stor
 follows `test-stories`. Update affected claims and links without rewriting unaffected guidance.
 
 The Crate Structure section defines this batch's boundary replacements. Storage extensions and
-Dokime storage extraction follow after the last wave as separate `storage-interface` changes.
+Product storage extraction follows after the last wave as separate `storage-interface` changes.
 Existing System test serial scheduling remains.
 The host clock and facility trim may share storage paths only through sequential handoff and
 review of the combined tree; the clock no longer needs an isolated implementation wave.
@@ -840,18 +838,20 @@ access; products may use it to require an authenticated client.
 
 Guest migration (7.1) follows Guest Lifecycle and Child Control above. Windows guest, conformance and example proof is recorded in task 7.1; native Linux validation remains open under 8.1.
 
-### Awaiting Owner Confirmation
+### Replacement Ownership
 
-- Unary-only plugin operations, with streamed requests/results confined to host-native operations.
-- Default policy on the new path: no deadline, zero cancellation grace and no retries.
-- `interval_setting` as a qualified protobuf section field of type `google.protobuf.Duration`.
-- Required consumer-owned `PlacementSettings.stream_window`.
-- Python package `harmos-sdk` / import `harmos`. The Rust public entry point is settled in Language SDKs.
-- The Python, C# and C++ authoring shapes in Language SDKs.
-- Deferral of client survival across transient drops until Harmos request deduplication and watch replay are specified.
+The old open-point questionnaire is superseded by [operation-boundary](../operation-boundary/tasks.md) for native-only host
+operations, typed facade access, dedicated plugin facilities and deleted host-client
+surfaces, and by [plugin-lifecycle](../plugin-lifecycle/tasks.md) for register/initialize/finalize, host start/stop/run,
+catalog() and SDK name parity. Those changes carry the current locked direction;
+older authoring examples in this design describe the original migration only.
 
-The built-in visibility mapping awaits confirmation in `operation-visibility`; retaining the
-hand-maintained downsampling kernels awaits confirmation in `facility-trim`.
+Source in this checkout already has unary plugin operation builders, explicit policy,
+interval settings, consumer placement settings and four SDK packages. This observation
+is not final native Linux/Windows proof, which remains in tasks 8.1–8.2. Reconnection
+must retain the existing in-flight failure/policy semantics; transparent client survival
+is not established by this reconciliation. Statistics ownership is now operation-boundary
+group 6, not the old downsampling-retention question.
 
 ## SDK Call-Style Source Inventory
 
@@ -884,7 +884,6 @@ The optional-marker edits are:
 Product binding acceptance retains static consumer typing and aggregate round-trip proof;
 the superseded snapshot of a public module's private wire imports is removed. Wire modules
 and their request aliases now stay behind the generated private binding module.
-
 
 ## Managed Process Settlement
 

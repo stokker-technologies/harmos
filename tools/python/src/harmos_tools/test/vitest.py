@@ -43,9 +43,13 @@ TIMEOUT = "{timeout_ms}"
 
 def run(arguments: Sequence[str], junit: Path, deadline: int) -> list[str]:
     if not arguments:
-        raise policy.TestError("script lanes pass their test command after --")
+        raise policy.TestError(
+            "script lanes pass their test command after --; Pass the script command after -- and configure its JUnit output path"
+        )
     if not any(JUNIT in argument for argument in arguments):
-        raise policy.TestError(f"the script command must write JUnit to {JUNIT}")
+        raise policy.TestError(
+            f"the script command must write JUnit to {JUNIT}; Pass the script command after -- and configure its JUnit output path"
+        )
     return [argument.replace(JUNIT, str(junit)).replace(TIMEOUT, str(deadline * 1000)) for argument in arguments]
 
 

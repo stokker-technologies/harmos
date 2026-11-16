@@ -23,11 +23,11 @@ from pathlib import Path
 # Third Party Imports
 # Local Imports
 from .. import temporary
+from ..process import spawn_flags
 from . import cargo, fixtures, paths
 from .fixtures import ROOT, SCHEMATIC, TARGET
 
 # Type Checking Imports
-
 
 # === Public Exports === #
 
@@ -44,8 +44,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("dev", "release"), default="dev")
     options = parser.parse_args()
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         product(options.profile, scratch)
+    finally:
+        scratch_directory.close()
 
 
 def product(profile: str, scratch: Path) -> None:
@@ -54,17 +58,24 @@ def product(profile: str, scratch: Path) -> None:
     messages = export / "product/compiler.json"
     messages.parent.mkdir(parents=True, exist_ok=True)
     arguments = ["--locked", "--workspace", "--profile", profile]
-    with messages.open("w", encoding="utf-8") as output:
+    output = messages.open("w", encoding="utf-8")
+    try:
+        # Run the Native Command
+        command = ["cargo", "build", "--timings", *arguments, "--message-format=json-render-diagnostics"]
         subprocess.run(
-            ["cargo", "build", "--timings", *arguments, "--message-format=json-render-diagnostics"],
+            command,
             cwd=ROOT,
             stdout=output,
             stderr=sys.stderr,
             stdin=sys.stdin,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            creationflags=spawn_flags(),
             check=True,
         )
-    with temporary.directory() as staging:
+    finally:
+        output.close()
+    staging_directory = temporary.Directory()
+    staging = staging_directory.path
+    try:
         for name in ("bin", "lib"):
             (staging / name).mkdir()
         for event in cargo.artifacts(ROOT, messages):
@@ -79,6 +90,8 @@ def product(profile: str, scratch: Path) -> None:
                     shutil.copy2(source, staging / "lib" / source.name)
         for name in ("bin", "lib"):
             paths.replace(ROOT, staging / name, export / name, origin=staging)
+    finally:
+        staging_directory.close()
     cargo.record_target(ROOT, messages, profile)
 
     examples = export / "product/examples"
@@ -133,7 +146,9 @@ def product(profile: str, scratch: Path) -> None:
 def generate(profile: str) -> None:
     export = paths.output(ROOT, "build", profile)
     catalog_path = export / "product/examples/catalog.json"
-    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = catalog_path.read_text(encoding="utf-8")
+    catalog = json.loads(text)
     tool = export / "product/tools" / ("fixture-driver.exe" if os.name == "nt" else "fixture-driver")
     fixtures.generate_python(
         tool,
@@ -146,15 +161,17 @@ def generate(profile: str) -> None:
 
 
 def _protoc() -> Path:
-    metadata = json.loads(
-        subprocess.check_output(
-            ["cargo", "metadata", "--locked", "--format-version", "1"],
-            cwd=ROOT,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdin=sys.stdin,
-            stderr=sys.stderr,
-        )
+    # Read Structured Input
+    # Run the Native Command
+    command = ["cargo", "metadata", "--locked", "--format-version", "1"]
+    text = subprocess.check_output(
+        command,
+        cwd=ROOT,
+        creationflags=spawn_flags(),
+        stdin=sys.stdin,
+        stderr=sys.stderr,
     )
+    metadata = json.loads(text)
     platform = {"linux": "linux-x86_64", "darwin": "macos-x86_64", "win32": "win32"}[sys.platform]
     package = next(package for package in metadata["packages"] if package["name"] == f"protoc-bin-vendored-{platform}")
     return Path(package["manifest_path"]).parent / "bin" / ("protoc.exe" if os.name == "nt" else "protoc")
