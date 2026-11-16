@@ -47,7 +47,7 @@ from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 from harmos._wire.plugin.v1.stream_pb2 import Window as WireWindow
 
-from ._columns import append, batches, extract
+from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
 
@@ -597,6 +597,8 @@ async def _produce(
                 await output.put(InstanceSamplesResponse(batch=part))
     except ProtocolError as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
+    except OversizedSampleError as error:
+        await output.put(_FaultError(StatusCode.RESOURCE_EXHAUSTED, str(error)))
     except Exception as error:
         await output.put(_FaultError(StatusCode.INTERNAL, str(error)))
 

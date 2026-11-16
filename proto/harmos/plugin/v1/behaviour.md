@@ -416,6 +416,13 @@ policies are empty. Cases 20 through 29 run before Stop, like the other additive
     contiguous parts, more than one part, each part's encoded size, the last flag and
     every value.
 
+41. **Oversized Sample Refusal.** When one sample alone would make an
+    InstanceSamplesResponse exceed the plugin's configured maximum message size, the
+    plugin MUST fail the Samples call with RESOURCE_EXHAUSTED and send no part of that
+    window. conformance.oversized answers each sample with a Value of as many zero
+    bytes as its sequence; the case grants one sample numbered one past the advertised
+    message size.
+
 ## Shared Operation Grammar
 
 Executor definitions and generated bindings are migrated; runtime and SDK

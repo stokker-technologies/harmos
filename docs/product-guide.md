@@ -41,8 +41,10 @@ meaning to the scope and does not require it for operations that do not ask for 
 For a scoped unit of work that owns its time and sample ingestion, use
 `runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
 binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
-demand: call `start_samples()` once the plugin has registered the unit and `stop_samples()`
-before its cleanup ends it, so no window reaches the plugin outside that interval. `close()` returns
+demand: call `start_samples(streams)` with exactly the streams the unit samples once the
+plugin has registered the unit and `stop_samples()` before its cleanup ends it, so no
+window reaches the plugin outside that interval; the plugin's other streams stay under
+its unscoped demand, which samples only while watched. `close()` returns
 within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
 not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
 share the admitted connection and retain independent clocks and Samples selections;
@@ -54,7 +56,8 @@ with `Failure::with_detail` and read it with `Failure::detail`; a plugin admissi
 consumer can use these fields for actionable errors without parsing prose.
 
 Deadline refusals name the operation, one-based attempt, applied budget and its
-configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`
+configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`,
+a configured policy such as `GrpcPluginSettings.policy.load`, a per-call policy override
 or a per-call gRPC deadline override). For example: `host call refused (-32607):
 operation connectivity.grpc_wait_until_grpc_ready attempt 1 exceeded its 10 s deadline
 (configured by operation policy.attempt_timeout)`. Cancellation refusals also name
@@ -1177,9 +1180,18 @@ loopback readiness address and drains standard output. A supplied or inherited
 `HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
 the connection and reconnects independently after transport loss.
 
-Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window,
-interval_window, interval_lag }` with positive durations and a nonzero retained-row budget
-per stream; `interval_lag: Default::default()` tolerates ten window lengths of lag. Startup, reconnect and shutdown budgets use the host's clock.
+Pass `PlacementSettings { reconnect_delay, stop_grace, stream_window, interval_window,
+interval_lag }` with positive durations and a nonzero retained-row budget per stream;
+`interval_lag: Default::default()` tolerates ten window lengths of lag. Reconnect and
+shutdown budgets use the host's clock. A plugin's startup deadline is the deadline of
+the `plugins.load` operation (`plugin::grpc::Load`) that loads and initializes it:
+attaching, a managed entry's start or replacement, every reconnect attempt and each
+scoped sample start run one load, spawning included, on the host's clock. Configure its
+policy with `Builder::grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy
+{ load } })`; it defaults to the operation's declared policy. Pass `LoadOptions { policy }`
+to `Runtime::attach_grpc_with` to replace it for one direct load; a later reconnect uses
+the configured policy again. A missed deadline fails with `Error::LoadDeadline`, naming
+the plugin, the applied timeout and its source.
 Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
 `stop_grace` before a managed child is killed and reaped within another; see
 [Managed Process Ownership](architecture.md#managed-process-ownership).
@@ -1231,7 +1243,8 @@ A demand that cannot keep up fails fast. A window whose clock reading lies more 
 `Error::Lagging`; a window the empty shared publication pool cannot hold is refused at
 grant with `Error::WindowExceedsPool`; a full pool fails with `Error::PoolFull`. Each
 names the stream and the action: lower the declared rate, the number of streams or the
-window length. `Attached::status().failure` reports an unscoped failure while the
+window length. A window the plugin itself fails ends its demand with
+`Error::WindowFailed`, which names the stream and carries the plugin's status and message. `Attached::status().failure` reports an unscoped failure while the
 plugin stays attached, a managed entry reports `plugin_stream_failed` while Ready, and
 a scope reads its failure from `stop_samples()` or `close()`.
 

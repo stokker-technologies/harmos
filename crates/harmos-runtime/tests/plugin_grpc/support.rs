@@ -87,10 +87,16 @@ struct Fixture {
     started_at: Arc<AtomicI64>,
     stops: Arc<AtomicUsize>,
     message_bytes: Arc<std::sync::atomic::AtomicU64>,
-    pending_description: Arc<Mutex<Option<oneshot::Sender<()>>>>,
+    pending_description: Arc<Mutex<Option<HeldDescription>>>,
     pending_stop: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     pending_samples: Arc<Mutex<Option<WithheldSamples>>>,
     samples: Arc<Mutex<Option<SamplesHandler>>>,
+}
+
+/// A Withheld Description: Reports When It Is Asked, and Answers Once Released or Never.
+struct HeldDescription {
+    entered: oneshot::Sender<()>,
+    release: Option<oneshot::Receiver<()>>,
 }
 
 /// Reports a Withheld Samples Request the Host Abandoned.
@@ -275,8 +281,16 @@ impl Remote {
 
     pub fn hold_description(&self) -> oneshot::Receiver<()> {
         let (sender, receiver) = oneshot::channel();
-        *self.service.pending_description.lock().unwrap() = Some(sender);
+        *self.service.pending_description.lock().unwrap() = Some(HeldDescription { entered: sender, release: None });
         receiver
+    }
+
+    /// Delay the Next Description Until `release` Fires: a Plugin That Starts Slowly; Reports When It Is Asked.
+    pub fn delay_description(&self) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        let (entered, entering) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        *self.service.pending_description.lock().unwrap() = Some(HeldDescription { entered, release: Some(released) });
+        (entering, release)
     }
 
     pub fn hold_stop(&self) -> oneshot::Receiver<()> {
@@ -316,9 +330,14 @@ impl Drop for Remote {
 impl Instance for Fixture {
     async fn get(&self, _: Request<InstanceGetRequest>) -> Result<Response<InstanceGetResponse>, Status> {
         let pending = self.pending_description.lock().unwrap().take();
-        if let Some(pending) = pending {
-            let _ = pending.send(());
-            return std::future::pending().await;
+        if let Some(HeldDescription { entered, release }) = pending {
+            let _ = entered.send(());
+            match release {
+                Some(release) => {
+                    let _ = release.await;
+                }
+                None => return std::future::pending().await,
+            }
         }
         Ok(Response::new(InstanceGetResponse {
             message_bytes: self.message_bytes.load(Ordering::SeqCst),
@@ -416,7 +435,6 @@ pub fn answer(count: u64, columns: Vec<u8>) -> InstanceSamplesResponse {
 
 pub fn settings() -> PlacementSettings {
     PlacementSettings {
-        connect_timeout: Duration::from_secs(30),
         reconnect_delay: Duration::from_secs(1),
         stop_grace: Duration::from_secs(30),
         stream_window: std::num::NonZeroUsize::new(64).unwrap(),

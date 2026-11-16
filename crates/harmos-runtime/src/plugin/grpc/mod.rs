@@ -15,15 +15,17 @@ mod catalog;
 mod config;
 mod connection;
 pub(crate) mod invoke;
+mod load;
 mod managed;
 mod publish;
 pub(crate) mod samples;
 mod scoped;
 /* === Re-Exports === */
 
-pub use config::{IntervalLag, PlacementSettings};
+pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings};
 pub use harmos_protocol::model;
 pub use invoke::CallError;
+pub use load::{Load, LoadOptions};
 pub use managed::Managed;
 pub use scoped::ScopedBinding;
 
@@ -105,6 +107,7 @@ struct Startup {
     process_participant: Option<crate::runtime::StopParticipant>,
     entry: Option<EntrySettings>,
     cancelled: Option<oneshot::Receiver<()>>,
+    options: LoadOptions,
 }
 
 struct EntrySettings {
@@ -182,6 +185,16 @@ pub enum Error {
     )]
     WindowExceedsPool { stream: String, samples: u64, needed: u128, bytes: usize, rows: usize },
 
+    #[error(
+        "Answer Sample Window: the plugin failed a window of stream `{stream}` with {status:?}: {message}; correct the plugin's sampling of that stream, then reattach the plugin or start the scope's samples again"
+    )]
+    WindowFailed { stream: String, status: tonic::Code, message: String },
+
+    #[error(
+        "Load Plugin {plugin}: the plugin did not load within {timeout:?} (configured by {configured_by}); make the plugin start faster, or raise the plugins.load timeout for this load with LoadOptions"
+    )]
+    LoadDeadline { plugin: String, timeout: std::time::Duration, configured_by: &'static str },
+
     #[error("managed plugin exited with {0}")]
     Exit(std::process::ExitStatus),
 
@@ -233,41 +246,54 @@ impl<A: Application> Runtime<A> {
         if participant.is_stopping() {
             return Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into()));
         }
-        let deadline = clock.now() + settings.connect_timeout;
-        // Spawning Is Never Raced Against Shutdown, So Every Forked Child Reaches This Owner.
-        let mut process = clock
-            .timeout_at(deadline, Process::spawn(&managed, self.stop_participant()))
-            .await
-            .map_err(|_| Error::Timeout("Replace startup"))??;
-        let stage = async {
-            let address = process.ready(&managed).await?;
-            let mut activation = connect(clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get()).await?;
-            activation.entry_name = Some(name);
-            activation.settings = crate::plugin::manager::settings::select(
-                activation.description.declarations.as_ref().expect("admitted description"),
-                values,
-            )
-            .map_err(|error| Error::Invalid(error.to_string()))?;
-            activation.process_id = process.id();
-            let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
-            let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
-            Ok((address, activation, admission, publications))
+        // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
+        // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
+        let spawned = Arc::new(tokio::sync::Mutex::new(None));
+        let process_participant = self.stop_participant();
+        let stage = {
+            let spawned = spawned.clone();
+            let operations = operations.clone();
+            let streams = self.streams.clone();
+            let clock = clock.clone();
+            let settings = settings.clone();
+            let name = name.clone();
+            async move {
+                let mut held = spawned.lock().await;
+                let process = held.insert(Process::spawn(&managed, process_participant).await?);
+                let address = process.ready(&managed).await?;
+                let mut activation =
+                    connect(&clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get()).await?;
+                activation.entry_name = Some(name);
+                activation.settings = crate::plugin::manager::settings::select(
+                    activation.description.declarations.as_ref().expect("admitted description"),
+                    values,
+                )
+                .map_err(|error| Error::Invalid(error.to_string()))?;
+                activation.process_id = process.id();
+                let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
+                let publications = Publications::prepare(&streams, &activation, &settings, &operations, true, None).await?;
+                Ok((address, activation, admission, publications))
+            }
         };
         let result = tokio::select! {
             biased;
             () = participant.stopping() => Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into())),
-            result = clock.timeout_at(deadline, stage) => result.map_err(|_| Error::Timeout("Replace startup")).and_then(|result| result),
+            result = load::load(&operations, &name, LoadOptions::default(), stage) => result,
         };
+        // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
+        let mut process = spawned.lock().await.take();
         match result {
             Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
-                process: Some(process),
+                process,
                 address,
                 activation,
                 admission,
                 publications,
             }),
             Err(error) => {
-                process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                if let Some(process) = &mut process {
+                    process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                }
                 Err(error)
             }
         }
@@ -327,16 +353,22 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: Some(EntrySettings { name, values }),
                 cancelled: Some(cancelled),
+                options: LoadOptions::default(),
             },
         )
         .await
     }
 
     pub async fn attach_grpc(&self, placement: Placement, settings: PlacementSettings) -> Result<Attached, Error> {
+        self.attach_grpc_with(placement, settings, LoadOptions::default()).await
+    }
+
+    /// Attach Like `attach_grpc`, With `options` Applying to This Plugin Load Only.
+    pub async fn attach_grpc_with(
+        &self, placement: Placement, settings: PlacementSettings, options: LoadOptions,
+    ) -> Result<Attached, Error> {
+        // Startup Itself Refuses a Stopping Host Before It Spawns Anything.
         let participant = self.stop_participant();
-        if participant.is_stopping() {
-            return Err(Error::Disconnected);
-        }
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
@@ -348,6 +380,7 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: None,
                 cancelled: None,
+                options,
             },
         )
         .await
@@ -396,13 +429,10 @@ impl Attached {
             mut process_participant,
             entry,
             cancelled,
+            options,
         } = startup;
         let clock = operations.clock().clone();
-        if settings.connect_timeout.is_zero()
-            || settings.reconnect_delay.is_zero()
-            || settings.stop_grace.is_zero()
-            || settings.interval_window.is_zero()
-        {
+        if settings.reconnect_delay.is_zero() || settings.stop_grace.is_zero() || settings.interval_window.is_zero() {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
         // A Stopping Host Spawns Nothing It Would Immediately Have to Reap.
@@ -410,47 +440,56 @@ impl Attached {
             return Err(Error::Invalid("Start Plugin: the host is shutting down; attach the plugin after it restarts".into()));
         }
         let _activity = clock.activity("plugin startup");
-        let deadline = clock.now() + settings.connect_timeout;
-        // Spawning Is Never Raced Against Cancellation, So Every Forked Child Reaches This Owner.
-        let mut process = match &placement {
-            Placement::Managed(managed) => Some(
-                clock
-                    .timeout_at(deadline, Process::spawn(managed, process_participant.take().expect("managed process participant")))
-                    .await
-                    .map_err(|_| Error::Timeout("startup"))??,
-            ),
-            Placement::Remote(_) => None,
+        let plugin = match (&entry, &placement) {
+            (Some(entry), _) => entry.name.clone(),
+            (None, Placement::Managed(managed)) => managed.executable.display().to_string(),
+            (None, Placement::Remote(address)) => address.clone(),
         };
-        let setup = async {
-            let address = match &placement {
-                Placement::Managed(managed) => process.as_mut().expect("spawned process").ready(managed).await?,
-                Placement::Remote(address) => address.clone(),
-            };
-            let mut activation = connect(
-                &clock,
-                &address,
-                1,
-                None,
-                process.as_ref().map(|process| process.digest),
-                operations.transfer_message_bytes().get(),
-            )
-            .await?;
-            let values = entry.and_then(|entry| {
-                activation.entry_name = Some(entry.name);
-                entry.values
-            });
-            activation.settings = crate::plugin::manager::settings::select(
-                activation.description.declarations.as_ref().expect("admitted description"),
-                values,
-            )
-            .map_err(|error| Error::Invalid(error.to_string()))?;
-            activation.process_id = process.as_ref().and_then(Process::id);
-            let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
-                activation.connection.closed.send_replace(true);
-            })?;
-            activation.admission = Some(Arc::new(admission));
-            let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
-            Ok::<_, Error>((address, activation, publications))
+        // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
+        // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
+        let spawned = Arc::new(tokio::sync::Mutex::new(None));
+        let setup = {
+            let spawned = spawned.clone();
+            let operations = operations.clone();
+            let streams = streams.clone();
+            let clock = clock.clone();
+            let settings = settings.clone();
+            let placement = placement.clone();
+            async move {
+                let mut process = spawned.lock().await;
+                let address = match &placement {
+                    Placement::Managed(managed) => {
+                        let participant = process_participant.take().expect("managed process participant");
+                        process.insert(Process::spawn(managed, participant).await?).ready(managed).await?
+                    }
+                    Placement::Remote(address) => address.clone(),
+                };
+                let mut activation = connect(
+                    &clock,
+                    &address,
+                    1,
+                    None,
+                    process.as_ref().map(|process| process.digest),
+                    operations.transfer_message_bytes().get(),
+                )
+                .await?;
+                let values = entry.and_then(|entry| {
+                    activation.entry_name = Some(entry.name);
+                    entry.values
+                });
+                activation.settings = crate::plugin::manager::settings::select(
+                    activation.description.declarations.as_ref().expect("admitted description"),
+                    values,
+                )
+                .map_err(|error| Error::Invalid(error.to_string()))?;
+                activation.process_id = process.as_ref().and_then(Process::id);
+                let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
+                    activation.connection.closed.send_replace(true);
+                })?;
+                activation.admission = Some(Arc::new(admission));
+                let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
+                Ok::<_, Error>((address, activation, publications))
+            }
         };
         let cancelled = async {
             match cancelled {
@@ -465,8 +504,10 @@ impl Attached {
             _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
             () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
             () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
-            result = clock.timeout_at(deadline, setup) => result.map_err(|_| Error::Timeout("startup")).and_then(|result| result),
+            result = load::load(&operations, &plugin, options, setup) => result,
         };
+        // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
+        let mut process = spawned.lock().await.take();
         let (address, activation, publications) = match result {
             Ok(connected) => connected,
             Err(error) => {
@@ -734,72 +775,67 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                 () = clock.sleep(settings.reconnect_delay) => {},
             }
             let _activity = clock.activity("plugin reconnect");
-            // One Deadline Bounds the Whole Attempt, and Stop Interrupts Every Step of It.
-            let deadline = clock.now() + settings.connect_timeout;
-            let connecting =
-                clock.timeout_at(deadline, connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()));
-            let connected = tokio::select! {
+            // One Plugin Load Bounds the Whole Attempt, and Stop Interrupts Every Step of It.
+            let attempt = {
+                let address = address.clone();
+                let operations = operations.clone();
+                let streams = streams.clone();
+                let clock = clock.clone();
+                let settings = settings.clone();
+                let previous_activation = activation.clone();
+                async move {
+                    let mut next = connect(&clock, &address, number, previous, None, operations.transfer_message_bytes().get()).await?;
+                    if next.description.id != previous_activation.description.id {
+                        next.connection.closed.send_replace(true);
+                        return Err(Error::Invalid("Reconnect Changed Plugin Identity".into()));
+                    }
+                    next.entry_name = previous_activation.entry_name.clone();
+                    next.provider = previous_activation.provider.clone();
+                    let selected = crate::plugin::manager::settings::select(
+                        next.description.declarations.as_ref().expect("admitted description"),
+                        Some(previous_activation.settings.clone()),
+                    );
+                    next.settings = match selected {
+                        Ok(settings) => settings,
+                        Err(error) => {
+                            next.connection.closed.send_replace(true);
+                            return Err(Error::Invalid(format!(
+                                "Reconnect Plugin: the retained settings do not fit the reconnected plugin ({error}); set settings that match its declarations"
+                            )));
+                        }
+                    };
+                    match operations.admit_grpc(&next, lane) {
+                        Ok(admission) => next.admission = Some(Arc::new(admission)),
+                        Err(error) => {
+                            next.connection.closed.send_replace(true);
+                            return Err(error);
+                        }
+                    }
+                    match Publications::open(&streams, &next, &clock, &settings, &operations).await {
+                        Ok(opened) => Ok((next, opened)),
+                        Err(error) => {
+                            next.connection.closed.send_replace(true);
+                            next.admission.as_ref().unwrap().remove();
+                            Err(error)
+                        }
+                    }
+                }
+            };
+            let reconnected = tokio::select! {
                 biased;
                 _ = stopping(&mut stop, &mut participant) => return Ok(()),
-                result = connecting => result,
+                result = load::load(&operations, activation.owner(), LoadOptions::default(), attempt) => result,
             };
-            let mut next = match connected {
-                Ok(Ok(next)) => next,
-                Ok(Err(error)) => {
-                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
-                    continue;
+            let next = match reconnected {
+                Ok((next, opened)) => {
+                    publications = opened;
+                    next
                 }
-                Err(_) => {
-                    status.send_modify(|status| status.failure = Some(Arc::new(Error::Timeout("reconnect"))));
-                    continue;
-                }
-            };
-            if next.description.id != activation.description.id {
-                next.connection.closed.send_replace(true);
-                status.send_modify(|status| status.failure = Some(Arc::new(Error::Invalid("Reconnect Changed Plugin Identity".into()))));
-                continue;
-            }
-            next.entry_name = activation.entry_name.clone();
-            next.provider = activation.provider.clone();
-            let selected = crate::plugin::manager::settings::select(
-                next.description.declarations.as_ref().expect("admitted description"),
-                Some(activation.settings.clone()),
-            );
-            next.settings = match selected {
-                Ok(settings) => settings,
                 Err(error) => {
-                    next.connection.closed.send_replace(true);
-                    let error = Error::Invalid(format!(
-                        "Reconnect Plugin: the retained settings do not fit the reconnected plugin ({error}); set settings that match its declarations"
-                    ));
                     status.send_modify(|status| status.failure = Some(Arc::new(error)));
                     continue;
                 }
             };
-            match operations.admit_grpc(&next, lane) {
-                Ok(admission) => next.admission = Some(Arc::new(admission)),
-                Err(error) => {
-                    next.connection.closed.send_replace(true);
-                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
-                    continue;
-                }
-            }
-            let opening = clock.timeout_at(deadline, Publications::open(&streams, &next, &clock, &settings, &operations));
-            let opened = tokio::select! {
-                biased;
-                _ = stopping(&mut stop, &mut participant) => Err(None),
-                result = opening => result.map_err(|_| Some(Error::Timeout("reconnect"))).and_then(|result| result.map_err(Some)),
-            };
-            match opened {
-                Ok(opened) => publications = opened,
-                Err(failure) => {
-                    next.connection.closed.send_replace(true);
-                    next.admission.as_ref().unwrap().remove();
-                    let Some(error) = failure else { return Ok(()) };
-                    status.send_modify(|status| status.failure = Some(Arc::new(error)));
-                    continue;
-                }
-            }
             activation = next;
             status.send_replace(Status {
                 activation: Some(activation.clone()),

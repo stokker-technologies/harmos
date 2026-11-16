@@ -38,9 +38,11 @@ use super::*;
 
 impl Manager {
     pub(crate) fn new<A: crate::Application>(
-        instances: Arc<Instances>, settings: &crate::operations::Settings, reserved: std::collections::BTreeSet<String>, identity: Arc<()>,
-        schema_settings: Arc<crate::config::SchemaSettings>, callers: BTreeMap<String, Callers>,
+        instances: Arc<Instances>, settings: &crate::operations::Settings, plugins: &crate::plugin::grpc::GrpcPluginSettings,
+        reserved: std::collections::BTreeSet<String>, identity: Arc<()>, schema_settings: Arc<crate::config::SchemaSettings>,
+        callers: BTreeMap<String, Callers>,
     ) -> Result<Self> {
+        plugins.policy.load.validate().map_err(|source| Error::OperationDeclaration { source: source.into() })?;
         let status_started = instances.clock.date().into();
         let manager = Self {
             schema_settings,
@@ -51,6 +53,7 @@ impl Manager {
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
                 callers: Arc::new(callers),
+                plugin_load: plugins.policy.load,
                 access: Arc::new(harmos_operations::access::AccessAccess::default()),
                 status: Arc::new(harmos_operations::status::StatusAccess::default()),
                 status_owner: std::sync::Mutex::new(None),

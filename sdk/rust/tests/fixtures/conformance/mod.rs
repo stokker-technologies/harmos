@@ -209,6 +209,8 @@ pub fn plugin() -> Plugin {
     let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
     let window_stream = Stream::<Value>::new("conformance.window");
     let window_observer = Observer::window(&window_stream, window).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let oversized_stream = Stream::<Value>::new("conformance.oversized");
+    let oversized_observer = Observer::new(&oversized_stream, oversized).every(ProtoDuration { seconds: 1, nanos: 0 });
     Plugin::new("conformance", "1.0.0")
         .settings(SettingsDeclarations {
             values: vec![
@@ -307,6 +309,8 @@ pub fn plugin() -> Plugin {
         .observer(refusal_observer)
         .stream(window_stream)
         .observer(window_observer)
+        .stream(oversized_stream)
+        .observer(oversized_observer)
         .observer(observer)
         .observer(configured)
         .section(Graph {
@@ -461,6 +465,11 @@ async fn sequence(ctx: &Context) -> Result<Value> {
     Ok(Value {
         value: ctx.sequence().to_le_bytes().to_vec(),
     })
+}
+
+/// Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size.
+async fn oversized(ctx: &Context) -> Result<Value> {
+    Ok(Value { value: vec![0; ctx.sequence() as usize] })
 }
 
 async fn window(_: &Context, window: &Window) -> Result<Values> {

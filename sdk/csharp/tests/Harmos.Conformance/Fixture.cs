@@ -84,6 +84,7 @@ public sealed class Fixture
       .Observer("conformance.window_cancel", new Duration { Seconds = 1 }, SampleCancel)
       .Observer("conformance.window_caller_refusal", new Duration { Seconds = 1 }, context => CallerRefusal(context, new Value()))
       .WindowObserver<Value, Values>("conformance.window", new Duration { Seconds = 1 }, Sequences)
+      .Observer("conformance.oversized", new Duration { Seconds = 1 }, Oversized)
       .Section(new Graph { Interval = new Duration { Seconds = 2 } })
       .Setting("count", new SettingValue { Integer = 3 }, "count", "Conformance count")
       .Setting("enabled", new SettingValue { Flag = false }, "enabled", "Conformance enabled")
@@ -290,6 +291,10 @@ public sealed class Fixture
     BinaryPrimitives.WriteUInt64LittleEndian(bytes, context.Sequence);
     return Task.FromResult(new Value { Value_ = ByteString.CopyFrom(bytes) });
   }
+
+  /// <summary>Each sample holds as many bytes as its sequence, so a grant can exceed the message size.</summary>
+  private Task<Value> Oversized(SdkContext context) =>
+    Task.FromResult(new Value { Value_ = ByteString.CopyFrom(new byte[checked((int)context.Sequence)]) });
 
   private Task<Values> Sequences(SdkContext context, Window window)
   {

@@ -97,6 +97,8 @@ pub(crate) struct WeakOperationManager {
 
 pub(crate) struct Registry {
     callers: Arc<BTreeMap<String, Callers>>,
+    /// The Configured `plugins.load` Policy (`GrpcPluginSettings::policy`).
+    pub(crate) plugin_load: super::OperationPolicy,
     pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
     pub(crate) status: Arc<harmos_operations::status::StatusAccess>,
     pub(crate) status_owner: std::sync::Mutex<Option<Arc<crate::services::status::Status>>>,

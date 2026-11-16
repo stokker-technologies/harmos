@@ -96,6 +96,7 @@ pub const CASES: &[&str] = &[
     "Typed Settings Defaults and Stored Values",
     "Typed Operations Discovery",
     "Half-Close During an Unanswered Window",
+    "Oversized Sample Refusal",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -623,6 +624,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(values == rows(4, count), "Split Window: Rows Differ From Their Sample Sequences")?;
             drop(send);
             require(input.message().await?.is_none(), "Split Window: Demand Survived Half-Close")?;
+        }
+        41 => {
+            // One Sample Numbered Past the Advertised Message Size Cannot Fit Any Part, So the Window Fails.
+            let limit = description.message_bytes;
+            let (send, mut input) = open(&mut client, fixture::OVERSIZED).await?;
+            grant(&send, limit + 1, 1, 1_700_000_100).await?;
+            refused(&mut input, Code::ResourceExhausted).await?;
         }
         37 => {
             // Echo a Message Larger Than the Storage Chunk Through the Default Carrier.

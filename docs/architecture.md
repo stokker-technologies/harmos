@@ -1288,7 +1288,7 @@ own clock for the lifetime of a scoped unit of work:
 let activation = plugins.activation("plugins/example").await?;
 let binding = runtime.bind_grpc(&activation, "unit/opaque-id", unit_clock).await?;
 binding.operations().call_encoded(initialize, payload).await?; // the plugin registers the unit
-binding.start_samples().await?;
+binding.start_samples(["example.reading"]).await?;
 // ... the unit runs; the host grants its streams windows on the unit clock ...
 binding.stop_samples().await?;
 binding.operations().call_encoded(cleanup, payload).await?; // the plugin ends the unit
@@ -1304,10 +1304,11 @@ same activation and scope refuse. The product owns the scope's meaning, time
 advancement and admission policy. Scope text is selection context, never authority.
 Binding does not change declarations, endpoints, the plugin process or its single
 physical connection, and it opens no Samples demand: calls are bound at once,
-sample demand is controlled separately. `start_samples()` opens one Samples demand
-per declared stream with the existing `SamplesSelection.scope` and retains the
-activation's admitted stream writers; opening uses the attachment's configured
-connect timeout on the runtime clock. `stop_samples()` settles only that demand
+sample demand is controlled separately. `start_samples(streams)` opens one Samples
+demand for exactly each requested stream with the existing `SamplesSelection.scope`
+and retains the activation's admitted stream writers; a stream the plugin does not
+declare is refused, and the activation's other streams stay under its unscoped
+demand. Opening is one plugin load, bounded by the `plugins.load` operation's deadline on the runtime clock. `stop_samples()` settles only that demand
 within `stop_grace`: an in-flight window is cancelled and publishes nothing,
 accepted batches are drained and committed, and the demand's Samples responses
 end. Calls stay bound. The host grants a scope windows only between start and stop,
@@ -1388,26 +1389,30 @@ the stored encoding in bulk.
 A part holding more structural values than one stored row may
 (`harmos_domain::message::postcard::MAX_VALUES`) is stored as consecutive rows.
 Rows with repeated, map or oneof fields cannot be interval rows. While any scope of
-an activation samples, the activation's unscoped demand grants no windows; it
-resumes from a fresh origin when the last scope stops, so each stream has one live
-schedule per activation and scope. The unscoped demand also grants windows only
+an activation samples a stream, the activation's unscoped demand grants that stream
+no windows; it resumes from a fresh origin when the last such scope stops, so each
+stream has one live schedule per activation and scope. Streams no scope requested
+keep their unscoped schedule. The unscoped demand also grants windows only
 while the stream's demand count (`PublishedStream::demand()`) is positive, that is
 while a `watch()` handle or a plugin listener holds it,
 and resumes from a fresh origin when a watcher returns; idle streams cost no
 sampling. `plugin_grpc::interval_windows` proves exact
 boundaries and counts on a controlled clock, per-stream window lengths, splitting at
-the plugin's maximum message size and the paused unscoped schedule.
+the plugin's maximum message size, the paused unscoped schedule of a requested stream
+and the running one of a stream the scope did not request.
 
 A demand that cannot keep up fails fast instead of dropping samples or growing its
 windows without bound. A grant whose clock reading lies more than
 `PlacementSettings::interval_lag` window lengths past the window's end fails with
 `Error::Lagging`; a window whose smallest stored footprint exceeds the empty shared
 publication pool is refused before the plugin samples it (`Error::WindowExceedsPool`);
-a part that finds the pool full fails with `Error::PoolFull`. Each names the stream,
-the limit and the action. An unscoped failure ends only that stream's demand and is
+a part that finds the pool full fails with `Error::PoolFull`; a window the plugin
+fails with a gRPC status fails with `Error::WindowFailed`, carrying the plugin's status
+and message. Each names the stream, the limit or cause and the action. An unscoped failure ends only that stream's demand and is
 reported on `Attached::status().failure` while the activation stays attached; a scoped
 failure is the result of `stop_samples()` or `close()`. `plugin_grpc::window_overload`
-proves the lag limit, the full and the too-small pool and the watched gate. The pool
+proves the lag limit, the full and the too-small pool, the plugin's failed window and
+the watched gate. The pool
 reclaims a row only after every feed has taken it and every storage consumer has
 drained it (`streams/ingest.rs`), so a lagging storage consumer fails the demand
 rather than losing rows it never saw.
@@ -1421,8 +1426,8 @@ settles; no binding task outlives its attachment.
 
 | State | Entered when | Leaves when |
 | ----- | ------------ | ----------- |
-| Serving | `bind_grpc` admits the scope under the attachment's bindings lock and returns the handle | `start_samples()`, `close()`, the handle is dropped, or the attachment settles |
-| Sampling | `start_samples()` opened the demands | `stop_samples()` settles them back to Serving, `close()`, the handle is dropped, or the attachment settles |
+| Serving | `bind_grpc` admits the scope under the attachment's bindings lock and returns the handle | `start_samples(streams)`, `close()`, the handle is dropped, or the attachment settles |
+| Sampling | `start_samples(streams)` opened the requested streams' demands | `stop_samples()` settles them back to Serving, `close()`, the handle is dropped, or the attachment settles |
 | Settling | Close was requested | The steps below finish or their deadline passes |
 | Settled | The outcome is published | `close()` returns it |
 
@@ -1460,8 +1465,9 @@ Connection loss or plugin exit still awaits accepted scoped ingestion before the
 binding reports the transport failure. A settlement failure is logged with its
 action on every ending, returned by `stop()` after a Stop request and kept in a
 remote attachment's disconnected status. Remote attachments continue reconnecting
-under the placement policy. One `connect_timeout` bounds each reconnect attempt,
-including opening its publications, and stop interrupts every step. An attempt
+under the placement policy. Each reconnect attempt, including opening its
+publications, is one `plugins.load` under the configured `GrpcPluginSettings::policy.load`, and stop
+interrupts every step. An attempt
 that cannot select the retained settings, admit its operations or open its
 publications closes its connection, reports the failure in the status and retries
 after `reconnect_delay`. Leases belong to their activation, so a cleanup that
@@ -1479,7 +1485,7 @@ outliving `stop_grace`, a plugin that ignores half-close on the manual and on a
 virtual runtime clock, Stop after a spent drain, plugin exit, managed disconnect,
 runtime shutdown, both orders of a bind and stop at the bindings lock, a bind
 during reconnect, a remote cleanup that misses its deadline then reconnects, and
-sample demand that grants the plugin windows only between `start_samples()` and
+sample demand that grants the plugin windows only between `start_samples(streams)` and
 `stop_samples()` while the binding stays bound.
 
 Rust client retained admission bounds each generated oneof by its largest variant,

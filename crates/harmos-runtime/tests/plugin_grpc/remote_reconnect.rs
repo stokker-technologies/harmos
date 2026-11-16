@@ -27,7 +27,8 @@ use super::support::{self, Manual, Remote};
 use harmos_protocol::model;
 use harmos_runtime::{
     clock::{Clock, Source as _},
-    plugin::grpc::{Error, Placement},
+    operations::NativeOperation,
+    plugin::grpc::{Error, Load, Placement},
 };
 
 /* === Private Functions === */
@@ -183,12 +184,13 @@ async fn a_reconnect_whose_samples_never_answer_is_bounded_and_stoppable() {
     support::offline(&mut status).await;
     let (entered, abandoned) = remote.hold_samples();
     source.advance_next().await;
-    let deadline = source.read().instant + settings.connect_timeout;
+    let load = <Load as NativeOperation>::POLICY.timeout;
+    let deadline = source.read().instant + load;
     entered.await.unwrap();
 
-    // The Attempt's Connect Timeout Bounds Opening Its Publications.
+    // The Attempt's Plugin Load Deadline Bounds Opening Its Publications.
     assert!(source.timer_at(deadline), "Bound Opening Publications by the Attempt Deadline");
-    source.advance_by(settings.connect_timeout);
+    source.advance_by(load);
     abandoned.await.unwrap();
     let retry = source.read().instant + settings.reconnect_delay;
     tokio::select! {
@@ -197,7 +199,7 @@ async fn a_reconnect_whose_samples_never_answer_is_bounded_and_stoppable() {
         () = source.registered_at(retry) => {},
     }
     let failure = status.borrow().failure.clone().expect("Report the Unanswered Open");
-    assert!(matches!(failure.as_ref(), Error::Timeout(_)), "Report the Timeout: {failure}");
+    assert!(matches!(failure.as_ref(), Error::LoadDeadline { timeout, .. } if *timeout == load), "Report the Load Deadline: {failure}");
 
     // Stop Interrupts the Next Unanswered Open and Releases Its Demand.
     let (entered, abandoned) = remote.hold_samples();

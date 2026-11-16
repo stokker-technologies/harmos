@@ -169,6 +169,7 @@ impl Manager {
             domain: "operation lane",
             name: lane.to_owned(),
         })?;
+        let policy_source = request.policy.map(|_| request.policy_source.unwrap_or("per-call policy override"));
         let mut policy = request.policy.unwrap_or(entry.definition.policy);
         if let Some(retry) = request.retry {
             if retry != crate::operations::RetryPolicy::Never && entry.declared().replay == crate::operations::ReplaySafety::Unknown {
@@ -239,6 +240,9 @@ impl Manager {
             }
         }
         job.policy = policy;
+        if let Some(source) = policy_source {
+            job.timeout_source = source;
+        }
         #[cfg(feature = "grpc")]
         if !<O::Input as crate::operations::Direction>::STREAMED
             && !<O::Output as crate::operations::Direction>::STREAMED

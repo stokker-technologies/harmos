@@ -421,5 +421,14 @@ authoring::Plugin fixture_types::plugin() {
   });
   plugin.stream(window).observer(columns.every(interval));
 
+  // Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size.
+  authoring::Stream<Value> oversized("conformance.oversized");
+  authoring::Observer<Value> oversized_observer(oversized, [](Context &ctx) {
+    Value result;
+    result.set_value(string(static_cast<size_t>(ctx.sequence), static_cast<char>(0)));
+    return result;
+  });
+  plugin.stream(oversized).observer(oversized_observer.every(interval));
+
   return plugin;
 }

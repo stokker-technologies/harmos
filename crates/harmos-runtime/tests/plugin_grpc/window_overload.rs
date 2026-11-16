@@ -7,7 +7,7 @@
  * ***
  */
 
-// Interval Overload Fails Fast, and the Unscoped Demand Samples Only While Its Stream Is Watched
+// Overload and Plugin Window Failures Fail Their Demand; the Unscoped Demand Samples Only While Watched
 
 /* === Modules === */
 
@@ -23,6 +23,8 @@ use std::{
 };
 
 // Third Party Imports
+use tokio::sync::Notify;
+use tracing_subscriber::layer::SubscriberExt as _;
 
 // Local Imports
 use super::{invoke_support::HostFixture, support};
@@ -41,11 +43,22 @@ const SECOND: i64 = 1_000_000_000;
 
 /* === Structs === */
 
+/// Notifies When a Warning Is Recorded on the Story's Thread, Such as a Demand Ending With a Failure.
+struct Warned(Arc<Notify>);
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Warned {
+    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
+        if *event.metadata().level() == tracing::Level::WARN {
+            self.0.notify_one();
+        }
+    }
+}
 
 /* === Public Functions === */
 
@@ -159,6 +172,71 @@ async fn a_window_the_empty_pool_cannot_hold_is_refused_before_sampling() {
     );
     assert!(host.batches_of("fixture.dense").is_empty(), "Sample Nothing for a Refused Window");
     drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_window_the_plugin_fails_names_its_stream_and_the_plugins_status() {
+    // One-Second Samples in Four-Second Windows Whose Observer Always Fails.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("failing").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), windows(Duration::from_secs(4))).await.unwrap();
+    let origin = host.clock.read().instant;
+    let watching = host.watch("fixture.failing");
+    host.clock.registered_at(origin + Duration::from_secs(4)).await;
+    host.clock.advance_by(Duration::from_secs(4));
+
+    // The Owner Reads Which Stream Failed and the Plugin's Own Status and Message; the Plugin Stays Attached.
+    let failure = failure(&attached).await;
+    assert!(
+        matches!(
+            failure.as_ref(),
+            Error::WindowFailed { stream, status: tonic::Code::Internal, message } if stream == "fixture.failing" && message == "Sensor Offline"
+        ),
+        "Carry the Failed Window's Stream and the Plugin's Status: {failure:?}"
+    );
+    assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
+    drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_scope_reads_the_plugins_failed_window_from_stop_samples_and_close() {
+    // Observe This Current-Thread Story's Warnings; the Unobserved Dispatcher Keeps Parallel Callsites Enabled.
+    let warned = Arc::new(Notify::new());
+    let _unobserved = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    let _observed = tracing::subscriber::set_default(tracing_subscriber::registry().with(Warned(warned.clone())));
+
+    // A Scope Samples a Stream Whose Observer Always Fails; Nothing Watches It, So Only the Scope Samples.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("failing").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), windows(Duration::from_secs(4))).await.unwrap();
+    let unit_time = support::Manual::new();
+    let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/failing", Clock::with_clock(unit_time.clone())).await.unwrap();
+    let failed = |error: &Error| {
+        matches!(
+            error,
+            Error::WindowFailed { stream, status: tonic::Code::Internal, message } if stream == "fixture.failing" && message == "Sensor Offline"
+        )
+    };
+
+    // The Failed Window Ends the Scope's Demand, and Stopping Its Samples Returns the Failure.
+    unit.start_samples(["fixture.failing"]).await.unwrap();
+    unit_time.registered_at(unit_time.read().instant + Duration::from_secs(4)).await;
+    unit_time.advance_by(Duration::from_secs(4));
+    warned.notified().await;
+    let stopped = unit.stop_samples().await.unwrap_err();
+    assert!(failed(&stopped), "Return the Failed Window From stop_samples(): {stopped:?}");
+
+    // Started Again, the Next Failure Comes Back From close().
+    unit.start_samples(["fixture.failing"]).await.unwrap();
+    unit_time.registered_at(unit_time.read().instant + Duration::from_secs(4)).await;
+    unit_time.advance_by(Duration::from_secs(4));
+    warned.notified().await;
+    let closed = unit.close().await.unwrap_err();
+    assert!(failed(&closed), "Return the Failed Window From close(): {closed:?}");
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

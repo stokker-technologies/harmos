@@ -415,7 +415,7 @@ impl Origin {
 impl harmos_operations::execution::operations::NativeHost for Caller {
     type Error = Error;
     async fn call_native<O: crate::operations::NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> Result<O::Response> {
-        let response = self.operations.submit_native_as::<O>(request, (), Source::Plugin(self.source.clone()))?.await?;
+        let response = self.operations.submit_native_as::<O>(request, (), Source::Plugin(self.source.clone()), None)?.await?;
         response.try_unwrap().map_err(|_| Error::InvalidInput {
             field: "Call Native Operation",
             reason: "response is shared",

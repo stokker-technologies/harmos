@@ -119,6 +119,7 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
     let mut input = request.input.lock().await;
     let output = ChildReplies::Samples(request.output.clone());
     let granted = request.window.count;
+    let stream = request.lease.stream().definition().id().to_owned();
     request
         .output
         .send(InstanceSamplesRequest {
@@ -148,7 +149,13 @@ async fn run(context: &ExecutionContext, host: &HostContext, request: Request) -
         match event {
             Event::Cancel => break Err(invalid("Answer Sample Window: window cancelled")),
             Event::Frame(frame) => {
-                let Some(frame) = frame.map_err(|error| Error::Transport(error.to_string()))? else {
+                // The Plugin's Status Fails This Stream's Window; Connection Loss Is Observed by the Connection Itself.
+                let failed = |status: tonic::Status| Error::WindowFailed {
+                    stream: stream.clone(),
+                    status: status.code(),
+                    message: status.message().to_owned(),
+                };
+                let Some(frame) = frame.map_err(failed)? else {
                     break Err(invalid("Answer Sample Window: stream ended"));
                 };
                 if !frame.samples.is_empty() {

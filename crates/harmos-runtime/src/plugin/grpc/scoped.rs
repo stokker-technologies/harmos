@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 // Third Party Imports
 use tokio::sync::{mpsc, oneshot, watch};
@@ -58,9 +58,9 @@ pub struct ScopedBinding {
 
 /* === Enums === */
 
-/// A Request to Open or Settle the Scope's Sample Demand.
+/// A Request to Open the Scope's Sample Demand for Its Requested Streams, or to Settle It.
 enum Samples {
-    Start(oneshot::Sender<Result<(), Error>>),
+    Start(BTreeSet<String>, oneshot::Sender<Result<(), Error>>),
     Stop(oneshot::Sender<Result<(), Error>>),
 }
 
@@ -135,7 +135,7 @@ impl<A: Application> Binding<A> {
         let parent = source.close.clone();
         let _stop = StopUnit(unit.clone());
         let mut publications = Publications::idle(source, &activation, &clock, &host, &operations);
-        // Holding a Share Pauses the Activation's Unscoped Windows While This Scope Samples.
+        // Holding a Share Pauses the Unscoped Windows of the Streams This Scope Samples.
         let mut sampling = None;
         // A Stop Interrupted by Close Keeps Its Deadline, So Close Still Settles Within One `stop_grace`.
         let mut deadline = None;
@@ -151,25 +151,37 @@ impl<A: Application> Binding<A> {
                 },
             };
             match request {
-                Samples::Start(reply) if sampling.is_some() => {
+                Samples::Start(_, reply) if sampling.is_some() => {
                     let _ = reply.send(Err(Error::Invalid("Start Scoped Samples: demand is already open; stop it first".into())));
                 }
-                Samples::Start(mut reply) => {
+                Samples::Start(requested, mut reply) => {
+                    if let Some(undeclared) = requested.iter().find(|stream| !source.sampling.contains_key(*stream)) {
+                        let _ = reply.send(Err(Error::Invalid(format!(
+                            "Start Scoped Samples: the plugin declares no stream `{undeclared}`; request only streams it declares"
+                        ))));
+                        continue;
+                    }
                     let _activity = host.activity("Start Scoped Samples");
-                    let prepare = Publications::prepare(&streams, &activation, &source.settings, &operations, true);
+                    // Opening the Scope's Demands Is One Plugin Load, Bounded by That Operation's Deadline.
+                    let prepare = {
+                        let (streams, activation, settings, operations) =
+                            (streams.clone(), activation.clone(), source.settings.clone(), operations.clone());
+                        let requested = requested.clone();
+                        async move { Publications::prepare(&streams, &activation, &settings, &operations, true, Some(&requested)).await }
+                    };
                     let prepared = tokio::select! {
                         biased;
                         () = super::disconnected(parent.clone()) => Err(Error::Invalid("Start Scoped Samples: activation is closing; bind to its next activation".into())),
                         () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing; bind the scope again after close() returns".into())),
                         // A Caller That Stopped Waiting Has Withdrawn Its Start.
                         () = reply.closed() => continue,
-                        prepared = host.timeout(source.settings.connect_timeout, prepare) => prepared.map_err(|_| Error::Timeout("Start Scoped Samples")).and_then(|prepared| prepared),
+                        prepared = super::load::load(&source.operations, activation.owner(), super::LoadOptions::default(), prepare) => prepared,
                     };
                     if reply.is_closed() {
                         continue;
                     }
                     let started = prepared.map(|prepared| {
-                        sampling = Some(source.sampling());
+                        sampling = Some(source.sampling(&requested));
                         publications = Publications::scoped(prepared, source, &activation, &clock, &host, &operations);
                     });
                     let _ = reply.send(started);
@@ -234,9 +246,11 @@ impl ScopedBinding {
         &self.operations
     }
 
-    /// Open the Scope's Samples Demand; the Host Grants Windows Only Until `stop_samples` or `close`.
-    pub async fn start_samples(&self) -> Result<(), Error> {
-        self.request(Samples::Start, "Start Scoped Samples").await
+    /// Open the Scope's Samples Demand for Exactly the Requested `streams`; the Host Grants Their Windows Only Until
+    /// `stop_samples` or `close`, and the Activation's Other Streams Stay Under Its Unscoped Demand.
+    pub async fn start_samples<S: Into<String>>(&self, streams: impl IntoIterator<Item = S>) -> Result<(), Error> {
+        let streams = streams.into_iter().map(Into::into).collect::<BTreeSet<_>>();
+        self.request(|reply| Samples::Start(streams, reply), "Start Scoped Samples").await
     }
 
     /// Settle Only the Scope's Samples Demand Within `stop_grace`; Calls Stay Open.
@@ -244,7 +258,9 @@ impl ScopedBinding {
         self.request(Samples::Stop, "Stop Scoped Samples").await
     }
 
-    async fn request(&self, request: fn(oneshot::Sender<Result<(), Error>>) -> Samples, action: &'static str) -> Result<(), Error> {
+    async fn request(
+        &self, request: impl FnOnce(oneshot::Sender<Result<(), Error>>) -> Samples, action: &'static str,
+    ) -> Result<(), Error> {
         let (reply, answer) = oneshot::channel();
         let closed = || Error::Invalid(format!("{action}: the binding has closed; bind the scope again"));
         self.samples.send(request(reply)).await.map_err(|_| closed())?;
@@ -276,7 +292,7 @@ impl Drop for ScopedBinding {
 /* === Private Functions === */
 
 fn refuse(request: Samples) {
-    let (Samples::Start(reply) | Samples::Stop(reply)) = request;
+    let (Samples::Start(_, reply) | Samples::Stop(reply)) = request;
     let _ = reply.send(Err(Error::Invalid("Scoped Samples: the binding is closing; bind the scope again after close() returns".into())));
 }
 

@@ -97,7 +97,6 @@ impl Fixture {
             environment: Default::default(),
         });
         let settings = PlacementSettings {
-            connect_timeout: std::time::Duration::from_secs(30),
             reconnect_delay: std::time::Duration::from_millis(100),
             stop_grace: std::time::Duration::from_secs(30),
             stream_window: NonZeroUsize::new(8).unwrap(),

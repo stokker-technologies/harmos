@@ -30,6 +30,8 @@ use harmos_protocol::host::{
     PluginsWatchRequest, plugin_change::Kind, plugin_placement, plugins_watch_response::Event,
 };
 use harmos_runtime::clock::Clock;
+use harmos_runtime::operations::NativeOperation;
+use harmos_runtime::plugin::grpc::Load;
 use harmos_runtime::plugin::manager::{Management, Manager, PluginManagerSettings};
 use harmos_runtime::{Error, Result};
 
@@ -136,7 +138,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
             }
         }
     };
-    let address = clock.timeout(settings.placement.connect_timeout, endpoint).await.map_err(|_| Error::NotReady {
+    let address = clock.timeout(<Load as NativeOperation>::POLICY.timeout, endpoint).await.map_err(|_| Error::NotReady {
         domain: "Start Schematic Plugin: Endpoint Timed Out",
     })??;
     let mut watch = manager.watch(PluginsWatchRequest { name: Some(NAME.into()), at: None }).await.map_err(failed)?;

@@ -176,6 +176,7 @@ combined source closure and hosted validation are not claimed here.
 
 - The manager implementation and local commits are authorized. Push, review creation, publication and specification lifecycle commands remain outside this task's authorization.
 - Keep final validation unchecked until the combined implementation proof is actually performed; documentation validation alone does not close it.
+- Storage lifecycle operations are PARKED by the owner (2026-11-16) and not implemented now: streams Open, Append per window part, Finalize and Read; files Open, Write, Finalize and Read; atomic objects; declared ingestion strategies. See design.md, Storage Lifecycle Operations (Parked).
 
 ## Integration Candidate
 

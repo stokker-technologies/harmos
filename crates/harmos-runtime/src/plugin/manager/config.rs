@@ -64,7 +64,7 @@ impl PluginManagerSettings {
                 "supply a namespace, native target and absolute installation directory",
             ));
         }
-        if self.placement.connect_timeout.is_zero() || self.placement.reconnect_delay.is_zero() || self.placement.stop_grace.is_zero() {
+        if self.placement.reconnect_delay.is_zero() || self.placement.stop_grace.is_zero() {
             return Err(Error::new("invalid_settings", "Configure Plugin Placement", "supply positive placement durations"));
         }
         if self.command_capacity.get() > tokio::sync::Semaphore::MAX_PERMITS
