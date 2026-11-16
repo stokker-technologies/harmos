@@ -22,9 +22,9 @@ Every Harmos host operation SHALL be registered in-process only, carry no gRPC e
 
 A product SHALL expose a Harmos host operation only by declaring its own wrapper operation that calls it in-process. The wrapper's own declared audience SHALL govern client and plugin admission and SDK projection.
 
-#### Scenario: Wrapped Plugin Listing
+#### Scenario: Wrapped Runtime Status
 
-- **WHEN** a product declares a client wrapper that calls the in-process plugin listing operation
+- **WHEN** a product declares a client wrapper that calls the in-process runtime status operation
 - **THEN** clients reach the wrapper, plugins are refused, and the product's generated client contains the wrapper only
 
 ### Requirement: No Caller Narrowing Input
@@ -39,6 +39,11 @@ The runtime and generators SHALL NOT accept a composition or caller narrowing in
 ### Requirement: Plugin Protocol Stays on the Wire
 
 The plugin carrier SHALL keep instance, invocation, window, sample and child frames, plugin-declared operations and their Private, Protected and Public visibility, and a fixed set of plugin host facilities: time, the plugin's own settings, its own invocations and admitted discovery.
+
+#### Scenario: Product-Owned Settings Policy
+
+- **WHEN** a plugin reads its own settings through a product SDK
+- **THEN** carrier helpers use the product kind's settings resolver without introducing a Harmos persisted-settings owner or exposing helper types to the author
 
 #### Scenario: Plugin Reads Time
 

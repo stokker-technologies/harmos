@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the only public Rust surface a product uses to host Harmos: runtime building, operation calling, backend authoring and plugin authoring, with every manager and engine type kept internal.
+Define the public Rust embedding surface for runtime building, typed operation calls and backend authoring, with internal carrier helpers separate from product author APIs and managers kept private.
 
 ## ADDED Requirements
 
@@ -42,7 +42,7 @@ The facade SHALL export, through one authoring module, the storage and state bac
 
 ### Requirement: Internal Crates Are Fenced
 
-Products and examples SHALL depend only on the host facade and the SDK crate. A repository check SHALL reject direct dependencies on the domain, query, storage, operations or protocol crates outside Harmos's own implementation crates.
+Products and examples SHALL depend only on the host facade and internal carrier-helper crate. Products SHALL own their author-facing SDKs. A repository check SHALL reject direct dependencies on the domain, query, storage, operations or protocol crates outside Harmos's implementation crates.
 
 #### Scenario: Example Adds an Internal Dependency
 

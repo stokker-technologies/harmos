@@ -1,12 +1,12 @@
 ## Purpose
 
-Define how a plugin composes its declarations in every SDK: a register phase on a registrar, typed registrations that accumulate descriptors, module catalogs and product declaration sections, frozen before serving.
+Define inert, frozen declaration composition through product-owned registrars and module catalogs, backed internally by reusable Harmos accumulation mechanics in four languages.
 
 ## ADDED Requirements
 
 ### Requirement: Register Phase on a Registrar
 
-Each SDK SHALL let an author compose declarations in one register function that receives a registrar and registers values. The call SHALL be named register in Rust, Python and C# (Register), and add in C++, where register is a reserved keyword.
+Each product SDK SHALL own the registrar exposed to authors and compose declarations through internal Harmos carrier helpers. No Harmos registrar or registration type SHALL leak to authors. The call SHALL be register in Rust/Python, Register in C# and add in C++, where register is reserved.
 
 #### Scenario: Register a Module Catalog
 
@@ -51,7 +51,7 @@ Each module that contributes declarations SHALL expose them through a function n
 
 ### Requirement: Product Kinds Through Declaration Sections
 
-A product SDK SHALL register its own declaration kinds through the registrar's typed declaration sections. The plugin SDKs SHALL contain no product kind.
+A product SDK SHALL register its own declaration kinds through its public registrar, translating internally into opaque typed declaration sections. Harmos carrier helpers SHALL contain no product kind or admission policy; the product kind's admission callback SHALL run after generic validation and before initialize.
 
 #### Scenario: Product Section
 

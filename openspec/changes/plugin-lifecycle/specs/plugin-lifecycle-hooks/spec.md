@@ -6,7 +6,7 @@ Define the phases of a plugin activation for native and Wasm placements: admissi
 
 ### Requirement: Plugin Phase Order
 
-A plugin activation SHALL proceed register (admission) → initialize → finalize. The host SHALL deliver no invocation or sample window to an activation before its initialize has succeeded. A plugin SHALL have no start or stop hook.
+A plugin activation SHALL proceed local register → host admission → initialize → finalize. The host SHALL deliver no invocation or sample window to an activation before initialize succeeds. A plugin SHALL have no start or stop hook. Local registration SHALL freeze declarations before the host's generic checks and product-kind admission.
 
 #### Scenario: Invocation Waits for Initialize
 
