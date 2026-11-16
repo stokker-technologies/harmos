@@ -19,7 +19,7 @@ include!("plugin/host_exports.rs");
 
 pub use crate::context::{Context, Watching};
 pub use crate::operation::Operation;
-pub use crate::stream::{Observer, Publisher, Stream};
+pub use crate::stream::{Observer, Publisher, Stream, Window};
 
 /* === Imports === */
 
@@ -245,8 +245,12 @@ impl Plugin {
                 if invalid_default || missing_interval {
                     return Err(Error::Invalid(format!("Positive Observer Interval Required: {}", declaration.id)));
                 }
+                if let Err(error) = &observer.columns {
+                    return Err(Error::Invalid(format!("{error} (stream {})", declaration.id)));
+                }
                 declaration.interval = observer.interval;
                 declaration.interval_setting = observer.interval_setting.clone();
+                declaration.window_setting = observer.window_setting.clone();
             }
             declarations.streams.push(declaration);
             merge_types(&mut types, stream.types.clone())?;

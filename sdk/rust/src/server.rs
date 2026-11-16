@@ -38,7 +38,7 @@ use tonic::transport::Server as RpcServer;
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
-use crate::{Context, Error, Operation, Plugin, Result, context::ChildOutput, operation::Handler};
+use crate::{Context, Error, Operation, Plugin, Result, columns::Columns, context::ChildOutput, operation::Handler};
 use harmos_protocol::model::Declarations;
 use harmos_protocol::model::Visibility;
 use harmos_protocol::plugin::Request as InvocationRequest;
@@ -87,10 +87,12 @@ struct Server {
     jobs: mpsc::Sender<Job>,
     cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
     shutdown: Mutex<Option<oneshot::Sender<()>>>,
+    /// The Transport's Maximum Message Size; Window Parts Are Split to Fit It.
+    message_bytes: usize,
 }
 
 struct Publication {
-    observer: Option<Arc<dyn Handler>>,
+    observer: Option<(Arc<dyn Handler>, Columns)>,
     producer: Option<Arc<dyn Handler>>,
 }
 
@@ -177,6 +179,7 @@ impl Service for Server {
         let publication = self.streams.get(&open.stream).ok_or_else(|| Status::not_found("Unknown Stream"))?;
         let observer = publication.observer.clone();
         let producer = publication.producer.clone();
+        let message_bytes = self.message_bytes;
         let mut context = Context::new(
             InvocationRequest {
                 scope: open.scope,
@@ -190,7 +193,7 @@ impl Service for Server {
         let (output, receiver) = mpsc::channel(2);
         let jobs = self.jobs.clone();
         tokio::spawn(async move {
-            let result = samples(jobs, observer, producer, context, &mut input, &output).await;
+            let result = samples(jobs, observer, producer, context, &mut input, &output, message_bytes).await;
             if let Err(error) = result {
                 let _ = output.send(Err(error)).await;
             }
@@ -228,8 +231,12 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
         .streams
         .into_iter()
         .map(|stream| {
-            let observer =
-                plugin.observers.iter().find(|observer| observer.stream == stream.declaration.id).map(|observer| observer.handler.clone());
+            // Declarations Refused Every Observer Without Columns Before Serving.
+            let observer = plugin
+                .observers
+                .iter()
+                .find(|observer| observer.stream == stream.declaration.id)
+                .and_then(|observer| Some((observer.handler.clone(), observer.columns.clone().ok()?)));
             (stream.declaration.id, Publication { observer, producer: stream.producer })
         })
         .collect();
@@ -263,6 +270,7 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
             .collect(),
         streams,
         requires,
+        message_bytes,
         jobs,
         cleanup: plugin.cleanup,
         shutdown: Mutex::new((!plugin.remote).then_some(shutdown)),
@@ -385,8 +393,9 @@ async fn invoke(
 }
 
 async fn samples(
-    jobs: mpsc::Sender<Job>, observer: Option<Arc<dyn Handler>>, producer: Option<Arc<dyn Handler>>, mut context: Context,
+    jobs: mpsc::Sender<Job>, observer: Option<(Arc<dyn Handler>, Columns)>, producer: Option<Arc<dyn Handler>>, mut context: Context,
     input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>,
+    message_bytes: usize,
 ) -> StdResult<(), Status> {
     let (samples, mut rows) = mpsc::channel(1);
     context.samples = Some(samples);
@@ -396,6 +405,8 @@ async fn samples(
     };
     let mut observing = None;
     let mut sample = None;
+    // Parts of the Answered Window Still to Send, in Order.
+    let mut parts = std::collections::VecDeque::new();
     let mut sequence = 0;
     let result = async {
     loop {
@@ -408,27 +419,40 @@ async fn samples(
             frame = input.message() => {
                 let Some(frame) = frame? else { return Ok(()); };
                 match frame.frame {
-                    Some(instance_samples_request::Frame::Tick(tick)) => {
-                        if observer.is_none() { return Err(Status::invalid_argument("Sample Tick: Device Stream Has No Observer")); }
-                        if observing.is_some() || sample.is_some() { return Err(Status::invalid_argument("Sample Tick: Previous Tick Is Unanswered")); }
-                        let at = tick.at.ok_or_else(|| Status::invalid_argument("Sample Tick: Time Required"))?;
-                        crate::stream::validate_timestamp(at)?;
-                        let mut tick_context = Context::new(InvocationRequest {
+                    Some(instance_samples_request::Frame::Window(window)) => {
+                        let Some((handler, _)) = &observer else {
+                            return Err(Status::invalid_argument("Sample Window: a device stream takes no windows"));
+                        };
+                        if observing.is_some() || !parts.is_empty() {
+                            return Err(Status::invalid_argument("Sample Window: the previous window is unanswered"));
+                        }
+                        let start = window.start.ok_or_else(|| Status::invalid_argument("Sample Window: start time required"))?;
+                        crate::stream::validate_timestamp(start)?;
+                        let positive = window.period.is_some_and(|period| {
+                            period.seconds >= 0 && (0..1_000_000_000).contains(&period.nanos) && (period.seconds > 0 || period.nanos > 0)
+                        });
+                        if !positive {
+                            return Err(Status::invalid_argument("Sample Window: a positive period is required"));
+                        }
+                        if window.count == 0 {
+                            return Err(Status::invalid_argument("Sample Window: a window holds at least one sample"));
+                        }
+                        let mut window_context = Context::new(InvocationRequest {
                             operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
                         }, context.plugin.clone(), context.requires.clone());
-                        tick_context.calls = context.calls.clone();
-                        tick_context.call_changes = context.call_changes.clone();
-                        tick_context.local = context.local.clone();
-                        tick_context.sequence = sequence + 1;
-                        tick_context.output = Some(ChildOutput::Samples {
+                        window_context.calls = context.calls.clone();
+                        window_context.call_changes = context.call_changes.clone();
+                        window_context.local = context.local.clone();
+                        window_context.sequence = window.sequence;
+                        window_context.output = Some(ChildOutput::Samples {
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
-                        context = tick_context;
-                        let handler = observer.as_ref().expect("Validated Observer Tick");
-                        observing = Some((at, dispatch(&jobs, handler.clone(), context.clone(), Vec::new()).await?));
+                        context = window_context;
+                        let payload = prost::Message::encode_to_vec(&window);
+                        observing = Some((window.count, dispatch(&jobs, handler.clone(), context.clone(), payload).await?));
                     }
                     Some(instance_samples_request::Frame::Child(child)) if observing.is_some() => context.reply(child).await?,
-                    _ => return Err(Status::invalid_argument("Receive Samples: Expected Tick or Active Child Reply")),
+                    _ => return Err(Status::invalid_argument("Receive Samples: Expected a Window or an Active Child Reply")),
                 }
             }
             permit = output.reserve(), if sample.is_some() => {
@@ -437,13 +461,18 @@ async fn samples(
                 let (row, at) = sample.take().expect("Sample Ready");
                 permit.send(Ok(InstanceSamplesResponse { samples: vec![Sample { at, row, sequence }], frame: None }));
             }
+            permit = output.reserve(), if !parts.is_empty() => {
+                let permit = permit.map_err(|_| Status::cancelled("Demand Closed"))?;
+                permit.send(Ok(parts.pop_front().expect("Part Ready")));
+            }
             result = async { let (_, complete) = observing.as_mut().expect("Observer Active"); complete.await }, if observing.is_some() => {
-                let (at, _) = observing.take().expect("Observer Active");
+                let (count, _) = observing.take().expect("Observer Active");
                 if let Some(ChildOutput::Samples { active, .. }) = &context.output { active.store(false, Ordering::Release); }
-                context.cancellation.send_replace(Some("Samples Tick Answered".into()));
-                context.cancel_calls(false, "Samples Tick Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
-                let row = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
-                sample = Some((row, Some(at)));
+                context.cancellation.send_replace(Some("Samples Window Answered".into()));
+                context.cancel_calls(false, "Samples Window Answered", false).await.map_err(|error| Status::unavailable(error.to_string()))?;
+                let columns = result.map_err(|_| Status::internal("Observer Panicked"))?.map_err(|error| Status::internal(error.to_string()))?;
+                let (_, layout) = observer.as_ref().expect("Validated Window Observer");
+                parts.extend(crate::columns::parts(layout, columns, count, message_bytes)?);
             }
             row = rows.recv(), if observer.is_none() && sample.is_none() => {
                 let Some(row) = row else { return Ok(()); };

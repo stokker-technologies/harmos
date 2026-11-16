@@ -21,7 +21,7 @@
 
 // Local Imports
 use super::support;
-use harmos::{InstanceState, Message};
+use harmos::InstanceState;
 use harmos_protocol::host::plugins::SettingsListResponse;
 use harmos_protocol::host::{InvocationsWatchResponse, TimeGetResponse};
 use harmos_protocol::model::Classification;
@@ -30,7 +30,7 @@ use harmos_protocol::model::SettingValue;
 use harmos_protocol::model::SettingValues;
 use harmos_protocol::model::setting_value;
 use harmos_protocol::plugin::ChildResponse;
-use harmos_protocol::plugin::Tick;
+use harmos_protocol::plugin::Window;
 use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::{InstanceSamplesRequest, instance_samples_request, instance_samples_response};
 
@@ -46,12 +46,17 @@ use std::collections::HashMap;
 
 /* === Structs === */
 
-#[derive(Message)]
-struct Reading {
-    sequence: u64,
-    seconds: i64,
-    setting: i64,
-    failure: Vec<u8>,
+/// The Columns of the Fixture's Reading Row: One Value per Sample of a Window.
+#[derive(prost::Message)]
+struct Readings {
+    #[prost(uint64, repeated, tag = "1")]
+    sequence: Vec<u64>,
+    #[prost(int64, repeated, tag = "2")]
+    seconds: Vec<i64>,
+    #[prost(int64, repeated, tag = "3")]
+    setting: Vec<i64>,
+    #[prost(bytes = "vec", repeated, tag = "4")]
+    failure: Vec<Vec<u8>>,
 }
 
 #[derive(prost::Message)]
@@ -73,7 +78,7 @@ struct Isolation {
 /* === Tests === */
 
 #[tokio::test]
-async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes() {
+async fn samples_children_preserve_correlation_failures_watch_and_window_lifetimes() {
     let scratch = tempfile::tempdir().unwrap();
     let cleanup = scratch.path().join("cleanup");
     let mut process = support::Process::start(&cleanup).await.unwrap();
@@ -96,7 +101,12 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         // Reply Out of Order Without Advancing a Wall Clock.
         let at = Timestamp { seconds: sequence as i64, nanos: 250 };
         send.send(InstanceSamplesRequest {
-            frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(at) })),
+            frame: Some(instance_samples_request::Frame::Window(Window {
+                start: Some(at),
+                period: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                count: 1,
+                sequence,
+            })),
         })
         .await
         .unwrap();
@@ -141,7 +151,7 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         })
         .await
         .unwrap();
-        // Demand a Watch Item, Then Let the Tick Answer Cancel the Open Watch.
+        // Demand a Watch Item, Then Let the Window Answer Cancel the Open Watch.
         let Some(instance_samples_response::Frame::Child(watch)) = output.message().await.unwrap().unwrap().frame else {
             panic!("expected watch")
         };
@@ -171,26 +181,27 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
         };
         assert_eq!(cancel.call, watch.call);
         let answer = output.message().await.unwrap().unwrap();
-        assert!(answer.frame.is_none());
-        assert_eq!(answer.samples.len(), 1);
-        assert_eq!(answer.samples[0].at, Some(at));
-        assert_eq!(answer.samples[0].sequence, sequence);
-        let row = Reading::decode(answer.samples[0].row.as_slice()).unwrap();
-        assert_eq!(row.sequence, sequence);
-        assert_eq!(row.setting, sequence as i64);
+        assert!(answer.samples.is_empty());
+        let Some(instance_samples_response::Frame::Batch(batch)) = answer.frame else {
+            panic!("expected the window's batch")
+        };
+        assert_eq!((batch.offset, batch.count, batch.last), (0, 1, true));
+        let row = Readings::decode(batch.columns.as_slice()).unwrap();
+        assert_eq!(row.sequence, [sequence]);
+        assert_eq!(row.setting, [sequence as i64]);
         assert_eq!(
             row.seconds,
-            if sequence == 1 {
+            [if sequence == 1 {
                 -1
             } else {
                 sequence as i64
-            }
+            }]
         );
         last_call = watch.call;
         if sequence == 1 {
-            assert_eq!(Failure::decode(row.failure.as_slice()).unwrap(), expected_failure);
+            assert_eq!(Failure::decode(row.failure[0].as_slice()).unwrap(), expected_failure);
         } else {
-            assert!(row.failure.is_empty());
+            assert!(row.failure[0].is_empty());
         }
         let (_send, mut result) = support::invoke(&mut process.client, "execution.stale").await.unwrap();
         let result = support::terminal::<Isolation>(&mut result).await.unwrap();
@@ -199,7 +210,7 @@ async fn samples_children_preserve_correlation_failures_watch_and_tick_lifetimes
     drop(send);
     assert!(output.message().await.unwrap().is_none());
 
-    // Refuse Child Traffic Outside a Tick, Including Device-Originated Streams.
+    // Refuse Child Traffic Outside a Window, Including Device-Originated Streams.
     for name in ["execution.children", "execution.device"] {
         let (send, mut output) = support::publish(&mut process.client, name).await.unwrap();
         send.send(InstanceSamplesRequest {

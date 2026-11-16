@@ -26,7 +26,7 @@ use std::{error::Error as StdError, fs, time::Duration};
 
 // Local Imports
 use super::support;
-use harmos_protocol::plugin::Tick;
+use harmos_protocol::plugin::Window;
 
 /* === Constants === */
 
@@ -111,7 +111,12 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn StdError>> {
         let (demand, mut samples) = support::publish(&mut process.client, "execution.reading").await?;
         demand
             .send(InstanceSamplesRequest {
-                frame: Some(instance_samples_request::Frame::Tick(Tick { at: Some(at) })),
+                frame: Some(instance_samples_request::Frame::Window(Window {
+                    start: Some(at),
+                    period: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                    count: 1,
+                    sequence: 1,
+                })),
             })
             .await?;
         assert_eq!(process.event().await?, "observer_reading");

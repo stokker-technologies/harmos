@@ -64,6 +64,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 mod clock;
+mod columns;
 #[cfg(not(target_arch = "wasm32"))]
 mod connection;
 mod context;
