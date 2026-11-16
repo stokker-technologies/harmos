@@ -192,8 +192,10 @@ impl StreamWriter {
         self.admit(row, Some(wire_sequence), missed, None)
     }
 
-    pub(crate) fn admit_clocked_row(&self, row: PublicationRow, clock: &crate::clock::Clock) -> Result<u64, StreamPublicationError> {
-        self.admit_at(row, None, 0, Some(clock.activity("stream storage delivery"))).map(|(_, cursor)| cursor)
+    /// Admit a Row Whose Delivery Holds Every Given Clock Until All Feeds Have Drained It.
+    pub(crate) fn admit_clocked_row(&self, row: PublicationRow, clocks: &[&crate::clock::Clock]) -> Result<u64, StreamPublicationError> {
+        let activities = clocks.iter().map(|clock| clock.activity("stream storage delivery")).collect();
+        self.admit_at(row, None, 0, Some(activities)).map(|(_, cursor)| cursor)
     }
 
     // An ordered batch takes contiguous sequences from `first_wire_sequence`;
@@ -279,13 +281,13 @@ impl StreamWriter {
     }
 
     fn admit(
-        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<crate::clock::Activity>,
+        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<super::ManagedPublication, StreamPublicationError> {
         self.admit_at(row, sequence, missed, activity).map(|(publication, _)| publication)
     }
 
     fn admit_at(
-        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<crate::clock::Activity>,
+        &self, row: PublicationRow, sequence: Option<u64>, missed: u64, activity: Option<Vec<crate::clock::Activity>>,
     ) -> Result<(super::ManagedPublication, u64), StreamPublicationError> {
         let _visibility = self.stream.wired.window.visibility.write().expect("stream visibility poisoned");
         let result = {

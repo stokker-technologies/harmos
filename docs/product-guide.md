@@ -1366,8 +1366,8 @@ the samples arrive; real cases use the host clock, so a stream cannot exceed its
 declared rate there and real 1 kHz figures saturate at streams × 1,000.
 
 Before each case a probe waits up to 30 s for one iteration's samples; a host that
-falls behind its declared rate grants ever longer windows until storage refuses
-them, and such a case is reported as not sustained instead of measured.
+falls behind its declared rate grants ever longer windows until its demand fails, and
+such a case is reported as not sustained instead of measured.
 
 Figures below are medians at `68e35ecb` in the bench profile on Windows x86-64
 (AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are
@@ -1386,8 +1386,8 @@ The per-sample tick path these windows replace measured 12,407 samples per secon
 for 128 controlled 1 ms streams and 21,220 on the real clock at `af8b9a0c`. 128 real
 1 MHz streams need 128 million samples per second; the host converts each value from
 protobuf into the stored encoding and reached about 42 million per second on the
-controlled clock, so that case falls behind and its windows grow until the
-publication budget refuses them.
+controlled clock, so that case falls behind and its windows grow until its demand fails, most likely at
+the publication byte budget.
 
 Client resource paths are descriptor-derived in all SDKs. C++ escapes reserved
 identifiers with a trailing underscore, such as `client.plugins.delete_`; C# nested

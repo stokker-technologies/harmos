@@ -1472,8 +1472,10 @@ drift from the origin. When the timer fires, or when a scoped wait asks for the
 windows due by its end (below), the host reads the clock once and grants the window
 up to that reading. A late wake therefore extends the window to the instant the
 clock reached; the following end stays on the `o + k * L` grid. On a controlled
-clock the reading is the instant the controller advanced to, so the window covers
-exactly the advanced step. Grants are serial per demand: the next timer is set only
+clock the reading is the instant the controller advanced to, so a step that reaches a
+window end, or ends a scoped wait, grants one window covering exactly the advanced
+step; a shorter step grants nothing until a later step reaches the next window end.
+This is the implemented reading of "the window equals the advanced step". Grants are serial per demand: the next timer is set only
 after the window's batches have been admitted and ingested.
 
 `L` is `PlacementSettings::interval_window` on the host, a latency-against-efficiency

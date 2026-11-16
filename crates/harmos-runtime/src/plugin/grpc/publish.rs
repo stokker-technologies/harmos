@@ -545,7 +545,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                                 published_unix_micros: Some(published.seconds * 1_000_000 + i64::from(published.nanos) / 1000),
                                 context: row_context(&operations, sample.at),
                             },
-                            clock,
+                            &[clock, &host],
                         )
                         .map_err(invalid)?;
                     ingested_through = Some(receipt);
@@ -653,7 +653,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                                         published_unix_micros: Some(first.div_euclid(1000)),
                                         context: context.clone(),
                                     },
-                                    clock,
+                                    &[clock, &host],
                                 )
                                 .map_err(invalid)?,
                         );

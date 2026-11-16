@@ -404,7 +404,7 @@ Observer::window(&stream, async |context: &Context, window: &Window| Ok(ReadingC
 - [x] IT.4.7 Stories: exact window boundaries and counts on a controlled clock, splitting at the maximum message size, a per-stream window override, a fixed-rate schedule without duplicate windows, and the 1,023/1,024/1,025 scoped stories adapted to windows.
 - [x] IT.4.8 Bench: samples per second at 1, 16 and 128 streams on the controlled and the real clock at 1 kHz and 1 MHz, figures recorded in `docs/product-guide.md`.
 - [x] IT.4.9 Architecture, product guide and SDK guides describe windows and the product adoption steps.
-- [ ] IT.4.10 Owner decision: a window extends to the clock's reading, so a long real-clock stall or one large controlled step at 1 MHz grants one window of billions of samples, which the plugin builds in memory before splitting. Either keep one window per step as locked, or grant the backlog as consecutive windows of at most one window length each, keeping every sample.
+- [ ] IT.4.10 Owner decision: a window extends to the clock's reading. When the host cannot keep up with the declared rate, each window covers the time the previous one took, so windows grow until the demand fails; the bench shows this for 128 real 1 MHz streams (about 42 million samples per second of host conversion against 128 million required), and a long stall or one large controlled step does the same at once. Either keep one window per step as locked, or grant the backlog as consecutive windows of at most one window length each, keeping every sample, and decide what a demand that stays behind reports.
 
 ## Known Flakes from #261
 

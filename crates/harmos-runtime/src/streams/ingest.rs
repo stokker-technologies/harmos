@@ -34,7 +34,7 @@ use tokio::sync::watch;
 pub(crate) struct Ingest {
     taken: watch::Sender<BTreeMap<u64, u64>>,
     next: AtomicU64,
-    work: Mutex<BTreeMap<u64, crate::clock::Activity>>,
+    work: Mutex<BTreeMap<u64, Vec<crate::clock::Activity>>>,
 }
 
 #[derive(Debug)]
@@ -56,8 +56,9 @@ impl std::fmt::Debug for Ingest {
 }
 
 impl Ingest {
-    pub(crate) fn track(&self, cursor: u64, activity: crate::clock::Activity) {
-        self.work.lock().expect("stream work lock is healthy").insert(cursor, activity);
+    /// Hold Each Clock's Activity Until Every Feed Has Drained the Row at `cursor`.
+    pub(crate) fn track(&self, cursor: u64, activities: Vec<crate::clock::Activity>) {
+        self.work.lock().expect("stream work lock is healthy").insert(cursor, activities);
     }
 
     pub(crate) fn drained(&self, cursor: u64) {

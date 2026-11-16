@@ -91,6 +91,10 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
         () = host.signals.storage_entered.notified() => {},
     }
     assert!(pending(advancing.as_mut()).await);
+    // Held Scoped Ingestion Is Host Work: the Runtime Clock Cannot Settle Either.
+    let settling = controller.advance_by(Duration::ZERO);
+    tokio::pin!(settling);
+    assert!(pending(settling.as_mut()).await, "Hold the Runtime Clock During Accepted Scoped Ingestion");
     assert!(pending(left_call.as_mut()).await);
     assert!(pending(right_call.as_mut()).await);
     assert_eq!(left_clock.date(), SystemTime::UNIX_EPOCH + Duration::from_secs(1));
@@ -100,6 +104,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     // Releasing Ingestion Lets Only Left's Sleep Complete on Left Time.
     host.signals.storage_release.notify_one();
     advancing.await.unwrap();
+    settling.await;
     let drive = left_time.advance_until(Duration::from_secs(5), || left.operations().status(left_id).is_none());
     let (result, advanced) = tokio::join!(left_call, drive);
     advanced.unwrap();

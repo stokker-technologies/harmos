@@ -1374,7 +1374,9 @@ sample ([behaviour rules 10 and 35](../proto/harmos/plugin/v1/behaviour.md)).
 Sample `i` of a demand is due at its origin plus `i` periods; a window covers the
 samples due since the previous window and ends on the `origin + k * window` grid at
 or after the next sample, extended to the clock's reading when the wake is late or
-the controlled clock advanced further. The window length is
+the controlled clock advanced further. A controlled step that reaches a window end
+or ends a scoped wait is covered by exactly one window; a shorter step grants nothing
+until a later step reaches the next window end. The window length is
 `PlacementSettings::interval_window`, or the plugin Duration setting named by the
 stream's `window_setting`. Each part becomes one stored row of the derived
 `harmos.batch.<row>` message (`<row>` is the row's full name with dots as underscores) (`harmos_protocol::columns::derive`): the first
