@@ -22,20 +22,23 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/plugin/v1/stream.proto\x12\x10harmos.plugin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\".\n\x04Tick\x12&\n\x02\x61t\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"1\n\x10SamplesSelection\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\r\n\x05scope\x18\x02 \x01(\t\"O\n\x06Sample\x12&\n\x02\x61t\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0b\n\x03row\x18\x02 \x01(\x0c\x12\x10\n\x08sequence\x18\x03 \x01(\x04\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1dharmos/plugin/v1/stream.proto\x12\x10harmos.plugin.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x7f\n\x06Window\x12)\n\x05start\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12)\n\x06period\x18\x02 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\r\n\x05\x63ount\x18\x03 \x01(\x04\x12\x10\n\x08sequence\x18\x04 \x01(\x04\"K\n\x0bSampleBatch\x12\x0e\n\x06offset\x18\x01 \x01(\x04\x12\r\n\x05\x63ount\x18\x02 \x01(\x04\x12\x0f\n\x07\x63olumns\x18\x03 \x01(\x0c\x12\x0c\n\x04last\x18\x04 \x01(\x08\"1\n\x10SamplesSelection\x12\x0e\n\x06stream\x18\x01 \x01(\t\x12\r\n\x05scope\x18\x02 \x01(\t\"O\n\x06Sample\x12&\n\x02\x61t\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x0b\n\x03row\x18\x02 \x01(\x0c\x12\x10\n\x08sequence\x18\x03 \x01(\x04\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.plugin.v1.stream_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_TICK']._serialized_start=84
-  _globals['_TICK']._serialized_end=130
-  _globals['_SAMPLESSELECTION']._serialized_start=132
-  _globals['_SAMPLESSELECTION']._serialized_end=181
-  _globals['_SAMPLE']._serialized_start=183
-  _globals['_SAMPLE']._serialized_end=262
+  _globals['_WINDOW']._serialized_start=116
+  _globals['_WINDOW']._serialized_end=243
+  _globals['_SAMPLEBATCH']._serialized_start=245
+  _globals['_SAMPLEBATCH']._serialized_end=320
+  _globals['_SAMPLESSELECTION']._serialized_start=322
+  _globals['_SAMPLESSELECTION']._serialized_end=371
+  _globals['_SAMPLE']._serialized_start=373
+  _globals['_SAMPLE']._serialized_end=452
 # @@protoc_insertion_point(module_scope)

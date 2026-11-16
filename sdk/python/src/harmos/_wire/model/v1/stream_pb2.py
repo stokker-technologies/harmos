@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1charmos/model/v1/stream.proto\x12\x0fharmos.model.v1\x1a\x1egoogle/protobuf/duration.proto\"\x88\x01\n\x11StreamDeclaration\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0b\n\x03row\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12+\n\x08interval\x18\x04 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\x18\n\x10interval_setting\x18\x05 \x01(\tb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1charmos/model/v1/stream.proto\x12\x0fharmos.model.v1\x1a\x1egoogle/protobuf/duration.proto\"\xa0\x01\n\x11StreamDeclaration\x12\n\n\x02id\x18\x01 \x01(\t\x12\x0b\n\x03row\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12+\n\x08interval\x18\x04 \x01(\x0b\x32\x19.google.protobuf.Duration\x12\x18\n\x10interval_setting\x18\x05 \x01(\t\x12\x16\n\x0ewindow_setting\x18\x06 \x01(\tb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,5 +33,5 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.model.v1.strea
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_STREAMDECLARATION']._serialized_start=82
-  _globals['_STREAMDECLARATION']._serialized_end=218
+  _globals['_STREAMDECLARATION']._serialized_end=242
 # @@protoc_insertion_point(module_scope)

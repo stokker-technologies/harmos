@@ -25,16 +25,16 @@ namespace Harmos;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChxoYXJtb3MvbW9kZWwvdjEvc3RyZWFtLnByb3RvEg9oYXJtb3MubW9kZWwu",
-            "djEaHmdvb2dsZS9wcm90b2J1Zi9kdXJhdGlvbi5wcm90byK5AQoRU3RyZWFt",
+            "djEaHmdvb2dsZS9wcm90b2J1Zi9kdXJhdGlvbi5wcm90byLgAQoRU3RyZWFt",
             "RGVjbGFyYXRpb24SDgoCaWQYASABKAlSAmlkEhAKA3JvdxgCIAEoCVIDcm93",
             "EiAKC2Rlc2NyaXB0aW9uGAMgASgJUgtkZXNjcmlwdGlvbhI1CghpbnRlcnZh",
             "bBgEIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvblIIaW50ZXJ2YWwS",
-            "KQoQaW50ZXJ2YWxfc2V0dGluZxgFIAEoCVIPaW50ZXJ2YWxTZXR0aW5nYgZw",
-            "cm90bzM="));
+            "KQoQaW50ZXJ2YWxfc2V0dGluZxgFIAEoCVIPaW50ZXJ2YWxTZXR0aW5nEiUK",
+            "DndpbmRvd19zZXR0aW5nGAYgASgJUg13aW5kb3dTZXR0aW5nYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.StreamDeclaration), global::Harmos.StreamDeclaration.Parser, new[]{ "Id", "Row", "Description", "Interval", "IntervalSetting" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.StreamDeclaration), global::Harmos.StreamDeclaration.Parser, new[]{ "Id", "Row", "Description", "Interval", "IntervalSetting", "WindowSetting" }, null, null, null, null)
           }));
     }
     #endregion
@@ -81,6 +81,7 @@ namespace Harmos;
       description_ = other.description_;
       interval_ = other.interval_ != null ? other.interval_.Clone() : null;
       intervalSetting_ = other.intervalSetting_;
+      windowSetting_ = other.windowSetting_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -150,6 +151,18 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "window_setting" field.</summary>
+    public const int WindowSettingFieldNumber = 6;
+    private string windowSetting_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string WindowSetting {
+      get { return windowSetting_; }
+      set {
+        windowSetting_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -170,6 +183,7 @@ namespace Harmos;
       if (Description != other.Description) return false;
       if (!object.Equals(Interval, other.Interval)) return false;
       if (IntervalSetting != other.IntervalSetting) return false;
+      if (WindowSetting != other.WindowSetting) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -182,6 +196,7 @@ namespace Harmos;
       if (Description.Length != 0) hash ^= Description.GetHashCode();
       if (interval_ != null) hash ^= Interval.GetHashCode();
       if (IntervalSetting.Length != 0) hash ^= IntervalSetting.GetHashCode();
+      if (WindowSetting.Length != 0) hash ^= WindowSetting.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -220,6 +235,10 @@ namespace Harmos;
         output.WriteRawTag(42);
         output.WriteString(IntervalSetting);
       }
+      if (WindowSetting.Length != 0) {
+        output.WriteRawTag(50);
+        output.WriteString(WindowSetting);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -250,6 +269,10 @@ namespace Harmos;
         output.WriteRawTag(42);
         output.WriteString(IntervalSetting);
       }
+      if (WindowSetting.Length != 0) {
+        output.WriteRawTag(50);
+        output.WriteString(WindowSetting);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -274,6 +297,9 @@ namespace Harmos;
       }
       if (IntervalSetting.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(IntervalSetting);
+      }
+      if (WindowSetting.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(WindowSetting);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -304,6 +330,9 @@ namespace Harmos;
       }
       if (other.IntervalSetting.Length != 0) {
         IntervalSetting = other.IntervalSetting;
+      }
+      if (other.WindowSetting.Length != 0) {
+        WindowSetting = other.WindowSetting;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -347,6 +376,10 @@ namespace Harmos;
             IntervalSetting = input.ReadString();
             break;
           }
+          case 50: {
+            WindowSetting = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -387,6 +420,10 @@ namespace Harmos;
           }
           case 42: {
             IntervalSetting = input.ReadString();
+            break;
+          }
+          case 50: {
+            WindowSetting = input.ReadString();
             break;
           }
         }

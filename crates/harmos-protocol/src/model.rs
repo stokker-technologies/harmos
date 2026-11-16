@@ -387,6 +387,10 @@ pub struct StreamDeclaration {
     /// Identifier of a plugin setting that gives the interval instead, if any.
     #[prost(string, tag = "5")]
     pub interval_setting: ::prost::alloc::string::String,
+    /// Identifier of a plugin Duration setting that overrides the host's window
+    /// length for this interval stream, if any.
+    #[prost(string, tag = "6")]
+    pub window_setting: ::prost::alloc::string::String,
 }
 /// Freezes the operations, dependencies, streams, contribution sections and reachable protobuf types admitted for a plugin activation.
 #[allow(clippy::all)]

@@ -705,9 +705,14 @@ impl ReflectMessage for crate::plugin::GuestSubmitted {
         pool().get_message_by_name("harmos.plugin.v1.GuestSubmitted").expect("generated message")
     }
 }
-impl ReflectMessage for crate::plugin::Tick {
+impl ReflectMessage for crate::plugin::Window {
     fn descriptor(&self) -> MessageDescriptor {
-        pool().get_message_by_name("harmos.plugin.v1.Tick").expect("generated message")
+        pool().get_message_by_name("harmos.plugin.v1.Window").expect("generated message")
+    }
+}
+impl ReflectMessage for crate::plugin::SampleBatch {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.plugin.v1.SampleBatch").expect("generated message")
     }
 }
 impl ReflectMessage for crate::plugin::SamplesSelection {

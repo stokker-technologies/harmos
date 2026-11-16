@@ -23,26 +23,30 @@ option csharp_namespace = "Harmos.Conformance";
 // === Resources === //
 
 // The same reference-host rules exercise every SDK fixture. In addition to the
-// original streams, all fixtures declare these one-second observers of Value:
-// - conformance.tick_children: two concurrent host.echo calls with Value([1]) and
-//   Value([2]); concatenate their replies in request order into the tick row.
-// - conformance.tick_context: call host.echo with Value(context.scope), Time.Get
+// original streams, all fixtures declare these one-second one-sample observers of
+// Value, each answering one sample per call within a granted window:
+// - conformance.window_children: two concurrent host.echo calls with Value([1]) and
+//   Value([2]); concatenate their replies in request order into the sample row.
+// - conformance.window_context: call host.echo with Value(context.scope), Time.Get
 //   and plugins.Settings.List in order; frame each encoded reply with its four-byte
 //   little-endian length, then concatenate the three frames into Value.
-// - conformance.tick_failure: call host.fail with Value(empty); encode its exact
+// - conformance.window_failure: call host.fail with Value(empty); encode its exact
 //   structured Failure into Value without changing any field.
-// - conformance.tick_watch: Watch host.watch with Value(context.scope), bound
+// - conformance.window_watch: Watch host.watch with Value(context.scope), bound
 //   each response to 4096 bytes, concatenate demanded Value items into the row.
-// - conformance.tick_cancel: start host.pending and host.echo(Value("release"));
+// - conformance.window_cancel: start host.pending and host.echo(Value("release"));
 //   after echo completes cancel the first child, start another host.pending and
-//   answer Value("cancelled"), cancelling the remaining child on tick completion.
-// - conformance.tick_caller_refusal: call harmos.host.v1.Invocations/Create
+//   answer Value("cancelled"), cancelling the remaining child when the window is answered.
+// - conformance.window_caller_refusal: call harmos.host.v1.Invocations/Create
 //   targeting conformance.host.v1.CallerProbe/Get with its declared fingerprint and empty
 //   payload; return Value containing the exact encoded refused Failure.
 // conformance.caller_refusal makes the same child call from Invoke and returns
 // the same Value(Failure). Both declare the Invocations.Create requirement with
 // its exact library fingerprint, even though its callers exclude plugins.
-// Child IDs remain unique across ticks; a new Samples call has its own ID space.
+// The last stream, conformance.window, is a one-second window observer of Value with
+// columns Values: for a window it returns Values whose value[i] is the eight
+// little-endian bytes of window.sequence + i, for i in 0..window.count.
+// Child IDs remain unique across windows; a new Samples call has its own ID space.
 // All host operation names above have the conformance. prefix; Time and Settings
 // use harmos.host.v1. The controlled host supplies all clocks and replies.
 // conformance.settings_read calls plugins.Settings.List and returns Value containing the
@@ -56,6 +60,11 @@ option csharp_namespace = "Harmos.Conformance";
 // Exercises byte payload preservation in the shared SDK conformance fixture.
 message Value {
   bytes value = 1;
+}
+
+// The columns of Value: one value per sample of a window, in sample order.
+message Values {
+  repeated bytes value = 1;
 }
 
 // Exercises a reachable payload-only type in descriptor graph projection.
