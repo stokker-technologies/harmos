@@ -294,6 +294,29 @@ TEST_CASE("A One-Sample Observer Answers Each Sample of a Window in Order") {
   REQUIRE(samples.finish().ok());
 }
 
+TEST_CASE("Children Stay Open Across a Window's Samples Until It Is Answered") {
+  SamplesHost host([](Context &context) {
+    auto open = context.call(echo, value("open"));
+    return context.call(echo, value("done")).get();
+  });
+  Samples samples(host);
+  samples.window(1, 1, 2);
+  vector<uint64_t> open;
+  for (uint64_t sample = 0; sample < 2; ++sample) {
+    const auto first = samples.read().child();
+    const auto second = samples.read().child();
+    REQUIRE(first.call() == sample * 2 + 1);
+    REQUIRE(second.call() == sample * 2 + 2);
+    REQUIRE(authoring::decode<Value>(first.payload()).value() == "open");
+    open.push_back(first.call());
+    samples.reply(second.call(), value(std::to_string(sample)));
+  }
+  REQUIRE(samples.read().child_cancel().call() == open[0]);
+  REQUIRE(samples.read().child_cancel().call() == open[1]);
+  REQUIRE(samples.answer(2, host.message_bytes) == vector<string>{"0", "1"});
+  REQUIRE(samples.finish().ok());
+}
+
 TEST_CASE("A Window Observer Answers the Whole Grant in Parts Within the Message Limit") {
   const size_t limit = 64;
   SamplesHost host(
