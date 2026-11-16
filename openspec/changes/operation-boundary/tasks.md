@@ -42,6 +42,8 @@ Group 4 Pin: `db49e1e7dc7da0549edaa4f231af6b4e2382ca02` (drain/reopen assembly, 
 
 - [x] 5.1 Add `Scale`, `Offset` and `Contains` to the domain transform contract and their execution in `harmos-query/src/transform`, preserving null and missing-value semantics. Prove with focused transform tests via `mise run test -- --package harmos-query --target lib` filtered to the new tests and a `list_rows` story through operation dispatch; update `docs/storage.md`.
 
+Group 5 Pin: `af5990ce4f82d690c65847608f2a578cc3163de2` (streaming Float64 scale/offset and typed string/list containment; build, Rust lint, format, repository/dependency checks, 5 query tests, 4 native dispatch stories and 12 backend conformance stories passed).
+
 ## 6. Statistics Consolidation
 
 - [ ] 6.1 Move moment, quantile, order-statistic and histogram kernels under `harmos-query::statistics` (crate-internal), make transform modules and the benchmark percentile helper delegate to them, and delete duplicates. Accept when no kernel exists outside that module; prove with the existing aggregate and histogram tests via `mise run test -- --package harmos-query --target lib`.
