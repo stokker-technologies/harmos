@@ -182,6 +182,11 @@ pub enum Error {
     )]
     WindowExceedsPool { stream: String, samples: u64, needed: u128, bytes: usize, rows: usize },
 
+    #[error(
+        "Answer Sample Window: the plugin failed a window of stream `{stream}` with {status:?}: {message}; correct the plugin's sampling of that stream, then reattach the plugin or start the scope's samples again"
+    )]
+    WindowFailed { stream: String, status: tonic::Code, message: String },
+
     #[error("managed plugin exited with {0}")]
     Exit(std::process::ExitStatus),
 
@@ -250,7 +255,7 @@ impl<A: Application> Runtime<A> {
             .map_err(|error| Error::Invalid(error.to_string()))?;
             activation.process_id = process.id();
             let admission = operations.prepare_grpc_admission(&activation, crate::operations::Lane::default().name(), true)?;
-            let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true).await?;
+            let publications = Publications::prepare(&self.streams, &activation, &settings, &operations, true, None).await?;
             Ok((address, activation, admission, publications))
         };
         let result = tokio::select! {
@@ -333,10 +338,8 @@ impl<A: Application> Runtime<A> {
     }
 
     pub async fn attach_grpc(&self, placement: Placement, settings: PlacementSettings) -> Result<Attached, Error> {
+        // Startup Itself Refuses a Stopping Host Before It Spawns Anything.
         let participant = self.stop_participant();
-        if participant.is_stopping() {
-            return Err(Error::Disconnected);
-        }
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),

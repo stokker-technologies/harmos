@@ -7,7 +7,7 @@
  * ***
  */
 
-// Interval Overload Fails Fast, and the Unscoped Demand Samples Only While Its Stream Is Watched
+// Overload and Plugin Window Failures Fail Their Demand; the Unscoped Demand Samples Only While Watched
 
 /* === Modules === */
 
@@ -158,6 +158,32 @@ async fn a_window_the_empty_pool_cannot_hold_is_refused_before_sampling() {
         "Refuse a Window Larger Than the Pool: {failure}"
     );
     assert!(host.batches_of("fixture.dense").is_empty(), "Sample Nothing for a Refused Window");
+    drop(watching);
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_window_the_plugin_fails_names_its_stream_and_the_plugins_status() {
+    // One-Second Samples in Four-Second Windows Whose Observer Always Fails.
+    let host = HostFixture::new().await;
+    let sdk = host.sdk("failing").await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), windows(Duration::from_secs(4))).await.unwrap();
+    let origin = host.clock.read().instant;
+    let watching = host.watch("fixture.failing");
+    host.clock.registered_at(origin + Duration::from_secs(4)).await;
+    host.clock.advance_by(Duration::from_secs(4));
+
+    // The Owner Reads Which Stream Failed and the Plugin's Own Status and Message; the Plugin Stays Attached.
+    let failure = failure(&attached).await;
+    assert!(
+        matches!(
+            failure.as_ref(),
+            Error::WindowFailed { stream, status: tonic::Code::Internal, message } if stream == "fixture.failing" && message == "Sensor Offline"
+        ),
+        "Carry the Failed Window's Stream and the Plugin's Status: {failure:?}"
+    );
+    assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();

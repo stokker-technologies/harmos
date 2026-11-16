@@ -71,12 +71,12 @@ pub(super) struct ScopeSource {
     pub(super) settings: PlacementSettings,
     pub(super) operations: crate::operations::Manager,
     pub(super) bindings: Mutex<Bindings>,
-    /// Scopes Sampling This Activation; the Unscoped Demand Grants No Windows While Any Do.
-    pub(super) sampling: watch::Sender<usize>,
+    /// Scopes Sampling Each Declared Stream; a Stream's Unscoped Demand Grants No Windows While Any Do.
+    pub(super) sampling: BTreeMap<String, watch::Sender<usize>>,
 }
 
-/// One Scope's Share of `ScopeSource::sampling`, Released When Dropped.
-pub(super) struct Sampling(watch::Sender<usize>);
+/// One Scope's Share of `ScopeSource::sampling` for Its Requested Streams, Released When Dropped.
+pub(super) struct Sampling(Vec<watch::Sender<usize>>);
 
 /// Scoped Bindings the Attachment Owns; Admission Ends When Its Settlement Starts.
 #[derive(Default)]
@@ -106,7 +106,7 @@ struct Cadence {
     lag: Duration,
 }
 
-/// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples.
+/// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples It.
 struct Gate {
     sampling: watch::Receiver<usize>,
     interest: crate::streams::Demand,
@@ -138,12 +138,13 @@ impl Publications {
         streams: &StreamManager<A>, activation: &Activation, clock: &Clock, settings: &PlacementSettings,
         operations: &crate::operations::Manager,
     ) -> Result<Self, Error> {
-        let prepared = Self::prepare(streams, activation, settings, operations, false).await?;
+        let prepared = Self::prepare(streams, activation, settings, operations, false, None).await?;
         Self::activate(prepared, streams, activation, clock, operations, settings, false)
     }
+    /// Validate Every Declared Stream and Open Demand for the `selected` Ones, or for All Without a Selection.
     pub(super) async fn prepare<A: Application>(
         streams: &StreamManager<A>, activation: &Activation, settings: &PlacementSettings, operations: &crate::operations::Manager,
-        replace: bool,
+        replace: bool, selected: Option<&BTreeSet<String>>,
     ) -> Result<PreparedPublications, Error> {
         let catalog = activation.description.declarations.as_ref().expect("admitted description");
         let pool = prost_reflect::DescriptorPool::from_file_descriptor_set(catalog.types.clone().unwrap_or_default()).map_err(invalid)?;
@@ -171,6 +172,9 @@ impl Publications {
         streams.validate_connection(activation.owner(), &declarations, replace).map_err(invalid)?;
         let mut demands = Vec::new();
         for (id, row, cadence) in rows {
+            if selected.is_some_and(|selected| !selected.contains(&id)) {
+                continue;
+            }
             let (output, input) = mpsc::channel(1);
             output
                 .send(InstanceSamplesRequest {
@@ -192,10 +196,10 @@ impl Publications {
         prepared: PreparedPublications, streams: &StreamManager<A>, activation: &Activation, clock: &Clock,
         operations: &crate::operations::Manager, settings: &PlacementSettings, replace: bool,
     ) -> Result<Self, Error> {
+        let sampling = prepared.declarations.iter().map(|declaration| (declaration.id.clone(), watch::channel(0).0)).collect();
         let registration = Arc::new(streams.connect_publications(activation.owner(), prepared.declarations, replace).map_err(invalid)?);
-        let sampling = watch::channel(0).0;
         let mut publications =
-            Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None, Some(sampling.subscribe()));
+            Self::start(prepared.demands, registration.clone(), activation, clock, clock, operations, None, Some(&sampling));
         activation
             .publications
             .set(ScopeSource {
@@ -228,7 +232,8 @@ impl Publications {
     #[allow(clippy::too_many_arguments)]
     fn start(
         demands: Vec<PreparedDemand>, registration: Arc<ConnectionStreams>, activation: &Activation, clock: &Clock, host: &Clock,
-        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>, sampling: Option<watch::Receiver<usize>>,
+        operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>,
+        sampling: Option<&BTreeMap<String, watch::Sender<usize>>>,
     ) -> Self {
         let close = watch::channel(false).0;
         let (failed, failures) = mpsc::unbounded_channel();
@@ -256,8 +261,8 @@ impl Publications {
             let host = host.clone();
             let operations = operations.clone();
             // Only the Unscoped Demand Has a Gate; Its Failures Go to the Attachment, a Scope's to Its Settlement.
-            let gate = sampling.clone().map(|sampling| Gate {
-                sampling,
+            let gate = sampling.map(|sampling| Gate {
+                sampling: sampling[&prepared.id].subscribe(),
                 interest: lease.stream().demand(),
             });
             let failed = gate.is_some().then(|| failed.clone());
@@ -286,7 +291,14 @@ impl Publications {
                 let Err(error) = result else { return Ok(()) };
                 tracing::warn!(%error, "plugin publication ended");
                 // A Stream's Own Failure Ends Its Demand Only; a Transport Failure Ends the Connection.
-                if !matches!(error, Error::Invalid(_) | Error::Lagging { .. } | Error::PoolFull { .. } | Error::WindowExceedsPool { .. }) {
+                if !matches!(
+                    error,
+                    Error::Invalid(_)
+                        | Error::Lagging { .. }
+                        | Error::PoolFull { .. }
+                        | Error::WindowExceedsPool { .. }
+                        | Error::WindowFailed { .. }
+                ) {
                     connection.closed.send_replace(true);
                     return Err(error);
                 }
@@ -402,16 +414,21 @@ impl Gate {
 }
 
 impl ScopeSource {
-    /// Count One Sampling Scope Until the Returned Share Is Dropped.
-    pub(super) fn sampling(&self) -> Sampling {
-        self.sampling.send_modify(|scopes| *scopes += 1);
-        Sampling(self.sampling.clone())
+    /// Count One Scope Sampling Each of `streams` Until the Returned Share Is Dropped.
+    pub(super) fn sampling(&self, streams: &BTreeSet<String>) -> Sampling {
+        let counts = streams.iter().map(|stream| self.sampling[stream].clone()).collect::<Vec<_>>();
+        for count in &counts {
+            count.send_modify(|scopes| *scopes += 1);
+        }
+        Sampling(counts)
     }
 }
 
 impl Drop for Sampling {
     fn drop(&mut self) {
-        self.0.send_modify(|scopes| *scopes -= 1);
+        for count in &self.0 {
+            count.send_modify(|scopes| *scopes -= 1);
+        }
     }
 }
 
@@ -497,13 +514,23 @@ fn admission(stream: &str, error: StreamPublicationError) -> Error {
     }
 }
 
+/// Recover the Window Operation's Own Failure; Its Carrier Exposes It Only as a Shared `dyn Error` Whose Source Skips It.
 fn sample_error(error: crate::Error) -> Error {
     let mut source: Option<&(dyn StdError + 'static)> = Some(&error);
     while let Some(current) = source {
-        if let Some(Error::Transport(message)) = current.downcast_ref::<Error>() {
-            return Error::Transport(message.clone());
+        let shared = current.downcast_ref::<Arc<dyn StdError + Send + Sync>>().and_then(|shared| shared.downcast_ref::<Error>());
+        let failure = current.downcast_ref::<Error>().or(shared);
+        match failure {
+            Some(Error::Invalid(message)) => return Error::Invalid(message.clone()),
+            Some(Error::WindowFailed { stream, status, message }) => {
+                return Error::WindowFailed {
+                    stream: stream.clone(),
+                    status: *status,
+                    message: message.clone(),
+                };
+            }
+            _ => source = current.source(),
         }
-        source = current.source();
     }
     invalid(error)
 }
@@ -628,7 +655,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             loop {
                 // The Unscoped Demand Grants Only While Its Stream Is Watched and No Scope of Its Activation
-                // Samples; It Resumes From a Fresh Origin.
+                // Samples That Stream; It Resumes From a Fresh Origin.
                 if let Some(gate) = &mut gate
                     && !gate.open()
                 {

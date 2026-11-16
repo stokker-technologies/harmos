@@ -24,7 +24,7 @@ use std::time::{Duration, SystemTime};
 use super::{invoke_support::HostFixture, support};
 use harmos_runtime::{
     clock::{Clock, Source as _},
-    plugin::grpc::{Placement, PlacementSettings},
+    plugin::grpc::{Error, Placement, PlacementSettings},
 };
 
 /* === Constants === */
@@ -128,13 +128,14 @@ async fn a_window_larger_than_one_message_arrives_in_contiguous_parts() {
 }
 
 #[tokio::test]
-async fn a_sampling_scope_pauses_the_unscoped_schedule_without_duplicate_windows() {
-    // The Activation's Unscoped Demand and One Scope Each Run on Their Own Clock.
+async fn a_sampling_scope_pauses_only_its_requested_streams_unscoped_schedule_without_duplicate_windows() {
+    // The Activation's Unscoped Demand and One Scope Each Run on Their Own Clock; Both Streams Are Watched.
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let host = HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("windows").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), settings()).await.unwrap();
     let _watching = host.watch("fixture.counts");
+    let _overriding = host.watch("fixture.override");
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000));
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/windows", unit_clock).await.unwrap();
     let scoped = |host: &HostFixture| host.batches_of("fixture.counts").into_iter().filter(|(_, _, scope)| scope.is_some()).count();
@@ -146,10 +147,13 @@ async fn a_sampling_scope_pauses_the_unscoped_schedule_without_duplicate_windows
             .collect::<Vec<_>>()
     };
 
-    // While the Scope Samples, Runtime Time Passes Without Unscoped Windows.
-    unit.start_samples().await.unwrap();
+    // An Undeclared Stream Is Refused, and the Scope Then Requests Only `fixture.counts`.
+    assert!(matches!(unit.start_samples(["fixture.missing"]).await, Err(Error::Invalid(_))), "Refuse an Undeclared Stream");
+    unit.start_samples(["fixture.counts"]).await.unwrap();
+
+    // While the Scope Samples, Runtime Time Passes Without Unscoped Windows of Its Stream.
     controller.advance_by(Duration::from_secs(20)).await;
-    assert!(unscoped(&host).is_empty(), "Grant No Unscoped Window While a Scope Samples");
+    assert!(unscoped(&host).is_empty(), "Grant No Unscoped Window of a Stream the Scope Samples");
     unit_time.advance_until(Duration::from_secs(30), || scoped(&host) == 2).await.unwrap();
     let windows = host.batches_of("fixture.counts").into_iter().map(|(start, count, _)| (start, count)).collect::<Vec<_>>();
     assert_eq!(windows, [(1_001 * SECOND, 4), (1_005 * SECOND, 4)], "Grant the Scope Its Own Windows Only");
@@ -159,6 +163,14 @@ async fn a_sampling_scope_pauses_the_unscoped_schedule_without_duplicate_windows
     controller.advance_until(Duration::from_secs(30), || unscoped(&host).len() == 2).await.unwrap();
     assert_eq!(unscoped(&host), [(21 * SECOND, 4), (25 * SECOND, 4)], "Resume at the Instant the Last Scope Stopped");
     assert_eq!(scoped(&host), 2);
+
+    // The Stream the Scope Did Not Request Kept Its Unscoped Three-Second Windows From the Start, Never Scoped.
+    let overridden = |host: &HostFixture| host.batches_of("fixture.override");
+    controller.advance_until(Duration::from_secs(30), || overridden(&host).len() >= 6).await.unwrap();
+    let windows = overridden(&host).into_iter().take(6).collect::<Vec<_>>();
+    let expected = [1, 4, 7, 10, 13, 16].map(|second| (second * SECOND, 3, None));
+    assert_eq!(windows, expected, "Keep Sampling an Unrequested Stream Under the Unscoped Demand");
+    assert!(overridden(&host).iter().all(|(_, _, scope)| scope.is_none()), "Sample No Unrequested Stream in the Scope");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
@@ -174,7 +186,7 @@ async fn a_controlled_step_longer_than_the_window_is_one_window() {
     let origin = unit_time.read().instant;
     let origin_date = unit_time.read().date.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos() as i64;
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/step", Clock::with_clock(unit_time.clone())).await.unwrap();
-    unit.start_samples().await.unwrap();
+    unit.start_samples(["fixture.counts"]).await.unwrap();
     unit_time.registered_at(origin + Duration::from_secs(4)).await;
 
     // One Ten-Second Step Past the Four-Second Window End Grants One Window of Ten Samples.

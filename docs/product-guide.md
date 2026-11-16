@@ -41,8 +41,10 @@ meaning to the scope and does not require it for operations that do not ask for 
 For a scoped unit of work that owns its time and sample ingestion, use
 `runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
 binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
-demand: call `start_samples()` once the plugin has registered the unit and `stop_samples()`
-before its cleanup ends it, so no window reaches the plugin outside that interval. `close()` returns
+demand: call `start_samples(streams)` with exactly the streams the unit samples once the
+plugin has registered the unit and `stop_samples()` before its cleanup ends it, so no
+window reaches the plugin outside that interval; the plugin's other streams stay under
+its unscoped demand, which samples only while watched. `close()` returns
 within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
 not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
 share the admitted connection and retain independent clocks and Samples selections;
@@ -1231,7 +1233,8 @@ A demand that cannot keep up fails fast. A window whose clock reading lies more 
 `Error::Lagging`; a window the empty shared publication pool cannot hold is refused at
 grant with `Error::WindowExceedsPool`; a full pool fails with `Error::PoolFull`. Each
 names the stream and the action: lower the declared rate, the number of streams or the
-window length. `Attached::status().failure` reports an unscoped failure while the
+window length. A window the plugin itself fails ends its demand with
+`Error::WindowFailed`, which names the stream and carries the plugin's status and message. `Attached::status().failure` reports an unscoped failure while the
 plugin stays attached, a managed entry reports `plugin_stream_failed` while Ready, and
 a scope reads its failure from `stop_samples()` or `close()`.
 

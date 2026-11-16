@@ -356,6 +356,13 @@ fn main() -> Result<()> {
         let observer =
             Observer::new(&stream, async |_: &Context| Ok(Value { value: vec![0; 1 << 20] })).every(ProtoDuration { seconds: 1, nanos: 0 });
         Plugin::new("bulky", "1.0.0").stream(stream).observer(observer)
+    } else if mode == "failing" {
+        // Every Window Fails in the Plugin's Own Observer.
+        let stream = Stream::<Value>::new("fixture.failing");
+        let observer =
+            Observer::new(&stream, async |_: &Context| -> Result<Value> { Err(harmos::Error::Invalid("Sensor Offline".into())) })
+                .every(ProtoDuration { seconds: 1, nanos: 0 });
+        Plugin::new("failing", "1.0.0").stream(stream).observer(observer)
     } else if mode == "dense" {
         // One-Microsecond Readings Without a Window Setting: the Host's Window Length Alone Sizes Each Window.
         let stream = Stream::<Reading>::new("fixture.dense");
