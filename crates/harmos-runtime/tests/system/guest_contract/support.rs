@@ -280,6 +280,7 @@ pub fn entries() -> (StorageManager, Manager, TempDir) {
             stop_grace: Duration::from_secs(10),
             stream_window: NonZeroUsize::new(4).unwrap(),
             interval_window: std::time::Duration::from_secs(1),
+            interval_lag: Default::default(),
         },
         bundle: Default::default(),
         entries: NonZeroUsize::new(16).unwrap(),

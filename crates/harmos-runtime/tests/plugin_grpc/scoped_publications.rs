@@ -54,6 +54,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     let host = HostFixture::with_clock(Some(clock.clone())).await;
     let sdk = host.sdk("scoped-publications").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
+    let _watching = host.watch("fixture.scoped_samples");
     let activation = attached.activation().unwrap();
     let mut status = attached.status();
 

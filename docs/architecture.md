@@ -1390,9 +1390,24 @@ A part holding more structural values than one stored row may
 Rows with repeated, map or oneof fields cannot be interval rows. While any scope of
 an activation samples, the activation's unscoped demand grants no windows; it
 resumes from a fresh origin when the last scope stops, so each stream has one live
-schedule per activation and scope. `plugin_grpc::interval_windows` proves exact
+schedule per activation and scope. The unscoped demand also grants windows only
+while the stream's demand count (`PublishedStream::demand()`) is positive, that is
+while a `watch()` handle, a plugin listener or a selecting storage consumer holds it,
+and resumes from a fresh origin when a watcher returns; idle streams cost no
+sampling. `plugin_grpc::interval_windows` proves exact
 boundaries and counts on a controlled clock, per-stream window lengths, splitting at
 the plugin's maximum message size and the paused unscoped schedule.
+
+A demand that cannot keep up fails fast instead of dropping samples or growing its
+windows without bound. A grant whose clock reading lies more than
+`PlacementSettings::interval_lag` window lengths past the window's end fails with
+`Error::Lagging`; a window whose smallest stored footprint exceeds the empty shared
+publication pool is refused before the plugin samples it (`Error::WindowExceedsPool`);
+a part that finds the pool full fails with `Error::PoolFull`. Each names the stream,
+the limit and the action. An unscoped failure ends only that stream's demand and is
+reported on `Attached::status().failure` while the activation stays attached; a scoped
+failure is the result of `stop_samples()` or `close()`. `plugin_grpc::window_overload`
+proves the lag limit, the full and the too-small pool and the watched gate.
 
 Concurrent and nested waits inside one operation share its activity without a
 lock; the activity parks only while all of its waits park, so joined waits never

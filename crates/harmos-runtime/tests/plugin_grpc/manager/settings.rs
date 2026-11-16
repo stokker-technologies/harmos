@@ -316,6 +316,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     host.client.create(support::remote("caller", &managed.address)).await.unwrap();
     let ready = support::state(&mut watch, "caller", host::PluginState::Ready, 1).await;
     drop(watch);
+    let _watching = host.runtime.streams.current_publication("probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || completed.load(Ordering::SeqCst)).await.unwrap();
     for _ in 0..2 {
         let reply = checked.recv().await.unwrap();
@@ -380,6 +381,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     });
     let attached = host.runtime.attach_grpc(Placement::Remote(attacker.address.clone()), super::super::support::settings()).await.unwrap();
     assert!(attached.activation().unwrap().entry_name.is_none());
+    let _watching = host.runtime.streams.current_publication("unmanaged_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || refused.load(Ordering::SeqCst)).await.unwrap();
     attached.stop("Story Complete").await.unwrap();
     host.close().await;

@@ -1177,8 +1177,9 @@ loopback readiness address and drains standard output. A supplied or inherited
 `HARMOS_ADDRESS` overrides that dial address. `Placement::Remote(url)` owns only
 the connection and reconnects independently after transport loss.
 
-Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window }`
-with positive durations and a nonzero retained-row budget per stream. Startup, reconnect and shutdown budgets use the host's clock.
+Pass `PlacementSettings { connect_timeout, reconnect_delay, stop_grace, stream_window,
+interval_window, interval_lag }` with positive durations and a nonzero retained-row budget
+per stream; `interval_lag: Default::default()` tolerates ten window lengths of lag. Startup, reconnect and shutdown budgets use the host's clock.
 Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
 `stop_grace` before a managed child is killed and reaped within another; see
 [Managed Process Ownership](architecture.md#managed-process-ownership).
@@ -1213,6 +1214,25 @@ observer names `window_setting` takes its length from that plugin Duration setti
 The batch size follows from the window length and the interval and is never set
 directly. A window whose columns exceed the plugin's maximum message size arrives in
 several parts, each stored as its own row.
+
+The host samples an interval stream outside scopes only while something watches it.
+Hold a `watch()` handle on every stream the product records, or select the stream from
+a storage consumer; a consumer that drains every publication without selecting does not
+count:
+
+```rust
+let watching = runtime.streams.current_publication("bench.reading").expect("attached stream").watch();
+// The unscoped demand grants windows until `watching` is dropped.
+```
+
+A demand that cannot keep up fails fast. A window whose clock reading lies more than
+`PlacementSettings::interval_lag` window lengths past its end fails with
+`Error::Lagging`; a window the empty shared publication pool cannot hold is refused at
+grant with `Error::WindowExceedsPool`; a full pool fails with `Error::PoolFull`. Each
+names the stream and the action: lower the declared rate, the number of streams or the
+window length. `Attached::status().failure` reports an unscoped failure while the
+plugin stays attached, a managed entry reports `plugin_stream_failed` while Ready, and
+a scope reads its failure from `stop_samples()` or `close()`.
 
 An `interval_setting` names a typed plugin setting, such as `interval`, whose
 value is a positive duration. The library materializes its declared default and
@@ -1365,9 +1385,11 @@ consumer drain and the per-window ingestion wait. A 1 kHz stream uses 100 ms win
 the samples arrive; real cases use the host clock, so a stream cannot exceed its
 declared rate there and real 1 kHz figures saturate at streams × 1,000.
 
-Before each case a probe waits up to 30 s for one iteration's samples; a host that
-falls behind its declared rate grants ever longer windows until its demand fails, and
-such a case is reported as not sustained instead of measured.
+The host holds a watch on every stream, since the unscoped demand samples only
+watched streams. Before each case a probe waits up to 30 s for one iteration's
+samples. A host that falls behind its declared rate fails fast with the demand's
+named error, which the case reports instead of figures; one that neither keeps up nor
+fails within the probe is reported as not sustained.
 
 Figures below are medians at `68e35ecb` in the bench profile on Windows x86-64
 (AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are

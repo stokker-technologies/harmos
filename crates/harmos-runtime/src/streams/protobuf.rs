@@ -136,9 +136,7 @@ impl Row {
                 )));
             }
         }
-        // Each Sample Claims Its Values in Every Column; the Header and List Lengths Claim the Rest.
-        let per_sample = fields.iter().map(|field| 1 + cost(&field.kind(), 0)).sum::<usize>().max(1);
-        let chunk = ((harmos_domain::message::postcard::MAX_VALUES - 64) / per_sample).max(1) as u64;
+        let chunk = chunk(&fields);
         // A Part Within One Row's Limit Is Stored as Decoded, Without Copying Its Columns.
         if count <= chunk {
             let mut bytes = Vec::new();
@@ -170,11 +168,38 @@ impl Row {
         }
         Ok(rows)
     }
+
+    /// The Fewest Stored Rows and Payload Bytes One Window of `count` Samples Takes, Every Value at Its Smallest.
+    pub(crate) fn least(&self, count: u64) -> (u64, u128) {
+        use harmos_protocol::columns::batch;
+        let Some(ProtoKind::Message(columns)) = self.descriptor.get_field(batch::COLUMNS).map(|field| field.kind()) else {
+            return (count, u128::from(count));
+        };
+        let fields = columns.fields().collect::<Vec<_>>();
+        let sample = fields.iter().map(|field| smallest(&field.kind(), 0)).sum::<usize>().max(1);
+        (count.div_ceil(chunk(&fields)), u128::from(count) * sample as u128)
+    }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+/// Samples One Stored Row Holds: Each Claims Its Values in Every Column; the Header and List Lengths Claim the Rest.
+fn chunk(fields: &[prost_reflect::FieldDescriptor]) -> u64 {
+    let per_sample = fields.iter().map(|field| 1 + cost(&field.kind(), 0)).sum::<usize>().max(1);
+    ((harmos_domain::message::postcard::MAX_VALUES - 64) / per_sample).max(1) as u64
+}
+
+/// The Fewest Stored Bytes One Value of `kind` Encodes To: Floats Are Fixed, Everything Else at Least One Byte.
+fn smallest(kind: &ProtoKind, depth: usize) -> usize {
+    match kind {
+        ProtoKind::Double => 8,
+        ProtoKind::Float => 4,
+        ProtoKind::Message(message) if depth < 8 => message.fields().map(|field| smallest(&field.kind(), depth + 1)).sum::<usize>(),
+        _ => 1,
+    }
+}
 
 /// Structural Values One Element of `kind` Claims When Stored: Presence, Nested Fields and List Lengths Included.
 fn cost(kind: &ProtoKind, depth: usize) -> usize {

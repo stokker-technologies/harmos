@@ -102,6 +102,7 @@ impl Fixture {
             stop_grace: std::time::Duration::from_secs(30),
             stream_window: NonZeroUsize::new(8).unwrap(),
             interval_window: std::time::Duration::from_secs(1),
+            interval_lag: Default::default(),
         };
         let attached = runtime.attach_grpc(placement, settings).await.unwrap();
 

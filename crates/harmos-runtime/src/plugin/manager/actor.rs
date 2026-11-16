@@ -859,7 +859,15 @@ impl Actor {
                         .checked_add(current.number - 1)
                         .ok_or_else(|| Error::new("activation_exhausted", "Reconnect Plugin", "create a new entry"))?;
                     entry.state = PluginState::Ready as i32;
-                    entry.failure = None;
+                    // A Ready Activation Reports a Stream Whose Demand Failed; Its Other Streams Keep Publishing.
+                    entry.failure = status.failure.map(|failure| model::Failure {
+                        classification: model::Classification::Permanent as i32,
+                        code: "plugin_stream_failed".into(),
+                        message: failure.to_string(),
+                        action: "follow the reported action, then Restart the plugin".into(),
+                        plugin: name.clone(),
+                        ..Default::default()
+                    });
                     entry.declarations_digest = current.description.declarations.as_ref().expect("admitted catalog exists").digest.clone();
                     entry.process = current.process_id.map(|id| PluginProcess {
                         id,

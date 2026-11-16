@@ -1507,6 +1507,45 @@ at that instant on the runtime clock. The gap holds no unscoped samples. Concurr
 scopes keep one schedule each on their own clocks. `scoped_publications` keeps
 proving that the unscoped demand operates once the scopes have closed.
 
+The unscoped demand, which the host opens on attach, reconnect and replacement,
+also grants windows only while something watches its stream: a
+`PublishedStream::watch()` handle, a plugin listener or a storage consumer that
+selects the stream, counted by the stream's demand (`PublishedStream::demand()`).
+Without a watcher it samples nothing; when the first watcher appears it starts
+from a fresh origin, and when the last leaves it stops, with no samples for the
+gap. A storage consumer that drains every publication without selecting the stream
+does not count. Scoped demands ignore watchers: a scope samples between its
+`start_samples()` and `stop_samples()`. Device streams, which the plugin drives, are
+not gated. `plugin_grpc::window_overload` proves that an attached, unwatched stream
+grants no window, starts when a watcher appears and stops when it leaves.
+
+### Overload Fails Fast
+
+Owner decision, 2026-11-16 (IT.4.10): a demand that cannot keep up fails fast; it
+neither drops samples nor grows its windows without bound. Each window keeps
+extending to the clock's reading as above, so a backlog within the limit is granted
+whole and keeps every sample. `PlacementSettings::interval_lag` (`IntervalLag`, a
+count of window lengths, default 10) bounds how far a grant's reading may lie past
+the window end it was due at: past `interval_lag × L`, the demand fails with
+`Error::Lagging { stream, lag, limit }` before granting, and its action is to lower
+the stream's declared rate, the number of streams or the window length. A long
+stall and one large controlled step fail the same way, deterministically, because
+the check reads the same clock that ends the window.
+
+Two shared-pool limits fail the same way. Before granting, the host bounds the
+window's smallest stored footprint (every value at its smallest encoding, one
+per-row charge per stored row) and refuses a window the empty shared plugin
+publication pool cannot hold with `Error::WindowExceedsPool { stream, samples,
+needed, bytes, rows }`; the plugin samples nothing. A part whose admission finds the
+pool full fails with `Error::PoolFull { stream, bytes, rows }` instead of being
+dropped. Parts admitted before the failure stay stored; the error reaches the
+demand's owner: an unscoped demand's failure becomes `Attached::status().failure`
+while the activation and its other streams continue (a managed entry reports it as
+`plugin_stream_failed` while Ready), and a scoped demand's failure is the result of
+`stop_samples()` or `close()`. The failed stream's unscoped demand stays ended until
+the plugin reconnects, is replaced or restarts. `plugin_grpc::window_overload`
+proves each case on a controlled clock.
+
 ### Storage Shape
 
 The host hands each `SampleBatch` part to storage as one publication row; it does no
@@ -1609,9 +1648,12 @@ dispatch, their tick tests and the tick bench's Samples-wire and window-row grou
 
 A product reads an interval stream's publications as `harmos.batch.R` rows: sample
 `i` of a row is at `start_unix_nanos + i * period_nanos` with the `i`-th value of
-each column. It sets `PlacementSettings::interval_window`, rebuilds its plugins on
-an SDK that answers windows, and regenerates protocol bindings. Rows stored as one
-row per sample are not converted; use a fresh storage root.
+each column. It sets `PlacementSettings::interval_window` and
+`PlacementSettings::interval_lag`, rebuilds its plugins on an SDK that answers
+windows, and regenerates protocol bindings. It holds a watcher on every interval
+stream it wants sampled outside scopes and reads demand failures from
+`Attached::status()` or the plugin entry. Rows stored as one row per sample are not
+converted; use a fresh storage root.
 
 ## Risks and Trade-offs
 

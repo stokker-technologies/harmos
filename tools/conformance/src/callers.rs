@@ -412,9 +412,16 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
         stop_grace: Duration::from_secs(10),
         stream_window: NonZeroUsize::new(8).expect("stream window"),
         interval_window: Duration::from_secs(1),
+        interval_lag: Default::default(),
     };
     let result = async {
         let attached = runtime.attach_grpc(Placement::Remote(address), settings).await.map_err(invalid)?;
+        // The Unscoped Demand Grants the Refused Caller's Window Only While Its Stream Is Watched.
+        let _watching = runtime
+            .streams
+            .current_publication("conformance.window_caller_refusal")
+            .ok_or_else(|| Error::Invalid("Watch Caller Stream: Missing Stream".into()))?
+            .watch();
         let result = async {
             // Refuse the Same CLIENTS Operation From Invoke and an Unanswered Samples Window.
             let payload = runtime.operations.call_encoded("conformance.caller_refusal", fixture::payload(&[])).await.map_err(invalid)?;

@@ -44,7 +44,7 @@ use crate::streams::protobuf::Row;
 use crate::{
     Application,
     clock::Clock,
-    streams::{ConnectionStreams, PublicationRow, StreamManager, StreamWriter},
+    streams::{ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
 };
 
 /* === Constants === */
@@ -58,6 +58,8 @@ use crate::{
 pub(super) struct Publications {
     close: watch::Sender<bool>,
     jobs: tokio::task::JoinSet<Result<(), Error>>,
+    /// Failures of Unscoped Demands, Which Their Attachment Reports.
+    failures: mpsc::UnboundedReceiver<Arc<Error>>,
     registration: Arc<ConnectionStreams>,
     parent: Option<watch::Receiver<bool>>,
     source: Option<Arc<std::sync::OnceLock<ScopeSource>>>,
@@ -96,11 +98,18 @@ struct PreparedDemand {
     cadence: Option<Cadence>,
 }
 
-/// An Interval Stream's Sample Period and Window Length.
+/// An Interval Stream's Sample Period, Window Length and the Lag Its Windows Tolerate.
 #[derive(Clone, Copy)]
 struct Cadence {
     period: Duration,
     window: Duration,
+    lag: Duration,
+}
+
+/// What Lets the Unscoped Demand Grant: Something Watches Its Stream and No Scope of Its Activation Samples.
+struct Gate {
+    sampling: watch::Receiver<usize>,
+    interest: crate::streams::Demand,
 }
 
 struct Demand {
@@ -108,7 +117,7 @@ struct Demand {
     input: tonic::Streaming<InstanceSamplesResponse>,
     row: Row,
     cadence: Option<Cadence>,
-    sampling: Option<watch::Receiver<usize>>,
+    gate: Option<Gate>,
     lease: Arc<StreamWriter>,
     host: Clock,
     close: watch::Receiver<bool>,
@@ -222,9 +231,11 @@ impl Publications {
         operations: &crate::operations::Manager, parent: Option<watch::Receiver<bool>>, sampling: Option<watch::Receiver<usize>>,
     ) -> Self {
         let close = watch::channel(false).0;
+        let (failed, failures) = mpsc::unbounded_channel();
         let mut publications = Self {
             close,
             jobs: tokio::task::JoinSet::new(),
+            failures,
             registration,
             parent,
             source: None,
@@ -244,7 +255,12 @@ impl Publications {
             let clock = clock.clone();
             let host = host.clone();
             let operations = operations.clone();
-            let sampling = sampling.clone();
+            // Only the Unscoped Demand Has a Gate; Its Failures Go to the Attachment, a Scope's to Its Settlement.
+            let gate = sampling.clone().map(|sampling| Gate {
+                sampling,
+                interest: lease.stream().demand(),
+            });
+            let failed = gate.is_some().then(|| failed.clone());
             let caller = Arc::new(super::CallingPlugin {
                 name: activation.entry_name.clone(),
                 connection: activation.connection.clone(),
@@ -257,7 +273,7 @@ impl Publications {
                     input: prepared.input,
                     row: prepared.row,
                     cadence: prepared.cadence,
-                    sampling,
+                    gate,
                     lease,
                     host,
                     close,
@@ -267,13 +283,20 @@ impl Publications {
                     caller,
                 };
                 let result = run(&clock, activity, demand).await;
-                if let Err(error) = &result {
-                    tracing::warn!(%error, "plugin publication ended");
-                    if !matches!(error, Error::Invalid(_)) {
-                        connection.closed.send_replace(true);
-                    }
+                let Err(error) = result else { return Ok(()) };
+                tracing::warn!(%error, "plugin publication ended");
+                // A Stream's Own Failure Ends Its Demand Only; a Transport Failure Ends the Connection.
+                if !matches!(error, Error::Invalid(_) | Error::Lagging { .. } | Error::PoolFull { .. } | Error::WindowExceedsPool { .. }) {
+                    connection.closed.send_replace(true);
+                    return Err(error);
                 }
-                result
+                match failed {
+                    Some(failed) => {
+                        let _ = failed.send(Arc::new(error));
+                        Ok(())
+                    }
+                    None => Err(error),
+                }
             });
         }
         publications
@@ -350,6 +373,32 @@ impl Publications {
         }
         failure.map_or(Ok(()), Err)
     }
+
+    /// The Next Failure of an Unscoped Demand; Pending While None Has Failed.
+    pub(super) async fn failure(&mut self) -> Arc<Error> {
+        match self.failures.recv().await {
+            Some(failure) => failure,
+            None => std::future::pending().await,
+        }
+    }
+}
+
+impl Gate {
+    fn open(&mut self) -> bool {
+        let sampled = *self.sampling.borrow_and_update() > 0;
+        let watched = *self.interest.borrow_and_update() > 0;
+        watched && !sampled
+    }
+
+    /// Wait Until the Gate Is `open`; a Closed Channel Never Changes It Again.
+    async fn until(&mut self, open: bool) {
+        while self.open() != open {
+            tokio::select! {
+                changed = self.sampling.changed() => if changed.is_err() { std::future::pending::<()>().await },
+                changed = self.interest.changed() => if changed.is_err() { std::future::pending::<()>().await },
+            }
+        }
+    }
 }
 
 impl ScopeSource {
@@ -406,7 +455,11 @@ fn cadence(
     if window.is_zero() {
         return Err(invalid("Read Stream Window: configure a positive PlacementSettings::interval_window"));
     }
-    Ok(Some(Cadence { period, window }))
+    Ok(Some(Cadence {
+        period,
+        window,
+        lag: settings.interval_lag.of(window),
+    }))
 }
 
 fn duration_setting(values: &model::SettingValues, id: &str, action: &str) -> Result<prost_types::Duration, Error> {
@@ -430,6 +483,18 @@ fn positive(value: prost_types::Duration, name: &str) -> Result<Duration, Error>
         return Err(invalid(format!("{name} Must Be Positive")));
     }
     Ok(period)
+}
+
+/// A Refused Admission: a Full Shared Pool Names the Stream and Its Limits.
+fn admission(stream: &str, error: StreamPublicationError) -> Error {
+    match error {
+        StreamPublicationError::Capacity => Error::PoolFull {
+            stream: stream.to_owned(),
+            bytes: crate::streams::RETAINED_BYTES,
+            rows: crate::streams::RETAINED_ROWS,
+        },
+        error => invalid(error),
+    }
 }
 
 fn sample_error(error: crate::Error) -> Error {
@@ -480,7 +545,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         input,
         row,
         cadence,
-        mut sampling,
+        mut gate,
         lease,
         host,
         close,
@@ -489,6 +554,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         operations,
         caller,
     } = demand;
+    let stream = lease.stream().definition().id().to_owned();
     let input = Arc::new(AsyncMutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
@@ -504,7 +570,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     };
     let outcome = {
         let work = async {
-            let Some(Cadence { period, window }) = cadence else {
+            let Some(Cadence { period, window, lag }) = cadence else {
                 // A Device Stream Publishes Whenever Its Device Produces a Sample.
                 let mut sequence = 0;
                 loop {
@@ -547,7 +613,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                             },
                             &[clock, &host],
                         )
-                        .map_err(invalid)?;
+                        .map_err(|error| admission(&stream, error))?;
                     ingested_through = Some(receipt);
                     lease.ingested_at(receipt).await.map_err(invalid)?;
                 }
@@ -561,15 +627,12 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
             let mut sequence = 0_u64;
             let schedule = unit.as_ref().map(|unit| unit.windows.schedule(origin.instant + period));
             loop {
-                // The Unscoped Demand Grants No Windows While a Scope of Its Activation Samples.
-                if let Some(sampling) = &mut sampling
-                    && *sampling.borrow_and_update() > 0
+                // The Unscoped Demand Grants Only While Its Stream Is Watched and No Scope of Its Activation
+                // Samples; It Resumes From a Fresh Origin.
+                if let Some(gate) = &mut gate
+                    && !gate.open()
                 {
-                    activity
-                        .wait(async {
-                            let _ = sampling.wait_for(|scopes| *scopes == 0).await;
-                        })
-                        .await;
+                    activity.wait(gate.until(true)).await;
                     origin = clock.read();
                     granted = 0;
                     continue;
@@ -578,10 +641,8 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 let due = origin.instant + span(due_nanos)?;
                 let end = origin.instant + span(due_nanos.div_ceil(window_nanos) * window_nanos)?;
                 let paused = async {
-                    match &mut sampling {
-                        Some(sampling) => {
-                            let _ = sampling.wait_for(|scopes| *scopes > 0).await;
-                        }
+                    match &mut gate {
+                        Some(gate) => gate.until(false).await,
                         None => std::future::pending().await,
                     }
                 };
@@ -607,11 +668,32 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 }
                 // One Reading Ends the Window: a Late or Advanced Clock Extends It to Where Time Reached.
                 let reading = clock.read();
+                // A Window Ending Further Past Its End Than the Lag Tolerates Fails the Demand Instead of Growing.
+                let behind = reading.instant.saturating_duration_since(end);
+                if behind > lag {
+                    return Err(Error::Lagging {
+                        stream: stream.clone(),
+                        lag: behind,
+                        limit: lag,
+                    });
+                }
                 let through = reading.instant.saturating_duration_since(origin.instant).as_nanos() / period_nanos;
                 if through <= granted {
                     continue;
                 }
                 let count = u64::try_from(through - granted).map_err(|_| invalid("Grant Sample Window: too many samples are due"))?;
+                // A Window Even the Empty Shared Pool Cannot Hold Is Refused Before the Plugin Samples It.
+                let (rows, payload) = row.least(count);
+                let (needed, fits) = crate::streams::claim(rows, payload);
+                if !fits {
+                    return Err(Error::WindowExceedsPool {
+                        stream: stream.clone(),
+                        samples: count,
+                        needed,
+                        bytes: crate::streams::RETAINED_BYTES,
+                        rows: crate::streams::RETAINED_ROWS,
+                    });
+                }
                 let start = origin.date + span((granted + 1) * period_nanos)?;
                 let start_nanos = unix_nanos(start)?;
                 let grant = WireWindow {
@@ -655,7 +737,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                                     },
                                     &[clock, &host],
                                 )
-                                .map_err(invalid)?,
+                                .map_err(|error| admission(&stream, error))?,
                         );
                     }
                 }

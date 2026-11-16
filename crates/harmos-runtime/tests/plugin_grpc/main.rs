@@ -53,4 +53,5 @@ mod stop_failure;
 mod stream_reconnect;
 mod support;
 mod transfer_admission;
+mod window_overload;
 mod wire_identities;

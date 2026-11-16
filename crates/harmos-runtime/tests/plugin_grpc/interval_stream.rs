@@ -23,6 +23,7 @@ async fn host_windows_are_stored_in_order_with_host_timestamps() {
         .attach_grpc(harmos_runtime::plugin::grpc::Placement::Remote(sdk.address.clone()), super::support::settings())
         .await
         .unwrap();
+    let _watching = host.watch("fixture.interval");
 
     // Keep Virtual Time Still While Storage Work Is Outstanding
     let advancing = controller.advance_until(std::time::Duration::from_secs(10), || host.rows().len() >= 3);

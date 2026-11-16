@@ -98,6 +98,7 @@ impl Settings {
                 stop_grace: Duration::from_secs(10),
                 stream_window: NonZeroUsize::new(16).unwrap(),
                 interval_window: std::time::Duration::from_millis(100),
+                interval_lag: Default::default(),
             },
             bundle: Default::default(),
             entries: NonZeroUsize::new(16).unwrap(),
