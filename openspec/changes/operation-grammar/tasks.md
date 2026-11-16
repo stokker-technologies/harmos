@@ -380,3 +380,32 @@ A product measured, at 7181b5ed in a debug build, that one interval stream runs 
 - [ ] IT.2 Find the cause of the product's runtime publication slowdown (348 ms to 5.29 s), and establish whether the library's operation preparation byte budget accumulates over long runs.
 - [ ] IT.3 The owner sets the sustained rate per stream and the number of concurrent streams, from the release-profile figures. The design is then chosen: ticks carry their time and travel as messages on the open Samples stream, keeping the host in charge of the interval loop; or interval timing moves into the plugin, which changes the locked design.
 - [ ] IT.4 Windowed batches, direction LOCKED by the owner on 2026-11-15, against the target of 128 or more concurrent streams at up to 1 kHz each, ideally 1 MHz. The host keeps the schedule and the clock and grants each interval stream a time window. The plugin samples within that window and returns all of its samples as columnar, timestamped batches on the open Samples stream, so the host does no work per sample. Batch size is never set directly; it follows from the stream's declared interval and the window length. The window length is a host setting that trades live latency for efficiency; a plugin's settings may override it per stream. Under the controlled clock, the window is exactly the advanced step. When a window's samples exceed the transport's configured maximum message size, they are split into several messages. A one-sample observer keeps its current authoring form, and the SDK batches its samples per window. Implementation starts once the IT.1 figures confirm the gain.
+
+The IT.4 contract is in design.md, Windowed Interval Batches: the `Window` grant
+and `SampleBatch` answer, the sample grid, the stored `harmos.batch.R` row and the
+four SDK authoring shapes. Work items, in dependency order:
+
+```proto
+message Window { google.protobuf.Timestamp start = 1; google.protobuf.Duration period = 2; uint64 count = 3; uint64 sequence = 4; }
+message SampleBatch { uint64 offset = 1; uint64 count = 2; bytes columns = 3; bool last = 4; }
+```
+
+```rust
+Observer::new(&stream, async |context: &Context| Ok(Reading { value: read() })).every(interval).window_setting("window");
+Observer::window(&stream, async |context: &Context, window: &Window| Ok(ReadingColumns { value: read_many(window.count) })).every(interval);
+```
+
+- [ ] IT.4.1 Protocol: add `Window`, `SampleBatch` and `StreamDeclaration.window_setting`, delete `Tick` and reserve its request field, rewrite behaviour rules 10, 14, 18 and 30-32 for windows, and regenerate every SDK binding and fixture.
+- [ ] IT.4.2 Host: one admitted `samples.window` operation per window replaces `samples.tick`; fixed-rate windows on the `o + k * L` grid with reading-extended ends; `PlacementSettings::interval_window` and the per-stream `window_setting`; derived `harmos.batch.R` rows admitted once per part; parts validated by offset, count and `last`; interval rows with repeated, map or oneof fields refused.
+- [ ] IT.4.3 Scoped units: scoped waits ask the unit's demands to grant through their end; start, stop and close gate and interrupt windows within `stop_grace`; the unscoped demand grants no windows while a scope of its activation samples and resumes from a fresh origin.
+- [ ] IT.4.4 Encoders release their scratch buffer and preparation claim after each message.
+- [ ] IT.4.5 SDKs (Rust, Python, C#, C++): answer windows, run one-sample observers per sample and transpose them into columns, add the window observer and `window_setting`, split parts at the transport's maximum message size, and delete tick dispatch, tests and docs.
+- [ ] IT.4.6 Conformance: the suite and every SDK fixture exercise windows, parts, window children and refusals.
+- [ ] IT.4.7 Stories: exact window boundaries and counts on a controlled clock, splitting at the maximum message size, a per-stream window override, a fixed-rate schedule without duplicate windows, and the 1,023/1,024/1,025 scoped stories adapted to windows.
+- [ ] IT.4.8 Bench: samples per second at 1, 16 and 128 streams on the controlled and the real clock at 1 kHz and 1 MHz, figures recorded in `docs/product-guide.md`.
+- [ ] IT.4.9 Architecture, product guide and SDK guides describe windows and the product adoption steps.
+
+## Known Flakes from #261
+
+- [ ] FL.1 The guest sandbox system story runs 65-83 s against its 120 s limit on Linux runners and needed two reruns. Find why it is slow and fix that; the limit is never raised.
+- [ ] FL.2 The `harmos-storage` stories `flush_preserves_batches` and `forged_reference_refused` fail under the coverage run but pass alone. Find the shared state between tests and isolate them.
