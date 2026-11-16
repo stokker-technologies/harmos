@@ -418,7 +418,8 @@ def dispatch(arguments: list[str] | None = None) -> int:
         if options.sdk == "cpp":
             return _execute(["mise", "-C", "sdk/cpp", "run", "generate", "--", "--profile", options.profile])
         if options.sdk == "rust":
-            result = cargo.focused(root, "build", ["--locked", "--profile", options.profile, "-p", "harmos-protocol", "--example", "generate"])
+            arguments = ["--locked", "--profile", options.profile, "-p", "harmos-protocol", "--example", "generate"]
+            result = cargo.focused(root, "build", arguments)
             if result:
                 return result
             binary = (
@@ -428,16 +429,28 @@ def dispatch(arguments: list[str] | None = None) -> int:
                 / "examples"
                 / ("generate.exe" if os.name == "nt" else "generate")
             )
-            result = _execute([str(binary)])
+            command = [str(binary)]
+            result = _execute(command)
             if result:
                 return result
 
-            # The Example Owns Its Generator, Rather Than Sharing Source by Path.
-            arguments = ["--locked", "--profile", options.profile, "--manifest-path", "examples/schematic/Cargo.toml", "-p", "schematic-protocol", "--example", "generate"]
+            # Build the Example Through Its Own Entry Point.
+            arguments = [
+                "--locked",
+                "--profile",
+                options.profile,
+                "--manifest-path",
+                "examples/schematic/Cargo.toml",
+                "-p",
+                "schematic-protocol",
+                "--example",
+                "generate",
+            ]
             result = cargo.focused(root, "build", arguments)
             if result:
                 return result
-            result = _execute([str(binary)])
+            command = [str(binary)]
+            result = _execute(command)
             if result:
                 return result
 

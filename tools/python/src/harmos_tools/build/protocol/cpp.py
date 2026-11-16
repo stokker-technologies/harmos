@@ -67,7 +67,6 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
         if file.name.endswith("guest.proto") or not file.package.startswith("harmos.") or ".plugin." in file.package:
             continue
         private += [f'#include "{file.name.removesuffix(".proto")}.pb.h"']
-        boundary = "client" if ".host." in file.package else ""
         for definition in [*file.message_type, *file.enum_type]:
             groups_for_type = audiences.get(f"{file.package}.{definition.name}", {"client"})
             boundary = "" if ".model." in file.package or len(groups_for_type) > 1 else next(iter(groups_for_type))
@@ -92,17 +91,22 @@ def cpp_exports(root: Path, descriptors: FileDescriptorSet) -> None:
         'inline constexpr char stream_fingerprint_prefix[] = "harmos.protobuf.stream.v1\\0";',
         "namespace payloads {",
     ]
-    for entry in entries:
-        scope = f"namespace {entry.boundary} {{ " if entry.boundary else ""
-        ending = " }" if entry.boundary else ""
-        if entry.constant:
-            declaration = f"inline constexpr auto {entry.name} = {entry.qualified};"
-        elif entry.name == entry.qualified.rsplit("::", 1)[-1]:
-            declaration = f"using {entry.qualified};"
-        else:
-            # FailureValue Preserves the Public Distinction From Runtime Failures.
-            declaration = f"using {entry.name} = {entry.qualified};"
-        private.append(scope + declaration + ending)
+    for boundary in ("", "client", "plugin"):
+        if boundary:
+            private.append(f"namespace {boundary} {{")
+        for entry in entries:
+            if entry.boundary != boundary:
+                continue
+            if entry.constant:
+                declaration = f"inline constexpr auto {entry.name} = {entry.qualified};"
+            elif entry.name == entry.qualified.rsplit("::", 1)[-1]:
+                declaration = f"using {entry.qualified};"
+            else:
+                # FailureValue Preserves the Public Distinction From Runtime Failures.
+                declaration = f"using {entry.name} = {entry.qualified};"
+            private.append(declaration)
+        if boundary:
+            private.append("}")
     private += ["}", "}"]
     for boundary in ("", "client", "plugin"):
         public += ["namespace harmos" + (f"::{boundary}" if boundary else "") + " {"]
@@ -163,7 +167,9 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
                 f"class Host{name} {{",
                 "public:",
                 f"  explicit Host{name}(std::function<std::optional<{value}>()> next) : next_(std::move(next)) {{}}",
-                f"  std::optional<{value}> next() {{ return next_(); }}",
+                f"  std::optional<{value}> next() {{",
+                "    return next_();",
+                "  }",
                 "private:",
                 f"  std::function<std::optional<{value}>()> next_;",
                 "};",
@@ -207,7 +213,9 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
                     f"  auto incoming = std::make_shared<Watching<{response_type}>>(context.watch(operation, request, max_item_bytes));",
                     f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else cpp_message(method['response'])}> {{",
                     "    auto response = incoming->next();",
-                    "    if (!response) { return {}; }",
+                    "    if (!response) {",
+                    "      return {};",
+                    "    }",
                 ]
                 value = (
                     f"std::move(*response->mutable_{payload['name']}())"
@@ -218,7 +226,9 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
                 )
                 if payload and payload["kind"] == 11:
                     source += [
-                        f'    if (!response->has_{payload["name"]}()) {{ throw std::runtime_error("Read {name}: Missing Payload"); }}'
+                        f"    if (!response->has_{payload['name']}()) {{",
+                        f'      throw std::runtime_error("Read {name}: Missing Payload");',
+                        "    }",
                     ]
                 source += [f"    return {value};", "  });"]
             else:
@@ -226,7 +236,11 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
                 if payload and payload["repeated"]:
                     value = f"{field_type(payload)}(response.{payload['name']}().begin(), response.{payload['name']}().end())"
                 elif payload and payload["kind"] == 11:
-                    source += [f'  if (!response.has_{payload["name"]}()) {{ throw std::runtime_error("Read {name}: Missing Payload"); }}']
+                    source += [
+                        f"  if (!response.has_{payload['name']}()) {{",
+                        f'    throw std::runtime_error("Read {name}: Missing Payload");',
+                        "  }",
+                    ]
                     value = f"std::move(*response.mutable_{payload['name']}())"
                 else:
                     value = f"response.{payload['name']}()" if payload else "response"
@@ -252,8 +266,14 @@ def cpp_host(root: Path, methods: list[Method], *, target: Path | None = None, n
             f'Operation<{request_type}, {response_type}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)'
             + (".watch()" if method["server_streaming"] else "")
         )
-        source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
-    source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
+        source += [f"    case HostOperation::{name}:", f"      return requires_operation({expression});"]
+    source += [
+        "    default:",
+        '      throw std::invalid_argument("Declare Host Requirement: Unknown Operation");',
+        "  }",
+        "}",
+        "}",
+    ]
     boundary = source.index("namespace harmos::plugin {")
     body = "\n".join(source[boundary:])
     named = {cpp_message(method["response"]) for method in methods if method["payload_field"] is None}
@@ -473,7 +493,9 @@ def cpp(root: Path, methods: list[Method], *, namespace: str = "harmos", target:
                     f"      {response} response;",
                     "      if (!reader->Read(&response)) {",
                     "        const auto status = reader->Finish();",
-                    f'        if (!status.ok()) {{ throw std::runtime_error("Read {action}: " + status.error_message()); }}',
+                    "        if (!status.ok()) {",
+                    f'          throw std::runtime_error("Read {action}: " + status.error_message());',
+                    "        }",
                     "        return {};",
                     "      }",
                 ]

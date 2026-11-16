@@ -333,6 +333,7 @@ pub struct GuestSubmitted {
     #[prost(uint64, tag = "1")]
     pub instance: u64,
 }
+/// The Control Action Applied to a Guest Child Invocation.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

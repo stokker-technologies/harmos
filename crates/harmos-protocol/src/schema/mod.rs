@@ -23,6 +23,8 @@ pub use identity::{Executor, operation_identity, plugin_operation_identity};
 
 /* === Imports === */
 
+// Standard Library Imports
+
 // Third Party Imports
 use prost::Message;
 use prost_types::FileDescriptorSet;
@@ -52,7 +54,7 @@ pub struct Error(String);
 /* === Public Functions === */
 
 /// Hash an operation's reachable request and response descriptors, independently
-/// of unrelated declarations in the declarations. See the v1 behaviour contract.
+/// of unrelated declarations. See the v1 behaviour contract.
 pub fn fingerprint(id: &str, types: &FileDescriptorSet, request: &str, response: &str) -> Result<Vec<u8>, Error> {
     let request = message_types(types, request)?;
     let response = message_types(types, response)?;

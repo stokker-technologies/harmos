@@ -18,14 +18,13 @@ use harmos_protocol::host::plugins::SettingsListRequest;
 use harmos_protocol::host::plugins::SettingsListResponse;
 use harmos_protocol::model::SettingDeclaration;
 use harmos_protocol::model::SettingsDeclarations;
-use prost::Message as _;
 use prost_types::FileDescriptorSet;
 impl Message for InvocationsCancelRequest {
     fn name() -> String {
         "harmos.host.v1.InvocationsCancelRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsCancelRequest.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsCancelRequest.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -34,7 +33,7 @@ impl Message for InvocationsCancelResponse {
         "harmos.host.v1.InvocationsCancelResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsCancelResponse.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsCancelResponse.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -43,7 +42,8 @@ impl Message for InvocationsGetRequest {
         "harmos.host.v1.InvocationsGetRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsGetRequest.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsGetRequest.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for InvocationsGetResponse {
@@ -51,7 +51,7 @@ impl Message for InvocationsGetResponse {
         "harmos.host.v1.InvocationsGetResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsGetResponse.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsGetResponse.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -60,7 +60,7 @@ impl Message for InvocationsWatchRequest {
         "harmos.host.v1.InvocationsWatchRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsWatchRequest.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsWatchRequest.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -69,7 +69,7 @@ impl Message for InvocationsWatchResponse {
         "harmos.host.v1.InvocationsWatchResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.InvocationsWatchResponse.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.InvocationsWatchResponse.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -78,7 +78,8 @@ impl Message for OperationsGetRequest {
         "harmos.host.v1.OperationsGetRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.OperationsGetRequest.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.OperationsGetRequest.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for OperationsGetResponse {
@@ -86,7 +87,8 @@ impl Message for OperationsGetResponse {
         "harmos.host.v1.OperationsGetResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.OperationsGetResponse.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.OperationsGetResponse.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for OperationsListRequest {
@@ -94,7 +96,8 @@ impl Message for OperationsListRequest {
         "harmos.host.v1.OperationsListRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.OperationsListRequest.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.OperationsListRequest.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for OperationsListResponse {
@@ -102,7 +105,7 @@ impl Message for OperationsListResponse {
         "harmos.host.v1.OperationsListResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.OperationsListResponse.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.OperationsListResponse.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -111,7 +114,8 @@ impl Message for TimeGetRequest {
         "harmos.host.v1.TimeGetRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.TimeGetRequest.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.TimeGetRequest.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for TimeGetResponse {
@@ -119,7 +123,8 @@ impl Message for TimeGetResponse {
         "harmos.host.v1.TimeGetResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.TimeGetResponse.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.TimeGetResponse.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for TimeSleepRequest {
@@ -127,7 +132,8 @@ impl Message for TimeSleepRequest {
         "harmos.host.v1.TimeSleepRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.TimeSleepRequest.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.TimeSleepRequest.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for TimeSleepResponse {
@@ -135,7 +141,8 @@ impl Message for TimeSleepResponse {
         "harmos.host.v1.TimeSleepResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.TimeSleepResponse.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.TimeSleepResponse.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for SettingsListRequest {
@@ -143,7 +150,7 @@ impl Message for SettingsListRequest {
         "harmos.host.v1.plugins.SettingsListRequest".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.plugins.SettingsListRequest.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.SettingsListRequest.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -152,7 +159,7 @@ impl Message for SettingsListResponse {
         "harmos.host.v1.plugins.SettingsListResponse".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.host.v1.plugins.SettingsListResponse.bin")[..])
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.host.v1.plugins.SettingsListResponse.bin")[..])
             .expect("generated context wrapper")
     }
 }
@@ -161,7 +168,8 @@ impl Message for SettingDeclaration {
         "harmos.model.v1.SettingDeclaration".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.model.v1.SettingDeclaration.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.model.v1.SettingDeclaration.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl Message for SettingsDeclarations {
@@ -169,7 +177,8 @@ impl Message for SettingsDeclarations {
         "harmos.model.v1.SettingsDeclarations".into()
     }
     fn types() -> FileDescriptorSet {
-        FileDescriptorSet::decode(&include_bytes!("types/harmos.model.v1.SettingsDeclarations.bin")[..]).expect("generated context wrapper")
+        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/harmos.model.v1.SettingsDeclarations.bin")[..])
+            .expect("generated context wrapper")
     }
 }
 impl OperationRequest for InvocationsGetRequest {

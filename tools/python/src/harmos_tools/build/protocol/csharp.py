@@ -319,7 +319,12 @@ def csharp_host(
                 args += ([] if stream else ["policy"]) + ["cancellationToken"]
                 call = f"context.Host.{path}.{method['method']}({', '.join(args)})"
                 if stream:
-                    lines += [f"    await foreach (var response in {call}) {{ yield return response; }}"]
+                    lines += [
+                        f"    await foreach (var response in {call})",
+                        "    {",
+                        "      yield return response;",
+                        "    }",
+                    ]
                 else:
                     lines += [f"    return await {call};"]
                 lines += ["  }"]
@@ -327,11 +332,15 @@ def csharp_host(
             lines += [f"    var request = new {request_type}", "    {"]
             lines += [f"      {title(field['name'])} = {field['name']}," for field in method["fields"] if not field["optional"]]
             lines += ["    };"]
-            lines += [
-                f"    if ({field['name']} is not null) request.{title(field['name'])} = {field['name']};"
-                for field in method["fields"]
-                if field["optional"]
-            ]
+            for field in method["fields"]:
+                if not field["optional"]:
+                    continue
+                lines += [
+                    f"    if ({field['name']} is not null)",
+                    "    {",
+                    f"      request.{title(field['name'])} = {field['name']};",
+                    "    }",
+                ]
             value = f"response.{title(payload['name'])}" if payload else "response"
             if payload and payload["kind"] == 11 and not payload["repeated"]:
                 value += f' ?? throw new InvalidOperationException("Read {name}: Missing Payload")'

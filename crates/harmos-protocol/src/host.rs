@@ -1356,6 +1356,7 @@ pub mod plugin_change {
         Deleted(::prost::alloc::string::String),
     }
 }
+/// The Persisted Entry Lifecycle, Independent of Its Placement.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2348,6 +2349,7 @@ impl PayloadEncoding {
         }
     }
 }
+/// The Number of Values Carried by a Schema Field.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2381,6 +2383,7 @@ impl SchemaCardinality {
         }
     }
 }
+/// The Primitive or Composite Value Category of a Field.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2432,6 +2435,7 @@ impl SchemaKind {
         }
     }
 }
+/// The Shape of a Schema Definition.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2477,6 +2481,7 @@ impl SchemaForm {
         }
     }
 }
+/// Why a Schema Definition Is Not Included in This Reply.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -2907,6 +2912,7 @@ pub struct HostStatus {
     #[prost(message, repeated, tag = "3")]
     pub components: ::prost::alloc::vec::Vec<HealthComponent>,
 }
+/// The Health Reported by One Contributing Component.
 #[allow(clippy::all)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -4058,8 +4064,8 @@ pub mod time_server {
     }
 }
 
-pub mod access { include!("host/access.rs"); }
+pub mod access;
 
-pub mod plugins { include!("host/plugins.rs"); }
+pub mod plugins;
 
-pub mod status { include!("host/status.rs"); }
+pub mod status;

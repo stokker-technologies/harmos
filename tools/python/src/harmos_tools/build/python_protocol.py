@@ -199,7 +199,17 @@ def generate_conformance(output: Path) -> None:
             "",
             f"__all__ = {names!r}",
         ]
-        (package / "_types.py").write_text("\n".join(types) + "\n", encoding="utf-8", newline="\n")
+        target = package / "_types.py"
+        target.write_text("\n".join(types) + "\n", encoding="utf-8", newline="\n")
+        config = ROOT / "sdk/python/pyproject.toml"
+        subprocess.run(
+            [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", str(target)],
+            check=True,
+            creationflags=spawn_flags(),
+        )
+        subprocess.run(
+            [sys.executable, "-m", "ruff", "format", "--config", str(config), str(target)], check=True, creationflags=spawn_flags()
+        )
     finally:
         shutil.rmtree(scratch)
 

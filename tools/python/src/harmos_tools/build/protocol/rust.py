@@ -102,7 +102,8 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         if field["type"]
     )
     message_names = {full: full.rsplit(".", 1)[-1] for full in used}
-    duplicates = {"Status"} | {name for name in message_names.values() if list(message_names.values()).count(name) > 1}
+    reserved = set(names.values()) | {"CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"}
+    duplicates = reserved | {name for name in message_names.values() if list(message_names.values()).count(name) > 1}
     for full in used:
         if message_names[full] in duplicates:
             message_names[full] = rust_message(full)
@@ -132,7 +133,6 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         "// @generated from protocol descriptors; do not edit.",
         "use harmos::client::{CallOptions, ClientTransport, Watching, action_error, request_id};",
         "use prost_reflect::ReflectMessage;",
-        "use tonic::Status;",
         "use tonic::codegen::http::uri::PathAndQuery;",
     ]
     lines += [
@@ -172,12 +172,12 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                 result = f"Watching<{result}>"
             name = method["path"][-1]
             lines += [
-                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result} , Status> {{",
+                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result}, tonic::Status> {{",
                 f"        self.{name}_with({', '.join([*args, options + '::default()'])}).await",
                 "    }",
             ]
             lines += [
-                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result} , Status> {{",
+                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result}, tonic::Status> {{",
                 f"        let value = {request} {{",
             ]
             for field in method["fields"]:
@@ -209,7 +209,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                     field = payload["name"]
                     value = f"response.{field}"
                     if payload["kind"] == 11 and not payload["repeated"]:
-                        value += f'.ok_or_else(|| Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
+                        value += f'.ok_or_else(|| tonic::Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
                     else:
                         value = f"Ok({value})"
                     lines += [f"        Ok(response.map(|response| {value}))"]
@@ -221,7 +221,7 @@ def rust(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                     value = f"response.{payload['name']}"
                     if payload["kind"] == 11 and not payload["repeated"]:
                         lines += [
-                            f'        {value}.ok_or_else(|| Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
+                            f'        {value}.ok_or_else(|| tonic::Status::data_loss("Read {method["service"]}.{method["method"]}: Missing Payload"))'
                         ]
                     else:
                         lines += [f"        Ok({value})"]
@@ -342,7 +342,9 @@ def rust_host(root: Path, methods: list[Method], *, target: Path | None = None) 
                 "}",
                 f"impl Host{name} {{",
                 f"    pub async fn next(&mut self) -> Result<Option<{result}>> {{",
-                "        let Some(response) = self.incoming.next().await? else { return Ok(None); };",
+                "        let Some(response) = self.incoming.next().await? else {",
+                "            return Ok(None);",
+                "        };",
             ]
             if payload and payload["kind"] == 11:
                 lines += [

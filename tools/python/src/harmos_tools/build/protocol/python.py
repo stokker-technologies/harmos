@@ -63,6 +63,7 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
+            # The Wire Failure Value and the Runtime Failure Exception Have Distinct Public Names.
             name = "FailureValue" if definition.name == "Failure" else definition.name
             groups_for_type = (
                 {"shared"}
@@ -112,6 +113,7 @@ def python_exports(target: Path, descriptors: FileDescriptorSet) -> None:
         )
 
     shared = sorted(name for _, _, name in groups["shared"])
+    # Preserve the Public Exception Name While Its Authored Implementation Is Outside Generation.
     barrel(
         package / "__init__.py",
         [
@@ -351,6 +353,7 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
             f"__all__ = {sorted(name for _, name in exports)!r}",
         ]
         (package / "client.py").write_text("\n".join(client_exports) + "\n", encoding="utf-8", newline="\n")
+        # A Composed Package Exposes Its Generated Root Through the Same Client Entry Point.
         (package / "__init__.py").write_text(
             "# @generated from protocol descriptors; do not edit.\nfrom ._generated.client import ClientRoot as Client\n\n__all__ = ['Client']\n",
             encoding="utf-8",

@@ -150,31 +150,38 @@ def check_public_surfaces(root: Path) -> None:
 
 
 def _read_callers(descriptors: FileDescriptorSet, pool: descriptor_pool.DescriptorPool) -> dict[str, str]:
+    methods = [
+        (f"{file.package}.{service.name}/{method.name}", method)
+        for file in descriptors.file
+        if "host" in Path(file.name).parts[:-1]
+        for service in file.service
+        for method in service.method
+    ]
+    if not methods:
+        return {}
+
+    # Resolve the Shared Option Schema Once for the Entire Descriptor Inventory.
+    try:
+        extension = pool.FindExtensionByName("harmos.model.v1.callers")
+    except KeyError as error:
+        identity = methods[0][0]
+        raise ValueError(f"Protocol Callers: {identity} Has No Callers Declaration") from error
+    if extension.enum_type is None:
+        raise ValueError("Protocol Callers: Option Must Be an Enum")
+    options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
+
     result = {}
-    for file in descriptors.file:
-        if "host" not in Path(file.name).parts[:-1]:
-            continue
-        for service in file.service:
-            for method in service.method:
-                identity = f"{file.package}.{service.name}/{method.name}"
-                try:
-                    extension = pool.FindExtensionByName("harmos.model.v1.callers")
-                except KeyError as error:
-                    raise ValueError(f"Protocol Callers: {identity} Has No Callers Declaration") from error
-                if extension.enum_type is None:
-                    raise ValueError("Protocol Callers: Option Must Be an Enum")
-                options_type = message_factory.GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
-                options = cast(Any, options_type())
-                options.ParseFromString(method.options.SerializeToString())
-                value = options.Extensions[extension]
-                allowed = extension.enum_type.values_by_number.get(value)
-                if allowed is None:
-                    raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
-                declared = options.HasExtension(extension)
-                valid = allowed.name in {"CLIENTS", "PLUGINS", "ALL"}
-                if not declared or not valid:
-                    raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
-                result[identity] = allowed.name
+    for identity, method in methods:
+        options = cast(Any, options_type.FromString(method.options.SerializeToString()))
+        value = options.Extensions[extension]
+        allowed = extension.enum_type.values_by_number.get(value)
+        if allowed is None:
+            raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
+        declared = options.HasExtension(extension)
+        valid = allowed.name in {"CLIENTS", "PLUGINS", "ALL"}
+        if not declared or not valid:
+            raise ValueError(f"Protocol Callers: {identity} Requires CLIENTS, PLUGINS or ALL")
+        result[identity] = allowed.name
     return result
 
 

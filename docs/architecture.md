@@ -304,7 +304,9 @@ child packages also use ordinary module declarations, following the proto tree.
 and generation order. Its `build/protocol/descriptors.py` owns the shared method
 inventory; `python.py`, `rust.py`, `csharp.py` and `cpp.py` each own one language's
 rendering. `source/protocol.py` validates and narrows caller options from a
-single dependency-resolved descriptor pool. Generator entry points and wire
+single dependency-resolved descriptor pool, resolving the shared option schema
+once for the inventory. Call rendering and payload exports consume the same
+method inventory so audience ownership has one source. Generator entry points and wire
 contracts remain stable across this source organization. Generated bindings
 remain tracked and regeneration is the only authoring path. The protocol
 drift test compares committed sources and descriptor projections byte for byte.

@@ -85,7 +85,6 @@ use harmos_protocol::model::Receipt;
 use harmos_protocol::model::SettingValues;
 use prost_reflect::ReflectMessage;
 use prost_types::Duration;
-use tonic::Status as RpcStatus;
 use tonic::codegen::http::uri::PathAndQuery;
 #[derive(Default)]
 pub struct JobsStartOptions {
@@ -295,10 +294,10 @@ impl AccessCertificates {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn create(&self) -> Result<String, RpcStatus> {
+    pub async fn create(&self) -> Result<String, tonic::Status> {
         self.create_with(AccessCertificatesCreateOptions::default()).await
     }
-    pub async fn create_with(&self, options: AccessCertificatesCreateOptions) -> Result<String, RpcStatus> {
+    pub async fn create_with(&self, options: AccessCertificatesCreateOptions) -> Result<String, tonic::Status> {
         let value = CertificatesCreateRequest {};
         let request = options.context.request(value);
         let response = self
@@ -322,10 +321,10 @@ impl AccessListener {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn get(&self) -> Result<ListenerGetResponse, RpcStatus> {
+    pub async fn get(&self) -> Result<ListenerGetResponse, tonic::Status> {
         self.get_with(AccessListenerGetOptions::default()).await
     }
-    pub async fn get_with(&self, options: AccessListenerGetOptions) -> Result<ListenerGetResponse, RpcStatus> {
+    pub async fn get_with(&self, options: AccessListenerGetOptions) -> Result<ListenerGetResponse, tonic::Status> {
         let value = ListenerGetRequest {};
         let request = options.context.request(value);
         let response = self
@@ -340,12 +339,12 @@ impl AccessListener {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn set(&self, value: ListenerValue, expected_revision: Vec<u8>) -> Result<ListenerSetResponse, RpcStatus> {
+    pub async fn set(&self, value: ListenerValue, expected_revision: Vec<u8>) -> Result<ListenerSetResponse, tonic::Status> {
         self.set_with(value, expected_revision, AccessListenerSetOptions::default()).await
     }
     pub async fn set_with(
         &self, value: ListenerValue, expected_revision: Vec<u8>, options: AccessListenerSetOptions,
-    ) -> Result<ListenerSetResponse, RpcStatus> {
+    ) -> Result<ListenerSetResponse, tonic::Status> {
         let value = ListenerSetRequest { value: Some(value), expected_revision };
         let request = options.context.request(value);
         let response = self
@@ -369,12 +368,12 @@ impl AccessPairings {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn create(&self, label: impl Into<String>) -> Result<PairingsCreateResponse, RpcStatus> {
+    pub async fn create(&self, label: impl Into<String>) -> Result<PairingsCreateResponse, tonic::Status> {
         self.create_with(label, AccessPairingsCreateOptions::default()).await
     }
     pub async fn create_with(
         &self, label: impl Into<String>, options: AccessPairingsCreateOptions,
-    ) -> Result<PairingsCreateResponse, RpcStatus> {
+    ) -> Result<PairingsCreateResponse, tonic::Status> {
         let value = PairingsCreateRequest { label: label.into() };
         let request = options.context.request(value);
         let response = self
@@ -389,10 +388,10 @@ impl AccessPairings {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn list(&self) -> Result<PairingsListResponse, RpcStatus> {
+    pub async fn list(&self) -> Result<PairingsListResponse, tonic::Status> {
         self.list_with(AccessPairingsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: AccessPairingsListOptions) -> Result<PairingsListResponse, RpcStatus> {
+    pub async fn list_with(&self, options: AccessPairingsListOptions) -> Result<PairingsListResponse, tonic::Status> {
         let value = PairingsListRequest { at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -407,12 +406,12 @@ impl AccessPairings {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn delete(&self, name: impl Into<String>) -> Result<PairingsDeleteResponse, RpcStatus> {
+    pub async fn delete(&self, name: impl Into<String>) -> Result<PairingsDeleteResponse, tonic::Status> {
         self.delete_with(name, AccessPairingsDeleteOptions::default()).await
     }
     pub async fn delete_with(
         &self, name: impl Into<String>, options: AccessPairingsDeleteOptions,
-    ) -> Result<PairingsDeleteResponse, RpcStatus> {
+    ) -> Result<PairingsDeleteResponse, tonic::Status> {
         let value = PairingsDeleteRequest { name: name.into() };
         let request = options.context.request(value);
         let response = self
@@ -436,12 +435,12 @@ impl Invocations {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn create(&self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>) -> Result<Vec<u8>, RpcStatus> {
+    pub async fn create(&self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>) -> Result<Vec<u8>, tonic::Status> {
         self.create_with(operation, fingerprint, payload, InvocationsCreateOptions::default()).await
     }
     pub async fn create_with(
         &self, operation: impl Into<String>, fingerprint: Vec<u8>, payload: Vec<u8>, options: InvocationsCreateOptions,
-    ) -> Result<Vec<u8>, RpcStatus> {
+    ) -> Result<Vec<u8>, tonic::Status> {
         let value = InvocationsCreateRequest {
             operation: operation.into(),
             fingerprint,
@@ -460,10 +459,10 @@ impl Invocations {
         let response = response.into_inner();
         Ok(response.payload)
     }
-    pub async fn get(&self, instance: u64) -> Result<InstanceState, RpcStatus> {
+    pub async fn get(&self, instance: u64) -> Result<InstanceState, tonic::Status> {
         self.get_with(instance, InvocationsGetOptions::default()).await
     }
-    pub async fn get_with(&self, instance: u64, options: InvocationsGetOptions) -> Result<InstanceState, RpcStatus> {
+    pub async fn get_with(&self, instance: u64, options: InvocationsGetOptions) -> Result<InstanceState, tonic::Status> {
         let value = InvocationsGetRequest { instance };
         let request = options.context.request(value);
         let response = self
@@ -476,14 +475,14 @@ impl Invocations {
             .await
             .map_err(|error| action_error("invocations.get", error))?;
         let response = response.into_inner();
-        response.invocation.ok_or_else(|| RpcStatus::data_loss("Read Invocations.Get: Missing Payload"))
+        response.invocation.ok_or_else(|| tonic::Status::data_loss("Read Invocations.Get: Missing Payload"))
     }
-    pub async fn cancel(&self, instance: u64, reason: impl Into<String>) -> Result<InstanceState, RpcStatus> {
+    pub async fn cancel(&self, instance: u64, reason: impl Into<String>) -> Result<InstanceState, tonic::Status> {
         self.cancel_with(instance, reason, InvocationsCancelOptions::default()).await
     }
     pub async fn cancel_with(
         &self, instance: u64, reason: impl Into<String>, options: InvocationsCancelOptions,
-    ) -> Result<InstanceState, RpcStatus> {
+    ) -> Result<InstanceState, tonic::Status> {
         let value = InvocationsCancelRequest { instance, reason: reason.into() };
         let request = options.context.request(value);
         let response = self
@@ -496,12 +495,12 @@ impl Invocations {
             .await
             .map_err(|error| action_error("invocations.cancel", error))?;
         let response = response.into_inner();
-        response.invocation.ok_or_else(|| RpcStatus::data_loss("Read Invocations.Cancel: Missing Payload"))
+        response.invocation.ok_or_else(|| tonic::Status::data_loss("Read Invocations.Cancel: Missing Payload"))
     }
-    pub async fn watch(&self, instance: u64) -> Result<Watching<InstanceState>, RpcStatus> {
+    pub async fn watch(&self, instance: u64) -> Result<Watching<InstanceState>, tonic::Status> {
         self.watch_with(instance, InvocationsWatchOptions::default()).await
     }
-    pub async fn watch_with(&self, instance: u64, options: InvocationsWatchOptions) -> Result<Watching<InstanceState>, RpcStatus> {
+    pub async fn watch_with(&self, instance: u64, options: InvocationsWatchOptions) -> Result<Watching<InstanceState>, tonic::Status> {
         let value = InvocationsWatchRequest { instance };
         let request = options.context.request(value);
         let response = self
@@ -514,7 +513,7 @@ impl Invocations {
             .await
             .map_err(|error| action_error("invocations.watch", error))?;
         let response = response.with_action("invocations.watch");
-        Ok(response.map(|response| response.invocation.ok_or_else(|| RpcStatus::data_loss("Read Invocations.Watch: Missing Payload"))))
+        Ok(response.map(|response| response.invocation.ok_or_else(|| tonic::Status::data_loss("Read Invocations.Watch: Missing Payload"))))
     }
 }
 #[derive(Clone)]
@@ -529,10 +528,10 @@ impl Jobs {
             client,
         }
     }
-    pub async fn start(&self, value: impl Into<String>) -> Result<String, RpcStatus> {
+    pub async fn start(&self, value: impl Into<String>) -> Result<String, tonic::Status> {
         self.start_with(value, JobsStartOptions::default()).await
     }
-    pub async fn start_with(&self, value: impl Into<String>, options: JobsStartOptions) -> Result<String, RpcStatus> {
+    pub async fn start_with(&self, value: impl Into<String>, options: JobsStartOptions) -> Result<String, tonic::Status> {
         let value = JobsStartRequest { value: value.into() };
         let request = options.context.request(value);
         let response = self
@@ -556,10 +555,10 @@ impl JobsProgress {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn watch(&self, value: impl Into<String>) -> Result<Watching<String>, RpcStatus> {
+    pub async fn watch(&self, value: impl Into<String>) -> Result<Watching<String>, tonic::Status> {
         self.watch_with(value, JobsProgressWatchOptions::default()).await
     }
-    pub async fn watch_with(&self, value: impl Into<String>, options: JobsProgressWatchOptions) -> Result<Watching<String>, RpcStatus> {
+    pub async fn watch_with(&self, value: impl Into<String>, options: JobsProgressWatchOptions) -> Result<Watching<String>, tonic::Status> {
         let value = ProgressWatchRequest { value: value.into() };
         let request = options.context.request(value);
         let response = self
@@ -583,10 +582,10 @@ impl Operations {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<Vec<DiscoveredOperation>, RpcStatus> {
+    pub async fn list(&self) -> Result<Vec<DiscoveredOperation>, tonic::Status> {
         self.list_with(OperationsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: OperationsListOptions) -> Result<Vec<DiscoveredOperation>, RpcStatus> {
+    pub async fn list_with(&self, options: OperationsListOptions) -> Result<Vec<DiscoveredOperation>, tonic::Status> {
         let value = OperationsListRequest {};
         let request = options.context.request(value);
         let response = self
@@ -601,10 +600,10 @@ impl Operations {
         let response = response.into_inner();
         Ok(response.operations)
     }
-    pub async fn get(&self, id: impl Into<String>) -> Result<DiscoveredOperation, RpcStatus> {
+    pub async fn get(&self, id: impl Into<String>) -> Result<DiscoveredOperation, tonic::Status> {
         self.get_with(id, OperationsGetOptions::default()).await
     }
-    pub async fn get_with(&self, id: impl Into<String>, options: OperationsGetOptions) -> Result<DiscoveredOperation, RpcStatus> {
+    pub async fn get_with(&self, id: impl Into<String>, options: OperationsGetOptions) -> Result<DiscoveredOperation, tonic::Status> {
         let value = OperationsGetRequest { id: id.into() };
         let request = options.context.request(value);
         let response = self
@@ -617,7 +616,7 @@ impl Operations {
             .await
             .map_err(|error| action_error("operations.get", error))?;
         let response = response.into_inner();
-        response.operation.ok_or_else(|| RpcStatus::data_loss("Read Operations.Get: Missing Payload"))
+        response.operation.ok_or_else(|| tonic::Status::data_loss("Read Operations.Get: Missing Payload"))
     }
 }
 #[derive(Clone)]
@@ -634,10 +633,10 @@ impl Plugins {
             client,
         }
     }
-    pub async fn get(&self, name: impl Into<String>) -> Result<PluginsGetResponse, RpcStatus> {
+    pub async fn get(&self, name: impl Into<String>) -> Result<PluginsGetResponse, tonic::Status> {
         self.get_with(name, PluginsGetOptions::default()).await
     }
-    pub async fn get_with(&self, name: impl Into<String>, options: PluginsGetOptions) -> Result<PluginsGetResponse, RpcStatus> {
+    pub async fn get_with(&self, name: impl Into<String>, options: PluginsGetOptions) -> Result<PluginsGetResponse, tonic::Status> {
         let value = PluginsGetRequest { name: name.into(), at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -652,10 +651,10 @@ impl Plugins {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn list(&self) -> Result<PluginsListResponse, RpcStatus> {
+    pub async fn list(&self) -> Result<PluginsListResponse, tonic::Status> {
         self.list_with(PluginsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: PluginsListOptions) -> Result<PluginsListResponse, RpcStatus> {
+    pub async fn list_with(&self, options: PluginsListOptions) -> Result<PluginsListResponse, tonic::Status> {
         let value = PluginsListRequest { at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -670,10 +669,10 @@ impl Plugins {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn watch(&self) -> Result<Watching<PluginsWatchResponse>, RpcStatus> {
+    pub async fn watch(&self) -> Result<Watching<PluginsWatchResponse>, tonic::Status> {
         self.watch_with(PluginsWatchOptions::default()).await
     }
-    pub async fn watch_with(&self, options: PluginsWatchOptions) -> Result<Watching<PluginsWatchResponse>, RpcStatus> {
+    pub async fn watch_with(&self, options: PluginsWatchOptions) -> Result<Watching<PluginsWatchResponse>, tonic::Status> {
         let value = PluginsWatchRequest { name: options.name, at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -690,12 +689,12 @@ impl Plugins {
     }
     pub async fn create(
         &self, name: impl Into<String>, placement: PluginPlacement, value: PluginValue,
-    ) -> Result<PluginsCreateResponse, RpcStatus> {
+    ) -> Result<PluginsCreateResponse, tonic::Status> {
         self.create_with(name, placement, value, PluginsCreateOptions::default()).await
     }
     pub async fn create_with(
         &self, name: impl Into<String>, placement: PluginPlacement, value: PluginValue, options: PluginsCreateOptions,
-    ) -> Result<PluginsCreateResponse, RpcStatus> {
+    ) -> Result<PluginsCreateResponse, tonic::Status> {
         let value = PluginsCreateRequest {
             request_id: match options.request_id {
                 Some(value) => value,
@@ -720,12 +719,12 @@ impl Plugins {
     }
     pub async fn set(
         &self, name: impl Into<String>, value: PluginValue, expected_revision: Vec<u8>,
-    ) -> Result<PluginsSetResponse, RpcStatus> {
+    ) -> Result<PluginsSetResponse, tonic::Status> {
         self.set_with(name, value, expected_revision, PluginsSetOptions::default()).await
     }
     pub async fn set_with(
         &self, name: impl Into<String>, value: PluginValue, expected_revision: Vec<u8>, options: PluginsSetOptions,
-    ) -> Result<PluginsSetResponse, RpcStatus> {
+    ) -> Result<PluginsSetResponse, tonic::Status> {
         let value = PluginsSetRequest {
             name: name.into(),
             value: Some(value),
@@ -744,12 +743,12 @@ impl Plugins {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn delete(&self, name: impl Into<String>, expected_revision: Vec<u8>) -> Result<Receipt, RpcStatus> {
+    pub async fn delete(&self, name: impl Into<String>, expected_revision: Vec<u8>) -> Result<Receipt, tonic::Status> {
         self.delete_with(name, expected_revision, PluginsDeleteOptions::default()).await
     }
     pub async fn delete_with(
         &self, name: impl Into<String>, expected_revision: Vec<u8>, options: PluginsDeleteOptions,
-    ) -> Result<Receipt, RpcStatus> {
+    ) -> Result<Receipt, tonic::Status> {
         let value = PluginsDeleteRequest { name: name.into(), expected_revision };
         let request = options.context.request(value);
         let response = self
@@ -762,14 +761,14 @@ impl Plugins {
             .await
             .map_err(|error| action_error("plugins.delete", error))?;
         let response = response.into_inner();
-        response.receipt.ok_or_else(|| RpcStatus::data_loss("Read Plugins.Delete: Missing Payload"))
+        response.receipt.ok_or_else(|| tonic::Status::data_loss("Read Plugins.Delete: Missing Payload"))
     }
-    pub async fn restart(&self, name: impl Into<String>, expected_revision: Vec<u8>) -> Result<PluginEntry, RpcStatus> {
+    pub async fn restart(&self, name: impl Into<String>, expected_revision: Vec<u8>) -> Result<PluginEntry, tonic::Status> {
         self.restart_with(name, expected_revision, PluginsRestartOptions::default()).await
     }
     pub async fn restart_with(
         &self, name: impl Into<String>, expected_revision: Vec<u8>, options: PluginsRestartOptions,
-    ) -> Result<PluginEntry, RpcStatus> {
+    ) -> Result<PluginEntry, tonic::Status> {
         let value = PluginsRestartRequest { name: name.into(), expected_revision };
         let request = options.context.request(value);
         let response = self
@@ -782,16 +781,16 @@ impl Plugins {
             .await
             .map_err(|error| action_error("plugins.restart", error))?;
         let response = response.into_inner();
-        response.entry.ok_or_else(|| RpcStatus::data_loss("Read Plugins.Restart: Missing Payload"))
+        response.entry.ok_or_else(|| tonic::Status::data_loss("Read Plugins.Restart: Missing Payload"))
     }
     pub async fn replace(
         &self, name: impl Into<String>, placement: PluginPlacement, expected_revision: Vec<u8>,
-    ) -> Result<PluginsReplaceResponse, RpcStatus> {
+    ) -> Result<PluginsReplaceResponse, tonic::Status> {
         self.replace_with(name, placement, expected_revision, PluginsReplaceOptions::default()).await
     }
     pub async fn replace_with(
         &self, name: impl Into<String>, placement: PluginPlacement, expected_revision: Vec<u8>, options: PluginsReplaceOptions,
-    ) -> Result<PluginsReplaceResponse, RpcStatus> {
+    ) -> Result<PluginsReplaceResponse, tonic::Status> {
         let value = PluginsReplaceRequest {
             name: name.into(),
             placement: Some(placement),
@@ -823,10 +822,10 @@ impl PluginsAnnotations {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn get(&self, name: impl Into<String>) -> Result<String, RpcStatus> {
+    pub async fn get(&self, name: impl Into<String>) -> Result<String, tonic::Status> {
         self.get_with(name, PluginsAnnotationsGetOptions::default()).await
     }
-    pub async fn get_with(&self, name: impl Into<String>, options: PluginsAnnotationsGetOptions) -> Result<String, RpcStatus> {
+    pub async fn get_with(&self, name: impl Into<String>, options: PluginsAnnotationsGetOptions) -> Result<String, tonic::Status> {
         let value = AnnotationsGetRequest { name: name.into() };
         let request = options.context.request(value);
         let response = self
@@ -850,10 +849,12 @@ impl PluginsSettings {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self, name: impl Into<String>) -> Result<SettingsListResponse, RpcStatus> {
+    pub async fn list(&self, name: impl Into<String>) -> Result<SettingsListResponse, tonic::Status> {
         self.list_with(name, PluginsSettingsListOptions::default()).await
     }
-    pub async fn list_with(&self, name: impl Into<String>, options: PluginsSettingsListOptions) -> Result<SettingsListResponse, RpcStatus> {
+    pub async fn list_with(
+        &self, name: impl Into<String>, options: PluginsSettingsListOptions,
+    ) -> Result<SettingsListResponse, tonic::Status> {
         let value = SettingsListRequest { name: Some(name.into()), at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -870,12 +871,12 @@ impl PluginsSettings {
     }
     pub async fn set(
         &self, name: impl Into<String>, value: SettingValues, expected_revision: Vec<u8>,
-    ) -> Result<SettingsSetResponse, RpcStatus> {
+    ) -> Result<SettingsSetResponse, tonic::Status> {
         self.set_with(name, value, expected_revision, PluginsSettingsSetOptions::default()).await
     }
     pub async fn set_with(
         &self, name: impl Into<String>, value: SettingValues, expected_revision: Vec<u8>, options: PluginsSettingsSetOptions,
-    ) -> Result<SettingsSetResponse, RpcStatus> {
+    ) -> Result<SettingsSetResponse, tonic::Status> {
         let value = SettingsSetRequest {
             name: name.into(),
             value: Some(value),
@@ -907,10 +908,10 @@ impl Schemas {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<Vec<SchemaDescription>, RpcStatus> {
+    pub async fn list(&self) -> Result<Vec<SchemaDescription>, tonic::Status> {
         self.list_with(SchemasListOptions::default()).await
     }
-    pub async fn list_with(&self, options: SchemasListOptions) -> Result<Vec<SchemaDescription>, RpcStatus> {
+    pub async fn list_with(&self, options: SchemasListOptions) -> Result<Vec<SchemaDescription>, tonic::Status> {
         let value = SchemasListRequest { schema: options.schema };
         let request = options.context.request(value);
         let response = self
@@ -942,10 +943,10 @@ impl Status {
             client,
         }
     }
-    pub async fn get(&self) -> Result<StatusGetResponse, RpcStatus> {
+    pub async fn get(&self) -> Result<StatusGetResponse, tonic::Status> {
         self.get_with(StatusGetOptions::default()).await
     }
-    pub async fn get_with(&self, options: StatusGetOptions) -> Result<StatusGetResponse, RpcStatus> {
+    pub async fn get_with(&self, options: StatusGetOptions) -> Result<StatusGetResponse, tonic::Status> {
         let value = StatusGetRequest {};
         let request = options.context.request(value);
         let response = self
@@ -960,10 +961,10 @@ impl Status {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn watch(&self) -> Result<Watching<StatusWatchResponse>, RpcStatus> {
+    pub async fn watch(&self) -> Result<Watching<StatusWatchResponse>, tonic::Status> {
         self.watch_with(StatusWatchOptions::default()).await
     }
-    pub async fn watch_with(&self, options: StatusWatchOptions) -> Result<Watching<StatusWatchResponse>, RpcStatus> {
+    pub async fn watch_with(&self, options: StatusWatchOptions) -> Result<Watching<StatusWatchResponse>, tonic::Status> {
         let value = StatusWatchRequest { at: options.at };
         let request = options.context.request(value);
         let response = self
@@ -987,12 +988,12 @@ impl StatusDiagnostics {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn get(&self, name: impl Into<String>, offset: u64, max_bytes: u64) -> Result<DiagnosticsGetResponse, RpcStatus> {
+    pub async fn get(&self, name: impl Into<String>, offset: u64, max_bytes: u64) -> Result<DiagnosticsGetResponse, tonic::Status> {
         self.get_with(name, offset, max_bytes, StatusDiagnosticsGetOptions::default()).await
     }
     pub async fn get_with(
         &self, name: impl Into<String>, offset: u64, max_bytes: u64, options: StatusDiagnosticsGetOptions,
-    ) -> Result<DiagnosticsGetResponse, RpcStatus> {
+    ) -> Result<DiagnosticsGetResponse, tonic::Status> {
         let value = DiagnosticsGetRequest { name: name.into(), offset, max_bytes };
         let request = options.context.request(value);
         let response = self
@@ -1016,10 +1017,10 @@ impl StatusLogs {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<LogsListResponse, RpcStatus> {
+    pub async fn list(&self) -> Result<LogsListResponse, tonic::Status> {
         self.list_with(StatusLogsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: StatusLogsListOptions) -> Result<LogsListResponse, RpcStatus> {
+    pub async fn list_with(&self, options: StatusLogsListOptions) -> Result<LogsListResponse, tonic::Status> {
         let value = LogsListRequest { at: options.at, page: options.page };
         let request = options.context.request(value);
         let response = self
@@ -1034,12 +1035,12 @@ impl StatusLogs {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn watch(&self, max_bytes: u64, max_events: u32) -> Result<Watching<LogsWatchResponse>, RpcStatus> {
+    pub async fn watch(&self, max_bytes: u64, max_events: u32) -> Result<Watching<LogsWatchResponse>, tonic::Status> {
         self.watch_with(max_bytes, max_events, StatusLogsWatchOptions::default()).await
     }
     pub async fn watch_with(
         &self, max_bytes: u64, max_events: u32, options: StatusLogsWatchOptions,
-    ) -> Result<Watching<LogsWatchResponse>, RpcStatus> {
+    ) -> Result<Watching<LogsWatchResponse>, tonic::Status> {
         let value = LogsWatchRequest { at: options.at, max_bytes, max_events };
         let request = options.context.request(value);
         let response = self
@@ -1063,10 +1064,10 @@ impl StatusTraceEvents {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<TraceEventsListResponse, RpcStatus> {
+    pub async fn list(&self) -> Result<TraceEventsListResponse, tonic::Status> {
         self.list_with(StatusTraceEventsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: StatusTraceEventsListOptions) -> Result<TraceEventsListResponse, RpcStatus> {
+    pub async fn list_with(&self, options: StatusTraceEventsListOptions) -> Result<TraceEventsListResponse, tonic::Status> {
         let value = TraceEventsListRequest { at: options.at, page: options.page };
         let request = options.context.request(value);
         let response = self
@@ -1081,12 +1082,12 @@ impl StatusTraceEvents {
         let response = response.into_inner();
         Ok(response)
     }
-    pub async fn watch(&self, max_bytes: u64, max_events: u32) -> Result<Watching<TraceEventsWatchResponse>, RpcStatus> {
+    pub async fn watch(&self, max_bytes: u64, max_events: u32) -> Result<Watching<TraceEventsWatchResponse>, tonic::Status> {
         self.watch_with(max_bytes, max_events, StatusTraceEventsWatchOptions::default()).await
     }
     pub async fn watch_with(
         &self, max_bytes: u64, max_events: u32, options: StatusTraceEventsWatchOptions,
-    ) -> Result<Watching<TraceEventsWatchResponse>, RpcStatus> {
+    ) -> Result<Watching<TraceEventsWatchResponse>, tonic::Status> {
         let value = TraceEventsWatchRequest { at: options.at, max_bytes, max_events };
         let request = options.context.request(value);
         let response = self
@@ -1110,10 +1111,10 @@ impl Streams {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn list(&self) -> Result<Vec<StreamIdentity>, RpcStatus> {
+    pub async fn list(&self) -> Result<Vec<StreamIdentity>, tonic::Status> {
         self.list_with(StreamsListOptions::default()).await
     }
-    pub async fn list_with(&self, options: StreamsListOptions) -> Result<Vec<StreamIdentity>, RpcStatus> {
+    pub async fn list_with(&self, options: StreamsListOptions) -> Result<Vec<StreamIdentity>, tonic::Status> {
         let value = StreamsListRequest { schema: options.schema };
         let request = options.context.request(value);
         let response = self
@@ -1137,10 +1138,10 @@ impl Time {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
     }
-    pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse, RpcStatus> {
+    pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse, tonic::Status> {
         self.sleep_with(duration, TimeSleepOptions::default()).await
     }
-    pub async fn sleep_with(&self, duration: Duration, options: TimeSleepOptions) -> Result<TimeSleepResponse, RpcStatus> {
+    pub async fn sleep_with(&self, duration: Duration, options: TimeSleepOptions) -> Result<TimeSleepResponse, tonic::Status> {
         let value = TimeSleepRequest { duration: Some(duration) };
         let request = options.context.request(value);
         let response = self
