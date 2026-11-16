@@ -24,6 +24,7 @@ from typing import cast
 import grpc
 from google.protobuf.descriptor_pb2 import FileDescriptorProto
 from google.protobuf.descriptor_pool import DescriptorPool
+from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import DecodeError, Message
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
@@ -44,8 +45,10 @@ from harmos._wire.plugin.v1.instance_pb2 import (
 )
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
+from harmos._wire.plugin.v1.stream_pb2 import Window as WireWindow
 
-from ._contracts import Operation, Stream, message_types
+from ._columns import batches, extract, transpose
+from ._contracts import Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
 
 # Local Imports
@@ -65,6 +68,7 @@ STARTED_AT.GetCurrentTime()
 # === Types === #
 
 type Observer = Callable[[Context], Awaitable[Message]]
+type WindowObserver = Callable[[Context, Window], Awaitable[Message]]
 type Producer = Callable[[Context, Publisher], Awaitable[None]]
 type Cleanup = Callable[[], Awaitable[None] | None]
 
@@ -99,13 +103,15 @@ class Plugin:
 
     def _registrations(
         self,
-    ) -> tuple[list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | Producer, bool]], list[Cleanup]]:
+    ) -> tuple[
+        list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]], list[Cleanup]
+    ]:
         # Preserve Declaration Order While Honoring Subclass Overrides.
         methods = {}
         for cls in reversed(type(self.instance).__mro__):
             methods.update(vars(cls))
         operations: list[tuple[Operation[Message, Message], Handler]] = []
-        streams: list[tuple[Stream, Observer | Producer, bool]] = []
+        streams: list[tuple[Stream, Observer | WindowObserver | Producer, bool]] = []
         cleanup: list[Cleanup] = []
         for name, method in methods.items():
             definition = getattr(method, "__harmos_operation__", None)
@@ -273,7 +279,7 @@ class _SamplesOutput:
 
     async def put(self, frame: InstanceInvokeResponse | _FaultError) -> None:
         if not self.active:
-            raise ProtocolError("Call Samples Child: Tick Already Answered")
+            raise ProtocolError("Call Samples Child: Window Already Answered")
         if isinstance(frame, _FaultError):
             await self.output.put(frame)
             return
@@ -306,7 +312,6 @@ class _SamplesScope:
         self.context: Context | None = None
         self.next = [0]
         self.retired: set[int] = set()
-        self.sequence = 0
 
 
 class _Service:
@@ -394,10 +399,10 @@ class _Service:
         definition, handler, observing = registered
         await context.send_initial_metadata(())
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
-        ticks: Queue[tuple[Timestamp, Context]] = Queue(maxsize=1)
+        windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
         scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, self.local)
-        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, ticks, output))
-        running = asyncio.create_task(_produce(handler, scope, definition.row, observing, ticks, output))
+        reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output))
+        running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
         sequence = 0
         try:
             while True:
@@ -500,7 +505,7 @@ async def _read_publish(
     input: AsyncIterator[InstanceSamplesRequest],
     observing: bool,
     scope: _SamplesScope,
-    ticks: Queue[tuple[Timestamp, Context]],
+    windows: Queue[tuple[Window, Context]],
     output: Queue[Sample | InstanceSamplesResponse | _FaultError | None],
 ) -> None:
     try:
@@ -508,55 +513,89 @@ async def _read_publish(
             kind = frame.WhichOneof("frame")
             if kind == "child":
                 if scope.context is None:
-                    raise ProtocolError("Reply to Samples Child: Unanswered Tick Required")
+                    raise ProtocolError("Reply to Samples Child: Unanswered Window Required")
                 await scope.context._reply(frame.child)
                 continue
-            if kind != "tick":
-                raise ProtocolError("Read Samples: Expected Tick or Child Reply")
+            if kind != "window":
+                raise ProtocolError("Read Samples: Expected Window or Child Reply")
             if not observing:
-                raise ProtocolError("Read Samples: Device Streams Do Not Accept Ticks")
+                raise ProtocolError("Read Samples: Device Streams Do Not Accept Windows")
             if scope.context is not None:
-                raise ProtocolError("Read Samples: Previous Tick Is Unanswered")
-            if not frame.tick.HasField("at"):
-                raise ProtocolError("Read Samples: Tick Time Required")
-            validate_timestamp(frame.tick.at)
-            scope.sequence += 1
+                raise ProtocolError("Read Samples: Previous Window Is Unanswered")
+            window = _window(frame.window)
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires, _SamplesOutput(output))
-            execution.sequence = scope.sequence
+            execution.sequence = window.sequence
             execution._next = scope.next
             execution._retired = scope.retired
             execution._local = scope.local
             scope.context = execution
-            await ticks.put((frame.tick.at, execution))
+            await windows.put((window, execution))
         await output.put(None)
     except ProtocolError as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
 
 
+def _window(window: WireWindow) -> Window:
+    if not window.HasField("start"):
+        raise ProtocolError("Read Samples: Window Start Time Required")
+    validate_timestamp(window.start)
+    period = window.period
+    if (
+        not window.HasField("period")
+        or not 0 <= period.seconds <= 315_576_000_000
+        or not 0 <= period.nanos < 1_000_000_000
+        or period.seconds == 0
+        and period.nanos == 0
+    ):
+        raise ProtocolError("Read Samples: Window Period Must Be a Positive Duration")
+    if window.count == 0:
+        raise ProtocolError("Read Samples: Window Count Must Be at Least One")
+    start = Timestamp()
+    start.CopyFrom(window.start)
+    period = Duration()
+    period.CopyFrom(window.period)
+    return Window(start, period, window.count, window.sequence)
+
+
 async def _produce(
-    handler: Observer | Producer,
+    handler: Observer | WindowObserver | Producer,
     scope: _SamplesScope,
-    row_type: type[Message],
+    definition: Stream,
     observing: bool,
-    ticks: Queue[tuple[Timestamp, Context]],
+    windows: Queue[tuple[Window, Context]],
     output: Queue[Sample | InstanceSamplesResponse | _FaultError | None],
+    limit: int,
 ) -> None:
     try:
         if not observing:
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
-            await cast(Producer, handler)(execution, Publisher(row_type, output))
+            await cast(Producer, handler)(execution, Publisher(definition.row, output))
             return
         while True:
-            at, execution = await ticks.get()
-            row = await cast(Observer, handler)(execution)
-            if not isinstance(row, row_type):
-                raise TypeError("Answer Samples Tick: Observer Returned the Wrong Protobuf Type")
-            await execution._cancel("Samples Tick Answered")
+            window, execution = await windows.get()
+            if definition.columns is None:
+                rows = []
+                for index in range(window.count):
+                    execution.sequence = window.sequence + index
+                    row = await cast(Observer, handler)(execution)
+                    if not isinstance(row, definition.row):
+                        raise TypeError("Answer Samples Window: Observer Returned the Wrong Protobuf Type")
+                    rows.append(row)
+                columns = transpose(definition.row, rows)
+            else:
+                result = await cast(WindowObserver, handler)(execution, window)
+                if not isinstance(result, definition.columns):
+                    raise TypeError("Answer Samples Window: Window Observer Returned the Wrong Columns Type")
+                columns = extract(definition.row, result, window.count)
+            parts = batches(definition.row, columns, window.count, limit)
+            await execution._cancel("Samples Window Answered")
             if isinstance(execution._output, _SamplesOutput):
                 execution._output.active = False
             execution._output = None
-            scope.context = None
-            await output.put(Sample(at=at, row=row.SerializeToString()))
+            for part in parts:
+                if part.last:
+                    scope.context = None
+                await output.put(InstanceSamplesResponse(batch=part))
     except ProtocolError as error:
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
     except Exception as error:

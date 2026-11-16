@@ -137,7 +137,7 @@ class Context:
 
     async def call[Q: Message, R: Message](self, operation: Operation[Q, R], request: Q, *, policy: OperationPolicy | None = None) -> R:
         if self._output is None:
-            raise ValueError(f"Call {operation.id}: No Active Invocation or Unanswered Tick")
+            raise ValueError(f"Call {operation.id}: No Active Invocation or Unanswered Window")
         if operation.watch:
             raise ValueError(f"Call {operation.id}: Use Watch for a Streaming Contract")
         if not isinstance(request, operation.request):

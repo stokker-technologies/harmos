@@ -21,13 +21,14 @@ from google.protobuf.descriptor import Descriptor, EnumDescriptor
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorProto, FileDescriptorSet
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos._wire.model.v1.operation_pb2 import OperationContract, Visibility
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.stream_pb2 import StreamDeclaration
 
 # Local Imports
-
+from ._columns import check_columns, columns_type
 
 # Type Checking Imports
 
@@ -81,6 +82,8 @@ class Stream:
     interval: Duration | None = None
     interval_setting: str = ""
     description: str = ""
+    window_setting: str = ""
+    columns: type[Message] | None = None
 
     def declaration(self) -> StreamDeclaration:
         return StreamDeclaration(
@@ -89,7 +92,18 @@ class Stream:
             interval=self.interval,
             interval_setting=self.interval_setting,
             description=self.description,
+            window_setting=self.window_setting,
         )
+
+
+@dataclass(frozen=True)
+class Window:
+    """One Granted Interval Window: `count` Samples From `start`, One `period` Apart."""
+
+    start: Timestamp
+    period: Duration
+    count: int
+    sequence: int
 
 
 # === Public Functions === #
@@ -115,9 +129,39 @@ def operation[Q: Message, R: Message, F: Callable](
 
 
 def observer[F: Callable](
-    id: str, *, row: type[Message], interval: Duration | None = None, interval_setting: str = "", description: str = ""
+    id: str,
+    *,
+    row: type[Message],
+    interval: Duration | None = None,
+    interval_setting: str = "",
+    window_setting: str = "",
+    description: str = "",
 ) -> Callable[[F], F]:
-    definition = Stream(id, row, interval, interval_setting, description)
+    """Declare a One-Sample Observer, Called Once per Sample of Each Granted Window."""
+    columns_type(row, id)
+    definition = Stream(id, row, interval, interval_setting, description, window_setting)
+
+    def decorate(handler: F) -> F:
+        handler.__dict__["__harmos_observer__"] = definition
+        return handler
+
+    return decorate
+
+
+def window_observer[F: Callable](
+    id: str,
+    *,
+    row: type[Message],
+    columns: type[Message],
+    interval: Duration | None = None,
+    interval_setting: str = "",
+    window_setting: str = "",
+    description: str = "",
+) -> Callable[[F], F]:
+    """Declare an Observer That Answers a Whole Granted Window With Its Columns."""
+    columns_type(row, id)
+    check_columns(row, columns, id)
+    definition = Stream(id, row, interval, interval_setting, description, window_setting, columns)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_observer__"] = definition

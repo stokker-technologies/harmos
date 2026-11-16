@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Observer Children Stay Within One Tick and Share Its Scope."""
+"""Observer Children Stay Within One Window and Share Its Scope."""
 
 # === Imports === #
 
@@ -41,8 +41,9 @@ from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
-from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Tick
+from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
 from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, publisher
+from tests.fixtures.conformance import Values
 
 # Type Checking Imports
 
@@ -102,8 +103,8 @@ class Reader:
         await context.cancelled()
 
 
-class TickChildren(IsolatedAsyncioTestCase):
-    async def test_observer_children_keep_tick_scope_and_reject_invalid_traffic(self) -> None:
+class WindowChildren(IsolatedAsyncioTestCase):
+    async def test_observer_children_keep_window_scope_and_reject_invalid_traffic(self) -> None:
         # Declare Typed Settings and Serve the Observer.
         reader = Reader()
         declaration = SettingDeclaration(name="interval", default=SettingValue(duration=Duration(seconds=2)))
@@ -127,22 +128,21 @@ class TickChildren(IsolatedAsyncioTestCase):
         stream = host.Samples()
         await stream.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
         at = Timestamp(seconds=100)
-        await stream.write(InstanceSamplesRequest(tick=Tick(at=at)))
+        await stream.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         first = (await stream.read()).child
         second = (await stream.read()).child
         self.assertNotEqual(first.call, second.call)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=second.call, payload=second.payload)))
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=first.call, payload=first.payload)))
-        sample = (await stream.read()).samples[0]
-        self.assertEqual(BytesValue.FromString(sample.row).value, b"firstsecondselected")
-        self.assertEqual(sample.at, at)
-        self.assertEqual(sample.sequence, 1)
+        self.assertEqual((await stream.read()).batch, SampleBatch(count=1, columns=_columns(b"firstsecondselected"), last=True))
         assert reader.escaped is not None
         with self.assertRaises(ValueError):
             await reader.escaped.call(ECHO, BytesValue())
 
-        # Settings and the Controlled Host Clock Drive the Next Tick's Watch.
-        await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=101))))
+        # Settings and the Controlled Host Clock Drive the Next Window's Watch.
+        await stream.write(
+            InstanceSamplesRequest(window=Window(start=Timestamp(seconds=101), period=Duration(seconds=1), count=1, sequence=2))
+        )
         child = (await stream.read()).child
         self.assertGreater(child.call, max(first.call, second.call))
         self.assertEqual(child.operation, HostOperation.PLUGINS_SETTINGS_LIST.value)
@@ -177,22 +177,25 @@ class TickChildren(IsolatedAsyncioTestCase):
             InstanceSamplesRequest(child=ChildResponse(call=child.call, item=BytesValue(value=b"observed").SerializeToString()))
         )
         self.assertEqual((await stream.read()).child_cancel.call, child.call)
-        sample = (await stream.read()).samples[0]
-        self.assertEqual(BytesValue.FromString(sample.row).value, b"observed" + at.seconds.to_bytes(8, "little"))
-        self.assertEqual(sample.sequence, 2)
+        batch = (await stream.read()).batch
+        self.assertEqual(batch, SampleBatch(count=1, columns=_columns(b"observed" + at.seconds.to_bytes(8, "little")), last=True))
 
-        # Answering a Tick Retires Outstanding Calls Before the Sample.
-        await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=102))))
+        # Answering a Window Retires Outstanding Calls Before Its Last Part.
+        await stream.write(
+            InstanceSamplesRequest(window=Window(start=Timestamp(seconds=102), period=Duration(seconds=1), count=1, sequence=3))
+        )
         pending = (await stream.read()).child
         reader.answer.set()
         self.assertEqual((await stream.read()).child_cancel.call, pending.call)
-        self.assertEqual(BytesValue.FromString((await stream.read()).samples[0].row).value, b"answered")
+        self.assertEqual((await stream.read()).batch.columns, _columns(b"answered"))
         assert reader.pending is not None
         with self.assertRaises(Failure):
             await reader.pending
 
-        # A Late Retired Reply Cannot Corrupt the Next Tick or Its Failure.
-        await stream.write(InstanceSamplesRequest(tick=Tick(at=Timestamp(seconds=103))))
+        # A Late Retired Reply Cannot Corrupt the Next Window or Its Failure.
+        await stream.write(
+            InstanceSamplesRequest(window=Window(start=Timestamp(seconds=103), period=Duration(seconds=1), count=1, sequence=4))
+        )
         child = (await stream.read()).child
         self.assertGreater(child.call, pending.call)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=pending.call, payload=b"")))
@@ -206,11 +209,11 @@ class TickChildren(IsolatedAsyncioTestCase):
             diagnostics="details",
         )
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
-        self.assertEqual(WireFailure.FromString(BytesValue.FromString((await stream.read()).samples[0].row).value), failure)
+        self.assertEqual(WireFailure.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
         await stream.done_writing()
         self.assertIs(await stream.read(), EOF)
 
-        # Refuse Child Replies Without an Unanswered Tick, Including Device Demand.
+        # Refuse Child Replies Without an Unanswered Window, Including Device Demand.
         for name in ("example.readings", "example.device"):
             invalid = host.Samples()
             await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream=name)))
@@ -225,7 +228,7 @@ class TickChildren(IsolatedAsyncioTestCase):
         for duplicate in (False, True):
             invalid = host.Samples()
             await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
-            await invalid.write(InstanceSamplesRequest(tick=Tick(at=at)))
+            await invalid.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
             first = (await invalid.read()).child
             second = (await invalid.read()).child
             reply = InstanceSamplesRequest(child=ChildResponse(call=first.call, payload=first.payload))
@@ -238,13 +241,13 @@ class TickChildren(IsolatedAsyncioTestCase):
                 await invalid.read()
             self.assertEqual(error.exception.code(), StatusCode.INVALID_ARGUMENT)
 
-        # A Second Tick Cannot Overwrite the Unanswered Tick's Context.
+        # A Second Window Cannot Overwrite the Unanswered Window's Context.
         invalid = host.Samples()
         await invalid.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
-        await invalid.write(InstanceSamplesRequest(tick=Tick(at=at)))
+        await invalid.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await invalid.read()
         await invalid.read()
-        await invalid.write(InstanceSamplesRequest(tick=Tick(at=at)))
+        await invalid.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=2)))
         with self.assertRaises(AioRpcError) as error:
             await invalid.read()
         self.assertEqual(error.exception.code(), StatusCode.INVALID_ARGUMENT)
@@ -252,7 +255,7 @@ class TickChildren(IsolatedAsyncioTestCase):
         # Closing Demand Settles the Active Context and Its Outstanding Children.
         closing = host.Samples()
         await closing.write(InstanceSamplesRequest(open=SamplesSelection(stream="example.readings", scope="selected")))
-        await closing.write(InstanceSamplesRequest(tick=Tick(at=at)))
+        await closing.write(InstanceSamplesRequest(window=Window(start=at, period=Duration(seconds=1), count=1, sequence=1)))
         await closing.read()
         await closing.read()
         active = reader.escaped
@@ -272,5 +275,10 @@ class TickChildren(IsolatedAsyncioTestCase):
 # === Public Functions === #
 
 # === Private Functions === #
+
+
+def _columns(value: bytes) -> bytes:
+    return Values(value=[value]).SerializeToString()
+
 
 # === Entry Point === #
