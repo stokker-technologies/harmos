@@ -16,21 +16,26 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{path::PathBuf, time::Duration};
 
 // Third Party Imports
 
 // Local Imports
 use super::{
     invoke_support::pending,
-    support::{self, Manual, Remote},
+    support::{self, App, Manual, Remote},
 };
 use harmos_runtime::{
+    Runtime,
     clock::{Clock, Source as _},
-    operations::{NativeOperation, OperationPolicy},
-    plugin::grpc::{Error, Load, LoadOptions, Placement},
+    operations::OperationPolicy,
+    plugin::grpc::{Error, GrpcPluginPolicy, GrpcPluginSettings, LoadOptions, Managed, Placement},
 };
 
 /* === Constants === */
+
+/// The Configured Startup Deadline, Shorter Than the Declared Default, So the Stories Prove Configuration Is Read.
+const LOAD: Duration = Duration::from_secs(10);
 
 /* === Macros === */
 
@@ -38,29 +43,80 @@ use harmos_runtime::{
 
 /* === Structs === */
 
+/// Releases a Hung Spawn's Blocked Read When Dropped, So No Blocking Read Outlives the Story.
+#[cfg(windows)]
+struct Hung(#[allow(dead_code)] tokio::net::windows::named_pipe::NamedPipeServer);
+
+/// Releases a Hung Spawn's Blocked Read When Dropped, So No Blocking Read Outlives the Story.
+#[cfg(unix)]
+struct Hung {
+    fifo: PathBuf,
+    _directory: tempfile::TempDir,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
+#[cfg(unix)]
+impl Drop for Hung {
+    fn drop(&mut self) {
+        // Opening Both Ends Never Blocks; Closing Them Gives the Blocked Reader Its End of File.
+        let _ = std::fs::OpenOptions::new().read(true).write(true).open(&self.fifo);
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
 
+/// A Runtime on `source` Whose Plugin Loads Are Configured With a `LOAD` Deadline.
+async fn configured(source: &Manual) -> Runtime<App> {
+    let clock = Clock::with_clock(source.clone());
+    crate::support::booted(Default::default(), |setup| {
+        let load = OperationPolicy {
+            timeout: LOAD,
+            attempt_timeout: LOAD,
+            ..GrpcPluginPolicy::default().load
+        };
+        setup.settings().clock(clock).grpc_plugin_settings(GrpcPluginSettings {
+            policy: GrpcPluginPolicy { load },
+        });
+    })
+    .await
+}
+
+/// An Executable Path Whose Read Blocks Until the Returned Guard Is Dropped: a Plugin Whose Spawn Hangs.
+#[cfg(windows)]
+fn hung_executable() -> (PathBuf, Hung) {
+    let name = format!(r"\\.\pipe\harmos-hung-spawn-{}", std::process::id());
+    let server = tokio::net::windows::named_pipe::ServerOptions::new().first_pipe_instance(true).create(&name).unwrap();
+    (PathBuf::from(name), Hung(server))
+}
+
+/// An Executable Path Whose Read Blocks Until the Returned Guard Is Dropped: a Plugin Whose Spawn Hangs.
+#[cfg(unix)]
+fn hung_executable() -> (PathBuf, Hung) {
+    let directory = tempfile::tempdir().unwrap();
+    let fifo = directory.path().join("hung-plugin");
+    assert!(std::process::Command::new("mkfifo").arg(&fifo).status().unwrap().success(), "Create the Hung Executable");
+    (fifo.clone(), Hung { fifo, _directory: directory })
+}
+
 /* === Tests === */
 
 #[tokio::test]
-async fn a_slow_plugin_misses_the_load_deadline_and_a_per_call_override_lets_it_start() {
+async fn a_slow_plugin_misses_the_configured_load_deadline_and_a_per_call_override_lets_it_start() {
     // A Remote Plugin That Describes Itself Only When the Story Releases It, on a Controlled Host Clock.
     let source = Manual::new();
-    let runtime = support::runtime(Some(Clock::with_clock(source.clone()))).await;
+    let runtime = configured(&source).await;
     let remote = Remote::start().await;
-    let policy = <Load as NativeOperation>::POLICY;
 
-    // Under the Operation's Own Policy, the Load Ends at Its Deadline and Names the Plugin.
+    // Under the Configured Policy, the Load Ends at Its Deadline and Names the Plugin.
     let (mut entered, _held) = remote.delay_description();
-    let deadline = source.read().instant + policy.timeout;
+    let deadline = source.read().instant + LOAD;
     let attaching = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings());
     tokio::pin!(attaching);
     tokio::select! {
@@ -73,24 +129,24 @@ async fn a_slow_plugin_misses_the_load_deadline_and_a_per_call_override_lets_it_
         _ = &mut attaching => panic!("Keep Loading Until the Deadline"),
         () = source.registered_at(deadline) => {},
     }
-    source.advance_by(policy.timeout);
+    source.advance_by(LOAD);
     let refused = attaching.await;
     assert!(
         matches!(
             &refused,
-            Err(Error::LoadDeadline { plugin, timeout, configured_by: "operation policy.timeout" })
-                if *plugin == remote.address && *timeout == policy.timeout
+            Err(Error::LoadDeadline { plugin, timeout, configured_by: "GrpcPluginSettings.policy.load" })
+                if *plugin == remote.address && *timeout == LOAD
         ),
-        "Fail the Load at the Operation's Deadline: {:?}",
+        "Fail the Load at the Configured Deadline: {:?}",
         refused.err()
     );
 
-    // A Longer Deadline for This One Load Lets the Same Slow Start Finish Past the Policy's Deadline.
+    // A Longer Deadline for This One Load Lets the Same Slow Start Finish Past the Configured Deadline.
     let (mut entered, release) = remote.delay_description();
     let overridden = OperationPolicy {
-        timeout: policy.timeout * 4,
-        attempt_timeout: policy.timeout * 4,
-        ..policy
+        timeout: LOAD * 4,
+        attempt_timeout: LOAD * 4,
+        ..GrpcPluginPolicy::default().load
     };
     let options = LoadOptions { policy: Some(overridden) };
     let attaching = runtime.attach_grpc_with(Placement::Remote(remote.address.clone()), support::settings(), options);
@@ -100,11 +156,48 @@ async fn a_slow_plugin_misses_the_load_deadline_and_a_per_call_override_lets_it_
         _ = &mut attaching => panic!("Load Only Once the Plugin Describes Itself"),
         entered = &mut entered => entered.unwrap(),
     }
-    source.advance_by(policy.timeout * 2);
-    assert!(pending(attaching.as_mut()).await, "Keep Loading Past the Policy's Deadline Under the Override");
+    source.advance_by(LOAD * 2);
+    assert!(pending(attaching.as_mut()).await, "Keep Loading Past the Configured Deadline Under the Override");
     release.send(()).unwrap();
     let attached = attaching.await.unwrap();
     assert!(attached.activation().is_some(), "Start the Plugin Within the Overridden Deadline");
     attached.stop("Story Complete").await.unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
+    // A Managed Plugin Whose Executable Never Finishes Reading, on a Controlled Host Clock.
+    let source = Manual::new();
+    let runtime = configured(&source).await;
+    let (executable, hung) = hung_executable();
+    let placement = Placement::Managed(Managed {
+        executable: executable.clone(),
+        arguments: Vec::new(),
+        environment: Default::default(),
+    });
+
+    // Spawning Is Part of the Load, So the Load's Deadline Ends the Hung Spawn Instead of Waiting Forever.
+    let deadline = source.read().instant + LOAD;
+    let attaching = runtime.attach_grpc(placement, support::settings());
+    tokio::pin!(attaching);
+    tokio::select! {
+        biased;
+        _ = &mut attaching => panic!("Keep Spawning Until the Deadline"),
+        () = source.registered_at(deadline) => {},
+    }
+    source.advance_by(LOAD);
+    let refused = attaching.await;
+    assert!(
+        matches!(
+            &refused,
+            Err(Error::LoadDeadline { plugin, timeout, .. }) if *plugin == executable.display().to_string() && *timeout == LOAD
+        ),
+        "Fail the Hung Spawn at the Load Deadline, Naming the Plugin: {:?}",
+        refused.err()
+    );
+
+    // Releasing the Blocked Read Lets the Abandoned Spawn End Before the Host Shuts Down.
+    drop(hung);
     runtime.shutdown().await.unwrap();
 }

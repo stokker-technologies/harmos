@@ -57,7 +57,8 @@ consumer can use these fields for actionable errors without parsing prose.
 
 Deadline refusals name the operation, one-based attempt, applied budget and its
 configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`,
-a per-call policy override or a per-call gRPC deadline override). For example: `host call refused (-32607):
+a configured policy such as `GrpcPluginSettings.policy.load`, a per-call policy override
+or a per-call gRPC deadline override). For example: `host call refused (-32607):
 operation connectivity.grpc_wait_until_grpc_ready attempt 1 exceeded its 10 s deadline
 (configured by operation policy.attempt_timeout)`. Cancellation refusals also name
 the operation and attempt. Retry exhaustion preserves the last attempt failure;
@@ -1185,10 +1186,12 @@ interval_lag }` with positive durations and a nonzero retained-row budget per st
 shutdown budgets use the host's clock. A plugin's startup deadline is the deadline of
 the `plugins.load` operation (`plugin::grpc::Load`) that loads and initializes it:
 attaching, a managed entry's start or replacement, every reconnect attempt and each
-scoped sample start run one load under its policy on the host's clock. Pass
-`LoadOptions { policy }` to `Runtime::attach_grpc_with` to replace that policy for one
-load; a later reconnect uses the operation's policy again. A missed deadline fails with
-`Error::LoadDeadline`, naming the plugin, the applied timeout and its source.
+scoped sample start run one load, spawning included, on the host's clock. Configure its
+policy with `Builder::grpc_plugin_settings(GrpcPluginSettings { policy: GrpcPluginPolicy
+{ load } })`; it defaults to the operation's declared policy. Pass `LoadOptions { policy }`
+to `Runtime::attach_grpc_with` to replace it for one direct load; a later reconnect uses
+the configured policy again. A missed deadline fails with `Error::LoadDeadline`, naming
+the plugin, the applied timeout and its source.
 Stopping settles bindings within `stop_grace`, then gives Stop and the requested exit a fresh
 `stop_grace` before a managed child is killed and reaped within another; see
 [Managed Process Ownership](architecture.md#managed-process-ownership).

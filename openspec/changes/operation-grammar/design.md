@@ -1672,19 +1672,24 @@ converted; use a fresh storage root.
 Owner decision, 2026-11-16: a plugin's startup timeout is the deadline of the
 operation that loads and initializes the plugin. It is neither a per-plugin
 preference nor a value fixed when the plugin manager is built. The native operation
-`plugins.load` (`plugin::grpc::Load`) owns it: its declared policy supplies the
-deadline like every other operation deadline, and the host executor enforces it on
-the runtime clock. A caller may replace the policy for one load through
+`plugins.load` (`plugin::grpc::Load`) owns it. Its policy comes only from operation
+policy and configuration: the runtime's `GrpcPluginSettings::policy.load`
+(`Builder::grpc_plugin_settings`), mirroring `StorageSettings::policy`, defaults to the
+operation's declared policy, its one default. The host executor enforces it on the
+runtime clock. A direct caller may replace it for one load through
 `Runtime::attach_grpc_with(placement, settings, LoadOptions { policy })`; later loads,
-reconnects included, use the operation's policy again. Attaching, a managed entry's
-start and replacement, each reconnect attempt and each scoped sample start run one
-load; `PlacementSettings::connect_timeout` is deleted. Spawning a managed process
-stays outside the load so every forked child reaches its owner, which still
-terminates and reaps it when the load misses its deadline or is cancelled. A missed
-deadline fails with `Error::LoadDeadline { plugin, timeout, configured_by }`, naming
-the plugin (its entry name, executable or address) and the action.
-`plugin_grpc::plugin_load` proves a slow plugin missing the deadline and a per-call
-override letting the same plugin start.
+reconnects included, use the configured policy again. Attaching, a plugin manager
+entry's start and replacement, each reconnect attempt and each scoped sample start run
+one load under it; `PlacementSettings::connect_timeout` is deleted. Spawning a managed
+process is part of the load, so a spawn that hangs fails at the deadline; the load keeps
+the process with its owner, which terminates and reaps it when the load misses its
+deadline or is cancelled, and a child forked after the load ended is killed and reaped
+where the spawner drops it. A missed deadline fails with
+`Error::LoadDeadline { plugin, timeout, configured_by }`, naming the plugin (its entry
+name, executable or address), the applied timeout, its source and the action.
+`plugin_grpc::plugin_load` proves a slow plugin missing the configured deadline, a
+per-call override letting the same plugin start, and a hung spawn failing at the
+deadline.
 
 ### Storage Lifecycle Operations (Parked)
 

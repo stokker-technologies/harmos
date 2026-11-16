@@ -136,6 +136,7 @@ pub struct Builder<A: Application> {
     lanes: LaneSet,
     operations: Vec<crate::operations::CatalogBinding>,
     operation_settings: crate::operations::Settings,
+    grpc_plugins: crate::plugin::grpc::GrpcPluginSettings,
     schema_settings: Arc<crate::config::SchemaSettings>,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
     callers: std::collections::BTreeMap<String, WireCallers>,
@@ -409,6 +410,7 @@ impl<A: Application> Runtime<A> {
             lanes: LaneSet::default(),
             operations: Vec::new(),
             operation_settings: crate::operations::Settings::default(),
+            grpc_plugins: Default::default(),
             schema_settings: Arc::new(crate::config::SchemaSettings::default()),
             operation_middleware: Vec::new(),
             callers: std::collections::BTreeMap::new(),
@@ -650,6 +652,12 @@ impl<A: Application> Builder<A> {
 
     pub fn operation_settings(&mut self, settings: crate::operations::Settings) -> &mut Self {
         self.operation_settings = settings;
+        self
+    }
+
+    /// Configure the gRPC Plugin Operations' Policies, Such as the `plugins.load` Startup Deadline.
+    pub fn grpc_plugin_settings(&mut self, settings: crate::plugin::grpc::GrpcPluginSettings) -> &mut Self {
+        self.grpc_plugins = settings;
         self
     }
 
@@ -924,6 +932,7 @@ impl<A: Application> Builder<A> {
             lanes,
             operations: bindings,
             operation_settings,
+            grpc_plugins,
             schema_settings,
             operation_middleware,
             callers,
@@ -1015,7 +1024,15 @@ impl<A: Application> Builder<A> {
             }
         }
         let operations =
-            crate::operations::Manager::new::<A>(instances, &operation_settings, reserved, boot.identity.clone(), schema_settings, callers)
+            crate::operations::Manager::new::<A>(
+                instances,
+                &operation_settings,
+                &grpc_plugins,
+                reserved,
+                boot.identity.clone(),
+                schema_settings,
+                callers,
+            )
                 .map_err(Incompatible::work)?;
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;

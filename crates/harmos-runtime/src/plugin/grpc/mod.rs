@@ -22,7 +22,7 @@ pub(crate) mod samples;
 mod scoped;
 /* === Re-Exports === */
 
-pub use config::{IntervalLag, PlacementSettings};
+pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings};
 pub use harmos_protocol::model;
 pub use invoke::CallError;
 pub use load::{Load, LoadOptions};
@@ -246,10 +246,10 @@ impl<A: Application> Runtime<A> {
         if participant.is_stopping() {
             return Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into()));
         }
-        // Spawning Is Never Raced Against Shutdown, So Every Forked Child Reaches This Owner.
-        let process = Process::spawn(&managed, self.stop_participant()).await?;
-        // The Load Borrows the Process From Here, So a Load Its Deadline Ends Still Returns It to This Owner.
-        let spawned = Arc::new(tokio::sync::Mutex::new(Some(process)));
+        // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
+        // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
+        let spawned = Arc::new(tokio::sync::Mutex::new(None));
+        let process_participant = self.stop_participant();
         let stage = {
             let spawned = spawned.clone();
             let operations = operations.clone();
@@ -259,7 +259,7 @@ impl<A: Application> Runtime<A> {
             let name = name.clone();
             async move {
                 let mut held = spawned.lock().await;
-                let process = held.as_mut().expect("the spawned process is held until the load ends");
+                let process = held.insert(Process::spawn(&managed, process_participant).await?);
                 let address = process.ready(&managed).await?;
                 let mut activation =
                     connect(&clock, &address, 1, None, Some(process.digest), operations.transfer_message_bytes().get()).await?;
@@ -281,17 +281,19 @@ impl<A: Application> Runtime<A> {
             result = load::load(&operations, &name, LoadOptions::default(), stage) => result,
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
-        let mut process = spawned.lock().await.take().expect("the spawned process returns to its owner");
+        let mut process = spawned.lock().await.take();
         match result {
             Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
-                process: Some(process),
+                process,
                 address,
                 activation,
                 admission,
                 publications,
             }),
             Err(error) => {
-                process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                if let Some(process) = &mut process {
+                    process.terminate(clock, settings.stop_grace, "Stop Failed Replacement Startup").await?;
+                }
                 Err(error)
             }
         }
@@ -443,15 +445,9 @@ impl Attached {
             (None, Placement::Managed(managed)) => managed.executable.display().to_string(),
             (None, Placement::Remote(address)) => address.clone(),
         };
-        // Spawning Is Never Raced Against Cancellation, So Every Forked Child Reaches This Owner.
-        let process = match &placement {
-            Placement::Managed(managed) => {
-                Some(Process::spawn(managed, process_participant.take().expect("managed process participant")).await?)
-            }
-            Placement::Remote(_) => None,
-        };
-        // The Load Borrows the Process From Here, So a Load Its Deadline Ends Still Returns It to This Owner.
-        let spawned = Arc::new(tokio::sync::Mutex::new(process));
+        // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
+        // Owner; a Child Forked After the Load Ended Is Killed and Reaped Where the Spawner Drops It.
+        let spawned = Arc::new(tokio::sync::Mutex::new(None));
         let setup = {
             let spawned = spawned.clone();
             let operations = operations.clone();
@@ -462,7 +458,10 @@ impl Attached {
             async move {
                 let mut process = spawned.lock().await;
                 let address = match &placement {
-                    Placement::Managed(managed) => process.as_mut().expect("spawned process").ready(managed).await?,
+                    Placement::Managed(managed) => {
+                        let participant = process_participant.take().expect("managed process participant");
+                        process.insert(Process::spawn(managed, participant).await?).ready(managed).await?
+                    }
                     Placement::Remote(address) => address.clone(),
                 };
                 let mut activation = connect(

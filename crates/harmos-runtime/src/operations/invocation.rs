@@ -77,7 +77,7 @@ struct NativeRequest<'a, P> {
     target: &'a Target,
     request: Box<dyn Any + Send>,
     retry: Option<super::RetryPolicy>,
-    policy: Option<super::OperationPolicy>,
+    policy: Option<(super::OperationPolicy, &'static str)>,
     endpoints: P,
     factory: OperationFactory,
     erase: fn(P) -> Box<dyn Any + Send>,
@@ -121,14 +121,16 @@ impl super::Manager {
     pub fn submit_native<O: NativeOperation>(&self, request: O::Request, endpoints: O::Endpoints) -> crate::Result<NativeInvocation<O>> {
         self.submit_native_as::<O>(request, endpoints, super::caller::Source::Host, None)
     }
-    /// Submit as Host With `policy` Replacing the Operation's Policy for This Invocation Only.
+    /// Submit as Host With `policy` Replacing the Operation's Policy for This Invocation; Its Source Names It.
     pub(crate) fn submit_native_with<O: NativeOperation<Endpoints = ()>>(
-        &self, request: O::Request, policy: Option<super::OperationPolicy>,
+        &self, request: O::Request, policy: (super::OperationPolicy, &'static str),
     ) -> crate::Result<NativeInvocation<O>> {
+        let policy = Some(policy);
         self.submit_native_as::<O>(request, (), super::caller::Source::Host, policy)
     }
     pub(super) fn submit_native_as<O: NativeOperation>(
-        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source, policy: Option<super::OperationPolicy>,
+        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source,
+        policy: Option<(super::OperationPolicy, &'static str)>,
     ) -> crate::Result<NativeInvocation<O>> {
         let target = Target::native::<O>().map_err(|source| crate::Error::OperationFailed {
             operation: O::ID.into(),
@@ -447,7 +449,8 @@ fn admit_native_as<P: Send + 'static>(
         memory,
     });
     input.retry = retry;
-    input.policy = policy;
+    input.policy = policy.map(|(policy, _)| policy);
+    input.policy_source = policy.map(|(_, source)| source);
     input.binding = Some(Arc::new(binding));
     input.grant = grant;
     let running = manager.admit_at::<NativeCall, P>(target.id, (input, endpoints), scope, ancestors, source, None)?;

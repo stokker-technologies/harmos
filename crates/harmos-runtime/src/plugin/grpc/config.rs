@@ -44,6 +44,19 @@ pub struct PlacementSettings {
     pub interval_lag: IntervalLag,
 }
 
+/// Runtime Configuration of gRPC Plugins, Like `StorageSettings`: the Policies of Their Operations.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GrpcPluginSettings {
+    pub policy: GrpcPluginPolicy,
+}
+
+/// The Policies of the gRPC Plugin Operations; a Direct Caller May Still Override One Call.
+#[derive(Clone, Copy, Debug)]
+pub struct GrpcPluginPolicy {
+    /// Loading and Initializing One Plugin (`plugins.load`): Its Timeout Is the Plugin's Startup Deadline.
+    pub load: crate::operations::OperationPolicy,
+}
+
 /// The Lag an Interval Demand Tolerates Past a Window's End, in Lengths of That Stream's Window.
 ///
 /// A host that cannot keep up with a stream's declared rate grants ever longer windows; once one
@@ -56,6 +69,15 @@ pub struct IntervalLag(NonZeroU32);
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Default for GrpcPluginPolicy {
+    /// The Declared Policy of Each Operation.
+    fn default() -> Self {
+        Self {
+            load: <super::Load as crate::operations::NativeOperation>::POLICY,
+        }
+    }
+}
 
 impl IntervalLag {
     pub const fn new(windows: NonZeroU32) -> Self {

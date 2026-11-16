@@ -1466,7 +1466,7 @@ binding reports the transport failure. A settlement failure is logged with its
 action on every ending, returned by `stop()` after a Stop request and kept in a
 remote attachment's disconnected status. Remote attachments continue reconnecting
 under the placement policy. Each reconnect attempt, including opening its
-publications, is one `plugins.load` under that operation's own policy, and stop
+publications, is one `plugins.load` under the configured `GrpcPluginSettings::policy.load`, and stop
 interrupts every step. An attempt
 that cannot select the retained settings, admit its operations or open its
 publications closes its connection, reports the failure in the status and retries
