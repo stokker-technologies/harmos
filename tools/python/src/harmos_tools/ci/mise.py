@@ -17,10 +17,11 @@ from pathlib import Path
 
 # Third Party Imports
 
+
 # Local Imports
 
-# Type Checking Imports
 
+# Type Checking Imports
 
 # === Public Exports === #
 
@@ -85,7 +86,9 @@ def forms(definition: object) -> list[str]:
 
 def check(root: Path) -> list[str]:
     root = root.resolve()
-    document = tomllib.loads((root / "mise.toml").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (root / "mise.toml").read_text(encoding="utf-8")
+    document = tomllib.loads(text)
     tasks = {}
     configuration = document.get("task_config", {})
     if not isinstance(configuration, dict):

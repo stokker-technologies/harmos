@@ -13,9 +13,7 @@
 # Standard Library Imports
 import json
 import os
-import sys
-from collections.abc import Generator, Iterator, Sequence
-from contextlib import contextmanager
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree
@@ -34,7 +32,6 @@ from . import policy
 TESTS = Path("target/tests")
 BENCHMARKS = Path("target/benchmarks")
 TRACES = Path("target/traces")
-LOCK = TESTS / ".lock"
 
 # === Types === #
 
@@ -116,7 +113,9 @@ def merge(texts: Sequence[str]) -> str:
 def load(path: Path) -> dict:
     if not path.is_file():
         return {}
-    return json.loads(path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    return json.loads(text)
 
 
 def write(path: Path, text: str) -> None:
@@ -129,31 +128,6 @@ def write(path: Path, text: str) -> None:
 
 def dump(path: Path, value: object) -> None:
     write(path, json.dumps(value, indent=2, sort_keys=True) + "\n")
-
-
-@contextmanager
-def locked(directory: Path) -> Generator[None]:
-    """Serialize read-modify-write of the shared evidence files across lanes."""
-    path = directory / LOCK
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as handle:
-        if sys.platform == "win32":
-            import msvcrt
-
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if sys.platform == "win32":
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 # === Private Functions === #

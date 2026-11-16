@@ -21,7 +21,8 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
-from harmos_tools.build.resource_roots import compose, table
+import harmos_tools.build.resource_roots
+import harmos_tools.build.resources.descriptor
 from harmos_tools.source.protocol import caller_options, check_public_surfaces, narrow_callers
 
 # Type Checking Imports
@@ -57,11 +58,11 @@ class ProtocolCallers(unittest.TestCase):
             caller_options(descriptors)
 
     def test_shared_operation_narrowing_changes_only_its_surfaces(self) -> None:
-        original = table(self.descriptors)
+        original = harmos_tools.build.resources.descriptor.table(self.descriptors)
         shared = next(method for method in original if method["face"] == "context")
         identity = f"{shared['package']}.{shared['service']}/{shared['method']}"
         narrow_callers(self.descriptors, {identity: "PLUGINS"})
-        changed = table(self.descriptors)
+        changed = harmos_tools.build.resources.descriptor.table(self.descriptors)
         matching = [method["face"] for method in changed if f"{method['package']}.{method['service']}/{method['method']}" == identity]
         self.assertEqual(matching, ["context"])
         self.assertEqual(
@@ -80,18 +81,27 @@ class ProtocolCallers(unittest.TestCase):
             narrow_callers(self.descriptors, {"missing.host.v1.Resource/Get": "CLIENTS"})
 
     def test_shared_settings_has_nested_paths_and_optional_selector(self) -> None:
-        methods = [method for method in table(self.descriptors) if method["path"] == ["plugins", "settings", "list"]]
+        methods = [
+            method
+            for method in harmos_tools.build.resources.descriptor.table(self.descriptors)
+            if method["path"] == ["plugins", "settings", "list"]
+        ]
         self.assertEqual({method["face"] for method in methods}, {"client", "context"})
         self.assertEqual(len({method["request"] for method in methods}), 1)
         self.assertEqual(len({method["response"] for method in methods}), 1)
         self.assertTrue(all(next(field for field in method["fields"] if field["name"] == "name")["optional"] for method in methods))
         self.assertFalse(
-            any(method["face"] == "context" and method["path"] == ["plugins", "settings", "set"] for method in table(self.descriptors))
+            any(
+                method["face"] == "context" and method["path"] == ["plugins", "settings", "set"]
+                for method in harmos_tools.build.resources.descriptor.table(self.descriptors)
+            )
         )
 
     def test_composition_file_narrows_generated_client(self) -> None:
         root = Path(__file__).resolve().parents[4]
-        with tempfile.TemporaryDirectory() as scratch:
+        scratch_directory = tempfile.TemporaryDirectory()
+        scratch = scratch_directory.name
+        try:
             folder = Path(scratch)
             manifest = folder / "composition.toml"
             descriptor = (root / "crates/harmos-protocol/src/descriptors.bin").as_posix()
@@ -101,7 +111,7 @@ class ProtocolCallers(unittest.TestCase):
                 encoding="utf-8",
             )
             output = folder / "client.py"
-            compose(root, [], output, "application", language="python", composition=manifest)
+            harmos_tools.build.resource_roots.compose(root, [], output, "application", language="python", composition=manifest)
             tree = ast.parse(output.read_text(encoding="utf-8"))
             resource = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "TimeResource")
             methods = {node.name for node in resource.body if isinstance(node, ast.AsyncFunctionDef)}
@@ -110,9 +120,13 @@ class ProtocolCallers(unittest.TestCase):
             plugin = ast.parse(output.with_name("plugin.py").read_text(encoding="utf-8"))
             resource = next(node for node in plugin.body if isinstance(node, ast.ClassDef) and node.name == "HostTimeResource")
             self.assertIn("get", {node.name for node in resource.body if isinstance(node, ast.AsyncFunctionDef)})
+        finally:
+            scratch_directory.cleanup()
 
     def test_public_surface_check_rejects_wire_imports_and_allows_internal_generation(self) -> None:
-        with tempfile.TemporaryDirectory() as scratch:
+        scratch_directory = tempfile.TemporaryDirectory()
+        scratch = scratch_directory.name
+        try:
             root = Path(scratch)
             (root / "README.md").write_text("# SDK\n", encoding="utf-8")
             headers = root / "sdk/cpp/include/harmos"
@@ -124,6 +138,8 @@ class ProtocolCallers(unittest.TestCase):
             public.write_text("using Value = ::harmos::model::v1::Value;\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 check_public_surfaces(root)
+        finally:
+            scratch_directory.cleanup()
 
 
 # === Private Functions === #

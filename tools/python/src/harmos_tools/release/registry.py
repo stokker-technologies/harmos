@@ -11,7 +11,6 @@
 
 # Standard Library Imports
 import base64
-import email.utils
 import hashlib
 import http.client
 import json
@@ -19,7 +18,6 @@ import os
 import re
 import subprocess
 import time
-import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,12 +27,10 @@ from typing import IO, Literal, overload
 
 # Third Party Imports
 # Local Imports
-from ..process import spawn_flags
+import harmos_tools.release.review
 
-# isort: split
-from ..package import changelog
-from . import pins, policy
-from . import review as evidence
+from ..process import spawn_flags
+from . import policy
 
 # Type Checking Imports
 
@@ -43,9 +39,6 @@ from . import review as evidence
 # === Constants === #
 
 # crates.io admits a short burst of new crates, then one per ten minutes.
-CRATES_INDEX = "https://index.crates.io"
-RATE_INTERVAL = 600
-RATE_BUDGET = 5400
 REHEARSAL_CHECK = "Release / Rehearsal"
 RELEASE_BRANCH = "release/"
 GITLAB_REHEARSAL_JOB = "Release / Rehearsal"
@@ -77,104 +70,6 @@ class ProviderRedirect(urllib.request.HTTPRedirectHandler):
 
 
 # === Public Functions === #
-
-
-def publish_crates(directory: Path, *, sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> None:
-    """Publish Workspace Crates One At A Time In Dependency Order, Resuming Past Published Versions."""
-    if policy.execute(directory, ["git", "status", "--porcelain"], capture=True).strip():
-        raise policy.ToolError("crate publication requires clean source before generated CHANGELOG staging")
-    pins.check(directory)
-    packages = publishable(directory)
-    deadline = clock() + RATE_BUDGET
-    with changelog.staged(directory, packages):
-        _publish_crates(directory, packages, deadline, sleep=sleep, clock=clock)
-
-
-def rehearse_crates(directory: Path, *, skip_published: bool = True) -> None:
-    """Dry-Run Crates In Publication Order Without Publishing Credentials."""
-    nightly = os.environ.get("GITHUB_WORKFLOW_REF", "").split("/workflows/")[-1].startswith("nightly.yml@")
-    nightly = nightly or os.environ.get("CI_SIMULATE") == "1" and os.environ.get("CI_PIPELINE_KIND") == "nightly"
-    if not pins.check(directory, warn=nightly):
-        return
-    with policy.credential_free(policy.policy(directory, "release")):
-        packages = publishable(directory)
-        metadata = policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps"], capture=True)
-        target = Path(json.loads(metadata)["target_directory"])
-        lock = directory / "Cargo.lock"
-        original = lock.read_bytes() if lock.is_file() else None
-        staged = []
-        with changelog.staged(directory, packages):
-            _rehearse_crates(directory, packages, target, lock, original, staged, skip_published=skip_published)
-
-
-def publishable(directory: Path) -> dict:
-    """Publishable Workspace Members By Name."""
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--format-version", "1", "--no-deps", "--locked"], capture=True))
-    return policy.publishable(directory, metadata)
-
-
-def crate_published(name: str, version: str | None = None) -> bool:
-    """Whether The Sparse Index Lists This Crate, Or This Exact Crate Version."""
-    lower = name.lower()
-    prefix = {1: "1", 2: "2", 3: "3/" + lower[0]}.get(len(lower), f"{lower[0:2]}/{lower[2:4]}")
-    try:
-        with urllib.request.urlopen(f"{CRATES_INDEX}/{prefix}/{lower}", timeout=60) as response:
-            lines = response.read().decode("utf-8").splitlines()
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        raise policy.ToolError(f"crates.io index read failed: HTTP {error.code}") from error
-    except urllib.error.URLError as error:
-        if isinstance(error.reason, FileNotFoundError):
-            return False
-        raise policy.ToolError(f"crates.io index read failed: {error.reason}") from error
-    entries = [json.loads(line) for line in lines if line.strip()]
-    return bool(entries) if version is None else any(entry.get("vers") == version for entry in entries)
-
-
-def python(directory: Path, settings: dict, *, dry_run: bool) -> None:
-    """Upload The Release Python Packages: PyPI For GitHub Products, The Project Registry On GitLab."""
-    profile = policy.profile()
-    selected = sorted(str(path.relative_to(directory)) for path in directory.glob(f"target/build/{profile}/any/python/*") if path.is_file())
-    if not selected:
-        raise policy.ToolError(f"release:publish:python has no {profile} Python packages")
-    if dry_run:
-        # Build and check only: uv validates every file without credentials or upload.
-        with policy.credential_free(settings, profile=profile):
-            policy.execute(directory, ["uv", "publish", "--dry-run", "--trusted-publishing", "never", *selected])
-        return
-    if settings["provider"] == "github":
-        project = tomllib.loads((directory / "sdk/python/pyproject.toml").read_text(encoding="utf-8"))["project"]["name"]
-        try:
-            with urllib.request.urlopen(f"https://pypi.org/pypi/{urllib.parse.quote(project, safe='')}/json", timeout=60) as response:
-                releases = json.load(response)["releases"]
-        except urllib.error.HTTPError as error:
-            if error.code != 404:
-                raise
-            releases = {}
-        published = {item["filename"]: item["digests"]["sha256"] for files in releases.values() for item in files}
-        missing = []
-        for relative in selected:
-            path = directory / relative
-            if path.name not in published:
-                missing.append(relative)
-                continue
-            if hashlib.sha256(path.read_bytes()).hexdigest() != published[path.name]:
-                raise policy.ToolError(f"PyPI file already exists with a different SHA-256: {path.name}")
-            print(f"PyPI file already published with matching SHA-256: {path.name}")
-        if missing:
-            policy.execute(
-                directory, ["uv", "publish", "--trusted-publishing", "always", "--check-url", "https://pypi.org/simple/", *missing]
-            )
-        return
-    base = os.environ.get("CI_API_V4_URL", settings.get("api_url", "https://gitlab.com/api/v4"))
-    project = settings.get("project_id", os.environ.get("CI_PROJECT_ID"))
-    token = os.environ.get("CI_JOB_TOKEN")
-    if not token or not project:
-        raise policy.ToolError("GitLab Python publication requires the native CI_JOB_TOKEN")
-    destination = f"{base}/projects/{urllib.parse.quote(str(project), safe='')}/packages/pypi"
-    command = ["uv", "publish", "--publish-url", destination, "--username", "gitlab-ci-token", "--password", token, *selected]
-    policy.execute(directory, command)
 
 
 def request(
@@ -228,25 +123,20 @@ def request(
             if channel:
                 resource = endpoint.split("?", 1)[0]
                 links = re.fullmatch(r"releases/nightly/assets/links(?:/[0-9]+)?", resource)
-                allowed = (
-                    resource == "releases"
-                    and method == "POST"
-                    or resource == "releases/nightly"
-                    and method in {"GET", "PUT"}
-                    or links
-                    and method in {"GET", "POST", "DELETE"}
-                )
+                release_creation = resource == "releases" and method == "POST"
+                nightly_release = resource == "releases/nightly" and method in {"GET", "PUT"}
+                nightly_links = bool(links) and method in {"GET", "POST", "DELETE"}
+                allowed = release_creation or nightly_release or nightly_links
                 if not allowed:
                     raise policy.ToolError("nightly requires native job-token release endpoints")
             cleanup = method == "DELETE" and endpoint.startswith("repository/branches/release%2Fv")
             merging = method == "PUT" and re.fullmatch(r"merge_requests/[0-9]+/merge", endpoint) is not None
-            tagging = method == "POST" and endpoint in {"repository/tags", "repository/commits"} or cleanup or merging
-            if (
-                not channel
-                and method != "GET"
-                and not tagging
-                and not ((method == "PUT" and endpoint.startswith("packages/generic/")) or (method == "POST" and endpoint == "releases"))
-            ):
+            tag_creation = method == "POST" and endpoint in {"repository/tags", "repository/commits"}
+            tagging = tag_creation or cleanup or merging
+            package_upload = method == "PUT" and endpoint.startswith("packages/generic/")
+            release_creation = method == "POST" and endpoint == "releases"
+            publication = package_upload or release_creation
+            if not channel and method != "GET" and not tagging and not publication:
                 raise policy.ToolError("GitLab release write endpoint is not allowed")
             if channel:
                 if not job_token:
@@ -277,21 +167,26 @@ def request(
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         native = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60) as response:
+            response = urllib.request.build_opener(ProviderRedirect()).open(native, timeout=60)
+            try:
                 return response.read()
+            finally:
+                response.close()
         except urllib.error.HTTPError as error:
-            # A Retried Delete Whose Earlier Attempt Landed Finds Nothing Left To Remove.
-            if error.code == 404 and (method == "GET" or method == "DELETE" and attempt > 1):
-                return None
-            message = error.read().decode("utf-8", errors="replace")
-            for secret in (token, os.environ.get("CI_JOB_TOKEN")):
-                if secret:
-                    message = message.replace(secret, "***")
-            retry = error.code in THROTTLED or error.code in TRANSIENT and method in IDEMPOTENT
-            if not retry or attempt == RETRY_ATTEMPTS:
-                raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
-            print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
-            time.sleep(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+            try:
+                if error.code == 404 and (method == "GET" or method == "DELETE" and attempt > 1):
+                    return None
+                message = error.read().decode("utf-8", errors="replace")
+                for secret in (token, os.environ.get("CI_JOB_TOKEN")):
+                    if secret:
+                        message = message.replace(secret, "***")
+                retry = error.code in THROTTLED or error.code in TRANSIENT and method in IDEMPOTENT
+                if not retry or attempt == RETRY_ATTEMPTS:
+                    raise policy.ToolError(f"release provider {method} failed: HTTP {error.code}: {message}") from error
+                print(f"release provider {method} {endpoint}: HTTP {error.code}; retrying ({attempt}/{RETRY_ATTEMPTS})", flush=True)
+                time.sleep(RETRY_PAUSE_SECONDS * 2 ** (attempt - 1))
+            finally:
+                error.close()
     raise AssertionError("unreachable")
 
 
@@ -571,8 +466,8 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
         try:
             if not isinstance(pull, dict) or pull.get("number") != review["number"] or pull.get("head", {}).get("sha") != head:
                 raise ValueError("review identity or head differs")
-            candidates = [run for run in runs if evidence.github_review_run(run, pull)]
-            _, jobs = evidence.github_validation_run(
+            candidates = [run for run in runs if harmos_tools.release.review.github_review_run(run, pull)]
+            _, jobs = harmos_tools.release.review.github_validation_run(
                 candidates, lambda identifier: pages(settings, f"actions/runs/{identifier}/jobs?filter=latest", "jobs")
             )
         except (KeyError, TypeError, ValueError) as error:
@@ -611,10 +506,15 @@ def oidc_claims(url: str, token: str) -> dict:
     """The Claims Of A GitHub OIDC Token Requested For Diagnosis Only; The Token Itself Is Never Printed."""
     separator = "&" if "?" in url else "?"
     native = urllib.request.Request(f"{url}{separator}audience=release-identity", headers={"Authorization": "Bearer " + token})
-    with urllib.request.urlopen(native, timeout=60) as response:
+    response = urllib.request.urlopen(native, timeout=60)
+    try:
         value = json.loads(response.read())["value"]
+    finally:
+        response.close()
     payload = value.split(".")[1]
-    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    # Read Structured Input
+    text = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    return json.loads(text)
 
 
 def workflow_filename(reference: str) -> str:
@@ -664,62 +564,6 @@ def remote_tag(settings: dict, tag: str) -> str | None:
 # === Private Functions === #
 
 
-def _publish_crates(
-    directory: Path, packages: dict, deadline: float, *, sleep: Callable[[float], None], clock: Callable[[], float]
-) -> None:
-    for name in _publication_order(packages):
-        version = packages[name]["version"]
-        if crate_published(name, version):
-            print(f"{name} {version}: already published")
-            continue
-        while True:
-            result = subprocess.run(
-                ["cargo", "publish", "--locked", "--allow-dirty", "--package", name],
-                creationflags=spawn_flags(),
-                cwd=directory,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                check=False,
-            )
-            output = (result.stdout or "") + (result.stderr or "")
-            if result.returncode == 0:
-                print(f"{name} {version}: published")
-                break
-            if "already exists" in output:
-                print(f"{name} {version}: already published")
-                break
-            if "429" not in output and "Too Many Requests" not in output:
-                raise policy.ToolError(f"cargo publish {name} failed with exit code {result.returncode}: {output}")
-            wait = _retry_after(output)
-            if clock() + wait > deadline:
-                raise policy.ToolError(f"{name} {version}: crates.io rate limit outlasted the publication budget")
-            print(f"{name} {version}: rate limited; retrying in {wait}s")
-            sleep(wait)
-
-
-def _rehearse_crates(
-    directory: Path, packages: dict, target: Path, lock: Path, original: bytes | None, staged: list, *, skip_published: bool
-) -> None:
-    try:
-        for name in _publication_order(packages):
-            version = packages[name]["version"]
-            if skip_published and crate_published(name, version):
-                print(f"{name} {version}: already published; the real leaf skips it")
-                continue
-            # A sibling resolves from its packaged sources only once the real leaf would have published it, so a
-            # crate ordered before something its published manifest requires fails here, before any tag exists.
-            command = ["cargo", "publish", "--dry-run", "--allow-dirty", "--package", name]
-            for sibling, release in staged:
-                command += ["--config", f'patch.crates-io.{sibling}.path="{(target / "package" / f"{sibling}-{release}").as_posix()}"']
-            policy.execute(directory, command)
-            staged.append((name, version))
-    finally:
-        # The patches record themselves in the lock file; the rehearsal leaves the committed lock untouched.
-        if original is not None:
-            lock.write_bytes(original)
-
-
 def _same_tree(directory: Path, head: str, merged: str) -> None:
     revisions = (head, merged)
     if any(not isinstance(revision, str) or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) for revision in revisions):
@@ -749,56 +593,6 @@ def _same_tree(directory: Path, head: str, merged: str) -> None:
         raise policy.ToolError("rehearsal tree verification returned no valid tree object IDs")
     if trees[0] != trees[1]:
         raise policy.ToolError("the merged tree differs from the rehearsed release review head; update the review and merge again")
-
-
-def _publication_order(packages: dict) -> list[str]:
-    """Publishable Crates After Every Publishable Crate Their Published Manifest Requires, Ties By Name.
-
-    A dev-dependency that carries a version stays in the published manifest and must resolve from the registry; a
-    path-only one is stripped on packaging.
-    """
-    requires = {
-        name: sorted(
-            {
-                dependency["name"]
-                for dependency in package["dependencies"]
-                if (dependency.get("kind") != "dev" or dependency.get("req", "*") != "*")
-                and dependency["name"] in packages
-                and dependency["name"] != name
-            }
-        )
-        for name, package in packages.items()
-    }
-    order = []
-    visiting = set()
-
-    def visit(name: str) -> None:
-        if name in order:
-            return
-        if name in visiting:
-            cycle = ", ".join(sorted(visiting))
-            raise policy.ToolError(
-                f"publishable crates {cycle} require each other at {name}; a dev-dependency on a sibling that carries a version stays in the "
-                'published manifest, so declare it path-only ({ path = "../sibling" }, no version) and cargo strips it on packaging'
-            )
-        visiting.add(name)
-        for dependency in requires[name]:
-            visit(dependency)
-        visiting.discard(name)
-        order.append(name)
-
-    for name in sorted(packages):
-        visit(name)
-    return order
-
-
-def _retry_after(output: str) -> int:
-    """Seconds Until The Registry-Indicated Retry Time, Or The Published Interval."""
-    match = re.search(r"try again after ([A-Z][a-z]{2}, \d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT)", output)
-    if match is None:
-        return RATE_INTERVAL
-    retry = email.utils.parsedate_to_datetime(match.group(1)).timestamp()
-    return max(1, min(RATE_INTERVAL * 2, int(retry - time.time()) + 1))
 
 
 # === Entry Point === #

@@ -28,7 +28,6 @@ from ..process import spawn_flags
 
 # Type Checking Imports
 
-
 # === Public Exports === #
 
 # === Constants === #
@@ -107,11 +106,17 @@ def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) ->
 
 def main() -> None:
     check_public_surfaces(Path(__file__).resolve().parents[5])
-    with tempfile.TemporaryDirectory() as scratch:
+    scratch_directory = tempfile.TemporaryDirectory()
+    scratch = scratch_directory.name
+    try:
         output = Path(scratch) / "descriptors.bin"
-        subprocess.run(["buf", "build", "--as-file-descriptor-set", "-o", str(output)], check=True, creationflags=spawn_flags())
+        # Run the Native Command
+        command = ["buf", "build", "--as-file-descriptor-set", "-o", str(output)]
+        subprocess.run(command, check=True, creationflags=spawn_flags())
         methods = caller_options(FileDescriptorSet.FromString(output.read_bytes()))
         print(f"Protocol Callers: {len(methods)} Annotated Operations")
+    finally:
+        scratch_directory.cleanup()
 
 
 def check_public_surfaces(root: Path) -> None:

@@ -28,7 +28,6 @@ from . import paths
 
 # Type Checking Imports
 
-
 # === Public Exports === #
 
 # === Constants === #
@@ -57,9 +56,12 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
         "--message-format=json-render-diagnostics",
         *extra,
     ]
-    with temporary.directory() as staging:
+    staging_directory = temporary.Directory()
+    staging = staging_directory.path
+    try:
         raw = staging / "compiler.json"
-        with raw.open("w", encoding="utf-8") as written:
+        written = raw.open("w", encoding="utf-8")
+        try:
             subprocess.run(
                 command,
                 stdin=sys.stdin,
@@ -69,6 +71,8 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
                 stdout=written,
                 check=True,
             )
+        finally:
+            written.close()
         for kind in ("bin", "bench"):
             (staging / kind).mkdir()
 
@@ -97,6 +101,8 @@ def build(directory: Path, extra: Sequence[str] = ()) -> Path:
         messages.write_text("\n".join(events) + "\n", encoding="utf-8")
         files.append(messages.relative_to(directory).as_posix())
         archive.stamp(directory, "bench", files)
+    finally:
+        staging_directory.close()
     return messages
 
 

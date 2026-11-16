@@ -17,7 +17,9 @@ from pathlib import Path
 
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
-from harmos_tools.build.resource_roots import compose, python, table
+import harmos_tools.build.resource_roots
+import harmos_tools.build.resources.descriptor
+import harmos_tools.build.resources.python
 
 # === Public Exports === #
 
@@ -38,16 +40,18 @@ class PythonClients(unittest.TestCase):
         self.addCleanup(scratch.cleanup)
         output = Path(scratch.name) / "client.py"
         library = FileDescriptorSet.FromString(LIBRARY.read_bytes())
-        python(output, [method for method in table(library) if method["face"] == "client"], library)
+        harmos_tools.build.resources.python.client(
+            output, [method for method in harmos_tools.build.resources.descriptor.table(library) if method["face"] == "client"], library
+        )
         self.assertEqual(output.read_bytes(), (ROOT / "sdk/python/src/harmos/_generated/client.py").read_bytes())
 
-        compose(ROOT, [APPLICATION], output, "application", language="python")
+        harmos_tools.build.resource_roots.compose(ROOT, [APPLICATION], output, "application", language="python")
         composed = FileDescriptorSet.FromString(LIBRARY.read_bytes())
         composed.file.extend(FileDescriptorSet.FromString(APPLICATION.read_bytes()).file)
         expected = Path(scratch.name) / "fixture.py"
-        python(
+        harmos_tools.build.resources.python.client(
             expected,
-            [method for method in table(composed) if method["face"] == "client"],
+            [method for method in harmos_tools.build.resources.descriptor.table(composed) if method["face"] == "client"],
             composed,
             module_prefixes={"application": "application._wire.application"},
         )
@@ -55,18 +59,18 @@ class PythonClients(unittest.TestCase):
 
     def test_generation_refuses_collisions_faces_and_client_streams(self) -> None:
         descriptors = FileDescriptorSet.FromString(APPLICATION.read_bytes())
-        methods = table(descriptors)
+        methods = harmos_tools.build.resources.descriptor.table(descriptors)
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         output = Path(scratch.name) / "client.py"
         with self.assertRaises(ValueError):
-            python(output, [methods[0], methods[0]], descriptors)
+            harmos_tools.build.resources.python.client(output, [methods[0], methods[0]], descriptors)
         with self.assertRaises(ValueError):
-            python(output, [{**methods[0], "face": "context"}], descriptors)
+            harmos_tools.build.resources.python.client(output, [{**methods[0], "face": "context"}], descriptors)
         with self.assertRaises(ValueError):
-            python(output, [{**methods[0], "client_streaming": True}], descriptors)
+            harmos_tools.build.resources.python.client(output, [{**methods[0], "client_streaming": True}], descriptors)
         with self.assertRaises(ValueError):
-            python(output, [methods[0], {**methods[0], "path": methods[0]["path"][:-1]}], descriptors)
+            harmos_tools.build.resources.python.client(output, [methods[0], {**methods[0], "path": methods[0]["path"][:-1]}], descriptors)
         self.assertFalse(output.exists())
 
     def test_composition_refuses_conflicting_descriptor_definitions(self) -> None:
@@ -77,7 +81,9 @@ class PythonClients(unittest.TestCase):
         conflicting = Path(scratch.name) / "conflicting.bin"
         conflicting.write_bytes(descriptor.SerializeToString())
         with self.assertRaises(ValueError):
-            compose(ROOT, [conflicting], Path(scratch.name) / "client.py", "application", language="python")
+            harmos_tools.build.resource_roots.compose(
+                ROOT, [conflicting], Path(scratch.name) / "client.py", "application", language="python"
+            )
 
     def test_cross_file_and_nested_messages_keep_their_defining_module(self) -> None:
         descriptors = FileDescriptorSet()
@@ -90,7 +96,7 @@ class PythonClients(unittest.TestCase):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         output = Path(scratch.name) / "client.py"
-        python(output, table(descriptors), descriptors)
+        harmos_tools.build.resources.python.client(output, harmos_tools.build.resources.descriptor.table(descriptors), descriptors)
         source = ast.parse(output.read_text())
         imports = [node.module for node in ast.walk(source) if isinstance(node, ast.ImportFrom)]
         self.assertIn("example.v1.messages_pb2", imports)

@@ -35,7 +35,9 @@ from harmos_tools.test import focused, nextest, policy
 
 class TestSelection(unittest.TestCase):
     def test_focused_story_keeps_deadlines_and_does_not_build_an_archive(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        temporary_directory = tempfile.TemporaryDirectory()
+        temporary = temporary_directory.name
+        try:
             directory = Path(temporary)
             rules = policy.Policy({}, dict(policy.DEADLINES), ())
             commands = []
@@ -75,6 +77,8 @@ class TestSelection(unittest.TestCase):
                     with self.assertRaises(policy.TestError):
                         focused.run(directory, package=package, target="integration", story="save_and_reopen")
                 execute.assert_not_called()
+        finally:
+            temporary_directory.cleanup()
 
 
 # === Public Functions === #

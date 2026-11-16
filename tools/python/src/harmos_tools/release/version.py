@@ -105,7 +105,9 @@ def sibling_pins(directory: Path, verb: str, target: str) -> None:
     """Synchronize Exact Local Sibling Requirements, Including Renames And Target Tables."""
     if not (directory / "Cargo.toml").is_file():
         return
-    metadata = json.loads(policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1"], capture=True))
+    # Read Structured Input
+    text = policy.execute(directory, ["cargo", "metadata", "--no-deps", "--format-version", "1"], capture=True)
+    metadata = json.loads(text)
     members = set(metadata["workspace_members"])
     siblings = {item["name"]: Path(item["manifest_path"]).resolve() for item in metadata["packages"] if item["id"] in members}
     manifests = set(siblings.values())

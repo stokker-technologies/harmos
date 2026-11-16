@@ -102,7 +102,9 @@ def uploads(directory: Path, *, staged: bool = False) -> list[dict]:
     path = policy.inside(directory, "target/release-assets/upload.json")
     if not path.is_file() or path.is_symlink():
         raise policy.ToolError("release upload.json manifest is missing or linked")
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    manifest = json.loads(text)
     if not isinstance(manifest, dict) or manifest.get("format_version") != 1 or not isinstance(manifest.get("assets"), list):
         raise policy.ToolError("unsupported release upload manifest")
     names = set()

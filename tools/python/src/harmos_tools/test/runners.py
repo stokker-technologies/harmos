@@ -19,7 +19,7 @@ import subprocess
 # Local Imports
 from ..process import spawn_flags
 from ..release import policy
-from ..release.run import release_tag
+from ..release.source import release_tag
 
 # Type Checking Imports
 
@@ -71,12 +71,14 @@ def main() -> None:
 
 
 def _pages(endpoint: str) -> list[dict]:
-    return json.loads(
-        subprocess.check_output(
-            ["gh", "api", "--hostname", "github.com", "--paginate", "--slurp", endpoint],
-            creationflags=spawn_flags(),
-        )
+    # Read Structured Input
+    # Run the Native Command
+    command = ["gh", "api", "--hostname", "github.com", "--paginate", "--slurp", endpoint]
+    text = subprocess.check_output(
+        command,
+        creationflags=spawn_flags(),
     )
+    return json.loads(text)
 
 
 # === Entry Point === #

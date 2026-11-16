@@ -10,9 +10,8 @@
 
 # === Imports === #
 
-import http.client
-
 # Standard Library Imports
+import http.client
 import io
 import json
 import os
@@ -179,8 +178,11 @@ def github_release_mode() -> dict[str, str]:
     if sha != os.environ["GITHUB_SHA"]:
         raise ValueError("release decision checkout differs from event revision")
     fallback = {"mode": "prepare" if os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" else "skip", "sha": ""}
-    with (policy.root() / "tools/project.toml").open("rb") as stream:
+    stream = (policy.root() / "tools/project.toml").open("rb")
+    try:
         version = tomllib.load(stream)["version"]["value"]
+    finally:
+        stream.close()
     tag = f"v{version}"
     if command("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
         return fallback
@@ -208,8 +210,11 @@ def github_release_mode() -> dict[str, str]:
     if target_version != version:
         return fallback
     if os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
-        with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
+        stream = open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8")
+        try:
             completed = json.load(stream)["workflow_run"]
+        finally:
+            stream.close()
         if (
             completed.get("head_sha") != review["head"]["sha"]
             or completed.get("event") != "pull_request"
@@ -246,7 +251,9 @@ def lookup() -> dict:
     tag = os.environ.get("GITHUB_REF", "").startswith("refs/tags/") or bool(os.environ.get("CI_COMMIT_TAG"))
     if tag and profile != "release":
         raise ValueError("tag requires release-profile evidence")
-    required = json.loads(os.environ.get("REVIEW_PACKAGES", "[]"))
+    # Read Structured Input
+    text = os.environ.get("REVIEW_PACKAGES", "[]")
+    required = json.loads(text)
     preparation = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" if github else os.environ.get("CI_PIPELINE_SOURCE") == "web"
     if tag or preparation:
         required += json.loads(os.environ.get("REVIEW_BUILDS", "[]"))
@@ -322,7 +329,8 @@ def restore() -> None:
         if len(matches) != 1:
             raise ValueError("review package producer unavailable")
         data = request(f"jobs/{matches[0]['id']}/artifacts", binary=True)
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        try:
             for member in archive.infolist():
                 path = Path(member.filename)
                 parent = member.is_dir() and member.filename in ("target/", "target/package/")
@@ -336,6 +344,8 @@ def restore() -> None:
                 if not parent and not member.filename.startswith(("target/package/", "target/ci/")):
                     raise ValueError("unexpected package archive path")
             archive.extractall()
+        finally:
+            archive.close()
     print(f"Reusing packages from review pipeline {run}")
 
 
@@ -372,8 +382,11 @@ if __name__ == "__main__":
                 result["DEPLOY_EXPECTED_VERSION"] = result.get("review_version") or version
             output = os.environ.get("GITHUB_OUTPUT", "target/ci/validated.env")
             Path(output).parent.mkdir(parents=True, exist_ok=True)
-            with open(output, "a", encoding="utf-8", newline="\n") as stream:
+            stream = open(output, "a", encoding="utf-8", newline="\n")
+            try:
                 stream.write("".join(f"{key}={value}\n" for key, value in result.items()))
+            finally:
+                stream.close()
             print(f"validated={result['validated']} review_run={result['review_run']}")
     finally:
         print("::endgroup::", flush=True)

@@ -53,7 +53,9 @@ class PackagedRustConformance(unittest.TestCase):
         environment = dict(os.environ, CARGO_TARGET_DIR=str(root / "target"), CARGO_BUILD_WARNINGS="deny")
         environment.pop("UV_PROJECT_ENVIRONMENT", None)
         environment["RUSTUP_TOOLCHAIN"] = tomllib.loads((root / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
-        with tempfile.TemporaryDirectory() as name:
+        name_directory = tempfile.TemporaryDirectory()
+        name = name_directory.name
+        try:
             scratch = Path(name)
             packages = {
                 "harmos-protocol": root / "crates/harmos-protocol",
@@ -87,8 +89,11 @@ class PackagedRustConformance(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, result.stdout)
                 archive = root / f"target/package/{package}-{version}.crate"
-                with tarfile.open(archive) as bundle:
+                bundle = tarfile.open(archive)
+                try:
                     bundle.extractall(scratch, filter="data")
+                finally:
+                    bundle.close()
             # Build an Independent Consumer Whose Only Product Dependency Is the Packaged SDK.
             consumer = scratch / "consumer"
             (consumer / "src").mkdir(parents=True)
@@ -153,6 +158,8 @@ class PackagedRustConformance(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("E0599", result.stderr)
             self.assertIn("sleep", result.stderr)
+        finally:
+            name_directory.cleanup()
 
 
 # === Public Functions === #

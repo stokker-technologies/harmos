@@ -44,7 +44,9 @@ from pathlib import Path
 
 # Third Party Imports
 
+
 # Local Imports
+
 
 # Type Checking Imports
 
@@ -160,7 +162,9 @@ def lanes(directory: Path) -> list[tuple[str, str]]:
 
 def _toml(path: Path) -> dict[str, dict]:
     try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
+        # Read Structured Input
+        text = path.read_text(encoding="utf-8")
+        return tomllib.loads(text)
     except (OSError, tomllib.TOMLDecodeError) as error:
         raise TestError(f"read {path.name}: {error}") from error
 

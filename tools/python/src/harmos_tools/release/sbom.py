@@ -15,11 +15,11 @@ import json
 import tomllib
 from pathlib import Path
 
-from ..package import run as packages
-
 # Third Party Imports
 # Local Imports
-from . import notices as licenses
+import harmos_tools.package.run
+import harmos_tools.release.notices
+
 from . import policy
 
 # Type Checking Imports
@@ -38,7 +38,9 @@ from . import policy
 def generate(directory: Path, abi: str, output: Path) -> None:
     """Inventory Cargo's Locked Target Graph And The SDK's Locked Python Dependencies."""
     command = ["cargo", "metadata", "--locked", "--format-version", "1", "--filter-platform", abi]
-    metadata = json.loads(policy.execute(directory, command, capture=True))
+    # Read Structured Input
+    text = policy.execute(directory, command, capture=True)
+    metadata = json.loads(text)
     nodes = metadata["resolve"]["nodes"]
     selected = {node["id"] for node in nodes}
     references = {
@@ -89,7 +91,9 @@ def generate(directory: Path, abi: str, output: Path) -> None:
         ],
     }
     policy.write_json(output / "crates" / abi / "workspace.cdx.json", document)
-    lock = tomllib.loads(packages.regular(directory, "sdk/python/uv.lock").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = harmos_tools.package.run.regular(directory, "sdk/python/uv.lock").read_text(encoding="utf-8")
+    lock = tomllib.loads(text)
     python = []
     for item in lock["package"]:
         if "registry" not in item.get("source", {}):
@@ -98,12 +102,12 @@ def generate(directory: Path, abi: str, output: Path) -> None:
             {"type": "library", "name": item["name"], "version": item["version"], "purl": f"pkg:pypi/{item['name']}@{item['version']}"}
         )
         notices.append(f"Python: {item['name']} {item['version']} ({item['source']['registry']})")
-    python_notices, _ = licenses.python_notices(lock)
+    python_notices, _ = harmos_tools.release.notices.python_notices(lock)
     notices.append(python_notices)
     policy.write_json(
         output / "python/any/sdk.cdx.json", {"bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1, "components": python}
     )
-    (output / "NOTICE").write_text(packages.regular(directory, "LICENSE").read_text(encoding="utf-8"), encoding="utf-8")
+    (output / "NOTICE").write_text(harmos_tools.package.run.regular(directory, "LICENSE").read_text(encoding="utf-8"), encoding="utf-8")
     (output / "THIRD-PARTY-NOTICES").write_text("\n\n".join(notices) + "\n", encoding="utf-8")
 
 

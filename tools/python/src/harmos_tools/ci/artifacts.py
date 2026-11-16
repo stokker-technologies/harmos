@@ -61,17 +61,19 @@ def pack(directory: Path, archive: Path, patterns: list[str], profile: str, nati
     if not selected:
         raise ValueError("artifact has no required outputs")
     archive.parent.mkdir(parents=True, exist_ok=True)
+    # Run the Native Command
+    command = [
+        _tar(),
+        "--force-local",
+        "--use-compress-program",
+        "zstd -T0",
+        "-cf",
+        str(archive),
+        "--",
+        *sorted(selected),
+    ]
     subprocess.run(
-        [
-            _tar(),
-            "--force-local",
-            "--use-compress-program",
-            "zstd -T0",
-            "-cf",
-            str(archive),
-            "--",
-            *sorted(selected),
-        ],
+        command,
         cwd=root,
         stdin=sys.stdin,
         stdout=sys.stdout,
@@ -85,16 +87,22 @@ def extract(directory: Path, archive: Path) -> None:
     root = directory.resolve()
     if not archive.resolve().is_relative_to(root / "target/ci"):
         raise ValueError("artifact archive escapes its owned transport directory")
-    with subprocess.Popen(
-        ["zstd", "-dc", str(archive)],
+    # Run the Native Command
+    command = ["zstd", "-dc", str(archive)]
+    decompressor = subprocess.Popen(
+        command,
         stdout=subprocess.PIPE,
         creationflags=spawn_flags(),
-    ) as decompressor:
+    )
+    try:
         if decompressor.stdout is None:
             raise RuntimeError("artifact decompressor has no output stream")
         try:
-            with tarfile.open(fileobj=decompressor.stdout, mode="r|") as source:
+            source = tarfile.open(fileobj=decompressor.stdout, mode="r|")
+            try:
                 source.extractall(root, filter=_member)
+            finally:
+                source.close()
             while decompressor.stdout.read(1024 * 1024):
                 pass
         finally:
@@ -102,6 +110,14 @@ def extract(directory: Path, archive: Path) -> None:
         status = decompressor.wait()
         if status:
             raise subprocess.CalledProcessError(status, "zstd")
+    finally:
+        if decompressor.stdout is not None:
+            decompressor.stdout.close()
+        if decompressor.stderr is not None:
+            decompressor.stderr.close()
+        if decompressor.stdin is not None:
+            decompressor.stdin.close()
+        decompressor.wait()
     archive.unlink()
 
 
@@ -114,7 +130,9 @@ def main() -> None:
     parser.add_argument("--target", choices=("native", "any"), default="native")
     options = parser.parse_args()
     if options.operation == "pack":
-        patterns = json.loads(bytes.fromhex(options.paths).decode())
+        # Read Structured Input
+        text = bytes.fromhex(options.paths).decode()
+        patterns = json.loads(text)
         pack(
             Path.cwd(),
             options.archive,
@@ -133,15 +151,19 @@ def _tar() -> str:
     found = shutil.which("tar")
     if found is None:
         raise RuntimeError("artifact transport requires GNU tar from the configured image")
+    # Run the Native Command
+    command = [found, "--version"]
     version = subprocess.run(
-        [found, "--version"],
+        command,
         capture_output=True,
         text=True,
         creationflags=spawn_flags(),
         check=True,
     ).stdout
+    # Run the Native Command
+    command = [found, "--help"]
     capabilities = subprocess.run(
-        [found, "--help"],
+        command,
         capture_output=True,
         text=True,
         creationflags=spawn_flags(),

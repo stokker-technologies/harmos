@@ -16,8 +16,11 @@ import io
 import unittest
 from unittest.mock import patch
 
+import harmos_tools.build.cargo
+
 # Third Party Imports
 # Local Imports
+import harmos_tools.task.execute
 from harmos_tools.ci import tasks
 from harmos_tools.test import focused
 
@@ -45,8 +48,8 @@ class FocusedDispatch(unittest.TestCase):
             with (
                 self.subTest(arguments=arguments),
                 patch.object(focused, "run", return_value=23) as run,
-                patch.object(tasks, "_task") as task,
-                patch.object(tasks.cargo, "focused") as cargo,
+                patch.object(harmos_tools.task.execute, "task") as task,
+                patch.object(harmos_tools.build.cargo, "focused") as cargo,
             ):
                 self.assertEqual(tasks.dispatch(["test", *arguments]), 23)
             run.assert_called_once()

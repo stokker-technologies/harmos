@@ -23,7 +23,6 @@ import urllib.parse
 import urllib.request
 import zipfile
 from collections.abc import Callable
-from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import BinaryIO
 
@@ -53,7 +52,7 @@ def download(
     *,
     operation: str = "download",
     timeout_s: float = 60,
-    opener: Callable[..., AbstractContextManager[BinaryIO]] | None = None,
+    opener: Callable[..., BinaryIO] | None = None,
     before_retry: Callable[[], None] | None = None,
 ) -> bytes:
     """Fetch Complete Bytes with Bounded Retries for Transient Network Failures."""
@@ -61,8 +60,11 @@ def download(
     open_request = opener or urllib.request.urlopen
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
-            with open_request(url, timeout=timeout_s) as response:
+            response = open_request(url, timeout=timeout_s)
+            try:
                 return response.read()
+            finally:
+                response.close()
         except (OSError, urllib.error.URLError, http.client.HTTPException) as error:
             retry = not isinstance(error, urllib.error.HTTPError) or 500 <= error.code < 600
             if isinstance(error, urllib.error.HTTPError):
@@ -115,7 +117,8 @@ def python_notices(lock: dict) -> tuple[str, int]:
         if actual != wheel["hash"]:
             raise policy.ToolError(f"locked wheel hash mismatch: {package['name']} ({wheel['url']})")
         sections.append(f"\n{package['name']} {package['version']}")
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        try:
             metadata_name = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
             metadata = email.parser.BytesParser().parsebytes(archive.read(metadata_name))
             license_name = metadata.get("License-Expression") or metadata.get("License")
@@ -134,6 +137,8 @@ def python_notices(lock: dict) -> tuple[str, int]:
                 raise policy.ToolError(f"missing Python license text: {package['name']}")
             for name in sorted(files):
                 sections.append(archive.read(name).decode("utf-8"))
+        finally:
+            archive.close()
         count += 1
     print(f"Python wheels: {cache_hits} cache hits, {downloads} downloads", file=sys.stderr)
     return "\n\n".join(sections), count

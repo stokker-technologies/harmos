@@ -95,11 +95,14 @@ def stage(directory: Path, shared: Path, version: str) -> list[Path]:
     benchmarks = sorted(summary["benchmarks"], key=lambda row: (row["suite"], row["name"]))
     policy.write_json(index, {"benchmarks": benchmarks})
     destination = shared / f"harmos-reports-{version}.zip"
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    archive = zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED)
+    try:
         archive.write(index, "benchmarks.json")
         archive.writestr("summary.json", json.dumps(summary, indent=2) + "\n")
         for path in files:
             archive.write(path, path.relative_to(source).as_posix())
+    finally:
+        archive.close()
     return [destination, index]
 
 

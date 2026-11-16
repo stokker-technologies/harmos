@@ -18,10 +18,9 @@ import stat
 import sys
 from pathlib import Path
 
-from ..build import paths
-
 # Third Party Imports
 # Local Imports
+from ..build import paths
 from ..build.fixtures import ROOT
 
 # Type Checking Imports
@@ -47,7 +46,9 @@ def main(arguments: list[str] | None = None) -> None:
     stamp_path = fixtures / "stamp.json"
     if not stamp_path.is_file():
         sys.exit(f"fixture stamp {stamp_path} is absent; run mise run build -- --artifact tests")
-    stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = stamp_path.read_text(encoding="utf-8")
+    stamp = json.loads(text)
     if stamp.get("profile") != profile or stamp.get("target") != paths.target():
         sys.exit("fixture stamp belongs to another profile or native target")
     selectors = stamp["metadata"]

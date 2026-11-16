@@ -111,8 +111,9 @@ def run(directory: Path, selected: str | None) -> int:
         if selected == "baseline"
         else "candidate.txt"
     )
-    with (output / log_name).open("w", encoding="utf-8") as log:
-        with subprocess.Popen(
+    log = (output / log_name).open("w", encoding="utf-8")
+    try:
+        child = subprocess.Popen(
             command,
             cwd=directory,
             env=environment,
@@ -120,7 +121,8 @@ def run(directory: Path, selected: str | None) -> int:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-        ) as child:
+        )
+        try:
             assert child.stdout is not None
             for line in child.stdout:
                 if not line.startswith("STORAGE_SAMPLES "):
@@ -130,6 +132,16 @@ def run(directory: Path, selected: str | None) -> int:
                 lines.append(line)
                 peak = max(peak, _peak_memory(child))
             status = child.wait()
+        finally:
+            if child.stdout is not None:
+                child.stdout.close()
+            if child.stderr is not None:
+                child.stderr.close()
+            if child.stdin is not None:
+                child.stdin.close()
+            child.wait()
+    finally:
+        log.close()
     if selected not in {"interface", "durable_lag", "file_transfer"}:
         return status
     revision = os.environ.get("GITHUB_SHA") or archive.revision(directory) or "unknown"
@@ -163,13 +175,19 @@ def measurements(lines: list[str], revision: str, system: str, backend: str = "m
     transfers: dict[str, list[dict]] = {}
     for line in lines:
         if line.startswith("STORAGE_FILE_TRANSFER "):
-            value = json.loads(line.removeprefix("STORAGE_FILE_TRANSFER "))
+            # Read Structured Input
+            text = line.removeprefix("STORAGE_FILE_TRANSFER ")
+            value = json.loads(text)
             transfers.setdefault(value["case"], []).append(value["measurement"])
         if line.startswith("STORAGE_DURABLE_LAG "):
-            value = json.loads(line.removeprefix("STORAGE_DURABLE_LAG "))
+            # Read Structured Input
+            text = line.removeprefix("STORAGE_DURABLE_LAG ")
+            value = json.loads(text)
             lag.setdefault(value["case"], []).append(value)
         if line.startswith("STORAGE_MEASUREMENT "):
-            value = json.loads(line.removeprefix("STORAGE_MEASUREMENT "))
+            # Read Structured Input
+            text = line.removeprefix("STORAGE_MEASUREMENT ")
+            value = json.loads(text)
             cases.setdefault(value["name"], []).append(value)
         if line.startswith("STORAGE_COUNTER "):
             counters.append(json.loads(line.removeprefix("STORAGE_COUNTER ")))

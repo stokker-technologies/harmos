@@ -152,8 +152,10 @@ def run(
     if target is not None and package is not None and manifest is None:
         selected = {package: [target]}
     else:
+        # Run the Native Command
+        command = ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1", *selectors]
         result = subprocess.run(
-            ["cargo", "metadata", "--locked", "--no-deps", "--format-version", "1", *selectors],
+            command,
             cwd=directory,
             capture_output=True,
             text=True,
@@ -196,7 +198,9 @@ def run(
     composite = target is None
     executed = 0
     output = report.native_directory(directory, Path("target/tests/focused"))
-    with temporary.directory() as scratch:
+    scratch_directory = temporary.Directory()
+    scratch = scratch_directory.path
+    try:
         configuration = scratch / "nextest.toml"
         for name, targets in selected.items():
             # System Stories Retain Their Existing Serial Scheduling.
@@ -257,6 +261,8 @@ def run(
                     if not junit.is_file():
                         raise policy.TestError(f"focused tests produced no native report: {junit}")
                     executed += sum(case.find("skipped") is None for case in ElementTree.parse(junit).iter("testcase"))
+    finally:
+        scratch_directory.close()
     if not no_run and executed == 0:
         raise policy.TestError("selection executed no tests")
     return 0

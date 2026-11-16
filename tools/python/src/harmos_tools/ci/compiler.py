@@ -27,7 +27,6 @@ from ..process import spawn_flags
 
 # Type Checking Imports
 
-
 # === Public Exports === #
 
 # === Constants === #
@@ -112,8 +111,9 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
             environment["SCCACHE_CACHE_SIZE"] = size
     else:
         raise RuntimeError("sccache: a supported explicit backend is required")
-    with tempfile.TemporaryDirectory(prefix="project-sccache-") as temporary:
-        # Ignore Persistent Runner Configuration And Use Only The Declared Store.
+    temporary_directory = tempfile.TemporaryDirectory(prefix="project-sccache-")
+    temporary = temporary_directory.name
+    try:
         configuration = Path(temporary) / "config"
         configuration.write_text("", encoding="utf-8")
         environment.update(
@@ -121,6 +121,8 @@ def _configured(command: Sequence[str] | str, shell: str | None, *, statistics: 
             SCCACHE_CACHED_CONF=str(Path(temporary) / "cached-config"),
         )
         return _execute(command, shell, environment, backend, statistics=statistics)
+    finally:
+        temporary_directory.cleanup()
 
 
 def _execute(
@@ -143,8 +145,10 @@ def _execute(
     }
     # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
     try:
+        # Run the Native Command
+        command = ["sccache"]
         server = subprocess.Popen(
-            ["sccache"],
+            command,
             creationflags=spawn_flags(),
             env=server_environment,
             stdout=subprocess.DEVNULL,
@@ -156,7 +160,7 @@ def _execute(
         _report("process launch", error=error)
         raise CacheError("sccache: server launch failed") from None
 
-    with server:
+    try:
 
         def read_endpoint() -> None:
             try:
@@ -255,7 +259,7 @@ def _execute(
             except OSError as error:
                 _report("command launch", error=error)
                 raise CacheError("sccache: compiler command launch failed") from None
-            with child:
+            try:
                 try:
                     while child.poll() is None:
                         if server.poll() is not None:
@@ -274,8 +278,10 @@ def _execute(
                 finally:
                     if server.poll() is None:
                         try:
+                            # Run the Native Command
+                            command = ["sccache", "--show-stats", "--stats-format", "json"]
                             result = subprocess.run(
-                                ["sccache", "--show-stats", "--stats-format", "json"],
+                                command,
                                 creationflags=spawn_flags(),
                                 env=child_environment,
                                 stdin=subprocess.DEVNULL,
@@ -297,6 +303,14 @@ def _execute(
                             subprocess.SubprocessError,
                         ) as error:
                             _report("statistics", getattr(error, "returncode", None), error)
+            finally:
+                if child.stdout is not None:
+                    child.stdout.close()
+                if child.stderr is not None:
+                    child.stderr.close()
+                if child.stdin is not None:
+                    child.stdin.close()
+                child.wait()
         finally:
             # The Process Handle Is Ours; Never Issue Stop-Server Against A Reused Endpoint.
             try:
@@ -317,6 +331,14 @@ def _execute(
                     print(f"sccache write errors: {category} x{count}", file=sys.stderr, flush=True)
             if statistics is not None:
                 statistics.update({f"write_error_{category}": count for category, count in write_errors.items()})
+    finally:
+        if server.stdout is not None:
+            server.stdout.close()
+        if server.stderr is not None:
+            server.stderr.close()
+        if server.stdin is not None:
+            server.stdin.close()
+        server.wait()
 
 
 def _report(
@@ -328,8 +350,10 @@ def _report(
 ) -> None:
     """Emit Only Fixed Classifications And Validated Native Version And Error Codes."""
     try:
+        # Run the Native Command
+        command = ["sccache", "--version"]
         result = subprocess.run(
-            ["sccache", "--version"],
+            command,
             creationflags=spawn_flags(),
             capture_output=True,
             text=True,

@@ -19,7 +19,6 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-# isort: split
 from ..test import archive
 from . import policy
 
@@ -51,7 +50,9 @@ def check(directory: Path, _: str = "check") -> None:
     if not folder.is_dir():
         raise policy.ToolError("screenshots/ is missing")
     readme = (folder / "README.md").read_text(encoding="utf-8")
-    manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (folder / "manifest.json").read_text(encoding="utf-8")
+    manifest = json.loads(text)
     if not isinstance(manifest, list):
         raise policy.ToolError("screenshot manifest must be an array")
     entries = {}

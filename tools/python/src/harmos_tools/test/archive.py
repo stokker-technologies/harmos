@@ -43,8 +43,10 @@ MESSAGES = "compiler.json"
 
 
 def revision(directory: Path) -> str | None:
+    # Run the Native Command
+    command = ["git", "rev-parse", "HEAD"]
     result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        command,
         creationflags=spawn_flags(),
         cwd=directory,
         capture_output=True,
@@ -74,7 +76,9 @@ def prune(directory: Path, keep: set[str], *, archives: bool = False) -> None:
 def binaries(directory: Path, profile: str) -> dict[str, str]:
     """Map Archive Binary IDs To Names, Retaining Package Identity For Measured Overrides."""
     path = require(directory, profile)
-    with temporary.directory() as listing:
+    listing_directory = temporary.Directory()
+    listing = listing_directory.path
+    try:
         extracted = listing / "extract"
         extracted.mkdir()
         command = [
@@ -103,6 +107,8 @@ def binaries(directory: Path, profile: str) -> dict[str, str]:
         if result.returncode:
             raise policy.TestError(f"nextest could not list test binaries: {result.stderr.strip()}")
         return {identity: entry["binary-name"] for identity, entry in json.loads(result.stdout).get("rust-binaries", {}).items()}
+    finally:
+        listing_directory.close()
 
 
 def require(directory: Path, profile: str) -> Path:
@@ -122,17 +128,19 @@ def install_wheels(directory: Path, profile: str, native: str | None = None) -> 
     if any(root.is_dir() for root in roots) and not wheels:
         raise policy.TestError("missing built wheels in the selected profile/target")
     if wheels:
+        # Run the Native Command
+        command = [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            sys.executable,
+            "--no-deps",
+            "--reinstall",
+            *map(str, wheels),
+        ]
         subprocess.run(
-            [
-                "uv",
-                "pip",
-                "install",
-                "--python",
-                sys.executable,
-                "--no-deps",
-                "--reinstall",
-                *map(str, wheels),
-            ],
+            command,
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -170,7 +178,9 @@ def fixtures(
         if required:
             raise policy.TestError("missing fixture stamp")
         return
-    record = json.loads(path.read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = path.read_text(encoding="utf-8")
+    record = json.loads(text)
     if record.get("profile") != profile:
         raise policy.TestError("fixture stamp belongs to another profile")
     if record.get("target") != paths.target():
@@ -216,8 +226,11 @@ def _inside(directory: Path, name: str) -> Path:
 
 
 def _digest(path: Path) -> str:
-    with path.open("rb") as source:
+    source = path.open("rb")
+    try:
         return hashlib.file_digest(source, "sha256").hexdigest()
+    finally:
+        source.close()
 
 
 def _toolchain(directory: Path) -> str:

@@ -17,8 +17,7 @@ import os
 import subprocess
 import sys
 import tomllib
-from collections.abc import Callable, Generator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 # Third Party Imports
@@ -38,6 +37,25 @@ LIBRARY_TARGETS = frozenset({"lib", "rlib", "dylib", "cdylib", "staticlib", "pro
 # === Classes === #
 
 
+class CredentialScope:
+    """Remove Publication Credentials Until close() Restores the Caller."""
+
+    def __init__(self, settings: dict, *, profile: str = "release") -> None:
+        declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
+        names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}
+        names.add("ACTIONS_ID_TOKEN_REQUEST_URL")
+        self.previous = {name: os.environ.pop(name) for name in names if name in os.environ}
+        self.profile = os.environ.get("RELEASE_PROFILE")
+        os.environ["RELEASE_PROFILE"] = profile
+
+    def close(self) -> None:
+        os.environ.update(self.previous)
+        if self.profile is None:
+            os.environ.pop("RELEASE_PROFILE", None)
+        else:
+            os.environ["RELEASE_PROFILE"] = self.profile
+
+
 class ToolError(Exception):
     """Invalid policy or a failed native operation."""
 
@@ -54,7 +72,9 @@ def root() -> Path:
 
 
 def config(directory: Path) -> dict[str, dict]:
-    return tomllib.loads((directory / "tools/project.toml").read_text(encoding="utf-8"))
+    # Read Structured Input
+    text = (directory / "tools/project.toml").read_text(encoding="utf-8")
+    return tomllib.loads(text)
 
 
 def policy(directory: Path, name: str) -> dict:
@@ -136,25 +156,6 @@ def write_json(path: Path, value: object) -> None:
         raise ToolError(f"refusing linked staging file: {temporary}")
     temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
     temporary.replace(path)
-
-
-@contextmanager
-def credential_free(settings: dict, *, profile: str = "release") -> Generator[None]:
-    """Temporarily Remove Publishing Credentials And Select The Requested Package Profile."""
-    declared = {name for lane in settings.get("package_signing", []) for name in lane.get("secrets", [])}
-    names = {name for name in os.environ if name.endswith(("_TOKEN", "_PASSWORD", "_SECRET")) or name in declared}
-    names.add("ACTIONS_ID_TOKEN_REQUEST_URL")
-    previous = {name: os.environ.pop(name) for name in names if name in os.environ}
-    previous_profile = os.environ.get("RELEASE_PROFILE")
-    os.environ["RELEASE_PROFILE"] = profile
-    try:
-        yield
-    finally:
-        os.environ.update(previous)
-        if previous_profile is None:
-            os.environ.pop("RELEASE_PROFILE", None)
-        else:
-            os.environ["RELEASE_PROFILE"] = previous_profile
 
 
 def main(
