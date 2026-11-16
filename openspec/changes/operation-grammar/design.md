@@ -6,8 +6,12 @@ Naming rule amended by the owner on 2026-11-12: bare verbs on the service's reso
 Separation by audience locked by the owner on 2026-11-12
 Three visibility levels locked by the owner on 2026-11-12
 
-Locked contracts remain authoritative; implementation sections below describe landed source.
-Only the explicitly listed open questions await decisions when their work is reached.
+The current locked direction in [operation-boundary](../operation-boundary/tasks.md) replaces
+host wire exposure, direct manager access, composition narrowing and statistics ownership.
+[plugin-lifecycle](../plugin-lifecycle/tasks.md) replaces lifecycle and catalog API naming across
+SDKs. Earlier layouts and examples below describe the original migration; they do not override
+those changes or establish that their replacements have landed. The remaining guarantees and
+proof are owned by this change's tasks.md.
 
 ## Owner Confirmations, 2026-11-13
 
@@ -1911,9 +1915,9 @@ WatchRows, file/directory watches, metadata continuations, native schema exchang
 consumer policy and bounded physical chunks. Runtime registration uses one typed
 set of explicitly declared identities before inferring context projections. Wire
 identity admission remains the core validator; the storage-only admission shortcut
-stays deleted. Remaining joins are receipt-bearing log Append, retained-reader
-DeleteFile reclamation and the cooperative final-result inventory; see tasks
-I.8, 3.10 and 3.11. No whole-change source closure or cross-platform validation is
+stays deleted. Remaining joins are receipt-bearing log Append and retained-reader
+DeleteFile reclamation; see tasks I.8 and 3.10. The cooperative final-result
+inventory is settled below under implementation decision 3.11. No whole-change source closure or cross-platform validation is
 claimed by this merge.
 
 
@@ -1954,18 +1958,13 @@ Implementation decision (4.1): Rust, Python, C# and C++ promise the same native 
 
 Implementation decision (4.2): the generic managed application client remains Rust-only; other SDKs use generated application gRPC clients.
 
-Only these questions remain open. Settle each when implementation reaches its
-owner; they do not block the other locked work. Each has a corresponding task.
-
-1. **Issued Positions and Restart:** settle returned-position/page-token lifetime,
-   expiry, provenance and retained composite selections across restart. Arbitrary
-   earlier positions remain refused; product presentation retention stays there.
-2. **External Watch Semantics:** the Durable Row Watch Contract below settles
-   WatchRows. Migrate external file/directory watches while preserving their native
-   replacement, truncation, production fencing, scan-boundary and gap contracts;
-   runtime sources belong to their owning core task.
-3. **Deletion With Retained Readers:** settle reader lifetime and reclamation on
-   supported backends before implementing deletion changes.
+Issued-position/restart behavior and external watch semantics are implemented under tasks
+3.8–3.9 and the Durable Row Watch Contract. They are no longer unanswered questions.
+Deletion with retained readers remains owned by task 3.10 and the reported deletion regression
+in the storage-facilities change's task 1.26. Preserve pre-deletion readers and refuse fresh
+reads of deleted data; obtain owner resolution before any data-loss change. Receipt-bearing
+log Append remains task I.8/3.4, and the unimplemented second-sleep refusal remains SB.2.
+The tasks inventory owns the remaining deterministic guards, flakes and native/hosted proof.
 
 ## Migration Plan
 

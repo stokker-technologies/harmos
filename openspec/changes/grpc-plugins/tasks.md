@@ -1,10 +1,20 @@
 # Tasks
 
+## Current Ownership
+
+[operation-boundary](../operation-boundary/tasks.md) owns the typed native-operation facade, in-process-only host operations,
+product wrappers and removal of host-client/narrowing surfaces. [plugin-lifecycle](../plugin-lifecycle/tasks.md) owns
+register/initialize/finalize, host start/stop/run, catalog() and harmonized SDK names.
+Older checked migration inventories are historical slices, not instructions to restore
+retired APIs. A checked supersession task transfers ownership; it proves no replacement.
+All remaining proof boxes describe one combined candidate: reuse the same final evidence
+across overlapping scopes instead of running a new full validation for each historical repair.
+
 ## Remote Disconnect Regression
 
 - [x] 14.1 Preserve remote reconnect after scoped publication cleanup reports connection loss in `crates/harmos-runtime/src/plugin/grpc/mod.rs`; retain the cleanup failure in disconnected status and preserve the existing cleanup timeout and managed reaping policy.
 - [x] 14.2 Extend `crates/harmos-runtime/tests/plugin_grpc/scoped_publications.rs` to prove failure retention, reconnect and fresh scoped ingestion after accepted ingestion settles; update `docs/architecture.md` and this change's `design.md`, and review README impact. The scoped story and existing remote reconnect, stream reconnect and remote stop stories pass; README claims remain current.
-- [ ] 14.3 Validate the committed repair with format, Rust/repository checks, locked workspace/tests/benches compilation, all four Rust lanes, coverage and Rust fixture conformance; retain native Linux and hosted Nightly as separate proof obligations. Commits remain local.
+- [ ] 14.3 After combined source closure, prove the remote-disconnect repair through focused cancellation/disconnect stories, required format/language/repository checks and the native platform/SDK matrix in 8.1–8.2. Configured hosted CI/Nightly owns full lanes, benchmarks and coverage under later delivery authorization; no new proof is claimed.
 
 ## Managed Process Settlement
 
@@ -12,7 +22,7 @@
 - [x] 13.2 Own manager stop/delete/restart and staged replacement rollback ordering; retain installations and refuse reuse after failed settlement. Audit archive extraction, guest modules and upload staging for child-held paths.
 - [x] 13.3 Own deterministic manager lifecycle stories and controlled fixture startup; prove cancellation/delete, readiness failure/delete, running replacement and shutdown during startup through retained native process observation.
 - [x] 13.4 Inspect the guest sandbox story, fuel, memory limiter and suspended-call settlement; repair a demonstrated hazard without changing the story deadline. Review README impact and update affected architecture/plugin guidance.
-- [ ] 13.5 Final validation: run the requested local committed-head format, Rust/repository checks, locked workspace/tests/benches compilation, manager/runtime system stories and Rust fixture conformance once. Native Linux and hosted Nightly remain required proof beyond this local-only delivery; leave final validation open until those results exist. No push is authorized.
+- [ ] 13.5 After combined source closure, prove managed process settlement with the manager/runtime settlement stories and the native platform/SDK matrix in 8.1–8.2. Required hosted CI/Nightly proof remains pending delivery authorization; reuse combined evidence without rerunning full lanes for this repair.
 
 ## Product Integration Gaps
 
@@ -21,7 +31,7 @@
 - [x] 12.3 Separate required transfer admission from transport ceiling. Own protocol transfer sizing, plugin connection admission, Rust client/server/guest ceiling consumers and the exact-bound/refusal story. The configured-chunk story admits exactly chunk plus framing and refuses one byte less; transport ceilings retain their previous values.
 - [x] 12.4 Preserve explicit native statuses through encoded invocations with action and cause. Own runtime error inspection/forwarding and the conformance Client Caller Refusal rule's direct/encoded native-status branch. Status inspection belongs to the error owner, independent of the optional gRPC listener facade. The minimal-feature build and all 38 Rust SDK conformance rules pass after that move.
 - [x] 12.5 Audit the empty input dispatch generator. The library's generators do not emit the reported path-based Rust input dispatch match; the product-only finding needs repair in its owning generator. No generated output was hand-edited.
-- [ ] 12.6 Commit explicitly owned paths locally, then validate the committed head once with format, each language and repository check, locked workspace/tests/benches compilation, runtime unit/integration/system stories, four SDK conformance fixtures and SDK tasks. Stop heavy builds below 45 GB; native Linux remains a separate platform obligation. No push is authorized.
+- [ ] 12.6 After all source handoffs, prove the product integration gaps with focused runtime/SDK stories and required format/language/repository checks, then the native matrix in 8.1–8.2 and authorized hosted CI/Nightly. Commits remain local; workstation disk monitoring is session-owned, never a project validation requirement.
 - [x] 12.7 Activate the existing .NET SDK pin at the repository root because Rust runtime stories launch the C# fixture; remove the SDK-local duplicate declaration and update affected tooling guidance. Own root/SDK mise declarations and generated locks and `docs/tooling.md`. C# self-installation passes against the pinned runtime; the version is unchanged.
 
 ## Linux Proof and SDK Repairs
@@ -30,15 +40,15 @@
 - [x] 11.2 Install the packaged Python wheel with normal dependency resolution in an isolated environment, independent of the runner cache. Own `sdk/python/tests/integration/test_packaged_conformance.py`. The runner's Python 3.15 could not find `grpcio` in its offline cache; cache-disabled online installation and packaged conformance pass on Windows.
 - [x] 11.3 Make Rust call options cloneable and debuggable, verify metadata/deadline preservation and review equivalent Python, C# and C++ options. Own `sdk/rust/src/connection.rs`, SDK client stories and `docs/architecture.md`. Rust options derive `Clone` and `Debug`; forwarding preserves metadata and timeout. Python keyword values, the C# gRPC struct and C++ shared-context options already support forwarding.
 - [x] 11.4 Remove the non-Send borrow from encoded invocation settlement and assert Send futures across public protobuf sessions and Rust SDK calls. Own `crates/harmos-runtime/src/operations/wire.rs`, its protobuf stories and SDK client stories. Settlement clones only instance control before creating its future; the boxed response future is Send but not Sync. Compiler assertions fail for download, upload, exchange and direct settlement with the original implementation and pass with the repair.
-- [ ] 11.5 Validate the committed candidate on both platforms: Windows format, each language and repository check, C++ and Python SDK tasks including packaged conformance, Rust SDK stories and all four conformance fixtures; native Linux and hosted Nightly proof. Keep commits local; native Linux and Nightly require a later authorized hosted run. Do not run specification lifecycle commands for this repair.
+- [ ] 11.5 Complete native Linux/Windows SDK and packaged-conformance proof under 8.1–8.2, including Rust, Python, C# and C++ fixture consumers. Required hosted Nightly remains pending authorization; no platform substitutes for the other.
 
 ## Nightly Repairs After Protocol Layout
 
 - [x] 10.1 Refresh the standalone Python SDK lock through its prepare task and make local Python checks validate the same locked environment as CI. Own `sdk/python/mise.toml`, `sdk/python/uv.lock`, root Python task dispatch and `docs/tooling.md`. The SDK lock omitted the referenced tooling package's added formatter metadata; `--no-sync` skipped freshness validation.
 - [x] 10.2 Match benchmark object schemas to the registered catalog and configure and start the guest benchmark's plugin entry manager and declared host file operations. Own storage benchmark workload/setup and runtime guest benchmark fixtures; preserve production admission checks. Derive the workload key from the registered Sample definition instead of hardcoding revision one; storage interface, baseline and lag workloads pass. The guest fixture explicitly starts the manager against its shared runtime before registration, matching the working guest stories; focused guest compilation passes and final execution remains under 10.4.
 - [x] 10.3 Migrate release protocol inputs and archive fixtures to the model/host/plugin layout; search packaging, release and documentation tooling for retired paths. Own release staging and its tooling stories. The archive story covers all three trees and both channels and passes; the retired-path search is clean.
-- [ ] 10.4 On the committed candidate, run Windows format, language/repository checks, locked workspace/tests/benches compilation, CI's Python prepare, all storage/query/runtime benches, language test lanes, packaging and credential-free release rehearsal. Repair discovered failures; retain native Linux and live publication proof as hosted obligations. Commits stay local.
-- [x] 10.5 Repair Nightly run 43637558306: canonical LF release JSON with strict shared-inventory comparison; locked C# generator restore and tooling profile propagation without stale dev-host fallback; profile-selected Python wheel conformance and examples, with one Linux Product wheel artifact supplied to the Python check; complete C++ Watch options initialization; cache write warnings and read-only classification with compiler status and statistics preserved. Own `tools/python/src/harmos_tools/{release,ci}`, the release-layout, Cargo and packaged Rust/C# tooling stories, root and C#/Python SDK tasks, `.github/workflows/validation.yml`, `sdk/python/tests/{integration/test_packaged_conformance.py,support/host.py}`, `sdk/cpp/examples/conformance/install_itself.cpp` and `docs/tooling.md`. Source and focused regression proof only; final committed-candidate validation remains under 10.4. Keep all commits local.
+- [ ] 10.4 After combined source closure, prove the Nightly protocol-layout repairs through affected language/tooling/package tasks; retain full configured hosted suites and benchmarks under authorized CI/Nightly, and release rehearsal/publication proof under release-assets-layout 2.1. Do not infer live publication from source wiring.
+- [x] 10.5 Repair Nightly run the merged candidate: canonical LF release JSON with strict shared-inventory comparison; locked C# generator restore and tooling profile propagation without stale dev-host fallback; profile-selected Python wheel conformance and examples, with one Linux Product wheel artifact supplied to the Python check; complete C++ Watch options initialization; cache write warnings and read-only classification with compiler status and statistics preserved. Own `tools/python/src/harmos_tools/{release,ci}`, the release-layout, Cargo and packaged Rust/C# tooling stories, root and C#/Python SDK tasks, `.github/workflows/validation.yml`, `sdk/python/tests/{integration/test_packaged_conformance.py,support/host.py}`, `sdk/cpp/examples/conformance/install_itself.cpp` and `docs/tooling.md`. Source and focused regression proof only; final committed-candidate validation remains under 10.4. Keep all commits local.
 
 ## Caller Surfaces and Refusal Repairs
 
@@ -46,11 +56,11 @@
 - [x] 9.2 Hide wire identities behind internal SDK modules and deliberate barrels; enforce public headers, stubs, exports and guides in the repository check. Own `sdk`, `tools/python`, `mise.toml` and affected guides.
 - [x] 9.3 Repair reflection descriptor composition and Python canonical service registration; call every SDK through canonical gRPC paths in conformance. Own runtime gRPC descriptors, protocol generation and `tools/conformance`.
 - [x] 9.4 Define wrong-caller failure once and preserve kind, code, action and operation across direct, child, tick, guest and nested calls; strengthen both caller conformance rules and controlled-clock stories. Own `crates/harmos-operations`, `crates/harmos-runtime`, `tools/conformance` and SDK fixtures. Supply the shared guest fixture's new clock requirement grant to all of its story consumers and retain existing child operation frames.
-- [ ] 9.5 On the committed candidate, run format, each language check, repository check, locked workspace/tests compilation, four SDK conformance fixtures, runtime system stories, SDK build/tests and packaged consumers; verify regeneration leaves a clean tree. Native Linux proof remains required under 8.1 and needs a native Linux development environment. Commits remain local; delivery is not authorized.
+- [ ] 9.5 After combined source closure, prove the refusal repairs with focused runtime stories and SDK/packaged consumers under 8.1–8.2; verify fresh generation has no drift. The new host-client and facade cutover is owned by operation-boundary, and lifecycle names by plugin-lifecycle. Delivery remains unauthorized.
 
 ## 1. Contract
 
-- [ ] 1.1 Settle the open points in `design.md` with the owner and record each outcome there.
+- [x] 1.1 Superseded by [operation-boundary](../operation-boundary/tasks.md) and [plugin-lifecycle](../plugin-lifecycle/tasks.md): apply their locked operation, facade, lifecycle and SDK naming contracts instead of reopening the old design questionnaire. Required reconnect/placement behavior and unperformed native proof remain 8.1–8.2; no replacement implementation is claimed here.
 - [x] 1.2 Lock the source inventory: producers, consumers, tests, fixtures, examples and guidance. The indented list records the completed native cutover, including historical paths and feature names; remaining crate consolidation is owned by 4.7, 6.5, 6.8–6.12 and 7.1.
   - `docs/CONTRIBUTING.md` — Migrate native authoring/example/fixture instructions to SDK builder values, serve and managed/remote `plugin-grpc`; retain guest guidance until 7.1.
   - `Cargo.lock` — Migrate default native features and facade exports to the new SDK/placement; remove obsolete fixture/bench target selections as consumers move, retaining guest dependencies until 7.1.
@@ -262,7 +272,7 @@
 - [x] 3.7 Add the virtual mode: its own timer queue, activity accounting for calls, ticks and host work, and a controller that advances while a condition is unmet, with simulation's existing tests kept passing.
 - [x] 3.8 Reduce visibility to `Private` and `Public`.
 - [x] 3.9 Prove Python conformance plugin admission and host-clock sleep through the real runtime under virtual time.
-- [x] 3.10 Before Dokime's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
+- [x] 3.10 Before a product's Harmos-adoption wave 2, extend client-facing gRPC declarations/codecs to accept generated protobuf types and authoritative descriptors directly; preserve method paths, fingerprints, decoding-memory admission, cancellation, backpressure and all host streaming envelopes.
   - [x] 3.10.1 Register generated message declarations with authoritative descriptors, native endpoints and protobuf fingerprints in domain/operations/runtime.
   - [x] 3.10.2 Prove generated unary and streamed gRPC calls, authorization, reflection and decoding-memory refusal with a vendored-compiler test proto; document the declaration.
   - [x] 3.10.3 Support private generated native operations and typed child calls with registration-time callee dependency checks.
@@ -283,7 +293,7 @@
   - [x] 3.11.5 Migrate example operations and remove superseded host projections and wire mirrors.
     - [x] 3.11.5.1 Migrate native example operations, SDK consumers and generated application contracts; isolate deferred guest declarations.
     - [x] 3.11.5.2 Remove replaced native host DTOs and unused storage projections; retain the codec machinery still required by deferred guest/declaration authoring.
-- [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for Dokime's host-wave operations migration.
+- [x] 3.12 Prove generated protobuf unary and streaming declarations through real gRPC routing, bounded decoding and the client authorization hook; provide the adoption example for a product's host-wave operations migration.
 
 ## 4. Rust SDK
 
@@ -386,9 +396,9 @@
 
 ## Workflow Follow-Up
 
-- Dokime adopts the merged revision in its own `grpc-plugins` change.
-- Dokime wave 2 adopts 3.10; host wave 3 moves server behaviour to operations with direct registration and deletes each area's `hosted!`/`Host`/`Serve`; waves 4–5 redirect CLI/desktop hosting to runtime and delete server/domain crates and dead conversions as specified in Crate Structure.
-- After the last gRPC wave, Harmos `storage-interface` implements and benchmarks the generic extensions; Dokime's change of the same name consumes them, extracts application persistence and supplies before/after multi-day benchmarks. No storage extension or extraction runs in a gRPC wave.
+- A product adopts the merged revision in its own `grpc-plugins` change.
+- A product wave 2 adopts 3.10; host wave 3 moves server behaviour to operations with direct registration and deletes each area's `hosted!`/`Host`/`Serve`; waves 4–5 redirect CLI/desktop hosting to runtime and delete server/domain crates and dead conversions as specified in Crate Structure.
+- After the last gRPC wave, Harmos `storage-interface` implements and benchmarks the generic extensions; a product's change of the same name consumes them, extracts application persistence and supplies before/after multi-day benchmarks. No storage extension or extraction runs in a gRPC wave.
 - Delivery uses targeted validation and merges to dev without waiting for CI; breakage is fixed in follow-ups.
 - SDK system tests run in Nightly only, not on pull requests.
 

@@ -31,7 +31,7 @@
 
 ## 5. Final Validation
 
-- [ ] 5.1 Run the operation, state, storage and example tests on Linux and Windows.
+- [ ] 5.1 After the combined candidate is source complete, prove the affected operation, state, storage and example behavior on native Linux and Windows using project tasks and authorized hosted CI/Nightly. Macro/value source completion does not close this proof; keep this change active until it exists.
 - [x] 5.2 Update the product guide and authoring guidance.
 
 ## Workflow Follow-Up
