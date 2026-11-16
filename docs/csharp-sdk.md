@@ -54,10 +54,42 @@ is client-only. A product's declarative composition may narrow these audiences;
 see [Product Composition and Narrowing](architecture.md#product-composition-and-narrowing).
 The host remains responsible for caller authorization.
 
-An observer can call declared host operations and watches while its tick is
-unanswered. Child IDs remain unique across ticks on one Samples call; independent
-calls retain independent scopes. Answering a tick cancels outstanding children;
-ending demand cancels the active observer context. Device streams cannot issue
+## Interval Observers
+
+The host keeps the clock and grants an interval stream one window at a time:
+`Count` samples, the first at `Start`, each one `Period` later, numbered from
+`Sequence`. The plugin answers each window with columns, one value per sample.
+
+```csharp
+using Harmos.Plugins;
+
+var interval = new Duration { Nanos = 1_000_000 };
+plugin.Observer<Reading>("bench.reading", interval, async context => Read(), windowSetting: "window");
+plugin.WindowObserver<Reading, ReadingColumns>("bench.readings", interval,
+    async (context, window) => ReadMany(window.Count));
+// public sealed record Window(Timestamp Start, Duration Period, ulong Count, ulong Sequence)
+```
+
+The one-sample `Observer` keeps its form: the SDK calls it once per sample of the
+window, in order, with `context.Sequence` and `context.At` set to that sample's
+sequence and time, then transposes the rows into columns. A `WindowObserver`
+receives the whole grant and returns its columns message itself. That message
+repeats every row field with the same number and type and holds exactly `Count`
+values per field. Mismatched columns are refused when the stream is declared.
+Interval rows hold one value per field: repeated, map and oneof fields, including
+proto3 `optional`, are refused when the observer is declared.
+
+`intervalSetting` names a plugin Duration setting that overrides the interval;
+`windowSetting` names one that overrides the host's window length for the stream.
+The SDK splits a window into parts at sample boundaries so that every response
+fits the plugin's message size. A single sample that cannot fit fails the window
+with an error naming the row and the limit.
+
+An observer can call declared host operations and watches while its window is
+unanswered. Children left open by one sample stay open until the whole window is
+answered, which cancels them. Child IDs remain unique across windows on one
+Samples call; independent calls retain independent scopes. Ending demand cancels
+the active observer context. Device streams receive no windows and cannot issue
 child calls. Timed waits use the host clock and operation policies.
 
 ## Build and Validation
@@ -77,8 +109,8 @@ Test and package consume existing build outputs. `--profile release` selects
 Release. `--layer integration` includes the managed/remote reference-host journey;
 build `harmos-conformance` first using its package selection. `--filter` selects
 individual journeys and takes precedence over `--layer`. Direct carrier tests
-exercise settings, clock, correlation, failures, watch demand and cancellation
-without a Rust host. Native Linux and Windows validation remain separate proofs.
+exercise settings, clock, correlation, failures, watch demand, cancellation,
+window columns and part splitting without a Rust host. Native Linux and Windows validation remain separate proofs.
 
 `mise -C sdk/csharp run test:tooling -- --exact tools.python.tests.integration.test_csharp_tooling`
 checks C# generation, caller narrowing and fixture staging. Generated roots and

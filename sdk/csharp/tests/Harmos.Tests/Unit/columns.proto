@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Window Columns
+//
+// Rows and columns that exercise interval window encoding and declaration checks.
+
+syntax = "proto3";
+
+package tests.columns.v1;
+
+// === Imports === //
+
+// === Options === //
+
+option csharp_namespace = "Harmos.Tests.Columns";
+
+// === Services === //
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// One interval sample with packed and length-delimited fields.
+message Reading {
+  double level = 1;
+  int64 count = 2;
+  string label = 3;
+  Tag tag = 4;
+}
+
+// The columns of Reading: one value per sample of a window, in sample order.
+message ReadingColumns {
+  repeated double level = 1;
+  repeated int64 count = 2;
+  repeated string label = 3;
+  repeated Tag tag = 4;
+}
+
+// Repeats level with another type.
+message RetypedColumns {
+  repeated float level = 1;
+  repeated int64 count = 2;
+  repeated string label = 3;
+  repeated Tag tag = 4;
+}
+
+// Omits the row's tag column.
+message PartialColumns {
+  repeated double level = 1;
+  repeated int64 count = 2;
+  repeated string label = 3;
+}
+
+// The columns of a string wrapper row.
+message Labels {
+  repeated string value = 1;
+}
+
+// Carries a nested message column value.
+message Tag {
+  string name = 1;
+}
+
+// Holds several values per sample and cannot be an interval row.
+message Listed {
+  repeated int32 values = 1;
+}
+
+// Tracks presence and cannot be an interval row.
+message Present {
+  optional int32 value = 1;
+}
+
+// Selects one of several fields and cannot be an interval row.
+message Choice {
+  oneof value {
+    int32 number = 1;
+    string text = 2;
+  }
+}
+
+// === Enums === //

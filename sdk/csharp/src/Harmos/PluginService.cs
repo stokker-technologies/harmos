@@ -23,6 +23,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     : InstanceBase
 {
   private readonly Dictionary<string, ByteString> requires = description.Declarations.Requires.ToDictionary(item => item.Id, item => item.Fingerprint);
+  private readonly int limit = (int)Math.Min(description.MessageBytes, int.MaxValue);
 
   public override Task<InstanceGetResponse> Get(InstanceGetRequest request, ServerCallContext context)
   {
@@ -178,7 +179,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     if (!streams.TryGetValue(open.Stream, out var publication))
       throw new RpcException(new Status(StatusCode.NotFound, "Unknown Stream"));
 
-    // The Host Must Receive Headers Before It Can Send the First Tick.
+    // The Host Must Receive Headers Before It Can Grant the First Window.
     await call.WriteResponseHeadersAsync(new Metadata());
 
     using var stopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
@@ -186,29 +187,28 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     using var readingStopped = CancellationTokenSource.CreateLinkedTokenSource(call.CancellationToken);
     Task<bool>? reading = null;
     Task? producing = null;
-    Task<ByteString>? observing = null;
-    Context? tickContext = null;
-    CancellationTokenSource? tickStopped = null;
+    Task<Columns>? observing = null;
+    Context? windowContext = null;
+    CancellationTokenSource? windowStopped = null;
     try
     {
       if (publication.Observer is not null)
       {
-        ulong sequence = 0;
         ulong lastCall = 0;
         reading = input.MoveNext(readingStopped.Token);
         while (await reading)
         {
-          var at = TickTime(input.Current);
-          tickStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
+          var window = Grant(input.Current);
+          windowStopped = CancellationTokenSource.CreateLinkedTokenSource(stopped.Token);
           var frames = Channel.CreateUnbounded<InstanceInvokeResponse>(new UnboundedChannelOptions { SingleReader = true });
-          tickContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
-              description.Id, requires, tickStopped, frames.Writer, operations)
+          windowContext = new Context(new Request { Operation = open.Stream, Scope = open.Scope, Attempt = 1 },
+              description.Id, requires, windowStopped, frames.Writer, operations)
           {
-            Sequence = ++sequence,
-            At = at.Clone(),
+            Sequence = window.Sequence,
+            At = window.Start.Clone(),
             LastCall = lastCall
           };
-          observing = publication.Observer(tickContext);
+          observing = publication.Observer(windowContext, window);
           reading = input.MoveNext(readingStopped.Token);
           Task<bool>? available = null;
           while (true)
@@ -218,8 +218,8 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
               if (!await reading)
                 return;
               if (input.Current.FrameCase != InstanceSamplesRequest.FrameOneofCase.Child)
-                throw Invalid("Read Samples: Expected a Child Reply While a Tick Is Unanswered");
-              await tickContext.Reply(input.Current.Child);
+                throw Invalid("Read Samples: Send Only Child Replies Until the Unanswered Window's Last Part");
+              await windowContext.Reply(input.Current.Child);
               reading = input.MoveNext(readingStopped.Token);
             }
             while (frames.Reader.TryRead(out var frame))
@@ -227,20 +227,25 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
             if (observing.IsCompleted)
               break;
             if (available is null || available.IsCompleted)
-              available = frames.Reader.WaitToReadAsync(tickStopped.Token).AsTask();
+              available = frames.Reader.WaitToReadAsync(windowStopped.Token).AsTask();
             await Task.WhenAny(observing, reading, available);
           }
-          var row = await observing;
-          await tickContext.Cancel("Tick Answered");
-          await tickContext.FlushCancellations();
+          var columns = await observing;
+          await windowContext.Cancel("Samples Window Answered");
+          await windowContext.FlushCancellations();
           while (frames.Reader.TryRead(out var frame))
             await output.WriteAsync(SampleChild(frame), call.CancellationToken);
-          lastCall = tickContext.LastCall;
-          var sample = new Sample { At = at, Row = row, Sequence = sequence };
-          await output.WriteAsync(new InstanceSamplesResponse { Samples = { sample } }, call.CancellationToken);
-          tickContext = null;
-          tickStopped.Dispose();
-          tickStopped = null;
+          lastCall = windowContext.LastCall;
+          foreach (var part in columns.Parts(limit, open.Stream))
+          {
+            var response = new InstanceSamplesResponse { Batch = part };
+            if (response.CalculateSize() > limit)
+              throw new RpcException(new Status(StatusCode.Internal, $"Answer {open.Stream}: A Part Exceeds the {limit}-Byte Message Limit; Report This SDK Defect"));
+            await output.WriteAsync(response, call.CancellationToken);
+          }
+          windowContext = null;
+          windowStopped.Dispose();
+          windowStopped = null;
         }
         return;
       }
@@ -256,14 +261,15 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         {
           if (!await reading)
             break;
-          TickTime(input.Current);
-          throw Invalid("Read Samples: Device Streams Do Not Accept Ticks");
+          throw Invalid(input.Current.FrameCase == InstanceSamplesRequest.FrameOneofCase.Window
+              ? "Read Samples: Grant Windows Only to Interval Streams"
+              : "Read Samples: Send No Frames After Open on Device Streams");
         }
         if (!await sampling)
         {
           await producing;
           if (await reading)
-            throw Invalid("Read Samples: Device Streams Do Not Accept Frames");
+            throw Invalid("Read Samples: Send No Frames After Open on Device Streams");
           break;
         }
         while (rows.Reader.TryRead(out var sample))
@@ -287,7 +293,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         catch (OperationCanceledException) when (readingStopped.IsCancellationRequested) { }
       }
       context.Disconnected();
-      tickContext?.Disconnected();
+      windowContext?.Disconnected();
       if (producing is not null)
         await producing;
       if (observing is not null)
@@ -299,7 +305,7 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
         }
         catch (Exception) when (stopped.IsCancellationRequested) { }
       }
-      tickStopped?.Dispose();
+      windowStopped?.Dispose();
     }
   }
 
@@ -321,18 +327,35 @@ internal sealed class PluginService(InstanceGetResponse description, Dictionary<
     catch (Exception error) { rows.TryComplete(error); }
   }
 
-  private static Timestamp TickTime(InstanceSamplesRequest frame)
+  private static Window Grant(InstanceSamplesRequest frame)
   {
-    if (frame.FrameCase != InstanceSamplesRequest.FrameOneofCase.Tick || frame.Tick.At is null)
-      throw Invalid("Read Samples: Tick Timestamp Is Required");
-    ValidateTimestamp(frame.Tick.At);
-    return frame.Tick.At.Clone();
+    if (frame.FrameCase != InstanceSamplesRequest.FrameOneofCase.Window)
+      throw Invalid(frame.FrameCase == InstanceSamplesRequest.FrameOneofCase.Child
+          ? "Read Samples: Send Child Replies Only While a Window Is Unanswered"
+          : "Read Samples: Send Windows After Open");
+    var window = frame.Window;
+    if (window.Start is null)
+      throw Invalid("Read Samples: Send a Window Start Timestamp");
+    ValidateTimestamp(window.Start);
+    var period = window.Period;
+    if (period is null || period.Seconds < 0 || period.Nanos < 0 || period.Nanos >= 1_000_000_000 ||
+        period.Seconds > 315_576_000_000 || (period.Seconds == 0 && period.Nanos == 0))
+      throw Invalid("Read Samples: Send a Positive Window Period");
+    if (window.Count == 0)
+      throw Invalid("Read Samples: Send a Window Count of at Least One");
+    if (window.Sequence == 0 || window.Sequence - 1 > ulong.MaxValue - window.Count)
+      throw Invalid("Read Samples: Send a One-Based Window Sequence That Numbers Every Sample");
+    var start = (Int128)window.Start.Seconds * 1_000_000_000 + window.Start.Nanos;
+    var end = (Int128)253_402_300_799 * 1_000_000_000 + 999_999_999;
+    if (window.Count - 1 > (end - start) / ((Int128)period.Seconds * 1_000_000_000 + period.Nanos))
+      throw Invalid("Read Samples: Grant a Window Whose Last Sample Fits the Timestamp Range");
+    return new Window(window.Start.Clone(), period.Clone(), window.Count, window.Sequence);
   }
 
   internal static void ValidateTimestamp(Timestamp at)
   {
     if (at.Seconds < -62_135_596_800 || at.Seconds > 253_402_300_799 || at.Nanos < 0 || at.Nanos >= 1_000_000_000)
-      throw Invalid("Invalid Timestamp");
+      throw Invalid("Invalid Timestamp: Send Seconds and Nanos Within the Protobuf Timestamp Range");
   }
 
   public override async Task<InstanceStopResponse> Stop(InstanceStopRequest request, ServerCallContext context)
