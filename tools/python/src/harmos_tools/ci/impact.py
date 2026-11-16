@@ -219,14 +219,12 @@ def main(arguments: list[str] | None = None) -> int:
     selected_event = options.event or _event(name, event)
     paths = changed_paths(event, name, Path.cwd()) if selected_event in {"review", "push"} else None
     result = plan(classify(paths), selected_event)
-    print(json.dumps(result, sort_keys=True))
+    print(json.dumps({key: result[key] for key in ("selected", "skipped")}, sort_keys=True))
     if destination := os.environ.get("GITHUB_OUTPUT"):
         output = "".join(f"{key}={json.dumps(value, separators=(',', ':'))}\n" for key, value in result.items())
-        stream = Path(destination).open("a", encoding="utf-8", newline="\n")
-        try:
-            stream.write(output)
-        finally:
-            stream.close()
+        destination = Path(destination)
+        previous = destination.read_text(encoding="utf-8") if destination.exists() else ""
+        destination.write_text(previous + output, encoding="utf-8", newline="\n")
     return 0
 
 
