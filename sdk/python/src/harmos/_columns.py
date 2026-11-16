@@ -59,6 +59,11 @@ type Columns = list[list[object]]
 
 # === Classes === #
 
+
+class OversizedSampleError(ValueError):
+    """One Sample Exceeds the Message Limit, so No Part Can Carry It."""
+
+
 # === Public Functions === #
 
 
@@ -165,7 +170,7 @@ def batches(row: type[Message], columns: Columns, count: int, limit: int) -> lis
     while start < count:
         end = bisect_right(prefix, prefix[start] + limit - overhead) - 1
         if end <= start:
-            raise ValueError(
+            raise OversizedSampleError(
                 f"Split Samples Window: One {row.DESCRIPTOR.full_name} Sample Needs {overhead + totals[start]} Bytes,"
                 f" Beyond the {limit}-Byte Message Limit; reduce the row size or raise MessageSettings.message_bytes"
             )

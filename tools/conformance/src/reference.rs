@@ -131,7 +131,8 @@ impl Instance for Reference {
         let Some(instance_samples_request::Frame::Open(open)) = first else {
             return Err(Status::invalid_argument("Open Must Be First"));
         };
-        if !["conformance.interval", "conformance.device", "conformance.settings", fixture::WINDOW].contains(&open.stream.as_str())
+        if !["conformance.interval", "conformance.device", "conformance.settings", fixture::WINDOW, fixture::OVERSIZED]
+            .contains(&open.stream.as_str())
             && !fixture::WINDOW_STREAMS.contains(&open.stream.as_str())
         {
             return Err(Status::not_found("Unknown Stream"));
@@ -684,6 +685,12 @@ async fn samples(
                         Err(error) if error.code() == tonic::Code::Cancelled => return Ok(()),
                         Err(error) => return Err(error),
                     }
+                } else if open.stream == fixture::OVERSIZED {
+                    vec![
+                        0;
+                        usize::try_from(window.sequence + index)
+                            .map_err(|_| Status::resource_exhausted("Answer Window: Sample Too Large"))?
+                    ]
                 } else {
                     (window.sequence + index).to_le_bytes().to_vec()
                 };

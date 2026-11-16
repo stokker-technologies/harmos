@@ -46,6 +46,8 @@ pub const WINDOW_STREAMS: &[&str] = &[
 ];
 /// The Window Observer Stream: One Call Answers the Whole Window With Values Columns.
 pub const WINDOW: &str = "conformance.window";
+/// Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size.
+pub const OVERSIZED: &str = "conformance.oversized";
 pub const HOST_OPERATIONS: &[(&str, &str, &str)] = &[
     ("harmos.host.v1.Invocations/Create", "harmos.host.v1.InvocationsCreateRequest", "harmos.host.v1.InvocationsCreateResponse"),
     ("harmos.host.v1.plugins.Settings/List", "harmos.host.v1.plugins.SettingsListRequest", "harmos.host.v1.plugins.SettingsListResponse"),
@@ -328,7 +330,7 @@ pub fn declarations() -> Declarations {
             ..Default::default()
         });
     }
-    for name in WINDOW_STREAMS.iter().chain([&WINDOW]) {
+    for name in WINDOW_STREAMS.iter().chain([&WINDOW, &OVERSIZED]) {
         streams.push(StreamDeclaration {
             id: (*name).into(),
             row: ROW.into(),

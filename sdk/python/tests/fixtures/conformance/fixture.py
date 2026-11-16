@@ -311,6 +311,11 @@ class Fixture:
     async def window(self, context: Context, window: Window) -> Values:
         return Values(value=[(window.sequence + index).to_bytes(8, "little") for index in range(window.count)])
 
+    @observer("conformance.oversized", row=Value, interval=Duration(seconds=1))
+    async def oversized(self, context: Context) -> Value:
+        """Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size."""
+        return Value(value=bytes(context.sequence))
+
 
 class ClockFixture:
     """Reuse the Clock Journey Without External Device Demand."""
