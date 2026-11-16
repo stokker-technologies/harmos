@@ -56,8 +56,8 @@ with `Failure::with_detail` and read it with `Failure::detail`; a plugin admissi
 consumer can use these fields for actionable errors without parsing prose.
 
 Deadline refusals name the operation, one-based attempt, applied budget and its
-configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`
-or a per-call gRPC deadline override). For example: `host call refused (-32607):
+configuration source (`operation policy.timeout`, `operation policy.attempt_timeout`,
+a per-call policy override or a per-call gRPC deadline override). For example: `host call refused (-32607):
 operation connectivity.grpc_wait_until_grpc_ready attempt 1 exceeded its 10 s deadline
 (configured by operation policy.attempt_timeout)`. Cancellation refusals also name
 the operation and attempt. Retry exhaustion preserves the last attempt failure;

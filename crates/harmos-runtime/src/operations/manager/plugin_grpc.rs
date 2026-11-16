@@ -122,6 +122,8 @@ impl Manager {
             operation: "plugins.load".into(),
             source: Arc::new(source),
         })?;
+        // A Load Waits on Its Plugin, Never on a Lane Slot Its Own Caller May Hold.
+        let resident = crate::operations::Lane::new(crate::operations::lane::RESIDENT, crate::operations::Capacity::unbounded());
         self.register_native(crate::operations::Registration {
             batch: crate::operations::Catalog {
                 name: "harmos.samples",
@@ -129,7 +131,7 @@ impl Manager {
                 services: vec![],
             },
             lane: None,
-            defaults: std::collections::BTreeMap::new(),
+            defaults: std::collections::BTreeMap::from([("plugins.load", resident)]),
         })?;
         let factories = [
             OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
