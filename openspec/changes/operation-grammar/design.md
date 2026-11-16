@@ -1485,8 +1485,9 @@ refused when missing, not a Duration or not positive.
 
 ### Scoped Waits, Start, Stop and Close
 
-`start_samples()` and `stop_samples()` gate windows exactly as they gated ticks: no
-window reaches the plugin outside them. A scoped wait (Time.Sleep or an admitted
+`start_samples(streams)` and `stop_samples()` gate windows exactly as they gated
+ticks: no window reaches the plugin outside them, and a scope samples exactly the
+streams it requested. A scoped wait (Time.Sleep or an admitted
 wait) ending at `t` settles after every window of the unit whose samples are due by
 `t` has been answered and committed: on reaching `t` it asks each demand of the unit
 to grant through `t`, so a demand whose window end lies after `t` wakes early and
@@ -1501,11 +1502,16 @@ counts, as samples in windows, on controlled clocks only.
 
 Today every stream of an activation ticks for the unscoped connection demand and
 again for each sampling scope. A stream now has one live schedule per activation
-and scope: while any scope of the activation samples, the activation's unscoped
-demand grants no windows; when the last scope stops, it resumes from a fresh origin
-at that instant on the runtime clock. The gap holds no unscoped samples. Concurrent
-scopes keep one schedule each on their own clocks. `scoped_publications` keeps
-proving that the unscoped demand operates once the scopes have closed.
+and scope: a scope samples exactly the streams it passes to `start_samples(streams)`
+(a stream the plugin does not declare is refused), and while any scope of the
+activation samples a stream, the activation's unscoped demand grants that stream no
+windows; when the last such scope stops, it resumes from a fresh origin at that
+instant on the runtime clock. The gap holds no unscoped samples. Streams no scope
+requested stay under the unscoped demand and its watched gate. Concurrent scopes
+keep one schedule each on their own clocks. `scoped_publications` keeps proving
+that the unscoped demand operates once the scopes have closed, and
+`interval_windows` that an unrequested, watched stream keeps its unscoped windows
+while a scope samples another.
 
 The unscoped demand, which the host opens on attach, reconnect and replacement,
 also grants windows only while something watches its stream: a
@@ -1515,8 +1521,8 @@ the first watcher appears it starts from a fresh origin, and when the last leave
 it stops, with no samples for the gap. A storage consumer that drains every
 publication does not count. A watch belongs to the stream revision current when it
 was taken, so a product watches again after a replacement that changes a stream's
-row and after a managed entry becomes Ready. Scoped demands ignore watchers: a scope samples between its
-`start_samples()` and `stop_samples()`. Device streams, which the plugin drives, are
+row and after a managed entry becomes Ready. Scoped demands ignore watchers: a scope samples its requested streams between its
+`start_samples(streams)` and `stop_samples()`. Device streams, which the plugin drives, are
 not gated. `plugin_grpc::window_overload` proves that an attached, unwatched stream
 grants no window, starts when a watcher appears and stops when it leaves.
 
@@ -1543,7 +1549,9 @@ dropped. Parts admitted before the failure stay stored; the error reaches the
 demand's owner: an unscoped demand's failure becomes `Attached::status().failure`
 while the activation and its other streams continue (a managed entry reports it as
 `plugin_stream_failed` while Ready), and a scoped demand's failure is the result of
-`stop_samples()` or `close()`. The failed stream's unscoped demand stays ended until
+`stop_samples()` or `close()`. A window the plugin fails with a gRPC status fails the
+same way with `Error::WindowFailed { stream, status, message }`, carrying the plugin's
+status code and message instead of the operation carrier's generic line. The failed stream's unscoped demand stays ended until
 the plugin reconnects, is replaced or restarts. `plugin_grpc::window_overload`
 proves each case on a controlled clock. A row counts as taken only once every
 feed has taken it and every storage consumer has drained it, so the pool never
@@ -1658,6 +1666,26 @@ windows, and regenerates protocol bindings. It holds a watcher on every interval
 stream it wants sampled outside scopes and reads demand failures from
 `Attached::status()` or the plugin entry. Rows stored as one row per sample are not
 converted; use a fresh storage root.
+
+### Storage Lifecycle Operations (Parked)
+
+Owner direction, 2026-11-16, PARKED: recorded for a later change and not implemented
+now. Storage gains a lifecycle exposed as operations. Operation names follow the
+operation contract; the names below are only a sketch.
+
+- Streams: `Open(stream, schema revision, ingestion strategy)`, then `Append(batch)`
+  once per window part, never per sample, then `Finalize`, after which the stream is
+  sealed, hashed and immutable; plus `Read(range)`.
+- Files: `Open`, then `Write(chunk)`, then `Finalize`; plus `Read`.
+- Objects stay atomic: `Put`, `Get`, `Replace` and `Delete`.
+
+A product seals a composite record by finalizing its streams and files first, then
+atomically replacing the object's sealed state with their hashes.
+
+Ingestion strategies are part of the stream definition: raw, mean-N, median-N,
+min/max-N and every-Nth. A strategy is declared, fixed for the stream's life and
+recorded with it; it is never a fallback the host selects under load. Judging pass or
+fail on reduced data is the user's responsibility.
 
 ## Risks and Trade-offs
 
