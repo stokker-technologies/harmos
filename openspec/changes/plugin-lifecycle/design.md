@@ -1,0 +1,215 @@
+# Plugin Lifecycle Design
+
+## Context
+
+See proposal.md for motivation and the locked owner decisions. Paths are relative to the
+repository root; cite symbols, not lines.
+
+Current surface (landed, verified 2026-11-16):
+
+- Runtime: `Runtime::launch` and `launch_with` (`crates/harmos-runtime/src/runtime/launch.rs`),
+  `shutdown`, `shutdown_with_timeout` and `start_storage` (`runtime/lifecycle.rs`); the
+  builder already has `register` and an `initialize` callback (`runtime.rs`).
+- Application hooks: `Lifecycle::{prepare, initialize, stop, cleanup}`
+  (`crates/harmos-operations/src/execution/lifecycle.rs`). Services have
+  `Service::{initialize, run, stop, cleanup}` (`execution/services.rs`); `Carrier`,
+  `ServiceInstance` and `NativeInstance` carry `stop` and `cleanup`
+  (`execution/operations/authored.rs`, `execution/operations/registration.rs`).
+- Native plugins: `Plugin::on_stop(Fn() -> Result<()>)` in Rust (`sdk/rust/src/plugin.rs`),
+  `@on_stop` in Python (`sdk/python/src/harmos/_contracts.py`), `OnStop(Func<Task>)` in C#
+  (`sdk/csharp/src/Harmos/Plugin.cs`) and `on_stop(std::function<void()>)` in C++
+  (`sdk/cpp/include/harmos/harmos.hpp`); no context, no initialize hook. The host calls
+  `Instance.Stop` before removal or shutdown (`proto/harmos/plugin/v1/instance.proto`).
+- Wasm guests: `harmos::wasm::Registration` with `on_initialize(&Context, Vec<u8>)`,
+  `on_shutdown(&Context)` and `on_cleanup(Fn() -> Result<()>)`
+  (`sdk/rust/src/wasm/registration.rs`); `GuestRegistration` carries `initialize` and
+  `shutdown` policies and `GuestInitialize`/`GuestShutdown` commands
+  (`proto/harmos/plugin/v1/guest.proto`). Cleanup already runs after failed initialization.
+- Serving: Rust `serve` (`sdk/rust/src/native.rs`), Python `start(address) -> Endpoint`,
+  `Endpoint.close` and `serve` (`sdk/python/src/harmos/_authoring.py`), C# `ServeAsync`, C++
+  `serve`.
+- Declarations: plugins compose builder chains (`operation`, `stream`, `observer`,
+  `settings`, `section`); `declarations()` returns the frozen `harmos.model.v1.Declarations`
+  reported by `Instance.Get` and `GuestRegistration`. docs/architecture.md (Guest Entries
+  and Reported Declarations) keeps catalog terminology for internal registries and names
+  the wire payload declarations.
+- Aliases: products import the Harmos `Plugin` under renamed aliases, and the SDKs, their
+  generators and tests contain import aliases and `#[path]`/`sys.path` overrides.
+
+Touched invariant: docs/architecture.md says "There is no Catalog alias" for the reported
+declarations. Its purpose, one name for the wire payload, holds: `catalog()` names the
+author-side module contribution, never the payload, and `declarations()` stays.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- One lifecycle vocabulary in every placement and language, each verb in its pair.
+- Resource acquisition only in initialize and release only in finalize, with finalize
+  guaranteed once initialize was attempted.
+- Registration as inert, typed, accumulating declaration composition.
+
+**Non-Goals:**
+
+- No security or prerequisite phase between admission and initialize (later follow-up).
+- No plugin start or stop, no per-execution registration, no host-side template scoping.
+- No change to invocation-slot phases of Wasm guests (`GuestPrepare`, invocation
+  initialize, attempt, slot finalize and cancel); they are per-call, not plugin lifecycle.
+- No product kinds in Harmos; products compose through declaration sections.
+
+## Decisions
+
+### D1. Host Verbs (Proposed)
+
+```rust
+let runtime = harmos_runtime::Runtime::new()      // construct, nothing runs
+    .register(product::catalog())                 // declare
+    .start()                                      // begin activity, returns the running handle
+    .await?;
+runtime.stop().await?;                            // end activity, settle owners
+// or: harmos_runtime::Runtime::new().register(product::catalog()).run().await?;
+```
+
+`launch`/`launch_with` become `start`/`start_with`; `shutdown`/`shutdown_with_timeout`
+become `stop`/`stop_with_timeout`. `run` starts, waits for the stop signal and stops. SDK
+serving entry points denote the same thing and become `run` (Rust and C++ `run`, Python
+`run`, C# `RunAsync`); Python's `start(address) -> Endpoint` keeps `start` and its endpoint's
+`close` becomes `stop`, completing the pair. The inventory task applies the renames only where
+a symbol denotes start, stop or run; listener and storage internals that merely shut a
+resource keep their names unless they are public verbs of the host. Alternative rejected:
+keeping `launch`/`shutdown` beside `start`/`stop` as aliases.
+
+### D2. Plugin Phases (Proposed)
+
+```rust
+fn main() -> Result<()> {
+    Plugin::new("thermal", env!("CARGO_PKG_VERSION"))
+        .register(register)?
+        .initialize(initialize)
+        .finalize(finalize)
+        .run()
+}
+
+fn register(ctx: &mut Registrar) -> Result<()> {
+    ctx.register(settings::catalog())?;
+    ctx.register(operations::catalog())?;
+    ctx.register(streams::catalog())?;
+    Ok(())
+}
+
+async fn initialize(ctx: &Context) -> Result<()> { ctx.insert(Chamber::open(ctx).await?) }
+async fn finalize(ctx: &Context, reason: Finalization) -> Result<()> { Chamber::close(ctx).await }
+```
+
+- **Admission:** `Instance.Get` (native) and `GuestRegistration` (Wasm) report the frozen
+  declarations; the host checks identities, schemas, references, permissions and limits and
+  creates the activation. No author code runs on the host's behalf before initialize.
+- **Initialize:** host-invoked once per activation after admission and before the first
+  invocation or sample window: a new `Instance.Initialize` RPC for native plugins and the
+  existing `GuestInitialize` for guests. Its context carries settings, the plugin host
+  facilities, declared child calls and cancellation, like the existing Wasm initialization
+  context. A plugin without an initialize hook answers immediately.
+- **Finalize:** `Instance.Stop` becomes `Instance.Finalize`; `GuestShutdown` becomes
+  `GuestFinalize` and the guest `shutdown` policy becomes `finalize`. Before removal or stop the
+  host refuses new invocations, cancels in-flight invocations and sample windows, waits for
+  them to settle within their policies, then calls finalize. Finalize runs once initialize was
+  attempted, including after it failed, timed out or was cancelled; the finalize context
+  reports the reason (`Stopped`, `InitializeFailed`, `Disconnected`). A managed plugin exits
+  after replying; a remote plugin keeps running and a later connection is a new activation.
+- **Lost carrier:** when a native connection closes after initialize was attempted and
+  before finalize, the SDK runs finalize locally with `Disconnected`; host facilities are then
+  unavailable and calls fail with the existing disconnected failure.
+- **Policies:** initialize and finalize policies are declared by the plugin in its
+  declarations (moving the guest's lifecycle policies into `harmos.model.v1`), so the callee
+  owns them; products override one call through existing overrides only.
+- Native `on_stop`, Wasm `on_shutdown` and `on_cleanup` are deleted, not deprecated.
+  Alternative rejected: keeping a cooperative plugin stop hook before finalize; cancellation
+  already reaches every in-flight call, and a second hook splits release logic.
+
+### D3. Registrar and Typed Registration (Proposed)
+
+`Registrar` accumulates operations, streams, observers, settings, requirements and product
+sections; `register<T: Registration>(&mut self, item: T) -> Result<()>` is typed at entry,
+erases handlers and appends descriptors, so `Plugin` keeps one type however many records are
+declared. `Registration` is implemented by every Harmos declaration value and by catalogs
+(collections returned from `catalog()`), and products implement it for their kinds, appending
+to their typed declaration section. Duplicate identities, missing requirements and descriptor
+closure are checked when the plugin freezes its declarations, as today.
+
+| Language | Phase Function | Registration Call | Hooks | Serving |
+| --- | --- | --- | --- | --- |
+| Rust | `fn register(ctx: &mut Registrar) -> Result<()>` | `ctx.register(settings::catalog())?` | `.initialize(f)`, `.finalize(f)` | `.run()` |
+| Python | `def register(ctx: Registrar) -> None` | `ctx.register(settings.catalog())` | `initialize=`, `finalize=` | `run()`, `start()`/`stop()` |
+| C# | `static void Register(Registrar ctx)` | `ctx.Register(Settings.Catalog())` | `.Initialize(f)`, `.Finalize(f)` | `RunAsync()` |
+| C++ | `void register_plugin(Registrar &ctx)` | `ctx.add(settings::catalog())` | `.initialize(f)`, `.finalize(f)` | `run()` |
+
+C++ uses `add` wherever the other languages call `register`, including the plugin builder
+method that accepts the phase function. The Wasm `Registration` builder is dissolved: hooks
+move to the plugin value, guest capacity moves to a `harmos::wasm::Guest` wrapper, and the
+`harmos_register` export symbol stays as the ABI name of the register phase. The runtime's
+`Registration<A>` trait for host catalogs keeps its name: the same verb and trait name at the
+host and plugin placements is the intended harmony.
+
+Alternative rejected: a host-invoked registration call after discovery, which would need a
+second freeze and admission protocol.
+
+### D4. Module Catalogs (Proposed)
+
+Each module that contributes declarations exposes `catalog()` returning a value implementing
+`Registration` (Rust), or the language equivalent. `declarations()` remains the frozen
+host-facing description. Examples, fixtures, conformance plugins and SDK guides use
+`settings::catalog()`, `operations::catalog()`, `observers::catalog()`, `streams::catalog()`.
+
+### D5. Application, Service and Carrier Hooks (Proposed)
+
+Decision 1's naming applies to every acquire/release hook: `Lifecycle::cleanup`,
+`Service::cleanup`, `Carrier::cleanup`, `ServiceInstance::cleanup` and
+`NativeInstance::cleanup` become `finalize` with unchanged semantics: finalize already runs
+after partial setup, including the `resource-store` path where `prepare` returned an owner and
+validation failed. `Lifecycle::prepare` (constructs the application and records setup, today
+allowed to acquire) and the `stop` hooks of `Lifecycle` and `Service` (cooperative end of the
+application or of `Service::run` before release) keep their names and behavior in this change;
+see Open Questions.
+
+### D6. Qualified Paths Instead of Aliases (Proposed, Owner Direction)
+
+Every Harmos source refers to imported types and modules by their qualified path. Removed:
+Rust `use x as y` and `pub use x as y`, Python `import x as y` and `from x import y as z`,
+C# `using X = Y;`, C++ `namespace x = y;` and `using X = other::Y;` renames, Rust `#[path]`
+and Python `sys.path` edits. Defining a new name for a composed type (for example a callback
+signature `using Hook = std::function<void()>;`) is a definition, not a rename. Generators stop
+emitting aliases. An exception is allowed only when unavoidable and must be named with its
+reason in docs/architecture.md; the inventory task proposes candidates (for example Rust
+integration-test targets that share one support module, or third-party generated code the
+project does not author) and keeps only those with no alternative such as a support crate or
+an ordinary module tree.
+
+## Risks / Trade-offs
+
+- [Every plugin and product breaks at once] → one revision lands all renames; products adopt
+  it in their own change; development policy allows clean breaks.
+- [Finalize after a failed initialize sees partial resources] → finalize receives the reason
+  and SDK-owned resources are released by the SDK; authored finalize must tolerate absent
+  resources, documented in each SDK guide.
+- [Local finalize on carrier loss cannot reach the host] → the reason says so; release logic
+  that needs host calls belongs before the loss and is best effort after it.
+- [Removing test `#[path]` sharing grows test structure] → shared support moves into an
+  ordinary module tree or a dev-only crate; named exceptions remain where neither works.
+
+## Migration Plan
+
+1. Inventory and documentation contract (group 1).
+2. Host verbs and hook renames (group 2), then registration (group 3), then plugin phases and
+   protocol (groups 4–5), then aliases (group 6); each group keeps the build green and lands
+   its own tests and documentation.
+3. Products pin the landed revision in their own `plugin-lifecycle` change. No compatibility
+   shims; rollback is the previous pin.
+
+## Open Questions
+
+1. **Application and service hooks outside the named placements.** Should
+   `Lifecycle::prepare` become `register` (declaration only, with acquisition moved to
+   `initialize`), and should the `stop` hooks of `Lifecycle` and `Service` merge into
+   cancellation followed by finalize as plugins do? Proposed default: yes for both, in a
+   follow-up change once the owner confirms; this change only renames `cleanup` to `finalize`,
+   so its tasks do not depend on the answer.

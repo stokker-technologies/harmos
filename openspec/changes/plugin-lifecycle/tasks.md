@@ -1,0 +1,54 @@
+# Plugin Lifecycle Tasks
+
+Each group commits with Conventional Commits on the integration branch, keeps the build green
+and proves only its changed behavior through focused `mise run test`, `mise run build` and
+`mise run generate` invocations; full lanes run only after group 7 closes. Products adopt the
+revision that landed this change in their own change; never name revisions in this file.
+
+## 1. Inventory and Contract
+
+- [ ] 1.1 Lock the source inventory against design.md Context: every public `launch`, `shutdown` and `serve` symbol and which of them denote start, stop or run; every `on_stop`, `on_initialize`, `on_shutdown`, `on_cleanup` and `cleanup` hook in the runtime, operations crate and four SDKs; every declaration builder chain and `declarations()` call in SDKs, examples, fixtures and conformance; every import alias and path override in the repository. Accept when each item names its owner and consumers and an owning task below; record surprises in design.md before editing.
+- [ ] 1.2 Update `docs/architecture.md` with the paired-verb rule, host verbs, plugin phases (admission, initialize, finalize, carrier loss), registrar and module catalogs, product declaration sections and the no-alias rule as locked direction with proposed status; keep Guest Entries and Reported Declarations' single payload name. Prove with `mise run check -- --repository`.
+
+## 2. Host Verbs and Hook Names
+
+- [ ] 2.1 Rename `Runtime::launch`/`launch_with` to `start`/`start_with`, `shutdown`/`shutdown_with_timeout` to `stop`/`stop_with_timeout`, add `Runtime::new` construction and `run` (start, wait for a stop request, stop) per design.md D1, and migrate runtime stories, benchmarks and the Schematic example. Prove with a new story `runtime_run_stops_like_stop` in `crates/harmos-runtime/tests/integration` via `mise run test -- --paths <story file>` and `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app`.
+- [ ] 2.2 Rename `cleanup` to `finalize` on `Lifecycle`, `Service`, `Carrier`, `ServiceInstance` and `NativeInstance` with unchanged semantics, keeping `prepare` and the `stop` hooks (design.md D5). Prove with the existing resource-store setup-error and service restart stories after renaming their scenarios, run through `mise run test -- --paths <story file>`.
+- [ ] 2.3 Rename SDK serving entry points to `run` (Rust, Python, C++ `run`; C# `RunAsync`) and the Python endpoint `close` to `stop`; update the four SDK guides and `docs/product-guide.md`. Prove with each SDK's focused fixture build and `mise run check -- --repository`.
+
+## 3. Registration
+
+- [ ] 3.1 Add `Registrar`, the `Registration` trait and typed `register<T: Registration>` to the Rust SDK, accumulating descriptors and typed declaration sections without growing the plugin type; implement `Registration` for operations, streams, observers, settings, requirements and catalogs; replace builder chains in the Rust SDK and delete the superseded chain methods. Prove with a new SDK test registering ten typed records into one plugin type and the existing duplicate-identity refusal test via `mise run test -- --package harmos --target lib`.
+- [ ] 3.2 Dissolve `harmos::wasm::Registration` into the plugin value plus `harmos::wasm::Guest` carrying capacity, keeping the `harmos_register` export symbol and the stamped-metadata check. Prove with the guest registration stories in `crates/harmos-runtime/tests` and the Wasm fixture build.
+- [ ] 3.3 Add the registrar, typed registration and declaration sections to the Python, C# and C++ SDKs per design.md D3 (C++ `add`), and replace their builder composition. Prove with each SDK's focused fixture tests and `mise run generate -- --sdk python`, then csharp, cpp, when generated surfaces change.
+- [ ] 3.4 Give every contributing module in the Schematic example, SDK fixtures and conformance plugins a `catalog()` registered once by a root register function, and update the four SDK guides and `docs/product-guide.md` with the register phase, module catalogs and the inert-registration rule. Prove with the Schematic build, `mise run build -- --package harmos-conformance` and `mise run check -- --repository`.
+
+## 4. Plugin Phases on the Wire and in the Host
+
+- [ ] 4.1 Add `Instance.Initialize` and replace `Instance.Stop` with `Instance.Finalize` (finalize reason included) in `proto/harmos/plugin/v1/instance.proto`; rename `GuestShutdown` to `GuestFinalize` and the guest `shutdown` policy to `finalize`; move initialize and finalize policies into the declarations in `proto/harmos/model/v1`. Regenerate with `mise run generate -- --sdk rust`, then python, csharp, cpp, and prove with `mise run build -- --package harmos-protocol --check`.
+- [ ] 4.2 Make plugin activation call initialize after admission and before any invocation or sample window, and make stop and removal refuse new invocations, cancel and settle in-flight work, then call finalize exactly once per attempted initialize, for native and Wasm placements. Prove with new stories `plugin_finalizes_after_failed_initialize`, `plugin_invocation_waits_for_initialize`, `plugin_stop_cancels_then_finalizes` and `plugin_initialize_deadline_finalizes` in `crates/harmos-runtime/tests/plugin_grpc`, plus the guest equivalents, via `mise run test -- --paths <story file>`.
+- [ ] 4.3 Update conformance in `tools/conformance` with initialize, finalize, failed-initialize and cancel-then-finalize rules for every SDK reference plugin. Prove with `mise run build -- --package harmos-conformance` and the conformance fixture run for each language.
+
+## 5. Plugin Hooks in the SDKs
+
+- [ ] 5.1 Replace Rust `Plugin::on_stop` and Wasm `on_initialize`/`on_shutdown`/`on_cleanup` with `initialize` and `finalize` hooks receiving a context and, for finalize, the reason; run finalize locally on carrier loss after an attempted initialize. Prove with SDK tests for failed initialize and carrier loss via `mise run test -- --package harmos --target integration`.
+- [ ] 5.2 Make the same change in Python (`@on_stop` removed), C# (`OnStop` removed) and C++ (`on_stop` removed), with idiomatic casing and async forms. Prove with each SDK's focused fixture tests for failed initialize, finalize reason and carrier loss.
+- [ ] 5.3 Update `docs/architecture.md` (Managed Process Ownership, Guest Entries and Reported Declarations, Call Mapping and Message and Enum Mapping rows for Instance and guest lifecycle), `docs/plugin-manager.md` and the four SDK guides for plugin phases. Prove with `mise run check -- --repository`.
+
+## 6. Qualified Paths
+
+- [ ] 6.1 Remove every import alias and path override in `sdk/` (sources, generators and their templates, tests, fixtures, examples) and `tools/conformance`, referring to types and modules by qualified path; generators stop emitting aliases. Accept when the inventory shows only named exceptions; prove with each SDK's focused fixture build, `mise run generate -- --sdk rust`, then python, csharp, cpp, and `mise run check -- --repository`.
+- [ ] 6.2 Remove the remaining aliases and path overrides in `crates/`, `tools/` and `examples/`, moving shared test support into ordinary module trees or a dev-only crate where `#[path]` shares it today. Prove with focused builds of each touched package and the touched stories.
+- [ ] 6.3 Record the no-alias, no-path-override rule and each named exception with its reason in `docs/architecture.md` and the four SDK guides. Prove with `mise run check -- --repository`.
+
+## 7. Integration
+
+- [ ] 7.1 Run `openspec validate plugin-lifecycle --strict`, the format task and the Rust, Python, C# and C++ language checks on the combined tree, and confirm every source item above is closed; report any pending native platform or hosted proof explicitly.
+
+## Workflow Follow-Up
+
+- Owner decision on design.md Open Question 1 (application `prepare`, application and service `stop` hooks); a confirmed answer becomes its own change.
+- A security and prerequisite phase between admission and initialize is a possible later change.
+- Products adopt the revision that landed this change in their own `plugin-lifecycle` change.
+- Full native Linux and Windows validation and hosted CI follow source closure under the delivery authorization.
+- Archive this change after delivery and fill each new capability's Purpose in the main specs.
