@@ -60,7 +60,8 @@ impl Columns {
     pub fn check<C: Message>(&self) -> StdResult<(), String> {
         let authored = descriptor(C::types(), &C::name())?;
         let shape = |message: &MessageDescriptor| {
-            let mut fields = message.fields().map(|field| (field.number(), field.is_list(), format!("{:?}", field.kind()))).collect::<Vec<_>>();
+            let mut fields =
+                message.fields().map(|field| (field.number(), field.is_list(), format!("{:?}", field.kind()))).collect::<Vec<_>>();
             fields.sort();
             fields
         };
@@ -102,14 +103,14 @@ impl Columns {
 /* === Public Functions === */
 
 /// Split `count` Samples Into Parts Whose Encoded Responses Each Fit `limit` Bytes.
-pub(crate) fn parts(
-    columns: &Columns, encoded: Vec<u8>, count: u64, limit: usize,
-) -> StdResult<Vec<InstanceSamplesResponse>, Status> {
+pub(crate) fn parts(columns: &Columns, encoded: Vec<u8>, count: u64, limit: usize) -> StdResult<Vec<InstanceSamplesResponse>, Status> {
     let whole = response(0, count, encoded, true);
     if whole.encoded_len() <= limit {
         return Ok(vec![whole]);
     }
-    let Some(Frame::Batch(batch)) = whole.frame else { unreachable!("a batch response") };
+    let Some(Frame::Batch(batch)) = whole.frame else {
+        unreachable!("a batch response")
+    };
     let message = columns.decode(&batch.columns)?;
     let mut parts = Vec::new();
     split(columns, &message, 0, count, count, limit, &mut parts)?;
@@ -131,7 +132,8 @@ fn response(offset: u64, count: u64, columns: Vec<u8>, last: bool) -> InstanceSa
 }
 
 fn split(
-    columns: &Columns, message: &DynamicMessage, offset: u64, count: u64, total: u64, limit: usize, parts: &mut Vec<InstanceSamplesResponse>,
+    columns: &Columns, message: &DynamicMessage, offset: u64, count: u64, total: u64, limit: usize,
+    parts: &mut Vec<InstanceSamplesResponse>,
 ) -> StdResult<(), Status> {
     let mut slice = DynamicMessage::new(columns.columns.clone());
     for field in columns.columns.fields() {
@@ -189,7 +191,8 @@ mod tests {
     #[test]
     fn parts_split_at_sample_boundaries_within_the_limit() {
         let columns = Columns::of::<Reading>().unwrap();
-        let rows = (0..100).map(|index| prost::Message::encode_to_vec(&Reading { value: index as f64, label: "x".into() })).collect::<Vec<_>>();
+        let rows =
+            (0..100).map(|index| prost::Message::encode_to_vec(&Reading { value: index as f64, label: "x".into() })).collect::<Vec<_>>();
         let encoded = columns.transpose(&rows).unwrap().encode_to_vec();
         let parts = parts(&columns, encoded, 100, 256).unwrap();
         assert!(parts.len() > 1);
@@ -197,7 +200,9 @@ mod tests {
         let mut values = Vec::new();
         for (index, part) in parts.iter().enumerate() {
             assert!(part.encoded_len() <= 256);
-            let Some(Frame::Batch(batch)) = &part.frame else { panic!("a batch part") };
+            let Some(Frame::Batch(batch)) = &part.frame else {
+                panic!("a batch part")
+            };
             assert_eq!((batch.offset, batch.last), (next, index + 1 == parts.len()));
             next += batch.count;
             values.extend(<Readings as prost::Message>::decode(batch.columns.as_slice()).unwrap().value);

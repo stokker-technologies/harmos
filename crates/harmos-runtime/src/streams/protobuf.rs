@@ -110,36 +110,75 @@ impl Row {
         Ok(bytes)
     }
 
-    /// Convert One Stored Batch Row Whose Every Column Holds Exactly `count` Values.
-    pub(crate) fn decode_batch(&self, payload: &[u8], count: u64) -> Result<Vec<u8>, Error> {
+    /// Convert One Batch Part Whose Every Column Holds Exactly `count` Values Into Stored Rows.
+    ///
+    /// A part larger than one stored row may hold is stored as consecutive rows, each with
+    /// its own first-sample time and count; the host slices columns, never samples.
+    pub(crate) fn decode_batch(&self, payload: &[u8], count: u64, period_nanos: u64) -> Result<Vec<(i64, u64, Vec<u8>)>, Error> {
+        use harmos_protocol::columns::batch;
+        let invalid = || Error::Invalid("Answer Sample Window: the stored row is not a batch".into());
         let message = DynamicMessage::decode(self.descriptor.clone(), payload).map_err(|error| Error::Invalid(error.to_string()))?;
-        let columns = message
-            .get_field_by_number(harmos_protocol::columns::batch::COLUMNS)
-            .ok_or_else(|| Error::Invalid("Answer Sample Window: the stored row is not a batch".into()))?;
+        let start = message.get_field_by_number(batch::START_UNIX_NANOS).and_then(|value| value.as_i64()).ok_or_else(invalid)?;
+        let columns = message.get_field_by_number(batch::COLUMNS).ok_or_else(invalid)?;
         let Value::Message(columns) = columns.as_ref() else {
-            return Err(Error::Invalid("Answer Sample Window: the stored row is not a batch".into()));
+            return Err(invalid());
         };
-        for field in columns.descriptor().fields() {
-            let length = match columns.get_field(&field).as_ref() {
-                Value::List(values) => values.len(),
-                _ => 0,
+        let fields = columns.descriptor().fields().collect::<Vec<_>>();
+        let mut lists = Vec::with_capacity(fields.len());
+        for field in &fields {
+            let values = match columns.get_field(field).into_owned() {
+                Value::List(values) => values,
+                _ => Vec::new(),
             };
-            if length as u64 != count {
+            if values.len() as u64 != count {
                 return Err(Error::Invalid(format!(
-                    "Answer Sample Window: column `{}` holds {length} values for {count} samples; send one value per sample in every column",
-                    field.name()
+                    "Answer Sample Window: column `{}` holds {} values for {count} samples; send one value per sample in every column",
+                    field.name(),
+                    values.len()
                 )));
             }
+            lists.push(values);
         }
-        let mut bytes = Vec::new();
-        encode(&message, &mut bytes, 0)?;
-        Ok(bytes)
+        // Each Sample Claims Its Values in Every Column; the Header and List Lengths Claim the Rest.
+        let per_sample = fields.iter().map(|field| 1 + cost(&field.kind(), 0)).sum::<usize>().max(1);
+        let chunk = ((harmos_domain::message::postcard::MAX_VALUES - 64) / per_sample).max(1) as u64;
+        let mut rows = Vec::new();
+        let mut offset = 0_u64;
+        while offset < count {
+            let length = chunk.min(count - offset);
+            let first = i64::try_from(i128::from(start) + i128::from(offset) * i128::from(period_nanos))
+                .map_err(|_| Error::Invalid("Grant Sample Window: sample times must fall before 2262".into()))?;
+            let mut part = DynamicMessage::new(columns.descriptor());
+            for (field, values) in fields.iter().zip(&lists) {
+                part.set_field(field, Value::List(values[offset as usize..(offset + length) as usize].to_vec()));
+            }
+            let mut stored = message.clone();
+            stored.set_field_by_number(batch::START_UNIX_NANOS, Value::I64(first));
+            stored.set_field_by_number(batch::COUNT, Value::U64(length));
+            stored.set_field_by_number(batch::COLUMNS, Value::Message(part));
+            let mut bytes = Vec::new();
+            encode(&stored, &mut bytes, 0)?;
+            rows.push((first, length, bytes));
+            offset += length;
+        }
+        Ok(rows)
     }
 }
 
 /* === Public Functions === */
 
 /* === Private Functions === */
+
+/// Structural Values One Element of `kind` Claims When Stored: Presence, Nested Fields and List Lengths Included.
+fn cost(kind: &ProtoKind, depth: usize) -> usize {
+    let ProtoKind::Message(message) = kind else {
+        return 1;
+    };
+    if depth >= 8 {
+        return 64;
+    }
+    message.fields().map(|field| 2 + cost(&field.kind(), depth + 1)).sum::<usize>() + 1
+}
 
 fn encode(message: &DynamicMessage, bytes: &mut Vec<u8>, depth: usize) -> Result<(), Error> {
     if depth >= harmos_domain::schema::MAX_DEPTH {

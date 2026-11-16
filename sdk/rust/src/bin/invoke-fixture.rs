@@ -41,7 +41,7 @@ use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
 
 // Local Imports
 use harmos::TimeGetResponse;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, Window};
 use harmos::{Message, OperationRequest, Result, Visibility};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
@@ -55,7 +55,7 @@ use harmos_protocol::model::setting_value;
 /* === Constants === */
 
 static DEVICE_ACTIVE: AtomicBool = AtomicBool::new(false);
-static SCOPED_TICKS: AtomicU64 = AtomicU64::new(0);
+static SCOPED_SAMPLES: AtomicU64 = AtomicU64::new(0);
 
 static HOST: OnceLock<(FileDescriptorSet, String, String, u32, u32)> = OnceLock::new();
 
@@ -93,6 +93,17 @@ host_message!(HostOutput, 4);
 #[derive(Message)]
 struct Value {
     value: Vec<u8>,
+}
+
+#[derive(Message)]
+struct Reading {
+    value: f64,
+}
+
+/// The Columns of `Reading`.
+#[derive(Message)]
+struct Readings {
+    value: Vec<f64>,
 }
 
 #[derive(Debug, Default)]
@@ -298,7 +309,7 @@ fn main() -> Result<()> {
     let response_tag = pool.get_message_by_name(&response).unwrap().get_field_by_name("value").unwrap().number();
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "scoped-sleep" {
-        let stream = Stream::<Value>::new("fixture.scoped_ticks");
+        let stream = Stream::<Value>::new("fixture.scoped_samples");
         let observer = Observer::new(&stream, scoped_sleep_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_sleep", "1.0.0")
             .requires_host(HostOperation::TimeGet)
@@ -306,7 +317,7 @@ fn main() -> Result<()> {
             .stream(stream)
             .observer(observer)
     } else if mode == "counted-sleep" {
-        let stream = Stream::<Value>::new("fixture.counted_ticks");
+        let stream = Stream::<Value>::new("fixture.counted_samples");
         let observer = Observer::new(&stream, counted_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
         Plugin::new("counted_sleep", "1.0.0")
             .requires_host(HostOperation::TimeSleep)
@@ -314,7 +325,7 @@ fn main() -> Result<()> {
             .observer(observer)
             .operation(Operation::new("fixture.count_after", count_after).visibility(Visibility::Protected))
     } else if mode == "scoped-publications" {
-        let stream = Stream::<Value>::new("fixture.scoped_ticks");
+        let stream = Stream::<Value>::new("fixture.scoped_samples");
         let observer = Observer::new(&stream, scoped_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_publications", "1.0.0")
             .requires_host(HostOperation::TimeGet)
@@ -322,8 +333,25 @@ fn main() -> Result<()> {
             .stream(stream)
             .observer(observer)
             .operation(Operation::new("fixture.clock", scoped_clock).visibility(Visibility::Protected))
+    } else if mode == "windows" {
+        // One-Second Samples: Host-Length Windows on One Stream, a Plugin Setting's Length on the Other.
+        let counts = Stream::<Value>::new("fixture.counts");
+        let counted = Observer::new(&counts, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let overridden = Stream::<Value>::new("fixture.override");
+        let override_observer = Observer::new(&overridden, observe).every(ProtoDuration { seconds: 1, nanos: 0 }).window_setting("window");
+        Plugin::new("windows", "1.0.0")
+            .settings(duration_setting("window", "Window", 3, 0))
+            .stream(counts)
+            .stream(overridden)
+            .observer(counted)
+            .observer(override_observer)
+    } else if mode == "split" {
+        // Two-Second Windows of One-Microsecond Samples Outgrow One Message.
+        let stream = Stream::<Reading>::new("fixture.split");
+        let observer = Observer::window(&stream, split_observe).every(ProtoDuration { seconds: 0, nanos: 1_000 }).window_setting("window");
+        Plugin::new("split", "1.0.0").settings(duration_setting("window", "Window", 2, 0)).stream(stream).observer(observer)
     } else if mode == "interval" {
-        let stream = Stream::<Value>::new("fixture.ticks");
+        let stream = Stream::<Value>::new("fixture.interval");
         let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
             .settings(SettingsDeclarations {
@@ -473,6 +501,26 @@ async fn observe(context: &Context) -> Result<Value> {
     })
 }
 
+/// Each Sample's Value Is Its Sequence.
+async fn split_observe(_: &Context, window: &Window) -> Result<Readings> {
+    Ok(Readings {
+        value: (0..window.count).map(|index| (window.sequence + index) as f64).collect(),
+    })
+}
+
+fn duration_setting(name: &str, title: &str, seconds: i64, nanos: i32) -> SettingsDeclarations {
+    SettingsDeclarations {
+        values: vec![SettingDeclaration {
+            name: name.into(),
+            title: title.into(),
+            description: String::new(),
+            default: Some(SettingValue {
+                value: Some(setting_value::Value::Duration(ProtoDuration { seconds, nanos })),
+            }),
+        }],
+    }
+}
+
 async fn scoped_observe(context: &Context) -> Result<Value> {
     // The Attachment's Unscoped Demand Remains Usable Alongside Scoped Demands.
     let scope = context.scope().unwrap_or("unscoped");
@@ -482,23 +530,23 @@ async fn scoped_observe(context: &Context) -> Result<Value> {
     })
 }
 
-/// Count Each Scoped Tick This Plugin Answers.
+/// Count Each Scoped Sample This Plugin Observes.
 async fn counted_observe(context: &Context) -> Result<Value> {
     let count = if context.scope().is_ok() {
-        SCOPED_TICKS.fetch_add(1, Ordering::SeqCst) + 1
+        SCOPED_SAMPLES.fetch_add(1, Ordering::SeqCst) + 1
     } else {
         0
     };
     Ok(Value { value: count.to_le_bytes().to_vec() })
 }
 
-/// Sleep the Requested Seconds Once, Then Report the Scoped Ticks Answered So Far.
+/// Sleep the Requested Seconds Once, Then Report the Scoped Samples Observed So Far.
 async fn count_after(context: &Context, request: Value) -> Result<Value> {
     let seconds =
         u64::from_le_bytes(request.value.as_slice().try_into().map_err(|_| harmos::Error::Invalid("Count After: eight bytes".into()))?);
     context.sleep(Duration::from_secs(seconds)).await?;
     Ok(Value {
-        value: SCOPED_TICKS.load(Ordering::SeqCst).to_le_bytes().to_vec(),
+        value: SCOPED_SAMPLES.load(Ordering::SeqCst).to_le_bytes().to_vec(),
     })
 }
 

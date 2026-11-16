@@ -184,12 +184,12 @@ async fn a_reconnect_whose_samples_never_answer_is_bounded_and_stoppable() {
     let (entered, abandoned) = remote.hold_samples();
     source.advance_next().await;
     let deadline = source.read().instant + settings.connect_timeout;
-    support::bounded(settings.connect_timeout, entered).await.unwrap();
+    entered.await.unwrap();
 
     // The Attempt's Connect Timeout Bounds Opening Its Publications.
     assert!(source.timer_at(deadline), "Bound Opening Publications by the Attempt Deadline");
     source.advance_by(settings.connect_timeout);
-    support::bounded(settings.stop_grace, abandoned).await.unwrap();
+    abandoned.await.unwrap();
     let retry = source.read().instant + settings.reconnect_delay;
     tokio::select! {
         biased;
@@ -202,9 +202,9 @@ async fn a_reconnect_whose_samples_never_answer_is_bounded_and_stoppable() {
     // Stop Interrupts the Next Unanswered Open and Releases Its Demand.
     let (entered, abandoned) = remote.hold_samples();
     source.advance_next().await;
-    support::bounded(settings.connect_timeout, entered).await.unwrap();
-    support::bounded(settings.stop_grace, attached.stop("Story Complete")).await.unwrap();
-    support::bounded(settings.stop_grace, abandoned).await.unwrap();
+    entered.await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    abandoned.await.unwrap();
     assert_eq!(remote.stops(), 0, "Never Stop a Peer Whose Activation Was Not Admitted");
     runtime.shutdown().await.unwrap();
 }

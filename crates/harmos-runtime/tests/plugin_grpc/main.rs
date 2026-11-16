@@ -31,6 +31,7 @@ mod host_invoke;
 
 mod independent_streams;
 mod interval_stream;
+mod interval_windows;
 mod invoke_support;
 mod malformed_identity;
 mod malformed_payload;

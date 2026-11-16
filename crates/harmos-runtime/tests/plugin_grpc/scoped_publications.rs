@@ -131,7 +131,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     let left_closed_at = left_clock.date();
     assert_eq!(left_rows.len(), before_close + 1);
     assert_eq!(left_rows[0].published_unix_micros, Some(1_000_000));
-    assert_eq!(host.values()[0], serde_json::json!({ "value": b"unit/left:1".to_vec() }));
+    assert_eq!(host.samples()[0].1, serde_json::json!({ "value": b"unit/left:1".to_vec() }));
     assert!(left_operations.call_encoded("fixture.clock", payload(b"clock")).await.is_err());
 
     // Right Alone Settles Its Plugin Sleep; the Runtime and Left Clocks Stay Still.
@@ -140,7 +140,7 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     advanced.unwrap();
     assert_eq!(result.unwrap(), payload(&3_i64.to_le_bytes()));
     assert!(!rows_for("unit/right").is_empty());
-    assert!(host.values().contains(&serde_json::json!({ "value": b"unit/right:101".to_vec() })));
+    assert!(host.samples().iter().any(|(_, row)| *row == serde_json::json!({ "value": b"unit/right:101".to_vec() })));
     assert_eq!(rows_for("unit/left").len(), left_rows.len());
     assert_eq!(left_clock.date(), left_closed_at);
     assert_eq!(clock.date(), SystemTime::UNIX_EPOCH);

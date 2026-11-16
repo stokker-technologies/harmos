@@ -113,10 +113,11 @@ impl Manager {
     pub(crate) fn register_grpc_clock(&self) -> Result<()> {
         let mut entries = Vec::new();
         use harmos_operations::execution::operations::OperationFactory;
-        let sample_window = OperationFactory::native::<crate::plugin::grpc::samples::Window>().map_err(|source| Error::OperationFailed {
-            operation: "samples.window".into(),
-            source: Arc::new(source),
-        })?;
+        let sample_window =
+            OperationFactory::native::<crate::plugin::grpc::samples::Window>().map_err(|source| Error::OperationFailed {
+                operation: "samples.window".into(),
+                source: Arc::new(source),
+            })?;
         self.register_native(crate::operations::Registration {
             batch: crate::operations::Catalog {
                 name: "harmos.samples",

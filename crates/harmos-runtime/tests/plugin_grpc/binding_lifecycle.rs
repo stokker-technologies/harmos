@@ -22,6 +22,7 @@ use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
 
 // Standard Library Imports
 use std::{
+    collections::BTreeSet,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -224,8 +225,8 @@ async fn device() -> Remote {
     remote
 }
 
-/// An Interval-Stream Plugin That Answers Scoped Ticks Only While Its Unit Is Registered.
-async fn ticking(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Remote {
+/// An Interval-Stream Plugin That Answers Scoped Windows Only While Its Unit Is Registered.
+async fn windowed(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Remote {
     let remote = Remote::start().await;
     let mut catalog = model::Declarations {
         types: Some(harmos_protocol::clock::declarations_types()),
@@ -247,22 +248,19 @@ async fn ticking(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Remo
             let Some(RequestFrame::Open(_)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Open");
             };
-            let mut sequence = 0;
-            // Answer Each Tick Until the Host Half-Closes the Demand.
+            // Answer Each Window Until the Host Half-Closes the Demand.
             while let Some(request) = input.message().await.ok().flatten() {
-                let Some(RequestFrame::Tick(tick)) = request.frame else { continue };
+                let Some(RequestFrame::Window(window)) = request.frame else { continue };
                 if !registered.load(Ordering::SeqCst) {
                     refused.fetch_add(1, Ordering::SeqCst);
                     let _ = output.send(Err(Status::failed_precondition("Start the Unit Before Requesting Its Samples"))).await;
                     continue;
                 }
-                sequence += 1;
-                let sample = Sample {
-                    at: tick.at,
-                    sequence,
-                    row: TimeGetResponse::default().encode_to_vec(),
-                };
-                let _ = output.send(Ok(InstanceSamplesResponse { samples: vec![sample], frame: None })).await;
+                let row = TimeGetResponse {
+                    now: Some(prost_types::Timestamp::default()),
+                }
+                .encode_to_vec();
+                let _ = output.send(Ok(support::answer(window.count, row.repeat(window.count as usize)))).await;
             }
         });
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
@@ -561,7 +559,7 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
 
 #[tokio::test]
 async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ignoring_half_close() {
-    // Attach on a Virtual Runtime Clock; the Root Demand's First Tick Lies Beyond Every Deadline.
+    // Attach on a Virtual Runtime Clock; the Root Demand's First Window Lies Beyond Every Deadline.
     let grace = settings().stop_grace;
     let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = support::runtime(Some(clock)).await;
@@ -577,16 +575,16 @@ async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ign
     // Closing Parks While It Waits on the Plugin, So Advancing the Grace Expires the Drain.
     let closing = tokio::spawn(binding.close());
     assert_eq!(hung.half_closed.recv().await.unwrap(), "unit/virtual");
-    support::bounded(grace, time.advance_by(grace)).await;
+    time.advance_by(grace).await;
     let error = closing.await.unwrap().unwrap_err();
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Close Scoped Plugin" }), "Name the Bounded Action: {error}");
-    assert_eq!(support::bounded(grace, hung.released.recv()).await.unwrap(), "unit/virtual");
+    assert_eq!(hung.released.recv().await.unwrap(), "unit/virtual");
 
     // Stop Expires the Root Drain the Same Way, Then Still Tells the Plugin to Stop.
     let stopping = tokio::spawn(async move { attached.stop("Story Complete").await });
     assert_eq!(hung.half_closed.recv().await.unwrap(), "");
-    support::bounded(grace, time.advance_by(grace)).await;
-    let error = support::bounded(grace, stopping).await.unwrap().unwrap_err();
+    time.advance_by(grace).await;
+    let error = stopping.await.unwrap().unwrap_err();
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Root Drain Deadline: {error}");
     assert_eq!(hung.remote.stops(), 1, "Tell the Plugin to Stop After Its Drain Deadline");
     runtime.shutdown().await.unwrap();
@@ -617,7 +615,7 @@ async fn a_bind_registered_before_attachment_stop_is_settled_by_the_stop() {
     let error = started.expect_err("Refuse Samples Its Attachment Settled");
     assert!(matches!(error, Error::Invalid(_)), "Refuse as Invalid: {error}");
     binding.close().await.unwrap();
-    support::bounded(settings().stop_grace, abandoned).await.unwrap();
+    abandoned.await.unwrap();
     assert_eq!(remote.stops(), 1);
     host.runtime.shutdown().await.unwrap();
 }
@@ -716,21 +714,21 @@ async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
 
 #[tokio::test]
 async fn sample_demand_runs_only_between_start_and_stop_while_calls_stay_bound() {
-    // A Plugin That Refuses Ticks for a Unit It Has Not Registered.
+    // A Plugin That Refuses Windows for a Unit It Has Not Registered.
     let host = HostFixture::new().await;
     let registered = Arc::new(AtomicBool::new(false));
     let refused = Arc::new(AtomicUsize::new(0));
-    let remote = ticking(registered.clone(), refused.clone()).await;
+    let remote = windowed(registered.clone(), refused.clone()).await;
     let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
     let activation = attached.activation().unwrap();
     let (unit_clock, unit_time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let binding = host.runtime.bind_grpc(&activation, "unit/window", unit_clock).await.unwrap();
 
-    // Unit Time Passes Before the Plugin Registers the Unit, and No Tick Reaches It.
+    // Unit Time Passes Before the Plugin Registers the Unit, and No Window Reaches It.
     unit_time.advance_by(Duration::from_secs(3)).await;
-    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Tick Before Samples Start");
+    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Window Before Samples Start");
 
-    // Demand Starts After Registration and Ticks the Unit Clock.
+    // Demand Starts After Registration and Grants Windows on the Unit Clock.
     registered.store(true, Ordering::SeqCst);
     binding.start_samples().await.unwrap();
     unit_time.advance_until(Duration::from_secs(5), || rows(&host, "unit/window") == 2).await.unwrap();
@@ -739,7 +737,7 @@ async fn sample_demand_runs_only_between_start_and_stop_while_calls_stay_bound()
     binding.stop_samples().await.unwrap();
     registered.store(false, Ordering::SeqCst);
     unit_time.advance_by(Duration::from_secs(3)).await;
-    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Tick After Samples Stop");
+    assert_eq!(refused.load(Ordering::SeqCst), 0, "Grant No Window After Samples Stop");
 
     // The Binding Still Holds Its Scope, and the Run Closes Clean.
     assert!(host.runtime.bind_grpc(&activation, "unit/window", Clock::virtual_at(SystemTime::UNIX_EPOCH).0).await.is_err());
@@ -781,8 +779,6 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
     // SAFETY: The Descriptor Was Just Opened and Is Owned Exactly Once.
     #[allow(unsafe_code)]
     let descriptor = unsafe { OwnedFd::from_raw_fd(descriptor as i32) };
-    // A Regression Fails at the Placement Grace Instead of Hanging.
-    let bound = i32::try_from(settings().stop_grace.as_millis()).unwrap();
     let exited = tokio::task::spawn_blocking(move || {
         let mut watched = libc::pollfd {
             fd: descriptor.as_raw_fd(),
@@ -791,7 +787,8 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
         };
         // SAFETY: One Valid Entry Is Polled Until the Process Exits.
         #[allow(unsafe_code)]
-        let ready = unsafe { libc::poll(&mut watched, 1, bound) };
+        // The Test Runner Bounds a Regression That Never Exits.
+        let ready = unsafe { libc::poll(&mut watched, 1, -1) };
         (ready, watched.revents)
     });
     parent.kill().await.unwrap();
@@ -800,4 +797,101 @@ async fn a_killed_host_takes_its_managed_plugin_with_it() {
     let (ready, events) = exited.await.unwrap();
     assert_eq!((ready, events & libc::POLLIN), (1, libc::POLLIN), "Observe the Plugin's Exit by Its Process Identifier");
     assert!(!cleaned.exists(), "End the Plugin Without Running Its Stop Hooks");
+}
+
+#[tokio::test]
+async fn a_close_after_an_abandoned_stop_keeps_the_stop_deadline() {
+    // A Scope Samples a Plugin That Never Ends Its Samples Response, on a Virtual Runtime Clock.
+    let grace = settings().stop_grace;
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let runtime = support::runtime(Some(clock.clone())).await;
+    let mut hung = Hung::start(Some(prost_types::Duration { seconds: 3600, nanos: 0 })).await;
+    let attached = runtime.attach_grpc(Placement::Remote(hung.remote.address.clone()), settings()).await.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "");
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = runtime.bind_grpc(&attached.activation().unwrap(), "unit/abandoned", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "unit/abandoned");
+
+    // The Caller Gives Up on a Stop the Plugin Never Lets Finish.
+    let stopped_at = clock.now();
+    {
+        let stopping = binding.stop_samples();
+        tokio::pin!(stopping);
+        tokio::select! {
+            result = &mut stopping => panic!("Stop Finished Before Its Drain: {result:?}"),
+            scope = hung.half_closed.recv() => assert_eq!(scope.unwrap(), "unit/abandoned"),
+        }
+    }
+
+    // Close Settles by the Stop's Own Deadline: One Grace, Not Two.
+    let closing = tokio::spawn(binding.close());
+    time.advance_until(grace, || closing.is_finished()).await.unwrap();
+    assert_eq!(clock.now(), stopped_at + grace, "Close Within the Abandoned Stop's Grace");
+    let error = closing.await.unwrap().unwrap_err();
+    assert!(matches!(error.as_ref(), Error::Deadline { .. }), "Report the Spent Grace: {error}");
+
+    // The Root Demand Expires the Same Way.
+    let stopping = tokio::spawn(async move { attached.stop("Story Complete").await });
+    assert_eq!(hung.half_closed.recv().await.unwrap(), "");
+    time.advance_by(grace).await;
+    stopping.await.unwrap().unwrap_err();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn sample_requests_during_settlement_are_refused_at_once() {
+    // An Attachment Stop Settles a Live Binding Against a Plugin That Never Ends Its Response.
+    let grace = settings().stop_grace;
+    let (clock, time) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let runtime = support::runtime(Some(clock.clone())).await;
+    let mut hung = Hung::start(Some(prost_types::Duration { seconds: 3600, nanos: 0 })).await;
+    let attached = runtime.attach_grpc(Placement::Remote(hung.remote.address.clone()), settings()).await.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "");
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = runtime.bind_grpc(&attached.activation().unwrap(), "unit/settling", unit_clock).await.unwrap();
+    binding.start_samples().await.unwrap();
+    assert_eq!(hung.opened.recv().await.unwrap(), "unit/settling");
+    let stopping = tokio::spawn(async move { attached.stop("Story Complete").await });
+    let mut drained = BTreeSet::new();
+    while drained.len() < 2 {
+        drained.insert(hung.half_closed.recv().await.unwrap());
+    }
+
+    // Start and Stop Answer While Settlement Waits on the Plugin, Without Time Passing.
+    let started = clock.now();
+    let error = binding.start_samples().await.unwrap_err();
+    assert!(error.to_string().contains("close()"), "Name the Action: {error}");
+    binding.stop_samples().await.unwrap_err();
+    assert_eq!(clock.now(), started, "Refuse Without Waiting for the Grace");
+    time.advance_by(grace).await;
+    stopping.await.unwrap().unwrap_err();
+    binding.close().await.unwrap_err();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_withdrawn_start_opens_no_demand() {
+    // Withhold the Scope's Samples Response, Then Withdraw the Start Waiting on It.
+    let host = HostFixture::new().await;
+    let remote = device().await;
+    let attached = host.runtime.attach_grpc(Placement::Remote(remote.address.clone()), settings()).await.unwrap();
+    let (entered, abandoned) = remote.hold_samples();
+    let (unit_clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
+    let binding = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/withdrawn", unit_clock).await.unwrap();
+    {
+        let starting = binding.start_samples();
+        tokio::pin!(starting);
+        tokio::select! {
+            result = &mut starting => panic!("Samples Started Before Their Response: {result:?}"),
+            entered = entered => entered.unwrap(),
+        }
+    }
+
+    // The Withheld Open Is Abandoned, and a New Start Finds No Open Demand.
+    abandoned.await.unwrap();
+    binding.start_samples().await.unwrap();
+    binding.close().await.unwrap();
+    attached.stop("Story Complete").await.unwrap();
+    host.runtime.shutdown().await.unwrap();
 }

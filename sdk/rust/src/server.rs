@@ -394,8 +394,7 @@ async fn invoke(
 
 async fn samples(
     jobs: mpsc::Sender<Job>, observer: Option<(Arc<dyn Handler>, Columns)>, producer: Option<Arc<dyn Handler>>, mut context: Context,
-    input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>,
-    message_bytes: usize,
+    input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>, message_bytes: usize,
 ) -> StdResult<(), Status> {
     let (samples, mut rows) = mpsc::channel(1);
     context.samples = Some(samples);

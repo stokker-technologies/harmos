@@ -12,7 +12,7 @@
 /* === Tests === */
 
 #[tokio::test]
-async fn device_samples_need_no_tick_and_keep_source_time_separate() {
+async fn device_samples_need_no_window_and_keep_source_time_separate() {
     // Open Device Demand Without Advancing Host Time
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let host = super::invoke_support::HostFixture::with_clock(Some(clock.clone())).await;

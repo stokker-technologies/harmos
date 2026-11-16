@@ -38,7 +38,7 @@ async fn publish_reopens_with_a_fresh_sequence_after_connection_loss() {
     // A Reopened Demand Starts At Sequence One
     controller.advance_until(std::time::Duration::from_secs(10), || host.rows().len() >= 2).await.unwrap();
     assert_eq!(
-        host.values(),
+        host.samples().into_iter().map(|(_, row)| row).collect::<Vec<_>>(),
         [serde_json::json!({"value": 1_u64.to_le_bytes().to_vec()}), serde_json::json!({"value": 1_u64.to_le_bytes().to_vec()})]
     );
     assert_eq!(host.rows().iter().map(|row| row.published_unix_micros).collect::<Vec<_>>(), [Some(1_000_000), Some(3_000_000)]);

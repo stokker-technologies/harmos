@@ -401,6 +401,19 @@ pub async fn runtime(clock: Option<Clock>) -> Runtime<App> {
     .await
 }
 
+/// Answer a Whole Window in One Part; Rows Whose Every Field Is Present Concatenate Into Their Columns.
+pub fn answer(count: u64, columns: Vec<u8>) -> InstanceSamplesResponse {
+    InstanceSamplesResponse {
+        samples: Vec::new(),
+        frame: Some(harmos_protocol::plugin::instance_samples_response::Frame::Batch(harmos_protocol::plugin::SampleBatch {
+            offset: 0,
+            count,
+            columns,
+            last: true,
+        })),
+    }
+}
+
 pub fn settings() -> PlacementSettings {
     PlacementSettings {
         connect_timeout: Duration::from_secs(30),
@@ -463,11 +476,6 @@ pub fn running(process: u32) -> bool {
             queried != 0 && code == STILL_ACTIVE as u32
         }
     }
-}
-
-/// Fail Rather Than Hang: Bound a Wait That Only a Defect Could Prolong by a Placement Duration.
-pub async fn bounded<T>(bound: Duration, future: impl std::future::Future<Output = T>) -> T {
-    tokio::time::timeout(bound, future).await.expect("Finish Within the Placement Bound")
 }
 
 /// Resolve When the Attachment's Supervisor Has Ended.

@@ -47,11 +47,11 @@ pub mod response {
         Failure(crate::model::Failure),
     }
 }
-/// Submits a dependency call from the current attempt or unanswered samples tick under its inherited caller context and checked grants.
+/// Submits a dependency call from the current attempt or unanswered samples window under its inherited caller context and checked grants.
 #[allow(clippy::all)]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ChildRequest {
-    /// Chosen by the plugin, unique within this Invoke or Samples call, including across ticks.
+    /// Chosen by the plugin, unique within this Invoke or Samples call, including across windows.
     #[prost(uint64, tag = "1")]
     pub call: u64,
     /// Complete admitted operation routing identity; no provider prefix or provider selection is added.

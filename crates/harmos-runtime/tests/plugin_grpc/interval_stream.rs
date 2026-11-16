@@ -7,12 +7,12 @@
  * ***
  */
 
-// Host-Ticked Samples Reach Stream Storage
+// Host-Windowed Samples Reach Stream Storage
 
 /* === Tests === */
 
 #[tokio::test]
-async fn host_ticks_are_stored_in_order_with_host_timestamps() {
+async fn host_windows_are_stored_in_order_with_host_timestamps() {
     // Admit An SDK Observer On A Virtual Host
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let host = super::invoke_support::HostFixture::with_clock(Some(clock.clone())).await;
@@ -38,8 +38,10 @@ async fn host_ticks_are_stored_in_order_with_host_timestamps() {
     host.signals.storage_release.notify_one();
     advancing.await.unwrap();
     assert_eq!(
-        host.values(),
-        (1_u64..=3).map(|sequence| serde_json::json!({ "value": sequence.to_le_bytes().to_vec() })).collect::<Vec<_>>()
+        host.samples(),
+        (1_u64..=3)
+            .map(|sequence| (sequence as i64 * 1_000_000_000, serde_json::json!({ "value": sequence.to_le_bytes().to_vec() })))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         host.rows().iter().map(|row| row.published_unix_micros).collect::<Vec<_>>(),
@@ -47,7 +49,7 @@ async fn host_ticks_are_stored_in_order_with_host_timestamps() {
     );
     assert_eq!(clock.date(), std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(3));
 
-    // A Stream Awaiting A Tick Leaves Invoke Usable
+    // A Stream Awaiting A Window Leaves Invoke Usable
     let input = super::invoke_support::payload(b"echo");
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
     attached.stop("Story Complete").await.unwrap();

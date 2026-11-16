@@ -235,7 +235,8 @@ where
     fn execute<'a>(&'a self, context: &'a Context, payload: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>> {
         Box::pin(async move {
             let window = Window::decode(&payload)?;
-            let columns = self.columns.as_ref().ok_or_else(|| crate::Error::Invalid("Answer Sample Window: the row has no columns".into()))?;
+            let columns =
+                self.columns.as_ref().ok_or_else(|| crate::Error::Invalid("Answer Sample Window: the row has no columns".into()))?;
             let mut sample = context.clone();
             let mut rows = Vec::with_capacity(usize::try_from(window.count).unwrap_or_default());
             for index in 0..window.count {

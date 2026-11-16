@@ -96,7 +96,11 @@ impl Spawner {
                     let _ = std::panic::catch_unwind(AssertUnwindSafe(job));
                 }
             })
-            .map_err(|error| std::io::Error::other(format!("Start Managed Plugin: the process spawner thread could not start ({error}); free system resources and attach again")))?;
+            .map_err(|error| {
+                std::io::Error::other(format!(
+                    "Start Managed Plugin: the process spawner thread could not start ({error}); free system resources and attach again"
+                ))
+            })?;
         sender.send(job).map_err(|_| std::io::Error::other("the new spawner thread stopped; start the plugin again"))?;
         *requests = Some(sender);
         Ok(())

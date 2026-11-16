@@ -264,7 +264,8 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         }],
         streams: vec![model::StreamDeclaration {
             id: "probe".into(),
-            row: "harmos.host.v1.plugins.SettingsListRequest".into(),
+            // An Interval Row Holds One Singular Value per Field.
+            row: "harmos.host.v1.TimeGetResponse".into(),
             interval: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }],
@@ -288,7 +289,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let fingerprint = managed_fingerprint.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Tick(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
             for (index, name) in [None, Some("caller"), Some("remote")].into_iter().enumerate() {
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
@@ -351,7 +352,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let observed = observed.clone();
         tokio::spawn(async move {
             assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Tick(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
             output
                 .send(Ok(plugin::InstanceSamplesResponse {
                     samples: vec![],

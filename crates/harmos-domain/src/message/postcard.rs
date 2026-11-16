@@ -23,7 +23,8 @@ use super::{MessageError, decoding_add, decoding_multiply, decoding_vector};
 /* === Constants === */
 
 pub(crate) const MAX_DEPTH: usize = 32;
-const MAX_VALUES: usize = 1_048_576;
+/// Structural Values One Stored Row May Hold; a Batch Larger Than This Is Stored as Several Rows.
+pub const MAX_VALUES: usize = 1_048_576;
 
 /* === Macros === */
 

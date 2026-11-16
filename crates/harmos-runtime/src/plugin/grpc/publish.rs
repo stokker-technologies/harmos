@@ -644,19 +644,20 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                     prost::encoding::uint64::encode(harmos_protocol::columns::batch::PERIOD_NANOS, &(period_nanos as u64), &mut stored);
                     prost::encoding::uint64::encode(harmos_protocol::columns::batch::COUNT, &part.count, &mut stored);
                     prost::encoding::bytes::encode(harmos_protocol::columns::batch::COLUMNS, &part.columns, &mut stored);
-                    let payload = row.decode_batch(&stored, part.count)?;
-                    receipt = Some(
-                        lease
-                            .admit_clocked_row(
-                                PublicationRow {
-                                    payload,
-                                    published_unix_micros: Some(first.div_euclid(1000)),
-                                    context: context.clone(),
-                                },
-                                clock,
-                            )
-                            .map_err(invalid)?,
-                    );
+                    for (first, _, payload) in row.decode_batch(&stored, part.count, period_nanos as u64)? {
+                        receipt = Some(
+                            lease
+                                .admit_clocked_row(
+                                    PublicationRow {
+                                        payload,
+                                        published_unix_micros: Some(first.div_euclid(1000)),
+                                        context: context.clone(),
+                                    },
+                                    clock,
+                                )
+                                .map_err(invalid)?,
+                        );
+                    }
                 }
                 let receipt = receipt.expect("an answered window has at least one part");
                 ingested_through = Some(receipt);

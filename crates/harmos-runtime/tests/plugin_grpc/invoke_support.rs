@@ -227,6 +227,55 @@ impl HostFixture {
             .collect()
     }
 
+    /// Every Interval Sample in Storage Order: Its Time in Unix Nanoseconds and Its Row Built From the Batch Columns.
+    pub fn samples(&self) -> Vec<(i64, serde_json::Value)> {
+        Self::expand(self.values())
+    }
+
+    /// The Samples of One Stream, as [`Self::samples`] Returns Them.
+    pub fn samples_of(&self, stream: &str) -> Vec<(i64, serde_json::Value)> {
+        Self::expand(self.stream_values(stream).into_iter().map(|(batch, _)| batch).collect())
+    }
+
+    /// One Stream's Stored Batches: First Sample Time, Sample Count and Scope.
+    pub fn batches_of(&self, stream: &str) -> Vec<(i64, u64, Option<String>)> {
+        self.stream_values(stream)
+            .into_iter()
+            .map(|(batch, context)| {
+                let scope = context
+                    .and_then(|context| serde_json::from_str::<serde_json::Value>(&context).ok()?["scope"].as_str().map(str::to_owned));
+                (batch["start_unix_nanos"].as_i64().unwrap(), batch["count"].as_u64().unwrap(), scope)
+            })
+            .collect()
+    }
+
+    fn stream_values(&self, stream: &str) -> Vec<(serde_json::Value, Option<String>)> {
+        self.stored
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(definition, _)| definition.id() == stream)
+            .map(|(definition, row)| {
+                let codec = harmos_domain::schema::json::JsonCodec::new(definition.schema().root().unwrap(), &Default::default()).unwrap();
+                (codec.decode(&row.payload).unwrap(), row.context.clone())
+            })
+            .collect()
+    }
+
+    fn expand(batches: Vec<serde_json::Value>) -> Vec<(i64, serde_json::Value)> {
+        let mut samples = Vec::new();
+        for batch in batches {
+            let start = batch["start_unix_nanos"].as_i64().expect("an interval batch row");
+            let period = batch["period_nanos"].as_i64().unwrap();
+            let columns = batch["columns"].as_object().unwrap();
+            for index in 0..batch["count"].as_u64().unwrap() as usize {
+                let row = columns.iter().map(|(name, values)| (name.clone(), values[index].clone())).collect();
+                samples.push((start + index as i64 * period, serde_json::Value::Object(row)));
+            }
+        }
+        samples
+    }
+
     pub fn managed_sdk(&self, mode: &str) -> harmos_runtime::plugin::grpc::Placement {
         harmos_runtime::plugin::grpc::Placement::Managed(harmos_runtime::plugin::grpc::Managed {
             executable: support::binary("harmos-sdk-invoke-fixture"),

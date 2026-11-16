@@ -63,6 +63,7 @@ pub struct Derived {
 /// (including proto3 `optional`) are refused with the action to take.
 pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
     let mut fields = Vec::new();
+    let mut dependency = vec![row.parent_file().name().to_owned()];
     for field in row.fields() {
         if field.is_list() || field.is_map() || field.containing_oneof().is_some() {
             return Err(format!(
@@ -73,8 +74,14 @@ pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
             ));
         }
         let (kind, type_name) = match field.kind() {
-            Kind::Message(message) => (Type::Message, Some(format!(".{}", message.full_name()))),
-            Kind::Enum(value) => (Type::Enum, Some(format!(".{}", value.full_name()))),
+            Kind::Message(message) => {
+                dependency.push(message.parent_file().name().to_owned());
+                (Type::Message, Some(format!(".{}", message.full_name())))
+            }
+            Kind::Enum(value) => {
+                dependency.push(value.parent_file().name().to_owned());
+                (Type::Enum, Some(format!(".{}", value.full_name())))
+            }
             Kind::Double => (Type::Double, None),
             Kind::Float => (Type::Float, None),
             Kind::Int64 => (Type::Int64, None),
@@ -112,7 +119,11 @@ pub fn derive(row: &MessageDescriptor) -> Result<Derived, String> {
     let file = FileDescriptorProto {
         name: Some(format!("harmos/columns/{}.proto", row.full_name())),
         package: Some("harmos.columns".into()),
-        dependency: vec![row.parent_file().name().to_owned()],
+        dependency: {
+            dependency.sort();
+            dependency.dedup();
+            dependency
+        },
         message_type: vec![
             DescriptorProto {
                 name: Some(name.clone()),
