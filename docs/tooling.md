@@ -56,6 +56,38 @@ running its stories and passes the selected profile to package consumers.
 Python wheel and reference-host stories consume exports from that same profile.
 Generated-Python-only checks need Python and uv.
 
+## CI Impact Planning
+
+The hidden `ci:impact` task owns pure `classify(paths)` and `plan(classes, event)`
+functions in `ci/impact.py`. The CI workflow routes jobs from its boolean outputs
+and carries the complete `selected` and `skipped` JSON lists to Required.
+Required accepts success or a skip explicitly planned by a successful impact job;
+missing, failed, cancelled and unexpectedly skipped jobs fail aggregation.
+
+Documentation paths (`docs/**`, Markdown anywhere and `openspec/**`) select only
+`ci:docs`: public guide checks and deterministic local Markdown link checks.
+There is no documentation site build. Mixed changes union their selections.
+Rust, protocol and SDK changes select their checks and downstream consumers, then
+add required artifact producers. Shared tooling, configuration, workflows and
+unknown paths conservatively select every event-eligible job. Linux and Windows
+legs remain paired wherever the selected job has both platforms.
+
+PR diffs compare merge-base to head; push diffs compare before to after. Git's
+NUL-delimited name-status output includes deletions and both sides of renames.
+Missing commits, malformed or unavailable diffs and empty comparisons select all
+eligible jobs. Draft and closed reviews plan explicit skips. Release reviews and
+manual full validation select everything. Dev pushes retain quick checks,
+documentation checks and Product builds, excluding Tests, fixtures, SDK tests and
+packaging. Nightly runs everything after its freshness gate; publication depends
+only on packaging, while suite verdicts are appended by the final report.
+
+SDK operation leaves (`consumer`, `test:unit`, `test:tooling`, `test:examples`) are
+hidden implementation tasks. `mise tasks` exposes conventional entry points.
+Native dependency setup, restored C# executable permissions and SDK activation
+run through hidden `ci:*` tasks. Only the pre-install bootstrap loads a Python
+file directly, because the tooling package and mise are not yet available.
+`tools/python/editables.txt` remains an input to offline fixtures.
+
 ## Workstation Builds
 
 The workstation owns the compiler cache: `RUSTC_WRAPPER`, `SCCACHE_DIR`,
@@ -616,23 +648,24 @@ merged release reviews so their validation can finish. Release evidence lookup u
 `ci:review` with `REVIEW_REQUIRED`, `REVIEW_RELEASE`, `REVIEW_PACKAGES` and
 `REVIEW_BUILDS`; outputs go to `GITHUB_OUTPUT`. Tagging and publication invoke
 release checks directly for the exact `RELEASE_TARGET_SHA`. `ci:required` reads `RESULTS` JSON and refuses failures,
-cancellations and unexpected skips; the release-review rehearsal may skip
-outside a release review (`RELEASE_REVIEW=false`). `OPTIONAL_JOBS` explicitly allows
-skipped suites, fixture preparation, packaging and dry publication on dev pushes.
-Dev pushes run only checks and Product/Tests builds; they never run those consumers.
-The dev Python job selects the existing format/lint tasks because the complete
-Python check also runs SDK and tooling tests. Generated-client checks consume
+cancellations, missing jobs and skips absent from the successful impact plan.
+`OPTIONAL_JOBS` and `RELEASE_REVIEW` no longer grant skip exceptions.
+Dev pushes run quick checks, docs checks and Product builds. Their quick check
+uses format/lint and repository tasks because the complete Python check also runs
+SDK and tooling tests. Generated-client checks consume
 Product outputs, including `target/generated/python/src`; they do not build or
 invent missing clients. Local complete Python checks require the reference host
 (`mise run build -- --package harmos-conformance`) and matching Product outputs
 (`mise run build`). The complete Python check reports this prerequisite before checking
 clients when `target/generated/python/src` is absent.
 
-Every pull request runs the full verification graph. Packaging consumes Product
+Ready pull requests run the impact-selected verification graph; release reviews
+run the complete graph. Packaging consumes Product
 without waiting for checks. Unit tests download only Tests and wait only for its build.
 Integration, acceptance and system tests download the joined fixture bundle, which
 contains their test archive, and wait only for its producer. Coverage tests also consume that bundle. Benchmarks consume only Bench. The required CI gate
-collects all verification results; release rehearsal runs only on release reviews.
+collects every planned result and rejects unexpected skips; release rehearsal runs
+on release reviews and manual full validation.
 Nightly freshness and release evidence are decision inputs; Nightly's final
 report consumes suite statuses as well as the publication result.
 

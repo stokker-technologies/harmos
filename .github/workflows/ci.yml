@@ -28,18 +28,60 @@ env:
   GIT_CONFIG_KEY_0: core.longpaths
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
-  check:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+  impact:
+    name: Plan / Impact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      selected: ${{ steps.impact.outputs.selected }}
+      skipped: ${{ steps.impact.outputs.skipped }}
+      check_matrix: ${{ steps.impact.outputs.check_matrix }}
+      test_matrix: ${{ steps.impact.outputs.test_matrix }}
+      docs: ${{ steps.impact.outputs.docs }}
+      check: ${{ steps.impact.outputs.check }}
+      build_product: ${{ steps.impact.outputs.build_product }}
+      build_tests: ${{ steps.impact.outputs.build_tests }}
+      check_product: ${{ steps.impact.outputs.check_product }}
+      package_rust: ${{ steps.impact.outputs.package_rust }}
+      prepare_test_fixtures: ${{ steps.impact.outputs.prepare_test_fixtures }}
+      test_unit: ${{ steps.impact.outputs.test_unit }}
+      test: ${{ steps.impact.outputs.test }}
+      release_dry: ${{ steps.impact.outputs.release_dry }}
+      release_rehearsal: ${{ steps.impact.outputs.release_rehearsal }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - uses: ./.github/actions/setup
+      with:
+        platform: unix
+    - name: Plan Changed Jobs
+      id: impact
+      run: mise run ci:impact --
+    env:
+      MISE_ENABLE_TOOLS: python,uv
+  docs:
+    needs: [impact]
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.docs == 'true'
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
-      selection: check
+      selection: docs
+  check:
+    needs: [impact]
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.check == 'true'
+    uses: ./.github/workflows/validation.yml
+    with:
+      channel: stable
+      selection: ${{ github.event_name == 'push' && 'check_quick' || 'check' }}
+      check-matrix: ${{ needs.impact.outputs.check_matrix }}
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   release_dry:
     needs:
+    - impact
     - package_rust
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed' && startsWith(github.head_ref,
-      'release/v'))
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.release_dry == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -47,23 +89,25 @@ jobs:
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   release_rehearsal:
     needs:
+    - impact
     - package_rust
-    if: (github.event_name != 'pull_request' || github.event.action != 'closed') && (github.event_name == 'pull_request' && github.base_ref ==
-      'dev' && startsWith(github.head_ref, 'release/v'))
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.release_rehearsal == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
       selection: release_rehearsal
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   build_product:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    needs: [impact]
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.build_product == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
       selection: build_product
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   build_tests:
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    needs: [impact]
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.build_tests == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -71,8 +115,9 @@ jobs:
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   package_rust:
     needs:
+    - impact
     - build_product
-    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.package_rust == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -80,9 +125,10 @@ jobs:
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   prepare_test_fixtures:
     needs:
+    - impact
     - build_product
     - build_tests
-    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.prepare_test_fixtures == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -92,7 +138,7 @@ jobs:
     name: CI / Required
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    if: always() && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    if: always()
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
     - id: setup
@@ -103,8 +149,6 @@ jobs:
       run: mise run ci:required --
       env:
         RESULTS: ${{ toJSON(needs) }}
-        OPTIONAL_JOBS: ${{ github.event_name == 'push' && '["release_dry","release_rehearsal","package_rust","prepare_test_fixtures","test","test_unit"]' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/v')) && '[]' || '["release_dry"]' }}
-        RELEASE_REVIEW: ${{ github.event_name == 'pull_request' && github.base_ref == 'dev' && startsWith(github.head_ref, 'release/v') }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
@@ -124,6 +168,8 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,uv
     needs:
+    - impact
+    - docs
     - check
     - release_dry
     - release_rehearsal
@@ -136,8 +182,9 @@ jobs:
     - test_unit
   check_product:
     needs:
+    - impact
     - build_product
-    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.check_product == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
@@ -145,20 +192,22 @@ jobs:
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   test_unit:
     needs:
+    - impact
     - build_tests
-    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.test_unit == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
       selection: test_unit
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
   test:
-    needs: [prepare_test_fixtures]
-    if: github.event_name != 'push' && (github.event_name != 'pull_request' || github.event.action != 'closed')
+    needs: [impact, prepare_test_fixtures]
+    if: always() && needs.impact.result == 'success' && needs.impact.outputs.test == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
       channel: stable
       selection: test
+      test-matrix: ${{ needs.impact.outputs.test_matrix }}
       profile: ${{ startsWith(github.head_ref, 'release/v') && 'release' || 'dev' }}
 
 concurrency:
