@@ -971,7 +971,7 @@ class TimeResource:
         return response
 
 
-class ClientRoot(_connection.Connection):
+class Client(_connection.Connection):
     def __init__(self, channel: Channel) -> None:
         super().__init__(channel)
         self._channel = channel

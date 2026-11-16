@@ -186,8 +186,10 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
     if leaves & nodes:
         raise ValueError("Generate Python Client: Resource Collides With a Method")
-    names = {node: "ClientRoot" if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     composed = any(method["owner"] != "harmos" for method in methods)
+    composed_package = composed and target.parent.name == "_generated"
+    root_name = "Client" if composed_package else "ClientRoot"
+    names = {node: root_name if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
     library = Path(__file__).resolve().parents[6] / "crates/harmos-protocol/src/descriptors.bin"
     library_methods = table(FileDescriptorSet.FromString(library.read_bytes()))
     library_leaves = {tuple(method["path"]) for method in library_methods if method["face"] == "client"}
@@ -331,7 +333,7 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
                 lines += [f"        return {value}"]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    if composed and target.parent.name == "_generated":
+    if composed_package:
         package = target.parent.parent
         requests = {method["request"] for method in methods}
         exports = []
@@ -355,7 +357,7 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         (package / "client.py").write_text("\n".join(client_exports) + "\n", encoding="utf-8", newline="\n")
         # A Composed Package Exposes Its Generated Root Through the Same Client Entry Point.
         (package / "__init__.py").write_text(
-            "# @generated from protocol descriptors; do not edit.\nfrom ._generated.client import ClientRoot as Client\n\n__all__ = ['Client']\n",
+            "# @generated from protocol descriptors; do not edit.\nfrom ._generated.client import Client\n\n__all__ = ['Client']\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -363,7 +365,7 @@ def python(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
     config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     paths = [target] + (
         [target.parent / "client_types.py", target.parent.parent / "client.py", target.parent.parent / "__init__.py"]
-        if composed and target.parent.name == "_generated"
+        if composed_package
         else []
     )
     subprocess.run(
