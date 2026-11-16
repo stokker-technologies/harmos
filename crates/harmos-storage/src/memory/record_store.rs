@@ -25,7 +25,7 @@ use std::{
 // Third Party Imports
 
 // Local Imports
-use super::{RecordView, Result, SchemaKey, StoredRecord};
+use super::{Identifier, RecordView, Result, SchemaKey, StoredRecord};
 
 /* === Constants === */
 
@@ -77,6 +77,15 @@ impl RowStore<StoredRecord> for RecordStore {
 }
 
 impl RecordStore {
+    pub(super) fn delete_scope(&mut self, scope: &Identifier) {
+        let values = Arc::make_mut(&mut self.values);
+        values.retain(|_, view| view.record().scope.as_ref() != Some(scope));
+        Arc::make_mut(&mut self.ranks).retain(|_, ranks| {
+            Arc::make_mut(ranks).retain(|position| values.contains_key(position));
+            !ranks.is_empty()
+        });
+    }
+
     pub(super) fn insert_view(&mut self, view: RecordView) {
         let position = view.record().position.sequence;
         let key = serde_json::to_string(&view.record().schema).unwrap();

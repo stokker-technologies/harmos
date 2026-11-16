@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::sync::atomic::Ordering;
 
@@ -27,8 +27,8 @@ use super::Backend;
 use super::failure;
 use crate::StorageSchema;
 use crate::{
-    BackendFailure, CompoundExchange, CompoundOutcome, CompoundWrite, Identifier, MutationReceipt, MutationValue, ObjectEntry, ObjectKey,
-    ObjectVersionToken, RecordView, StorageFuture,
+    BackendFailure, CompoundExchange, CompoundOutcome, CompoundWrite, Error, Identifier, MutationReceipt, MutationValue, ObjectEntry,
+    ObjectKey, ObjectVersionToken, RecordView, StorageFuture,
 };
 
 /* === Constants === */
@@ -76,6 +76,7 @@ impl Backend {
             let mut staged_deleted = BTreeMap::new();
             let mut staged_schemas = BTreeMap::new();
             let mut staged_records = Vec::new();
+            let mut deleted_scope = None;
             let mut outcome = CompoundOutcome::Applied {
                 positions: exchange.items.iter().map(|item| item.position().clone()).collect(),
             };
@@ -115,6 +116,9 @@ impl Backend {
                         *current = None;
                         staged_deleted.insert(position.sequence, (schema.clone(), item.clone()));
                     }
+                    CompoundWrite::Scope { scope, .. } => {
+                        deleted_scope = Some(scope);
+                    }
                     CompoundWrite::Record(record) => {
                         staged_records.push(RecordView::new(record.clone())?);
                     }
@@ -123,6 +127,41 @@ impl Backend {
             let receipt = exchange.receipt(outcome);
             exchange.replay(&receipt)?;
             if matches!(&receipt.value, MutationValue::Compound(value) if matches!(value.outcome, CompoundOutcome::Applied { .. })) {
+                if let Some(scope) = deleted_scope {
+                    let _files = self.file_io.lock().unwrap();
+                    let staged = self.staged.lock().unwrap();
+                    if staged.values().any(|(metadata, _)| {
+                        metadata.scope.as_ref() == Some(scope) && !self.abandoned_files.lock().unwrap().contains(metadata.id.as_str())
+                    }) {
+                        return Err(Error::InvalidInput {
+                            field: "scope deletion",
+                            reason: "finish or abandon active file productions before deleting their scope",
+                        });
+                    }
+                    drop(staged);
+                    // Remove Every Revision of Identities Currently Owned by the Scope.
+                    let mut seen = BTreeSet::new();
+                    let identities = objects
+                        .values()
+                        .rev()
+                        .filter_map(|object| {
+                            let key = (object.value.schema.id.clone(), object.value.item.clone());
+                            (seen.insert(key.clone()) && object.value.scope.as_ref() == Some(scope)).then_some(key)
+                        })
+                        .collect::<BTreeSet<_>>();
+                    objects.retain(|_, object| {
+                        object.value.scope.as_ref() != Some(scope)
+                            && !identities.contains(&(object.value.schema.id.clone(), object.value.item.clone()))
+                    });
+                    records.delete_scope(scope);
+                    self.rows.lock().unwrap().retain(|_, row| row.record.scope.as_ref() != Some(scope));
+                    self.files.lock().unwrap().retain(|_, file| file.metadata.scope.as_ref() != Some(scope));
+                    self.blobs.lock().unwrap().retain(|_, (file, _)| file.metadata.scope.as_ref() != Some(scope));
+                    self.saved_productions.lock().unwrap().retain(|_, (checkpoint, _)| checkpoint.metadata.scope.as_ref() != Some(scope));
+                    self.staged.lock().unwrap().retain(|_, (metadata, _)| metadata.scope.as_ref() != Some(scope));
+                    self.scoped_floor.fetch_max(exchange.position.sequence as usize, Ordering::SeqCst);
+                    self.reclaim_scoped_projections();
+                }
                 objects.extend(staged_objects);
                 deleted.extend(staged_deleted);
                 schemas.extend(staged_schemas);
@@ -158,7 +197,7 @@ fn current(
         let (schema, item) = match item {
             CompoundWrite::Object { value, .. } => (&value.value.schema.id, &value.value.item),
             CompoundWrite::Delete { schema, item, .. } => (schema, item),
-            CompoundWrite::Record(_) => continue,
+            CompoundWrite::Record(_) | CompoundWrite::Scope { .. } => continue,
         };
         versions.entry(schema.clone()).or_default().entry(item.clone()).or_insert(None);
     }

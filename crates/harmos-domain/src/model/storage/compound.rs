@@ -45,9 +45,19 @@ pub struct CompoundReceipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MutationItem {
     Create(ObjectValue),
-    Set { expected: ObjectVersionToken, value: ObjectValue },
-    Delete { schema: Identifier, item: ObjectKey, expected: Option<ObjectVersionToken> },
+    Set {
+        expected: ObjectVersionToken,
+        value: ObjectValue,
+    },
+    Delete {
+        schema: Identifier,
+        item: ObjectKey,
+        expected: Option<ObjectVersionToken>,
+    },
     Append(RecordInput),
+
+    /// Delete One Opaque Scope as the Sole Item of a Mutation.
+    DeleteScope(Identifier),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +86,7 @@ impl MemorySize for MutationItem {
                 schema.memory_size().saturating_add(item.memory_size()).saturating_add(expected.memory_size())
             }
             Self::Append(record) => record.memory_size(),
+            Self::DeleteScope(scope) => scope.memory_size(),
         };
         size_of::<Self>().saturating_add(retained)
     }

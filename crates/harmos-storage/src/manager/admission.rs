@@ -181,6 +181,15 @@ impl StorageManager {
                 if let Some(source) = &state.status.failure {
                     return Err(Error::Persistence { source: source.clone() });
                 }
+                if let Operation::Compound(exchange) = &pending.operation
+                    && let [crate::CompoundWrite::Scope { scope, .. }] = exchange.items.as_slice()
+                    && state.files.values().any(|file| file.belongs_to_scope(scope))
+                {
+                    return Err(Error::InvalidInput {
+                        field: "scope deletion",
+                        reason: "finish or abandon active file productions and await their cleanup before deleting their scope",
+                    });
+                }
                 if let Some(mutation) = mutation {
                     let outcome = MutationValue::Cursor(self.position(last));
                     state.receipts.insert(mutation.id, mutation.fingerprint)?;

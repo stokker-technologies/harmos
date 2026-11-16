@@ -15,8 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::PayloadEncoding as WirePayloadEncoding;
-use harmos_protocol::host::SchemaKey as WireSchemaKey;
+use harmos_protocol::host;
 
 // Standard Library Imports
 use std::fmt;
@@ -46,6 +45,7 @@ pub struct SchemaKey {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ObjectValue {
+    pub scope: Option<Identifier>,
     pub schema: SchemaKey,
     pub item: ObjectKey,
     pub payload: Vec<u8>,
@@ -93,6 +93,7 @@ impl MemorySize for ObjectValue {
         std::mem::size_of::<Self>()
             .saturating_add(self.schema.memory_size().saturating_sub(std::mem::size_of::<SchemaKey>()))
             .saturating_add(self.item.memory_size().saturating_sub(std::mem::size_of::<ObjectKey>()))
+            .saturating_add(self.scope.memory_size())
             .saturating_add(self.payload.capacity())
     }
 }
@@ -157,7 +158,7 @@ impl ObjectRetention {
     }
 }
 
-impl From<SchemaKey> for WireSchemaKey {
+impl From<SchemaKey> for host::SchemaKey {
     fn from(value: SchemaKey) -> Self {
         Self {
             id: value.id.to_string(),
@@ -166,10 +167,10 @@ impl From<SchemaKey> for WireSchemaKey {
         }
     }
 }
-impl TryFrom<WireSchemaKey> for SchemaKey {
+impl TryFrom<host::SchemaKey> for SchemaKey {
     type Error = Error;
-    fn try_from(value: WireSchemaKey) -> Result<Self> {
-        if value.payload_encoding != WirePayloadEncoding::PostcardV1 as i32 {
+    fn try_from(value: host::SchemaKey) -> Result<Self> {
+        if value.payload_encoding != host::PayloadEncoding::PostcardV1 as i32 {
             return Err(Error::InvalidInput {
                 field: "payload_encoding",
                 reason: "unsupported storage encoding",

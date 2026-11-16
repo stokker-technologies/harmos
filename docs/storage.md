@@ -358,6 +358,36 @@ earlier objects and records, retained-cut isolation and replay of both success a
 conflict receipts. Products additionally prove reopen durability with their backend's
 own close/reopen fixture.
 
+## Object and Scoped Deletion
+
+Native `storage.delete_object` takes an object schema identity, key, optional
+expected revision and mutation identity. Its `MutateResponse` includes the deletion
+revision in the completed receipt. A mismatched expected revision produces a replayable
+conflict without changing data. Latest and exact reads at a new cut report absence;
+a cut retained before deletion continues to read its original object.
+
+`storage.delete_scope` removes objects, records, samples and files with exactly the
+supplied opaque scope. `ObjectValue.scope` records object ownership; typed object
+encoders copy `StoredObject::scope()`. Arrow object metadata carries `_storage.scope`
+and object batch ingestion restores it. Scopes do not assign meaning to object keys.
+Deleting current ownership removes all earlier revisions of that identity, preventing
+an older owner from resurfacing. Deleting historical ownership keeps a different current
+owner. Scope deletion is a standalone `MutationItem::DeleteScope` transaction with one
+frontier and receipt. Retrying that identity returns the original result and cannot
+delete newer data written into the same scope. Finish or abandon active file productions
+before deleting their scope; refusal happens before admission.
+
+The memory reference retains historical data in pinned snapshot images. Deleted file
+bytes remain readable through those cuts and are freed when the last referencing image
+releases. New cuts and newly advanced projections exclude deleted data. Earlier derived
+projection outputs remain available while earlier cuts are held; after their release,
+those disposable outputs are reclaimed and must be rebuilt at a current cut. Opening
+an unretained cut older than a scoped deletion returns a gap. Durable product backends
+must preserve the same visibility, replay and reclamation contract in their transaction.
+Run `harmos_storage::conformance::scoped_deletion(&storage, ScopeFixture { .. })`
+against the product backend for logical deletion, retained object/file reads and receipt
+replay; add its physical reclamation proof using backend-owned deterministic evidence.
+
 ## Conditional Objects
 
 ```rust,ignore

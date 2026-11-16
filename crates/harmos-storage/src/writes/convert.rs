@@ -143,6 +143,7 @@ pub fn objects(batch: &DecodedBatch, schema: &Schema, max_key_bytes: NonZeroUsiz
             let mut bytes = Vec::new();
             encode_message(schema, schema.root, payload, row, 0, &mut bytes)?;
             Ok(ObjectValue {
+                scope: optional_id(metadata, "scope", row)?,
                 schema: batch.schema.clone(),
                 item: ObjectKey::new(items.value(row), max_key_bytes)?,
                 payload: bytes,
@@ -305,7 +306,7 @@ mod tests {
         ArrayRef,
         builder::{ListBuilder, UInt64Builder},
     };
-    use arrow_schema::{DataType, Field as ArrowField};
+    use arrow_schema::{self, DataType};
     use std::sync::Arc;
 
     fn field(name: &str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
@@ -341,21 +342,27 @@ mod tests {
         lists.append(true);
         let lists = lists.finish();
         let child = StructArray::from(vec![
-            (Arc::new(ArrowField::new("__variant", DataType::UInt32, false)), Arc::new(UInt32Array::from(vec![0, 1])) as ArrayRef),
-            (Arc::new(ArrowField::new("left", DataType::UInt32, true)), Arc::new(UInt32Array::from(vec![Some(7), None])) as ArrayRef),
+            (Arc::new(arrow_schema::Field::new("__variant", DataType::UInt32, false)), Arc::new(UInt32Array::from(vec![0, 1])) as ArrayRef),
             (
-                Arc::new(ArrowField::new("right", DataType::Utf8, true)),
+                Arc::new(arrow_schema::Field::new("left", DataType::UInt32, true)),
+                Arc::new(UInt32Array::from(vec![Some(7), None])) as ArrayRef,
+            ),
+            (
+                Arc::new(arrow_schema::Field::new("right", DataType::Utf8, true)),
                 Arc::new(StringArray::from(vec![if conflict { Some("both") } else { None }, Some("chosen")])) as ArrayRef,
             ),
         ]);
         StructArray::from(vec![
-            (Arc::new(ArrowField::new("text", DataType::Utf8, false)), Arc::new(StringArray::from(vec!["", "payload"])) as ArrayRef),
             (
-                Arc::new(ArrowField::new("bytes", DataType::Binary, false)),
+                Arc::new(arrow_schema::Field::new("text", DataType::Utf8, false)),
+                Arc::new(StringArray::from(vec!["", "payload"])) as ArrayRef,
+            ),
+            (
+                Arc::new(arrow_schema::Field::new("bytes", DataType::Binary, false)),
                 Arc::new(BinaryArray::from(vec![b"".as_slice(), &[0u8, 1, 255]])) as ArrayRef,
             ),
-            (Arc::new(ArrowField::new("values", lists.data_type().clone(), false)), Arc::new(lists) as ArrayRef),
-            (Arc::new(ArrowField::new("child", child.data_type().clone(), false)), Arc::new(child) as ArrayRef),
+            (Arc::new(arrow_schema::Field::new("values", lists.data_type().clone(), false)), Arc::new(lists) as ArrayRef),
+            (Arc::new(arrow_schema::Field::new("child", child.data_type().clone(), false)), Arc::new(child) as ArrayRef),
         ])
     }
 

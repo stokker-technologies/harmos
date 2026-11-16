@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 // Local Imports
 use crate::admissions::{Fingerprint, Mutation};
 use crate::capacity::{Attempt, Refusal};
-use crate::manager::{Domain, Operation};
+use crate::manager::{Domain, Operation, State};
 use crate::receipts::ReceiptState;
 use crate::schema::graph::Schema;
 use crate::{
@@ -58,6 +58,7 @@ pub enum CompoundWrite {
     Object { expected: Option<ObjectVersionToken>, schema: StorageSchema, value: ObjectEntry },
     Delete { position: StorageCursor, schema: Identifier, item: ObjectKey, expected: Option<ObjectVersionToken> },
     Record(StoredRecord),
+    Scope { position: StorageCursor, scope: Identifier },
 }
 
 /* === Traits === */
@@ -70,6 +71,7 @@ impl CompoundWrite {
             Self::Object { value, .. } => &value.position,
             Self::Delete { position, .. } => position,
             Self::Record(record) => &record.position,
+            Self::Scope { position, .. } => position,
         }
     }
 }
@@ -96,7 +98,7 @@ impl CompoundExchange {
                 match &value.outcome {
                     CompoundOutcome::Applied { positions } if positions.iter().eq(self.items.iter().map(CompoundWrite::position)) => {}
                     CompoundOutcome::Conflict { index, current } if *index < self.items.len() => {
-                        if matches!(self.items[*index], CompoundWrite::Record(_)) {
+                        if matches!(self.items[*index], CompoundWrite::Record(_) | CompoundWrite::Scope { .. }) {
                             return Err(invalid("backend returned a condition for a record append; repair the backend"));
                         }
                         if let Some(current) = current {
@@ -139,6 +141,12 @@ impl CompoundExchange {
                     position.sequence
                 }
                 CompoundWrite::Record(_) => position.sequence,
+                CompoundWrite::Scope { .. } => {
+                    if self.items.len() != 1 {
+                        return Err(invalid("delete one scope in a separate mutation"));
+                    }
+                    position.sequence
+                }
             };
             if first == 0 || previous.is_some_and(|previous: u64| previous.checked_add(1) != Some(first)) {
                 return Err(invalid("supply a consecutive compound position range"));
@@ -164,6 +172,9 @@ impl StorageManager {
         }
         if items.is_empty() {
             return Err(invalid("supply at least one mutation item"));
+        }
+        if items.len() != 1 && items.iter().any(|item| matches!(item, MutationItem::DeleteScope(_))) {
+            return Err(invalid("delete one scope in a separate mutation"));
         }
         if items.memory_size() > self.inner.settings.max_batch_bytes().get() {
             return Err(Error::ResourceExhausted {
@@ -224,6 +235,7 @@ impl StorageManager {
                                 expected,
                             },
                             MutationItem::Append(record) => CompoundWrite::Record(record.stored(self.position(sequence))),
+                            MutationItem::DeleteScope(scope) => CompoundWrite::Scope { position: self.position(sequence), scope },
                         };
                         if index + 1 < item_count {
                             sequence += 1;
@@ -252,6 +264,17 @@ impl StorageManager {
             })
             .await
             .map_err(Refusal::into_error)
+    }
+}
+
+impl State {
+    pub(super) fn deleting_scope(&self, scope: &Identifier) -> bool {
+        self.queue.iter().any(|pending| match &pending.operation {
+            Operation::Compound(exchange) => {
+                exchange.items.iter().any(|item| matches!(item, CompoundWrite::Scope { scope: selected, .. } if selected == scope))
+            }
+            _ => false,
+        })
     }
 }
 

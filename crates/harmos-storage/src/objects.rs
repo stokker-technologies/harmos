@@ -396,7 +396,12 @@ fn prepare<T: StoredObject>(manager: &StorageManager, value: &T) -> Result<(Obje
     if payload.len() != value.encoded_size() {
         return Err(invalid("object codec length differs"));
     }
-    let value = ObjectValue { schema, item, payload };
+    let value = ObjectValue {
+        schema,
+        item,
+        payload,
+        scope: value.scope().cloned(),
+    };
     manager.inner.catalog.validate_value(&value, manager.inner.settings.max_batch_bytes())?;
     Ok((value, graph))
 }

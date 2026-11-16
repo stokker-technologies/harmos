@@ -57,8 +57,7 @@ reference-backend changes cannot target a nonexistent owner. The compound primit
 will be a backend-authoring contract with capability refusal and an in-memory
 implementation; a product implements its durable transaction against that contract.
 Memory module declarations also contain redundant `#[path]` overrides; remove them
-when touching the backend. Objects have no scope field today: scoped deletion must
-select opaque object-key prefixes as well as record/sample scope prefixes.
+when touching the backend. Objects initially had no scope field. Scoped deletion adds optional opaque object scope metadata, matching records and files, rather than assigning prefix semantics to object keys. The earlier prefix inventory assumption is superseded.
 
 Owner amendments override D3's generic caller example: the public calling shape is
 `runtime.for_call(&ctx).storage().append_samples(..)` and
@@ -270,3 +269,17 @@ generate clients from their own wrapper operations; reusable connection plumbing
 4. Products pin each breaking revision in the task that removes their use of the removed
    surface. Development storage policy permits clean breaks; there are no migrations or
    compatibility shims. Rollback is the previous pin.
+
+## Deletion Implementation Decisions
+
+Group 3 gives objects optional explicit opaque scope metadata, replacing the inventory's
+prefix assumption. Scoped deletion uses the existing atomic mutation receipt and accepted
+work queue; the queue fences new file creation through caller cancellation, avoiding a
+second lock or scheduler. Current object ownership removes all earlier revisions of that
+identity so another owner cannot resurface. Retained snapshots share an earlier image
+when another reader opens the same cut; file bytes and disposable old projection outputs
+are reclaimed after the last earlier cut releases. Physical reclamation is backend-owned.
+
+The public backend conformance module now proves both compound mutations and scoped
+deletions; products add their own reopen and physical reclamation proofs. No durable
+product backend or plugin installation/registry/bundle implementation moved into Harmos.

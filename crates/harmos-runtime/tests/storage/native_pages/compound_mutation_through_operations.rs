@@ -30,7 +30,9 @@ use harmos_domain::model::storage::{
     StoredObject,
 };
 use harmos_domain::{Identified, Message};
-use harmos_operations::storage::{GetObject, GetObjectRequest, Mutate, MutateRequest};
+use harmos_operations::storage::{
+    DeleteObject, DeleteObjectRequest, DeleteScope, DeleteScopeRequest, GetObject, GetObjectRequest, Mutate, MutateRequest,
+};
 use harmos_runtime::Identifier;
 use harmos_runtime::storage::StorageManager;
 
@@ -89,6 +91,7 @@ async fn compound_mutation_through_operations() {
     let value = Counter { id: 1, value: 10 };
     let key = object_key(&value.id, NonZeroUsize::MAX).unwrap();
     let object = ObjectValue {
+        scope: None,
         schema: object_schema::<Counter>().unwrap(),
         item: key.clone(),
         payload: value.encode(),
@@ -154,13 +157,41 @@ async fn compound_mutation_through_operations() {
     let selected = runtime
         .operations
         .call_native::<GetObject>(GetObjectRequest {
-            schema: Some(object.schema),
+            schema: Some(object.schema.clone()),
             item: key.to_string(),
             at: None,
         })
         .await
         .unwrap();
     assert!(!selected.exists);
+
+    // Dedicated Delete Operations Use Their Registered Native Declarations.
+    let receipt = runtime
+        .operations
+        .call_native::<DeleteObject>(DeleteObjectRequest {
+            mutation: Some(MutationId {
+                window: storage.mutation_window().unwrap().id,
+                key: Identifier::new("dedicated-delete").unwrap(),
+            }),
+            schema: object.schema.id,
+            item: key,
+            expected: None,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(receipt.outcome, CompoundOutcome::Applied { .. }));
+    let deleted = runtime
+        .operations
+        .call_native::<DeleteScope>(DeleteScopeRequest {
+            mutation: Some(MutationId {
+                window: storage.mutation_window().unwrap().id,
+                key: Identifier::new("dedicated-scope-delete").unwrap(),
+            }),
+            scope: Identifier::new("empty-scope").unwrap(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(deleted.outcome, CompoundOutcome::Applied { .. }));
     storage.close().await.unwrap();
     support::app::shutdown(&runtime).await.unwrap();
 }

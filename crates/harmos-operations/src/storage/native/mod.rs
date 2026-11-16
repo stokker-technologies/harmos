@@ -37,6 +37,8 @@ mod snapshot;
 
 /* === Re-Exports === */
 
+pub use compound::{DeleteObject, DeleteScope};
+
 pub use crate::execution::operations::NativeOutput;
 pub use requests::*;
 

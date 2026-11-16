@@ -12,6 +12,7 @@
 mod compound_mutation_commits_atomically;
 mod compound_mutation_conflict_leaves_no_effect;
 mod compound_mutation_replays_receipt;
+mod deletion;
 
 /* === Re-Exports === */
 
@@ -85,6 +86,7 @@ fn nz(value: usize) -> NonZeroUsize {
 }
 fn compound_value(id: u64, value: u64) -> ObjectValue {
     ObjectValue {
+        scope: None,
         schema: object_schema::<Counter>().unwrap(),
         item: object_key(&id, NonZeroUsize::MAX).unwrap(),
         payload: Counter { id, value }.encode(),
@@ -370,6 +372,7 @@ async fn conditional_objects_keep_conflicts_indexes_and_receipts_atomic_across_r
             version: ObjectVersionToken::new(position.clone()),
             position: position.clone(),
             value: ObjectValue {
+                scope: None,
                 schema: definition.source.schema.clone(),
                 item: object_key(&value.id, work.bytes).unwrap(),
                 payload: value.encode(),

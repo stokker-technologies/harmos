@@ -20,10 +20,10 @@
 // Third Party Imports
 
 // Local Imports
-use crate::query::RecordSelection;
+use crate::query::{FileSelection, RecordSelection, StreamSelection};
 use crate::{
-    CompoundOutcome, Error, Identifier, MutationId, MutationItem, ObjectPoint, ObjectValue, ObjectVersion, ObjectVersionToken, RecordInput,
-    Result, ScanPage, StorageManager, StoredRecord,
+    CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MutationId, MutationItem, ObjectPoint, ObjectValue, ObjectVersion,
+    ObjectVersionToken, RecordInput, Result, ScanPage, StorageManager, StoredRecord, StoredRow, StreamInput,
 };
 
 /* === Constants === */
@@ -40,6 +40,16 @@ pub struct CompoundFixture {
     pub replacement: ObjectValue,
     pub second: ObjectValue,
     pub record: RecordInput,
+}
+
+/// Fresh Scoped Data for the Backend's Logical Deletion Proof.
+pub struct ScopeFixture {
+    pub scope: Identifier,
+    pub object: ObjectValue,
+    pub record: RecordInput,
+    pub sample: StreamInput,
+    pub file: FileMetadata,
+    pub bytes: Vec<u8>,
 }
 
 /* === Enums === */
@@ -156,6 +166,82 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
         || records.len() != 1
     {
         return Err(invalid("repair backend retained cuts and ordered compound deletion"));
+    }
+    Ok(())
+}
+
+/// Prove Exact Scope Selection, Retained Reads and Replay Without Backend Internals.
+/// Products Separately Verify Physical Reclamation After Their Retained Cuts Release.
+pub async fn scoped_deletion(storage: &StorageManager, fixture: ScopeFixture) -> Result<()> {
+    if fixture.object.scope.as_ref() != Some(&fixture.scope)
+        || fixture.record.scope.as_ref() != Some(&fixture.scope)
+        || fixture.sample.record.scope.as_ref() != Some(&fixture.scope)
+        || fixture.file.scope.as_ref() != Some(&fixture.scope)
+        || fixture.bytes.len() > storage.settings().response.batch_bytes.get()
+    {
+        return Err(invalid("supply matching fixture scopes and file bytes within response.batch_bytes"));
+    }
+    let window = storage.mutation_window()?.id;
+    let mutation = MutationId {
+        window: window.clone(),
+        key: Identifier::new("conformance.scope.seed").expect("valid conformance identity"),
+    };
+    let point = ObjectPoint {
+        schema: fixture.object.schema.id.clone(),
+        item: fixture.object.item.clone(),
+        version: ObjectVersion::Latest,
+    };
+    storage
+        .mutate_once(&mutation, vec![MutationItem::Create(fixture.object.clone()), MutationItem::Append(fixture.record.clone())])
+        .await?;
+    storage.append_samples(vec![fixture.sample.clone()]).await?;
+    let mut file = storage.produce_file(fixture.file).await?;
+    file.write_all(fixture.bytes.clone()).await?;
+    let file = file.finish().await?;
+    storage.flush().await?;
+    let before = storage.snapshot(&storage.get_saved_position()).await?;
+    let mutation = MutationId {
+        window,
+        key: Identifier::new("conformance.scope.delete").expect("valid conformance identity"),
+    };
+    let items = vec![MutationItem::DeleteScope(fixture.scope.clone())];
+    let deleted = storage.mutate_once(&mutation, items.clone()).await?;
+    if storage.mutate_once(&mutation, items).await? != deleted {
+        return Err(invalid("repair backend scoped deletion receipt replay"));
+    }
+    let after = storage.snapshot(&deleted.position).await?;
+    let page = ScanPage {
+        after: 0,
+        rows: storage.settings().response.batch_rows,
+        bytes: storage.settings().response.batch_bytes,
+    };
+    let records = RecordSelection {
+        schema: fixture.record.schema,
+        scope: Some(fixture.scope.clone()),
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let samples = StreamSelection {
+        schema: fixture.sample.record.schema,
+        scope: Some(fixture.scope.clone()),
+        item: None,
+        stream: None,
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let files = FileSelection { scope: Some(fixture.scope), item: None };
+    let (records, _) = after.scan::<StoredRecord>(&records, page).await?;
+    let (samples, _) = after.scan::<StoredRow>(&samples, page).await?;
+    let (files, _) = after.scan::<FileReference>(&files, page).await?;
+    if after.get_object(&point).await?.is_some() || !records.is_empty() || !samples.is_empty() || !files.is_empty() {
+        return Err(invalid("repair backend scoped deletion visibility across every storage family"));
+    }
+    if before.get_object(&point).await?.map(|entry| entry.value) != Some(fixture.object)
+        || before.read_file(&file, 0, storage.settings().response.batch_bytes).await? != fixture.bytes
+    {
+        return Err(invalid("retain deleted objects and file bytes until their pinned cuts release"));
     }
     Ok(())
 }

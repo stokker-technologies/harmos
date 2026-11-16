@@ -15,15 +15,15 @@
 
 /* === Imports === */
 
-use harmos_domain::MemorySize;
 pub use harmos_domain::model::storage::query::transform::Transform;
 pub use harmos_domain::model::storage::{
     ByteRange, CaptureConsistency, CompoundOutcome, DataBatch, DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection,
     FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FileProgress, FileReference, FileSession, FileSource, FollowStart,
-    MutationId, MutationItem, MutationWindow, ObjectEntry, ObjectValue, SchemaKey, StagedFile, StorageCursor, StoreHistory, StoredRecord,
-    StoredRow,
+    MutationId, MutationItem, MutationWindow, ObjectEntry, ObjectKey, ObjectValue, ObjectVersionToken, SchemaKey, StagedFile,
+    StorageCursor, StoreHistory, StoredRecord, StoredRow,
 };
 use harmos_domain::schema::graph::Schema;
+use harmos_domain::{Identifier, MemorySize};
 use harmos_protocol::model::PageRequest;
 use harmos_protocol::model::ReadCut;
 use harmos_protocol::model::Receipt;
@@ -62,6 +62,20 @@ macro_rules! memory {
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug)]
+pub struct DeleteScopeRequest {
+    pub mutation: Option<MutationId>,
+    pub scope: Identifier,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeleteObjectRequest {
+    pub mutation: Option<MutationId>,
+    pub schema: Identifier,
+    pub item: ObjectKey,
+    pub expected: Option<ObjectVersionToken>,
+}
 
 #[derive(Clone, Debug)]
 pub struct MutateRequest {
@@ -605,7 +619,7 @@ pub mod set_object_response {
     }
     #[derive(Clone, Debug, PartialEq)]
     pub enum Outcome {
-        Applied(Applied),
+        Applied(Box<Applied>),
         Conflict(Conflict),
     }
 }
@@ -633,6 +647,9 @@ pub mod watch_file_production_response {
 /* === Traits === */
 
 /* === Implementations === */
+
+memory!(DeleteObjectRequest, mutation, schema, item, expected);
+memory!(DeleteScopeRequest, mutation, scope);
 
 memory!(MutateRequest, mutation, items);
 impl MemorySize for MutateResponse {

@@ -248,6 +248,7 @@ pub struct Backend {
     pub rows: Mutex<BTreeMap<u64, StoredRow>>,
     pub schemas: Mutex<BTreeMap<u64, StorageSchema>>,
     pub saved: AtomicUsize,
+    scoped_floor: AtomicUsize,
 }
 
 pub struct RecoveryBackend {
@@ -366,6 +367,7 @@ impl Backend {
             rows: Mutex::new(BTreeMap::new()),
             schemas: Mutex::new(BTreeMap::new()),
             saved: AtomicUsize::new(0),
+            scoped_floor: AtomicUsize::new(0),
         }
     }
     pub fn with_execution(catalog: ObjectCatalog, history: StoreHistory, clock: Execution) -> Self {
@@ -535,6 +537,7 @@ impl StorageBackend for Backend {
 
     fn set_projection_output(&self, publication: ProjectionPublication) -> StorageFuture<'_, ()> {
         Box::pin(async move {
+            let _transaction = self.conditional.lock().unwrap();
             self.image(publication.snapshot())?;
             if self.control.fail_projection.load(Ordering::SeqCst) {
                 return Err(failure(BackendFailure::Transient));
