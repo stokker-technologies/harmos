@@ -1216,9 +1216,10 @@ directly. A window whose columns exceed the plugin's maximum message size arrive
 several parts, each stored as its own row.
 
 The host samples an interval stream outside scopes only while something watches it.
-Hold a `watch()` handle on every stream the product records, or select the stream from
-a storage consumer; a consumer that drains every publication without selecting does not
-count:
+Hold a `watch()` handle on every stream the product records; a storage consumer that
+drains every publication does not count. A watch belongs to the stream revision current
+when it was taken, so watch again after a replacement that changes a stream's row and
+after a managed entry becomes Ready:
 
 ```rust
 let watching = runtime.streams.current_publication("bench.reading").expect("attached stream").watch();
@@ -1391,23 +1392,24 @@ samples. A host that falls behind its declared rate fails fast with the demand's
 named error, which the case reports instead of figures; one that neither keeps up nor
 fails within the probe is reported as not sustained.
 
-Figures below are medians at `b6dd57d3` in the bench profile on Windows x86-64
-(AMD Ryzen 9 5950X), 2026-11-16, from the `system-windows` bench executable. They are
-samples per second, summed over all streams.
+Figures below are medians in the bench profile on Windows x86-64 (AMD Ryzen 9 5950X),
+2026-11-16, from the `system-windows` bench executable built with the system bench
+lane's features (`plugin-guest`, `grpc`, `benchmark-fixtures`). They are samples per
+second, summed over all streams.
 
 | Case | 1 Stream | 16 Streams | 128 Streams |
 | --- | ---: | ---: | ---: |
-| Controlled, 1 kHz, window observer | 472,120 | 294,140 | 1,288,400 |
-| Controlled, 1 MHz, window observer | 8,090,700 | 30,124,000 | 34,888,000 |
-| Real, 1 kHz, window observer | 930 | 16,001 | 127,970 |
-| Real, 1 MHz, window observer | 864,090 | 15,869,000 | Failed fast (`Error::Lagging`) |
-| Controlled, 1 kHz, one-sample observer | 392,290 | 415,170 | 1,166,500 |
-| Real, 1 kHz, one-sample observer | 930 | 15,996 | 127,960 |
+| Controlled, 1 kHz, window observer | 456,660 | 342,420 | 1,379,700 |
+| Controlled, 1 MHz, window observer | 8,626,300 | 27,621,000 | 40,801,000 |
+| Real, 1 kHz, window observer | 952 | 15,649 | 127,920 |
+| Real, 1 MHz, window observer | 874,950 | 15,791,000 | Failed fast (`Error::Lagging`) |
+| Controlled, 1 kHz, one-sample observer | 419,530 | 464,570 | 1,358,500 |
+| Real, 1 kHz, one-sample observer | 952 | 15,958 | 127,970 |
 
 The per-sample tick path these windows replace measured 12,407 samples per second
 for 128 controlled 1 ms streams and 21,220 on the real clock at `af8b9a0c`. 128 real
 1 MHz streams need 128 million samples per second; the host converts each value from
-protobuf into the stored encoding at about 35 million per second on the controlled
+protobuf into the stored encoding at about 41 million per second on the controlled
 clock, so that case falls behind. With the default `interval_lag` of ten 10 ms
 windows, one stream's window ended about 100 ms late and its demand failed with
 `Error::Lagging`, naming the stream and the action, instead of growing its windows.

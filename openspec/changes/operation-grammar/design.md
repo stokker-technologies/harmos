@@ -1509,12 +1509,13 @@ proving that the unscoped demand operates once the scopes have closed.
 
 The unscoped demand, which the host opens on attach, reconnect and replacement,
 also grants windows only while something watches its stream: a
-`PublishedStream::watch()` handle, a plugin listener or a storage consumer that
-selects the stream, counted by the stream's demand (`PublishedStream::demand()`).
-Without a watcher it samples nothing; when the first watcher appears it starts
-from a fresh origin, and when the last leaves it stops, with no samples for the
-gap. A storage consumer that drains every publication without selecting the stream
-does not count. Scoped demands ignore watchers: a scope samples between its
+`PublishedStream::watch()` handle or a plugin listener, counted by the stream's
+demand (`PublishedStream::demand()`). Without a watcher it samples nothing; when
+the first watcher appears it starts from a fresh origin, and when the last leaves
+it stops, with no samples for the gap. A storage consumer that drains every
+publication does not count. A watch belongs to the stream revision current when it
+was taken, so a product watches again after a replacement that changes a stream's
+row and after a managed entry becomes Ready. Scoped demands ignore watchers: a scope samples between its
 `start_samples()` and `stop_samples()`. Device streams, which the plugin drives, are
 not gated. `plugin_grpc::window_overload` proves that an attached, unwatched stream
 grants no window, starts when a watcher appears and stops when it leaves.
@@ -1544,7 +1545,10 @@ while the activation and its other streams continue (a managed entry reports it 
 `plugin_stream_failed` while Ready), and a scoped demand's failure is the result of
 `stop_samples()` or `close()`. The failed stream's unscoped demand stays ended until
 the plugin reconnects, is replaced or restarts. `plugin_grpc::window_overload`
-proves each case on a controlled clock.
+proves each case on a controlled clock. A row counts as taken only once every
+feed has taken it and every storage consumer has drained it, so the pool never
+reclaims a row storage has not seen; a lagging storage consumer fills the pool and
+fails the demand instead.
 
 ### Storage Shape
 

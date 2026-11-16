@@ -125,8 +125,7 @@ async fn a_full_publication_pool_fails_the_demand_with_its_stream_and_limits() {
     let watching = host.watch("fixture.bulky");
     host.clock.registered_at(origin + Duration::from_secs(72)).await;
 
-    // A Feed That Takes Nothing In Keeps Every Admitted Row Retained in the Pool.
-    let feed = host.runtime.streams.follow(host.runtime.streams.frontier());
+    // Storage Drains Nothing While the Window Is Admitted, So Every Admitted Row Stays in the Pool.
     host.clock.advance_by(Duration::from_secs(72));
 
     // The Owner Reads Which Stream Filled the Pool and Its Limits; Other Streams Would Keep Publishing.
@@ -136,7 +135,6 @@ async fn a_full_publication_pool_fails_the_demand_with_its_stream_and_limits() {
         "Fail the Demand That Filled the Pool: {failure}"
     );
     assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
-    drop(feed);
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();

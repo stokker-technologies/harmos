@@ -1392,7 +1392,7 @@ an activation samples, the activation's unscoped demand grants no windows; it
 resumes from a fresh origin when the last scope stops, so each stream has one live
 schedule per activation and scope. The unscoped demand also grants windows only
 while the stream's demand count (`PublishedStream::demand()`) is positive, that is
-while a `watch()` handle, a plugin listener or a selecting storage consumer holds it,
+while a `watch()` handle or a plugin listener holds it,
 and resumes from a fresh origin when a watcher returns; idle streams cost no
 sampling. `plugin_grpc::interval_windows` proves exact
 boundaries and counts on a controlled clock, per-stream window lengths, splitting at
@@ -1407,7 +1407,10 @@ a part that finds the pool full fails with `Error::PoolFull`. Each names the str
 the limit and the action. An unscoped failure ends only that stream's demand and is
 reported on `Attached::status().failure` while the activation stays attached; a scoped
 failure is the result of `stop_samples()` or `close()`. `plugin_grpc::window_overload`
-proves the lag limit, the full and the too-small pool and the watched gate.
+proves the lag limit, the full and the too-small pool and the watched gate. The pool
+reclaims a row only after every feed has taken it and every storage consumer has
+drained it (`streams/ingest.rs`), so a lagging storage consumer fails the demand
+rather than losing rows it never saw.
 
 Concurrent and nested waits inside one operation share its activity without a
 lock; the activity parks only while all of its waits park, so joined waits never
