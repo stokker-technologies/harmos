@@ -24,11 +24,11 @@ from unittest.mock import MagicMock, patch
 
 # Third Party Imports
 # Local Imports
+import harmos_tools.prepare.tests.fixtures
+import harmos_tools.test.archive
 from harmos_tools.build import cargo, paths
 from harmos_tools.ci import artifacts, compiler, tasks
-from harmos_tools.prepare.tests import fixtures as fixture_join
 from harmos_tools.release import review
-from harmos_tools.test import archive as archives
 
 # Type Checking Imports
 
@@ -81,35 +81,36 @@ class FocusedCargoTests(unittest.TestCase):
                 self.assertNotIn("cache write failed", diagnostic.getvalue())
 
     def test_archive_publishes_complete_compiler_messages(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            directory = Path(temporary)
-            archive = archives.location(directory, "dev")
-            archive.parent.mkdir(parents=True)
-            messages = archive.with_name(archives.MESSAGES)
-            previous = {"reason": "build-finished", "success": False}
-            messages.write_text(json.dumps(previous) + "\n", encoding="utf-8")
-            complete = {"reason": "build-finished", "success": True}
-            encoded = json.dumps(complete) + "\n"
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        archive = harmos_tools.test.archive.location(directory, "dev")
+        archive.parent.mkdir(parents=True)
+        messages = archive.with_name(harmos_tools.test.archive.MESSAGES)
+        previous = {"reason": "build-finished", "success": False}
+        messages.write_text(json.dumps(previous) + "\n", encoding="utf-8")
+        complete = {"reason": "build-finished", "success": True}
+        encoded = json.dumps(complete) + "\n"
 
-            def compile_archive(command: list[str], **options: object) -> SimpleNamespace:
-                output = options["stdout"]
-                assert isinstance(output, io.TextIOBase)
-                middle = len(encoded) // 2
-                output.write(encoded[:middle])
-                output.flush()
-                self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), previous)
-                output.write(encoded[middle:])
-                archive.write_bytes(b"archive")
-                return SimpleNamespace(returncode=0)
+        def compile_archive(command: list[str], **options: object) -> SimpleNamespace:
+            output = options["stdout"]
+            assert isinstance(output, io.TextIOBase)
+            middle = len(encoded) // 2
+            output.write(encoded[:middle])
+            output.flush()
+            self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), previous)
+            output.write(encoded[middle:])
+            archive.write_bytes(b"archive")
+            return SimpleNamespace(returncode=0)
 
-            with (
-                patch.object(cargo.subprocess, "run", side_effect=compile_archive),
-                patch.object(cargo.summary, "phase", return_value=contextlib.nullcontext()),
-            ):
-                result = cargo.archive(directory, "dev")
-            self.assertEqual(result, archive)
-            self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), complete)
-            self.assertEqual(set(archive.parent.iterdir()), {archive, messages})
+        with (
+            patch.object(cargo.subprocess, "run", side_effect=compile_archive),
+            patch.object(cargo.summary, "phase", return_value=contextlib.nullcontext()),
+        ):
+            result = cargo.archive(directory, "dev")
+        self.assertEqual(result, archive)
+        self.assertEqual(json.loads(messages.read_text(encoding="utf-8")), complete)
+        self.assertEqual(set(archive.parent.iterdir()), {archive, messages})
 
     def test_dispatches_only_requested_operation(self) -> None:
         directory = Path.cwd()
@@ -138,12 +139,19 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_nested_manifest_shares_repository_target(self) -> None:
         directory = Path.cwd()
+        arguments = ["--manifest-path", "examples/schematic/Cargo.toml"]
         with (
             patch.dict(os.environ, CARGO_TARGET_DIR="elsewhere"),
             patch.object(cargo.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run,
+            patch.object(cargo.summary, "phase", return_value=contextlib.nullcontext()),
         ):
-            cargo.focused(directory, "build", ["--manifest-path", "examples/schematic/Cargo.toml"])
-        self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], str(directory / "target"))
+            cargo.focused(directory, "build", arguments)
+            cargo.clippy(directory, arguments, environment={"CARGO_TARGET_DIR": "elsewhere"})
+        self.assertEqual(run.call_count, 2)
+        outputs = [Path(call.kwargs["env"]["CARGO_TARGET_DIR"]) for call in run.call_args_list]
+        self.assertEqual(outputs[0].parent, directory)
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertNotEqual(str(outputs[0]), "elsewhere")
 
     def test_rejects_target_redirection_before_dispatch(self) -> None:
         with patch.object(cargo.subprocess, "run") as run:
@@ -232,8 +240,10 @@ class FocusedCargoTests(unittest.TestCase):
 
     def test_release_mode_task_exports_selected_squash(self) -> None:
         for mode, sha in (("tag", "a" * 40), ("prepare", ""), ("skip", "")):
-            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
-                output = Path(temporary) / "output"
+            temporary = tempfile.TemporaryDirectory()
+            self.addCleanup(temporary.cleanup)
+            with self.subTest(mode=mode):
+                output = Path(temporary.name) / "output"
                 with (
                     patch.dict(os.environ, GITHUB_OUTPUT=str(output)),
                     patch.object(review, "github_release_mode", return_value={"mode": mode, "sha": sha}) as decision,
@@ -254,7 +264,7 @@ class WorkflowTaskTests(unittest.TestCase):
         fixtures.mkdir(parents=True)
         retained = fixtures / "retained.bin"
         retained.write_bytes(b"test fixture")
-        archives.stamp(
+        harmos_tools.test.archive.stamp(
             directory,
             "dev",
             [retained.relative_to(directory).as_posix()],
@@ -290,13 +300,13 @@ class WorkflowTaskTests(unittest.TestCase):
         }
         manifest = product / "catalog.json"
         manifest.write_text(json.dumps(catalog), encoding="utf-8")
-        override = patch.object(fixture_join, "ROOT", directory)
+        override = patch.object(harmos_tools.prepare.tests.fixtures, "ROOT", directory)
         override.start()
         self.addCleanup(override.stop)
-        staging_override = patch.object(fixture_join.staging, "ROOT", directory)
+        staging_override = patch.object(harmos_tools.prepare.tests.fixtures.staging, "ROOT", directory)
         staging_override.start()
         self.addCleanup(staging_override.stop)
-        fixture_join.prepare("dev")
+        harmos_tools.prepare.tests.fixtures.prepare("dev")
 
         old.unlink()
         replacement = product / "new.rmeta"
@@ -305,7 +315,7 @@ class WorkflowTaskTests(unittest.TestCase):
         files[replacement.relative_to(directory).as_posix()] = hashlib.sha256(replacement.read_bytes()).hexdigest()
         catalog["libraries"] = {"runtime": replacement.relative_to(export).as_posix()}
         manifest.write_text(json.dumps(catalog), encoding="utf-8")
-        fixture_join.prepare("dev")
+        harmos_tools.prepare.tests.fixtures.prepare("dev")
         updated: dict[str, str] = json.loads((fixtures / "stamp.json").read_text(encoding="utf-8"))["files"]
         self.assertNotIn(old_name, updated)
         self.assertIn(retained.relative_to(directory).as_posix(), updated)

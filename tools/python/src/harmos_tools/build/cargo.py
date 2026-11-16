@@ -11,7 +11,6 @@
 
 # Standard Library Imports
 import argparse
-import contextlib
 import json
 import os
 import subprocess
@@ -23,6 +22,8 @@ from typing import TypedDict
 
 # Third Party Imports
 # Local Imports
+import harmos_tools.test.archive
+
 from ..ci import summary
 from ..process import spawn_flags
 from . import paths
@@ -67,7 +68,9 @@ class Artifact(TypedDict, total=False):
 
 
 def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[str, str] | None = None) -> None:
-    selected = dict(os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny")
+    selected = dict(
+        os.environ if environment is None else environment, CARGO_BUILD_WARNINGS="deny", CARGO_TARGET_DIR=str(directory / "target")
+    )
     with summary.phase("Clippy"):
         subprocess.run(
             ["cargo", "clippy", *arguments],
@@ -82,12 +85,11 @@ def clippy(directory: Path, arguments: Sequence[str], *, environment: Mapping[st
 
 
 def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
-    from ..test import archive as reader
     from ..test import policy
 
     if profile not in policy.PROFILES:
         raise policy.TestError("unknown build profile")
-    path = reader.location(directory, profile)
+    path = harmos_tools.test.archive.location(directory, profile)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     compiler_profile = "test"
@@ -108,8 +110,10 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
     ]
     descriptor, name = tempfile.mkstemp(prefix="compiler-", suffix=".json", dir=path.parent)
     captured = Path(name)
+    output = None
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as output, summary.phase("Compilation And Archive"):
+        output = os.fdopen(descriptor, "w", encoding="utf-8")
+        with summary.phase("Compilation And Archive"):
             result = subprocess.run(
                 command,
                 stdin=sys.stdin,
@@ -119,19 +123,22 @@ def archive(directory: Path, profile: str, extra: Sequence[str] = ()) -> Path:
                 stdout=output,
                 check=False,
             )
-        captured.replace(path.with_name(reader.MESSAGES))
+        output.close()
+        captured.replace(path.with_name(harmos_tools.test.archive.MESSAGES))
     finally:
+        if output is not None:
+            output.close()
         captured.unlink(missing_ok=True)
     if result.returncode:
         path.unlink(missing_ok=True)
-        for line in path.with_name(reader.MESSAGES).read_text(encoding="utf-8").splitlines():
+        for line in path.with_name(harmos_tools.test.archive.MESSAGES).read_text(encoding="utf-8").splitlines():
             message = json.loads(line)
             diagnostic = message.get("message", {}).get("rendered")
             if diagnostic:
                 print(diagnostic, file=sys.stderr, end="")
-        raise policy.TestError(f"nextest archive build failed; compiler messages: {path.with_name(reader.MESSAGES)}")
-    reader.require(directory, profile)
-    reader.prune(path.parent, {reader.ARCHIVE, reader.MESSAGES}, archives=True)
+        raise policy.TestError(f"nextest archive build failed; compiler messages: {path.with_name(harmos_tools.test.archive.MESSAGES)}")
+    harmos_tools.test.archive.require(directory, profile)
+    harmos_tools.test.archive.prune(path.parent, {harmos_tools.test.archive.ARCHIVE, harmos_tools.test.archive.MESSAGES}, archives=True)
     return path
 
 
@@ -155,7 +162,8 @@ def focused(directory: Path, operation: str, arguments: Sequence[str], *, messag
     if messages is not None:
         messages.parent.mkdir(parents=True, exist_ok=True)
         command += ["--message-format", "json-render-diagnostics"]
-    with messages.open("w", encoding="utf-8") if messages is not None else contextlib.nullcontext(sys.stdout) as output:
+    output = messages.open("w", encoding="utf-8") if messages is not None else sys.stdout
+    try:
         return subprocess.run(
             command,
             cwd=directory,
@@ -166,6 +174,9 @@ def focused(directory: Path, operation: str, arguments: Sequence[str], *, messag
             creationflags=spawn_flags(),
             check=False,
         ).returncode
+    finally:
+        if messages is not None:
+            output.close()
 
 
 def record_target(directory: Path, messages: Path, profile: str, native: str | None = None) -> None:
