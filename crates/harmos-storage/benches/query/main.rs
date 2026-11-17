@@ -11,14 +11,7 @@
 
 /* === Modules === */
 
-#[path = "../../tests/support/storage.rs"]
-#[allow(dead_code)]
-mod backend;
-#[path = "../../tests/support/fixture.rs"]
-#[allow(dead_code)]
 mod fixture;
-#[path = "../../tests/support/mapping.rs"]
-mod mapping_fixture;
 mod opened_files;
 mod projection;
 mod spill;
@@ -34,12 +27,17 @@ use std::time::{Duration, Instant};
 
 // Third Party Imports
 use criterion::{BenchmarkId, Criterion};
+use tokio::runtime::Runtime;
 
 // Local Imports
-use harmos_query::Accumulator;
+use harmos_domain::state::Position;
+use harmos_query::{Accumulator, Quantiles};
 use harmos_storage::Aggregate;
+use harmos_storage::memory::RecoveryBackend;
 use harmos_storage::query::scalar::Agg;
 use harmos_storage::query::scalar::ScalarValue;
+use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, SnapshotPayload, StateBackend};
+use harmos_storage::{FileMetadata, Identifier, MutationId, ReadLimits, RecoveryPosition, StorageBatch, StorageCursor};
 
 /* === Constants === */
 
@@ -96,7 +94,12 @@ fn main() {
                                 _ => None,
                             };
                             if let Some(fraction) = fraction {
-                                assert_eq!(answer, ScalarValue::Float((n - 1) as f64 * fraction));
+                                let ScalarValue::Float(actual) = answer else {
+                                    panic!("order statistic must return a floating-point value");
+                                };
+                                let expected = (n - 1) as f64 * fraction;
+                                let tolerance = 2.0 * f64::EPSILON * expected.abs().max(1.0);
+                                assert!((actual - expected).abs() <= tolerance, "{statistic:?}: {actual} != {expected}");
                             }
                             elapsed += if phase == "push" { pushed } else { finished };
                         }
@@ -107,7 +110,7 @@ fn main() {
         }
     }
     group.finish();
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let runtime = Runtime::new().unwrap();
     spill::benchmarks(&mut criterion);
     opened_files::benchmarks(&mut criterion, &runtime);
     let mut group = criterion.benchmark_group("integration/storage_projection");
@@ -126,7 +129,7 @@ fn main() {
     for memory in [0, 4101 * 16] {
         group.bench_with_input(BenchmarkId::from_parameter(memory), &memory, |b, &memory| {
             b.iter(|| {
-                let mut values = harmos_query::Quantiles::new(memory);
+                let mut values = Quantiles::new(memory);
                 for index in 0..4096 {
                     values.push(black_box(((index * 7919) % 4093) as f64 - 2046.0)).unwrap();
                 }
@@ -149,13 +152,9 @@ fn main() {
     criterion.final_summary();
 }
 
-/* === Tests === */
-
 async fn journal_recovery() {
-    use harmos_storage::state::{RecoveryEntry, RecoverySnapshot, SnapshotPayload, StateBackend};
-    use harmos_storage::{ReadLimits, RecoveryPosition, StorageBatch, StorageCursor};
-    let history = backend::history();
-    let journal = harmos_storage::memory::RecoveryBackend::new(history.clone());
+    let history = fixture::history();
+    let journal = RecoveryBackend::new(history.clone());
     journal.create_recovery_session().await.unwrap();
     for day in 0..7 {
         let entries = (0..1440)
@@ -192,7 +191,7 @@ async fn journal_recovery() {
     let snapshot = RecoverySnapshot {
         through: checkpoint.clone(),
         required_data: StorageCursor { history, sequence: 0 },
-        payload: SnapshotPayload::from_bytes(&[7], NonZeroUsize::new(65536).unwrap(), harmos_domain::state::Position::ORIGIN).unwrap(),
+        payload: SnapshotPayload::from_bytes(&[7], NonZeroUsize::new(65536).unwrap(), Position::ORIGIN).unwrap(),
     };
     journal.set_recovery_snapshot(StorageBatch::new(vec![snapshot])).await.unwrap();
     journal.flush(&through).await.unwrap();
@@ -200,7 +199,6 @@ async fn journal_recovery() {
 }
 
 async fn mutation_receipts() {
-    use harmos_storage::{FileMetadata, Identifier, MutationId};
     let mut settings = fixture::config();
     // Retain Both Mutation Identities for Every File in This Workload.
     settings.request.max_mutation_receipts = NonZeroUsize::new(2 * 2048).unwrap();
@@ -235,3 +233,5 @@ async fn mutation_receipts() {
     assert_eq!(f.storage.finish_file_once(&finish, &session).await.unwrap(), reference);
     f.finish().await;
 }
+
+/* === Tests === */

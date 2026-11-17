@@ -36,6 +36,8 @@ use crate::execution::{__private, operations};
 
 /* === Implementations === */
 
+/* === Public Functions === */
+
 pub fn storage_catalog() -> operations::Catalog {
     storage_catalog_batch().named("harmos.storage")
 }
@@ -88,8 +90,6 @@ pub fn storage_catalog_batch() -> __private::Catalog {
     ]);
     batch
 }
-
-/* === Public Functions === */
 
 /* === Private Functions === */
 

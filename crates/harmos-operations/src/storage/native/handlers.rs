@@ -15,6 +15,12 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::error;
+
+// Third Party Imports
+
+// Local Imports
 use super::requests::{
     AdvanceProjectionRequest, AdvanceProjectionResponse, AppendFileBytesRequest, AppendFileBytesResponse, AppendObjectRevisionsRequest,
     AppendObjectRevisionsResponse, AppendRecordsRequest, AppendRecordsResponse, AppendSamplesRequest, AppendSamplesResponse,
@@ -31,16 +37,10 @@ use super::requests::{
     WatchDirectoryEntriesResponse, WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest, WatchFileProductionResponse,
     WatchRowsRequest, WatchRowsResponse, set_object_response, watch_file_production_response, watch_rows_response,
 };
-
-// Standard Library Imports
-use std::error;
-
-// Third Party Imports
-
-// Local Imports
+use super::snapshot::SavedSnapshots;
 use super::{transfers, watch_rows};
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
-use crate::operations::{FailureKind, ReplaySafety, RetryPolicy};
+use crate::operations::{FailureKind, OperationPolicy, ReplaySafety, RetryPolicy};
 use harmos_storage::StorageManager;
 
 /* === Constants === */
@@ -76,7 +76,7 @@ impl NativeOperation for CreateFileProduction {
     type Response = CreateFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.create_file_production";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -95,7 +95,7 @@ impl NativeOperation for CreateFileProduction {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -104,9 +104,9 @@ impl NativeOperation for GetFileProduction {
     type Response = GetFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_production";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (production, at) = super::file_access::production(&context, request.file, request.at).await?;
@@ -123,7 +123,7 @@ impl NativeOperation for GetFileProduction {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -132,7 +132,7 @@ impl NativeOperation for AppendFileBytes {
     type Response = AppendFileBytesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_file_bytes";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -157,7 +157,7 @@ impl NativeOperation for AppendFileBytes {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -166,7 +166,7 @@ impl NativeOperation for CreateFileWriter {
     type Response = CreateFileWriterResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.create_file_writer";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -185,7 +185,7 @@ impl NativeOperation for CreateFileWriter {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -194,7 +194,7 @@ impl NativeOperation for PublishFileProduction {
     type Response = PublishFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.publish_file_production";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -216,7 +216,7 @@ impl NativeOperation for PublishFileProduction {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -225,7 +225,7 @@ impl NativeOperation for DeleteFileProduction {
     type Response = DeleteFileProductionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.delete_file_production";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -244,7 +244,7 @@ impl NativeOperation for DeleteFileProduction {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -253,13 +253,13 @@ impl NativeOperation for GetFileBytes {
     type Response = GetFileBytesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_bytes";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-        let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
+        let snapshots = context.resource::<SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<Self::Response> = async {
             let scope = context.call.get::<crate::operations::Scope>();
             let (range, resolved_at) = transfers::get(
@@ -291,7 +291,7 @@ impl NativeOperation for GetFileBytes {
     }
 
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -308,9 +308,9 @@ impl NativeOperation for GetIndexDefinition {
     type Response = GetIndexDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_index_definition";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) = super::definitions::get_index(&context, request.name, request.source, request.at).await?;
@@ -324,7 +324,7 @@ impl NativeOperation for GetIndexDefinition {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -335,7 +335,7 @@ impl NativeOperation for SetIndexDefinition {
     type Response = SetIndexDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_index_definition";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -362,7 +362,7 @@ impl NativeOperation for SetIndexDefinition {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -373,9 +373,9 @@ impl NativeOperation for GetProjectionDefinition {
     type Response = GetProjectionDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_projection_definition";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (definition, revision, resolved_at) =
@@ -390,7 +390,7 @@ impl NativeOperation for GetProjectionDefinition {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -401,7 +401,7 @@ impl NativeOperation for SetProjectionDefinition {
     type Response = SetProjectionDefinitionResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_projection_definition";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -425,7 +425,7 @@ impl NativeOperation for SetProjectionDefinition {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -437,9 +437,9 @@ impl NativeOperation for ListRows {
     type Endpoints = ();
     const ID: &'static str = "storage.list_rows";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let page = super::pages::list(&context, request.source, request.at, request.transforms, request.merge, request.page).await?;
@@ -453,7 +453,7 @@ impl NativeOperation for ListRows {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -464,9 +464,9 @@ impl NativeOperation for Capabilities {
     type Endpoints = ();
     const ID: &'static str = "storage.capabilities";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, _: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (capabilities, mutations, file_batch_bytes) = super::views::capabilities(&context).await?;
@@ -480,7 +480,7 @@ impl NativeOperation for Capabilities {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -491,12 +491,12 @@ impl NativeOperation for CreateSnapshot {
     type Endpoints = ();
     const ID: &'static str = "storage.create_snapshot";
 
-    const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+    const POLICY: OperationPolicy = OperationPolicy {
         retries: RetryPolicy::Never,
         ..super::POLICY
     };
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (snapshot, resolved_at) = super::views::create(&context, request.at).await?;
@@ -509,7 +509,7 @@ impl NativeOperation for CreateSnapshot {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -520,9 +520,9 @@ impl NativeOperation for RetainSnapshot {
     type Endpoints = ();
     const ID: &'static str = "storage.retain_snapshot";
 
-    const POLICY: crate::OperationPolicy = CreateSnapshot::POLICY;
+    const POLICY: OperationPolicy = CreateSnapshot::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (snapshot, resolved_at) = super::views::retain(&context, request.at, request.scope).await?;
@@ -535,7 +535,7 @@ impl NativeOperation for RetainSnapshot {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -546,16 +546,16 @@ impl NativeOperation for DeleteSnapshot {
     type Endpoints = ();
     const ID: &'static str = "storage.delete_snapshot";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         super::views::delete(&context, request.snapshot).await?;
         super::admission::read_response(&context, Self::Response {})
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -566,9 +566,9 @@ impl NativeOperation for ListColumnRows {
     type Endpoints = ();
     const ID: &'static str = "storage.list_column_rows";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at, next_page_token) = super::lists::columns(&context, request.selection, request.at, request.page).await?;
@@ -582,7 +582,7 @@ impl NativeOperation for ListColumnRows {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -593,9 +593,9 @@ impl NativeOperation for ListIndexEntries {
     type Endpoints = ();
     const ID: &'static str = "storage.list_index_entries";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at, next_page_token) =
@@ -610,7 +610,7 @@ impl NativeOperation for ListIndexEntries {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -621,9 +621,9 @@ impl NativeOperation for AdvanceProjection {
     type Endpoints = ();
     const ID: &'static str = "storage.advance_projection";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (revision, resolved_at) =
@@ -631,7 +631,7 @@ impl NativeOperation for AdvanceProjection {
         super::admission::read_response(&context, Self::Response { revision, resolved_at: Some(resolved_at) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -642,9 +642,9 @@ impl NativeOperation for GetProjectionStatus {
     type Endpoints = ();
     const ID: &'static str = "storage.get_projection_status";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (status, resolved_at) =
@@ -652,7 +652,7 @@ impl NativeOperation for GetProjectionStatus {
         super::admission::read_response(&context, Self::Response { status, resolved_at: Some(resolved_at) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -663,9 +663,9 @@ impl NativeOperation for ListProjectionRows {
     type Endpoints = ();
     const ID: &'static str = "storage.list_projection_rows";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (page, resolved_at, next_page_token) =
@@ -680,7 +680,7 @@ impl NativeOperation for ListProjectionRows {
         )
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -694,9 +694,9 @@ impl NativeOperation for GetObject {
     type Response = GetObjectResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_object";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (value, revision, resolved_at) = super::object::get(&context, request.schema, request.item, request.at).await?;
@@ -716,7 +716,7 @@ impl NativeOperation for SetObject {
     type Response = SetObjectResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.set_object";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -754,7 +754,7 @@ impl NativeOperation for AppendRecords {
     type Response = AppendRecordsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_records";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -764,7 +764,7 @@ impl NativeOperation for AppendRecords {
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 pub struct AppendSamples;
@@ -773,7 +773,7 @@ impl NativeOperation for AppendSamples {
     type Response = AppendSamplesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_samples";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -783,7 +783,7 @@ impl NativeOperation for AppendSamples {
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 pub struct AppendObjectRevisions;
@@ -792,7 +792,7 @@ impl NativeOperation for AppendObjectRevisions {
     type Response = AppendObjectRevisionsResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.append_object_revisions";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -802,7 +802,7 @@ impl NativeOperation for AppendObjectRevisions {
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -813,9 +813,9 @@ impl NativeOperation for WatchRows {
     type Response = WatchRowsResponse;
     type Endpoints = super::NativeOutput<WatchRowsResponse>;
     const ID: &'static str = "storage.watch_rows";
-    const POLICY: crate::OperationPolicy = super::STREAM_POLICY;
+    const POLICY: OperationPolicy = super::STREAM_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let context = &context;
@@ -849,7 +849,7 @@ impl NativeOperation for WatchFileBytes {
     type Response = WatchFileBytesResponse;
     type Endpoints = super::NativeOutput<WatchFileBytesResponse>;
     const ID: &'static str = "storage.watch_file_bytes";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -874,7 +874,7 @@ impl NativeOperation for WatchFileProduction {
     type Response = WatchFileProductionResponse;
     type Endpoints = super::NativeOutput<WatchFileProductionResponse>;
     const ID: &'static str = "storage.watch_file_production";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -906,7 +906,7 @@ impl NativeOperation for WatchDirectoryEntries {
     type Response = WatchDirectoryEntriesResponse;
     type Endpoints = super::NativeOutput<WatchDirectoryEntriesResponse>;
     const ID: &'static str = "storage.watch_directory_entries";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
 
@@ -926,16 +926,16 @@ impl NativeOperation for GetFileHash {
     type Response = GetFileHashResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.get_file_hash";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (hash, at) = super::file_access::hash(&context, request.source, request.range, request.at).await?;
         super::admission::read_response(&context, Self::Response { hash: Some(hash), resolved_at: Some(at) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -945,9 +945,9 @@ impl NativeOperation for CaptureFile {
     type Response = CaptureFileResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.capture_file";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let (file, receipt) =
@@ -955,7 +955,7 @@ impl NativeOperation for CaptureFile {
         super::admission::read_response(&context, Self::Response { file: Some(file), receipt: Some(receipt) })
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
 
@@ -965,14 +965,14 @@ impl NativeOperation for ListDirectoryEntries {
     type Response = ListDirectoryEntriesResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.list_directory_entries";
-    const POLICY: crate::OperationPolicy = super::IO_POLICY;
+    const POLICY: OperationPolicy = super::IO_POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::SavedSnapshots>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         super::file_access::directory(&context, request.selection, request.at, request.page).await
     }
     fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
-        super::transfers::classify(error)
+        transfers::classify(error)
     }
 }
