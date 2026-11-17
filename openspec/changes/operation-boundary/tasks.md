@@ -37,6 +37,8 @@ G1/G3 Proof (Windows): `mise run test -- --paths crates/harmos-storage/tests/int
 
 Group 3 Pin: `1c4f3aec8cf12dd59fe636545e76f72d6d5860bf` (native object/scope deletion, explicit object scope, retained-cut reclamation and scoped backend conformance; build, Rust lint, format and focused proof passed).
 
+G1/G3 Product Candidate Pin: `bf297bf672cbfe841abfc087ae9fe3358957a13e` (durable ownership and complete watch frontiers; the local source commit passed the Windows proof above. Push/integration and native Linux/hosted proof remain with the integration owner).
+
 ## 4. Storage Before Full Startup
 
 - [x] 4.1 Let the builder produce a storage-only runtime that owns the storage manager and admits storage operations without listeners, plugins or services, then drains and closes before the full runtime reopens the same registered backends, or closes for offline use. Prove with `storage_only_runtime_admits_operations` in `crates/harmos-runtime/tests/storage`.
