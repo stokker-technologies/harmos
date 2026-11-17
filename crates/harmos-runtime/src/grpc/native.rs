@@ -16,6 +16,7 @@
 // Standard Library Imports
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 // Third Party Imports
 use futures_core::Stream;
@@ -24,6 +25,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, InputEnvelope, server};
+use crate::Error;
 use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
 use harmos_operations::execution::operations::{WireStreamLimits, WireStreams};
 
@@ -152,7 +154,7 @@ impl Pending {
                     }
                 }
                 result = async { self.streams.as_ref().expect("declared output").receive_current().await }, if self.output => {
-                    match result.map_err(serving)? {
+                    match result.map_err(|source| server::status(Error::TaskFailed { domain: "operation stream", source: Arc::new(source) }))? {
                         Some(bytes) => return Ok(Some(Output { bytes, tag: self.managed.then_some(1) })),
                         None => self.output = false,
                     }
@@ -221,9 +223,19 @@ impl Endpoint {
         pending.forward = Some(Box::pin(async move {
             tokio::pin!(incoming);
             while let Some(item) = incoming.next().await {
-                streams.send(1, &item?).await.map_err(serving)?;
+                streams.send(1, &item?).await.map_err(|source| {
+                    server::status(Error::TaskFailed {
+                        domain: "operation stream",
+                        source: Arc::new(source),
+                    })
+                })?;
             }
-            streams.finish_input(1).map_err(serving)
+            streams.finish_input(1).map_err(|source| {
+                server::status(Error::TaskFailed {
+                    domain: "operation stream",
+                    source: Arc::new(source),
+                })
+            })
         }));
         Ok(pending)
     }
@@ -328,7 +340,12 @@ impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, 
                         return Err(Status::invalid_argument("input already finished"));
                     }
                     if matches!(&*frame, super::ControlEnvelope::Finish) {
-                        streams.as_ref().expect("declared input").finish_input(1).map_err(serving)?;
+                        streams.as_ref().expect("declared input").finish_input(1).map_err(|source| {
+                            server::status(Error::TaskFailed {
+                                domain: "operation stream",
+                                source: Arc::new(source),
+                            })
+                        })?;
                         finished = true;
                         continue;
                     }
@@ -339,10 +356,20 @@ impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, 
                         })
                         .map_err(|error| server::status(error.into()))?
                         .map_err(|_| Status::invalid_argument("duplicate opening request"))?;
-                    streams.as_ref().expect("declared input").send(1, &item).await.map_err(serving)?;
+                    streams.as_ref().expect("declared input").send(1, &item).await.map_err(|source| {
+                        server::status(Error::TaskFailed {
+                            domain: "operation stream",
+                            source: Arc::new(source),
+                        })
+                    })?;
                 }
                 if input && !finished {
-                    streams.as_ref().expect("declared input").finish_input(1).map_err(serving)?;
+                    streams.as_ref().expect("declared input").finish_input(1).map_err(|source| {
+                        server::status(Error::TaskFailed {
+                            domain: "operation stream",
+                            source: Arc::new(source),
+                        })
+                    })?;
                 }
                 Ok(())
             }));
@@ -365,7 +392,7 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
             Ok(factory) => factory,
             Err(error) => return server::status(error).into_http(),
         };
-        let memory: super::decoding::AdditionalMemory = std::sync::Arc::new(move |bytes| {
+        let memory: super::decoding::AdditionalMemory = Arc::new(move |bytes| {
             let encoded = harmos_operations::execution::grpc::DecodeInput::new(bytes);
             let payload = if input || managed {
                 let (tag, payload) = encoded
@@ -413,16 +440,97 @@ pub(crate) fn serve(authority: server::Authority, settings: server::Settings, re
 
 /* === Private Functions === */
 
-fn serving(error: harmos_operations::execution::ServingError) -> Status {
-    Status::internal(error.to_string())
-}
-
 /* === Tests === */
 
 #[cfg(test)]
 mod tests {
+    use std::convert::Infallible;
+    use std::time::Duration;
+
+    use tonic::{Code, client::Grpc, transport};
+
     use super::*;
     use crate::grpc::{Encode, Wire};
+    use crate::operations;
+    use crate::operations::{
+        ExecutionContext, OperationPolicy, ProtobufInput, ProtobufOperation, Registration, RetryPolicy, ServingError, Visibility,
+    };
+    use harmos_protocol::host::OperationsListRequest;
+
+    struct Model;
+    struct Collect;
+
+    impl crate::Lifecycle for Model {
+        type Config = ();
+        type Error = Infallible;
+        type Context = crate::Startup<Self>;
+
+        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> Result<Self, Self::Error> {
+            Ok(Self)
+        }
+    }
+
+    impl crate::Application for Model {
+        type State = ();
+        type Transaction = crate::state::Never;
+        type Record = ();
+    }
+
+    impl ProtobufOperation for Collect {
+        type Request = OperationsListRequest;
+        type Response = OperationsListRequest;
+        type Endpoints = ProtobufInput<OperationsListRequest>;
+        const ID: &'static str = "native.collect";
+        const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("fixture.host.v1", "Native", "Collect"));
+        const POLICY: OperationPolicy = OperationPolicy {
+            timeout: Duration::from_secs(30),
+            attempt_timeout: Duration::from_secs(30),
+            cancellation_timeout: Duration::from_secs(1),
+            retries: RetryPolicy::Never,
+        };
+        const VISIBILITY: Visibility = Visibility::Public;
+
+        async fn run(
+            _: ExecutionContext, request: OperationsListRequest, input: &Self::Endpoints,
+        ) -> Result<OperationsListRequest, ServingError> {
+            while input.recv().await.is_some() {}
+            Ok(request)
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_native_stream_input_is_invalid_argument() {
+        // Register the Native Protobuf Operation
+        let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
+        let registration = Registration::new(Default::default()).protobuf::<Collect>().unwrap();
+        runtime.operations.register_batch(registration).await.unwrap();
+
+        // Connect to Its Native gRPC Adapter
+        let attached = runtime
+            .grpc()
+            .attach(crate::grpc::Settings {
+                address: "127.0.0.1:0".parse().unwrap(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        let channel = transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
+        let mut client = Grpc::new(channel);
+        client.ready().await.unwrap();
+
+        // Send a Valid Opening and a Malformed Protobuf Stream Item
+        let frames = [InputEnvelope::Request(Vec::new()), InputEnvelope::Item(vec![0xff])].map(operations::Response::new);
+        let request = Request::new(futures_util::stream::iter(frames));
+        let settings = server::Settings::default();
+        let codec =
+            Codec::<Raw, Vec<u8>, operations::Response<InputEnvelope<Vec<u8>, Vec<u8>>>>::new(settings.decode, settings.encode).unwrap();
+        let result = client.client_streaming(request, http::uri::PathAndQuery::from_static("/fixture.host.v1.Native/Collect"), codec).await;
+        assert_eq!(result.err().expect("malformed input must fail").code(), Code::InvalidArgument);
+
+        // Settle the Listener and Runtime
+        drop(attached);
+        runtime.stop().await.unwrap();
+    }
 
     #[test]
     fn raw_encoding_admits_actual_workspace() {
