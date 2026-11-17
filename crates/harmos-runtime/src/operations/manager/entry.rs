@@ -13,7 +13,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::Callers as WireCallers;
+use harmos_protocol::model::{Callers, Requirement};
 
 // Standard Library Imports
 
@@ -21,6 +21,8 @@ use harmos_protocol::model::Callers as WireCallers;
 
 // Local Imports
 use super::*;
+use crate::operations::Visibility;
+use crate::plugin::grpc::{CallingPlugin, invoke::Binding};
 
 /* === Constants === */
 
@@ -43,22 +45,20 @@ impl Entry {
             .is_some_and(|binding| binding.caller.name.as_deref() == Some(name))
     }
 
-    pub(super) fn callers(&self) -> WireCallers {
+    pub(super) fn callers(&self) -> Callers {
         self.callers
             .get(self.id())
             .copied()
-            .unwrap_or_else(|| self.contract.as_ref().map_or(WireCallers::All, crate::operations::Contract::callers))
+            .unwrap_or_else(|| self.contract.as_ref().map_or(Callers::All, crate::operations::Contract::callers))
     }
 
     pub(super) fn client_visible(&self) -> bool {
-        use harmos_protocol::model::Callers;
         self.definition.visibility == crate::operations::Visibility::Public
             && matches!(self.callers(), Callers::Clients | Callers::All)
             && !self.connection_operation()
     }
 
     pub(super) fn plugin_visible(&self) -> bool {
-        use harmos_protocol::model::Callers;
         matches!(self.callers(), Callers::Plugins | Callers::All) && !self.connection_operation()
     }
 
@@ -194,6 +194,9 @@ impl Entry {
     }
 
     pub(in crate::operations) fn authorize(&self, _origin: &Origin) -> Result<()> {
+        if let Some(caller) = &_origin.grpc {
+            self.authorize_grpc_plugin(caller)?;
+        }
         if _origin.is_plugin() && !self.plugin_visible() {
             return Err(Error::OperationUnauthorized {
                 caller: "plugin".into(),
@@ -232,6 +235,27 @@ impl Entry {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn authorize_grpc_plugin<'a>(&self, caller: &'a CallingPlugin) -> Result<&'a Requirement> {
+        let denied = || Error::OperationUnauthorized {
+            caller: caller.owner().to_owned(),
+            owner: self.owner.to_string(),
+            operation: self.id().to_owned(),
+        };
+        let own = self.binding.downcast_ref::<Binding>().is_some_and(|binding| caller.same_activation(&binding.caller));
+        if (!own && self.definition.visibility != Visibility::Public) || !self.plugin_visible() {
+            return Err(denied());
+        }
+        let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
+        let required = requires.iter().find(|required| required.id == self.id()).ok_or_else(denied)?;
+        if super::plugin_grpc::fingerprint(self)? != required.fingerprint {
+            return Err(Error::InvalidInput {
+                field: "child fingerprint",
+                reason: "callee differs from the declared requirement; refresh the plugin declarations",
+            });
+        }
+        Ok(required)
     }
 
     pub(in crate::operations) fn settled(&self) -> bool {

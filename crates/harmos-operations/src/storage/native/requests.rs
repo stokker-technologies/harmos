@@ -13,39 +13,32 @@
 
 /* === Re-Exports === */
 
-/* === Imports === */
-
-pub use harmos_domain::model::storage::query::transform::Transform;
+pub use harmos_domain::model::storage::query::transform::{TimeBucketPlan, Transform};
 pub use harmos_domain::model::storage::{
     ByteRange, CaptureConsistency, CompoundOutcome, DataBatch, DirectoryCompletion, DirectoryEntry, DirectoryEvent, DirectorySelection,
     FileBatch, FileCompletion, FileEvent, FileHash, FileMetadata, FileProgress, FileReference, FileSession, FileSource, FollowStart,
     MutationId, MutationItem, MutationWindow, ObjectEntry, ObjectKey, ObjectValue, ObjectVersionToken, SchemaKey, StagedFile,
     StorageCursor, StoreHistory, StoredRecord, StoredRow,
 };
-use harmos_domain::schema::graph::Schema;
-use harmos_domain::{Identifier, MemorySize};
-use harmos_protocol::model::PageRequest;
-use harmos_protocol::model::ReadCut;
-use harmos_protocol::model::Receipt;
-pub use harmos_query::QueryOutput;
-pub use harmos_query::columnar::ArrowPage;
-pub use harmos_query::columnar::ColumnPredicate;
-pub use harmos_query::columnar::ColumnSource;
-pub use harmos_query::columnar::TimeBounds;
-pub use harmos_query::index::IndexDefinition;
-pub use harmos_query::index::IndexPage;
 pub use harmos_storage::query::Source;
 pub use harmos_storage::query::columnar::StorageCapabilities;
-pub use harmos_storage::query::projection::{ProjectionDefinition, ProjectionPage, ProjectionStatus};
 pub use harmos_storage::{FileProducer, ReadLimits};
-use prost::Message;
+
+/* === Imports === */
 
 // Standard Library Imports
+use std::mem;
 
 // Third Party Imports
+use prost::Message;
 
 // Local Imports
 use harmos_domain::model::storage::query::TimeMerge;
+use harmos_domain::schema::graph::Schema;
+use harmos_domain::{Identifier, MemorySize};
+use harmos_protocol::model::{PageRequest, ReadCut, Receipt};
+use harmos_query::{columnar, index};
+use harmos_storage::query::projection;
 
 /* === Constants === */
 
@@ -54,7 +47,7 @@ use harmos_domain::model::storage::query::TimeMerge;
 macro_rules! memory {
     ($ty:ty, $($field:ident),*) => {
         impl MemorySize for $ty { fn memory_size(&self) -> usize {
-            std::mem::size_of::<Self>()$(.saturating_add(self.$field.memory_size()))*
+            mem::size_of::<Self>()$(.saturating_add(self.$field.memory_size()))*
         } }
     };
 }
@@ -62,6 +55,87 @@ macro_rules! memory {
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ColumnSource {
+    pub kind: ColumnKind,
+    pub schema: SchemaKey,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct ColumnPredicate {
+    pub column: String,
+    pub lower: Option<f64>,
+    pub upper: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct TimeBounds {
+    pub column: String,
+    pub lower_ns: i64,
+    pub upper_ns: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexDefinition {
+    pub name: Identifier,
+    pub version: u32,
+    pub source: ColumnSource,
+    pub columns: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectionDefinition {
+    pub name: Identifier,
+    pub version: u32,
+    pub source: ColumnSource,
+    pub transform: ProjectionTransform,
+}
+
+/// A Self-Contained Arrow IPC Batch and Its Announced Schema.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IpcBatch {
+    pub schema: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColumnPage {
+    pub batch: IpcBatch,
+    pub complete: bool,
+    pub scanned: usize,
+    pub bytes_read: usize,
+    pub columns_read: Vec<String>,
+    pub payload_rows: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexEntry {
+    pub key: Vec<u8>,
+    pub position: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexPage {
+    pub entries: Vec<IndexEntry>,
+    pub complete: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectionPage {
+    pub batch: IpcBatch,
+    pub frontier: StorageCursor,
+    pub revision: u64,
+    pub changed_keys: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectionStatus {
+    pub frontier: StorageCursor,
+    pub revision: u64,
+    pub rows: usize,
+    pub changed_keys: usize,
+}
 
 #[derive(Clone, Debug)]
 pub struct DeleteScopeRequest {
@@ -258,7 +332,7 @@ pub struct ListColumnRowsRequest {
 
 #[derive(Debug)]
 pub struct ListColumnRowsResponse {
-    pub page: Option<ArrowPage>,
+    pub page: Option<ColumnPage>,
     pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
@@ -379,7 +453,7 @@ pub struct ListRowsRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListRowsResponse {
-    pub rows: Vec<QueryOutput>,
+    pub rows: Vec<RowOutput>,
     pub resolved_at: Option<ReadCut>,
     pub next_page_token: String,
 }
@@ -604,6 +678,26 @@ pub struct GetSchemaResponse {
 
 /* === Enums === */
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ColumnKind {
+    Objects,
+    Records,
+    Stream,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ProjectionTransform {
+    Select(Vec<String>),
+    TimeBuckets(TimeBucketPlan),
+}
+
+/// Ordered Arrow IPC Schema and Batch Frames Returned by ListRows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RowOutput {
+    Schema(Vec<u8>),
+    Batch(Vec<u8>),
+}
+
 pub mod set_object_response {
     use super::*;
     #[derive(Clone, Debug, PartialEq)]
@@ -648,13 +742,115 @@ pub mod watch_file_production_response {
 
 /* === Implementations === */
 
+memory!(ColumnSource, schema);
+memory!(ColumnPredicate, column);
+memory!(TimeBounds, column);
+memory!(IndexDefinition, name, source, columns);
+memory!(ProjectionDefinition, name, source, transform);
+
+impl MemorySize for ProjectionTransform {
+    fn memory_size(&self) -> usize {
+        let bytes = match self {
+            Self::Select(columns) => columns.memory_size(),
+            Self::TimeBuckets(plan) => plan.memory_size(),
+        };
+        mem::size_of::<Self>().saturating_add(bytes)
+    }
+}
+
+impl ColumnSource {
+    pub(super) fn into_engine(self) -> columnar::ColumnSource {
+        let kind = match self.kind {
+            ColumnKind::Objects => columnar::ColumnKind::Objects,
+            ColumnKind::Records => columnar::ColumnKind::Records,
+            ColumnKind::Stream => columnar::ColumnKind::Stream,
+        };
+        columnar::ColumnSource { kind, schema: self.schema }
+    }
+
+    fn from_engine(source: columnar::ColumnSource) -> Self {
+        let kind = match source.kind {
+            columnar::ColumnKind::Objects => ColumnKind::Objects,
+            columnar::ColumnKind::Records => ColumnKind::Records,
+            columnar::ColumnKind::Stream => ColumnKind::Stream,
+        };
+        Self { kind, schema: source.schema }
+    }
+}
+
+impl IndexDefinition {
+    pub(super) fn into_engine(self) -> index::IndexDefinition {
+        index::IndexDefinition {
+            name: self.name,
+            version: self.version,
+            source: self.source.into_engine(),
+            columns: self.columns,
+        }
+    }
+
+    pub(super) fn from_engine(definition: index::IndexDefinition) -> Self {
+        Self {
+            name: definition.name,
+            version: definition.version,
+            source: ColumnSource::from_engine(definition.source),
+            columns: definition.columns,
+        }
+    }
+}
+
+impl ProjectionDefinition {
+    pub(super) fn into_engine(self) -> projection::ProjectionDefinition {
+        let transform = match self.transform {
+            ProjectionTransform::Select(columns) => projection::ProjectionTransform::Select(columns),
+            ProjectionTransform::TimeBuckets(plan) => projection::ProjectionTransform::TimeBuckets(plan),
+        };
+        projection::ProjectionDefinition {
+            name: self.name,
+            version: self.version,
+            source: self.source.into_engine(),
+            transform,
+        }
+    }
+
+    pub(super) fn from_engine(definition: projection::ProjectionDefinition) -> Self {
+        let transform = match definition.transform {
+            projection::ProjectionTransform::Select(columns) => ProjectionTransform::Select(columns),
+            projection::ProjectionTransform::TimeBuckets(plan) => ProjectionTransform::TimeBuckets(plan),
+        };
+        Self {
+            name: definition.name,
+            version: definition.version,
+            source: ColumnSource::from_engine(definition.source),
+            transform,
+        }
+    }
+}
+
+memory!(IpcBatch, schema, data);
+memory!(ColumnPage, batch, columns_read);
+memory!(IndexEntry, key);
+memory!(IndexPage, entries);
+memory!(ProjectionPage, batch, frontier, changed_keys);
+memory!(ProjectionStatus, frontier);
+
+impl MemorySize for RowOutput {
+    fn memory_size(&self) -> usize {
+        let bytes = match self {
+            Self::Schema(bytes) | Self::Batch(bytes) => bytes,
+        };
+        mem::size_of::<Self>().saturating_add(bytes.capacity())
+    }
+}
+
 memory!(DeleteObjectRequest, mutation, schema, item, expected);
 memory!(DeleteScopeRequest, mutation, scope);
 
 memory!(MutateRequest, mutation, items);
 impl MemorySize for MutateResponse {
     fn memory_size(&self) -> usize {
-        size_of::<Self>().saturating_add(self.outcome.memory_size()).saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>()
+            .saturating_add(self.outcome.memory_size())
+            .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 
@@ -708,24 +904,24 @@ impl MemorySize for watch_file_production_response::Event {
 
 impl MemorySize for CreateFileProductionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.metadata.memory_size()).saturating_add(self.mutation.memory_size())
+        mem::size_of::<Self>().saturating_add(self.metadata.memory_size()).saturating_add(self.mutation.memory_size())
     }
 }
 impl MemorySize for CreateFileProductionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.production.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for GetFileProductionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for GetFileProductionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.production.memory_size())
             .saturating_add(self.writer_generation.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
@@ -735,7 +931,7 @@ impl MemorySize for GetFileProductionResponse {
 }
 impl MemorySize for AppendFileBytesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.session.memory_size())
             .saturating_add(self.offset.memory_size())
             .saturating_add(self.data.memory_size())
@@ -744,26 +940,26 @@ impl MemorySize for AppendFileBytesRequest {
 }
 impl MemorySize for AppendFileBytesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.production.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for CreateFileWriterRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.session.memory_size()).saturating_add(self.mutation.memory_size())
+        mem::size_of::<Self>().saturating_add(self.session.memory_size()).saturating_add(self.mutation.memory_size())
     }
 }
 impl MemorySize for CreateFileWriterResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.production.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for PublishFileProductionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.session.memory_size())
             .saturating_add(self.length.memory_size())
             .saturating_add(self.sha256.memory_size())
@@ -772,26 +968,24 @@ impl MemorySize for PublishFileProductionRequest {
 }
 impl MemorySize for PublishFileProductionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size())
-            .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for DeleteFileProductionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.session.memory_size()).saturating_add(self.mutation.memory_size())
+        mem::size_of::<Self>().saturating_add(self.session.memory_size()).saturating_add(self.mutation.memory_size())
     }
 }
 impl MemorySize for DeleteFileProductionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.production.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for GetFileBytesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.file.memory_size())
             .saturating_add(self.offset.memory_size())
             .saturating_add(self.max_bytes.memory_size())
@@ -800,7 +994,7 @@ impl MemorySize for GetFileBytesRequest {
 }
 impl MemorySize for GetFileBytesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.data.memory_size())
             .saturating_add(self.total_length.memory_size())
             .saturating_add(self.sha256.memory_size())
@@ -809,12 +1003,12 @@ impl MemorySize for GetFileBytesResponse {
 }
 impl MemorySize for CapabilitiesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 impl MemorySize for CapabilitiesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.capabilities.memory_size())
             .saturating_add(self.mutations.memory_size())
             .saturating_add(self.file_batch_bytes.memory_size())
@@ -822,29 +1016,29 @@ impl MemorySize for CapabilitiesResponse {
 }
 impl MemorySize for CreateSnapshotRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for CreateSnapshotResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.snapshot.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for DeleteSnapshotRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.snapshot.memory_size())
+        mem::size_of::<Self>().saturating_add(self.snapshot.memory_size())
     }
 }
 impl MemorySize for DeleteSnapshotResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 impl MemorySize for ListColumnRowsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.selection.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))
@@ -852,7 +1046,7 @@ impl MemorySize for ListColumnRowsRequest {
 }
 impl MemorySize for ListColumnRowsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.page.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.next_page_token.memory_size())
@@ -860,7 +1054,7 @@ impl MemorySize for ListColumnRowsResponse {
 }
 impl MemorySize for ListIndexEntriesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.selection.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))
@@ -869,7 +1063,7 @@ impl MemorySize for ListIndexEntriesRequest {
 }
 impl MemorySize for ListIndexEntriesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.page.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.next_page_token.memory_size())
@@ -877,7 +1071,7 @@ impl MemorySize for ListIndexEntriesResponse {
 }
 impl MemorySize for SetIndexDefinitionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.expected_revision.memory_size())
             .saturating_add(self.create_if_absent.memory_size())
@@ -888,7 +1082,7 @@ impl MemorySize for SetIndexDefinitionRequest {
 }
 impl MemorySize for SetIndexDefinitionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
@@ -896,7 +1090,7 @@ impl MemorySize for SetIndexDefinitionResponse {
 }
 impl MemorySize for SetProjectionDefinitionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.expected_revision.memory_size())
             .saturating_add(self.create_if_absent.memory_size())
@@ -906,7 +1100,7 @@ impl MemorySize for SetProjectionDefinitionRequest {
 }
 impl MemorySize for SetProjectionDefinitionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
@@ -914,7 +1108,7 @@ impl MemorySize for SetProjectionDefinitionResponse {
 }
 impl MemorySize for AdvanceProjectionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.snapshot.memory_size())
             .saturating_add(self.name.memory_size())
             .saturating_add(self.work.memory_size())
@@ -923,14 +1117,14 @@ impl MemorySize for AdvanceProjectionRequest {
 }
 impl MemorySize for AdvanceProjectionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for ListProjectionRowsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.selection.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))
@@ -939,7 +1133,7 @@ impl MemorySize for ListProjectionRowsRequest {
 }
 impl MemorySize for ListProjectionRowsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.page.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.next_page_token.memory_size())
@@ -947,7 +1141,7 @@ impl MemorySize for ListProjectionRowsResponse {
 }
 impl MemorySize for GetProjectionStatusRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.name.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -956,14 +1150,14 @@ impl MemorySize for GetProjectionStatusRequest {
 }
 impl MemorySize for GetProjectionStatusResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.status.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for SetObjectRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size())
             .saturating_add(self.expected_revision.memory_size())
             .saturating_add(self.create_if_absent.memory_size())
@@ -973,12 +1167,12 @@ impl MemorySize for SetObjectRequest {
 }
 impl MemorySize for SetObjectResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.outcome.memory_size())
+        mem::size_of::<Self>().saturating_add(self.outcome.memory_size())
     }
 }
 impl MemorySize for ListRowsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.source.memory_size())
             .saturating_add(self.merge.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -988,7 +1182,7 @@ impl MemorySize for ListRowsRequest {
 }
 impl MemorySize for ListRowsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.rows.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.next_page_token.memory_size())
@@ -996,21 +1190,19 @@ impl MemorySize for ListRowsResponse {
 }
 impl MemorySize for WatchRowsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.source.memory_size())
-            .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.source.memory_size()).saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for WatchRowsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.event.memory_size())
     }
 }
 impl MemorySize for AppendRecordsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size())
             .saturating_add(self.scope.memory_size())
             .saturating_add(self.batch.memory_size())
@@ -1018,12 +1210,12 @@ impl MemorySize for AppendRecordsRequest {
 }
 impl MemorySize for AppendRecordsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for AppendSamplesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size())
             .saturating_add(self.scope.memory_size())
             .saturating_add(self.batch.memory_size())
@@ -1031,12 +1223,12 @@ impl MemorySize for AppendSamplesRequest {
 }
 impl MemorySize for AppendSamplesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for AppendObjectRevisionsRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size())
             .saturating_add(self.scope.memory_size())
             .saturating_add(self.batch.memory_size())
@@ -1044,12 +1236,12 @@ impl MemorySize for AppendObjectRevisionsRequest {
 }
 impl MemorySize for AppendObjectRevisionsResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for GetFileHashRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.source.memory_size())
             .saturating_add(self.range.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -1057,14 +1249,14 @@ impl MemorySize for GetFileHashRequest {
 }
 impl MemorySize for GetFileHashResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.hash.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for CaptureFileRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.source.memory_size())
             .saturating_add(self.range.memory_size())
             .saturating_add(self.metadata.memory_size())
@@ -1073,34 +1265,32 @@ impl MemorySize for CaptureFileRequest {
 }
 impl MemorySize for CaptureFileResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size())
-            .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for WatchFileBytesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.source.memory_size()).saturating_add(self.start.memory_size())
+        mem::size_of::<Self>().saturating_add(self.source.memory_size()).saturating_add(self.start.memory_size())
     }
 }
 impl MemorySize for WatchFileBytesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.event.memory_size()).saturating_add(self.completion.memory_size())
+        mem::size_of::<Self>().saturating_add(self.event.memory_size()).saturating_add(self.completion.memory_size())
     }
 }
 impl MemorySize for WatchFileProductionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.offset.memory_size())
+        mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.offset.memory_size())
     }
 }
 impl MemorySize for WatchFileProductionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.event.memory_size())
+        mem::size_of::<Self>().saturating_add(self.event.memory_size())
     }
 }
 impl MemorySize for ListDirectoryEntriesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.selection.memory_size())
             .saturating_add(self.page.as_ref().map_or(0, Message::encoded_len))
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -1108,7 +1298,7 @@ impl MemorySize for ListDirectoryEntriesRequest {
 }
 impl MemorySize for ListDirectoryEntriesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.entries.memory_size())
             .saturating_add(self.next_page_token.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
@@ -1116,17 +1306,17 @@ impl MemorySize for ListDirectoryEntriesResponse {
 }
 impl MemorySize for WatchDirectoryEntriesRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.selection.memory_size()).saturating_add(self.include_existing.memory_size())
+        mem::size_of::<Self>().saturating_add(self.selection.memory_size()).saturating_add(self.include_existing.memory_size())
     }
 }
 impl MemorySize for WatchDirectoryEntriesResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.event.memory_size())
+        mem::size_of::<Self>().saturating_add(self.event.memory_size())
     }
 }
 impl MemorySize for GetIndexDefinitionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.name.memory_size())
             .saturating_add(self.source.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -1134,7 +1324,7 @@ impl MemorySize for GetIndexDefinitionRequest {
 }
 impl MemorySize for GetIndexDefinitionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
@@ -1142,7 +1332,7 @@ impl MemorySize for GetIndexDefinitionResponse {
 }
 impl MemorySize for GetProjectionDefinitionRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.name.memory_size())
             .saturating_add(self.source.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -1150,7 +1340,7 @@ impl MemorySize for GetProjectionDefinitionRequest {
 }
 impl MemorySize for GetProjectionDefinitionResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.definition.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.resolved_at.as_ref().map_or(0, Message::encoded_len))
@@ -1158,7 +1348,7 @@ impl MemorySize for GetProjectionDefinitionResponse {
 }
 impl MemorySize for GetObjectRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.schema.memory_size())
             .saturating_add(self.item.memory_size())
             .saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
@@ -1166,7 +1356,7 @@ impl MemorySize for GetObjectRequest {
 }
 impl MemorySize for GetObjectResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.value.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.exists.memory_size())
@@ -1175,12 +1365,12 @@ impl MemorySize for GetObjectResponse {
 }
 impl MemorySize for InfoRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 impl MemorySize for InfoResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.accepted.memory_size())
             .saturating_add(self.saved.memory_size())
             .saturating_add(self.mutations.memory_size())
@@ -1189,19 +1379,17 @@ impl MemorySize for InfoResponse {
 }
 impl MemorySize for DeleteFileRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.mutation.memory_size()).saturating_add(self.file.memory_size())
+        mem::size_of::<Self>().saturating_add(self.mutation.memory_size()).saturating_add(self.file.memory_size())
     }
 }
 impl MemorySize for DeleteFileResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
-            .saturating_add(self.file.memory_size())
-            .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.file.memory_size()).saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for SetSchemaRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.mutation.memory_size())
             .saturating_add(self.schema.memory_size())
             .saturating_add(self.expected_revision.memory_size())
@@ -1210,7 +1398,7 @@ impl MemorySize for SetSchemaRequest {
 }
 impl MemorySize for SetSchemaResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.schema.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.receipt.as_ref().map_or(0, Message::encoded_len))
@@ -1218,12 +1406,12 @@ impl MemorySize for SetSchemaResponse {
 }
 impl MemorySize for GetSchemaRequest {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>().saturating_add(self.key.memory_size()).saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
+        mem::size_of::<Self>().saturating_add(self.key.memory_size()).saturating_add(self.at.as_ref().map_or(0, Message::encoded_len))
     }
 }
 impl MemorySize for GetSchemaResponse {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
             .saturating_add(self.schema.memory_size())
             .saturating_add(self.revision.memory_size())
             .saturating_add(self.exists.memory_size())

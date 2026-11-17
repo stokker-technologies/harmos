@@ -16,15 +16,18 @@ use super::{
     support::{self, Remote},
 };
 use futures_util::stream;
-use harmos_operations::execution::operations::OperationFactory;
+use harmos_operations::execution::operations::{
+    ExecutionContext, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
+};
 use harmos_protocol::host::invocations_client::InvocationsClient;
 use harmos_protocol::host::operations_client::OperationsClient;
 use harmos_protocol::host::time_client::TimeClient;
-use harmos_protocol::host::{InvocationsCreateRequest, OperationsListRequest, OperationsListResponse, TimeGetRequest, TimeGetResponse};
-use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
-use harmos_protocol::plugin::{
-    ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request as request, instance_samples_response as response,
+use harmos_protocol::host::{
+    InvocationsCreateRequest, OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, TimeGetRequest,
+    TimeGetResponse,
 };
+use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
+use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
 use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
 use prost::Message;
 use std::{
@@ -35,6 +38,39 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::sync::mpsc;
+
+/* === Structs === */
+
+struct DiscoveryList;
+struct DiscoveryGet;
+
+/* === Implementations === */
+
+impl ProtobufOperation for DiscoveryList {
+    type Request = OperationsListRequest;
+    type Response = OperationsListResponse;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.discovery.list";
+    const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<DiscoveryAccess>()];
+    async fn run(context: ExecutionContext, request: Self::Request, endpoints: &()) -> Result<Self::Response, ServingError> {
+        harmos_operations::host::List::run(context, request, endpoints).await
+    }
+}
+
+impl ProtobufOperation for DiscoveryGet {
+    type Request = OperationsGetRequest;
+    type Response = OperationsGetResponse;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.discovery.get";
+    const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<DiscoveryAccess>()];
+    async fn run(context: ExecutionContext, request: Self::Request, endpoints: &()) -> Result<Self::Response, ServingError> {
+        harmos_operations::host::Get::run(context, request, endpoints).await
+    }
+}
 
 /* === Tests === */
 
@@ -60,14 +96,19 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
     .await;
     host.runtime.operations.register_catalog(harmos_operations::host_catalog(), Default::default()).await.unwrap();
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    host.runtime
+        .register_batch(
+            harmos_runtime::operations::Registration::new(Default::default())
+                .entry(OperationFactory::protobuf::<DiscoveryList>().unwrap())
+                .entry(OperationFactory::protobuf::<DiscoveryGet>().unwrap()),
+        )
+        .await
+        .unwrap();
     let factories = [
         OperationFactory::protobuf::<harmos_operations::clock::Get>().unwrap(),
         OperationFactory::protobuf::<harmos_operations::lifecycle::Create>().unwrap(),
-        harmos_operations::host_catalog()
-            .operations
-            .into_iter()
-            .find(|factory| factory.definition.id.as_str() == "harmos.host.v1.Operations/List")
-            .unwrap(),
+        OperationFactory::protobuf::<DiscoveryList>().unwrap(),
+        OperationFactory::protobuf::<DiscoveryGet>().unwrap(),
     ];
     let contracts: Vec<_> = factories.iter().map(|factory| factory.contract().unwrap()).collect();
 
@@ -124,6 +165,12 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
     let mut discovery = OperationsClient::new(channel.clone());
     let listed = discovery.list(OperationsListRequest {}).await.unwrap().into_inner();
     assert!(
+        listed
+            .operations
+            .iter()
+            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Time/Sleep"))
+    );
+    assert!(
         !listed
             .operations
             .iter()
@@ -170,23 +217,33 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
         let complete = completed.clone();
         let contracts = contracts.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            let Some(request::Frame::Window(window)) = input.message().await.unwrap().unwrap().frame else { panic!("Expected a Window") };
-            for (index, contract) in contracts.iter().enumerate() {
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            let Some(instance_samples_request::Frame::Window(window)) = input.message().await.unwrap().unwrap().frame else {
+                panic!("Expected a Window")
+            };
+            for (index, contract) in contracts.iter().enumerate().chain(std::iter::once((contracts.len(), &contracts[3]))) {
+                let payload = if index >= 3 {
+                    OperationsGetRequest {
+                        id: if index == 3 { "harmos.host.v1.Time/Sleep" } else { "harmos.host.v1.Time/Get" }.into(),
+                    }
+                    .encode_to_vec()
+                } else {
+                    vec![]
+                };
                 output
                     .send(Ok(InstanceSamplesResponse {
                         samples: vec![],
-                        frame: Some(response::Frame::Child(ChildRequest {
+                        frame: Some(instance_samples_response::Frame::Child(ChildRequest {
                             call: index as u64 + 1,
                             operation: contract.operation().id.to_string(),
                             fingerprint: contract.fingerprint().0.to_vec(),
-                            payload: vec![],
+                            payload,
                             ..Default::default()
                         })),
                     }))
                     .await
                     .unwrap();
-                let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                     panic!("Expected Child Reply")
                 };
                 results.send(reply).unwrap();
@@ -229,6 +286,18 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
             .iter()
             .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Invocations/Create"))
     );
+    assert!(
+        !listed
+            .operations
+            .iter()
+            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Time/Sleep"))
+    );
+    let fourth = observed.recv().await.unwrap();
+    assert!(matches!(fourth.result, Some(child_response::Result::Failure(_))));
+    let fifth = observed.recv().await.unwrap();
+    let Some(child_response::Result::Payload(payload)) = fifth.result else { panic!("Expected Declared Operation") };
+    let found = OperationsGetResponse::decode(payload.as_slice()).unwrap();
+    assert_eq!(found.operation.unwrap().contract.unwrap().id, "harmos.host.v1.Time/Get");
     attached.stop("Story Complete").await.unwrap();
     drop(listener);
     host.runtime.shutdown().await.unwrap();
