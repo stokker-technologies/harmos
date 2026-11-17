@@ -151,4 +151,3 @@ that clock virtually in a test.
 - **WHEN** a product binds two trusted scopes and independent clocks to an already admitted activation
 - **THEN** each scope's Samples selection and descendant Time operations use its clock on the same physical connection
 - **AND** accepted ingestion blocks that clock, closing one scope awaits ingestion and producer cleanup, and the other scope and unscoped demand remain usable
-

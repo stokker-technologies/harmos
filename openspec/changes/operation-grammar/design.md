@@ -11,7 +11,28 @@ host wire exposure, direct manager access, composition narrowing and statistics 
 [plugin-lifecycle](../plugin-lifecycle/tasks.md) replaces lifecycle and catalog API naming across
 SDKs. Earlier layouts and examples below describe the original migration; they do not override
 those changes or establish that their replacements have landed. The remaining guarantees and
-proof are owned by this change's tasks.md.
+proof are owned by this change's tasks.md. `plugin-boundary` supersedes library
+plugin contract/SDK/registry/bundle/settings ownership; product author APIs hide
+Harmos helpers. The composition file and plugin analyses are removed. Host
+operations are in-process only and generated output stays tracked. Historical
+wire mappings, example proto blocks and ownership tables below are not current
+contracts or source tasks; requirement deltas carry the retained guarantees.
+
+## Release Readiness
+
+Release-blocking: native receipt-bearing log Append and its replay/restart stories
+(task 3.4), typed refusal of an unsupported second sleep (SB.2), deterministic story
+audit (A.11), retained-reader contract/regression proof (3.10), the native Windows
+handle follow-up in product-storage-facilities 1.27, and FL.1–FL.3 repair/proof.
+Final descriptor acceptance, source closure and native Linux/Windows/hosted proof
+remain tasks 5–6, after all three active boundary/lifecycle changes land.
+
+Owner decisions: the consumer-selected durable log-store configuration and retained
+reader contract review with product backends. No data-loss change is authorized.
+Later: the parked storage lifecycle/ingestion-strategy proposal below and product
+publication-throughput/preparation-memory investigation formerly in IT.2. Its
+encoder release repair is landed, but only product measurements can explain that
+product observation; it is not a library test result or new release threshold.
 
 ## Owner Confirmations, 2026-11-13
 
@@ -1853,8 +1874,8 @@ ServerCertificate resolver themselves are reused unchanged.
 
 ### Log Append Persistence Boundary, 2026-11-13
 
-I.8 remains open under the owner's method-only compatibility condition. The intended
-owner is ServiceManager and the intended face is client `harmos.v1.status.Logs.Append`.
+Task 3.4 owns native receipt-bearing log Append. The intended internal owner is
+ServiceManager; Harmos adds no host wire method. A product may expose its own wrapper.
 `crates/harmos-runtime/src/services/status/mod.rs::StatusSettings` supplies identity,
 volatile history, redaction and read budgets, but no durable sink or mutation-retention
 configuration. `ServiceManager::configure_status` is synchronous and constructs that
@@ -1876,9 +1897,8 @@ would invent persistence policy that belongs to the consumer.
 Decision for this run: preserve existing public shapes and volatile List/Watch semantics;
 add no RPC, forwarding shim, generated output or incomplete SDK story. The smallest
 complete follow-up is an explicit durable log-store dependency on Status configuration,
-with bounded mutation retention and atomic batch/outcome recovery, then lost-reply and
-restart journeys through all four SDK roots. That configuration extension needs the
-owner's compatibility decision; task I.8 and its parent 3.4 remain unticked.
+with bounded mutation retention and atomic batch/outcome recovery, then native lost-reply and
+restart journeys plus product-wrapper fixture proof. That configuration extension needs an owner decision; task 3.4 remains unchecked.
 
 Catalog discovery now returns the complete authorized catalog in one response, including
 complete descriptors. `external_authority_parity` lists once; the carrier ceiling alone
@@ -1916,7 +1936,7 @@ consumer policy and bounded physical chunks. Runtime registration uses one typed
 set of explicitly declared identities before inferring context projections. Wire
 identity admission remains the core validator; the storage-only admission shortcut
 stays deleted. Remaining joins are receipt-bearing log Append and retained-reader
-DeleteFile reclamation; see tasks I.8 and 3.10. The cooperative final-result
+DeleteFile reclamation; see tasks 3.4 and 3.10. The cooperative final-result
 inventory is settled below under implementation decision 3.11. No whole-change source closure or cross-platform validation is
 claimed by this merge.
 

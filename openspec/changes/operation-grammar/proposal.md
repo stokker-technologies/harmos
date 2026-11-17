@@ -15,7 +15,22 @@ mutation, file lifecycle and cooperative cancellation guarantees.
 
 ## What Changes
 
-This document records direction, not landed behavior or permission to implement.
+The retained grammar and storage guarantees are implemented except tasks 3.4 (native
+receipt-bearing log Append), SB.2 (typed second-sleep refusal), A.11 (deterministic
+story audit), and the reported regressions/proof below. Older face counts and
+manager/client mappings are historical inventories, superseded by the current
+ownership decisions; they are not additional implementation targets.
+
+- `operation-boundary` owns build/start, operation calls, backend/plugin authoring,
+  builder-owned managers, the typed facade and in-process-only host operations.
+  Products expose their own remote wrappers; the composition file is deleted.
+- `plugin-boundary` owns product plugin contracts, SDKs, registry/bundles/settings
+  policy and Harmos carrier/helpers/codegen/conformance. The old plugin-management
+  capability is removed from this change rather than implemented twice.
+- `plugin-lifecycle` owns verbs, hooks, registration and catalog naming.
+- Harmos retains storage contracts, memory backend and conformance; SQLite is
+  product-owned. Offline operations drain storage before backend reopen.
+- Plugin analyses are removed entirely. Generated protocol output stays tracked.
 “Owner” means locked by the owner on 2026-11-12. Requirement deltas describe
 the locked contract; implementation is not authorized by this documentation task.
 
@@ -39,13 +54,9 @@ the locked contract; implementation is not authorized by this documentation task
 | Failed client calls | Owner | Resending is the client's responsibility; the same request identifier and normalized payload return the original receipt, and a changed payload under that identifier conflicts. |
 | Paging | Amended by the owner on 2026-11-13 | Only data rows that can grow without bound are paged. CatalogEntries on every face, Plugins and Pairings return their complete bounded set with no page request, token or byte bound; carrier size refusal names the action. |
 | Shared primitives | Owner | One paging, position, time, Failure, retry-policy and receipt vocabulary, as specified in design.md. |
-| SDK ownership | Owner | Other products will also host plugins on this library: language SDKs stay here and product SDKs keep building on them. Protocol, SDKs and conformance remain self-sufficient without product vocabulary. Client roots expose package-derived resource hierarchies in all four languages; plugin semantic parity and generic managed-client invocation scope remain open. |
-| Library Boundary | LOCKED, 2026-11-12 | Generic plugin hosting/entry management, access, transfers, host status, operations/invocations, time, storage, streams, protocol and SDKs belong to the library, under their owning managers. A product serves these services directly by composition. |
 | Product Boundary | LOCKED, 2026-11-12 | A product defines its storage schemas, indexes, projections and latest selection, objects, object operations and authorization policy. Settings/secrets stores, schemas, UI declarations, archives and operating-system credential integration remain product-owned. |
-| Plugin Values | LOCKED, 2026-11-12 | The library owns only generic host-value delivery to plugins and the settings-declaration section of a plugin catalog; a product resolves settings/secrets. The per-plugin settings/secrets ownership question is closed. |
 | No Duplicate Machinery | LOCKED, 2026-11-12 | A product must compose the runtime rather than rebuild on the protocol crate alone: doing so previously duplicated plugin connection, dispatch, streams and process launch. |
 | Managers | LOCKED, 2026-11-12 | Apply the live-ownership rule and library manager inventory in design.md; plain storage operations need no manager. |
-| Nested Resources | LOCKED, 2026-11-12 | Use parent sub-packages and bare part-service verbs, including cross-library Plugins.Settings; generate hierarchical client roots mechanically from descriptors in all four languages. Host applications may declare nested resources in their own packages beside library services, without redeclaring them. |
 
 **BREAKING:** rename the operations in the complete design inventory; merge the
 three row-follow operations into WatchRows; replace streaming uploads and downloads with
@@ -60,10 +71,6 @@ The proposal neither grants new external access nor removes capabilities merely
 because inspected callers do not use them.
 
 ## Capabilities
-
-### New Capabilities
-
-- `plugin-management`: owner extension on 2026-11-12; persistent managed and remote entries, verified bundle installation and the client-facing `Plugins` resource service.
 
 ### Modified Capabilities
 

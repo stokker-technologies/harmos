@@ -2,48 +2,6 @@
 
 ## ADDED Requirements
 
-### Requirement: Audience-Separated Service Packages
-
-Separation by audience is locked on 2026-11-12. Each service SHALL have exactly
-one face: harmos.plugin.v1 (plugin serves, only host calls), harmos.context.v1
-(host serves plugin invocation context child calls), or harmos.v1 and nested
-packages (host serves clients). Instance SHALL be the protocol service and
-Plugins the client management service. Faces SHALL NOT replace catalog visibility.
-
-#### Scenario: Client Cannot Call Context
-
-- **WHEN** a client attempts harmos.context.v1.HostValues.Get or a context Storage operation
-- **THEN** the host refuses the call naming the action and exposes no context service on the client endpoint
-
-#### Scenario: Client Cannot Call an Instance
-
-- **WHEN** a client attempts to call harmos.plugin.v1.Instance directly
-- **THEN** it is refused naming the action because only the host may open an instance call
-
-#### Scenario: Plugin Cannot Call a Client-Only Operation
-
-- **WHEN** a plugin attempts client-only Plugins.Restart through its context
-- **THEN** the host refuses naming Restart and does not route it to the client service
-
-#### Scenario: Host Calls an Instance
-
-- **WHEN** the host connects to a running instance
-- **THEN** it calls harmos.plugin.v1.Instance.Get for identity/catalog and opens Invoke, Samples or Stop only as required by their contracts
-- **AND** another plugin or client cannot open these calls directly
-
-### Requirement: Separate Declarations for Shared Capabilities
-
-Each capability needed on two faces SHALL have its own declaration, request,
-response, fingerprint and authorization per face, even when handlers are shared.
-Faces SHALL evolve independently. The exhaustive mapping in design.md SHALL
-preserve the existing callable capabilities without exposing context to clients.
-
-#### Scenario: Shared Time and Storage Capability
-
-- **WHEN** a plugin and a client read the host clock or append/read produced data
-- **THEN** each uses its own context or client package's declarations and wrappers from design.md's exhaustive mapping
-- **AND** handlers may be shared while authorization and future contract changes remain independent
-
 ### Requirement: Product Declarations Follow Audience Packages
 
 Product declarations SHALL use `<product>.plugin.v1`, `<product>.context.v1` or
@@ -63,28 +21,6 @@ their parent sub-packages and bare verbs within their face.
 - **WHEN** a product declares an exported Protected or Public operation its plugin performs
 - **THEN** the operation uses its product plugin-face package and catalog visibility, is carried by Instance.Invoke and is not declared as a client service
 
-### Requirement: One SDK Package per Language
-
-Each language SHALL ship one SDK package containing plugin authoring, the client root
-and its host protocol needs: Python `harmos-sdk` (import `harmos`), Rust `harmos`, C#
-`Harmos`, and C++ `HarmosCpp` (`Harmos::Cpp`).
-
-#### Scenario: Plugin Codebase Installs Itself
-
-- **WHEN** a Rust, Python, C# or C++ plugin codebase runs its client entry program against a running host
-- **THEN** the same SDK package registers and starts its own instance through Plugins, awaits Ready, and invokes its Public operation through the host
-- **AND** each language has one flat, copyable example and one deterministic journey
-
-### Requirement: Remove Audience-Specific SDK Selection
-
-Audience-specific builds, source-slicing hooks, selector environment
-variables/features/switches and generated-stub guards/tests SHALL be removed.
-
-#### Scenario: SDK Packaging Review
-
-- **WHEN** a language SDK is built and packaged
-- **THEN** audience-specific builds, source-slicing hooks, selector environment variables/features/switches and generated-stub guards/tests are absent
-
 ### Requirement: Runtime Face and Visibility Enforcement
 
 The host SHALL enforce faces and visibility at runtime; SDK-local Private calls SHALL
@@ -94,24 +30,6 @@ retain their existing policy and wire isolation.
 
 - **WHEN** a client or plugin possesses bindings for another face or a Protected operation
 - **THEN** the host still refuses unauthorized calls naming the action, and Private remains local and absent from the wire
-
-### Requirement: Self-Sufficient Library SDK Ownership
-
-The library SHALL retain self-sufficient language SDKs, protocol and conformance
-without product vocabulary. Product SDKs SHALL build on them. Ownership is locked
-on 2026-11-12. Plugin semantic parity and generic managed-client invocation language
-scope remain open; four-language descriptor-derived naming is separately locked.
-
-#### Scenario: Additional Plugin-Hosting Product
-
-- **WHEN** another product hosts plugins using the library
-- **THEN** its product SDKs build on the retained library language SDKs rather than reimplementing the plugin protocol in every language
-
-#### Scenario: Independent Conformance Review
-
-- **WHEN** the library protocol, SDKs and conformance checks are reviewed together
-- **THEN** the library can be proven end to end by itself without product vocabulary or a product-owned protocol implementation
-- **AND** SDK retention does not imply a settled four-language plugin-parity promise or generic managed-client scope
 
 ### Requirement: Predictable Public Method Grammar
 
@@ -254,41 +172,6 @@ change replay-safety admission, retention or expired-identifier refusal.
 - **WHEN** the client resends the same request identifier with a changed payload
 - **THEN** the call conflicts without replacing the original outcome
 
-### Requirement: Generic Machinery and Product Composition
-
-The library SHALL own generic machinery through design.md's manager/service
-inventory: plugins, access, transfers, host status, operations/invocations, time,
-storage, streams, protocol and SDKs. A product SHALL serve these services directly
-by composition, without redeclarations or wrappers, and SHALL NOT rebuild the
-runtime using only the protocol crate.
-
-#### Scenario: Product Endpoint
-
-- **WHEN** a client manages a plugin entry, listener or transfer, or reads host status on a product endpoint
-- **THEN** it calls the library-owned services on that endpoint and the library manager performs the generic work
-- **AND** Plugins covers managed/remote entry Create/Get/List/Watch/Set/Restart/Delete, verified bundles, persistence, state and failures
-
-#### Scenario: Duplicate Machinery Removal
-
-- **WHEN** a product adopts the composed runtime
-- **THEN** its duplicate connection, dispatch, stream, launch, entry, listener/pairing, upload and generic status implementations are removed with their consumers
-- **AND** the earlier duplication caused by protocol-only hosting is not retained as an adapter
-
-### Requirement: Product Definitions, Policy and Plugin Values
-
-A product SHALL own storage definitions, schemas, indexes, projections, latest
-selection, its objects and operations, and authorization policy. It SHALL retain
-settings/secrets stores, schemas, UI declarations, archives and operating-system
-credential integration. The library SHALL provide only a plugin catalog's settings
-declarations and generic context-only harmos.context.v1.HostValues.Get with a registered product
-resolver. This SHALL close the per-plugin settings/secrets ownership question.
-
-#### Scenario: Plugin Requests a Value
-
-- **WHEN** a plugin calls the generic host-value operation for a declared setting or secret
-- **THEN** the product resolver applies its storage and policy while the library supplies invocation, scope and failure delivery
-- **AND** no library settings store, secret store, credential adapter or client settings service is introduced
-
 ### Requirement: Manager Ownership and Thin Service Methods
 
 Managers SHALL follow design.md's single live-ownership rule and library
@@ -400,20 +283,6 @@ A hang guard MAY stop stuck work without making elapsed time a behavioral claim.
 
 - **WHEN** a test is proposed to protect an invariant
 - **THEN** it exercises behavior and cannot pass merely by quoting maintained prose or comparing a repository constant with itself
-
-### Requirement: Consistent Generic SDK Vocabulary
-
-Library protocol, SDKs, conformance and architecture contracts SHALL use generic
-vocabulary without product objects or private identities. Rust, Python, C# and
-C++ SDKs SHALL remain library-owned and name the same concepts consistently in
-normal language casing. Product SDKs SHALL compose those library SDKs. This
-requirement SHALL NOT imply that unresolved semantic plugin parity or generic
-managed-client language coverage is already implemented or decided.
-
-#### Scenario: Independent Host
-
-- **WHEN** an independent host consumes any library SDK and generated resource roots
-- **THEN** it receives the same library concepts without requiring another product's model or runtime
 
 ### Requirement: Manager-Owned Client Access
 The gRPC manager SHALL expose revision-guarded Listener.Get/Set, durable
