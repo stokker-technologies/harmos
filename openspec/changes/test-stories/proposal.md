@@ -1,6 +1,17 @@
 # Test Stories
 
+## Release Readiness
+
+The listed story consolidation is landed. Task 6.1 retains combined native
+Linux/Windows proof. The remaining repository-wide deterministic assertion audit
+belongs to `operation-grammar` A.11, including the elapsed-time assertion still in
+storage file stories; FL.1–FL.3 own the reported flake investigations and proof.
+This change does not claim those repairs or native-platform results are complete.
+
 ## Why
+
+Repeated setup, fragmented scenarios and large timing workloads made focused
+behavioral proof expensive and difficult to read.
 
 ## What Changes
 
