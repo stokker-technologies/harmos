@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod expression_transforms_through_list_rows;
+mod facade;
 mod native_row_pages_replay_and_keep_their_durable_image;
 mod native_row_watch_delivers_durable_rows_and_settles_cancellation;
 mod native_upload_resumes_fences_writers_and_preserves_read_cuts;

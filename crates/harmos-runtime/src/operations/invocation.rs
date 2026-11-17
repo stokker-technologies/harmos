@@ -23,7 +23,6 @@ use std::sync::{Arc, Mutex};
 
 // Local Imports
 use super::{HostContext, Response};
-use crate::Result as RuntimeResult;
 use futures_util::future::BoxFuture;
 use harmos_domain::{MemorySize, Message, MessageError};
 use harmos_operations::execution::__private::ErasedResponse;
@@ -69,7 +68,7 @@ native_payload!(Answer);
 /* === Structs === */
 
 pub struct NativeInvocation<O: NativeOperation> {
-    future: BoxFuture<'static, RuntimeResult<Response<O::Response>>>,
+    future: BoxFuture<'static, crate::Result<Response<O::Response>>>,
     control: Arc<crate::supervision::instance::Instance>,
 }
 
@@ -132,6 +131,20 @@ impl super::Manager {
         &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source,
         policy: Option<(super::OperationPolicy, &'static str)>,
     ) -> crate::Result<NativeInvocation<O>> {
+        self.submit_native_scoped::<O>(request, endpoints, source, policy, None)
+    }
+
+    pub(crate) fn submit_native_in<O: NativeOperation>(
+        &self, request: O::Request, endpoints: O::Endpoints, policy: Option<(super::OperationPolicy, &'static str)>,
+        parent: Option<&super::Context<'_>>,
+    ) -> crate::Result<NativeInvocation<O>> {
+        self.submit_native_scoped::<O>(request, endpoints, super::caller::Source::Host, policy, parent)
+    }
+
+    fn submit_native_scoped<O: NativeOperation>(
+        &self, request: O::Request, endpoints: O::Endpoints, source: super::caller::Source,
+        policy: Option<(super::OperationPolicy, &'static str)>, parent: Option<&super::Context<'_>>,
+    ) -> crate::Result<NativeInvocation<O>> {
         let target = Target::native::<O>().map_err(|source| crate::Error::OperationFailed {
             operation: O::ID.into(),
             source: Arc::new(source),
@@ -159,8 +172,8 @@ impl super::Manager {
                 erase: |endpoints| Box::new(endpoints),
             },
             &source,
-            None,
-            &[],
+            parent.map(|parent| &parent.scope),
+            parent.map_or(&[], |parent| parent.admission.held()),
         )?;
         let control = running.control.clone();
         let future = Box::pin(async move {

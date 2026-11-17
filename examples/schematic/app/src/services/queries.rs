@@ -12,7 +12,7 @@
 /* === Imports === */
 
 use crate::app::SchematicEditor;
-use harmos_runtime::builtins;
+use harmos_runtime::catalog;
 use harmos_runtime::operations::Lane;
 use harmos_runtime::{
     Result, Setup,
@@ -26,7 +26,7 @@ pub fn attach(setup: &mut Setup<SchematicEditor>, catalog: ObjectCatalog, settin
     let storage = StorageManager::in_memory(catalog, settings)?;
     setup.settings().storage(&storage);
     crate::storage::recordings(setup, storage.clone());
-    setup.catalog(builtins::storage_catalog(), Lane::default());
+    setup.catalog(catalog::storage_catalog(), Lane::default());
     setup.catalog(transfer::files_catalog(), Lane::default());
     Ok(storage)
 }

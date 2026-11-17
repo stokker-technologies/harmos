@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use crate::Request;
+pub use crate::operations::CallContext;
 pub use crate::state::{Invertible, Record, RecordEntry, Transaction};
 pub use crate::{Application, Error, Identifier, Lifecycle, Message, Result, Runtime, Setup, Startup};
 pub use crate::{
@@ -21,6 +21,7 @@ pub use crate::{
     OperationHost, OperationPolicy, Portable, QualifiedId, RequestShape, Response, RestartPolicy, RetryPolicy, Running, Service,
     ServiceContext, ServicePolicy,
 };
+pub use crate::{Call, CallOptions, Request};
 pub use crate::{Row, StreamEntry};
 
 /* === Imports === */

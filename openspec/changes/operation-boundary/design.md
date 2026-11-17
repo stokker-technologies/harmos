@@ -41,7 +41,7 @@ that owner; the migration removes escape paths together with all their consumers
 | Owner | Source Inventory | Consumers |
 | --- | --- | --- |
 | Runtime | `src/lib.rs`, `prelude.rs`, `runtime.rs`, `runtime/**`, `services/**`, public module barrels; whole-crate `domain`, `builtins` and `storage` reexports; public state/record/stream/operation fields; storage and operation manager `Deref` | Schematic app/CLI, runtime stories and benches, conformance host |
-| Operations | `src/lib.rs`, `execution/**`, `storage/native/requests.rs`, `storage/native/{pages,lists,views,snapshot}.rs`; `QueryOutput`, Arrow pages, column/index/projection contracts in public responses | Runtime registration/dispatch, product handlers, runtime storage stories |
+| Operations | `src/lib.rs`, `execution/**`, `operations/context.rs`, `storage/native/requests.rs`, `storage/native/{pages,lists,views,snapshot}.rs`; `QueryOutput`, Arrow pages, column/index/projection contracts in public responses | Runtime registration/dispatch, product handlers, runtime storage stories |
 | Storage | `src/lib.rs`, `backend.rs`, `state/**`, `manager/**`, `query/**`, `memory/**`; backend DTO closure, catalogs, codecs, manager constructors/readers | Operations, runtime storage/plugin/state owners, storage stories/benches |
 | Query | `src/lib.rs`, `accumulate.rs`, `aggregate.rs`, `quantiles.rs`, `order_stats.rs`, `time_buckets.rs`, `statistics/**`, `transform/{aggregate,histogram}.rs`; public readers/tables/Arrow/index values | Storage execution and column scans, operation results, storage benchmark percentile helper |
 | Domain | `src/lib.rs`, `model/storage/**`, `schema/**`, `state/**`, `streams/**`; query plans, payload and storage values, codecs and definitions | Query, storage, operations, runtime, derives |
@@ -58,6 +58,14 @@ will be a backend-authoring contract with capability refusal and an in-memory
 implementation; a product implements its durable transaction against that contract.
 Memory module declarations also contain redundant `#[path]` overrides; remove them
 when touching the backend. Objects initially had no scope field. Scoped deletion adds optional opaque object scope metadata, matching records and files, rather than assigning prefix semantics to object keys. The earlier prefix inventory assumption is superseded.
+
+Remaining inventory findings: runtime `storage/manager.rs` still embeds consumer
+admission and batch defaults, and the runtime/engine manager wrappers duplicate public
+access; tasks 9.1 and 9.6 own their replacement. Existing test entry points still share
+support through `#[path]`, covered by `plugin-lifecycle` task 6.2. Separate workspace
+lockfiles resolve differing dependency revisions, and SDK lint preparation inherits
+`VIRTUAL_ENV` and relies on uv ignoring the mismatched environment. Lockfile and SDK
+environment cleanup remain outside the native facade slice.
 
 Owner amendments override D3's generic caller example: the public calling shape is
 `runtime.for_call(&ctx).storage().append_samples(..)` and

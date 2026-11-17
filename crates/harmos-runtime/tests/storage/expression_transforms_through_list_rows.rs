@@ -25,7 +25,8 @@ use super::super::writes;
 use super::{fixture, mutation, records};
 use harmos_protocol::model::PageRequest;
 use harmos_query::arrow::ArrowBatch;
-use harmos_runtime::builtins::storage::{self, Contains, Offset, RowOutput, ScalarValue, Scale, Transform};
+use harmos_runtime::facade::storage::{self, Contains, Offset, RowOutput, ScalarValue, Scale, Transform};
+use harmos_runtime::operations::CallContext;
 
 /* === Constants === */
 
@@ -52,12 +53,13 @@ async fn expression_transforms_through_list_rows() {
     // Persist Rows Through Native Operation Dispatch
     let fixture = fixture().await;
     writes::seed(&fixture).await;
+    let call = fixture.runtime.for_call(&CallContext::default());
     let request = storage::AppendRecordsRequest {
         mutation: Some(mutation(&fixture, "expressions")),
         scope: None,
         batch: Some(writes::batch(1, "native-records")),
     };
-    fixture.runtime.operations.call_native::<storage::AppendRecords>(request).await.unwrap();
+    call.storage().append_records(request).await.unwrap();
     fixture.storage.flush().await.unwrap();
 
     // Compute Streaming Fields at the Saved Cut
@@ -92,7 +94,7 @@ async fn expression_transforms_through_list_rows() {
     let mut shifted = Vec::new();
     let mut selected = Vec::new();
     loop {
-        let response = fixture.runtime.operations.call_native::<storage::ListRows>(request.clone()).await.unwrap();
+        let response = call.storage().list_rows(request.clone()).await.unwrap();
         for output in response.rows {
             if let RowOutput::Batch(bytes) = output {
                 let batch = ArrowBatch::from_ipc(bytes).unwrap();

@@ -162,6 +162,10 @@ impl<A: Application> Builder<A> {
 }
 
 impl StorageRuntime<'_> {
+    pub fn for_call(&self, context: &(impl crate::facade::CallContextSource + ?Sized)) -> crate::Call {
+        crate::Call::new(self.operations.execution(), context)
+    }
+
     pub fn operations(&self) -> &OperationManager {
         &self.operations
     }
