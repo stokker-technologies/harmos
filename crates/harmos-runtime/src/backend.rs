@@ -26,6 +26,7 @@ pub mod validation;
 
 pub use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 pub use harmos_domain::state::Position;
+pub use harmos_protocol::model::StorageTransferSettings;
 pub use harmos_storage::memory::{Backend, RecoveryBackend};
 pub use harmos_storage::query::columnar::StorageCapabilities;
 pub use harmos_storage::state::{
