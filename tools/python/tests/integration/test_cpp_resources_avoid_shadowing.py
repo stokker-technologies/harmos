@@ -46,7 +46,7 @@ class CppResourcesAvoidShadowing(unittest.TestCase):
         file.message_type.add(name="Output")
         service = file.service.add(name="Channels")
         service.method.add(name="Get", input_type=".example.host.v1.Input", output_type=".example.host.v1.Output")
-        children = ["Channel_", "Context_", "Value", "Options", "MaxItemBytes"]
+        children = ["Channel_", "ChannelValue", "Context_", "ContextValue", "Value", "Options", "MaxItemBytes"]
         nested = schema.file.add(name="example/fixtures/children.proto", package="example.host.v1.channels", syntax="proto3")
         nested.dependency.append(file.name)
         for child in children:
@@ -58,7 +58,7 @@ class CppResourcesAvoidShadowing(unittest.TestCase):
         root = Path(scratch.name)
         cpp.client(root, methods, target=root / "client.hpp")
         cpp.host(root, methods, target=root / "host.hpp")
-        members = {"get", "channel_", "context_", "value", "options", "max_item_bytes"}
+        members = {"get", "channel_", "channel_value", "context_", "context_value", "value", "options", "max_item_bytes"}
         for filename, resource, transport in [
             ("client.hpp", "ChannelsResource", "channel"),
             ("host.hpp", "HostChannelsResource", "context"),
@@ -74,6 +74,7 @@ class CppResourcesAvoidShadowing(unittest.TestCase):
                 self.assertTrue(parameters)
                 self.assertEqual(len(parameters), len(set(parameters)))
                 self.assertFalse((members | {transport}).intersection(parameters), (filename, parameters))
+                self.assertFalse(any("__" in parameter for parameter in parameters), (filename, parameters))
 
 
 # === Public Functions === #

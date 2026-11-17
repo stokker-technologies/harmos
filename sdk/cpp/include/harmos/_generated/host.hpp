@@ -47,29 +47,29 @@ struct HostTimeSleepOptions {
 };
 struct HostTimeResource {
   Context context;
-  HostTimeResource(Context context_) : context(context_) {}
+  HostTimeResource(Context context_value) : context(context_value) {}
   ::google::protobuf::Timestamp get(HostTimeGetOptions options = {});
   ::harmos::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, HostTimeSleepOptions options = {});
 };
 struct HostPluginsSettingsResource {
   Context context;
-  HostPluginsSettingsResource(Context context_) : context(context_) {}
+  HostPluginsSettingsResource(Context context_value) : context(context_value) {}
   ::harmos::SettingsListResponse list(HostPluginsSettingsListOptions options = {});
 };
 struct HostPluginsResource {
   Context context;
   HostPluginsSettingsResource settings;
-  HostPluginsResource(Context context_) : context(context_), settings(context_) {}
+  HostPluginsResource(Context context_value) : context(context_value), settings(context_value) {}
 };
 struct HostOperationsResource {
   Context context;
-  HostOperationsResource(Context context_) : context(context_) {}
+  HostOperationsResource(Context context_value) : context(context_value) {}
   std::vector<::harmos::DiscoveredOperation> list(HostOperationsListOptions options = {});
   ::harmos::DiscoveredOperation get(const std::string &id, HostOperationsGetOptions options = {});
 };
 struct HostInvocationsResource {
   Context context;
-  HostInvocationsResource(Context context_) : context(context_) {}
+  HostInvocationsResource(Context context_value) : context(context_value) {}
   ::harmos::InstanceState get(const std::uint64_t &instance, HostInvocationsGetOptions options = {});
   ::harmos::InstanceState cancel(const std::uint64_t &instance, const std::string &reason, HostInvocationsCancelOptions options = {});
   HostInvocationsWatch watch(const std::uint64_t &instance, std::size_t max_item_bytes, HostInvocationsWatchOptions options = {});

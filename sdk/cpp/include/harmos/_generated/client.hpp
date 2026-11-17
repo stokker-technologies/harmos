@@ -126,7 +126,7 @@ struct TimeSleepOptions {
 } // namespace client
 struct AccessCertificatesResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit AccessCertificatesResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit AccessCertificatesResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   std::string create(client::AccessCertificatesCreateOptions options = {}) {
     detail::packages::harmos::host::access::CertificatesCreateRequest request;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -140,7 +140,7 @@ struct AccessCertificatesResource {
 };
 struct AccessListenerResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit AccessListenerResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit AccessListenerResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::client::ListenerGetResponse get(client::AccessListenerGetOptions options = {}) {
     detail::packages::harmos::host::access::ListenerGetRequest request;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -167,7 +167,7 @@ struct AccessListenerResource {
 };
 struct AccessPairingsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit AccessPairingsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit AccessPairingsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::client::PairingsCreateResponse create(const std::string &label, client::AccessPairingsCreateOptions options = {}) {
     detail::packages::harmos::host::access::PairingsCreateRequest request;
     request.set_label(label);
@@ -206,7 +206,7 @@ struct AccessPairingsResource {
 };
 struct PluginsSettingsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit PluginsSettingsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit PluginsSettingsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::SettingsListResponse list(client::PluginsSettingsListOptions options = {}) {
     detail::packages::harmos::host::plugins::SettingsListRequest request;
     if (options.name) {
@@ -241,7 +241,7 @@ struct PluginsSettingsResource {
 };
 struct StatusDiagnosticsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit StatusDiagnosticsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit StatusDiagnosticsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::client::DiagnosticsGetResponse get(const std::string &name, const std::uint64_t &offset, const std::uint64_t &max_bytes,
                                                client::StatusDiagnosticsGetOptions options = {}) {
     detail::packages::harmos::host::status::DiagnosticsGetRequest request;
@@ -259,7 +259,7 @@ struct StatusDiagnosticsResource {
 };
 struct StatusLogsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit StatusLogsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit StatusLogsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::client::LogsListResponse list(client::StatusLogsListOptions options = {}) {
     detail::packages::harmos::host::status::LogsListRequest request;
     if (options.at) {
@@ -302,7 +302,7 @@ struct StatusLogsResource {
 };
 struct StatusTraceEventsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit StatusTraceEventsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit StatusTraceEventsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::harmos::client::TraceEventsListResponse list(client::StatusTraceEventsListOptions options = {}) {
     detail::packages::harmos::host::status::TraceEventsListRequest request;
     if (options.at) {
@@ -347,15 +347,16 @@ struct AccessResource {
   AccessCertificatesResource certificates;
   AccessListenerResource listener;
   AccessPairingsResource pairings;
-  explicit AccessResource(std::shared_ptr<grpc::Channel> channel_) : certificates(channel_), listener(channel_), pairings(channel_) {}
+  explicit AccessResource(std::shared_ptr<grpc::Channel> channel_value)
+      : certificates(channel_value), listener(channel_value), pairings(channel_value) {}
 };
 struct InvocationsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit InvocationsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
-  std::string create(const std::string &operation_, const std::string &fingerprint, const std::string &payload,
+  explicit InvocationsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
+  std::string create(const std::string &operation_value, const std::string &fingerprint, const std::string &payload,
                      client::InvocationsCreateOptions options = {}) {
     detail::packages::harmos::host::InvocationsCreateRequest request;
-    request.set_operation(operation_);
+    request.set_operation(operation_value);
     request.set_fingerprint(fingerprint);
     request.set_payload(payload);
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -419,7 +420,7 @@ struct InvocationsResource {
 };
 struct OperationsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit OperationsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit OperationsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   std::vector<::harmos::DiscoveredOperation> list(client::OperationsListOptions options = {}) {
     detail::packages::harmos::host::OperationsListRequest request;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -448,7 +449,7 @@ struct OperationsResource {
 struct PluginsResource {
   std::shared_ptr<grpc::Channel> channel;
   PluginsSettingsResource settings;
-  explicit PluginsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_), settings(channel_) {}
+  explicit PluginsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value), settings(channel_value) {}
   ::harmos::client::PluginsGetResponse get(const std::string &name, client::PluginsGetOptions options = {}) {
     detail::packages::harmos::host::PluginsGetRequest request;
     request.set_name(name);
@@ -577,7 +578,7 @@ struct PluginsResource {
 };
 struct SchemasResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit SchemasResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit SchemasResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   std::vector<::harmos::client::SchemaDescription> list(client::SchemasListOptions options = {}) {
     detail::packages::harmos::host::SchemasListRequest request;
     if (options.schema) {
@@ -597,8 +598,8 @@ struct StatusResource {
   StatusDiagnosticsResource diagnostics;
   StatusLogsResource logs;
   StatusTraceEventsResource trace_events;
-  explicit StatusResource(std::shared_ptr<grpc::Channel> channel_)
-      : channel(channel_), diagnostics(channel_), logs(channel_), trace_events(channel_) {}
+  explicit StatusResource(std::shared_ptr<grpc::Channel> channel_value)
+      : channel(channel_value), diagnostics(channel_value), logs(channel_value), trace_events(channel_value) {}
   ::harmos::client::StatusGetResponse get(client::StatusGetOptions options = {}) {
     detail::packages::harmos::host::StatusGetRequest request;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -632,7 +633,7 @@ struct StatusResource {
 };
 struct StreamsResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit StreamsResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit StreamsResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   std::vector<::harmos::client::StreamIdentity> list(client::StreamsListOptions options = {}) {
     detail::packages::harmos::host::StreamsListRequest request;
     if (options.schema) {
@@ -649,7 +650,7 @@ struct StreamsResource {
 };
 struct TimeResource {
   std::shared_ptr<grpc::Channel> channel;
-  explicit TimeResource(std::shared_ptr<grpc::Channel> channel_) : channel(channel_) {}
+  explicit TimeResource(std::shared_ptr<grpc::Channel> channel_value) : channel(channel_value) {}
   ::google::protobuf::Timestamp get(client::TimeGetOptions options = {}) {
     detail::packages::harmos::host::TimeGetRequest request;
     auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();
@@ -684,9 +685,9 @@ struct Client {
   StatusResource status;
   StreamsResource streams;
   TimeResource time;
-  explicit Client(std::shared_ptr<grpc::Channel> channel_)
-      : access(channel_), invocations(channel_), operations(channel_), plugins(channel_), schemas(channel_), status(channel_),
-        streams(channel_), time(channel_) {}
+  explicit Client(std::shared_ptr<grpc::Channel> channel_value)
+      : access(channel_value), invocations(channel_value), operations(channel_value), plugins(channel_value), schemas(channel_value),
+        status(channel_value), streams(channel_value), time(channel_value) {}
   static Client connect(std::string address, const ::harmos::StorageTransferSettings &transfer = {},
                         std::optional<int> message_bytes = {}) {
     const auto maximum = ::harmos::transfer_message_bytes(transfer, message_bytes);

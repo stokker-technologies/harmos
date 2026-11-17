@@ -734,7 +734,7 @@ def format_code(paths: list[Path]) -> None:
 def _parameter(name: str, members: set[str]) -> str:
     name = _identifier(name)
     while name in members:
-        name += "_"
+        name += "value" if name.endswith("_") else "_value"
     return name
 
 
