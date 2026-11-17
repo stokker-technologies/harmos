@@ -15,33 +15,7 @@
 
 /* === Imports === */
 
-use crate::backend::{Backend, RecoveryBackend};
-use crate::support::Bank;
-use harmos::OperationRequest;
-use harmos_operations::plugin::Grant;
-use harmos_runtime::plugin::{
-    grpc::PlacementSettings,
-    manager::{self, Manager, PluginManagerSettings},
-};
-use harmos_runtime::storage::{StorageBackends, StorageManager};
-use harmos_runtime::{
-    Error, Result as RuntimeResult,
-    clock::Clock,
-    config::{PluginGuestSettings, PluginSettings},
-    guest::Host,
-};
-use tempfile::TempDir;
-
-use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
-use harmos_protocol::model::Callers;
-use harmos_protocol::schema::with_method_callers;
-use harmos_runtime::{
-    MessageError, Runtime,
-    operations::{ComponentError, ExecutionContext, Lane, OperationManager, ProtobufOperation, Resource, ServingError, Visibility},
-};
-use prost::Message as _;
-use prost_reflect::{DescriptorPool, MessageDescriptor};
-use prost_types::{MethodDescriptorProto, ServiceDescriptorProto};
+// Standard Library Imports
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -50,11 +24,35 @@ use std::{
     },
 };
 
-// Standard Library Imports
-
 // Third Party Imports
+use prost::Message;
+use prost_reflect::{DescriptorPool, MessageDescriptor};
+use prost_types::{MethodDescriptorProto, ServiceDescriptorProto};
+use tempfile::TempDir;
 
 // Local Imports
+use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
+use crate::backend::{Backend, RecoveryBackend};
+use crate::support::Bank;
+use harmos::OperationRequest;
+use harmos_operations::plugin::Grant;
+use harmos_protocol::model::Callers;
+use harmos_protocol::schema::with_method_callers;
+use harmos_runtime::plugin::{
+    grpc::PlacementSettings,
+    manager::{self, Manager, PluginManagerSettings},
+};
+use harmos_runtime::storage::{StorageBackends, StorageManager};
+use harmos_runtime::{
+    Error,
+    clock::Clock,
+    config::{PluginGuestSettings, PluginSettings},
+    guest::Host,
+};
+use harmos_runtime::{
+    MessageError, Runtime,
+    operations::{ComponentError, ExecutionContext, Lane, OperationManager, ProtobufOperation, Resource, ServingError, Visibility},
+};
 
 /* === Constants === */
 
@@ -307,7 +305,7 @@ pub fn host(runtime: &Runtime<Bank>) -> Host<Bank> {
 pub fn settings(configuration: &str) -> PluginSettings {
     PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["example.host.v1.Progress/Publish", "provider.echo", "harmos.host.v1.Time/Get"]
+        host_operations: ["example.host.v1.Progress/Publish", "provider.echo", "harmos.plugin.v1.Time/Get"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),
@@ -317,7 +315,7 @@ pub fn settings(configuration: &str) -> PluginSettings {
 pub fn sandbox() -> Vec<u8> {
     crate::support::fixtures::component("harmos-sandbox-guest")
 }
-pub async fn call<Q: OperationRequest>(runtime: &OperationManager, request: Q) -> RuntimeResult<Q::Response> {
+pub async fn call<Q: OperationRequest>(runtime: &OperationManager, request: Q) -> harmos_runtime::Result<Q::Response> {
     let bytes = runtime.call_encoded(Q::ID, request.encode_to_vec()).await?;
     <Q::Response as prost::Message>::decode(bytes.as_slice()).map_err(|source| Error::OperationPayload {
         operation: Q::ID.into(),

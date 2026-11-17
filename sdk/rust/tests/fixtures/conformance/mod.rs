@@ -18,21 +18,20 @@ pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 
 /* === Imports === */
 
-use harmos::plugin::HostOperation;
-
 // Standard Library Imports
+use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 // Third Party Imports
+use prost::Message;
+use prost_types::FileDescriptorSet;
 
 // Local Imports
 use graph::Nested;
-use harmos::TimeGetResponse;
+use harmos::plugin::HostOperation;
+use harmos::plugin::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, Window};
-use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
+use harmos::{Classification, Failure, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
-use prost::Message as ProtoMessage;
-use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
-use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 /* === Constants === */
 
@@ -42,13 +41,13 @@ use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 /* === Structs === */
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostEcho {
     value: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateRequest")]
 struct CreateInvocation {
     operation: String,
@@ -56,31 +55,31 @@ struct CreateInvocation {
     payload: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateResponse")]
 struct CreatedInvocation {
     payload: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostPending {
     value: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostFail {
     value: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct HostWatch {
     value: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
 struct LocalInput {
     value: Vec<u8>,
@@ -88,7 +87,7 @@ struct LocalInput {
 
 macro_rules! peer_request {
     ($name:ident, $id:literal) => {
-        #[derive(Message)]
+        #[derive(harmos::Message)]
         #[harmos(package = "conformance.model.v1", file = "conformance/model/v1/fixture.proto", name = "Value")]
         struct $name {
             value: Vec<u8>,
@@ -112,10 +111,10 @@ peer_request!(OwnProtected, "example.plugin.v1.Lifecycle/Initialize");
 
 impl OperationRequest for CreateInvocation {
     type Response = CreatedInvocation;
-    const ID: &'static str = "harmos.host.v1.Invocations/Create";
+    const ID: &'static str = "application.host.v1.Invocations/Create";
 }
 
-impl Message for Value {
+impl harmos::Message for Value {
     fn name() -> String {
         "conformance.model.v1.Value".into()
     }
@@ -123,7 +122,7 @@ impl Message for Value {
         wire::types()
     }
 }
-impl Message for Values {
+impl harmos::Message for Values {
     fn name() -> String {
         "conformance.model.v1.Values".into()
     }
@@ -131,7 +130,7 @@ impl Message for Values {
         wire::types()
     }
 }
-impl Message for PayloadOnly {
+impl harmos::Message for PayloadOnly {
     fn name() -> String {
         "conformance.model.v1.PayloadOnly".into()
     }
@@ -139,7 +138,7 @@ impl Message for PayloadOnly {
         wire::types()
     }
 }
-impl Message for Graph {
+impl harmos::Message for Graph {
     fn name() -> String {
         "conformance.model.v1.Graph".into()
     }
@@ -147,7 +146,7 @@ impl Message for Graph {
         wire::types()
     }
 }
-impl Message for Nested {
+impl harmos::Message for Nested {
     fn name() -> String {
         "conformance.model.v1.Graph.Nested".into()
     }
@@ -191,26 +190,26 @@ impl OperationRequest for HostFail {
 
 pub fn plugin() -> Plugin {
     let interval = Stream::<Value>::new("conformance.interval");
-    let observer = Observer::new(&interval, sequence).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let observer = Observer::new(&interval, sequence).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
     let settings = Stream::<Value>::new("conformance.settings");
-    let configured = Observer::new(&settings, sequence).every(ProtoDuration { seconds: 1, nanos: 0 }).interval_setting("interval");
+    let configured = Observer::new(&settings, sequence).every(prost_types::Duration { seconds: 1, nanos: 0 }).interval_setting("interval");
     let children_stream = Stream::<Value>::new("conformance.window_children");
-    let children_observer = Observer::new(&children_stream, window_children).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let children_observer = Observer::new(&children_stream, window_children).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let context_stream = Stream::<Value>::new("conformance.window_context");
-    let context_observer = Observer::new(&context_stream, window_context).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let context_observer = Observer::new(&context_stream, window_context).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let failure_stream = Stream::<Value>::new("conformance.window_failure");
-    let failure_observer = Observer::new(&failure_stream, window_failure).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let failure_observer = Observer::new(&failure_stream, window_failure).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let watch_stream = Stream::<Value>::new("conformance.window_watch");
-    let watch_observer = Observer::new(&watch_stream, window_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let watch_observer = Observer::new(&watch_stream, window_watch).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let cancel_stream = Stream::<Value>::new("conformance.window_cancel");
-    let cancel_observer = Observer::new(&cancel_stream, window_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let cancel_observer = Observer::new(&cancel_stream, window_cancel).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let refusal_stream = Stream::<Value>::new("conformance.window_caller_refusal");
-    let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let window_stream = Stream::<Value>::new("conformance.window");
-    let window_observer = Observer::window(&window_stream, window).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let window_observer = Observer::window(&window_stream, window).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let oversized_stream = Stream::<Value>::new("conformance.oversized");
-    let oversized_observer = Observer::new(&oversized_stream, oversized).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let oversized_observer = Observer::new(&oversized_stream, oversized).every(prost_types::Duration { seconds: 1, nanos: 0 });
     Plugin::new("conformance", "1.0.0")
         .settings(SettingsDeclarations {
             values: vec![
@@ -251,7 +250,7 @@ pub fn plugin() -> Plugin {
                     title: "Interval".into(),
                     description: String::new(),
                     default: Some(SettingValue {
-                        value: Some(setting_value::Value::Duration(ProtoDuration { seconds: 2, nanos: 0 })),
+                        value: Some(setting_value::Value::Duration(prost_types::Duration { seconds: 2, nanos: 0 })),
                     }),
                 },
             ],
@@ -314,13 +313,13 @@ pub fn plugin() -> Plugin {
         .observer(observer)
         .observer(configured)
         .section(Graph {
-            interval: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+            interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
         })
 }
 
 async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
-    let request = <CreateInvocation as ProtoMessage>::decode(include_bytes!("caller-request.bin").as_slice())
+    let request = <CreateInvocation as prost::Message>::decode(include_bytes!("caller-request.bin").as_slice())
         .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
     match ctx.call(request).await {
         Err(harmos::Error::Failure(failure)) if value.value != b"propagate" => Ok(Value { value: failure.encode_to_vec() }),
@@ -338,33 +337,33 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
         b"retry" => Some(harmos::OperationPolicy {
             retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
+                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
                 deterministic_jitter: true,
             }),
             ..Default::default()
         }),
         b"deadline" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
-            attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
+            attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
         }),
         b"overall" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
-            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         b"retry-bound" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(ProtoDuration { seconds: 3600, nanos: 0 }),
+                initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
                 ..Default::default()
             }),
             ..Default::default()
         }),
         b"cancel" => Some(harmos::OperationPolicy {
-            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         _ => None,
@@ -388,8 +387,8 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
             Some(harmos::OperationPolicy {
                 retries: Some(harmos::RetryPolicy {
                     total_attempts: 3,
-                    initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-                    maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
+                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
                     deterministic_jitter: true,
                 }),
                 ..Default::default()
@@ -467,7 +466,7 @@ async fn sequence(ctx: &Context) -> Result<Value> {
     })
 }
 
-/// Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size.
+/// Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the harmos::Message Size.
 async fn oversized(ctx: &Context) -> Result<Value> {
     Ok(Value { value: vec![0; ctx.sequence() as usize] })
 }

@@ -15,17 +15,15 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::TimeSleepRequest;
-use harmos_protocol::host::TimeSleepResponse;
-
-use super::ClockAccess;
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
+use super::ClockAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::TimeSleepResponse;
 
 /* === Constants === */
 
@@ -48,9 +46,9 @@ impl ProtobufOperation for Sleep {
     type Response = TimeSleepResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.Time/Sleep";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Time", "Sleep"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<ClockAccess>()];
     fn admitted_wait(request: &Self::Request) -> Option<std::time::Duration> {
         duration(request).ok()

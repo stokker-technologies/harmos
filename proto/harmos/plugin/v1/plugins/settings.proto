@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Settings
+//
+// Plugin Settings Facility
+
+syntax = "proto3";
+
+package harmos.plugin.v1.plugins;
+
+// === Imports === //
+
+import "harmos/host/v1/plugins/settings.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Context facilities carried only by admitted plugin child calls.
+service Settings {
+  // Read declarations, complete values, revision and issued cut; plugin callers are restricted to their own entry.
+  rpc List(harmos.host.v1.plugins.SettingsListRequest) returns (harmos.host.v1.plugins.SettingsListResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

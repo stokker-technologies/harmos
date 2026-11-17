@@ -15,23 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::host::invocations_client::InvocationsClient;
-use harmos_protocol::model::Classification;
-use harmos_protocol::model::Failure;
-
 // Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-use super::{
-    app::App,
-    generated::messages::{Reply, Request},
-};
-use harmos_runtime::operations::{ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility};
-use prost::Message;
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -39,6 +23,20 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+// Third Party Imports
+use prost::Message;
+
+// Local Imports
+use super::{
+    app::App,
+    generated::messages::{Reply, Request},
+};
+use harmos_conformance::host::invocations_client::InvocationsClient;
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_runtime::operations::{ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -132,7 +130,7 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
     let cancel = OperationFactory::protobuf::<Cancel>().unwrap();
     let stop = OperationFactory::protobuf::<Stop>().unwrap();
     let cancel_contract = cancel.contract().unwrap();

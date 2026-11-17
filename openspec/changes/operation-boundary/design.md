@@ -392,3 +392,13 @@ backend copies committed data and captured control metadata, retaining history i
 it refuses nonempty or active targets. Disposal explicitly removes an offline primary
 backend's data and refuses live sessions or retained images. These operations do not copy
 or dispose the separate recovery journal; that remains owned by its recovery backend.
+
+## Host Wire Cutover Findings
+
+Host protobuf declaration validation read service metadata from the payload's pool.
+Private host declarations now validate their protocol-owned payload graph, private
+visibility and absence of a gRPC binding without a host service descriptor. Plugin facilities validate their own protocol services.
+Product wrappers reusing a library payload can supply `ProtobufOperation::service()`
+so their audience comes from their product descriptor rather than the payload owner.
+The reference product fixture owns its wrapper routes and generated roots; Harmos
+retains generic transport helpers and the internal payloads used by that fixture.

@@ -17,7 +17,7 @@ from argparse import ArgumentParser
 
 # Third Party Imports
 # Local Imports
-from harmos import Client
+from tests.fixtures.client import Client
 
 # Type Checking Imports
 

@@ -1,8 +1,4 @@
 # @generated from protocol descriptors; do not edit.
-from harmos._wire.host.v1.invocations_pb2 import InvocationsCancelResponse, InvocationsGetResponse, InvocationsWatchResponse
-from harmos._wire.host.v1.operations_pb2 import OperationsGetResponse, OperationsListResponse
-from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.model.v1.callers_pb2 import ALL, CALLERS_UNSPECIFIED, CLIENTS, PLUGINS, Callers
 from harmos._wire.model.v1.description_pb2 import Declarations, Section
 from harmos._wire.model.v1.failure_pb2 import (
@@ -55,14 +51,6 @@ from harmos._wire.model.v1.transfer_pb2 import (
     TransferFraming,
 )
 
-InvocationsCancelResponse.__module__ = "harmos"
-InvocationsGetResponse.__module__ = "harmos"
-InvocationsWatchResponse.__module__ = "harmos"
-OperationsGetResponse.__module__ = "harmos"
-OperationsListResponse.__module__ = "harmos"
-SettingsListResponse.__module__ = "harmos"
-TimeGetResponse.__module__ = "harmos"
-TimeSleepResponse.__module__ = "harmos"
 Declarations.__module__ = "harmos"
 Section.__module__ = "harmos"
 FailureValue.__module__ = "harmos"
@@ -117,14 +105,9 @@ __all__ = [
     "Grpc",
     "History",
     "InstanceState",
-    "InvocationsCancelResponse",
-    "InvocationsGetResponse",
-    "InvocationsWatchResponse",
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",
-    "OperationsGetResponse",
-    "OperationsListResponse",
     "PLUGINS",
     "PageRequest",
     "Position",
@@ -139,13 +122,10 @@ __all__ = [
     "SettingValue",
     "SettingValues",
     "SettingsDeclarations",
-    "SettingsListResponse",
     "StorageTransferSettings",
     "StreamDeclaration",
     "TRANSFER_FRAMING_BYTES",
     "TRANSFER_FRAMING_UNSPECIFIED",
-    "TimeGetResponse",
-    "TimeSleepResponse",
     "TransferFraming",
     "UPLOAD_STATE_ABANDONED",
     "UPLOAD_STATE_FINISHED",

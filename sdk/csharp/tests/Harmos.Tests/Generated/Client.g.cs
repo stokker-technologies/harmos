@@ -70,7 +70,7 @@ public sealed class AccessCertificatesResource
     var request = new CertificatesCreateRequest
     {
     };
-    var method = new Method<CertificatesCreateRequest, CertificatesCreateResponse>(MethodType.Unary, "harmos.host.v1.access.Certificates", "Create",
+    var method = new Method<CertificatesCreateRequest, CertificatesCreateResponse>(MethodType.Unary, "application.host.v1.access.Certificates", "Create",
         Marshallers.Create<CertificatesCreateRequest>(value => value.ToByteArray(), bytes => CertificatesCreateRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<CertificatesCreateResponse>(value => value.ToByteArray(), bytes => CertificatesCreateResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -98,7 +98,7 @@ public sealed class AccessListenerResource
     var request = new ListenerGetRequest
     {
     };
-    var method = new Method<ListenerGetRequest, ListenerGetResponse>(MethodType.Unary, "harmos.host.v1.access.Listener", "Get",
+    var method = new Method<ListenerGetRequest, ListenerGetResponse>(MethodType.Unary, "application.host.v1.access.Listener", "Get",
         Marshallers.Create<ListenerGetRequest>(value => value.ToByteArray(), bytes => ListenerGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<ListenerGetResponse>(value => value.ToByteArray(), bytes => ListenerGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -120,7 +120,7 @@ public sealed class AccessListenerResource
       Value = value,
       ExpectedRevision = expectedRevision,
     };
-    var method = new Method<ListenerSetRequest, ListenerSetResponse>(MethodType.Unary, "harmos.host.v1.access.Listener", "Set",
+    var method = new Method<ListenerSetRequest, ListenerSetResponse>(MethodType.Unary, "application.host.v1.access.Listener", "Set",
         Marshallers.Create<ListenerSetRequest>(value => value.ToByteArray(), bytes => ListenerSetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<ListenerSetResponse>(value => value.ToByteArray(), bytes => ListenerSetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -149,7 +149,7 @@ public sealed class AccessPairingsResource
     {
       Label = label,
     };
-    var method = new Method<PairingsCreateRequest, PairingsCreateResponse>(MethodType.Unary, "harmos.host.v1.access.Pairings", "Create",
+    var method = new Method<PairingsCreateRequest, PairingsCreateResponse>(MethodType.Unary, "application.host.v1.access.Pairings", "Create",
         Marshallers.Create<PairingsCreateRequest>(value => value.ToByteArray(), bytes => PairingsCreateRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PairingsCreateResponse>(value => value.ToByteArray(), bytes => PairingsCreateResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -173,7 +173,7 @@ public sealed class AccessPairingsResource
     {
       request.At = at;
     }
-    var method = new Method<PairingsListRequest, PairingsListResponse>(MethodType.Unary, "harmos.host.v1.access.Pairings", "List",
+    var method = new Method<PairingsListRequest, PairingsListResponse>(MethodType.Unary, "application.host.v1.access.Pairings", "List",
         Marshallers.Create<PairingsListRequest>(value => value.ToByteArray(), bytes => PairingsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PairingsListResponse>(value => value.ToByteArray(), bytes => PairingsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -194,7 +194,7 @@ public sealed class AccessPairingsResource
     {
       Name = name,
     };
-    var method = new Method<PairingsDeleteRequest, PairingsDeleteResponse>(MethodType.Unary, "harmos.host.v1.access.Pairings", "Delete",
+    var method = new Method<PairingsDeleteRequest, PairingsDeleteResponse>(MethodType.Unary, "application.host.v1.access.Pairings", "Delete",
         Marshallers.Create<PairingsDeleteRequest>(value => value.ToByteArray(), bytes => PairingsDeleteRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PairingsDeleteResponse>(value => value.ToByteArray(), bytes => PairingsDeleteResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -225,7 +225,7 @@ public sealed class InvocationsResource
       Fingerprint = fingerprint,
       Payload = payload,
     };
-    var method = new Method<InvocationsCreateRequest, InvocationsCreateResponse>(MethodType.Unary, "harmos.host.v1.Invocations", "Create",
+    var method = new Method<InvocationsCreateRequest, InvocationsCreateResponse>(MethodType.Unary, "application.host.v1.Invocations", "Create",
         Marshallers.Create<InvocationsCreateRequest>(value => value.ToByteArray(), bytes => InvocationsCreateRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<InvocationsCreateResponse>(value => value.ToByteArray(), bytes => InvocationsCreateResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -246,7 +246,7 @@ public sealed class InvocationsResource
     {
       Instance = instance,
     };
-    var method = new Method<InvocationsGetRequest, InvocationsGetResponse>(MethodType.Unary, "harmos.host.v1.Invocations", "Get",
+    var method = new Method<InvocationsGetRequest, InvocationsGetResponse>(MethodType.Unary, "application.host.v1.Invocations", "Get",
         Marshallers.Create<InvocationsGetRequest>(value => value.ToByteArray(), bytes => InvocationsGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<InvocationsGetResponse>(value => value.ToByteArray(), bytes => InvocationsGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -268,7 +268,7 @@ public sealed class InvocationsResource
       Instance = instance,
       Reason = reason,
     };
-    var method = new Method<InvocationsCancelRequest, InvocationsCancelResponse>(MethodType.Unary, "harmos.host.v1.Invocations", "Cancel",
+    var method = new Method<InvocationsCancelRequest, InvocationsCancelResponse>(MethodType.Unary, "application.host.v1.Invocations", "Cancel",
         Marshallers.Create<InvocationsCancelRequest>(value => value.ToByteArray(), bytes => InvocationsCancelRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<InvocationsCancelResponse>(value => value.ToByteArray(), bytes => InvocationsCancelResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -289,7 +289,7 @@ public sealed class InvocationsResource
     {
       Instance = instance,
     };
-    var method = new Method<InvocationsWatchRequest, InvocationsWatchResponse>(MethodType.ServerStreaming, "harmos.host.v1.Invocations", "Watch",
+    var method = new Method<InvocationsWatchRequest, InvocationsWatchResponse>(MethodType.ServerStreaming, "application.host.v1.Invocations", "Watch",
         Marshallers.Create<InvocationsWatchRequest>(value => value.ToByteArray(), bytes => InvocationsWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<InvocationsWatchResponse>(value => value.ToByteArray(), bytes => InvocationsWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -395,7 +395,7 @@ public sealed class OperationsResource
     var request = new OperationsListRequest
     {
     };
-    var method = new Method<OperationsListRequest, OperationsListResponse>(MethodType.Unary, "harmos.host.v1.Operations", "List",
+    var method = new Method<OperationsListRequest, OperationsListResponse>(MethodType.Unary, "application.host.v1.Operations", "List",
         Marshallers.Create<OperationsListRequest>(value => value.ToByteArray(), bytes => OperationsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<OperationsListResponse>(value => value.ToByteArray(), bytes => OperationsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -416,7 +416,7 @@ public sealed class OperationsResource
     {
       Id = id,
     };
-    var method = new Method<OperationsGetRequest, OperationsGetResponse>(MethodType.Unary, "harmos.host.v1.Operations", "Get",
+    var method = new Method<OperationsGetRequest, OperationsGetResponse>(MethodType.Unary, "application.host.v1.Operations", "Get",
         Marshallers.Create<OperationsGetRequest>(value => value.ToByteArray(), bytes => OperationsGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<OperationsGetResponse>(value => value.ToByteArray(), bytes => OperationsGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -453,7 +453,7 @@ public sealed class PluginsResource
     {
       request.At = at;
     }
-    var method = new Method<PluginsGetRequest, PluginsGetResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Get",
+    var method = new Method<PluginsGetRequest, PluginsGetResponse>(MethodType.Unary, "application.host.v1.Plugins", "Get",
         Marshallers.Create<PluginsGetRequest>(value => value.ToByteArray(), bytes => PluginsGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsGetResponse>(value => value.ToByteArray(), bytes => PluginsGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -477,7 +477,7 @@ public sealed class PluginsResource
     {
       request.At = at;
     }
-    var method = new Method<PluginsListRequest, PluginsListResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "List",
+    var method = new Method<PluginsListRequest, PluginsListResponse>(MethodType.Unary, "application.host.v1.Plugins", "List",
         Marshallers.Create<PluginsListRequest>(value => value.ToByteArray(), bytes => PluginsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsListResponse>(value => value.ToByteArray(), bytes => PluginsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -505,7 +505,7 @@ public sealed class PluginsResource
     {
       request.At = at;
     }
-    var method = new Method<PluginsWatchRequest, PluginsWatchResponse>(MethodType.ServerStreaming, "harmos.host.v1.Plugins", "Watch",
+    var method = new Method<PluginsWatchRequest, PluginsWatchResponse>(MethodType.ServerStreaming, "application.host.v1.Plugins", "Watch",
         Marshallers.Create<PluginsWatchRequest>(value => value.ToByteArray(), bytes => PluginsWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsWatchResponse>(value => value.ToByteArray(), bytes => PluginsWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -538,7 +538,7 @@ public sealed class PluginsResource
       Placement = placement,
       Value = value,
     };
-    var method = new Method<PluginsCreateRequest, PluginsCreateResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Create",
+    var method = new Method<PluginsCreateRequest, PluginsCreateResponse>(MethodType.Unary, "application.host.v1.Plugins", "Create",
         Marshallers.Create<PluginsCreateRequest>(value => value.ToByteArray(), bytes => PluginsCreateRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsCreateResponse>(value => value.ToByteArray(), bytes => PluginsCreateResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -561,7 +561,7 @@ public sealed class PluginsResource
       Value = value,
       ExpectedRevision = expectedRevision,
     };
-    var method = new Method<PluginsSetRequest, PluginsSetResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Set",
+    var method = new Method<PluginsSetRequest, PluginsSetResponse>(MethodType.Unary, "application.host.v1.Plugins", "Set",
         Marshallers.Create<PluginsSetRequest>(value => value.ToByteArray(), bytes => PluginsSetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsSetResponse>(value => value.ToByteArray(), bytes => PluginsSetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -583,7 +583,7 @@ public sealed class PluginsResource
       Name = name,
       ExpectedRevision = expectedRevision,
     };
-    var method = new Method<PluginsDeleteRequest, PluginsDeleteResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Delete",
+    var method = new Method<PluginsDeleteRequest, PluginsDeleteResponse>(MethodType.Unary, "application.host.v1.Plugins", "Delete",
         Marshallers.Create<PluginsDeleteRequest>(value => value.ToByteArray(), bytes => PluginsDeleteRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsDeleteResponse>(value => value.ToByteArray(), bytes => PluginsDeleteResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -605,7 +605,7 @@ public sealed class PluginsResource
       Name = name,
       ExpectedRevision = expectedRevision,
     };
-    var method = new Method<PluginsRestartRequest, PluginsRestartResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Restart",
+    var method = new Method<PluginsRestartRequest, PluginsRestartResponse>(MethodType.Unary, "application.host.v1.Plugins", "Restart",
         Marshallers.Create<PluginsRestartRequest>(value => value.ToByteArray(), bytes => PluginsRestartRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsRestartResponse>(value => value.ToByteArray(), bytes => PluginsRestartResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -629,7 +629,7 @@ public sealed class PluginsResource
       ExpectedRevision = expectedRevision,
       RequestId = requestId ?? Guid.NewGuid().ToString("N"),
     };
-    var method = new Method<PluginsReplaceRequest, PluginsReplaceResponse>(MethodType.Unary, "harmos.host.v1.Plugins", "Replace",
+    var method = new Method<PluginsReplaceRequest, PluginsReplaceResponse>(MethodType.Unary, "application.host.v1.Plugins", "Replace",
         Marshallers.Create<PluginsReplaceRequest>(value => value.ToByteArray(), bytes => PluginsReplaceRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<PluginsReplaceResponse>(value => value.ToByteArray(), bytes => PluginsReplaceResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -694,7 +694,7 @@ public sealed class PluginsSettingsResource
     {
       request.At = at;
     }
-    var method = new Method<SettingsListRequest, SettingsListResponse>(MethodType.Unary, "harmos.host.v1.plugins.Settings", "List",
+    var method = new Method<SettingsListRequest, SettingsListResponse>(MethodType.Unary, "application.host.v1.plugins.Settings", "List",
         Marshallers.Create<SettingsListRequest>(value => value.ToByteArray(), bytes => SettingsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<SettingsListResponse>(value => value.ToByteArray(), bytes => SettingsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -718,7 +718,7 @@ public sealed class PluginsSettingsResource
       ExpectedRevision = expectedRevision,
       RequestId = requestId ?? Guid.NewGuid().ToString("N"),
     };
-    var method = new Method<SettingsSetRequest, SettingsSetResponse>(MethodType.Unary, "harmos.host.v1.plugins.Settings", "Set",
+    var method = new Method<SettingsSetRequest, SettingsSetResponse>(MethodType.Unary, "application.host.v1.plugins.Settings", "Set",
         Marshallers.Create<SettingsSetRequest>(value => value.ToByteArray(), bytes => SettingsSetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<SettingsSetResponse>(value => value.ToByteArray(), bytes => SettingsSetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -750,7 +750,7 @@ public sealed class SchemasResource
     {
       request.Schema = schema;
     }
-    var method = new Method<SchemasListRequest, SchemasListResponse>(MethodType.Unary, "harmos.host.v1.Schemas", "List",
+    var method = new Method<SchemasListRequest, SchemasListResponse>(MethodType.Unary, "application.host.v1.Schemas", "List",
         Marshallers.Create<SchemasListRequest>(value => value.ToByteArray(), bytes => SchemasListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<SchemasListResponse>(value => value.ToByteArray(), bytes => SchemasListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -784,7 +784,7 @@ public sealed class StatusResource
     var request = new StatusGetRequest
     {
     };
-    var method = new Method<StatusGetRequest, StatusGetResponse>(MethodType.Unary, "harmos.host.v1.Status", "Get",
+    var method = new Method<StatusGetRequest, StatusGetResponse>(MethodType.Unary, "application.host.v1.Status", "Get",
         Marshallers.Create<StatusGetRequest>(value => value.ToByteArray(), bytes => StatusGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<StatusGetResponse>(value => value.ToByteArray(), bytes => StatusGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -808,7 +808,7 @@ public sealed class StatusResource
     {
       request.At = at;
     }
-    var method = new Method<StatusWatchRequest, StatusWatchResponse>(MethodType.ServerStreaming, "harmos.host.v1.Status", "Watch",
+    var method = new Method<StatusWatchRequest, StatusWatchResponse>(MethodType.ServerStreaming, "application.host.v1.Status", "Watch",
         Marshallers.Create<StatusWatchRequest>(value => value.ToByteArray(), bytes => StatusWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<StatusWatchResponse>(value => value.ToByteArray(), bytes => StatusWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -848,7 +848,7 @@ public sealed class StatusDiagnosticsResource
       Offset = offset,
       MaxBytes = maxBytes,
     };
-    var method = new Method<DiagnosticsGetRequest, DiagnosticsGetResponse>(MethodType.Unary, "harmos.host.v1.status.Diagnostics", "Get",
+    var method = new Method<DiagnosticsGetRequest, DiagnosticsGetResponse>(MethodType.Unary, "application.host.v1.status.Diagnostics", "Get",
         Marshallers.Create<DiagnosticsGetRequest>(value => value.ToByteArray(), bytes => DiagnosticsGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<DiagnosticsGetResponse>(value => value.ToByteArray(), bytes => DiagnosticsGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -884,7 +884,7 @@ public sealed class StatusLogsResource
     {
       request.Page = page;
     }
-    var method = new Method<LogsListRequest, LogsListResponse>(MethodType.Unary, "harmos.host.v1.status.Logs", "List",
+    var method = new Method<LogsListRequest, LogsListResponse>(MethodType.Unary, "application.host.v1.status.Logs", "List",
         Marshallers.Create<LogsListRequest>(value => value.ToByteArray(), bytes => LogsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<LogsListResponse>(value => value.ToByteArray(), bytes => LogsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -910,7 +910,7 @@ public sealed class StatusLogsResource
     {
       request.At = at;
     }
-    var method = new Method<LogsWatchRequest, LogsWatchResponse>(MethodType.ServerStreaming, "harmos.host.v1.status.Logs", "Watch",
+    var method = new Method<LogsWatchRequest, LogsWatchResponse>(MethodType.ServerStreaming, "application.host.v1.status.Logs", "Watch",
         Marshallers.Create<LogsWatchRequest>(value => value.ToByteArray(), bytes => LogsWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<LogsWatchResponse>(value => value.ToByteArray(), bytes => LogsWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -955,7 +955,7 @@ public sealed class StatusTraceEventsResource
     {
       request.Page = page;
     }
-    var method = new Method<TraceEventsListRequest, TraceEventsListResponse>(MethodType.Unary, "harmos.host.v1.status.TraceEvents", "List",
+    var method = new Method<TraceEventsListRequest, TraceEventsListResponse>(MethodType.Unary, "application.host.v1.status.TraceEvents", "List",
         Marshallers.Create<TraceEventsListRequest>(value => value.ToByteArray(), bytes => TraceEventsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<TraceEventsListResponse>(value => value.ToByteArray(), bytes => TraceEventsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -981,7 +981,7 @@ public sealed class StatusTraceEventsResource
     {
       request.At = at;
     }
-    var method = new Method<TraceEventsWatchRequest, TraceEventsWatchResponse>(MethodType.ServerStreaming, "harmos.host.v1.status.TraceEvents", "Watch",
+    var method = new Method<TraceEventsWatchRequest, TraceEventsWatchResponse>(MethodType.ServerStreaming, "application.host.v1.status.TraceEvents", "Watch",
         Marshallers.Create<TraceEventsWatchRequest>(value => value.ToByteArray(), bytes => TraceEventsWatchRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<TraceEventsWatchResponse>(value => value.ToByteArray(), bytes => TraceEventsWatchResponse.Parser.ParseFrom(bytes)));
     using var linked = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, cancellationToken);
@@ -1022,7 +1022,7 @@ public sealed class StreamsResource
     {
       request.Schema = schema;
     }
-    var method = new Method<StreamsListRequest, StreamsListResponse>(MethodType.Unary, "harmos.host.v1.Streams", "List",
+    var method = new Method<StreamsListRequest, StreamsListResponse>(MethodType.Unary, "application.host.v1.Streams", "List",
         Marshallers.Create<StreamsListRequest>(value => value.ToByteArray(), bytes => StreamsListRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<StreamsListResponse>(value => value.ToByteArray(), bytes => StreamsListResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -1050,7 +1050,7 @@ public sealed class TimeResource
     var request = new TimeGetRequest
     {
     };
-    var method = new Method<TimeGetRequest, TimeGetResponse>(MethodType.Unary, "harmos.host.v1.Time", "Get",
+    var method = new Method<TimeGetRequest, TimeGetResponse>(MethodType.Unary, "application.host.v1.Time", "Get",
         Marshallers.Create<TimeGetRequest>(value => value.ToByteArray(), bytes => TimeGetRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<TimeGetResponse>(value => value.ToByteArray(), bytes => TimeGetResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);
@@ -1071,7 +1071,7 @@ public sealed class TimeResource
     {
       Duration = duration,
     };
-    var method = new Method<TimeSleepRequest, TimeSleepResponse>(MethodType.Unary, "harmos.host.v1.Time", "Sleep",
+    var method = new Method<TimeSleepRequest, TimeSleepResponse>(MethodType.Unary, "application.host.v1.Time", "Sleep",
         Marshallers.Create<TimeSleepRequest>(value => value.ToByteArray(), bytes => TimeSleepRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<TimeSleepResponse>(value => value.ToByteArray(), bytes => TimeSleepResponse.Parser.ParseFrom(bytes)));
     using var call = invoker.AsyncUnaryCall(method, null, context, request);

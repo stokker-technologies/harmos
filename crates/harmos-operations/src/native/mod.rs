@@ -14,6 +14,7 @@
 pub mod access;
 pub mod clock;
 mod error;
+pub mod facilities;
 pub mod lifecycle;
 pub mod plugins;
 pub mod status;

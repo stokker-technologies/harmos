@@ -15,13 +15,11 @@
 
 /* === Imports === */
 
-use harmos::plugin::HostOperation;
-
 // Standard Library Imports
+use std::result;
 use std::{
     env, fs,
     num::NonZeroUsize,
-    result::Result as StdResult,
     sync::{
         OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -30,19 +28,21 @@ use std::{
 };
 
 // Third Party Imports
-use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
+use prost::Message;
 use prost::{
-    DecodeError, Message as _,
+    DecodeError,
     bytes::{Buf, BufMut},
     encoding::{DecodeContext, WireType},
 };
 use prost_reflect::{DescriptorPool, ReflectMessage};
-use prost_types::{Duration as ProtoDuration, FileDescriptorSet, Timestamp};
+use prost_types::{FileDescriptorSet, Timestamp};
 
 // Local Imports
-use harmos::TimeGetResponse;
+use harmos::plugin::HostOperation;
+use harmos::plugin::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, Window};
-use harmos::{Message, OperationRequest, Result, Visibility};
+use harmos::{OperationRequest, Result, Visibility};
+use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
 use harmos_protocol::model::Classification;
 use harmos_protocol::model::Failure;
 use harmos_protocol::model::OperationPolicy;
@@ -67,7 +67,9 @@ macro_rules! host_message {
             fn encode_raw(&self, buf: &mut impl BufMut) {
                 prost::encoding::bytes::encode(HOST.get().unwrap().$index, &self.value, buf);
             }
-            fn merge_field(&mut self, tag: u32, wire: WireType, buf: &mut impl Buf, context: DecodeContext) -> StdResult<(), DecodeError> {
+            fn merge_field(
+                &mut self, tag: u32, wire: WireType, buf: &mut impl Buf, context: DecodeContext,
+            ) -> result::Result<(), DecodeError> {
                 if tag == HOST.get().unwrap().$index {
                     prost::encoding::bytes::merge(wire, &mut self.value, buf, context)
                 } else {
@@ -90,18 +92,18 @@ host_message!(HostOutput, 4);
 
 /* === Structs === */
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 struct Value {
     value: Vec<u8>,
 }
 
-#[derive(Message)]
+#[derive(harmos::Message)]
 struct Reading {
     value: f64,
 }
 
 /// The Columns of `Reading`.
-#[derive(Message)]
+#[derive(harmos::Message)]
 struct Readings {
     value: Vec<f64>,
 }
@@ -148,7 +150,7 @@ impl Drop for DeviceDemand {
 
 /* === Implementations === */
 
-impl Message for HostInput {
+impl harmos::Message for HostInput {
     fn name() -> String {
         HOST.get().unwrap().1.clone()
     }
@@ -157,7 +159,7 @@ impl Message for HostInput {
         harmos_protocol::schema::message_types(types, request).expect("projected host request descriptors")
     }
 }
-impl Message for HostOutput {
+impl harmos::Message for HostOutput {
     fn name() -> String {
         HOST.get().unwrap().2.clone()
     }
@@ -182,7 +184,7 @@ impl<T: prost::Message + Default> prost::Message for CallerProbe<T> {
     fn encode_raw(&self, buf: &mut impl BufMut) {
         self.0.encode_raw(buf);
     }
-    fn merge_field(&mut self, tag: u32, wire: WireType, buf: &mut impl Buf, context: DecodeContext) -> StdResult<(), DecodeError> {
+    fn merge_field(&mut self, tag: u32, wire: WireType, buf: &mut impl Buf, context: DecodeContext) -> result::Result<(), DecodeError> {
         self.0.merge_field(tag, wire, buf, context)
     }
     fn encoded_len(&self) -> usize {
@@ -193,7 +195,7 @@ impl<T: prost::Message + Default> prost::Message for CallerProbe<T> {
     }
 }
 
-impl<T: ReflectMessage + Default + 'static> Message for CallerProbe<T> {
+impl<T: ReflectMessage + Default + 'static> harmos::Message for CallerProbe<T> {
     fn name() -> String {
         T::default().descriptor().full_name().into()
     }
@@ -238,7 +240,7 @@ impl OperationRequest for HostInput {
     type Response = HostOutput;
     const ID: &'static str = "fixture.host";
 }
-impl Message for PublicInput {
+impl harmos::Message for PublicInput {
     fn name() -> String {
         Value::name()
     }
@@ -250,7 +252,7 @@ impl OperationRequest for PublicInput {
     type Response = Value;
     const ID: &'static str = "example.plugin.v1.Steps/Execute";
 }
-impl Message for ProtectedInput {
+impl harmos::Message for ProtectedInput {
     fn name() -> String {
         Value::name()
     }
@@ -262,7 +264,7 @@ impl OperationRequest for ProtectedInput {
     type Response = Value;
     const ID: &'static str = "example.plugin.v1.Lifecycle/Initialize";
 }
-impl Message for MissingInput {
+impl harmos::Message for MissingInput {
     fn name() -> String {
         Value::name()
     }
@@ -275,7 +277,7 @@ struct PeerInput {
     #[prost(bytes = "vec", tag = "1")]
     value: Vec<u8>,
 }
-impl Message for PeerInput {
+impl harmos::Message for PeerInput {
     fn name() -> String {
         Value::name()
     }
@@ -310,7 +312,7 @@ fn main() -> Result<()> {
     HOST.set((types, request, response, request_tag, response_tag)).unwrap();
     let plugin = if mode == "scoped-sleep" {
         let stream = Stream::<Value>::new("fixture.scoped_samples");
-        let observer = Observer::new(&stream, scoped_sleep_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let observer = Observer::new(&stream, scoped_sleep_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_sleep", "1.0.0")
             .requires_host(HostOperation::TimeGet)
             .requires_host(HostOperation::TimeSleep)
@@ -318,7 +320,7 @@ fn main() -> Result<()> {
             .observer(observer)
     } else if mode == "counted-sleep" {
         let stream = Stream::<Value>::new("fixture.counted_samples");
-        let observer = Observer::new(&stream, counted_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let observer = Observer::new(&stream, counted_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("counted_sleep", "1.0.0")
             .requires_host(HostOperation::TimeSleep)
             .stream(stream)
@@ -326,7 +328,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.count_after", count_after).visibility(Visibility::Protected))
     } else if mode == "scoped-publications" {
         let stream = Stream::<Value>::new("fixture.scoped_samples");
-        let observer = Observer::new(&stream, scoped_observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let observer = Observer::new(&stream, scoped_observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("scoped_publications", "1.0.0")
             .requires_host(HostOperation::TimeGet)
             .requires_host(HostOperation::TimeSleep)
@@ -336,9 +338,10 @@ fn main() -> Result<()> {
     } else if mode == "windows" {
         // One-Second Samples: Host-Length Windows on One Stream, a Plugin Setting's Length on the Other.
         let counts = Stream::<Value>::new("fixture.counts");
-        let counted = Observer::new(&counts, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let counted = Observer::new(&counts, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
         let overridden = Stream::<Value>::new("fixture.override");
-        let override_observer = Observer::new(&overridden, observe).every(ProtoDuration { seconds: 1, nanos: 0 }).window_setting("window");
+        let override_observer =
+            Observer::new(&overridden, observe).every(prost_types::Duration { seconds: 1, nanos: 0 }).window_setting("window");
         Plugin::new("windows", "1.0.0")
             .settings(duration_setting("window", "Window", 3, 0))
             .stream(counts)
@@ -346,31 +349,32 @@ fn main() -> Result<()> {
             .observer(counted)
             .observer(override_observer)
     } else if mode == "split" {
-        // Two-Second Windows of One-Microsecond Samples Outgrow One Message.
+        // Two-Second Windows of One-Microsecond Samples Outgrow One harmos::Message.
         let stream = Stream::<Reading>::new("fixture.split");
-        let observer = Observer::window(&stream, split_observe).every(ProtoDuration { seconds: 0, nanos: 1_000 }).window_setting("window");
+        let observer =
+            Observer::window(&stream, split_observe).every(prost_types::Duration { seconds: 0, nanos: 1_000 }).window_setting("window");
         Plugin::new("split", "1.0.0").settings(duration_setting("window", "Window", 2, 0)).stream(stream).observer(observer)
     } else if mode == "bulky" {
         // One-Mebibyte Samples Every Second: One Long Window Outgrows the Shared Publication Pool.
         let stream = Stream::<Value>::new("fixture.bulky");
-        let observer =
-            Observer::new(&stream, async |_: &Context| Ok(Value { value: vec![0; 1 << 20] })).every(ProtoDuration { seconds: 1, nanos: 0 });
+        let observer = Observer::new(&stream, async |_: &Context| Ok(Value { value: vec![0; 1 << 20] }))
+            .every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("bulky", "1.0.0").stream(stream).observer(observer)
     } else if mode == "failing" {
         // Every Window Fails in the Plugin's Own Observer.
         let stream = Stream::<Value>::new("fixture.failing");
         let observer =
             Observer::new(&stream, async |_: &Context| -> Result<Value> { Err(harmos::Error::Invalid("Sensor Offline".into())) })
-                .every(ProtoDuration { seconds: 1, nanos: 0 });
+                .every(prost_types::Duration { seconds: 1, nanos: 0 });
         Plugin::new("failing", "1.0.0").stream(stream).observer(observer)
     } else if mode == "dense" {
         // One-Microsecond Readings Without a Window Setting: the Host's Window Length Alone Sizes Each Window.
         let stream = Stream::<Reading>::new("fixture.dense");
-        let observer = Observer::window(&stream, split_observe).every(ProtoDuration { seconds: 0, nanos: 1_000 });
+        let observer = Observer::window(&stream, split_observe).every(prost_types::Duration { seconds: 0, nanos: 1_000 });
         Plugin::new("dense", "1.0.0").stream(stream).observer(observer)
     } else if mode == "interval" {
         let stream = Stream::<Value>::new("fixture.interval");
-        let observer = Observer::new(&stream, observe).every(ProtoDuration { seconds: 60, nanos: 0 }).interval_setting("interval");
+        let observer = Observer::new(&stream, observe).every(prost_types::Duration { seconds: 60, nanos: 0 }).interval_setting("interval");
         Plugin::new("observer", "1.0.0")
             .settings(SettingsDeclarations {
                 values: vec![SettingDeclaration {
@@ -378,7 +382,7 @@ fn main() -> Result<()> {
                     title: "Interval".into(),
                     description: String::new(),
                     default: Some(SettingValue {
-                        value: Some(setting_value::Value::Duration(ProtoDuration { seconds: 1, nanos: 0 })),
+                        value: Some(setting_value::Value::Duration(prost_types::Duration { seconds: 1, nanos: 0 })),
                     }),
                 }],
             })
@@ -390,7 +394,7 @@ fn main() -> Result<()> {
             Operation::new("fixture.retry", retry).visibility(Visibility::Protected).replay_safe().policy(OperationPolicy {
                 retries: Some(RetryPolicy {
                     total_attempts: 3,
-                    initial: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+                    initial: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -399,16 +403,16 @@ fn main() -> Result<()> {
     } else if mode == "deadline" {
         Plugin::new("deadline", "1.0.0").requires_host(HostOperation::TimeGet).requires_host(HostOperation::TimeSleep).operation(
             Operation::new("fixture.clock", clock).visibility(Visibility::Protected).policy(OperationPolicy {
-                timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
-                attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+                timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
+                attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
                 ..Default::default()
             }),
         )
     } else if mode == "twins" {
         let left = Stream::<Value>::new("fixture.left");
         let right = Stream::<Value>::new("fixture.right");
-        let left_observer = Observer::new(&left, observe).every(ProtoDuration { seconds: 1, nanos: 0 });
-        let right_observer = Observer::new(&right, observe).every(ProtoDuration { seconds: 2, nanos: 0 });
+        let left_observer = Observer::new(&left, observe).every(prost_types::Duration { seconds: 1, nanos: 0 });
+        let right_observer = Observer::new(&right, observe).every(prost_types::Duration { seconds: 2, nanos: 0 });
         Plugin::new("twins", "1.0.0")
             .stream(left)
             .stream(right)
@@ -469,7 +473,7 @@ fn main() -> Result<()> {
                 .visibility(Visibility::Protected),
             )
             .operation(Operation::new("fixture.peer", peer).visibility(Visibility::Public).policy(OperationPolicy {
-                cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
+                cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
             .operation(Operation::new("example.plugin.v1.Steps/Execute", echo).visibility(Visibility::Public))
@@ -492,7 +496,7 @@ fn main() -> Result<()> {
             .requires::<PublicInput>()
             .requires::<PeerInput>()
             .operation(Operation::new("fixture.peer_forward", peer_forward).visibility(Visibility::Protected).policy(OperationPolicy {
-                cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
+                cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
             .requires::<ProtectedInput>()
@@ -502,7 +506,7 @@ fn main() -> Result<()> {
             .operation(Operation::new("fixture.forward", forward).visibility(Visibility::Protected))
             .operation(Operation::new("fixture.failure", failure).visibility(Visibility::Protected))
             .operation(Operation::new("fixture.wait", wait).visibility(Visibility::Protected).policy(OperationPolicy {
-                cancellation_timeout: Some(ProtoDuration { seconds: 30, nanos: 0 }),
+                cancellation_timeout: Some(prost_types::Duration { seconds: 30, nanos: 0 }),
                 ..Default::default()
             }))
     };
@@ -533,7 +537,7 @@ fn duration_setting(name: &str, title: &str, seconds: i64, nanos: i32) -> Settin
             title: title.into(),
             description: String::new(),
             default: Some(SettingValue {
-                value: Some(setting_value::Value::Duration(ProtoDuration { seconds, nanos })),
+                value: Some(setting_value::Value::Duration(prost_types::Duration { seconds, nanos })),
             }),
         }],
     }

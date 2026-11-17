@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Listener
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1.access;
+
+// === Imports === //
+
+import "harmos/host/v1/access/listener.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Listener {
+  // Read the persisted listener value, conditional revision and currently bound endpoint.
+  rpc Get(harmos.host.v1.access.ListenerGetRequest) returns (harmos.host.v1.access.ListenerGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Validate and apply the complete listener value at its expected revision; failed staging preserves the active listener and revision conflicts refuse.
+  rpc Set(harmos.host.v1.access.ListenerSetRequest) returns (harmos.host.v1.access.ListenerSetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

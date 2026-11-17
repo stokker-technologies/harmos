@@ -15,19 +15,18 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::plugin::ChildRequest;
-
 // Standard Library Imports
 use std::sync::{Arc, Weak};
 
 // Third Party Imports
-use harmos_protocol::model;
 
 // Local Imports
 use super::*;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::model;
+use harmos_protocol::plugin::ChildRequest;
 
 /* === Constants === */
 
@@ -157,7 +156,7 @@ impl Manager {
             OperationFactory::protobuf::<harmos_operations::clock::Get>()
                 .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Get>),
         ];
-        for factory in factories {
+        for factory in factories.into_iter().chain(harmos_operations::facilities::factories()) {
             let factory = factory.map_err(|source| Error::OperationFailed {
                 operation: "Time".into(),
                 source: Arc::new(source),
@@ -271,7 +270,7 @@ impl crate::operations::Context<'_> {
     }
 
     pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
-        if child.background && child.operation != "harmos.host.v1.Time/Sleep" {
+        if child.background && child.operation != "harmos.plugin.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
                 reason: "Call Plugin Child permits background waits only for Time.Sleep",

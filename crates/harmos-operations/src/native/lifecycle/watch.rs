@@ -13,13 +13,17 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsWatchRequest;
-use harmos_protocol::host::InvocationsWatchResponse;
+// Standard Library Imports
 
+// Third Party Imports
+
+// Local Imports
 use crate::Error;
 use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_operations::operations::instance::Id;
+use harmos_protocol::host::InvocationsWatchRequest;
+use harmos_protocol::host::InvocationsWatchResponse;
 
 use crate::host::declarations::Events;
 
@@ -44,9 +48,9 @@ impl ProtobufOperation for Watch {
     type Response = InvocationsWatchResponse;
     type Endpoints = ProtobufOutput<InvocationsWatchResponse>;
     const ID: &'static str = "harmos.host.v1.Invocations/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Watch"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::WATCH_POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {

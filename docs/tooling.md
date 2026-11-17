@@ -366,8 +366,8 @@ Generate only a composed Python root into a product-owned module with:
 mise run generate -- --sdk python --descriptors path/to/product-descriptors.bin --output path/to/generated/client.py --namespace application
 ```
 
-Each language builds one complete SDK containing plugin authoring, its client root
-and host protocol needs. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
+Each language builds reusable carrier helpers, protocol support and connection plumbing.
+Products own authoring SDKs and generate their own client resources from product descriptors. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
 C# is NuGet `Harmos`, and C++ is CMake `Harmos` (`Harmos::Cpp`). No audience
 selector exists. The host enforces faces and visibility at runtime. Context methods
 remain child calls and have no independent gRPC listener.
@@ -542,7 +542,8 @@ against the packaged SDK. C++ stages the standalone example and test input in
 
 ## Install a Plugin from Its Own Codebase
 
-Each SDK includes a short entry program that uses both authoring and the client root:
+Each SDK includes a reference-product fixture entry program that uses carrier helpers
+and the fixture product's generated client root:
 [Rust](../sdk/rust/src/bin/install_itself.rs),
 [Python](../sdk/python/tests/fixtures/conformance/install_itself.py),
 [C#](../sdk/csharp/tests/Harmos.Conformance/InstallItself.cs) and

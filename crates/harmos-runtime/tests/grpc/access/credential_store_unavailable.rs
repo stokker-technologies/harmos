@@ -17,10 +17,10 @@
 use std::sync::atomic::Ordering;
 
 // Third Party Imports
-use harmos_protocol::host::access;
 
 // Local Imports
 use super::support::*;
+use harmos_protocol::host::access;
 
 /* === Constants === */
 
@@ -47,9 +47,9 @@ async fn credential_store_unavailable() -> Result {
     // Establish Access Before the Store Becomes Unavailable
     let host = Host::start().await?;
     host.enable().await?;
-    let mut listener = access::listener_client::ListenerClient::new(host.channel.clone());
-    let mut pairings = access::pairings_client::PairingsClient::new(host.channel.clone());
-    let mut certificates = access::certificates_client::CertificatesClient::new(host.channel.clone());
+    let mut listener = harmos_conformance::host::access::listener_client::ListenerClient::new(host.channel.clone());
+    let mut pairings = harmos_conformance::host::access::pairings_client::PairingsClient::new(host.channel.clone());
+    let mut certificates = harmos_conformance::host::access::certificates_client::CertificatesClient::new(host.channel.clone());
     let original = listener.get(access::ListenerGetRequest {}).await?.into_inner();
     let before = host.store.value.lock().unwrap().as_ref().unwrap().clone();
     host.store.unavailable.store(true, Ordering::Release);

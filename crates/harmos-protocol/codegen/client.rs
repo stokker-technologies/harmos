@@ -45,12 +45,23 @@ use super::reflection;
 /// Generate Independent Library and Product Contracts for SDK Composition Stories.
 pub fn generate_client_fixture(compiler: &Path, includes: &Path, output: &Path) -> Result<(), Box<dyn Error>> {
     let proto = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/tests/fixtures/client/proto");
-    let files =
-        ["application/host/v1/jobs.proto", "application/host/v1/jobs/progress.proto", "application/host/v1/plugins/annotations.proto"]
-            .map(|file| proto.join(file));
+    let mut files = Vec::new();
+    let mut folders = vec![proto.clone()];
+    while let Some(folder) = folders.pop() {
+        for entry in fs::read_dir(folder)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                folders.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "proto") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
     let mut config = Config::new();
     config.protoc_executable(compiler);
     config.extern_path(".harmos.model.v1", "::harmos_protocol::model");
+    config.extern_path(".harmos.host.v1", "::harmos_protocol::host");
     config.file_descriptor_set_path(output.join("client-descriptors.bin"));
     let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../proto");
     tonic_prost_build::configure().out_dir(output).compile_with_config(config, &files, &[proto, library, includes.into()])?;

@@ -25,14 +25,9 @@ using ::harmos::detail::payloads::Grant;
 using ::harmos::detail::payloads::Grpc;
 using ::harmos::detail::payloads::History;
 using ::harmos::detail::payloads::InstanceState;
-using ::harmos::detail::payloads::InvocationsCancelResponse;
-using ::harmos::detail::payloads::InvocationsGetResponse;
-using ::harmos::detail::payloads::InvocationsWatchResponse;
 using ::harmos::detail::payloads::MessageSettings;
 using ::harmos::detail::payloads::OperationContract;
 using ::harmos::detail::payloads::OperationPolicy;
-using ::harmos::detail::payloads::OperationsGetResponse;
-using ::harmos::detail::payloads::OperationsListResponse;
 using ::harmos::detail::payloads::PageRequest;
 using ::harmos::detail::payloads::Position;
 using ::harmos::detail::payloads::Protobuf;
@@ -44,13 +39,10 @@ using ::harmos::detail::payloads::RetryPolicy;
 using ::harmos::detail::payloads::Section;
 using ::harmos::detail::payloads::SettingDeclaration;
 using ::harmos::detail::payloads::SettingsDeclarations;
-using ::harmos::detail::payloads::SettingsListResponse;
 using ::harmos::detail::payloads::SettingValue;
 using ::harmos::detail::payloads::SettingValues;
 using ::harmos::detail::payloads::StorageTransferSettings;
 using ::harmos::detail::payloads::StreamDeclaration;
-using ::harmos::detail::payloads::TimeGetResponse;
-using ::harmos::detail::payloads::TimeSleepResponse;
 using ::harmos::detail::payloads::TRANSFER_FRAMING_BYTES;
 using ::harmos::detail::payloads::TRANSFER_FRAMING_UNSPECIFIED;
 using ::harmos::detail::payloads::TransferFraming;
@@ -159,4 +151,13 @@ using ::harmos::detail::payloads::client::StreamsListResponse;
 using ::harmos::detail::payloads::client::TraceEventsListResponse;
 using ::harmos::detail::payloads::client::TraceEventsWatchResponse;
 } // namespace harmos::client
-namespace harmos::plugin {}
+namespace harmos::plugin {
+using ::harmos::detail::payloads::plugin::InvocationsCancelResponse;
+using ::harmos::detail::payloads::plugin::InvocationsGetResponse;
+using ::harmos::detail::payloads::plugin::InvocationsWatchResponse;
+using ::harmos::detail::payloads::plugin::OperationsGetResponse;
+using ::harmos::detail::payloads::plugin::OperationsListResponse;
+using ::harmos::detail::payloads::plugin::SettingsListResponse;
+using ::harmos::detail::payloads::plugin::TimeGetResponse;
+using ::harmos::detail::payloads::plugin::TimeSleepResponse;
+} // namespace harmos::plugin

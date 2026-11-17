@@ -2,7 +2,7 @@
 
 // Host Status
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
@@ -11,7 +11,6 @@ package harmos.host.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/position.proto";
 
 // === Options === //
@@ -19,16 +18,6 @@ import "harmos/model/v1/position.proto";
 // === Services === //
 
 // Exposes current host health and a live stream of contributed status changes.
-service Status {
-  // Read the current host identity and contributed health with the status history boundary.
-  rpc Get(StatusGetRequest) returns (StatusGetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
-  rpc Watch(StatusWatchRequest) returns (stream StatusWatchResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-}
 
 // === Get === //
 

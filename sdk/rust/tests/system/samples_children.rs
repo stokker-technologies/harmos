@@ -16,8 +16,11 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::collections::HashMap;
 
 // Third Party Imports
+use prost::Message;
+use prost_types::Timestamp;
 
 // Local Imports
 use super::support;
@@ -33,10 +36,6 @@ use harmos_protocol::plugin::ChildResponse;
 use harmos_protocol::plugin::Window;
 use harmos_protocol::plugin::child_response;
 use harmos_protocol::plugin::{InstanceSamplesRequest, instance_samples_request, instance_samples_response};
-
-use prost::Message as _;
-use prost_types::Timestamp;
-use std::collections::HashMap;
 
 /* === Constants === */
 
@@ -120,8 +119,8 @@ async fn samples_children_preserve_correlation_failures_watch_and_window_lifetim
             panic!("expected second child")
         };
         assert!(first.call > last_call && second.call > first.call);
-        assert_eq!(first.operation, "harmos.host.v1.Time/Get");
-        assert_eq!(second.operation, "harmos.host.v1.plugins.Settings/List");
+        assert_eq!(first.operation, "harmos.plugin.v1.Time/Get");
+        assert_eq!(second.operation, "harmos.plugin.v1.plugins.Settings/List");
         let settings = SettingsListResponse {
             value: Some(SettingValues {
                 values: HashMap::from([(

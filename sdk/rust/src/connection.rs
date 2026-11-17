@@ -11,9 +11,6 @@
 
 /* === Modules === */
 
-#[rustfmt::skip]
-pub(crate) mod resources;
-
 mod admission;
 mod codec;
 mod method;
@@ -25,10 +22,11 @@ pub use method::{Method, NoItems};
 /* === Imports === */
 
 // Standard Library Imports
-use std::{marker::PhantomData, num::NonZeroUsize, ops::Deref, pin::Pin, sync::Arc, time::Duration};
+use std::{marker::PhantomData, num::NonZeroUsize, pin::Pin, sync::Arc, time::Duration};
 
 // Third Party Imports
 use bytes::Bytes;
+use codec::{Frame, Output, Wire};
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use prost::{
@@ -46,7 +44,6 @@ use tonic::{
 };
 
 // Local Imports
-use codec::{Frame, Output, Wire};
 use harmos_protocol::model::StorageTransferSettings;
 
 /* === Constants === */
@@ -72,7 +69,6 @@ pub struct ClientSettings {
 #[derive(Clone)]
 pub struct Client {
     transport: ClientTransport,
-    resources: resources::Root,
 }
 
 /// Transport and Budgets Shared by Generated Library and Product Resource Roots.
@@ -178,10 +174,7 @@ impl Client {
             channel,
             settings,
         };
-        Ok(Self {
-            resources: resources::Root::new(transport.clone()),
-            transport,
-        })
+        Ok(Self { transport })
     }
 
     pub fn transport_handle(&self) -> ClientTransport {
@@ -308,13 +301,6 @@ impl Client {
             )
             .await?;
         Ok(Watching::from_wire(response.into_inner()))
-    }
-}
-
-impl Deref for Client {
-    type Target = resources::Root;
-    fn deref(&self) -> &Self::Target {
-        &self.resources
     }
 }
 

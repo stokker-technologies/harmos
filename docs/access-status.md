@@ -2,13 +2,13 @@
 
 Host applications configure access through `runtime.grpc().configure_access` and
 status through `runtime.services().configure_status`. These register library-owned
-client operations on the same runtime endpoint. A host supplies its identity,
+private in-process operations. Products declare their own remote wrappers. A host supplies its identity,
 credential store, transport policy and collection budgets; it retains its own
 authorization policy and application services.
 
 ## Access
 
-`client.access.listener.get/set` reads and replaces the complete listener value:
+The native listener Get/Set operations read and replace the complete listener value:
 enabled, socket endpoint and TLS certificate names. Pass the revision returned by
 Get to Set. A stale revision refuses with “get again and retry”. The reported bound
 endpoint includes the actual port when the configured socket uses port zero.

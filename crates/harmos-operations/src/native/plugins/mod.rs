@@ -40,7 +40,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
 
 // Local Imports
-use crate::execution::operations::{ExecutionContext, ServingError};
+use crate::execution::operations::ServingError;
 use harmos_protocol::host;
 use harmos_protocol::model;
 
@@ -142,14 +142,6 @@ pub fn catalog() -> crate::execution::operations::Catalog {
         ],
         services: vec![],
     }
-}
-
-fn admit(context: &ExecutionContext, id: &'static str) -> Result<(), ServingError> {
-    let grants = context.resource::<crate::execution::operations::access::GrantAccess>().map_err(|_| ServingError::Catalog)?;
-    grants
-        .0
-        .admit(&crate::plugin::Grant::of(id, "plugins"))
-        .map_err(|error| ServingError::Handler(crate::Failure::new(crate::operations::FailureKind::Permanent, error.to_string())))
 }
 
 fn failure(error: Error) -> ServingError {

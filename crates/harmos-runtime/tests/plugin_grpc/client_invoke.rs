@@ -15,21 +15,20 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::host::TimeGetRequest;
-use harmos_protocol::host::TimeGetResponse;
-use harmos_protocol::host::invocations_client::InvocationsClient;
-use harmos_protocol::plugin::InstanceGetRequest;
-use harmos_protocol::plugin::instance_client::InstanceClient;
-
 // Standard Library Imports
+use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
 
 // Local Imports
 use super::{invoke_support::*, support};
+use harmos_conformance::host::invocations_client::InvocationsClient;
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::plugin::InstanceGetRequest;
+use harmos_protocol::plugin::instance_client::InstanceClient;
 use harmos_runtime::plugin::grpc::Placement;
-use std::{num::NonZeroUsize, time::Duration};
 
 /* === Constants === */
 
@@ -55,7 +54,7 @@ use std::{num::NonZeroUsize, time::Duration};
 async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused() {
     // Admit a Plugin and the Generic Client Service on the Same Host.
     let host = HostFixture::new().await;
-    host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    host.runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
     let control = harmos_operations::execution::operations::OperationFactory::protobuf::<super::protected_builtin::Control>().unwrap();
     let control_contract = control.contract().unwrap();
     host.runtime.register_batch(harmos_runtime::operations::Registration::new(Default::default()).entry(control)).await.unwrap();
@@ -146,7 +145,7 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
             tonic_prost::ProstCodec::default(),
         )
         .await;
-    assert!(result.unwrap().into_inner().now.is_some());
+    assert_eq!(result.unwrap_err().code(), tonic::Code::Unimplemented);
     drop(listener);
     host.runtime.shutdown().await.unwrap();
 }

@@ -16,17 +16,18 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error;
+use std::{fs, time::Duration};
 
 // Third Party Imports
-use harmos_protocol::host::{TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
-use harmos_protocol::plugin::{InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest, instance_samples_request};
-use prost::Message as _;
-use prost_types::{Duration as ProtoDuration, Timestamp};
-use std::{error::Error as StdError, fs, time::Duration};
+use prost::Message;
+use prost_types::Timestamp;
 
 // Local Imports
 use super::support;
+use harmos_protocol::host::{TimeGetResponse, TimeSleepRequest, TimeSleepResponse};
 use harmos_protocol::plugin::Window;
+use harmos_protocol::plugin::{InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest, instance_samples_request};
 
 /* === Constants === */
 
@@ -64,7 +65,7 @@ struct Isolation {
 /* === Tests === */
 
 #[tokio::test]
-async fn host_clock_and_resources() -> Result<(), Box<dyn StdError>> {
+async fn host_clock_and_resources() -> Result<(), Box<dyn error::Error>> {
     let story = async {
         // Start the Remote SDK Plugin and Admit Its Clock Requirements.
         let scratch = tempfile::tempdir()?;
@@ -75,24 +76,24 @@ async fn host_clock_and_resources() -> Result<(), Box<dyn StdError>> {
         assert_eq!(
             declarations.requires.iter().map(|requirement| requirement.id.as_str()).collect::<Vec<_>>(),
             [
-                "harmos.host.v1.plugins.Settings/List",
-                "harmos.host.v1.Invocations/Watch",
-                "harmos.host.v1.Time/Sleep",
-                "harmos.host.v1.Time/Get"
+                "harmos.plugin.v1.plugins.Settings/List",
+                "harmos.plugin.v1.Invocations/Watch",
+                "harmos.plugin.v1.Time/Sleep",
+                "harmos.plugin.v1.Time/Get"
             ]
         );
 
         // Begin an Execution That Stores a Resource and Requests an Hour-Long Host Wait.
         let (send, mut input) = support::invoke(&mut process.client, "execution.clock").await?;
         let sleep = support::child(&mut input).await?;
-        assert_eq!(sleep.operation, "harmos.host.v1.Time/Sleep");
+        assert_eq!(sleep.operation, "harmos.plugin.v1.Time/Sleep");
         assert_eq!(sleep.fingerprint, declarations.requires[2].fingerprint);
-        assert_eq!(TimeSleepRequest::decode(sleep.payload.as_slice())?.duration, Some(ProtoDuration { seconds: 3600, nanos: 0 }));
+        assert_eq!(TimeSleepRequest::decode(sleep.payload.as_slice())?.duration, Some(prost_types::Duration { seconds: 3600, nanos: 0 }));
 
         // Complete the Wait by Protocol Event and Supply Literal Host Evidence Time.
         support::reply(&send, sleep.call, TimeSleepResponse {}).await?;
         let now = support::child(&mut input).await?;
-        assert_eq!(now.operation, "harmos.host.v1.Time/Get");
+        assert_eq!(now.operation, "harmos.plugin.v1.Time/Get");
         assert_eq!(now.fingerprint, declarations.requires[3].fingerprint);
         let at = Timestamp { seconds: 12345, nanos: 67890 };
         support::reply(&send, now.call, TimeGetResponse { now: Some(at) }).await?;

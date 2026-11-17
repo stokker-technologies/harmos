@@ -34,7 +34,7 @@ use harmos_protocol::model::{
 /* === Constants === */
 
 pub const OPERATIONS: &[&str] = &["step.0", "children", "cancel", "failure", "child_failure", "policy"];
-pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.host.v1.Time/Sleep", "harmos.host.v1.Time/Get"];
+pub const CLOCK_OPERATIONS: [&str; 2] = ["harmos.plugin.v1.Time/Sleep", "harmos.plugin.v1.Time/Get"];
 
 pub const WINDOW_STREAMS: &[&str] = &[
     "conformance.window_children",
@@ -49,10 +49,10 @@ pub const WINDOW: &str = "conformance.window";
 /// Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size.
 pub const OVERSIZED: &str = "conformance.oversized";
 pub const HOST_OPERATIONS: &[(&str, &str, &str)] = &[
-    ("harmos.host.v1.Invocations/Create", "harmos.host.v1.InvocationsCreateRequest", "harmos.host.v1.InvocationsCreateResponse"),
-    ("harmos.host.v1.plugins.Settings/List", "harmos.host.v1.plugins.SettingsListRequest", "harmos.host.v1.plugins.SettingsListResponse"),
-    ("harmos.host.v1.Operations/List", "harmos.host.v1.OperationsListRequest", "harmos.host.v1.OperationsListResponse"),
-    ("harmos.host.v1.Operations/Get", "harmos.host.v1.OperationsGetRequest", "harmos.host.v1.OperationsGetResponse"),
+    ("application.host.v1.Invocations/Create", "harmos.host.v1.InvocationsCreateRequest", "harmos.host.v1.InvocationsCreateResponse"),
+    ("harmos.plugin.v1.plugins.Settings/List", "harmos.host.v1.plugins.SettingsListRequest", "harmos.host.v1.plugins.SettingsListResponse"),
+    ("harmos.plugin.v1.Operations/List", "harmos.host.v1.OperationsListRequest", "harmos.host.v1.OperationsListResponse"),
+    ("harmos.plugin.v1.Operations/Get", "harmos.host.v1.OperationsGetRequest", "harmos.host.v1.OperationsGetResponse"),
 ];
 
 pub const ROW: &str = "conformance.model.v1.Value";
@@ -132,7 +132,7 @@ pub fn fingerprint(id: &str) -> Vec<u8> {
         .unwrap();
     }
     if CLOCK_OPERATIONS.contains(&id) {
-        let (request, response) = if id == "harmos.host.v1.Time/Sleep" {
+        let (request, response) = if id == "harmos.plugin.v1.Time/Sleep" {
             ("harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse")
         } else {
             ("harmos.host.v1.TimeGetRequest", "harmos.host.v1.TimeGetResponse")

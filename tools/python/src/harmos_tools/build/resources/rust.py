@@ -61,11 +61,7 @@ SCALARS = {
 def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     configuration = configuration or Configuration()
     public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
-    requests = set()
-    for requests_method in descriptor.table(descriptors):
-        if requests_method["face"] == "plugin":
-            continue
-        requests.add(requests_method["request"])
+    requests = descriptor.request_names(descriptors)
 
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
@@ -164,8 +160,13 @@ def client(
     methods: list[descriptor.Method],
     *,
     target: Path | None = None,
+    types_target: Path | None = None,
     configuration: Configuration | None = None,
 ) -> None:
+    if target is None and not methods:
+        (root / "sdk/rust/src/client/resources.rs").unlink(missing_ok=True)
+        (root / "sdk/rust/src/connection/resources.rs").unlink(missing_ok=True)
+        return
     configuration = configuration or Configuration()
     methods = call_fields(methods, configuration=configuration)
     selected: list[descriptor.Method] = []
@@ -380,6 +381,11 @@ def client(
         lines += ["}"]
     destination = target or root / "sdk/rust/src/connection/resources.rs"
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    if types_target is not None:
+        responses = sorted({method["response"] for method in methods if not method["response"].startswith(("harmos.", "google."))})
+        exports = ["// @generated from protocol descriptors; do not edit.", *[f"pub use {message(response)};" for response in responses]]
+        types_target.write_text("\n".join(exports) + "\n", encoding="utf-8", newline="\n")
+
     if target is None:
         exports = [*names.values(), *("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)]
         (root / "sdk/rust/src/client/resources.rs").write_text(

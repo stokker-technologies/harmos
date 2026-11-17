@@ -11,44 +11,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::TimeSleepRequest as WireTimeSleepRequest;
-use harmos_protocol::host::plugins::SettingsListResponse as WireSettingsListResponse;
-use harmos_protocol::plugin::ChildCancel;
-use harmos_protocol::plugin::ChildDemand;
-use harmos_protocol::plugin::ChildRequest;
-use harmos_protocol::plugin::Sample as WireSample;
-
-use super::{
-    invoke_support::{Host, Reply},
-    manager::support::{self as manager, Backends, Host as ManagedHost},
-    support::{self, Remote},
-};
-use futures_util::stream;
-use harmos_operations::{
-    Failure,
-    operations::{OperationSpec, WireDeclaration},
-};
-use harmos_protocol::host;
-use harmos_protocol::host::TimeGetRequest;
-use harmos_protocol::host::TimeGetResponse;
-use harmos_protocol::model;
-use harmos_protocol::model::Failure as ProtocolFailure;
-use harmos_protocol::plugin;
-use harmos_protocol::plugin::InstanceSamplesResponse;
-use harmos_protocol::plugin::child_response;
-use harmos_protocol::plugin::instance_samples_request as request;
-use harmos_protocol::plugin::instance_samples_response as response;
-use harmos_runtime::{
-    clock::Clock,
-    operations::{
-        ExecutionContext, FunctionContext, Grpc, OperationFactory, OperationPolicy, ProtobufOperation, ProtobufOutput, Resource,
-        RetryPolicy, ServingError, Visibility,
-    },
-    plugin::grpc::CallingPlugin,
-};
-use prost::Message;
-use prost_reflect::ReflectMessage;
-use response::Frame as ResponseFrame;
+// Standard Library Imports
 use std::{
     collections::BTreeMap,
     sync::{
@@ -57,8 +20,45 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+
+// Third Party Imports
+use futures_util::stream;
+use prost::Message;
+use prost_reflect::ReflectMessage;
 use tokio::sync::{Notify, mpsc, mpsc::Sender};
 use tonic::Status;
+
+// Local Imports
+use super::manager;
+use super::manager::support::Backends;
+use super::{
+    invoke_support::{Host, Reply},
+    support::{self, Remote},
+};
+use harmos_operations::{
+    Failure,
+    operations::{OperationSpec, WireDeclaration},
+};
+use harmos_protocol::host;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::model;
+use harmos_protocol::plugin;
+use harmos_protocol::plugin::ChildCancel;
+use harmos_protocol::plugin::ChildDemand;
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::InstanceSamplesResponse;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::instance_samples_request;
+use harmos_protocol::plugin::instance_samples_response;
+use harmos_runtime::{
+    clock::Clock,
+    operations::{
+        ExecutionContext, FunctionContext, Grpc, OperationFactory, OperationPolicy, ProtobufOperation, ProtobufOutput, Resource,
+        RetryPolicy, ServingError, Visibility,
+    },
+    plugin::grpc::CallingPlugin,
+};
 
 /* === Constants === */
 
@@ -134,7 +134,7 @@ fn payload(value: &[u8]) -> Vec<u8> {
     harmos_operations::execution::grpc::encode(&Host { value: value.into() }, &mut bytes).unwrap();
     bytes
 }
-fn expected_failure() -> ProtocolFailure {
+fn expected_failure() -> model::Failure {
     model::Failure {
         classification: model::Classification::Transient as i32,
         code: "window_failure".into(),
@@ -179,7 +179,7 @@ fn operation(signals: Arc<Signals>) -> OperationFactory {
     )
     .unwrap()
 }
-async fn frame(output: &Sender<Result<InstanceSamplesResponse, Status>>, frame: ResponseFrame) {
+async fn frame(output: &Sender<Result<InstanceSamplesResponse, Status>>, frame: instance_samples_response::Frame) {
     output.send(Ok(plugin::InstanceSamplesResponse { samples: vec![], frame: Some(frame) })).await.unwrap();
 }
 async fn child(
@@ -187,7 +187,7 @@ async fn child(
 ) {
     frame(
         output,
-        response::Frame::Child(ChildRequest {
+        instance_samples_response::Frame::Child(ChildRequest {
             call,
             operation: operation.into(),
             fingerprint,
@@ -205,7 +205,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     let root = tempfile::tempdir().unwrap();
     let backends = Backends::new();
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let mut host = ManagedHost::with_clock(root.path(), &backends, clock).await;
+    let mut host = manager::support::Host::with_clock(root.path(), &backends, clock).await;
     let signals = Arc::new(Signals::default());
     let factory = operation(signals.clone());
     let contract = factory.contract().unwrap();
@@ -229,7 +229,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
     let mut files: BTreeMap<_, _> = pool.files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())).collect();
     files.extend(descriptor.parent_pool().files().map(|file| (file.name().to_owned(), file.file_descriptor_proto().clone())));
     let types = prost_types::FileDescriptorSet { file: files.into_values().collect() };
-    let settings_id = "harmos.host.v1.plugins.Settings/List";
+    let settings_id = "harmos.plugin.v1.plugins.Settings/List";
     let settings_fingerprint = harmos_protocol::schema::fingerprint(
         settings_id,
         &types,
@@ -237,7 +237,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
         "harmos.host.v1.plugins.SettingsListResponse",
     )
     .unwrap();
-    let clock_id = "harmos.host.v1.Time/Sleep";
+    let clock_id = "harmos.plugin.v1.Time/Sleep";
     let clock_fingerprint =
         harmos_protocol::schema::fingerprint(clock_id, &types, "harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse")
             .unwrap();
@@ -283,7 +283,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
         let clock_fingerprint = clock_fingerprint.clone();
         let watch_fingerprint = watch_fingerprint.clone();
         tokio::spawn(async move {
-            let Some(request::Frame::Open(open)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Open(open)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Open");
             };
             if open.stream == "outside" || open.stream == "device" {
@@ -297,14 +297,14 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
             }
             let mut sequence = 0;
             while let Some(next) = input.message().await.unwrap() {
-                let Some(request::Frame::Window(window)) = next.frame else {
+                let Some(instance_samples_request::Frame::Window(window)) = next.frame else {
                     panic!("Expected a Window");
                 };
                 sequence += 1;
                 if open.stream == "duplicate" {
                     child(&output, 1, "fixture.window_child", fingerprint.clone(), payload(b"duplicate")).await;
                     if sequence == 1 {
-                        let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                        let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                             panic!("Expected Child Reply");
                         };
                         assert_eq!(reply.call, 1);
@@ -318,8 +318,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                 if open.stream == "mixed" {
                     output
                         .send(Ok(plugin::InstanceSamplesResponse {
-                            samples: vec![WireSample { at: window.start, sequence, row: vec![] }],
-                            frame: Some(response::Frame::ChildCancel(ChildCancel { call: 1 })),
+                            samples: vec![plugin::Sample { at: window.start, sequence, row: vec![] }],
+                            frame: Some(instance_samples_response::Frame::ChildCancel(ChildCancel { call: 1 })),
                         }))
                         .await
                         .unwrap();
@@ -328,7 +328,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                     return;
                 }
                 if open.stream == "unknown_demand" {
-                    frame(&output, response::Frame::ChildDemand(ChildDemand { call: 99 })).await;
+                    frame(&output, instance_samples_response::Frame::ChildDemand(ChildDemand { call: 99 })).await;
                     assert!(input.message().await.unwrap().is_none());
                     signals.refusals.fetch_add(1, Ordering::SeqCst);
                     return;
@@ -344,14 +344,14 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                 child(&output, base + 5, "fixture.window_child", fingerprint.clone(), payload(format!("park:{cancelled}").as_bytes()))
                     .await;
                 signals.parked(&cancelled).entered.notified().await;
-                frame(&output, response::Frame::ChildCancel(ChildCancel { call: base + 5 })).await;
+                frame(&output, instance_samples_response::Frame::ChildCancel(ChildCancel { call: base + 5 })).await;
                 signals.parked(&cancelled).cancelled.notified().await;
                 child(
                     &output,
                     base + 7,
                     clock_id,
                     clock_fingerprint.clone(),
-                    WireTimeSleepRequest {
+                    host::TimeSleepRequest {
                         duration: Some(prost_types::Duration { seconds: 0, nanos: 250_000_000 }),
                     }
                     .encode_to_vec(),
@@ -359,7 +359,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                 .await;
                 frame(
                     &output,
-                    response::Frame::Child(ChildRequest {
+                    instance_samples_response::Frame::Child(ChildRequest {
                         call: base + 8,
                         operation: Watch::ID.into(),
                         fingerprint: watch_fingerprint.clone(),
@@ -369,10 +369,10 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                     }),
                 )
                 .await;
-                frame(&output, response::Frame::ChildDemand(ChildDemand { call: base + 8 })).await;
+                frame(&output, instance_samples_response::Frame::ChildDemand(ChildDemand { call: base + 8 })).await;
                 let mut replies = BTreeMap::new();
                 for _ in 0..6 {
-                    let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                    let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                         panic!("Expected Child Reply");
                     };
                     assert!(replies.insert(reply.call, reply.result.clone()).is_none());
@@ -381,7 +381,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                             panic!("Expected Watch Item");
                         };
                         assert_eq!(host::TimeGetResponse::decode(item.as_slice()).unwrap().now.unwrap().seconds, 5);
-                        frame(&output, response::Frame::ChildCancel(ChildCancel { call: base + 8 })).await;
+                        frame(&output, instance_samples_response::Frame::ChildCancel(ChildCancel { call: base + 8 })).await;
                     }
                     if reply.call == base + 2 {
                         assert!(!replies.contains_key(&(base + 1)));
@@ -394,7 +394,7 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
                 let Some(child_response::Result::Payload(settings)) = &replies[&(base + 4)] else {
                     panic!("Expected Settings");
                 };
-                assert!(WireSettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
+                assert!(host::plugins::SettingsListResponse::decode(settings.as_slice()).unwrap().value.unwrap().values.is_empty());
                 assert!(matches!(&replies[&(base + 7)], Some(child_response::Result::Payload(_))));
                 let ended = format!("{key}:end");
                 child(&output, base + 6, "fixture.window_child", fingerprint.clone(), payload(format!("park:{ended}").as_bytes())).await;
@@ -408,8 +408,8 @@ async fn samples_children_correlate_preserve_failures_and_end_with_the_window() 
         Box::pin(stream::unfold(receiver, |mut receiver| async { receiver.recv().await.map(|item| (item, receiver)) }))
     });
     let mut watch = host.client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
-    host.client.create(manager::remote("window_owner", &remote.address)).await.unwrap();
-    manager::state(&mut watch, "window_owner", host::PluginState::Ready, 1).await;
+    host.client.create(manager::support::remote("window_owner", &remote.address)).await.unwrap();
+    manager::support::state(&mut watch, "window_owner", host::PluginState::Ready, 1).await;
     drop(watch);
     // The Unscoped Demand Grants Windows Only on Watched Streams.
     let _watching = ["alpha", "beta", "outside", "duplicate", "mixed", "unknown_demand"]

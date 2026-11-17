@@ -15,10 +15,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::ComponentState;
-use harmos_protocol::host::HealthComponent;
-use harmos_protocol::model::Failure;
-
 // Standard Library Imports
 use std::{
     num::NonZeroUsize,
@@ -29,20 +25,22 @@ use std::{
 };
 
 // Third Party Imports
-use harmos_protocol::host::access;
-
-use harmos_protocol::model;
-use harmos_runtime::{
-    Runtime,
-    grpc::access::{CredentialStore, Credentials, Pending},
-    services::status::{Contribution, Entry, Status, StatusSettings},
-};
 use tonic::{
     Request,
     transport::{Certificate, Channel, ClientTlsConfig, Endpoint},
 };
 
 // Local Imports
+use harmos_protocol::host::ComponentState;
+use harmos_protocol::host::HealthComponent;
+use harmos_protocol::host::access;
+use harmos_protocol::model;
+use harmos_protocol::model::Failure;
+use harmos_runtime::{
+    Runtime,
+    grpc::access::{CredentialStore, Credentials, Pending},
+    services::status::{Contribution, Entry, Status, StatusSettings},
+};
 
 /* === Constants === */
 
@@ -122,6 +120,7 @@ impl Host {
     pub async fn with_store(store: Arc<Store>) -> Result<Self> {
         let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
         let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+            setup.catalog(harmos_conformance::product::catalog(), Default::default());
             setup.settings().clock(clock);
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4 * 1024 * 1024).unwrap()),
@@ -176,7 +175,7 @@ impl Host {
         Ok(())
     }
     pub async fn enable(&self) -> Result<access::ListenerSetResponse> {
-        let mut client = access::listener_client::ListenerClient::new(self.channel.clone());
+        let mut client = harmos_conformance::host::access::listener_client::ListenerClient::new(self.channel.clone());
         let current = client.get(access::ListenerGetRequest {}).await?.into_inner();
         let mut value = current.value.unwrap();
         value.enabled = true;

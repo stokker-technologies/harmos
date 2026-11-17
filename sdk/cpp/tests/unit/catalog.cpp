@@ -20,7 +20,6 @@
 // Local Imports
 #include "client.hpp"
 #include "generated/types.hpp"
-#include "harmos/_generated/client.hpp"
 #include "harmos/harmos.hpp"
 #include "harmos/host/v1/time.pb.h"
 #include "plugin.hpp"
@@ -57,16 +56,15 @@ concept SetsSettings = requires(T root) { root.plugins.settings.set(string{}, ha
 /* === Public Functions === */
 
 TEST_CASE("Caller Options Select SDK Surfaces") {
-  REQUIRE(ReadsTime<harmos::Client>);
-  REQUIRE(ReadsTime<harmos::plugin::HostRoot>);
   REQUIRE(ReadsTime<fixture::Client>);
+  REQUIRE(ReadsTime<harmos::plugin::HostRoot>);
   STATIC_REQUIRE(ReadsTime<fixture::plugin::HostRoot>);
   STATIC_REQUIRE(Sleeps<fixture::plugin::HostRoot>);
-  REQUIRE(CreatesInvocation<harmos::Client>);
+  REQUIRE(CreatesInvocation<fixture::Client>);
   REQUIRE_FALSE(CreatesInvocation<harmos::plugin::HostRoot>);
-  REQUIRE(ListsSettings<harmos::Client>);
+  REQUIRE(ListsSettings<fixture::Client>);
   REQUIRE(ListsSettings<harmos::plugin::HostRoot>);
-  REQUIRE(SetsSettings<harmos::Client>);
+  REQUIRE(SetsSettings<fixture::Client>);
   REQUIRE_FALSE(SetsSettings<harmos::plugin::HostRoot>);
 }
 
@@ -107,8 +105,8 @@ TEST_CASE("An Observer Preserves Its Stream Contract") {
 }
 
 TEST_CASE("Interval Observers Declare One Value per Field and Their Window Columns") {
-  using harmos::conformance::Graph;
   using ::conformance::model::v1::Values;
+  using harmos::conformance::Graph;
   Duration interval;
   interval.set_seconds(1);
   SECTION("Repeated, Map, Oneof and Optional Row Fields Are Refused") {

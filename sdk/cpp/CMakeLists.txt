@@ -62,6 +62,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Harmos")
 
+add_subdirectory(examples/client)
+
 option(HARMOS_BUILD_TESTS "Build SDK Unit Tests and the Conformance Plugin" OFF)
 if(HARMOS_BUILD_TESTS)
     enable_testing()
@@ -69,5 +71,4 @@ if(HARMOS_BUILD_TESTS)
     add_subdirectory(examples/conformance)
 endif()
 
-add_subdirectory(examples/client)
 add_subdirectory(examples/plugin)

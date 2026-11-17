@@ -23,14 +23,14 @@ public enum HostOperation
 }
 internal static class HostContracts
 {
-  internal static readonly Operation<InvocationsGetRequest, InvocationsGetResponse> InvocationsGet = new("harmos.host.v1.Invocations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsCancelRequest, InvocationsCancelResponse> InvocationsCancel = new("harmos.host.v1.Invocations/Cancel", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsWatchRequest, InvocationsWatchResponse> InvocationsWatch = new("harmos.host.v1.Invocations/Watch", Visibility.Public, watch: true);
-  internal static readonly Operation<OperationsListRequest, OperationsListResponse> OperationsList = new("harmos.host.v1.Operations/List", Visibility.Public, watch: false);
-  internal static readonly Operation<OperationsGetRequest, OperationsGetResponse> OperationsGet = new("harmos.host.v1.Operations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<SettingsListRequest, SettingsListResponse> PluginsSettingsList = new("harmos.host.v1.plugins.Settings/List", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeGetRequest, TimeGetResponse> TimeGet = new("harmos.host.v1.Time/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeSleepRequest, TimeSleepResponse> TimeSleep = new("harmos.host.v1.Time/Sleep", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsGetRequest, InvocationsGetResponse> InvocationsGet = new("harmos.plugin.v1.Invocations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsCancelRequest, InvocationsCancelResponse> InvocationsCancel = new("harmos.plugin.v1.Invocations/Cancel", Visibility.Public, watch: false);
+  internal static readonly Operation<InvocationsWatchRequest, InvocationsWatchResponse> InvocationsWatch = new("harmos.plugin.v1.Invocations/Watch", Visibility.Public, watch: true);
+  internal static readonly Operation<OperationsListRequest, OperationsListResponse> OperationsList = new("harmos.plugin.v1.Operations/List", Visibility.Public, watch: false);
+  internal static readonly Operation<OperationsGetRequest, OperationsGetResponse> OperationsGet = new("harmos.plugin.v1.Operations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<SettingsListRequest, SettingsListResponse> PluginsSettingsList = new("harmos.plugin.v1.plugins.Settings/List", Visibility.Public, watch: false);
+  internal static readonly Operation<TimeGetRequest, TimeGetResponse> TimeGet = new("harmos.plugin.v1.Time/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<TimeSleepRequest, TimeSleepResponse> TimeSleep = new("harmos.plugin.v1.Time/Sleep", Visibility.Public, watch: false);
 }
 public static class HostRequirements
 {

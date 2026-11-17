@@ -1296,6 +1296,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "harmos",
+ "harmos-conformance",
  "harmos-domain",
  "harmos-operations",
  "harmos-packaging",

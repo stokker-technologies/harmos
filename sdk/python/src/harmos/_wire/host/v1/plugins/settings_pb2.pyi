@@ -1,4 +1,3 @@
-from harmos._wire.model.v1 import callers_pb2 as _callers_pb2
 from harmos._wire.model.v1 import position_pb2 as _position_pb2
 from harmos._wire.model.v1 import receipt_pb2 as _receipt_pb2
 from harmos._wire.model.v1 import setting_pb2 as _setting_pb2

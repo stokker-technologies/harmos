@@ -16,9 +16,10 @@
 // Third Party Imports
 
 // Local Imports
+#include "client.hpp"
 #include "harmos/harmos.hpp"
 
-using harmos::Client;
+using fixture::Client;
 using std::exception;
 using std::runtime_error;
 using std::string;

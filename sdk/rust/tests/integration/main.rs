@@ -23,6 +23,12 @@ mod support {
 extern crate self as application_protocol;
 mod host {
     include!("../fixtures/client/application.host.v1.rs");
+    pub mod access {
+        include!("../fixtures/client/application.host.v1.access.rs");
+    }
+    pub mod status {
+        include!("../fixtures/client/application.host.v1.status.rs");
+    }
     pub mod jobs {
         include!("../fixtures/client/application.host.v1.jobs.rs");
     }
@@ -33,7 +39,6 @@ mod host {
 mod client_reflection {
     include!("../fixtures/client/client-reflection.rs");
 }
-use host as wire;
 mod composed_resources {
     include!("../fixtures/client/resources.rs");
 }

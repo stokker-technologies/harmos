@@ -13,8 +13,9 @@
 import asyncio
 from argparse import ArgumentParser
 
-from harmos import Client, DiscoveredOperation
+from harmos import DiscoveredOperation
 from harmos.client import StatusGetResponse, StatusWatchResponse
+from tests.fixtures.client import Client
 
 # === Public Exports === #
 

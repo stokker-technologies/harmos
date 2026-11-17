@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::access::PairingsDeleteRequest;
-use harmos_protocol::host::access::PairingsDeleteResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +20,8 @@ use harmos_protocol::host::access::PairingsDeleteResponse;
 // Local Imports
 use super::AccessAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host::access::PairingsDeleteRequest;
+use harmos_protocol::host::access::PairingsDeleteResponse;
 
 /* === Constants === */
 
@@ -45,9 +44,9 @@ impl ProtobufOperation for PairingsDelete {
     type Response = PairingsDeleteResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.access.Pairings/Delete";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.access", "Pairings", "Delete"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<AccessAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let access = context.resource::<AccessAccess>().map_err(|_| ServingError::Catalog)?;

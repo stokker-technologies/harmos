@@ -20,9 +20,6 @@
 #include "harmos/plugin/v1/instance.grpc.pb.h"
 #include "samples.hpp"
 
-namespace authoring = harmos::plugin;
-namespace host_wire = harmos::host::v1;
-namespace sdk = harmos;
 using google::protobuf::Message;
 using grpc::CallbackServerContext;
 using grpc::Channel;
@@ -63,19 +60,17 @@ using harmos::plugin::Context;
 using harmos::plugin::v1::Instance;
 using harmos::plugin::v1::InstanceSamplesRequest;
 using harmos::plugin::v1::InstanceSamplesResponse;
-using Values = ::conformance::model::v1::Values;
-using ValueOperation = harmos::plugin::Operation<Value, Value>;
-using Observe = std::function<Value(Context &)>;
-const ValueOperation echo("example.host.v1.Echo/Call", sdk::VISIBILITY_PUBLIC);
-const ValueOperation watching = ValueOperation("example.host.v1.Events/Watch", sdk::VISIBILITY_PUBLIC).watch();
+const harmos::plugin::Operation<Value, Value> echo("example.host.v1.Echo/Call", harmos::VISIBILITY_PUBLIC);
+const harmos::plugin::Operation<Value, Value> watching =
+    harmos::plugin::Operation<Value, Value>("example.host.v1.Events/Watch", harmos::VISIBILITY_PUBLIC).watch();
 
 /* === Classes === */
 
 // Serves One Stream of Value Rows: a One-Sample or Window Observer, or a Device Publisher.
 class SamplesHost final : public Instance::CallbackService {
 public:
-  vector<authoring::detail::StreamDefinition> streams;
-  vector<authoring::detail::OperationDefinition> operations;
+  vector<harmos::plugin::detail::StreamDefinition> streams;
+  vector<harmos::plugin::detail::OperationDefinition> operations;
   map<string, string> requirements;
   size_t message_bytes = 4 * 1024 * 1024;
   unique_ptr<Server> server;
@@ -85,8 +80,8 @@ public:
   size_t opened = 0;
   size_t closed = 0;
 
-  explicit SamplesHost(Observe observer, bool device = false) {
-    authoring::detail::StreamDefinition stream;
+  explicit SamplesHost(std::function<Value(Context &)> observer, bool device = false) {
+    harmos::plugin::detail::StreamDefinition stream;
     stream.declaration.set_id("example.rows");
     stream.row = Value::descriptor();
     if (device)
@@ -99,12 +94,13 @@ public:
       };
     serve(std::move(stream));
   }
-  SamplesHost(std::function<Values(Context &, const authoring::Window &)> observer, size_t limit) : message_bytes(limit) {
-    authoring::detail::StreamDefinition stream;
+  SamplesHost(std::function<::conformance::model::v1::Values(Context &, const harmos::plugin::Window &)> observer, size_t limit)
+      : message_bytes(limit) {
+    harmos::plugin::detail::StreamDefinition stream;
     stream.declaration.set_id("example.rows");
     stream.row = Value::descriptor();
-    stream.window = [observer](Context &context, const authoring::Window &window) -> unique_ptr<Message> {
-      return std::make_unique<Values>(observer(context, window));
+    stream.window = [observer](Context &context, const harmos::plugin::Window &window) -> unique_ptr<Message> {
+      return std::make_unique<::conformance::model::v1::Values>(observer(context, window));
     };
     serve(std::move(stream));
   }
@@ -117,7 +113,7 @@ public:
     });
   }
   ServerBidiReactor<InstanceSamplesRequest, InstanceSamplesResponse> *Samples(CallbackServerContext *) override {
-    auto *call = new authoring::detail::PublicationCall(streams, operations, requirements, "example", message_bytes);
+    auto *call = new harmos::plugin::detail::PublicationCall(streams, operations, requirements, "example", message_bytes);
     {
       lock_guard lock(samples_mutex);
       ++opened;
@@ -131,13 +127,13 @@ public:
   }
 
 private:
-  void serve(authoring::detail::StreamDefinition stream) {
+  void serve(harmos::plugin::detail::StreamDefinition stream) {
     streams.push_back(std::move(stream));
-    const auto declarations = authoring::Plugin("example", "1.0.0")
+    const auto declarations = harmos::plugin::Plugin("example", "1.0.0")
                                   .requires_operation(echo)
                                   .requires_operation(watching)
-                                  .requires_operation(authoring::HostOperation::TimeGet)
-                                  .requires_operation(authoring::HostOperation::PluginsSettingsList)
+                                  .requires_operation(harmos::plugin::HostOperation::TimeGet)
+                                  .requires_operation(harmos::plugin::HostOperation::PluginsSettingsList)
                                   .declarations();
     for (const auto &requirement : declarations.requires_())
       requirements[requirement.id()] = requirement.fingerprint();
@@ -189,7 +185,7 @@ public:
     REQUIRE(stream->Read(&response));
     return response;
   }
-  // Reads Every Part of the Window and Returns Its Values in Sample Order.
+  // Reads Every Part of the Window and Returns Its ::conformance::model::v1::Values in Sample Order.
   vector<string> answer(uint64_t count, size_t limit, size_t *parts = nullptr) {
     vector<string> values;
     for (;;) {
@@ -201,8 +197,8 @@ public:
       REQUIRE(batch.count() >= 1);
       REQUIRE(response.ByteSizeLong() <= limit);
       REQUIRE(response.ByteSizeLong() ==
-              authoring::detail::framed_size(batch.offset(), batch.count(), batch.columns().size(), batch.last()));
-      const auto columns = authoring::decode<Values>(batch.columns());
+              harmos::plugin::detail::framed_size(batch.offset(), batch.count(), batch.columns().size(), batch.last()));
+      const auto columns = harmos::plugin::decode<::conformance::model::v1::Values>(batch.columns());
       REQUIRE(static_cast<uint64_t>(columns.value_size()) == batch.count());
       values.insert(values.end(), columns.value().begin(), columns.value().end());
       if (parts)
@@ -215,7 +211,7 @@ public:
   void reply(uint64_t call, const Message &value) {
     InstanceSamplesRequest request;
     request.mutable_child()->set_call(call);
-    request.mutable_child()->set_payload(authoring::detail::encode(value));
+    request.mutable_child()->set_payload(harmos::plugin::detail::encode(value));
     REQUIRE(stream->Write(request));
   }
   Status finish() {
@@ -307,7 +303,7 @@ TEST_CASE("Children Stay Open Across a Window's Samples Until It Is Answered") {
     const auto second = samples.read().child();
     REQUIRE(first.call() == sample * 2 + 1);
     REQUIRE(second.call() == sample * 2 + 2);
-    REQUIRE(authoring::decode<Value>(first.payload()).value() == "open");
+    REQUIRE(harmos::plugin::decode<Value>(first.payload()).value() == "open");
     open.push_back(first.call());
     samples.reply(second.call(), value(std::to_string(sample)));
   }
@@ -320,10 +316,10 @@ TEST_CASE("Children Stay Open Across a Window's Samples Until It Is Answered") {
 TEST_CASE("A Window Observer Answers the Whole Grant in Parts Within the Message Limit") {
   const size_t limit = 64;
   SamplesHost host(
-      [](Context &context, const authoring::Window &window) {
+      [](Context &context, const harmos::plugin::Window &window) {
         if (context.sequence != window.sequence || window.start.seconds() != 20 || window.period.seconds() != 1)
           throw runtime_error("Answer Window: Unexpected Grant");
-        Values columns;
+        ::conformance::model::v1::Values columns;
         for (uint64_t index = 0; index < window.count; ++index)
           columns.add_value(little_endian(window.sequence + index));
         return columns;
@@ -342,8 +338,8 @@ TEST_CASE("A Window Observer Answers the Whole Grant in Parts Within the Message
 TEST_CASE("A Window That Cannot Be Answered Fails the Call") {
   SECTION("A Sample Larger Than the Message Limit Fails the Window") {
     SamplesHost host(
-        [](Context &, const authoring::Window &window) {
-          Values columns;
+        [](Context &, const harmos::plugin::Window &window) {
+          ::conformance::model::v1::Values columns;
           for (uint64_t index = 0; index < window.count; ++index)
             columns.add_value(string(index == 1 ? 100 : 1, 'x'));
           return columns;
@@ -355,8 +351,8 @@ TEST_CASE("A Window That Cannot Be Answered Fails the Call") {
   }
   SECTION("Columns Must Hold One Value per Sample") {
     SamplesHost host(
-        [](Context &, const authoring::Window &) {
-          return Values{};
+        [](Context &, const harmos::plugin::Window &) {
+          return ::conformance::model::v1::Values{};
         },
         64);
     Samples samples(host);
@@ -462,15 +458,15 @@ TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
   Samples samples(host);
   samples.window(10, 1);
   auto child = samples.read();
-  REQUIRE(child.child().operation() == "harmos.host.v1.Time/Get");
-  host_wire::TimeGetResponse now;
+  REQUIRE(child.child().operation() == "harmos.plugin.v1.Time/Get");
+  harmos::host::v1::TimeGetResponse now;
   now.mutable_now()->set_seconds(42);
   samples.reply(child.child().call(), now);
   child = samples.read();
-  REQUIRE(child.child().operation() == "harmos.host.v1.plugins.Settings/List");
-  const auto request = authoring::decode<host_wire::plugins::SettingsListRequest>(child.child().payload());
+  REQUIRE(child.child().operation() == "harmos.plugin.v1.plugins.Settings/List");
+  const auto request = harmos::plugin::decode<harmos::host::v1::plugins::SettingsListRequest>(child.child().payload());
   REQUIRE_FALSE(request.has_name());
-  host_wire::plugins::SettingsListResponse settings;
+  harmos::host::v1::plugins::SettingsListResponse settings;
   (*settings.mutable_value()->mutable_values())["label"].set_text("configured");
   settings.add_declarations()->set_name("label");
   settings.set_revision("revision");
@@ -479,12 +475,12 @@ TEST_CASE("A Window Calls the Clock Settings and a Demand-Bounded Watch") {
   child = samples.read();
   REQUIRE(child.child().watch());
   REQUIRE(child.child().max_response_bytes() == 4096);
-  REQUIRE(authoring::decode<Value>(child.child().payload()).value() == "opaque-scope");
+  REQUIRE(harmos::plugin::decode<Value>(child.child().payload()).value() == "opaque-scope");
   const auto call = child.child().call();
   REQUIRE(samples.read().child_demand().call() == call);
   InstanceSamplesRequest item;
   item.mutable_child()->set_call(call);
-  item.mutable_child()->set_item(authoring::detail::encode(value("item")));
+  item.mutable_child()->set_item(harmos::plugin::detail::encode(value("item")));
   REQUIRE(samples.stream->Write(item));
   REQUIRE(samples.read().child_demand().call() == call);
   samples.reply(call, Value{});
@@ -496,16 +492,16 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   SamplesHost host([](Context &context) {
     try {
       context.call(echo, Value{}).get();
-    } catch (const sdk::Failure &failure) {
-      return value(authoring::detail::encode(failure.value));
+    } catch (const harmos::Failure &failure) {
+      return value(harmos::plugin::detail::encode(failure.value));
     }
     throw runtime_error("Call Echo: Expected Failure");
   });
   Samples samples(host);
   samples.window(1, 1);
   const auto child = samples.read();
-  sdk::FailureValue failure;
-  failure.set_classification(sdk::CLASSIFICATION_REFUSED);
+  harmos::FailureValue failure;
+  failure.set_classification(harmos::CLASSIFICATION_REFUSED);
   failure.set_code("refused");
   failure.set_message("Child Refused");
   failure.set_operation(child.child().operation());
@@ -518,8 +514,8 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   response.mutable_child()->set_call(child.child().call());
   *response.mutable_child()->mutable_failure() = failure;
   REQUIRE(samples.stream->Write(response));
-  const auto actual = authoring::decode<sdk::FailureValue>(samples.answer(1, host.message_bytes).at(0));
-  REQUIRE(authoring::detail::encode(actual) == authoring::detail::encode(failure));
+  const auto actual = harmos::plugin::decode<harmos::FailureValue>(samples.answer(1, host.message_bytes).at(0));
+  REQUIRE(harmos::plugin::detail::encode(actual) == harmos::plugin::detail::encode(failure));
   REQUIRE(samples.finish().ok());
 }
 
@@ -581,7 +577,7 @@ TEST_CASE("Ending Samples Settles Open Child Calls") {
   SamplesHost host([&settled](Context &context) {
     try {
       context.call(echo, Value{}).get();
-    } catch (const sdk::TransportError &) {
+    } catch (const harmos::TransportError &) {
       settled.set_value();
       throw;
     }

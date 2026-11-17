@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operations
+//
+// Plugin Discovery Facilities
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/operations.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Context facilities carried only by admitted plugin child calls.
+service Operations {
+  // Return the complete admitted operation inventory; Private and unavailable operations are excluded.
+  rpc List(harmos.host.v1.OperationsListRequest) returns (harmos.host.v1.OperationsListResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+  // Read one admitted operation contract; an unavailable or unauthorized identity refuses.
+  rpc Get(harmos.host.v1.OperationsGetRequest) returns (harmos.host.v1.OperationsGetResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

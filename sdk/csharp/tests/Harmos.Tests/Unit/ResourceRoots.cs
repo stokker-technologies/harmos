@@ -18,28 +18,27 @@ public sealed class ResourceRoots
   [Fact]
   public void CallerSurfacesExposeSharedOperationsAndKeepAdministrationOnClients()
   {
-    Assert.NotNull(typeof(InvocationsResource).GetMethod("Create"));
+    Assert.NotNull(typeof(Fixture.InvocationsResource).GetMethod("Create"));
     Assert.Null(typeof(HostInvocationsResource).GetMethod("Create"));
-    Assert.NotNull(typeof(PluginsSettingsResource).GetMethod("Set"));
+    Assert.NotNull(typeof(Fixture.PluginsSettingsResource).GetMethod("Set"));
     Assert.Null(typeof(HostPluginsSettingsResource).GetMethod("Set"));
-    var clientSettings = typeof(PluginsSettingsResource).GetMethod("List")!;
+    var clientSettings = typeof(Fixture.PluginsSettingsResource).GetMethod("List")!;
     var pluginSettings = typeof(HostPluginsSettingsResource).GetMethod("List")!;
     Assert.Equal(clientSettings.ReturnType, pluginSettings.ReturnType);
     Assert.Equal(typeof(Task<SettingsListResponse>), pluginSettings.ReturnType);
     Assert.Null(typeof(HostRoot).GetProperty("Access"));
     Assert.Null(typeof(HostRoot).GetProperty("Status"));
     Assert.NotNull(typeof(HostTimeResource).GetMethod("Get"));
-    Assert.NotNull(typeof(TimeResource).GetMethod("Get"));
+    Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Sleep"));
-    Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Sleep"));
   }
 
   [Fact]
   public async Task DynamicInvocationRoutesCreateWithTheDiscoveredContractAndPayload()
   {
-    var client = new Client(new Invoker());
+    var client = new Fixture.Client(new Invoker());
     var payload = ByteString.CopyFromUtf8("input");
     var contract = (await client.Operations.Get("fixture.echo")).Contract;
     var response = await client.Invocations.Create(contract.Id, contract.Fingerprint, payload);
@@ -52,9 +51,9 @@ public sealed class ResourceRoots
     var invoker = new Invoker();
     var client = new Fixture.Client(invoker);
     var status = await client.Status.Get();
-    Assert.Equal("harmos.host.v1.Status/Get:selection", status.Status.Identity.ApplicationName);
+    Assert.Equal("application.host.v1.Status/Get:selection", status.Status.Identity.ApplicationName);
     var diagnostics = await client.Status.Diagnostics.Get("selection", 0, 512);
-    Assert.Equal("harmos.host.v1.status.Diagnostics/Get:selection", diagnostics.Name);
+    Assert.Equal("application.host.v1.status.Diagnostics/Get:selection", diagnostics.Name);
     var started = await client.Jobs.Start("selection");
     Assert.Equal("application.host.v1.Jobs/Start:selection", started);
     var progress = new List<string>();
@@ -94,7 +93,7 @@ public sealed class ResourceRoots
     {
       if (request is OperationsGetRequest discovery)
       {
-        Assert.Equal("/harmos.host.v1.Operations/Get", method.FullName);
+        Assert.Equal("/application.host.v1.Operations/Get", method.FullName);
         return (TResponse)(object)new OperationsGetResponse
         {
           Operation = new DiscoveredOperation
@@ -105,7 +104,7 @@ public sealed class ResourceRoots
       }
       if (request is InvocationsCreateRequest invocation)
       {
-        Assert.Equal("/harmos.host.v1.Invocations/Create", method.FullName);
+        Assert.Equal("/application.host.v1.Invocations/Create", method.FullName);
         Assert.Equal("fixture.echo", invocation.Operation);
         Assert.Equal(ByteString.CopyFromUtf8("contract"), invocation.Fingerprint);
         return (TResponse)(object)new InvocationsCreateResponse { Payload = invocation.Payload };

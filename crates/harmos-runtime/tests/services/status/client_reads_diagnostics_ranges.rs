@@ -17,11 +17,11 @@
 use std::{io::Read, sync::Arc};
 
 // Third Party Imports
-use harmos_protocol::host::status as wire;
 use sha2::{Digest, Sha256};
 
 // Local Imports
 use super::support::*;
+use harmos_protocol::host::status;
 
 /* === Constants === */
 
@@ -51,14 +51,14 @@ async fn client_reads_diagnostics_ranges() -> Result {
     host.status.redaction.register(secret.into())?;
     let facts = Arc::new(Facts::new(&format!("host fact: {secret}")));
     let registration = host.status.contribute(facts)?;
-    host.status.record_log(wire::Event {
+    host.status.record_log(status::Event {
         message: format!("log: {secret}"),
         ..Default::default()
     })?;
-    let mut client = wire::diagnostics_client::DiagnosticsClient::new(host.channel.clone());
+    let mut client = harmos_conformance::host::status::diagnostics_client::DiagnosticsClient::new(host.channel.clone());
     // Read One Immutable Archive Through Bounded Unary Ranges
     let first = client
-        .get(wire::DiagnosticsGetRequest {
+        .get(status::DiagnosticsGetRequest {
             name: String::new(),
             offset: 0,
             max_bytes: 701,
@@ -71,7 +71,7 @@ async fn client_reads_diagnostics_ranges() -> Result {
     let mut bytes = first.data;
     while (bytes.len() as u64) < length {
         let range = client
-            .get(wire::DiagnosticsGetRequest {
+            .get(status::DiagnosticsGetRequest {
                 name: name.clone(),
                 offset: bytes.len() as u64,
                 max_bytes: 701,
@@ -101,7 +101,7 @@ async fn client_reads_diagnostics_ranges() -> Result {
     assert!(text.contains("host fact:"));
     assert!(!text.contains(secret));
     let end = client
-        .get(wire::DiagnosticsGetRequest {
+        .get(status::DiagnosticsGetRequest {
             name: name.clone(),
             offset: length,
             max_bytes: 701,
@@ -112,7 +112,7 @@ async fn client_reads_diagnostics_ranges() -> Result {
     assert_eq!(end.sha256, digest);
     assert!(
         client
-            .get(wire::DiagnosticsGetRequest {
+            .get(status::DiagnosticsGetRequest {
                 name: name.clone(),
                 offset: length + 1,
                 max_bytes: 701
@@ -120,7 +120,7 @@ async fn client_reads_diagnostics_ranges() -> Result {
             .await
             .is_err()
     );
-    assert!(client.get(wire::DiagnosticsGetRequest { name, offset: 0, max_bytes: 4097 }).await.is_err());
+    assert!(client.get(status::DiagnosticsGetRequest { name, offset: 0, max_bytes: 4097 }).await.is_err());
     drop((registration, client));
     host.close().await
 }

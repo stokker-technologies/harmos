@@ -25,7 +25,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorProto, FileDescriptorSe
 from harmos_tools.process import spawn_flags
 
 from .resources.csharp import message
-from .resources.descriptor import table
+from .resources.descriptor import request_names
 
 # Type Checking Imports
 
@@ -54,9 +54,7 @@ def protocols(
 ) -> None:
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
     schema = FileDescriptorSet.FromString(descriptors.read_bytes())
-    requests = set()
-    for method in table(schema):
-        requests.add(method["request"].rsplit(".", 1)[-1])
+    requests = {name.rsplit(".", 1)[-1] for name in request_names(schema)}
     requests.update(
         {"Request", "Response", "ChildRequest", "ChildResponse", "ChildCancel", "ChildWatch", "ChildWatchResponse", "ChildWatchCancel"}
     )

@@ -379,6 +379,7 @@ def main() -> None:
                 package.add(sdk / name, arcname=f"sdk/cpp/{name}")
             package.add(ROOT / "proto", arcname="proto")
             package.add(ROOT / "sdk/tests/fixtures/conformance", arcname="sdk/tests/fixtures/conformance")
+            package.add(ROOT / "sdk/tests/fixtures/client", arcname="sdk/tests/fixtures/client")
             package.add(ROOT / "LICENSE", arcname="LICENSE")
         finally:
             package.close()

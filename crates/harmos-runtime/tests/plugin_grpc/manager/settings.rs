@@ -15,24 +15,22 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::ChildRequest;
-use harmos_protocol::plugin::child_response::Result;
+// Standard Library Imports
 
+// Third Party Imports
+use prost::Message;
+use prost_reflect::ReflectMessage;
+
+// Local Imports
 use super::support::{self, Backends, Host};
 use crate::plugin_grpc::support::Remote;
 use harmos_protocol::host;
 use harmos_protocol::host::plugins;
 use harmos_protocol::model;
 use harmos_protocol::model::setting_value::Value;
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::child_response::Result;
 use harmos_runtime::operations::CallContext;
-use prost::Message;
-use prost_reflect::ReflectMessage;
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
 
 /* === Constants === */
 
@@ -100,7 +98,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     support::state(&mut watch, "first", host::PluginState::Ready, 1).await;
     host.client.create(support::remote("second", &remote.address)).await.unwrap();
     support::state(&mut watch, "second", host::PluginState::Ready, 1).await;
-    let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
+    let mut settings = harmos_conformance::host::plugins::settings_client::SettingsClient::new(host.channel.clone());
     assert!(settings.list(plugins::SettingsListRequest { name: None, at: None }).await.is_err());
     let initial = settings.list(plugins::SettingsListRequest { name: Some("first".into()), at: None }).await.unwrap().into_inner();
     let defaults = initial.value.clone().unwrap();
@@ -169,7 +167,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     let mut host = Host::start(root.path(), &backends).await;
     let mut watch = host.client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
     let ready = support::state(&mut watch, "first", host::PluginState::Ready, 2).await;
-    let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
+    let mut settings = harmos_conformance::host::plugins::settings_client::SettingsClient::new(host.channel.clone());
     assert_eq!(settings.set(request).await.unwrap().into_inner(), applied);
     let current = settings.list(plugins::SettingsListRequest { name: Some("first".into()), at: None }).await.unwrap().into_inner();
     assert_eq!(current.value, Some(changed));
@@ -249,7 +247,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     let types = prost_types::FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
-    let id = "harmos.host.v1.plugins.Settings/List";
+    let id = "harmos.plugin.v1.plugins.Settings/List";
     let fingerprint = harmos_protocol::schema::fingerprint(
         id,
         &types,

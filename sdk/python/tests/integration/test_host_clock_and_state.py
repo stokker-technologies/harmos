@@ -21,8 +21,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
-from harmos import CLASSIFICATION_REFUSED
-from harmos import FailureValue as WireFailure
+from harmos import CLASSIFICATION_REFUSED, FailureValue
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
@@ -55,9 +54,9 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
-        failure = WireFailure(
+        failure = FailureValue(
             classification=CLASSIFICATION_REFUSED,
-            operation="harmos.host.v1.Invocations/Create",
+            operation="application.host.v1.Invocations/Create",
             code="caller_not_allowed",
             details={"caller": "PLUGINS"},
         )
@@ -72,7 +71,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
         terminal = await call.read()
         value = Value.FromString(terminal.response.payload)
-        self.assertEqual(WireFailure.FromString(value.value), failure)
+        self.assertEqual(FailureValue.FromString(value.value), failure)
         self.assertIs(await call.read(), EOF)
 
         # Preserve the Same Refusal From an Unanswered Window at Controlled Host Time.
@@ -87,7 +86,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
         batch = (await stream.read()).batch
         self.assertTrue(batch.last)
-        self.assertEqual(WireFailure.FromString(Values.FromString(batch.columns).value[0]), failure)
+        self.assertEqual(FailureValue.FromString(Values.FromString(batch.columns).value[0]), failure)
         stream.cancel()
 
         # Keep the Plugin Connection Usable After Both Refusals.
@@ -118,14 +117,14 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # An Hour-Long Wait Is a Child Call, Completed Only by the Host's Reply.
         call = await calls.invoke(client, "author.wait", Value(value=b"resource"))
         sleep = (await call.read()).child
-        self.assertEqual(sleep.operation, "harmos.host.v1.Time/Sleep")
+        self.assertEqual(sleep.operation, "harmos.plugin.v1.Time/Sleep")
         self.assertEqual(TimeSleepRequest.FromString(sleep.payload).duration.seconds, 3600)
         self.assertEqual(sleep.fingerprint, description.declarations.requires[0].fingerprint)
         await calls.reply(call, sleep, TimeSleepResponse())
 
         # Supply Host Evidence Time Through the Next Child Call.
         now = (await call.read()).child
-        self.assertEqual(now.operation, "harmos.host.v1.Time/Get")
+        self.assertEqual(now.operation, "harmos.plugin.v1.Time/Get")
         at = Timestamp(seconds=12345, nanos=67890)
         await calls.reply(call, now, TimeGetResponse(now=at))
         result = (await call.read()).response
