@@ -96,6 +96,15 @@ pages and status values. Engine seek cursors stay behind continuation tokens. Wi
 proof passed: build, Rust lint, format and focused storage and statistics-consumer stories.
 The remaining facade tasks stay open.
 
+Native Facade Foundation Pin: `7bb345b73bb9bfa5214e46432bd81a3f3cf6fbca` (partial 9.4, 9.6 and 9.7; local checkpoint, not pushed).
+
+Windows targeted proof passed: runtime library build, Schematic app check, five paused-clock
+facade integration stories, one context-removal unit test, the expression row-listing story
+and both Schematic storage journeys. Format, repository/dependency checks and strict OpenSpec
+validation and the complete required lint task passed. The remaining facade families, native built-ins,
+builder ownership, manager privacy, dependency fence and host/SDK cutover stay open; this is
+not source closure for groups 9–10. Native Linux and hosted proof remain pending.
+
 ## 10. Private Host Operations
 
 - [ ] 10.1 Add plugin protocol host facilities to `proto/harmos/plugin/v1` and the carrier for every call the plugin SDK contexts make today (time get/sleep, own settings list, own invocation Get/Cancel/Watch, admitted discovery List/Get) and move all four plugin SDK contexts to them without removing any capability. Prove with the plugin carrier stories, existing child-call stories and per-language SDK fixture tests.

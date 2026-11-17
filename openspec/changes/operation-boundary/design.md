@@ -59,6 +59,14 @@ implementation; a product implements its durable transaction against that contra
 Memory module declarations also contain redundant `#[path]` overrides; remove them
 when touching the backend. Objects initially had no scope field. Scoped deletion adds optional opaque object scope metadata, matching records and files, rather than assigning prefix semantics to object keys. The earlier prefix inventory assumption is superseded.
 
+Remaining inventory findings: runtime `storage/manager.rs` still embeds consumer
+admission and batch defaults, and the runtime/engine manager wrappers duplicate public
+access; tasks 9.1 and 9.6 own their replacement. Existing test entry points still share
+support through `#[path]`, covered by `plugin-lifecycle` task 6.2. Separate workspace
+lockfiles resolve differing dependency revisions, and SDK lint preparation inherits
+`VIRTUAL_ENV` and relies on uv ignoring the mismatched environment. Lockfile and SDK
+environment cleanup remain outside the native facade slice.
+
 Owner amendments override D3's generic caller example: the public calling shape is
 `runtime.for_call(&ctx).storage().append_samples(..)` and
 `.plugins().load(PluginSource::Process(..))`, dispatching native operations under
