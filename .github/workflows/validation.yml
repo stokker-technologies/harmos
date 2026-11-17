@@ -626,7 +626,7 @@ jobs:
         CI_INPUT_ARCHIVES: '["target/ci/build-product-${{ env.PROFILE }}-unix.tar.zst"]'
     - name: Test Repository Tooling
       if: matrix.suffix == ''
-      run: mise -C sdk/csharp run test:tooling -- --profile ${{ env.PROFILE }}
+      run: mise run test:tooling -- --profile ${{ env.PROFILE }}
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.cargo_downloads-cache-hit
         != 'true'
