@@ -137,7 +137,7 @@ impl<A: Application> Runtime<A> {
         }
         let mut builder = setup.into_configuration();
         builder.application = Some(application);
-        builder.runtime().await
+        builder.start().await
     }
 }
 

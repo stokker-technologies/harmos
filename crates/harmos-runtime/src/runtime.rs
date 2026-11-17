@@ -12,8 +12,11 @@
 mod boot;
 mod launch;
 mod lifecycle;
+mod storage;
 
 /* === Re-Exports === */
+
+pub use storage::{StorageFailure, StorageRuntime};
 
 pub use boot::{BootstrapCleanup, BootstrapStatus};
 pub use harmos_operations::execution::StartupError;
@@ -22,7 +25,7 @@ pub use harmos_operations::execution::lifecycle::AssemblyError;
 /* === Imports === */
 
 use harmos_protocol::host::TimeGetRequest;
-use harmos_protocol::model::Callers as WireCallers;
+use harmos_protocol::model::Callers;
 
 // Standard Library Imports
 use std::any::type_name;
@@ -41,7 +44,7 @@ use tokio::task::JoinHandle;
 use tracing::Instrument;
 
 // Local Imports
-use crate::services::{Once as DeclaredService, ServiceDefinition};
+use crate::services::{Once, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
 use crate::storage::StorageManager;
@@ -114,7 +117,6 @@ pub struct Handle<A: Application> {
     storage: Arc<OnceLock<crate::storage::StorageManager>>,
 }
 
-#[doc(hidden)]
 pub struct Builder<A: Application> {
     clock: crate::clock::Clock,
     application: Option<A>,
@@ -129,6 +131,7 @@ pub struct Builder<A: Application> {
     attachments: Attachments<A>,
     managed_storage: Option<crate::config::ManagedStorageSettings>,
     startup_storage: Option<crate::storage::StorageManager>,
+    storage_cleanup: Option<BootstrapCleanup>,
     record_projection: Option<Box<dyn crate::storage::RecordProjection>>,
     reconciliation: Option<boot::Reconciliation<A>>,
     initializers: Vec<boot::Initializer<A>>,
@@ -139,8 +142,8 @@ pub struct Builder<A: Application> {
     grpc_plugins: crate::plugin::grpc::GrpcPluginSettings,
     schema_settings: Arc<crate::config::SchemaSettings>,
     operation_middleware: Vec<Arc<dyn crate::operations::middleware::Middleware>>,
-    callers: std::collections::BTreeMap<String, WireCallers>,
-    services: Vec<DeclaredService<A>>,
+    callers: std::collections::BTreeMap<String, Callers>,
+    services: Vec<Once<A>>,
 
     #[cfg(feature = "simulation")]
     simulation: crate::simulation::Configuration<A>,
@@ -388,7 +391,7 @@ impl<A: Application> Runtime<A> {
         &self.grpc
     }
 
-    pub(crate) fn builder(origin: impl Into<Origin<A::State>>) -> Builder<A> {
+    pub fn builder(origin: impl Into<Origin<A::State>>) -> Builder<A> {
         Builder {
             clock: crate::clock::current(),
             application: None,
@@ -403,6 +406,7 @@ impl<A: Application> Runtime<A> {
             attachments: Attachments::new(),
             managed_storage: None,
             startup_storage: None,
+            storage_cleanup: None,
             record_projection: None,
             reconciliation: None,
             initializers: Vec::new(),
@@ -681,7 +685,7 @@ impl<A: Application> Builder<A> {
         self.live_only.push("resident services");
 
         let definition = ServiceDefinition { id: name.into(), policy };
-        self.services.push(DeclaredService::new(definition, resident));
+        self.services.push(Once::new(definition, resident));
         self
     }
 
@@ -765,7 +769,7 @@ impl<A: Application> Builder<A> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn runtime(mut self) -> Result<Runtime<A>, StartupError> {
+    pub async fn start(mut self) -> Result<Runtime<A>, StartupError> {
         self.validate_configuration()?;
         let storage = self.startup_storage.clone();
         boot::Startup::new(self, storage).await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
@@ -824,6 +828,18 @@ impl<A: Application> Builder<A> {
     }
 
     fn validate_configuration(&mut self) -> Result<(), StartupError> {
+        if let Some(cleanup) = &self.storage_cleanup
+            && cleanup.status() != BootstrapStatus::Settled
+        {
+            let source = StorageFailure {
+                source: Arc::new(Error::NotReady {
+                    domain: "storage-only cleanup; retry and await its receipt before starting",
+                }),
+                cleanup: cleanup.clone(),
+            };
+            return Err(StartupError::Runtime { source: Box::new(source) });
+        }
+
         if self.startup_storage.is_none() {
             let storage = {
                 let _clock = crate::clock::enter(self.clock.clone());
@@ -1023,6 +1039,10 @@ impl<A: Application> Builder<A> {
                 return Err(Incompatible::work(duplicate));
             }
         }
+        grpc_plugins.policy.load.validate().map_err(|source| {
+            let error: Error = Error::OperationDeclaration { source: source.into() };
+            Incompatible::work(error)
+        })?;
         let operations = crate::operations::Manager::new::<A>(
             instances,
             &operation_settings,
@@ -1031,8 +1051,8 @@ impl<A: Application> Builder<A> {
             boot.identity.clone(),
             schema_settings,
             callers,
-        )
-        .map_err(Incompatible::work)?;
+        );
+        operations.register_grpc_clock().map_err(Incompatible::work)?;
         for middleware in operation_middleware {
             operations.register_middleware(middleware).map_err(Incompatible::work)?;
         }

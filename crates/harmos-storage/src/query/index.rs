@@ -25,12 +25,16 @@ use harmos_query::index::*;
 
 use crate::{BackendSnapshot, Error, Identifier, ReadLimits, Result, StorageBackend};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct IndexCatalog {
     definitions: BTreeMap<Identifier, (IndexDefinition, u64)>,
 }
 
 impl IndexCatalog {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.definitions.is_empty()
+    }
+
     pub fn register(&mut self, definition: &IndexDefinition, expected: Option<u64>, rebuild: bool) -> Result<u64> {
         definition.validate()?;
         if self.definitions.get(&definition.name).map(|(_, revision)| *revision) != expected {

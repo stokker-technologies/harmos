@@ -143,6 +143,15 @@ impl BootstrapCleanup {
         }
     }
 
+    pub(super) fn own(&self, close: impl Fn() -> CleanupFuture + Send + Sync + 'static) -> Cleanup {
+        let owner = Cleanup {
+            close: Arc::new(close),
+            receipt: Arc::downgrade(&self.shared),
+        };
+        self.shared.retained.lock().expect("bootstrap cleanup lock").owner = Some(owner.clone());
+        owner
+    }
+
     pub fn status(&self) -> BootstrapStatus {
         *self.shared.status.borrow()
     }
@@ -204,7 +213,7 @@ impl BootstrapCleanup {
         self.shared.status.send_replace(BootstrapStatus::Failed);
     }
 
-    fn cancelled(&self, owner: Cleanup) {
+    pub(super) fn cancelled(&self, owner: Cleanup) {
         {
             let mut retained = self.shared.retained.lock().expect("bootstrap cleanup lock");
             retained.owner = Some(owner.clone());

@@ -24,6 +24,71 @@ replay after later revisions or restart preserves that outcome. Successful
 receipts are durable, and stored schema encodings are unchanged. DeleteFile keeps
 its existing retained-reader behavior; this migration makes no reclamation change.
 
+## Storage Before Full Startup
+
+During application preparation, register the primary and recovery backends as usual,
+then open `setup.settings().storage_only().await?`. The returned session admits the
+native storage catalog through `operations()`, without application services, plugins
+or listeners. Await `close()` and release the session before preparation returns.
+The full runtime opens the same registered backends with a fresh manager and worker;
+no live worker or backend session transfers between the assemblies. Offline maintenance
+can use `Runtime::<A>::builder(origin)` to open and close this session without
+starting a full runtime. After closing and releasing the session, `builder.start()`
+continues assembly. `builder.storage_cleanup()` retains cleanup after failed opening,
+cancellation or closing; await its receipt and, after fixing a backend failure, call
+`retry()`. Another opening or full startup refuses until that cleanup has settled.
+
+`storage.copy_backend` accepts a saved source cursor and an empty offline target
+backend. Its backend hook copies a retained image at that cut, including committed
+objects, records, samples, published file bytes and their metadata. Control definitions
+are those captured when the image opens. The target retains the source history identity;
+use it as a replacement or backup, never as an independent concurrent writer of that
+history. Recovery journals are separate backend data and are not part of this primary
+backend copy. Backends own target formats and supported target kinds; unsupported hooks
+or target kinds return `STORAGE_FAILURE_UNSUPPORTED` with an action for the caller.
+Copy follows the snapshot lifecycle guard and the configured backend I/O policy.
+It does not retry an uncertain target write automatically.
+
+`storage.dispose_backend` invokes the supplied offline target's disposal hook. It
+permanently removes its data; close its sessions and release its retained snapshots first.
+It cannot erase the minimal assembly's active backend. The memory reference implements
+both hooks, refuses nonempty or active copy targets and keeps the copied data independent
+of later source writes. Products implement physical copy and disposal in their backends.
+
+## Expression Transforms
+
+`storage.list_rows` accepts streaming `Transform::Scale`, `Transform::Offset` and
+`Transform::Contains` values exported with their plan types from
+`harmos_runtime::builtins::storage`. Each names an input
+`field` and an output `name`; a new name appends a column and an existing name replaces
+that column. Chain transforms to scale a numeric field, offset the result and project
+only the columns a product needs.
+
+```rust
+use harmos_runtime::builtins::storage::{Contains, Offset, ScalarValue, Scale, Transform};
+
+let transforms = vec![
+    Transform::Scale(Scale { field: "payload.value".into(), name: "scaled".into(), factor: 2.0 }),
+    Transform::Offset(Offset { field: "scaled".into(), name: "shifted".into(), amount: -1.0 }),
+    Transform::Contains(Contains {
+        field: "_storage.item".into(), name: "selected".into(), value: ScalarValue::Text("first".into()),
+    }),
+];
+```
+
+Scale takes a finite `factor`; Offset takes a finite `amount`. They produce Float64
+columns, including the usual floating conversion of integer and exact inputs. Arithmetic
+overflow refuses the query and asks the caller to reduce the operand. Null values, null
+parent structures and nonfinite source values remain null. Missing schema paths retain
+the existing field-validation refusal.
+
+Contains takes a typed scalar `value`. Text containment is case-sensitive substring
+matching; scalar-list containment uses the same typed equality as filters. Null parent
+structures and null input fields produce null; null or nonfinite list members do not
+match a nonnull needle. Empty lists produce false. Incompatible field/needle types and
+null needles refuse during schema validation. All three transforms preserve source row
+order, use the ordinary row-page bounds and observe query cancellation while scanning.
+
 ## Operational Policy and Admission
 
 `StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the

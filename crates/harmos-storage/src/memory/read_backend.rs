@@ -87,6 +87,7 @@ impl Backend {
                 self.control.view_release.notified().await;
             }
             self.history.check(&at.history)?;
+            let receipts = self.mutation_receipts.lock().unwrap();
             let conditional = self.conditional.lock().unwrap();
 
             if at.sequence > self.saved.load(Ordering::SeqCst) as u64 {
@@ -129,6 +130,11 @@ impl Backend {
                 schemas: self.schemas.lock().unwrap().clone(),
                 records: retained,
                 rows: self.rows.lock().unwrap().clone(),
+                conditional: conditional.clone(),
+                projections: self.projections.lock().unwrap().at(at.sequence),
+                indexes: self.indexes.lock().unwrap().clone(),
+                receipts: receipts.clone(),
+                object_schemas: self.object_schemas.lock().unwrap().clone(),
             };
             let snapshot = self.retain_snapshot(Arc::new(snapshot));
             drop(conditional);

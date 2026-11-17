@@ -17,6 +17,7 @@ mod definitions;
 mod file_access;
 mod file_watches;
 mod lists;
+mod maintenance;
 mod pages;
 mod views;
 mod watch_rows;
@@ -36,6 +37,11 @@ mod set_schema;
 mod snapshot;
 
 /* === Re-Exports === */
+
+pub use harmos_domain::model::storage::query::scalar::ScalarValue;
+pub use harmos_domain::model::storage::query::transform::expression::{Contains, Offset, Scale};
+
+pub use maintenance::{CopyBackend, CopyBackendRequest, DisposeBackend, DisposeBackendRequest};
 
 pub use compound::{DeleteObject, DeleteScope};
 
