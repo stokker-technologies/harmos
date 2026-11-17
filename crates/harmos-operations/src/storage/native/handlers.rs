@@ -40,7 +40,7 @@ use std::error;
 // Local Imports
 use super::{transfers, watch_rows};
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
-use crate::operations::{FailureKind, ReplaySafety};
+use crate::operations::{FailureKind, ReplaySafety, RetryPolicy};
 use harmos_storage::StorageManager;
 
 /* === Constants === */
@@ -491,7 +491,10 @@ impl NativeOperation for CreateSnapshot {
     type Endpoints = ();
     const ID: &'static str = "storage.create_snapshot";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: crate::OperationPolicy = crate::OperationPolicy {
+        retries: RetryPolicy::Never,
+        ..super::POLICY
+    };
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
@@ -517,7 +520,7 @@ impl NativeOperation for RetainSnapshot {
     type Endpoints = ();
     const ID: &'static str = "storage.retain_snapshot";
 
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: crate::OperationPolicy = CreateSnapshot::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 

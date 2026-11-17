@@ -94,3 +94,24 @@ pub fn storage_catalog_batch() -> __private::Catalog {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use crate::builtins_catalog_batch;
+    use crate::operations::{ReplaySafety, RetryPolicy};
+
+    #[test]
+    fn registered_operation_policies_match_replay_safety() {
+        let catalog = builtins_catalog_batch();
+        assert!(!catalog.operations.is_empty());
+        for operation in catalog.operations {
+            let definition = operation.definition;
+            assert!(definition.policy.validate().is_ok(), "{} has an invalid policy", definition.id);
+            assert!(
+                definition.replay != ReplaySafety::Unknown || definition.policy.retries == RetryPolicy::Never,
+                "{}: declare replay safety or disable retries",
+                definition.id
+            );
+        }
+    }
+}
