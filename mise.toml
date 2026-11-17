@@ -15,6 +15,7 @@ rust = { version = "1.99.1", profile = "minimal" }
 
 # Package Managers
 uv = "0.13.6"
+pnpm = "12.11.2"
 
 # Rust Toolchain
 "aqua:nextest-rs/nextest/cargo-nextest" = "0.9.150"
@@ -88,6 +89,18 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 [tasks."package"]
 description = "Package Selected Languages"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks package"
+
+[tasks."docs:build"]
+description = "Build the Documentation Site Entry"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.docs.site build"
+
+[tasks."docs:serve"]
+description = "Preview the Documentation Site"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.docs.site serve"
+
+[tasks."docs:image"]
+description = "Assemble Published Documentation Archives Into the Site Image"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.docs.image"
 
 [tasks."release:prepare"]
 description = "Prepare the Release Branch"
@@ -220,6 +233,17 @@ run = [
   "mise -C sdk/python run format{% if usage.check %} -- --check{% endif %}",
   "mise -C sdk/cpp run format{% if usage.check %} -- --check{% endif %}",
 ]
+
+[tasks."format:typescript"]
+hide = true
+description = "Format the Documentation Site"
+usage = 'flag "--check"'
+run = "pnpm --dir site exec biome format{% if usage.check %}{% else %} --write{% endif %} ."
+
+[tasks."lint:typescript"]
+hide = true
+description = "Lint the Documentation Site"
+run = "pnpm --dir site exec biome lint ."
 
 [tasks."format:rust"]
 hide = true

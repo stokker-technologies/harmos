@@ -178,10 +178,12 @@ Every SDK includes an importable fixture for [layered SDK conformance](docs/tool
 
 [Releases](https://github.com/stokker-technologies/harmos/releases) attach
 `harmos-proto-<version>.zip`, one `harmos-conformance-<version>-<platform>.zip|tar.gz`
-per platform, `harmos-compliance-<version>.zip`, `release.json` and `SHA256SUMS`.
+per platform, `harmos-compliance-<version>.zip`, `harmos-docs-<version>.zip`,
+`release.json` and `SHA256SUMS`.
 The changelog is the release body; crates and language SDKs use their registries.
 The mutable [Nightly](https://github.com/stokker-technologies/harmos/releases/tag/nightly)
-adds `harmos-reports-<version>.zip` and fixed-name `benchmarks.json`. Its notes record
+adds `harmos-reports-<version>.zip`, fixed-name `benchmarks.json` and the
+documentation archive when its independent build succeeds. Its notes record
 coverage, benchmark regressions, suite results and the workflow link; failed suites
 can accompany a published build.
 

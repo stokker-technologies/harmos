@@ -141,7 +141,7 @@ make child calls.
 ## Product Roots
 
 Generate product messages and typed stubs into a private protocol package using the
-[import mapping](architecture.md#product-composition-and-narrowing). Then generate its composed roots:
+[import mapping](architecture.md#product-wrappers-and-the-native-facade). Then generate its composed roots:
 
 ```sh
 mise run generate -- --sdk python --descriptors path/to/descriptors.bin --composition path/to/composition.toml --output path/to/application/_generated/client.py --namespace application

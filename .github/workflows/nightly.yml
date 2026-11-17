@@ -84,12 +84,12 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,uv
   docs:
+    name: Build / Documentation
     needs: [freshness]
     if: needs.freshness.outputs.build == 'true'
-    uses: ./.github/workflows/validation.yml
+    uses: ./.github/workflows/validate-build-docs.yml
     with:
       channel: nightly
-      selection: docs
       profile: release
   check:
     needs:

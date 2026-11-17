@@ -27,7 +27,7 @@ from pathlib import Path
 
 # === Constants === #
 
-LANGUAGES = ("rust", "python", "toml")
+LANGUAGES = ("rust", "python", "toml", "typescript")
 LAYERS = ("unit", "integration", "acceptance", "system")
 
 # === Types === #
@@ -40,7 +40,8 @@ LAYERS = ("unit", "integration", "acceptance", "system")
 def parse(arguments: list[str] | None = None) -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     parser = argparse.ArgumentParser(description="Select Repository Task Steps")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("prepare")
+    prepare = commands.add_parser("prepare")
+    prepare.add_argument("--docs-only", action="store_true")
     generate = commands.add_parser("generate")
     generate.add_argument("--profile", choices=("dev", "release"), default="dev")
     generate.add_argument("--dependencies", action="store_true")

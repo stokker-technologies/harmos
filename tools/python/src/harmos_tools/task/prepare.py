@@ -38,7 +38,7 @@ from . import execute
 def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     root = Path.cwd()
     enabled = os.environ.get("MISE_ENABLE_TOOLS")
-    if enabled is None or "rust" in enabled.split(","):
+    if not options.docs_only and (enabled is None or "rust" in enabled.split(",")):
         toolchain = tomllib.loads((root / "rust-toolchain.toml").read_text(encoding="utf-8"))["toolchain"]
         execute.command(
             [
@@ -54,6 +54,9 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 ",".join(toolchain["targets"]),
             ]
         )
+    if options.docs_only or enabled is None or "pnpm" in enabled.split(","):
+        # Install Locked Documentation Dependencies
+        execute.command(["pnpm", "--dir", "site", "install", "--frozen-lockfile"])
     return 0
 
 

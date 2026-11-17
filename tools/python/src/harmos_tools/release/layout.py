@@ -56,7 +56,7 @@ def download_url(settings: dict, tag: str, name: str) -> str:
 
 
 def classify(settings: dict, name: str) -> dict:
-    for family in ("proto", "compliance", "reports"):
+    for family in ("proto", "compliance", "reports", "docs"):
         if name.startswith(f"{settings['product']}-{family}-") and name.endswith(".zip"):
             return {"kind": family, "os": "any", "arch": "any", "format": "zip"}
     if name == "benchmarks.json":

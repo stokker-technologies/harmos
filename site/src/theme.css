@@ -1,0 +1,23 @@
+/* Harmos — SPDX-License-Identifier: Apache-2.0 */
+/* Organization Typography for the Documentation Site. */
+
+@font-face {
+  font-display: swap;
+  font-family: "Roboto Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../assets/fonts/roboto-latin-wght-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Roboto Mono Variable";
+  font-style: normal;
+  font-weight: 100 700;
+  src: url("../assets/fonts/roboto-mono-latin-wght-normal.woff2") format("woff2");
+}
+
+:root {
+  --sl-font: "Roboto Variable", system-ui, sans-serif;
+  --sl-font-mono: "Roboto Mono Variable", ui-monospace, monospace;
+}

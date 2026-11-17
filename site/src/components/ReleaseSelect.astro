@@ -1,0 +1,57 @@
+---
+// Harmos — SPDX-License-Identifier: Apache-2.0
+// Offer the Site's Entries From Its Root versions.json; Without It, Show Only the Current Entry.
+import Default from "@astrojs/starlight/components/ThemeSelect.astro";
+
+const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+const entry = base.split("/").filter(Boolean).at(-1) ?? "dev";
+const root = base.slice(0, base.length - entry.length - 1);
+---
+
+<label class="release-select" data-entry={entry} data-root={root}>
+  <span class="sr-only">Release</span>
+  <select aria-label="Release">
+    <option value={entry} selected>{entry === "dev" ? "Development" : entry}</option>
+  </select>
+</label>
+<Default><slot /></Default>
+
+<script>
+  for (const label of document.querySelectorAll<HTMLElement>(".release-select")) {
+    const select = label.querySelector("select");
+    const entry = label.dataset.entry ?? "";
+    const root = label.dataset.root ?? "/";
+    if (!select) {
+      continue;
+    }
+    fetch(`${root}versions.json`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then((entries: { entry: string; label: string }[]) => {
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return;
+        }
+        select.replaceChildren(
+          ...entries.map((item) => {
+            const option = new Option(item.label, item.entry, false, item.entry === entry);
+            return option;
+          }),
+        );
+      })
+      .catch(() => undefined);
+    select.addEventListener("change", () => {
+      const page = location.pathname.startsWith(`${root}${entry}/`) ? location.pathname.slice(`${root}${entry}/`.length) : "";
+      location.assign(`${root}${select.value}/${page}`);
+    });
+  }
+</script>
+
+<style>
+  .release-select select {
+    background: transparent;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    color: var(--sl-color-gray-1);
+    font-size: var(--sl-text-sm);
+    padding: 0.25rem 0.5rem;
+  }
+</style>

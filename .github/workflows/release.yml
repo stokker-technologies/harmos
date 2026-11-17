@@ -249,7 +249,7 @@ jobs:
       MISE_ENABLE_TOOLS: python,uv
       REVIEW_RELEASE: 'true'
       REVIEW_PACKAGES: '["package-PROFILE-rust-unix","package-PROFILE-rust-windows"]'
-      REVIEW_BUILDS: '["build-python-PROFILE"]'
+      REVIEW_BUILDS: '["build-python-PROFILE","build-docs-PROFILE-any"]'
       REVIEW_REQUIRED: 'true'
     outputs:
       validated: ${{ steps.review.outputs.validated }}

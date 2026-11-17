@@ -23,14 +23,12 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+import harmos_tools.release.source
+
 # Third Party Imports
 # Local Imports
-import harmos_tools.release.assets
-import harmos_tools.release.conformance
-import harmos_tools.release.rehearse
-import harmos_tools.release.source
-import harmos_tools.release.version
-from harmos_tools.release import layout, nightly, policy, reports
+from harmos_tools.docs import site
+from harmos_tools.release import assets, conformance, layout, nightly, policy, rehearse, reports, version
 
 # Type Checking Imports
 
@@ -78,29 +76,38 @@ class ReleaseLayout(unittest.TestCase):
                         self.assertNotIn(b"\r", output.read_bytes())
                     else:
                         output.write_text("{}")
-            shared = directory / harmos_tools.release.assets.ASSETS / "any"
+            shared = directory / assets.ASSETS / "any"
             core = {layout.conformance_name(directory, settings, target, "1.2.3") for target in targets}
             core.update({"harmos-proto-1.2.3.zip", "harmos-compliance-1.2.3.zip", "release.json", "SHA256SUMS"})
             with (
                 patch.object(harmos_tools.release.source, "release_tag", return_value="v1.2.3"),
-                patch.object(harmos_tools.release.version, "run"),
+                patch.object(version, "run"),
                 patch.object(harmos_tools.release.source, "native", return_value="absent"),
             ):
                 # Refuse A File At The Staging Root Before Creating The Clean Output Tree.
-                release_root = directory / harmos_tools.release.assets.ASSETS
+                release_root = directory / assets.ASSETS
                 release_root.write_bytes(b"wrong shape")
                 with self.assertRaisesRegex(policy.ToolError, "regular directory"):
-                    harmos_tools.release.assets.stage(
-                        directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes"
-                    )
+                    assets.stage(directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes")
                 release_root.unlink()
                 # Rehearse Both Channels On An Initially Absent Output Tree.
                 for channel in ("stable", "nightly"):
-                    harmos_tools.release.rehearse.dry(
-                        directory, settings, profile="release", require_all=True, release_notes="Fixture Notes", channel=channel
-                    )
+                    documentation = directory / site.OUTPUT / site.ARCHIVE
+                    documentation.parent.mkdir(parents=True, exist_ok=True)
+                    if channel == "stable":
+                        archive = zipfile.ZipFile(documentation, "w")
+                        try:
+                            archive.writestr(site.STAMP, json.dumps({"entry": "1.2", "version": "1.2.3", "revision": "a" * 40}))
+                            archive.writestr("index.html", "<!doctype html>")
+                        finally:
+                            archive.close()
+                    else:
+                        documentation.unlink()
+                    rehearse.dry(directory, settings, profile="release", require_all=True, release_notes="Fixture Notes", channel=channel)
                     uploads = layout.uploads(directory, staged=True)
-                    expected = core | ({"harmos-reports-1.2.3.zip", "benchmarks.json"} if channel == "nightly" else set())
+                    expected = core | (
+                        {"harmos-reports-1.2.3.zip", "benchmarks.json"} if channel == "nightly" else {"harmos-docs-1.2.3.zip"}
+                    )
                     self.assertEqual({item["name"] for item in uploads}, expected)
                     document = json.loads((shared / "release.json").read_text())
                     self.assertEqual(set(document), {"notes", "pub_date", "downloads"})
@@ -114,7 +121,7 @@ class ReleaseLayout(unittest.TestCase):
                     for row in manifest["artifacts"]:
                         self.assertEqual(set(row), {"kind", "os", "arch", "format", "name", "url", "size", "sha256"})
                         self.assertEqual(row["url"], f"https://github.com/owner/repo/releases/download/{manifest['tag']}/{row['name']}")
-                    harmos_tools.release.assets.checksums(shared / "SHA256SUMS", {item["name"]: item for item in uploads})
+                    assets.checksums(shared / "SHA256SUMS", {item["name"]: item for item in uploads})
                     archive = zipfile.ZipFile(shared / "harmos-proto-1.2.3.zip")
                     try:
                         self.assertEqual(
@@ -138,26 +145,20 @@ class ReleaseLayout(unittest.TestCase):
                 original = inventory.read_bytes()
                 policy.write_json(inventory, {"components": [{"name": "fixture", "version": "2.0"}]})
                 with self.assertRaisesRegex(policy.ToolError, "Stage Python Compliance:.*linux-x86_64.*windows-x86_64"):
-                    harmos_tools.release.assets.stage(
-                        directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes"
-                    )
+                    assets.stage(directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes")
                 inventory.write_bytes(original)
                 # A File Occupying A Required Directory Fails Locally.
                 shutil.rmtree(shared)
                 shared.write_bytes(b"wrong shape")
                 with self.assertRaisesRegex(policy.ToolError, "regular directory"):
-                    harmos_tools.release.assets.stage(
-                        directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes"
-                    )
+                    assets.stage(directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes")
                 shared.unlink()
                 report_root = directory / "target/nightly-reports"
                 report_root.write_bytes(b"wrong shape")
                 with self.assertRaises((policy.ToolError, NotADirectoryError)):
                     reports.collect(directory)
                 report_root.unlink()
-                harmos_tools.release.assets.stage(
-                    directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes", channel="nightly"
-                )
+                assets.stage(directory, settings, "v1.2.3", list(targets), "release", release_notes="Fixture Notes", channel="nightly")
             # Available Measurements And Failed Suites Update An Existing Publication.
             report_root = directory / "target/nightly-reports"
             coverage = report_root / "results-coverage-release-unix/rust/coverage.xml"
@@ -179,8 +180,15 @@ class ReleaseLayout(unittest.TestCase):
             }
             drafts = {}
             draft_assets = {}
-            initial_manifest = (directory / harmos_tools.release.assets.ASSETS / "upload.json").read_bytes()
+            initial_manifest = (directory / assets.ASSETS / "upload.json").read_bytes()
             remote = {item["name"]: (directory / item["path"]).read_bytes() for item in layout.uploads(directory)}
+            # The Independent Documentation Build Finishes After Initial Publication.
+            archive = zipfile.ZipFile(documentation, "w")
+            try:
+                archive.writestr(site.STAMP, json.dumps({"entry": "dev", "version": "1.2.3", "revision": "a" * 40}))
+                archive.writestr("index.html", "<!doctype html>")
+            finally:
+                archive.close()
 
             def pages(settings: dict, endpoint: str, **kwargs: object) -> list[dict]:
                 if endpoint == "releases":
@@ -255,13 +263,25 @@ class ReleaseLayout(unittest.TestCase):
                     finally:
                         archive.close()
                     inventory = layout.uploads(directory, staged=True)
-                    harmos_tools.release.assets.checksums(shared / "SHA256SUMS", {item["name"]: item for item in inventory})
+                    self.assertEqual(remote["harmos-docs-nightly.zip"], documentation.read_bytes())
+                    self.assertEqual(
+                        [
+                            item["kind"]
+                            for item in json.loads(remote["release.json"])["downloads"]["artifacts"]
+                            if item["name"] == "harmos-docs-nightly.zip"
+                        ],
+                        ["docs"],
+                    )
+                    assets.checksums(shared / "SHA256SUMS", {item["name"]: item for item in inventory})
                 # Verification Also Works After Reports Replace Their Initial Digests.
-                (directory / harmos_tools.release.assets.ASSETS / "upload.json").write_bytes(initial_manifest)
+                original_inventory = json.loads(initial_manifest)
+                original_inventory["assets"].extend(item for item in inventory if item["name"] == "harmos-docs-nightly.zip")
+                initial_manifest = json.dumps(original_inventory).encode("utf-8")
+                (directory / assets.ASSETS / "upload.json").write_bytes(initial_manifest)
                 with (
                     patch.object(nightly, "_github_source", return_value=("a" * 40, "7", "https://example.test/runs/7")),
                     patch.object(nightly, "_tag", return_value="a" * 40),
-                    patch.object(harmos_tools.release.conformance, "verify") as native,
+                    patch.object(conformance, "verify") as native,
                 ):
                     nightly.verify(directory)
                     native.assert_called_once()

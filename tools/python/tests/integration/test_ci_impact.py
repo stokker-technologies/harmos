@@ -55,6 +55,9 @@ class ImpactPlanning(unittest.TestCase):
             (["README.md"], docs_only),
             (["sdk/python/README.md"], docs_only),
             (["docs/assets/theme.css"], docs_only),
+            (["site/astro.config.ts"], docs_only),
+            (["site/pnpm-lock.yaml"], docs_only),
+            (["tools/python/src/harmos_tools/docs/operations.py"], docs_only),
             (["openspec/changes/example/specs/api/spec.md"], docs_only),
             (["crates/harmos-domain/src/lib.rs"], rust),
             (
