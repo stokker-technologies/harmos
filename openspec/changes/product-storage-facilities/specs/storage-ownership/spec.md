@@ -2,11 +2,11 @@
 
 ### Requirement: Compose Retained File Operations
 
-Native file and production following SHALL compose with retained metadata and projections through StorageManager and ordinary shared batch ownership. Serialized queue/page bounds and query concurrency SHALL remain explicit consumer settings; consumer retained-result and scratch budgets SHALL remain consumer-owned.
+Native file and production following SHALL compose with retained metadata and projections through Harmos storage operations and ordinary shared batch ownership. Serialized queue/page bounds and query concurrency SHALL remain explicit consumer settings; consumer retained-result and scratch budgets SHALL remain consumer-owned.
 
 #### Scenario: Retained Metadata and Data
 
-- **WHEN** a consumer retains metadata and follows the related file through the same storage manager
+- **WHEN** a consumer retains metadata and follows the related file through the same native storage operation boundary
 - **THEN** following SHALL preserve ordinary source and target ownership without introducing a read-memory pool
 - **AND** source allocations SHALL survive through final consumption
 

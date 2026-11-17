@@ -2,7 +2,22 @@
 
 ## Ownership
 
-The paired consumer owns its adoption and published dependency pin. No local override or path-resolved lockfile enters delivery.
+Harmos owns retained file/capture and request ownership mechanisms. A product reaches
+these only through Harmos storage operations; `operation-boundary` owns the facade,
+manager privacy and storage-only drain/reopen. Its groups 2–4 also own compound/scoped
+backend conformance and offline maintenance. Harmos keeps the contract, memory backend
+and conformance kit; SQLite lives in the product.
+
+Product changes own live followers, upload/bundle temporary owners, shared schema-settings
+adoption, framing adoption, removal of duplicate buffers/copy/hash/retry engines and
+resolved dependency/pin proof. Their numerical one-million-sample acceptance must be
+recovered from the product specification; it is not a new Harmos release threshold.
+These external implementation obligations are not Harmos task checkboxes.
+
+`operation-grammar` task 3.10 owns retained-reader deletion and the reported
+`deletion_preserves_other` regression. Keep its backend-neutral review and product
+backend proof open. This change retains the Windows temporary-handle follow-up and
+final native-platform proof. No local override or path-resolved lockfile enters delivery.
 
 ## Consumer Evidence
 
@@ -24,7 +39,7 @@ Backend workers retain their actual input/output owners through blocking work. R
 
 The native opened-capture constructor synchronously retains the original file and target. Fallible reader setup and copying occur in `OpenedCapture::finish(&mut self)`, whose retained future and exact chunk survive caller cancellation. Initialization failure must not abandon the producer and recreate its identity on retry. Existing target prefixes are compared before any new suffix is accepted. Read batches and retained append chunks share their ordinary backing allocations; uniquely owned projections move data without copying, and aliases refuse consuming typed/file projections.
 
-Batch writes use shared StorageBatch ownership without a scratch-admission carrier. Accepted workers settle during shutdown while new admission stays closed. RequestClaims carries process-local ownership through Host::call_owned and accepted runtime requests. Cross-process adapters refuse such owners rather than dropping or serializing them.
+Batch writes use shared StorageBatch ownership without a scratch-admission carrier. Accepted workers settle during shutdown while new admission stays closed. Accepted runtime requests retain process-local payload ownership through native operation submission. Cross-process adapters refuse such owners rather than dropping or serializing them.
 
 ## Integration and Validation
 
@@ -50,7 +65,7 @@ Retain existing Harmos delivery rings and authored per-stream window sizes, as t
 
 ## Immutable Mutable-Source Snapshots
 
-Freeze an opened source into a private native-owned temporary file before backend creation or capture waits. The immutable FrozenFile exposes length and SHA-256 but no writable handle; its owner survives backend retries even if the original producer changes. StorageManager::freeze_opened_file reuses bounded opened-file reads and verifies source stability. StorageManager::capture_frozen_file retains that owner inside existing OpenedCapture. Partial freezes may be discarded on cancellation, with in-flight blocking IO retaining its actual file and batch owners until completion. Disk errors propagate; no replacement arbitrary total-size ceiling is introduced. a product retains digest-based deduplication and removes its duplicate copy/hash loop.
+Freeze an opened source into a private native-owned temporary file before backend creation or capture waits. The immutable FrozenFile exposes length and SHA-256 but no writable handle; its owner survives backend retries even if the original producer changes. The internal freeze_opened_file implementation reuses bounded opened-file reads and verifies source stability. Internal capture_frozen_file retains that owner inside OpenedCapture; products use the owning storage operations. Partial freezes may be discarded on cancellation, with in-flight blocking IO retaining its actual file and batch owners until completion. Disk errors propagate; no replacement arbitrary total-size ceiling is introduced. a product retains digest-based deduplication and removes its duplicate copy/hash loop.
 
 ## Current Source Inventory
 
@@ -92,9 +107,8 @@ this test repair as complete proof.
 Named temporary owners remain alive through reads and blocking workers.
 ## Open Points
 
-### Awaiting Owner Confirmation
-
-- Accept retained pre-deletion reader bytes, with fresh reads refused, as the intended backend-neutral contract after reviewing consumer backends.
+`operation-grammar` 3.10 owns confirmation of retained pre-deletion reader bytes with
+fresh reads refused, including product backend review; no data-loss change is authorized.
 
 The consumer's one-million-sample latency acceptance and native Linux proof remain open;
 no removed JSON benchmark supplies either. The numerical consumer acceptance target must be
