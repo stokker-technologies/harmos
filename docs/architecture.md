@@ -160,6 +160,9 @@ images until release. A retained scope never pins another scope's deleted data.
 Native handles reopen through the backend after manager/registry restart; durable
 products persist their handles and ownership across process restart. The reference
 memory backend retains them across sessions within its process lifetime.
+Unqualified native reads reuse a held image only in the current registry mutation
+epoch. Object, scope and file deletion advance that epoch after commit under the
+snapshot issuance lock; token-bearing explicit cuts keep their retained images.
 
 Durable followers scan committed backend data, including compound, conditional and
 columnar sample writes. Backend observation metadata rounds resume positions down to complete
