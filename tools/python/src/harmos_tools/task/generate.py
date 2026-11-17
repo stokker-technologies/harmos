@@ -44,9 +44,7 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
         if options.output is None:
             parser.error("composed client roots require --output")
-        harmos_tools.build.resource_roots.compose(
-            root, options.descriptors, options.output, options.namespace, language=options.sdk, composition=options.composition
-        )
+        harmos_tools.build.resource_roots.compose(root, options.descriptors, options.output, options.namespace, language=options.sdk)
         return 0
     if options.sdk == "python":
         return execute.command(["mise", "-C", "sdk/python", "run", "generate"])

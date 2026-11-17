@@ -1201,7 +1201,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-rustls",
- "toml_edit",
  "tonic",
  "tonic-reflection",
  "tower",
@@ -2358,7 +2357,6 @@ dependencies = [
  "protoc-bin-vendored",
  "tempfile",
  "tokio",
- "toml_edit",
  "tonic",
 ]
 

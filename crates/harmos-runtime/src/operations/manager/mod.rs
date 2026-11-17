@@ -29,11 +29,9 @@ mod residents;
 
 /* === Re-Exports === */
 
-pub(crate) use plugin_grpc::Admission as GrpcAdmission;
+pub(crate) use plugin_grpc::GrpcAdmission;
 
 /* === Imports === */
-
-use harmos_protocol::model::Callers;
 
 // Standard Library Imports
 use std::any::Any;
@@ -96,7 +94,6 @@ pub(crate) struct WeakOperationManager {
 }
 
 pub(crate) struct Registry {
-    callers: Arc<BTreeMap<String, Callers>>,
     /// The Configured `plugins.load` Policy (`GrpcPluginSettings::policy`).
     pub(crate) plugin_load: super::OperationPolicy,
     pub(crate) access: Arc<harmos_operations::access::AccessAccess>,
@@ -128,7 +125,6 @@ struct State {
 }
 
 pub(super) struct Entry {
-    callers: Arc<BTreeMap<String, Callers>>,
     pub(super) carrier: harmos_operations::execution::__private::ResourceSet,
     owner: Identifier,
     definition: OperationDefinition,

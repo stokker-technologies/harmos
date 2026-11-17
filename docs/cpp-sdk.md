@@ -68,8 +68,8 @@ source consumers pass the vcpkg toolchain when configuring that tree. The instal
 package story extracts that archive, builds its example with `find_package(Harmos)`
 and runs every host rule. Test consumers use existing SDK and host builds;
 `--layer unit` selects CTest and `--layer integration` selects the Python stories.
-The native client fixture also reads the shared declarative composition file: its
-client loses `time.get`, while the library client and plugin context retain it.
+The native client fixture projects library and product descriptors directly,
+preserving each operation's declared client and plugin audiences.
 `HARMOS_CONFORMANCE_HOST` may select a separately built host.
 For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
 Windows) explicitly with that variable; otherwise stories prefer the native
@@ -98,7 +98,8 @@ authoring types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
 Wire requests and transport adapters stay in private generated headers.
 Protocol definitions are grouped by model, host and plugin executor. Each host
 operation's callers option selects its client and plugin-context surfaces: `CLIENTS`,
-`PLUGINS` or `ALL`. A product's composition file may narrow that audience.
+`PLUGINS` or `ALL`. The descriptor owns that audience; runtime assembly has no
+caller overrides.
 
 ```cpp
 using harmos::Client;

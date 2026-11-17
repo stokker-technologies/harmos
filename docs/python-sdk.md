@@ -144,16 +144,15 @@ Generate product messages and typed stubs into a private protocol package using 
 [import mapping](architecture.md#product-wrappers-and-the-native-facade). Then generate its composed roots:
 
 ```sh
-mise run generate -- --sdk python --descriptors path/to/descriptors.bin --composition path/to/composition.toml --output path/to/application/_generated/client.py --namespace application
+mise run generate -- --sdk python --descriptors path/to/descriptors.bin --output path/to/application/_generated/client.py --namespace application
 ```
 
-The generator emits a client and a sibling plugin context from the same effective callers.
-Bind `PluginContext(context)` from the generated plugin module in product handlers;
-its `host` root omits calls narrowed to clients. The generator merges the composition's
-library descriptors with product descriptors,
-refuses conflicts, widening and resource collisions, and writes the root and public
-response barrel. The composition file may narrow ALL to CLIENTS or PLUGINS. Excluded
-methods are absent from the generated audience, including inherited library resources.
+The generator emits a client and a sibling plugin context from descriptor-declared
+audiences. Bind `PluginContext(context)` from the generated plugin module in product
+handlers; its `host` root includes plugin-callable declarations. The generator merges
+library and product descriptors, refuses descriptor conflicts and resource collisions,
+and writes the root and public response barrel. Runtime assembly has no audience
+overrides. Change the product declaration to change its generated audience.
 The product root retains SDK connection ownership. Import `Client` from `application`; call `client.jobs.start(value)`
 and `client.plugins.annotations.get(name)` alongside ordinary library resources.
 The generated read-only properties retain complete nested parents and static types.

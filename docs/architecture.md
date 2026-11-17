@@ -410,11 +410,11 @@ child packages also use ordinary module declarations, following the proto tree.
 `tools/python/src/harmos_tools/build/resource_roots.py` owns descriptor composition
 and generation order. Its `build/resources/descriptor.py` owns the shared method
 inventory; `python.py`, `rust.py`, `csharp.py` and `cpp.py` each own one language's
-rendering. `source/protocol.py` validates and narrows caller options from a
+rendering. `source/protocol.py` validates declared caller options from a
 single dependency-resolved descriptor pool, resolving the shared option schema
 once for the inventory. Call rendering and payload exports consume the same
-method inventory so audience ownership has one source. Composition entry points and wire
-contracts remain stable across this source organization. Generated bindings
+method inventory so audience ownership has one source. Descriptor artifacts are the
+composition inputs; no caller override map is read. Generated bindings
 remain tracked and regeneration is the only authoring path. The protocol
 drift test compares committed sources and descriptor projections byte for byte.
 `build/resources/sdk.py` owns complete SDK generation and drift comparison;
@@ -424,7 +424,7 @@ retain their invocation inputs rather than copying these renderers. The shared
 C# wire projector lives in `build/csharp_protocol.py`; the native C# task selects
 its pinned compiler and delegates to it. The descriptor inventory retains map,
 oneof, explicit presence, copy and nested enum metadata. Public payload ownership
-uses the original library audience inventory even when a product narrows its calls.
+uses the supplied library descriptor inventory and each declared audience.
 Generated output remains tracked. See [Repository Tooling](tooling.md)
 for the complete-SDK invocation.
 See the mapping below for the migrated identities and consumer ownership.
@@ -449,7 +449,7 @@ and caller-face authorization remain independent checks.
    The host mediates cross-plugin calls; Private operations stay in-process.
    **Why:** avoid resource twins while preserving caller-specific admission.
    **Where:** proto/harmos, the mapping and work lists below.
-   **Proof:** Buf plus caller-option checks and generator narrowing/projection tests
+   **Proof:** Buf plus caller-option checks and generator audience/projection tests
    cover definitions. Runtime denial cases 33/34 remain with their consumer.
    **Status:** definitions/generated outputs landed; runtime and SDK consumers pending.
 
@@ -1250,9 +1250,10 @@ preserve that record; the gRPC status is PermissionDenied, including after nesti
 replaces "The product-owned `protocol/composition.toml` is the single declarative
 composition input for both runtime assembly and SDK generation." Its purpose was
 matching caller admission and generated resources. Product wrapper descriptors
-now own both; Harmos host operations have no wire exposure markers or listener
-bindings. The composition reader, caller narrowing and generator `--composition`
-input are removed by the breaking group, together with their consumers.
+will own remote exposure when the host-wire cutover lands. The composition reader, caller override map and generator `--composition` input
+are removed. Generators merge descriptor artifacts directly and project the declared
+audiences. Schematic and the four language fixtures use those same declarations.
+Host wire and SDK root removal remain pending in the breaking group.
 
 ```rust,ignore
 let reply = runtime.for_call(&ctx).storage().append_samples(request).await?;
@@ -1338,7 +1339,7 @@ second discovery inventory. Register each declaration once, using its executor
 identity and effective callers. Discovery returns admitted contracts with their
 fingerprints and projections. Dynamic client calls use Invocations.Create with
 operation, fingerprint and payload; application typed clients come from the
-application's descriptors and the same composition file.
+application's descriptors and their declared audiences.
 
 Plugin discovery uses the same admission predicate as child dispatch, including
 declared requirements, matching fingerprints, provider visibility and audience.
@@ -1359,18 +1360,18 @@ from their source definitions; generated files have no independent ownership.
 
 | Owner | Landed Consumer Work |
 | --- | --- |
-| Core Crates | Model/host/plugin imports, one host declaration and handler per operation, caller admission on direct/encoded/child paths, composition narrowing, trusted settings selectors and effective callers in discovery. Storage remains Private and in-process. |
+| Core Crates | Model/host/plugin imports, one host declaration and handler per operation, caller admission on direct/encoded/child paths, descriptor-declared audiences, trusted settings selectors and effective callers in discovery. Storage remains Private and in-process. |
 | Rust SDK | Public barrels, flattened client roots, shared plugin context resources, product fixture bindings and host method identities. The SDK client example is dynamic; the Schematic client is generated from application descriptors. |
 | Python SDK | Typed public payloads, generated client/context resources and internal executor wire modules, migrated example and fixture imports. The packaged finite-schema projector validates the mandatory callers field in canonical contracts. |
 | C# SDK | Public payload namespaces, shared client/context reply types, generated roots and fixture bindings, caller-owned call context. |
 | C++ SDK | Public payload barrel, generated client/context methods, native protocol inventory, conformance fixture barrel, installed-package consumers. |
 | Conformance | Both wrong-caller directions use the real runtime, including direct and managed invocation admission; all 38 rules apply to each SDK fixture. |
-| Schematic and Fixtures | Executor packages, explicit host callers, composition input, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Host handlers register their canonical service/method identities. Guest publication declares its own PLUGINS-only host service. Guest admission validates protobuf identities through their checked contracts while native declarations retain their native identity rules. |
+| Schematic and Fixtures | Executor packages, explicit host callers, product descriptors, typed application client, in-process storage wrappers, native sidecar and wasm32 guest. Host handlers register their canonical service/method identities. Guest publication declares its own PLUGINS-only host service. Guest admission validates protobuf identities through their checked contracts while native declarations retain their native identity rules. |
 
-The preceding narrowing stories in `crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`
-and `tools/python/tests/integration/test_protocol_callers.py` are removed with that mechanism.
-Their replacement proves wrapper audiences, unreachable host operations and discovery matching
-dispatch; the plugin context moves to plugin-protocol facilities.
+The narrowing-only stories in `crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`
+and `tools/python/tests/integration/test_protocol_callers.py` are removed. The runtime file
+retains the scoped discovery wrapper proof, matching discovery to dispatch. Private host
+wire reachability and plugin context facilities remain open in the breaking group.
 
 Invocation selectors retain the submitting caller's ownership. A plugin cannot watch
 an invocation submitted by the host or another caller. A watch demand already in
@@ -1382,9 +1383,10 @@ errors on both invocation and sample carriers.
 
 Replace the entire proto/harmos tree and regenerate all languages. Remove client/
 and plugin/host/ folders and old shared v1 files. Apply the complete identity map,
-mandatory callers and product narrowing input before enabling listeners. Products
+mandatory declared callers before enabling listeners. Products
 own storage wrappers and application-specific publication; no library Storage or
-Samples.Append service is recreated. Compose the library's host resources directly.
+Samples.Append service is recreated. Products expose their own wrapper services;
+library host-wire and host-client removal remain open in the breaking group.
 
 ## Managed Process Ownership
 
@@ -1730,7 +1732,7 @@ marked in the protocol definitions rather than inferred by parameter name. The o
 Plugins.Watch name selects all entries when absent.
 
 Product generators merge descriptors, keep their own protocol modules private and export
-response types through a client barrel. The shared composition fixture proves a product
+response types through a client barrel. The shared descriptor fixture proves a product
 Annotations resource beneath library Plugins alongside the sibling Jobs.Progress root.
 Python composed roots inherit Client connection ownership and preserve typed resource
 properties. No application-side resource grafting is required.

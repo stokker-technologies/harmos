@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
 use std::marker::PhantomData;
@@ -112,7 +112,6 @@ impl<A: Application> Builder<A> {
             BTreeSet::new(),
             Arc::new(()),
             self.schema_settings.clone(),
-            BTreeMap::new(),
         );
         for middleware in &self.operation_middleware {
             operations.register_middleware(middleware.clone())?;

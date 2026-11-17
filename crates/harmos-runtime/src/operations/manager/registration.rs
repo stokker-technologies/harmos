@@ -202,7 +202,6 @@ impl Manager {
         })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
-            callers: self.registry.callers.clone(),
             carrier: harmos_operations::execution::__private::ResourceSet::new(),
             owner,
             definition,

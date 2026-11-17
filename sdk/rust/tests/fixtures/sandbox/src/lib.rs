@@ -19,6 +19,7 @@ pub mod contract;
 
 /* === Imports === */
 
+use harmos::encoding::Message;
 use harmos_protocol::model::RetryPolicy;
 
 use contract::*;
@@ -40,6 +41,25 @@ use std::{
 /* === Type Aliases === */
 
 /* === Structs === */
+
+#[derive(harmos::Message)]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateRequest")]
+struct ForbiddenCreate {
+    operation: String,
+    fingerprint: Vec<u8>,
+    payload: Vec<u8>,
+}
+
+#[derive(harmos::Message)]
+#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateResponse")]
+struct ForbiddenResult {
+    payload: Vec<u8>,
+}
+
+impl OperationRequest for ForbiddenCreate {
+    type Response = ForbiddenResult;
+    const ID: &'static str = "harmos.host.v1.Invocations/Create";
+}
 
 #[derive(Default)]
 struct Owner {
@@ -163,7 +183,7 @@ pub fn harmos_register() -> Registration {
         .requires::<ProviderEchoOperation>()
         .requires::<ReadOperation>()
         .requires::<PublishProgress>()
-        .requires_host(harmos::plugin::HostOperation::TimeGet)
+        .requires::<ForbiddenCreate>()
         .stream(Stream::<Echoed>::new("progress"));
     Registration::new(plugin)
         .capacity(2)
@@ -230,7 +250,6 @@ fn policy(attempts: u32, delay_millis: i32) -> OperationPolicy {
     }
 }
 async fn progress(context: &Context, value: &str) -> Result<()> {
-    use harmos::encoding::Message as _;
     context
         .call(PublishProgress {
             stream: "progress".into(),
@@ -240,7 +259,13 @@ async fn progress(context: &Context, value: &str) -> Result<()> {
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
     if request.say == "caller-refusal" {
-        context.host().time.get().await?;
+        context
+            .call(ForbiddenCreate {
+                operation: String::new(),
+                fingerprint: Vec::new(),
+                payload: Vec::new(),
+            })
+            .await?;
     }
     if let Some(say) = request.say.strip_prefix("local:") {
         return context.call(LocalEcho { say: say.into() }).await;

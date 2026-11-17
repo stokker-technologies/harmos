@@ -5,10 +5,12 @@ from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 from google.protobuf.duration_pb2 import Duration
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import CallCredentials
 from grpc.aio import AioRpcError, Channel
 
-from harmos import _connection
+import harmos
+from harmos import client
 from harmos._client_transport import Metadata, call_error, stream, unary
 from harmos._wire.host.v1.access.certificates_pb2 import CertificatesCreateRequest, CertificatesCreateResponse
 from harmos._wire.host.v1.access.listener_pb2 import (
@@ -70,7 +72,7 @@ from harmos._wire.host.v1.status.trace_events_pb2 import (
 )
 from harmos._wire.host.v1.status_pb2 import StatusGetRequest, StatusGetResponse, StatusWatchRequest, StatusWatchResponse
 from harmos._wire.host.v1.streams_pb2 import StreamIdentity, StreamsListRequest, StreamsListResponse
-from harmos._wire.host.v1.time_pb2 import TimeSleepRequest, TimeSleepResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.model.v1.invocation_pb2 import InstanceState
 from harmos._wire.model.v1.operation_pb2 import DiscoveredOperation
 from harmos._wire.model.v1.page_pb2 import PageRequest
@@ -82,8 +84,9 @@ from tests.fixtures.client._wire.application.host.v1.jobs_pb2 import JobsStartRe
 from tests.fixtures.client._wire.application.host.v1.plugins.annotations_pb2 import AnnotationsGetRequest, AnnotationsGetResponse
 
 
-class AccessCertificatesResource:
+class AccessCertificatesResource(client.AccessCertificatesResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def create(
@@ -103,8 +106,9 @@ class AccessCertificatesResource:
         return response.certificate_pem
 
 
-class AccessListenerResource:
+class AccessListenerResource(client.AccessListenerResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def get(
@@ -146,8 +150,9 @@ class AccessListenerResource:
         return response
 
 
-class AccessPairingsResource:
+class AccessPairingsResource(client.AccessPairingsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def create(
@@ -251,8 +256,9 @@ class PluginsAnnotationsResource:
         return response.value
 
 
-class PluginsSettingsResource:
+class PluginsSettingsResource(client.PluginsSettingsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -304,8 +310,9 @@ class PluginsSettingsResource:
         return response
 
 
-class StatusDiagnosticsResource:
+class StatusDiagnosticsResource(client.StatusDiagnosticsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def get(
@@ -332,8 +339,9 @@ class StatusDiagnosticsResource:
         return response
 
 
-class StatusLogsResource:
+class StatusLogsResource(client.StatusLogsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -387,8 +395,9 @@ class StatusLogsResource:
             call.cancel()
 
 
-class StatusTraceEventsResource:
+class StatusTraceEventsResource(client.StatusTraceEventsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -442,8 +451,9 @@ class StatusTraceEventsResource:
             call.cancel()
 
 
-class AccessResource:
+class AccessResource(client.AccessResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
         self._composed_certificates = AccessCertificatesResource(channel)
         self._composed_listener = AccessListenerResource(channel)
@@ -462,8 +472,9 @@ class AccessResource:
         return self._composed_pairings
 
 
-class InvocationsResource:
+class InvocationsResource(client.InvocationsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def create(
@@ -581,8 +592,9 @@ class JobsResource:
         return response.value
 
 
-class OperationsResource:
+class OperationsResource(client.OperationsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -620,8 +632,9 @@ class OperationsResource:
         return response.operation
 
 
-class PluginsResource:
+class PluginsResource(client.PluginsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
         self._composed_annotations = PluginsAnnotationsResource(channel)
         self._composed_settings = PluginsSettingsResource(channel)
@@ -831,8 +844,9 @@ class PluginsResource:
         return response
 
 
-class SchemasResource:
+class SchemasResource(client.SchemasResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -857,8 +871,9 @@ class SchemasResource:
         return list(response.schemas)
 
 
-class StatusResource:
+class StatusResource(client.StatusResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
         self._composed_diagnostics = StatusDiagnosticsResource(channel)
         self._composed_logs = StatusLogsResource(channel)
@@ -919,8 +934,9 @@ class StatusResource:
             call.cancel()
 
 
-class StreamsResource:
+class StreamsResource(client.StreamsResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
 
     async def list(
@@ -945,9 +961,28 @@ class StreamsResource:
         return list(response.streams)
 
 
-class TimeResource:
+class TimeResource(client.TimeResource):
     def __init__(self, channel: Channel) -> None:
+        super().__init__(channel)
         self._channel = channel
+
+    async def get(
+        self, *, metadata: Metadata | None = None, timeout: float | None = None, credentials: CallCredentials | None = None
+    ) -> Timestamp:
+        request = TimeGetRequest()
+        response = await unary(
+            self._channel,
+            "/harmos.host.v1.Time/Get",
+            request,
+            TimeGetResponse,
+            metadata=metadata,
+            timeout=timeout,
+            credentials=credentials,
+            action="time.get",
+        )
+        if not response.HasField("now"):
+            raise ValueError("Read Time.Get: Missing Payload")
+        return response.now
 
     async def sleep(
         self,
@@ -971,7 +1006,7 @@ class TimeResource:
         return response
 
 
-class Client(_connection.Connection):
+class Client(harmos.Client):
     def __init__(self, channel: Channel) -> None:
         super().__init__(channel)
         self._channel = channel

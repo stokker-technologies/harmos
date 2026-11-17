@@ -23,10 +23,10 @@ mod wire {
 // Standard Library Imports
 use std::{
     fmt::Display,
-    io::Error as IoError,
+    io,
     num::NonZeroUsize,
     pin::Pin,
-    result::Result as StdResult,
+    result,
     sync::OnceLock,
     sync::{
         Arc, Mutex,
@@ -44,8 +44,7 @@ use prost_reflect::{DescriptorPool, MessageDescriptor, ReflectMessage};
 use prost_types::FileDescriptorSet;
 use tokio::{net::TcpListener, sync::oneshot};
 use tonic::{
-    Code, Request, Response, Status, Streaming,
-    client::Grpc as RpcClient,
+    Code, Request, Response, Status, Streaming, client,
     codegen::http::uri::PathAndQuery,
     transport::{Channel, Endpoint, Server},
 };
@@ -54,7 +53,7 @@ use tonic_prost::ProstCodec;
 // Local Imports
 use crate::{Error, Result, fixture};
 use harmos_operations::OperationPolicy;
-use harmos_operations::clock::Get as ClockGet;
+use harmos_operations::clock;
 use harmos_operations::execution::operations::{
     Catalog, ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility,
 };
@@ -70,8 +69,7 @@ use harmos_protocol::plugin::{
 use harmos_runtime::{
     Application, Lifecycle, Runtime, Setup, Startup,
     clock::{Clock, Controller},
-    grpc::Settings as GrpcSettings,
-    operations::Settings as OperationSettings,
+    grpc, operations,
     plugin::grpc::{Placement, PlacementSettings},
     state::Never,
 };
@@ -86,7 +84,7 @@ const CREATE: &str = "harmos.host.v1.Invocations/Create";
 
 /* === Type Aliases === */
 
-type Frames<T> = Pin<Box<dyn Stream<Item = StdResult<T, Status>> + Send>>;
+type Frames<T> = Pin<Box<dyn Stream<Item = result::Result<T, Status>> + Send>>;
 
 /* === Structs === */
 
@@ -112,7 +110,7 @@ struct Forward {
 
 impl<T> Stream for Forwarding<T>
 where
-    Streaming<T>: Stream<Item = StdResult<T, Status>>,
+    Streaming<T>: Stream<Item = result::Result<T, Status>>,
 {
     type Item = T;
 
@@ -139,10 +137,10 @@ impl ReflectMessage for CallerProbeGetResponse {
 
 impl Lifecycle for App {
     type Config = ();
-    type Error = IoError;
+    type Error = io::Error;
     type Context = Startup<Self>;
 
-    async fn prepare(_: Self::Config, setup: &mut Setup<Self>) -> StdResult<Self, Self::Error> {
+    async fn prepare(_: Self::Config, setup: &mut Setup<Self>) -> result::Result<Self, Self::Error> {
         let factory = OperationFactory::protobuf::<Probe>().expect("caller probe contract");
         setup.catalog(Catalog::new().entry(factory), Default::default());
         setup.catalog(
@@ -150,7 +148,6 @@ impl Lifecycle for App {
             Default::default(),
         );
         setup.catalog(harmos_operations::lifecycle_catalog(), Default::default());
-        setup.composition(include_str!("../../../sdk/tests/fixtures/client/composition.toml")).map_err(IoError::other)?;
         Ok(Self)
     }
 }
@@ -166,12 +163,12 @@ impl ProtobufOperation for Probe {
     type Response = CallerProbeGetResponse;
     type Endpoints = ();
     const ID: &'static str = TARGET;
-    const POLICY: OperationPolicy = ClockGet::POLICY;
+    const POLICY: OperationPolicy = clock::Get::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const GRPC: Option<Grpc> = Some(Grpc::new("conformance.host.v1", "CallerProbe", "Get"));
     const RESOURCES: &'static [Resource] = &[Resource::of::<AtomicU64>()];
 
-    async fn run(context: ExecutionContext, _: CallerProbeGetRequest, _: &()) -> StdResult<CallerProbeGetResponse, ServingError> {
+    async fn run(context: ExecutionContext, _: CallerProbeGetRequest, _: &()) -> result::Result<CallerProbeGetResponse, ServingError> {
         context.resource::<AtomicU64>().map_err(|_| ServingError::Catalog)?.fetch_add(1, Ordering::SeqCst);
         Ok(CallerProbeGetResponse {})
     }
@@ -182,12 +179,12 @@ impl ProtobufOperation for NativeRefusal {
     type Response = PluginsGetResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.Plugins/Get";
-    const POLICY: OperationPolicy = ClockGet::POLICY;
+    const POLICY: OperationPolicy = clock::Get::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Get"));
     const RESOURCES: &'static [Resource] = &[];
 
-    async fn run(_: ExecutionContext, _: PluginsGetRequest, _: &()) -> StdResult<PluginsGetResponse, ServingError> {
+    async fn run(_: ExecutionContext, _: PluginsGetRequest, _: &()) -> result::Result<PluginsGetResponse, ServingError> {
         let failure = Failure {
             classification: Classification::Permanent as i32,
             code: "unsupported".into(),
@@ -210,7 +207,7 @@ impl ProtobufOperation for NativeRefusal {
 
 #[tonic::async_trait]
 impl Instance for Forward {
-    async fn get(&self, request: Request<InstanceGetRequest>) -> StdResult<Response<InstanceGetResponse>, Status> {
+    async fn get(&self, request: Request<InstanceGetRequest>) -> result::Result<Response<InstanceGetResponse>, Status> {
         let mut response = self.client.clone().get(request).await?;
         let declarations = response
             .get_mut()
@@ -229,14 +226,14 @@ impl Instance for Forward {
 
     type InvokeStream = Streaming<InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> StdResult<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> result::Result<Response<Self::InvokeStream>, Status> {
         let frames = Forwarding { incoming: Box::pin(request.into_inner()) };
         self.client.clone().invoke(frames).await
     }
 
     type SamplesStream = Frames<InstanceSamplesResponse>;
 
-    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> StdResult<Response<Self::SamplesStream>, Status> {
+    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> result::Result<Response<Self::SamplesStream>, Status> {
         let frames = Forwarding { incoming: Box::pin(request.into_inner()) };
         let incoming = self.client.clone().samples(frames).await?.into_inner();
         let sample = self.sample.clone();
@@ -256,7 +253,7 @@ impl Instance for Forward {
         Ok(Response::new(Box::pin(frames)))
     }
 
-    async fn stop(&self, _: Request<InstanceStopRequest>) -> StdResult<Response<InstanceStopResponse>, Status> {
+    async fn stop(&self, _: Request<InstanceStopRequest>) -> result::Result<Response<InstanceStopResponse>, Status> {
         // The Suite Owns the Underlying Plugin and Stops It in Rule 16.
         Ok(Response::new(InstanceStopResponse {}))
     }
@@ -281,13 +278,13 @@ pub fn request() -> Vec<u8> {
 }
 
 pub async fn run(rule: usize, address: &str) -> Result<()> {
-    // Compose a Real Host With the Same Caller Narrowing Used by SDK Generation.
+    // Compose a Host From Declared Audiences.
     let counter = Arc::new(AtomicU64::new(0));
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::<App>::launch_with((), (), |setup| {
         setup.resource::<AtomicU64>(counter.clone());
         setup.settings().clock(clock);
-        setup.settings().operation_settings(OperationSettings {
+        setup.settings().operation_settings(operations::Settings {
             preparation_bytes: NonZeroUsize::new(16 * 1024 * 1024),
             ..Default::default()
         });
@@ -319,7 +316,7 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
     // A Client Knows Both the Direct Binding and the Dynamic Contract.
     let listener = runtime
         .grpc()
-        .attach(GrpcSettings {
+        .attach(grpc::Settings {
             address: "127.0.0.1:0".parse().expect("loopback"),
             ..Default::default()
         })
@@ -327,7 +324,7 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
         .map_err(invalid)?;
     let address = format!("http://{}", listener.local_addr());
     let channel = Endpoint::from_shared(address.clone()).map_err(invalid)?.connect().await?;
-    let mut client = RpcClient::new(channel.clone());
+    let mut client = client::Grpc::new(channel.clone());
     client.ready().await.map_err(invalid)?;
     let codec = ProstCodec::<CallerProbeGetRequest, CallerProbeGetResponse>::default();
     let status = client
@@ -350,7 +347,7 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
     require(counter.load(Ordering::SeqCst) == 1, "Call Probe: Refused Client Reached Handler")?;
 
     // An Explicit Native Status Has the Same Kind, Action and Cause Through Create.
-    let mut direct = RpcClient::new(channel);
+    let mut direct = client::Grpc::new(channel);
     direct.ready().await.map_err(invalid)?;
     let status = direct
         .unary(
@@ -440,7 +437,7 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
             // A Client's Nested Invocation Keeps the Plugin's Original Denial.
             let listener = runtime
                 .grpc()
-                .attach(GrpcSettings {
+                .attach(grpc::Settings {
                     address: "127.0.0.1:0".parse().expect("loopback"),
                     ..Default::default()
                 })
@@ -507,3 +504,11 @@ fn invalid(error: impl Display) -> Error {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    #[tokio::test]
+    async fn descriptor_callers_refuse_clients_without_assembly_overrides() {
+        super::run(33, "").await.unwrap();
+    }
+}

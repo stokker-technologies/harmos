@@ -170,7 +170,6 @@ def generate_client_fixture(output: Path) -> None:
             output / "_generated/client.py",
             "tests.fixtures.client",
             language="python",
-            composition=proto.parent / "composition.toml",
         )
     finally:
         shutil.rmtree(scratch)

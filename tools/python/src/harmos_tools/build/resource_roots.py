@@ -15,7 +15,6 @@
 import re
 import subprocess
 import sys
-import tomllib
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -29,7 +28,6 @@ import harmos_tools.build.resources.descriptor
 import harmos_tools.build.resources.python
 import harmos_tools.build.resources.rust
 from harmos_tools.process import spawn_flags
-from harmos_tools.source.protocol import narrow_callers
 
 # Type Checking Imports
 
@@ -148,7 +146,6 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
                 target,
                 fixture_namespace,
                 language=language,
-                composition=root / "sdk/tests/fixtures/client/composition.toml",
             )
     paths = [
         root / "sdk/rust/src" / name
@@ -182,47 +179,22 @@ def compose(
     namespace: str,
     *,
     language: str | None = None,
-    composition: Path | None = None,
     check: bool = False,
 ) -> None:
     if not re.fullmatch(r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*", namespace):
-        raise ValueError("Generate Client: Invalid Output Namespace; Correct the composition inputs and rerun mise run generate")
+        raise ValueError("Generate Client: Invalid Output Namespace; Correct the descriptor inputs and rerun mise run generate")
     merged = FileDescriptorSet()
     files = {}
-    libraries = []
-    settings = {}
-    if composition is not None:
-        # Read Structured Input
-        text = composition.read_text(encoding="utf-8")
-        settings = tomllib.loads(text)
-        if set(settings) - {"libraries", "callers"}:
-            raise ValueError("Compose SDK: Unknown Composition Fields; Correct the composition inputs and rerun mise run generate")
-        libraries = [(composition.parent / library["descriptors"], library["packages"]) for library in settings.get("libraries", [])]
-    else:
-        libraries = [(repository / "crates/harmos-protocol/src/descriptors.bin", [])]
-    for path, packages in [*libraries, *((path, []) for path in descriptors)]:
+    for path in [repository / "crates/harmos-protocol/src/descriptors.bin", *descriptors]:
         library = FileDescriptorSet.FromString(path.read_bytes())
-        existing_packages = {file.package for file in library.file}
-        if set(packages) - existing_packages:
-            raise ValueError(
-                "Compose SDK: Library Package Is Absent from Its Descriptors; Correct the composition inputs and rerun mise run generate"
-            )
         for file in library.file:
-            if (
-                packages
-                and not file.package.startswith("google.")
-                and not any(file.package == package or file.package.startswith(package + ".") for package in packages)
-            ):
-                continue
             file.ClearField("source_code_info")
             if file.name in files and files[file.name] != file:
                 raise ValueError(
-                    f"Generate Client: Conflicting Descriptor File {file.name}; Correct the composition inputs and rerun mise run generate"
+                    f"Generate Client: Conflicting Descriptor File {file.name}; Correct the descriptor inputs and rerun mise run generate"
                 )
             files[file.name] = file
     merged.file.extend(files[name] for name in sorted(files))
-    if settings.get("callers"):
-        narrow_callers(merged, settings["callers"])
     methods = harmos_tools.build.resources.descriptor.table(merged)
     clients = [method for method in methods if method["face"] == "client"]
     contexts = [method for method in methods if method["face"] == "context"]
@@ -266,7 +238,6 @@ def main() -> None:
     parser.add_argument("--descriptors", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--namespace", default="harmos")
-    parser.add_argument("--composition", type=Path)
     parser.add_argument("--language", choices=("python",))
     parser.add_argument("--cpp-fixture", type=Path)
     options = parser.parse_args()
@@ -283,7 +254,7 @@ def main() -> None:
     elif options.descriptors:
         if options.output is None:
             parser.error("composed client descriptors require --output")
-        compose(root, options.descriptors, options.output, options.namespace, language=options.language, composition=options.composition)
+        compose(root, options.descriptors, options.output, options.namespace, language=options.language)
     else:
         generate(root)
 

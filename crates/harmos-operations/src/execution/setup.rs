@@ -38,10 +38,6 @@ pub struct Setup<L: Lifecycle> {
     replacing: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Compose Host Operations: {0}")]
-pub struct AssemblyError(pub String);
-
 /* === Enums === */
 
 /* === Traits === */
@@ -57,7 +53,6 @@ pub trait ApplicationConfiguration: SetupConfiguration {
     type Lane;
     type LaneSettings;
 
-    fn composition(&mut self, source: &str) -> Result<(), AssemblyError>;
     fn lane(&mut self, lane: Self::Lane, settings: Self::LaneSettings);
 
     fn catalog(&mut self, catalog: crate::execution::operations::Catalog, lane: Self::Lane);
@@ -103,10 +98,6 @@ impl<L: Lifecycle> Setup<L>
 where
     <L::Context as Context>::Configuration: ApplicationConfiguration,
 {
-    pub fn composition(&mut self, source: &str) -> Result<(), AssemblyError> {
-        self.configuration.composition(source)
-    }
-
     pub fn operation(
         &mut self, operation: crate::execution::operations::OperationFactory,
         lane: <<L::Context as Context>::Configuration as ApplicationConfiguration>::Lane,

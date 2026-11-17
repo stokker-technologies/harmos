@@ -197,4 +197,5 @@ mise run build -- --manifest-path examples/schematic/Cargo.toml --package schema
 
 Pass the running application's gRPC URL to `target/debug/examples/client` and set
 `HARMOS_CLIENT_RETAINED_BYTES` to its decoded-memory budget. The application and
-SDK generation share [composition.toml](../examples/schematic/protocol/composition.toml).
+SDK generator use the [product declarations](../examples/schematic/proto/schematic/host/v1/schematic.proto)
+and their declared audiences.

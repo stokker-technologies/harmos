@@ -22,9 +22,9 @@ Upload, FileReference, PageRequest and Receipt remain shared values.
 
 The [identity map and consumer work lists](../docs/architecture.md#protocol-boundary-definition-and-consumer-migration)
 record the clean pre-1.0 replacement and remaining hand-written integration work.
-Products list composed library packages and caller restrictions in their own
-protocol/composition.toml, consumed by runtime assembly and SDK generation;
-restrictions may only narrow a library declaration.
+Products declare operation audiences in their protocol descriptors. Runtime assembly
+and SDK generation use those declarations directly; no composition file or caller
+override map is read.
 
 Regenerate through `mise run generate -- --sdk rust`, then python, csharp and cpp.
 Generated output is never edited by hand. The native package and reflection

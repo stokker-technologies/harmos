@@ -17,7 +17,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from dataclasses import replace
 from pathlib import Path
 
@@ -27,7 +26,6 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 # Local Imports
 from harmos_tools.build import csharp_protocol
 from harmos_tools.process import spawn_flags
-from harmos_tools.source.protocol import narrow_callers
 
 from . import cpp, csharp, descriptor, python, rust
 from .configuration import Configuration
@@ -45,13 +43,13 @@ from .configuration import Configuration
 # === Public Functions === #
 
 
-def generate(check: bool = False, *, root: Path, descriptors: Path, composition: Path, configuration: Configuration) -> None:
+def generate(check: bool = False, *, root: Path, descriptors: Path, configuration: Configuration) -> None:
     if re.fullmatch(r"[a-z][a-z0-9_]*", configuration.namespace) is None:
         raise ValueError("Generate SDK: Supply One Lowercase Package Name in Configuration.namespace")
     source = root
     output = Path(tempfile.mkdtemp())
     try:
-        _render(source, output, descriptors, composition, configuration)
+        _render(source, output, descriptors, configuration)
         if check:
             differences = compare(source, output, configuration)
             if differences:
@@ -124,28 +122,17 @@ def compare(source: Path, expected: Path, configuration: Configuration) -> list[
 # === Private Functions === #
 
 
-def _render(source: Path, root: Path, descriptor_path: Path, composition: Path, configuration: Configuration) -> None:
+def _render(source: Path, root: Path, descriptor_path: Path, configuration: Configuration) -> None:
     csharp_tools = configuration.csharp_tools
     if csharp_tools is None:
         raise ValueError("Generate SDK: Supply the Restored Grpc.Tools Directory in Configuration.csharp_tools")
-    settings = tomllib.loads(composition.read_text(encoding="utf-8"))
     descriptors = FileDescriptorSet.FromString(descriptor_path.read_bytes())
-    present = set()
-    for file in descriptors.file:
-        present.add(file.package)
-    for library in settings["libraries"]:
-        library_source = (composition.parent / library["descriptors"]).resolve()
-        if library_source != descriptor_path.resolve():
-            raise ValueError("Compose SDK: Declare the Vendored Descriptor Artifact")
-        if set(library["packages"]) - present:
-            raise ValueError("Compose SDK: Add the Missing Library Package to the Vendored Descriptors")
     configuration = replace(
         configuration,
         library=configuration.library
         if configuration.library is not None
         else FileDescriptorSet.FromString(descriptors.SerializeToString()),
     )
-    narrow_callers(descriptors, settings.get("callers", {}))
     methods = descriptor.table(descriptors)
     clients = []
     context = []
@@ -170,13 +157,11 @@ def _render(source: Path, root: Path, descriptor_path: Path, composition: Path, 
     rust.exports(root, descriptors, configuration=configuration)
     rust.client(root, clients, configuration=configuration, target=root / "sdk/rust/src/client/resources.rs")
     rust.host(root, context, configuration=configuration)
-    # The Renderer and Native Carrier Own These Internal Names; Public SDK Faces
-    # Expose Call, Client and SampleWindow Without Leaking Their Implementation Names.
+    # Keep Carrier Type Names Qualified and Unchanged in the Product Barrels.
     bindings = [
         "// @generated from protocol descriptors; do not edit.",
-        "use crate::message::Wire;",
+        "pub use crate::message::Wire;",
         "use prost_reflect::ReflectMessage;",
-        "pub use crate::message::Wire as Call;",
         "pub trait Request: ReflectMessage + Default + 'static {\n    type Response: ReflectMessage + Default + 'static;\n    const ID: &'static str;\n}",
         "impl<T: Request> harmos::OperationRequest for Wire<T> { type Response = Wire<T::Response>; const ID: &'static str = T::ID; }",
     ]
@@ -246,10 +231,10 @@ def _render(source: Path, root: Path, descriptor_path: Path, composition: Path, 
     (root / f"sdk/python/src/{configuration.namespace}/__init__.py").write_text(
         "\n".join(root_barrel) + "\n", encoding="utf-8", newline="\n"
     )
-    client_barrel = ["# @generated from protocol descriptors; do not edit.", "from ._generated.client import ClientRoot as Client"]
+    client_barrel = ["# @generated from protocol descriptors; do not edit.", "from ._generated.client import ClientRoot"]
     for name in sorted(client_names):
         client_barrel.append(f"from ._generated.client_types import {name}")
-    client_barrel += ["", "__all__ = " + repr(["Client", *sorted(client_names)])]
+    client_barrel += ["", "__all__ = " + repr(["ClientRoot", *sorted(client_names)])]
     (root / f"sdk/python/src/{configuration.namespace}/client.py").write_text(
         "\n".join(client_barrel) + "\n", encoding="utf-8", newline="\n"
     )
@@ -259,11 +244,11 @@ def _render(source: Path, root: Path, descriptor_path: Path, composition: Path, 
         "from .._context import Context",
         "from .._generated.host import HostOperation",
         "from .._generated.host import HostRoot",
-        "from harmos.plugin import Window as SampleWindow",
+        "from harmos.plugin import Window",
     ]
     for name in sorted(plugin_names):
         plugin_barrel.append(f"from .._generated.plugin_types import {name}")
-    plugin_barrel += ["", "__all__ = " + repr(["Plugin", "Context", "HostOperation", "HostRoot", "SampleWindow", *sorted(plugin_names)])]
+    plugin_barrel += ["", "__all__ = " + repr(["Plugin", "Context", "HostOperation", "HostRoot", "Window", *sorted(plugin_names)])]
     (root / f"sdk/python/src/{configuration.namespace}/plugin/__init__.py").write_text(
         "\n".join(plugin_barrel) + "\n", encoding="utf-8", newline="\n"
     )
