@@ -75,9 +75,8 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
     configuration = configuration or Configuration()
     public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
     type_names: dict[str, str] = {}
-    methods = descriptor.table(descriptors)
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
-    requests = {method["request"] for method in methods}
+    requests = descriptor.request_names(descriptors)
     carriers = {
         "Request",
         "Response",
@@ -382,7 +381,7 @@ def host(
         "HostRoot Context::host() {",
         "  return {" + ", ".join("{*this}" for node in nodes if len(node) == 1) + "};",
         "}",
-        "Plugin& Plugin::requires_operation(HostOperation operation) {",
+        "Registrar& Registrar::add(HostOperation operation) {",
         "  switch (operation) {",
     ]
     for method in methods:
@@ -391,7 +390,7 @@ def host(
         expression = f'Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)' + (
             ".watch()" if method["server_streaming"] else ""
         )
-        source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
+        source += [f"    case HostOperation::{name}: return add(Dependency{{{expression}}});"]
     source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
     boundary = source.index(f"namespace {configuration.namespace}::plugin {{")
     body = "\n".join(source[boundary:])
@@ -491,6 +490,10 @@ def client(
     target: Path | None = None,
     configuration: Configuration | None = None,
 ) -> None:
+    if target is None and not methods:
+        (root / "sdk/cpp/include/harmos/_generated/client.hpp").unlink(missing_ok=True)
+        (root / "sdk/cpp/include/harmos/_generated/detail/client.hpp").unlink(missing_ok=True)
+        return
     configuration = configuration or Configuration()
     type_names = dict(type_names or {})
     library = configuration.library_descriptors()
@@ -584,7 +587,7 @@ def client(
         lines += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
         members = {"channel", *(_identifier(child[-1]) for child in children)}
         members.update(_identifier(method["path"][-1]) for method in operations)
-        parameter = _parameter("channel", members)
+        parameter = _parameter("connection", members)
         initializers = ([f"channel({parameter})"] if operations else []) + [f"{_identifier(child[-1])}({parameter})" for child in children]
         lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> {parameter}) : {', '.join(initializers)} {{}}"]
         if not node:

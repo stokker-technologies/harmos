@@ -13,18 +13,18 @@ use super::*;
 async fn journal_replays_alone() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = launch(policy(100), &storage).await;
+    let runtime = start(policy(100), &storage).await;
     runtime.state.commit(deposit(9)).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     store.recovery.snapshot.lock().unwrap().take();
     let storage = store.manager(config());
-    let runtime = launch(policy(100), &storage).await;
+    let runtime = start(policy(100), &storage).await;
     assert_eq!(balance(&runtime).await, 9);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     store.recovery.snapshot.lock().unwrap().as_mut().unwrap().payload =
         SnapshotPayload::from_bytes(b"invalid snapshot", policy(100).max_bytes, Position(1)).unwrap();
     let storage = store.manager(config());
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -35,5 +35,5 @@ async fn journal_replays_alone() {
     .await
     .unwrap();
     assert_eq!(balance(&runtime).await, 9);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

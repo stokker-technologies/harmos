@@ -141,7 +141,7 @@ impl harmos_runtime::Application for App {
 }
 
 async fn runtime(signals: Option<Arc<Signals>>) -> Runtime<App> {
-    Runtime::<App>::launch_with((), (), |setup| {
+    Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<Waiting>(Waiting(signals));
     })
     .await
@@ -160,7 +160,7 @@ async fn cancellation(load: u32) -> Cancellation {
     signals.running.acquire_many(load).await.expect("all operations enter run before cancellation").forget();
 
     let requested = Instant::now();
-    runtime.shutdown().await.expect("runtime cancellation settles");
+    runtime.stop().await.expect("runtime cancellation settles");
     let settled = requested.elapsed();
     let mut dispatched = Vec::with_capacity(load as usize);
     for _ in 0..load {
@@ -192,7 +192,7 @@ fn benchmarks(c: &mut Criterion) {
         });
     });
     dispatch.finish();
-    executor.block_on(runtime.shutdown()).unwrap();
+    executor.block_on(runtime.stop()).unwrap();
 
     let mut stopping = c.benchmark_group("operations/runtime_cancel");
     stopping.sample_size(20);

@@ -2,15 +2,13 @@
 
 // Host Listener
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
 package harmos.host.v1.access;
 
 // === Imports === //
-
-import "harmos/model/v1/callers.proto";
 
 // === Options === //
 
@@ -19,16 +17,6 @@ option csharp_namespace = "Harmos.Host.V1.AccessResources";
 // === Services === //
 
 // Owns the client TLS listener's persisted configuration and staged live replacement.
-service Listener {
-  // Read the persisted listener value, conditional revision and currently bound endpoint.
-  rpc Get(ListenerGetRequest) returns (ListenerGetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Validate and apply the complete listener value at its expected revision; failed staging preserves the active listener and revision conflicts refuse.
-  rpc Set(ListenerSetRequest) returns (ListenerSetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-}
 
 // === Get === //
 

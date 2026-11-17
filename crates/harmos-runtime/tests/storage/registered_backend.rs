@@ -62,7 +62,7 @@ async fn registered_backends_replace_the_default_and_recover_their_state() {
         config(),
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().clock(clock.source()).storage(&storage).register(catalog()).managed_storage(ManagedStorageSettings {
             replay: ReadLimits {
                 rows: NonZeroUsize::new(16).unwrap(),
@@ -87,11 +87,11 @@ async fn registered_backends_replace_the_default_and_recover_their_state() {
     assert_eq!(data.records.lock().unwrap().len(), 1);
     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(recovery.saved.load(Ordering::SeqCst) as u64, receipt.position.0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     // Reopen Those Owners and Recover the Managed State
     let reopened = StorageManager::new(StorageBackends { primary: data, state: recovery }, config()).unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().clock(clock.source()).storage(&reopened).register(catalog()).managed_storage(ManagedStorageSettings {
             replay: ReadLimits {
                 rows: NonZeroUsize::new(16).unwrap(),
@@ -111,5 +111,5 @@ async fn registered_backends_replace_the_default_and_recover_their_state() {
     assert_eq!(state.value, 11);
     assert_eq!(runtime.state.applied(), receipt.position);
     assert_eq!(runtime.storage().unwrap().get_saved_position().sequence, 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

@@ -25,18 +25,15 @@ namespace Harmos.Clients;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CidoYXJtb3MvaG9zdC92MS9zdGF0dXMvZGlhZ25vc3RpY3MucHJvdG8SFWhh",
-            "cm1vcy5ob3N0LnYxLnN0YXR1cxodaGFybW9zL21vZGVsL3YxL2NhbGxlcnMu",
-            "cHJvdG8iYAoVRGlhZ25vc3RpY3NHZXRSZXF1ZXN0EhIKBG5hbWUYASABKAlS",
-            "BG5hbWUSFgoGb2Zmc2V0GAIgASgEUgZvZmZzZXQSGwoJbWF4X2J5dGVzGAMg",
-            "ASgEUghtYXhCeXRlcyJ7ChZEaWFnbm9zdGljc0dldFJlc3BvbnNlEhIKBG5h",
-            "bWUYASABKAlSBG5hbWUSEgoEZGF0YRgCIAEoDFIEZGF0YRIhCgx0b3RhbF9s",
-            "ZW5ndGgYAyABKARSC3RvdGFsTGVuZ3RoEhYKBnNoYTI1NhgEIAEoDFIGc2hh",
-            "MjU2MncKC0RpYWdub3N0aWNzEmgKA0dldBIsLmhhcm1vcy5ob3N0LnYxLnN0",
-            "YXR1cy5EaWFnbm9zdGljc0dldFJlcXVlc3QaLS5oYXJtb3MuaG9zdC52MS5z",
-            "dGF0dXMuRGlhZ25vc3RpY3NHZXRSZXNwb25zZSIEyPMYAUIhqgIeSGFybW9z",
-            "Lkhvc3QuVjEuU3RhdHVzUmVzb3VyY2VzYgZwcm90bzM="));
+            "cm1vcy5ob3N0LnYxLnN0YXR1cyJgChVEaWFnbm9zdGljc0dldFJlcXVlc3QS",
+            "EgoEbmFtZRgBIAEoCVIEbmFtZRIWCgZvZmZzZXQYAiABKARSBm9mZnNldBIb",
+            "CgltYXhfYnl0ZXMYAyABKARSCG1heEJ5dGVzInsKFkRpYWdub3N0aWNzR2V0",
+            "UmVzcG9uc2USEgoEbmFtZRgBIAEoCVIEbmFtZRISCgRkYXRhGAIgASgMUgRk",
+            "YXRhEiEKDHRvdGFsX2xlbmd0aBgDIAEoBFILdG90YWxMZW5ndGgSFgoGc2hh",
+            "MjU2GAQgASgMUgZzaGEyNTZCIaoCHkhhcm1vcy5Ib3N0LlYxLlN0YXR1c1Jl",
+            "c291cmNlc2IGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.CallersReflection.Descriptor, },
+          new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.DiagnosticsGetRequest), global::Harmos.Clients.DiagnosticsGetRequest.Parser, new[]{ "Name", "Offset", "MaxBytes" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.DiagnosticsGetResponse), global::Harmos.Clients.DiagnosticsGetResponse.Parser, new[]{ "Name", "Data", "TotalLength", "Sha256" }, null, null, null, null)

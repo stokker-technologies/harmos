@@ -48,5 +48,5 @@ async fn an_unanswered_stop_closes_at_the_host_clock_grace_and_records_failure()
     assert!(matches!(status.borrow().failure.as_deref(), Some(Error::Timeout("Stop"))));
     assert_eq!(remote.stops(), 1);
     assert_eq!(remote.get().await.id, "remote");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

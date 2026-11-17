@@ -9,8 +9,8 @@
 
 /* === Imports === */
 
+#include "client.hpp"
 #include "generated/types.hpp"
-#include "harmos/_generated/client.hpp"
 #include "harmos/harmos.hpp"
 #include <iostream>
 
@@ -28,14 +28,14 @@ using std::size_t;
 
 /* === Public Functions === */
 
-using Value = harmos::conformance::Value;
-using harmos::Client;
+using fixture::Client;
 using harmos::StorageTransferSettings;
 using harmos::VISIBILITY_PUBLIC;
 using harmos::client::PLUGIN_STATE_READY;
 using harmos::client::PluginEntry;
 using harmos::client::PluginPlacement;
 using harmos::client::PluginValue;
+using harmos::conformance::Value;
 using harmos::plugin::Context;
 using harmos::plugin::Operation;
 using harmos::plugin::Plugin;
@@ -45,11 +45,12 @@ using std::string;
 int install_itself(int argc, char **argv) {
   if (argc == 3 && string(argv[2]) == "serve") {
     Plugin("example", "1.0.0")
-        .operation(Operation<Value, Value>("example.echo", VISIBILITY_PUBLIC,
-                                           [](Context &, Value request) {
-                                             return request;
-                                           }))
-        .serve("127.0.0.1:0");
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(Operation<Value, Value>("example.echo", VISIBILITY_PUBLIC, [](Context &, Value request) {
+            return request;
+          }));
+        })
+        .run("127.0.0.1:0");
     return 0;
   }
   StorageTransferSettings transfer;
@@ -60,7 +61,7 @@ int install_itself(int argc, char **argv) {
   PluginValue value;
   value.set_enabled(true);
   client.plugins.create("example", placement, value);
-  harmos::client::PluginsWatchOptions options;
+  fixture::client::PluginsWatchOptions options;
   options.name = "example";
   auto watch = client.plugins.watch(options);
   PluginEntry ready;
@@ -102,10 +103,10 @@ int install_itself(int argc, char **argv) {
   }
   string data(static_cast<size_t>(transfer.chunk_bytes()), '\0');
   data.replace(0, 5, "hello");
-  Value request;
+  harmos::conformance::Value request;
   request.set_value(data);
   const auto reply = client.invocations.create(operation, fingerprint, request.SerializeAsString());
-  Value response;
+  harmos::conformance::Value response;
   if (!response.ParseFromString(reply)) {
     throw runtime_error("Invoke example.echo: Invalid Response");
   }

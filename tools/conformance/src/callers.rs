@@ -49,15 +49,17 @@ use tonic::{
     transport::{Channel, Endpoint, Server},
 };
 use tonic_prost::ProstCodec;
+use wire::{CallerProbeGetRequest, CallerProbeGetResponse};
 
 // Local Imports
+use crate::host::invocations_client::InvocationsClient;
 use crate::{Error, Result, fixture};
 use harmos_operations::OperationPolicy;
 use harmos_operations::clock;
 use harmos_operations::execution::operations::{
     Catalog, ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility,
 };
-use harmos_protocol::host::{InvocationsCreateRequest, PluginsGetRequest, PluginsGetResponse, invocations_client::InvocationsClient};
+use harmos_protocol::host::{InvocationsCreateRequest, PluginsGetRequest, PluginsGetResponse, TimeGetRequest, TimeGetResponse};
 use harmos_protocol::model::{Classification, Failure};
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
@@ -73,12 +75,11 @@ use harmos_runtime::{
     plugin::grpc::{Placement, PlacementSettings},
     state::Never,
 };
-use wire::{CallerProbeGetRequest, CallerProbeGetResponse};
 
 /* === Constants === */
 
 const TARGET: &str = "conformance.host.v1.CallerProbe/Get";
-const CREATE: &str = "harmos.host.v1.Invocations/Create";
+const CREATE: &str = "application.host.v1.Invocations/Create";
 
 /* === Macros === */
 
@@ -141,6 +142,7 @@ impl Lifecycle for App {
     type Context = Startup<Self>;
 
     async fn prepare(_: Self::Config, setup: &mut Setup<Self>) -> result::Result<Self, Self::Error> {
+        setup.catalog(crate::product::catalog(), Default::default());
         let factory = OperationFactory::protobuf::<Probe>().expect("caller probe contract");
         setup.catalog(Catalog::new().entry(factory), Default::default());
         setup.catalog(
@@ -178,10 +180,10 @@ impl ProtobufOperation for NativeRefusal {
     type Request = PluginsGetRequest;
     type Response = PluginsGetResponse;
     type Endpoints = ();
-    const ID: &'static str = "harmos.host.v1.Plugins/Get";
+    const ID: &'static str = "conformance.native_refusal";
     const POLICY: OperationPolicy = clock::Get::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Get"));
+    const GRPC: Option<Grpc> = Some(Grpc::new("conformance.host.v1", "Refusal", "Get"));
     const RESOURCES: &'static [Resource] = &[];
 
     async fn run(_: ExecutionContext, _: PluginsGetRequest, _: &()) -> result::Result<PluginsGetResponse, ServingError> {
@@ -281,7 +283,7 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
     // Compose a Host From Declared Audiences.
     let counter = Arc::new(AtomicU64::new(0));
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<AtomicU64>(counter.clone());
         setup.settings().clock(clock);
         setup.settings().operation_settings(operations::Settings {
@@ -298,7 +300,7 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
 
     let outcome =
         if rule == 33 { client_refusal(&runtime, &counter).await } else { plugin_refusal(&runtime, &counter, &controller, address).await };
-    runtime.shutdown().await.map_err(invalid)?;
+    runtime.stop().await.map_err(invalid)?;
     outcome
 }
 
@@ -335,7 +337,23 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
     require(status.code() == Code::PermissionDenied, "Call Probe: Direct Caller Was Not Refused")?;
     let failure = Failure::decode(status.details())?;
     wrong_caller(&failure, TARGET)?;
+    // Private Host Services Have Neither Routes nor a Dynamic Client Escape.
+    let mut direct = client::Grpc::new(channel.clone());
+    direct.ready().await.map_err(invalid)?;
+    let result: result::Result<Response<TimeGetResponse>, Status> =
+        direct.unary(Request::new(TimeGetRequest {}), PathAndQuery::from_static("/harmos.host.v1.Time/Get"), ProstCodec::default()).await;
+    require(result.unwrap_err().code() == Code::Unimplemented, "Call Host Time: Private Service Has a Route")?;
     let mut client = InvocationsClient::connect(address).await?;
+    let host_contract = OperationFactory::protobuf::<clock::Get>().map_err(invalid)?;
+    let status = client
+        .create(InvocationsCreateRequest {
+            operation: clock::Get::ID.into(),
+            fingerprint: host_contract.contract().expect("private host contract").fingerprint().0.to_vec(),
+            payload: TimeGetRequest {}.encode_to_vec(),
+        })
+        .await
+        .unwrap_err();
+    require(status.code() == Code::PermissionDenied, "Invoke Host Time: Dynamic Invocation Reached a Private Host Operation")?;
     let status = client
         .create(InvocationsCreateRequest::decode(request().as_slice())?)
         .await
@@ -352,7 +370,7 @@ async fn client_refusal(runtime: &Runtime<App>, counter: &AtomicU64) -> Result<(
     let status = direct
         .unary(
             Request::new(PluginsGetRequest::default()),
-            PathAndQuery::from_static("/harmos.host.v1.Plugins/Get"),
+            PathAndQuery::from_static("/conformance.host.v1.Refusal/Get"),
             ProstCodec::<PluginsGetRequest, PluginsGetResponse>::default(),
         )
         .await
@@ -508,7 +526,7 @@ fn invalid(error: impl Display) -> Error {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn descriptor_callers_refuse_clients_without_assembly_overrides() {
+    async fn harmos_host_operations_are_unreachable_on_the_wire() {
         super::run(33, "").await.unwrap();
     }
 }

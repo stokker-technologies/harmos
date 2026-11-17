@@ -13,11 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::ComponentState;
-use harmos_protocol::host::StatusGetRequest;
-use harmos_protocol::host::StatusWatchRequest;
-use harmos_protocol::host::status_client::StatusClient;
-
 // Standard Library Imports
 use std::sync::Arc;
 
@@ -25,6 +20,10 @@ use std::sync::Arc;
 
 // Local Imports
 use super::support::*;
+use harmos_conformance::host::status_client::StatusClient;
+use harmos_protocol::host::ComponentState;
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::StatusWatchRequest;
 
 /* === Constants === */
 

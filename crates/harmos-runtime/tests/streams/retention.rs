@@ -170,7 +170,7 @@ async fn snapshot_blocks_pruning() {
     pruned(&watched, second.position).await;
 
     assert!(matches!(runtime.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeyondTail))));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -197,12 +197,12 @@ async fn checkpoint_blocks_pruning() {
     let recovered = runtime.state.commit(deposit(1)).await.expect("accepted");
     runtime.state.wait_until_stored(recovered.position).await;
     pruned(&watched, recovered.position).await;
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn retention_requires_snapshot() {
-    let started = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let started = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().retain(Horizon::BeneathSnapshot);
     })
@@ -232,7 +232,7 @@ async fn run_stalled(tail: usize) -> Vec<Vec<Position>> {
     for _ in 0..3 {
         runtime.state.commit(deposit(1)).await.expect("accepted");
     }
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN);
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position::ORIGIN);
 
     watched.batches.lock().expect("not poisoned").clone()
 }

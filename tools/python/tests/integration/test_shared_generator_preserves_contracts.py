@@ -197,7 +197,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         }
         parsed.body = [node for node in parsed.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
         exec(compile(parsed, "generated-client", "exec"), environment)
-        client = environment["ClientRoot"](object())
+        client = environment["Client"](object())
         result = asyncio.run(client.nested.jobs.delete("value", 7, [1], count=None, call_metadata={"token": "opaque"}, timeout=2.5))
         self.assertEqual(result, ["accepted"])
         self.assertFalse(calls[0][0].HasField("count"))
@@ -272,7 +272,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                     }
                     parsed.body = [node for node in parsed.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
                     exec(compile(parsed, "product-client", "exec"), environment)
-                    client = environment["ClientRoot"](object())
+                    client = environment["Client"](object())
                     options = dict(zip(transport, ({"token": "transport"}, 2.5, None), strict=True))
                     result = asyncio.run(client.jobs.stop(*field_names, **options))
                     self.assertEqual(result, "accepted")

@@ -19,6 +19,7 @@ publish = true
 
 [workspace.dependencies]
 # Local
+harmos-conformance = { path = "tools/conformance", version = "=0.1.14" }
 harmos-domain = { path = "crates/harmos-domain", version = "=0.1.14", default-features = false }
 harmos-operations = { path = "crates/harmos-operations", version = "=0.1.14", default-features = false }
 harmos-packaging = { path = "tools/packaging", version = "=0.1.14", default-features = false }

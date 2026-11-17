@@ -48,8 +48,8 @@ use std::sync::atomic::Ordering;
 #[tokio::test(start_paused = true)]
 async fn facade_child_retains_parent_cancellation_scope() {
     // Keep the Child Handle After Cancelling Its Parent
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
-    let second = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
+    let second = Runtime::<Model>::start((), ()).await.unwrap();
     let context = runtime.for_call(&CallContext::default()).call::<Capture>(()).await.unwrap();
     let request = payload(0);
     let result = second.for_call(&context).call::<Probe>(request.clone()).await;
@@ -68,6 +68,6 @@ async fn facade_child_retains_parent_cancellation_scope() {
     let _outcome = parent.await;
     assert!(child.await.is_err());
     assert_eq!(gate.closed.load(Ordering::SeqCst), 1);
-    second.shutdown().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    second.stop().await.unwrap();
+    runtime.stop().await.unwrap();
 }

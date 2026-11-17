@@ -16,11 +16,6 @@ using Harmos.Tests.Columns;
 using Harmos;
 using Microsoft.Extensions.Hosting;
 using Xunit;
-using SdkContext = Harmos.Plugins.Context;
-using SdkPlugin = Harmos.Plugins.Plugin;
-using Status = Grpc.Core.Status;
-using Window = Harmos.Plugins.Window;
-using WireWindow = Harmos.Internal.Plugin.Window;
 
 namespace Harmos.Tests.Unit;
 
@@ -83,7 +78,7 @@ public sealed class SamplesCalls
     var serving = service.Samples(call, call, call.Context);
     await call.Send(new InstanceSamplesRequest
     {
-      Window = new WireWindow
+      Window = new Harmos.Internal.Plugin.Window
       {
         Start = new Timestamp { Seconds = 10, Nanos = 500_000_000 },
         Period = new Duration { Nanos = 750_000_000 },
@@ -265,7 +260,7 @@ public sealed class SamplesCalls
     var service = Service(context => context.CallAsync(Echo, new StringValue()), invalid == "device window");
     var call = new Call();
     var serving = service.Samples(call, call, call.Context);
-    var window = new WireWindow { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = 1, Sequence = 1 };
+    var window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = 1, Sequence = 1 };
     switch (invalid)
     {
       case "missing start":
@@ -325,10 +320,10 @@ public sealed class SamplesCalls
     ];
     var plugins = new[]
     {
-      new SdkPlugin("fixture", "1.0.0").Observer("fixture", new Duration { Seconds = 1 },
-          context => Task.FromResult(rows[context.Sequence - 1])),
-      new SdkPlugin("fixture", "1.0.0").WindowObserver<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
-          (context, window) => Task.FromResult(columns))
+      new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+          context => Task.FromResult(rows[context.Sequence - 1]))),
+      new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
+          (context, window) => Task.FromResult(columns)))
     };
     foreach (var plugin in plugins)
     {
@@ -348,8 +343,8 @@ public sealed class SamplesCalls
   public async Task WindowPartsSplitAtSampleBoundariesWithinTheMessageLimit()
   {
     const ulong limit = 40;
-    var plugin = new SdkPlugin("fixture", "1.0.0").Observer("fixture", new Duration { Seconds = 1 },
-        context => Task.FromResult(new StringValue { Value = $"sample{context.Sequence}" }));
+    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+        context => Task.FromResult(new StringValue { Value = $"sample{context.Sequence}" })));
     var call = new Call();
     var serving = Serve(plugin, limit).Samples(call, call, call.Context);
     await call.Grant(1, 10);
@@ -377,8 +372,8 @@ public sealed class SamplesCalls
   public async Task SampleLargerThanTheMessageLimitFailsTheWindowBeforeAnyPart(ulong large)
   {
     const ulong limit = 24;
-    var plugin = new SdkPlugin("fixture", "1.0.0").Observer("fixture", new Duration { Seconds = 1 },
-        context => Task.FromResult(new StringValue { Value = new string('x', context.Sequence == large ? 32 : 1) }));
+    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 },
+        context => Task.FromResult(new StringValue { Value = new string('x', context.Sequence == large ? 32 : 1) })));
     var call = new Call();
     var serving = Serve(plugin, limit).Samples(call, call, call.Context);
     await call.Grant(1, 4);
@@ -392,8 +387,8 @@ public sealed class SamplesCalls
   [Fact]
   public async Task WindowObserverColumnsMustHoldOneValuePerSample()
   {
-    var plugin = new SdkPlugin("fixture", "1.0.0").WindowObserver<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
-        (context, window) => Task.FromResult(new ReadingColumns { Level = { 1 }, Count = { 1 }, Label = { "" }, Tag = { new Tag() } }));
+    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register<Reading, ReadingColumns>("fixture", new Duration { Seconds = 1 },
+        (context, window) => Task.FromResult(new ReadingColumns { Level = { 1 }, Count = { 1 }, Label = { "" }, Tag = { new Tag() } })));
     var call = new Call();
     var serving = Serve(plugin).Samples(call, call, call.Context);
     await call.Grant(1, 2);
@@ -401,16 +396,16 @@ public sealed class SamplesCalls
     Assert.Equal(StatusCode.Internal, refusal.StatusCode);
   }
 
-  private static PluginService Service(Func<SdkContext, Task<StringValue>> observer, bool device = false)
+  private static PluginService Service(Func<Harmos.Plugins.Context, Task<StringValue>> observer, bool device = false)
   {
-    var plugin = new SdkPlugin("fixture", "1.0.0").Requires(Echo).Requires(Watch).Requires(HostOperation.TimeGet).Requires(HostOperation.PluginsSettingsList);
+    var plugin = new Harmos.Plugins.Plugin("fixture", "1.0.0").Register(ctx => ctx.Register(Echo)).Register(ctx => ctx.Register(Watch)).Register(ctx => ctx.Register(HostOperation.TimeGet)).Register(ctx => ctx.Register(HostOperation.PluginsSettingsList));
     plugin = device
-        ? plugin.Stream<StringValue>("fixture", async (context, publisher) => { await context.CancelledAsync(); })
-        : plugin.Observer("fixture", new Duration { Seconds = 1 }, observer);
+        ? plugin.Register(ctx => ctx.Register<StringValue>("fixture", async (context, publisher) => { await context.CancelledAsync(); }))
+        : plugin.Register(ctx => ctx.Register("fixture", new Duration { Seconds = 1 }, observer));
     return Serve(plugin);
   }
 
-  private static PluginService Serve(SdkPlugin plugin, ulong messageBytes = 1 << 20) =>
+  private static PluginService Serve(Harmos.Plugins.Plugin plugin, ulong messageBytes = 1 << 20) =>
       plugin.Service(plugin.Declarations(), messageBytes, true, new Lifetime());
 
   private sealed class Call : IAsyncStreamReader<InstanceSamplesRequest>, IServerStreamWriter<InstanceSamplesResponse>
@@ -435,7 +430,7 @@ public sealed class SamplesCalls
     public ValueTask Send(InstanceSamplesRequest message) => input.Writer.WriteAsync(message);
     public ValueTask Grant(ulong sequence, ulong count = 1) => Send(new InstanceSamplesRequest
     {
-      Window = new WireWindow { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = count, Sequence = sequence }
+      Window = new Harmos.Internal.Plugin.Window { Start = new Timestamp { Seconds = 1 }, Period = new Duration { Seconds = 1 }, Count = count, Sequence = sequence }
     });
     public ValueTask Reply(ulong id, IMessage value) => Send(new InstanceSamplesRequest { Child = new ChildResponse { Call = id, Payload = value.ToByteString() } });
     public ValueTask<InstanceSamplesResponse> Read() => output.Reader.ReadAsync();

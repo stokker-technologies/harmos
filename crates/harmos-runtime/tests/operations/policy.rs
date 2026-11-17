@@ -477,7 +477,7 @@ async fn invalid(operation: harmos_runtime::operations::OperationFactory) {
     assert!(matches!(error, Error::OperationDeclaration { .. }));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
     assert!(runtime.operations.definition(&id).is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -568,7 +568,7 @@ async fn queued_deadline_starts() {
     assert_eq!(queued_probe.attempts.load(Ordering::SeqCst), 0);
     gate.notify_one();
     assert_eq!(*blocker.await.unwrap(), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -641,7 +641,7 @@ async fn attempt_limits_backoff() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     #[derive(harmos_runtime::Request)]
     #[harmos_path(harmos_runtime)]
@@ -708,7 +708,7 @@ async fn attempt_limits_backoff() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(submitted.elapsed(), Duration::from_millis(100));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -719,7 +719,7 @@ async fn reaches_wait_ceiling() {
     assert_eq!(source.downcast_ref::<std::io::Error>().unwrap().kind(), std::io::ErrorKind::Interrupted);
     assert_eq!(waits(&probe), [200, 400, 800, 1000]);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -791,7 +791,7 @@ async fn cancellation_skips_backoff() {
     assert!(matches!(invocation.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(cancelled.elapsed(), Duration::ZERO);
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -862,7 +862,7 @@ async fn timeouts_require_replay() {
     let result = runtime.operation(Unknown { behavior: Behavior::Pending }).await;
     assert!(matches!(result, Err(Error::InvalidInput { field: "operation retry", .. })));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     #[derive(harmos_runtime::Request)]
     #[harmos_path(harmos_runtime)]
@@ -929,7 +929,7 @@ async fn timeouts_require_replay() {
     assert!(matches!(result, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 2);
     assert_eq!(waits(&probe), [6]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1199,7 +1199,7 @@ async fn calls_settle_retry() {
     assert!(matches!(first.await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     // A Cancelled Queued Request Never Starts An Attempt.
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -1213,5 +1213,5 @@ async fn jitter_respects_ceiling() {
         assert!((minimum..=maximum).contains(&wait));
     }
     assert_eq!(probe.attempts.load(Ordering::SeqCst), 5);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

@@ -88,12 +88,31 @@ pub trait Access: Send + Sync {
 pub fn catalog() -> Result<crate::execution::__private::Catalog, ServingError> {
     use crate::execution::operations::OperationFactory;
     let catalog = crate::execution::__private::Catalog::new();
-    let catalog = catalog.entry(OperationFactory::protobuf::<ListenerGet>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<ListenerSet>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<PairingsCreate>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<PairingsList>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<PairingsDelete>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<CertificatesCreate>()?);
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<ListenerGet>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::ListenerGet>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<ListenerSet>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::ListenerSet>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<PairingsCreate>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::PairingsCreate>)?,
+    );
+    let catalog =
+        catalog
+            .entry(OperationFactory::protobuf::<PairingsList>().and_then(
+                crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::PairingsList>,
+            )?);
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<PairingsDelete>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::PairingsDelete>)?,
+    );
+    let catalog =
+        catalog.entry(OperationFactory::protobuf::<CertificatesCreate>().and_then(
+            crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::access::CertificatesCreate>,
+        )?);
     Ok(catalog)
 }
 

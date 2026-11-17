@@ -41,5 +41,5 @@ async fn host_rows_reach_managed_plugin_in_order() {
     assert_eq!((acknowledged.rows, acknowledged.bytes), (16, 16 * 4096));
 
     // Settle the Host and Its Managed Consumer
-    fixture.runtime.shutdown().await.unwrap();
+    fixture.runtime.stop().await.unwrap();
 }

@@ -25,7 +25,6 @@
 #include "invocation.hpp"
 #include "samples.hpp"
 
-namespace chrono = std::chrono;
 using grpc::CallbackServerContext;
 using grpc::InsecureServerCredentials;
 using grpc::ServerBidiReactor;
@@ -54,7 +53,6 @@ using std::vector;
 /* === Types === */
 
 namespace harmos::plugin {
-namespace wire = ::harmos::model::v1;
 namespace {
 using detail::Duplex;
 using Requirements = std::map<std::string, std::string>;
@@ -67,7 +65,7 @@ public:
       : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
     state_->requirements = requirements;
     for (const auto &operation : operations)
-      if (operation.contract.visibility() == wire::VISIBILITY_PRIVATE)
+      if (operation.contract.visibility() == model::v1::VISIBILITY_PRIVATE)
         state_->local.emplace(operation.contract.id(), operation);
     state_->plugin = plugin;
     state_->emit = [this](plugin::v1::InstanceInvokeResponse frame) {
@@ -111,7 +109,7 @@ public:
       state_->request = input.request();
       const detail::OperationDefinition *operation = nullptr;
       for (const auto &candidate : operations_)
-        if (candidate.contract.visibility() != wire::VISIBILITY_PRIVATE && candidate.contract.id() == input.request().operation())
+        if (candidate.contract.visibility() != model::v1::VISIBILITY_PRIVATE && candidate.contract.id() == input.request().operation())
           operation = &candidate;
       if (!operation) {
         end({StatusCode::NOT_FOUND, "Unknown Operation"});
@@ -149,8 +147,8 @@ public:
         return;
       }
     } else if (input.has_cancel()) {
-      wire::Failure failure;
-      failure.set_classification(wire::CLASSIFICATION_CANCELLED);
+      model::v1::Failure failure;
+      failure.set_classification(model::v1::CLASSIFICATION_CANCELLED);
       failure.set_code("cancelled");
       failure.set_message(input.cancel().reason());
       failure.set_action("Retry If Needed");
@@ -275,7 +273,7 @@ public:
 
 /* === Public Functions === */
 
-void Plugin::serve(string address) const {
+void Plugin::run(string address) const {
   const bool remote = !address.empty();
   if (address.empty()) {
 #ifdef _WIN32
@@ -300,10 +298,10 @@ void Plugin::serve(string address) const {
   description.set_sdk_version("0.1.0");
   description.set_message_bytes(maximum);
   *description.mutable_declarations() = declarations();
-  static const auto started = chrono::system_clock::now().time_since_epoch();
-  const auto seconds = chrono::duration_cast<chrono::seconds>(started);
+  static const auto started = std::chrono::system_clock::now().time_since_epoch();
+  const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(started);
   description.mutable_started_at()->set_seconds(seconds.count());
-  const auto nanos = chrono::duration_cast<chrono::nanoseconds>(started - seconds);
+  const auto nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(started - seconds);
   description.mutable_started_at()->set_nanos(static_cast<int>(nanos.count()));
   service.operations = operations_;
   service.streams = streams_;

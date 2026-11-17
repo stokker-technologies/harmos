@@ -15,7 +15,7 @@ async fn snapshot_releases_unused() {
     let mut settings = config();
     settings.request.max_pending_write_bytes = NonZeroUsize::new(1024 * 1024).unwrap();
     let storage = store.manager(settings);
-    let runtime = launch(policy(1), &storage).await;
+    let runtime = start(policy(1), &storage).await;
     // Hold Every Save So The Written Snapshot Stays Charged Until Inspected.
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     runtime.state.commit(deposit(5)).await.unwrap();
@@ -24,6 +24,6 @@ async fn snapshot_releases_unused() {
     assert_eq!(storage.status().recovery_saved.sequence, 0);
     store.recovery.control.block_flush.store(false, Ordering::SeqCst);
     store.recovery.control.flush_release.notify_one();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(!store.snapshot().payload.is_empty());
 }

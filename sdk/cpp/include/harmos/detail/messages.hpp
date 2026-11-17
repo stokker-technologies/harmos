@@ -32,35 +32,29 @@ namespace harmos::detail {
 inline constexpr char stream_fingerprint_prefix[] = "harmos.protobuf.stream.v1\0";
 namespace payloads {
 using ::harmos::model::v1::Callers;
+using ::harmos::model::v1::History;
+using ::harmos::model::v1::InstanceState;
+using ::harmos::model::v1::Position;
+using ::harmos::model::v1::ReadCut;
+using ::harmos::model::v1::ResourceRevision;
 inline constexpr auto CALLERS_UNSPECIFIED = static_cast<::harmos::model::v1::Callers>(0);
 inline constexpr auto CALLERS_CLIENTS = static_cast<::harmos::model::v1::Callers>(1);
 inline constexpr auto CALLERS_PLUGINS = static_cast<::harmos::model::v1::Callers>(2);
 inline constexpr auto CALLERS_ALL = static_cast<::harmos::model::v1::Callers>(3);
-using ::harmos::host::v1::InvocationsCancelResponse;
-using ::harmos::host::v1::InvocationsGetResponse;
-using ::harmos::host::v1::InvocationsWatchResponse;
 using ::harmos::model::v1::DiscoveredContract;
 using ::harmos::model::v1::DiscoveredOperation;
 using ::harmos::model::v1::Grant;
 using ::harmos::model::v1::Grpc;
-using ::harmos::model::v1::History;
-using ::harmos::model::v1::InstanceState;
 using ::harmos::model::v1::OperationContract;
 using ::harmos::model::v1::OperationPolicy;
-using ::harmos::model::v1::Position;
 using ::harmos::model::v1::Protobuf;
-using ::harmos::model::v1::ReadCut;
 using ::harmos::model::v1::Requirement;
-using ::harmos::model::v1::ResourceRevision;
 using ::harmos::model::v1::RetryPolicy;
 using ::harmos::model::v1::Visibility;
 inline constexpr auto VISIBILITY_UNSPECIFIED = static_cast<::harmos::model::v1::Visibility>(0);
 inline constexpr auto VISIBILITY_PRIVATE = static_cast<::harmos::model::v1::Visibility>(1);
 inline constexpr auto VISIBILITY_PUBLIC = static_cast<::harmos::model::v1::Visibility>(2);
 inline constexpr auto VISIBILITY_PROTECTED = static_cast<::harmos::model::v1::Visibility>(3);
-using ::harmos::host::v1::OperationsGetResponse;
-using ::harmos::host::v1::OperationsListResponse;
-using ::harmos::host::v1::plugins::SettingsListResponse;
 using ::harmos::model::v1::Declarations;
 using ::harmos::model::v1::Receipt;
 using ::harmos::model::v1::Section;
@@ -69,7 +63,9 @@ using ::harmos::model::v1::SettingsDeclarations;
 using ::harmos::model::v1::SettingValue;
 using ::harmos::model::v1::SettingValues;
 using ::harmos::model::v1::StreamDeclaration;
-using FailureValue = ::harmos::model::v1::Failure;
+namespace model {
+using ::harmos::model::v1::Failure;
+}
 using ::harmos::model::v1::Classification;
 inline constexpr auto CLASSIFICATION_UNSPECIFIED = static_cast<::harmos::model::v1::Classification>(0);
 inline constexpr auto CLASSIFICATION_PERMANENT = static_cast<::harmos::model::v1::Classification>(1);
@@ -86,8 +82,6 @@ inline constexpr auto UPLOAD_STATE_UNSPECIFIED = static_cast<::harmos::model::v1
 inline constexpr auto UPLOAD_STATE_PRODUCING = static_cast<::harmos::model::v1::UploadState>(1);
 inline constexpr auto UPLOAD_STATE_FINISHED = static_cast<::harmos::model::v1::UploadState>(2);
 inline constexpr auto UPLOAD_STATE_ABANDONED = static_cast<::harmos::model::v1::UploadState>(3);
-using ::harmos::host::v1::TimeGetResponse;
-using ::harmos::host::v1::TimeSleepResponse;
 using ::harmos::model::v1::MessageSettings;
 using ::harmos::model::v1::PageRequest;
 using ::harmos::model::v1::StorageTransferSettings;
@@ -187,6 +181,15 @@ inline constexpr auto COMPONENT_STATE_UNAVAILABLE = static_cast<::harmos::host::
 using ::harmos::host::v1::StreamIdentity;
 using ::harmos::host::v1::StreamsListResponse;
 } // namespace client
-namespace plugin {}
+namespace plugin {
+using ::harmos::host::v1::InvocationsCancelResponse;
+using ::harmos::host::v1::InvocationsGetResponse;
+using ::harmos::host::v1::InvocationsWatchResponse;
+using ::harmos::host::v1::OperationsGetResponse;
+using ::harmos::host::v1::OperationsListResponse;
+using ::harmos::host::v1::TimeGetResponse;
+using ::harmos::host::v1::TimeSleepResponse;
+using ::harmos::host::v1::plugins::SettingsListResponse;
+} // namespace plugin
 } // namespace payloads
 } // namespace harmos::detail

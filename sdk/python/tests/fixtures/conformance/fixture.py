@@ -24,16 +24,29 @@ from harmos import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PROTECTED,
     VISIBILITY_PUBLIC,
-    Failure,
+    FailureError,
     OperationPolicy,
     RetryPolicy,
     SettingDeclaration,
     SettingValue,
-    TimeGetResponse,
+    model,
 )
-from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, Window, observer, operation, publisher, window_observer
+from harmos.plugin import (
+    Catalog,
+    Context,
+    HostOperation,
+    Operation,
+    Plugin,
+    Publisher,
+    Registrar,
+    TimeGetResponse,
+    Window,
+    observer,
+    operation,
+    publisher,
+    window_observer,
+)
 
 from . import Graph, PayloadOnly, Value, Values
 from ._caller import REQUEST
@@ -55,7 +68,7 @@ PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBI
 OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
 CREATE_INVOCATION = Operation(
-    "harmos.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
+    "application.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
 )
 
 # === Types === #
@@ -77,7 +90,7 @@ class Fixture:
             return Value(value=(await context.cancelled()).encode())
         if request.value in (b"retry", b"retry-bound"):
             if context.attempt == 1:
-                raise Failure(WireFailure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
+                raise FailureError(model.Failure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
             return Value(value=str(context.attempt).encode())
         return request
 
@@ -114,15 +127,15 @@ class Fixture:
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
-        raise Failure(
-            WireFailure(
+        raise FailureError(
+            model.Failure(
                 classification=CLASSIFICATION_PERMANENT,
                 code="fixture_failure",
                 message="Fixture Failed",
                 action="Use Another Input",
                 operation="conformance.failure",
                 plugin="conformance",
-                cause=WireFailure(
+                cause=model.Failure(
                     classification=CLASSIFICATION_TRANSIENT,
                     code="fixture_cause",
                     message="Fixture Cause",
@@ -226,7 +239,7 @@ class Fixture:
         create = InvocationsCreateRequest.FromString(REQUEST)
         try:
             await context.call(CREATE_INVOCATION, create)
-        except Failure as failure:
+        except FailureError as failure:
             if request.value == b"propagate":
                 raise
             return Value(value=failure.value.SerializeToString())
@@ -265,7 +278,7 @@ class Fixture:
     async def window_failure(self, context: Context) -> Value:
         try:
             return await context.call(HOST_FAIL, Value())
-        except Failure as failure:
+        except FailureError as failure:
             return Value(value=failure.value.SerializeToString())
 
     @observer("conformance.window_watch", row=Value, interval=Duration(seconds=1))
@@ -287,7 +300,7 @@ class Fixture:
             started.set()
             try:
                 return await context.call(HOST_PENDING, Value())
-            except Failure:
+            except FailureError:
                 return Value()
 
         task = asyncio.create_task(pending())
@@ -327,10 +340,16 @@ class ClockFixture:
 
 
 def plugin() -> Plugin:
-    return Plugin(
+    return Plugin(id="conformance", version="1.0.0", register=register)
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+def catalog() -> Catalog:
+    return Catalog(
         Fixture(),
-        id="conformance",
-        version="1.0.0",
         requires=[
             PEER_PUBLIC,
             PEER_PROTECTED,

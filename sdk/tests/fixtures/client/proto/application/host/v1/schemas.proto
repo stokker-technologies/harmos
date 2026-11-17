@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Schemas
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/schemas.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Schemas {
+  // Return all retained schema definitions matching the optional schema identity; this bounded registry has no paging.
+  rpc List(harmos.host.v1.SchemasListRequest) returns (harmos.host.v1.SchemasListResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

@@ -80,5 +80,5 @@ async fn protected_host_operation_refuses_a_plugin_with_a_matching_requirement()
     let error = host.runtime.operations.call_encoded("fixture.forward", payload(b"control")).await.unwrap_err();
     assert_eq!(call_error(&error).classification(), Classification::Refused);
     assert!(call_error(&error).to_string().contains("fixture.control"));
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

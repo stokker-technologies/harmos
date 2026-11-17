@@ -57,7 +57,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let document = Document::new();
     let recordings = scratch.path().join("streams");
     let config = Settings::new(recordings);
-    let runtime = app::launch(document, &config).await?;
+    let runtime = app::start(document, &config).await?;
 
     // Choose a Backend for the Same Operations
     let plugin = async {
@@ -81,7 +81,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     let plugin = match plugin {
         Ok(plugin) => plugin,
         Err(error) => {
-            runtime.shutdown().await?;
+            runtime.stop().await?;
             return Err(error);
         }
     };
@@ -183,7 +183,7 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     // Settle the Plugin and Runtime
     let stopped = plugin.stop().await;
     let snapshot = runtime.state.state().read(Clone::clone).await;
-    let settled = runtime.shutdown().await;
+    let settled = runtime.stop().await;
     let analysis = result?;
     stopped?;
     settled?;
@@ -193,9 +193,9 @@ pub async fn run(guest: Option<&Path>, sidecar: &Path, directory: &Path, advance
     Document::save(&path, snapshot)?;
     let document = Document::open(&path)?;
     drop(runtime);
-    let reopened = app::launch(document, &config).await?;
+    let reopened = app::start(document, &config).await?;
     let saved = reopened.state.state().read(Clone::clone).await;
-    reopened.shutdown().await?;
+    reopened.stop().await?;
     let saved = saved?;
     if let Some(directory) = env::var_os("STKR_TEST_REPORT_DIR") {
         let directory = Path::new(&directory);

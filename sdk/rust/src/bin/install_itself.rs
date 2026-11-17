@@ -15,16 +15,22 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::num::NonZeroUsize;
+
+// Third Party Imports
+use prost::Message;
+use tokio::runtime::Builder;
+
+// Local Imports
 use crate::conformance::Value;
-use harmos::client::plugin_change::Kind as ChangeKind;
-use harmos::client::plugin_placement::Kind as PlacementKind;
+use harmos::client::plugin_change;
+use harmos::client::plugin_placement;
 use harmos::client::plugins_watch_response::Event;
-use harmos::client::{PluginChange, PluginPlacement, PluginRemote, PluginState, PluginValue, PluginsWatchOptions};
+use harmos::client::{PluginChange, PluginPlacement, PluginRemote, PluginState, PluginValue};
 use harmos::plugin::{Context, Operation, Plugin};
 use harmos::{Client, ClientSettings, Error, Result, StorageTransferSettings, Visibility};
-use prost::Message;
-use std::num::NonZeroUsize;
-use tokio::runtime::Builder;
+use harmos_conformance::product::client::{PluginsWatchOptions, Root};
 
 /* === Constants === */
 
@@ -45,18 +51,25 @@ use tokio::runtime::Builder;
 pub fn run(arguments: &[String]) -> Result<()> {
     if arguments == ["serve"] {
         return Plugin::new("example", "1.0.0")
-            .operation(Operation::new("example.echo", |_: &Context, value: Value| async { Ok(value) }).visibility(Visibility::Public))
+            .register(|ctx| {
+                ctx.register(
+                    Operation::new("example.echo", |_: &Context, value: Value| async { Ok(value) }).visibility(Visibility::Public),
+                )?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
             .remote()
-            .serve();
+            .run();
     }
     let runtime = Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(async {
         let bytes = NonZeroUsize::new(16 * 1024 * 1024).unwrap();
         let transfer = StorageTransferSettings::default();
-        let client = Client::connect(arguments[0].clone(), ClientSettings::for_storage(transfer, bytes)?).await?;
+        let connection = Client::connect(arguments[0].clone(), ClientSettings::for_storage(transfer, bytes)?).await?;
+        let client = Root::new(connection.transport_handle());
         // Install and Start This Codebase's Running Instance
         let placement = PluginPlacement {
-            kind: Some(PlacementKind::Remote(PluginRemote { url: arguments[1].clone() })),
+            kind: Some(plugin_placement::Kind::Remote(PluginRemote { url: arguments[1].clone() })),
         };
         client.plugins.create("example", placement, PluginValue { enabled: true }).await?;
         let mut watch = client
@@ -70,7 +83,9 @@ pub fn run(arguments: &[String]) -> Result<()> {
             let event = watch.next().await?.ok_or_else(|| Error::Invalid("Watch Plugins: closed before Ready".into()))?;
             let entries = match event.event {
                 Some(Event::Snapshot(snapshot)) => snapshot.entries,
-                Some(Event::Change(PluginChange { kind: Some(ChangeKind::Entry(entry)) })) => vec![entry],
+                Some(Event::Change(PluginChange {
+                    kind: Some(plugin_change::Kind::Entry(entry)),
+                })) => vec![entry],
                 _ => Vec::new(),
             };
             if let Some(entry) = entries.into_iter().find(|entry| entry.state == PluginState::Ready as i32) {

@@ -44,5 +44,5 @@ async fn publish_reopens_with_a_fresh_sequence_after_connection_loss() {
     );
     assert_eq!(host.rows().iter().map(|row| row.published_unix_micros).collect::<Vec<_>>(), [Some(1_000_000), Some(3_000_000)]);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

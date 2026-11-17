@@ -16,24 +16,17 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{num::NonZeroUsize, pin::Pin};
 
 // Third Party Imports
+use futures_core::Stream;
+use tonic::{Request, Response, Status};
 
 // Local Imports
-
 use super::client::PluginsSettingsSetOptions;
-use super::{
-    client::{AnnotationsGetResponse, JobsStartResponse, ProgressWatchResponse, Root},
-    host as app_host,
-};
-use futures_core::Stream;
+use super::client::{AnnotationsGetResponse, JobsStartResponse, ProgressWatchResponse, Root};
 use harmos::{Client, ClientSettings, SettingValues};
-use harmos_protocol::{
-    host::{self, status},
-    model::StorageTransferSettings,
-};
-use std::{num::NonZeroUsize, pin::Pin};
-use tonic::{Request, Response, Status};
+use harmos_protocol::{host, model::StorageTransferSettings};
 
 /* === Constants === */
 
@@ -51,7 +44,7 @@ struct Endpoint;
 /* === Implementations === */
 
 #[tonic::async_trait]
-impl host::status_server::Status for Endpoint {
+impl super::host::status_server::Status for Endpoint {
     async fn get(&self, _: Request<host::StatusGetRequest>) -> Result<Response<host::StatusGetResponse>, Status> {
         Ok(Response::new(host::StatusGetResponse {
             status: Some(host::HostStatus {
@@ -70,32 +63,34 @@ impl host::status_server::Status for Endpoint {
     }
 }
 #[tonic::async_trait]
-impl status::diagnostics_server::Diagnostics for Endpoint {
-    async fn get(&self, request: Request<status::DiagnosticsGetRequest>) -> Result<Response<status::DiagnosticsGetResponse>, Status> {
-        Ok(Response::new(status::DiagnosticsGetResponse {
+impl super::host::status::diagnostics_server::Diagnostics for Endpoint {
+    async fn get(
+        &self, request: Request<host::status::DiagnosticsGetRequest>,
+    ) -> Result<Response<host::status::DiagnosticsGetResponse>, Status> {
+        Ok(Response::new(host::status::DiagnosticsGetResponse {
             name: format!("diagnostics:{}", request.into_inner().name),
             ..Default::default()
         }))
     }
 }
 #[tonic::async_trait]
-impl app_host::jobs_server::Jobs for Endpoint {
-    async fn start(&self, request: Request<app_host::JobsStartRequest>) -> Result<Response<JobsStartResponse>, Status> {
+impl super::host::jobs_server::Jobs for Endpoint {
+    async fn start(&self, request: Request<super::host::JobsStartRequest>) -> Result<Response<JobsStartResponse>, Status> {
         Ok(Response::new(JobsStartResponse {
             value: format!("start:{}", request.into_inner().value),
         }))
     }
 }
 #[tonic::async_trait]
-impl app_host::plugins::annotations_server::Annotations for Endpoint {
-    async fn get(&self, request: Request<app_host::plugins::AnnotationsGetRequest>) -> Result<Response<AnnotationsGetResponse>, Status> {
+impl super::host::plugins::annotations_server::Annotations for Endpoint {
+    async fn get(&self, request: Request<super::host::plugins::AnnotationsGetRequest>) -> Result<Response<AnnotationsGetResponse>, Status> {
         Ok(Response::new(AnnotationsGetResponse { value: request.into_inner().name }))
     }
 }
 #[tonic::async_trait]
-impl app_host::jobs::progress_server::Progress for Endpoint {
+impl super::host::jobs::progress_server::Progress for Endpoint {
     type WatchStream = Pin<Box<dyn Stream<Item = Result<ProgressWatchResponse, Status>> + Send>>;
-    async fn watch(&self, request: Request<app_host::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
+    async fn watch(&self, request: Request<super::host::jobs::ProgressWatchRequest>) -> Result<Response<Self::WatchStream>, Status> {
         let value = request.into_inner().value;
         Ok(Response::new(Box::pin(futures_util::stream::iter([
             Ok(ProgressWatchResponse { value: format!("opened:{value}") }),
@@ -105,7 +100,7 @@ impl app_host::jobs::progress_server::Progress for Endpoint {
 }
 
 #[tonic::async_trait]
-impl host::plugins::settings_server::Settings for Endpoint {
+impl super::host::plugins::settings_server::Settings for Endpoint {
     async fn list(
         &self, request: Request<host::plugins::SettingsListRequest>,
     ) -> Result<Response<host::plugins::SettingsListResponse>, Status> {
@@ -132,7 +127,7 @@ impl host::plugins::settings_server::Settings for Endpoint {
 /* === Tests === */
 
 #[tokio::test]
-async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_calls() {
+async fn product_resources_share_parents_and_preserve_unary_and_watch_calls() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let incoming =
@@ -140,12 +135,12 @@ async fn library_and_product_roots_share_parents_and_preserve_unary_and_watch_ca
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let serving = tokio::spawn(
         tonic::transport::Server::builder()
-            .add_service(host::status_server::StatusServer::new(Endpoint))
-            .add_service(status::diagnostics_server::DiagnosticsServer::new(Endpoint))
-            .add_service(app_host::jobs_server::JobsServer::new(Endpoint))
-            .add_service(host::plugins::settings_server::SettingsServer::new(Endpoint))
-            .add_service(app_host::jobs::progress_server::ProgressServer::new(Endpoint))
-            .add_service(app_host::plugins::annotations_server::AnnotationsServer::new(Endpoint))
+            .add_service(super::host::status_server::StatusServer::new(Endpoint))
+            .add_service(super::host::status::diagnostics_server::DiagnosticsServer::new(Endpoint))
+            .add_service(super::host::jobs_server::JobsServer::new(Endpoint))
+            .add_service(super::host::plugins::settings_server::SettingsServer::new(Endpoint))
+            .add_service(super::host::jobs::progress_server::ProgressServer::new(Endpoint))
+            .add_service(super::host::plugins::annotations_server::AnnotationsServer::new(Endpoint))
             .serve_with_incoming_shutdown(incoming, async {
                 let _ = stopped.await;
             }),

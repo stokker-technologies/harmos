@@ -15,23 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::host::invocations_client::InvocationsClient;
-use harmos_protocol::model::Classification;
-use harmos_protocol::model::Failure;
-
 // Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
-
-use super::{
-    app::App,
-    generated::messages::{Reply, Request},
-};
-use harmos_runtime::operations::{ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility};
-use prost::Message;
 use std::{
     num::NonZeroUsize,
     sync::{
@@ -39,6 +23,20 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+// Third Party Imports
+use prost::Message;
+
+// Local Imports
+use super::{
+    app::App,
+    generated::messages::{Reply, Request},
+};
+use harmos_conformance::host::invocations_client::InvocationsClient;
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::model::Classification;
+use harmos_protocol::model::Failure;
+use harmos_runtime::operations::{ExecutionContext, Grpc, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility};
 
 /* === Constants === */
 
@@ -123,7 +121,7 @@ impl ProtobufOperation for Stop {
 async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_boundary() {
     let work = Arc::new(Work::default());
     work.queued.store(true, Ordering::SeqCst);
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<Work>(work.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: NonZeroUsize::new(4096),
@@ -132,7 +130,7 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
     })
     .await
     .unwrap();
-    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
     let cancel = OperationFactory::protobuf::<Cancel>().unwrap();
     let stop = OperationFactory::protobuf::<Stop>().unwrap();
     let cancel_contract = cancel.contract().unwrap();
@@ -185,5 +183,5 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
     assert_eq!(Reply::decode(stopped.await.unwrap().payload.as_slice()).unwrap().offset, 42);
     assert_eq!(work.cancellations.load(Ordering::SeqCst), 0);
     drop(listener);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

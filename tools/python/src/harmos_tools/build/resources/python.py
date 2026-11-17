@@ -69,13 +69,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
     library_paths = descriptor.public_paths(
         configuration.library if configuration.library is not None and configuration.library.file else descriptors
     )
-    methods = descriptor.table(descriptors)
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
-    requests = set()
-    for requests_method in methods:
-        if requests_method["face"] == "plugin":
-            continue
-        requests.add(requests_method["request"])
+    requests = descriptor.request_names(descriptors)
 
     carriers = {
         "Request",
@@ -175,6 +170,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
     for group, entries in groups.items():
         modules: dict[tuple[str, ...], list[str]] = {(): []}
         exports: dict[tuple[str, ...], set[str]] = {(): set()}
+        metadata: dict[tuple[str, ...], list[str]] = {}
         for module, original, name in sorted(entries):
             parts = name.split(".")
             node = tuple(parts[:-1])
@@ -188,8 +184,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 public_module = (
                     configuration.namespace if group == "shared" else configuration.namespace + "." + group.removesuffix("_types")
                 )
-                modules[node].append(f'{original}.__module__ = "{public_module}"')
-                modules[node].append(f'{original}.__qualname__ = "{name}"')
+                metadata.setdefault(node, []).append(f'{original}.__module__ = "{public_module}"')
+                metadata[node].append(f'{original}.__qualname__ = "{name}"')
         for node, imports in modules.items():
             if node:
                 path = target / "_exports" / group / Path(*node) / "__init__.py"
@@ -200,6 +196,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
             lines = [
                 "# @generated from protocol descriptors; do not edit.",
                 *dict.fromkeys(imports),
+                "",
+                *metadata.get(node, []),
                 "",
                 f"__all__ = {sorted(exports[node])!r}",
                 "",
@@ -234,32 +232,22 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
     barrel(
         package / "__init__.py",
         [
-            "from ._connection import Client",
+            "from ._connection import Connection",
             "from ._invocation import FailureError",
             "from ._invocation import ProtocolError",
             *[f"from ._generated.shared import {name}" for name in shared],
         ],
-        ["Client", "FailureError", "ProtocolError", *shared],
+        ["Connection", "FailureError", "ProtocolError", *shared],
     )
     client = sorted({name.split(".", 1)[0] for _, _, name in groups["client_types"]})
-    nodes = {
-        tuple(method["path"][:length])
-        for method in methods
-        if method["face"] == "client" and method["owner"] == "harmos"
-        for length in range(1, len(method["path"]))
-    }
-    resources = sorted("".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes)
     barrel(
         package / "client.py",
-        [
-            *[f"from ._generated.client_types import {name}" for name in client],
-            *[f"from ._generated.client import {name}" for name in resources],
-        ],
-        [*client, *resources],
+        [f"from ._generated.client_types import {name}" for name in client],
+        client,
     )
     plugin = sorted({name.split(".", 1)[0] for _, _, name in groups["plugin_types"]})
     authored = {
-        "_authoring": ["Endpoint", "Plugin"],
+        "_authoring": ["Catalog", "Endpoint", "Plugin", "Registrar", "Registration"],
         "_contracts": ["Operation", "Stream", "Window", "observer", "on_stop", "operation", "publisher", "window_observer"],
         "_invocation": ["Context", "Publisher"],
         "_generated.host": ["HostOperation"],
@@ -293,6 +281,9 @@ def client(
 ) -> None:
     """Generate Content Arguments and Exactly-One-Field Response Projection."""
     configuration = configuration or Configuration()
+    if not methods and target.parent.name == "_generated":
+        target.unlink(missing_ok=True)
+        return
     selected: list[descriptor.Method] = []
     for method in methods:
         method = method.copy()
@@ -320,17 +311,8 @@ def client(
         raise ValueError(
             "Generate Python Client: Resource Collides With a Method; Correct the source protocol declarations or explicit public exports before regenerating"
         )
-    composed = any(method["owner"] != "harmos" for method in methods)
-    composed_package = composed and target.parent.name == "_generated" and configuration.namespace == "harmos"
-    root_name = "Client" if composed_package else "ClientRoot"
+    root_name = "Client"
     names = {node: root_name if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
-    library_methods = descriptor.table(configuration.library_descriptors())
-    library_leaves = {tuple(method["path"]) for method in library_methods if method["face"] == "client"}
-    narrowed = configuration.namespace != "harmos" or not library_leaves <= leaves
-    library_nodes: set[tuple[str, ...]] = {()}
-    for method in methods:
-        if method["owner"] == "harmos":
-            library_nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
     messages = _message_types(descriptors, configuration.namespace, module_prefixes)
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
@@ -354,27 +336,16 @@ def client(
         "from grpc.aio import AioRpcError, Channel",
         "from harmos._client_transport import Metadata, call_error, stream, unary",
     ]
-    if narrowed:
-        lines += ["from harmos import _connection"]
-    elif composed:
-        lines += ["import harmos", "from harmos import client"]
+    lines += ["from harmos import _connection"]
     lines += imports
     for node in sorted(nodes, key=lambda value: (-len(value), value)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
-        parent = ""
-        if narrowed:
-            if not node:
-                parent = "_connection.Connection"
-        elif composed:
-            if not node:
-                parent = "harmos.Client"
-            elif node in library_nodes:
-                parent = "client." + names[node]
+        parent = "_connection.Connection" if not node else ""
         lines += ["", f"class {names[node]}" + (f"({parent})" if parent else "") + ":", "    def __init__(self, channel: Channel) -> None:"]
         if parent:
             lines += ["        super().__init__(channel)"]
         lines += ["        self._channel = channel"]
-        storage = "_composed_" if composed else "_library_"
+        storage = "_resource_"
         lines += [f"        self.{storage}{_identifier(child[-1])} = {names[child]}(channel)" for child in children]
         for child in children:
             lines += [
@@ -462,7 +433,7 @@ def client(
     source = "\n".join(lines) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(source, encoding="utf-8", newline="\n")
-    if composed_package:
+    if target.parent.name == "_generated" and configuration.namespace == "harmos":
         package = target.parent.parent
         requests = {method["request"] for method in methods}
         exports = []
@@ -494,7 +465,7 @@ def client(
     config = configuration.python_style or Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     paths = [target] + (
         [target.parent / "client_types.py", target.parent.parent / "client.py", target.parent.parent / "__init__.py"]
-        if composed_package
+        if target.parent.name == "_generated" and configuration.namespace == "harmos"
         else []
     )
     subprocess.run(

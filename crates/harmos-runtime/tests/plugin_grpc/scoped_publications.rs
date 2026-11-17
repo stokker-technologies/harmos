@@ -202,5 +202,5 @@ async fn concurrent_units_retain_their_clocks_samples_and_close_boundary() {
     left_time.advance_until(Duration::from_secs(5), || rows_for("unit/left").len() > previous).await.unwrap();
     resumed.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -15,19 +15,18 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::plugin::ChildRequest;
-
 // Standard Library Imports
 use std::sync::{Arc, Weak};
 
 // Third Party Imports
-use harmos_protocol::model;
 
 // Local Imports
 use super::*;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
+use harmos_protocol::host::InvocationsCreateRequest;
+use harmos_protocol::model;
+use harmos_protocol::plugin::ChildRequest;
 
 /* === Constants === */
 
@@ -122,22 +121,42 @@ impl Manager {
             operation: "plugins.load".into(),
             source: Arc::new(source),
         })?;
+        let mut plugin_calls = Vec::new();
+        use crate::plugin::grpc::facade;
+        let factories = [
+            OperationFactory::native_with_policy::<facade::Load>(self.registry.plugin_load),
+            OperationFactory::native_with_policy::<facade::Inspect>(self.registry.plugin_load),
+            OperationFactory::native::<facade::Bind>(),
+            OperationFactory::native_with_policy::<facade::StartSamples>(self.registry.plugin_load),
+            OperationFactory::native::<facade::StopSamples>(),
+            OperationFactory::native::<facade::Settle>(),
+        ];
+        for factory in factories {
+            let factory = factory.map_err(|source| Error::OperationFailed {
+                operation: "Plugin Facade".into(),
+                source: Arc::new(source),
+            })?;
+            plugin_calls.push(factory);
+        }
+        plugin_calls.extend([sample_window, plugin_load]);
         // A Load Waits on Its Plugin, Never on a Lane Slot Its Own Caller May Hold.
         let resident = crate::operations::Lane::new(crate::operations::lane::RESIDENT, crate::operations::Capacity::unbounded());
         self.register_native(crate::operations::Registration {
             batch: crate::operations::Catalog {
                 name: "harmos.samples",
-                operations: vec![sample_window, plugin_load],
+                operations: plugin_calls,
                 services: vec![],
             },
-            lane: None,
+            lane: Some(resident),
             defaults: std::collections::BTreeMap::from([("plugins.load", resident)]),
         })?;
         let factories = [
-            OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
-            OperationFactory::protobuf::<harmos_operations::clock::Get>(),
+            OperationFactory::protobuf::<harmos_operations::clock::Sleep>()
+                .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Sleep>),
+            OperationFactory::protobuf::<harmos_operations::clock::Get>()
+                .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Get>),
         ];
-        for factory in factories {
+        for factory in factories.into_iter().chain(harmos_operations::facilities::factories()) {
             let factory = factory.map_err(|source| Error::OperationFailed {
                 operation: "Time".into(),
                 source: Arc::new(source),
@@ -251,7 +270,7 @@ impl crate::operations::Context<'_> {
     }
 
     pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
-        if child.background && child.operation != "harmos.host.v1.Time/Sleep" {
+        if child.background && child.operation != "harmos.plugin.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
                 reason: "Call Plugin Child permits background waits only for Time.Sleep",

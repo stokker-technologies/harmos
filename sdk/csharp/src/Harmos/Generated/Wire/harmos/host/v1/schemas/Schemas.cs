@@ -25,20 +25,17 @@ namespace Harmos.Clients;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChxoYXJtb3MvaG9zdC92MS9zY2hlbWFzLnByb3RvEg5oYXJtb3MuaG9zdC52",
-            "MRobaGFybW9zL2hvc3QvdjEvc2NoZW1hLnByb3RvGh1oYXJtb3MvbW9kZWwv",
-            "djEvY2FsbGVycy5wcm90bxoeaGFybW9zL21vZGVsL3YxL3Bvc2l0aW9uLnBy",
-            "b3RvIjwKElNjaGVtYXNMaXN0UmVxdWVzdBIbCgZzY2hlbWEYASABKAlIAFIG",
-            "c2NoZW1hiAEBQgkKB19zY2hlbWEiUgoTU2NoZW1hc0xpc3RSZXNwb25zZRI7",
-            "CgdzY2hlbWFzGAEgAygLMiEuaGFybW9zLmhvc3QudjEuU2NoZW1hRGVzY3Jp",
-            "cHRpb25SB3NjaGVtYXMirAEKEVNjaGVtYURlc2NyaXB0aW9uEjUKCHBvc2l0",
-            "aW9uGAEgASgLMhkuaGFybW9zLm1vZGVsLnYxLlBvc2l0aW9uUghwb3NpdGlv",
-            "bhIrCgNrZXkYAiABKAsyGS5oYXJtb3MuaG9zdC52MS5TY2hlbWFLZXlSA2tl",
-            "eRIzCgZzY2hlbWEYAyABKAsyGy5oYXJtb3MuaG9zdC52MS5TY2hlbWFHcmFw",
-            "aFIGc2NoZW1hMmAKB1NjaGVtYXMSVQoETGlzdBIiLmhhcm1vcy5ob3N0LnYx",
-            "LlNjaGVtYXNMaXN0UmVxdWVzdBojLmhhcm1vcy5ob3N0LnYxLlNjaGVtYXNM",
-            "aXN0UmVzcG9uc2UiBMjzGAFiBnByb3RvMw=="));
+            "MRobaGFybW9zL2hvc3QvdjEvc2NoZW1hLnByb3RvGh5oYXJtb3MvbW9kZWwv",
+            "djEvcG9zaXRpb24ucHJvdG8iPAoSU2NoZW1hc0xpc3RSZXF1ZXN0EhsKBnNj",
+            "aGVtYRgBIAEoCUgAUgZzY2hlbWGIAQFCCQoHX3NjaGVtYSJSChNTY2hlbWFz",
+            "TGlzdFJlc3BvbnNlEjsKB3NjaGVtYXMYASADKAsyIS5oYXJtb3MuaG9zdC52",
+            "MS5TY2hlbWFEZXNjcmlwdGlvblIHc2NoZW1hcyKsAQoRU2NoZW1hRGVzY3Jp",
+            "cHRpb24SNQoIcG9zaXRpb24YASABKAsyGS5oYXJtb3MubW9kZWwudjEuUG9z",
+            "aXRpb25SCHBvc2l0aW9uEisKA2tleRgCIAEoCzIZLmhhcm1vcy5ob3N0LnYx",
+            "LlNjaGVtYUtleVIDa2V5EjMKBnNjaGVtYRgDIAEoCzIbLmhhcm1vcy5ob3N0",
+            "LnYxLlNjaGVtYUdyYXBoUgZzY2hlbWFiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.Clients.SchemaReflection.Descriptor, global::Harmos.CallersReflection.Descriptor, global::Harmos.PositionReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Harmos.Clients.SchemaReflection.Descriptor, global::Harmos.PositionReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.SchemasListRequest), global::Harmos.Clients.SchemasListRequest.Parser, new[]{ "Schema" }, new[]{ "Schema" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.SchemasListResponse), global::Harmos.Clients.SchemasListResponse.Parser, new[]{ "Schemas" }, null, null, null, null),

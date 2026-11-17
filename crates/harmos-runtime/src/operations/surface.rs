@@ -531,7 +531,7 @@ mod tests {
 
     #[tokio::test]
     async fn mixed_registration_releases_invalid_batch_reservations() {
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<AtomicUsize>(Arc::new(AtomicUsize::new(0)));
         })
         .await
@@ -560,12 +560,12 @@ mod tests {
         assert!(runtime.operations.resident.definition("host.idle").is_some());
         runtime.unregister(&crate::QualifiedId::parse("host.idle").unwrap()).await.unwrap();
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn operation_and_service_share_one_identity_namespace() {
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<AtomicUsize>(Arc::new(AtomicUsize::new(0)));
         })
         .await
@@ -590,13 +590,13 @@ mod tests {
         runtime.services().register_batch(service).await.unwrap();
         assert!(runtime.operations.register_batch(operation.lane(crate::operations::Lane::default())).await.is_err());
         runtime.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn native_registration_is_atomic_and_invocation_policy_is_local() {
         let initialized = Arc::new(AtomicUsize::new(0));
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<AtomicUsize>(initialized.clone());
         })
         .await
@@ -639,6 +639,6 @@ mod tests {
         assert_eq!(runtime.operations.definition(PROBE_OPERATION.entry().id).unwrap().policy.retries, RetryPolicy::Never);
         runtime.operations.unregister(&crate::QualifiedId::parse("host.test.probe").unwrap()).await.unwrap();
         assert!(runtime.operation(Probe { value: 0 }).start().await.is_err());
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

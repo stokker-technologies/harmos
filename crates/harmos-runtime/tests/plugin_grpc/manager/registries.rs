@@ -11,15 +11,19 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::SchemaKey;
+// Standard Library Imports
+use std::sync::atomic::Ordering;
 
+// Third Party Imports
+
+// Local Imports
 use super::support::{Backends, Host};
 use harmos_protocol::host;
+use harmos_protocol::host::SchemaKey;
 use harmos_runtime::{
     Identifier,
     storage::{RecordInput, StreamInput},
 };
-use std::sync::atomic::Ordering;
 
 /* === Tests === */
 
@@ -54,10 +58,10 @@ async fn typed_registries_preserve_models_and_hide_private_operations() {
     host.storage.flush().await.unwrap();
 
     // The Client Receives Typed Inventories And The Exact Discovered Operation.
-    let mut operations = host::operations_client::OperationsClient::new(host.channel.clone());
+    let mut operations = harmos_conformance::host::operations_client::OperationsClient::new(host.channel.clone());
     let discovered = operations.list(host::OperationsListRequest {}).await.unwrap().into_inner().operations;
     assert!(discovered.iter().all(|entry| !entry.contract.as_ref().unwrap().id.starts_with("storage.")));
-    let selected = discovered.iter().find(|entry| entry.contract.as_ref().unwrap().id == "harmos.host.v1.Schemas/List").unwrap();
+    let selected = discovered.iter().find(|entry| entry.contract.as_ref().unwrap().id == "application.host.v1.Schemas/List").unwrap();
     let got = operations
         .get(host::OperationsGetRequest {
             id: selected.contract.as_ref().unwrap().id.clone(),
@@ -67,7 +71,7 @@ async fn typed_registries_preserve_models_and_hide_private_operations() {
         .into_inner();
     assert_eq!(got.operation.as_ref(), Some(selected));
     assert!(operations.get(host::OperationsGetRequest { id: "storage.info".into() }).await.is_err());
-    let mut schemas = host::schemas_client::SchemasClient::new(host.channel.clone());
+    let mut schemas = harmos_conformance::host::schemas_client::SchemasClient::new(host.channel.clone());
     let schemas = schemas.list(host::SchemasListRequest { schema: Some(key.id.to_string()) }).await.unwrap().into_inner().schemas;
     assert_eq!(
         schemas,
@@ -77,7 +81,7 @@ async fn typed_registries_preserve_models_and_hide_private_operations() {
             schema: Some(graph.into())
         }]
     );
-    let mut streams = host::streams_client::StreamsClient::new(host.channel.clone());
+    let mut streams = harmos_conformance::host::streams_client::StreamsClient::new(host.channel.clone());
     let identities = streams.list(host::StreamsListRequest { schema: Some(key.id.to_string()) }).await.unwrap().into_inner().streams;
     assert_eq!(identities.len(), 1);
     assert_eq!(identities[0].schema, Some(SchemaKey::from(key)));

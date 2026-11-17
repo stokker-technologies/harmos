@@ -20,7 +20,6 @@
 // Third Party Imports
 
 // Local Imports
-
 use super::{invoke_support::*, support};
 use harmos_runtime::plugin::grpc::Placement;
 
@@ -62,8 +61,8 @@ async fn context_watch_refuses_an_invocation_owned_by_another_caller() {
         panic!("Expected an Invocation Ownership Refusal: {error:?}");
     };
     assert_eq!(failure.code(), harmos_runtime::operations::FailureKind::Permanent, "{failure:?}");
-    assert_eq!(failure.context().operation(), Some("harmos.host.v1.Invocations/Watch"), "{failure:?}");
+    assert_eq!(failure.context().operation(), Some("harmos.plugin.v1.Invocations/Watch"), "{failure:?}");
     target.request_cancel();
     assert_eq!(target.await.unwrap(), payload(b"target"));
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -1,7 +1,6 @@
 import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from harmos._wire.model.v1 import callers_pb2 as _callers_pb2
 from harmos._wire.model.v1 import page_pb2 as _page_pb2
 from harmos._wire.model.v1 import position_pb2 as _position_pb2
 from google.protobuf.internal import containers as _containers

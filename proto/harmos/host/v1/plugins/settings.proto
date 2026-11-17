@@ -2,7 +2,7 @@
 
 // Host Plugin Settings
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
@@ -10,7 +10,6 @@ package harmos.host.v1.plugins;
 
 // === Imports === //
 
-import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/position.proto";
 import "harmos/model/v1/receipt.proto";
 import "harmos/model/v1/setting.proto";
@@ -21,16 +20,6 @@ option csharp_namespace = "Harmos.Host.V1.PluginsResources";
 // === Services === //
 
 // Owns the library-stored settings for a plugin entry; product secrets remain product-owned.
-service Settings {
-  // Read declarations, complete values, revision and issued cut; plugin callers are restricted to their own entry.
-  rpc List(SettingsListRequest) returns (SettingsListResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-  // Replace the complete setting values at the expected revision; identical request identity and input replay the original receipt, while changed input refuses.
-  rpc Set(SettingsSetRequest) returns (SettingsSetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-}
 
 // === List === //
 

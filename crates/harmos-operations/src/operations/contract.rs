@@ -13,23 +13,23 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::OperationsListRequest;
-use harmos_protocol::host::TimeGetRequest as WireTimeGetRequest;
-use harmos_protocol::model::Callers as WireCallers;
-
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::sync::OnceLock;
+
 // Third Party Imports
 use serde::{Deserialize, Serialize};
+
 // Local Imports
 use super::ProtobufExt;
 use super::{Direction, Entry, OperationDefinition};
 use crate::catalog::Visitor;
 use harmos_domain::config::SchemaSettings;
-use harmos_domain::schema::declaration::Definition as SchemaDefinition;
+use harmos_domain::schema::declaration;
 use harmos_domain::schema::graph::{Kind, Schema, View};
 use harmos_domain::schema::{self, Described};
+use harmos_protocol::host::{OperationsListRequest, TimeGetRequest};
+use harmos_protocol::model::Callers;
 
 /* === Constants === */
 
@@ -83,10 +83,10 @@ pub struct WireDeclaration {
     pub response_codec: &'static str,
     pub input_codec: Option<&'static str>,
     pub output_codec: Option<&'static str>,
-    pub request: SchemaDefinition,
-    pub response: SchemaDefinition,
-    pub input: Option<SchemaDefinition>,
-    pub output: Option<SchemaDefinition>,
+    pub request: declaration::Definition,
+    pub response: declaration::Definition,
+    pub input: Option<declaration::Definition>,
+    pub output: Option<declaration::Definition>,
     pub grpc: Option<super::Grpc>,
 }
 
@@ -290,7 +290,7 @@ impl Contract {
         let mut contract = Self {
             fingerprint: fingerprint.unwrap_or(operation.fingerprint),
             operation,
-            callers: WireCallers::All as i32,
+            callers: Callers::All as i32,
             codec,
             schema,
             grpc: None,
@@ -306,16 +306,46 @@ impl Contract {
     }
 
     pub fn from_protobuf(
-        operation: OperationDefinition, protobuf: super::Protobuf, mut binding: Option<super::Grpc>, settings: &SchemaSettings,
+        operation: OperationDefinition, protobuf: super::Protobuf, binding: Option<super::Grpc>, settings: &SchemaSettings,
     ) -> Result<Self, ContractError> {
         harmos_protocol::schema::operation_identity(operation.id.as_str()).map_err(|error| ContractError::Protobuf(error.to_string()))?;
-        if crate::reserved(operation.id.as_str()) {
+        if operation.id.as_str().starts_with("harmos.host.v1.") {
+            if binding.is_some() || operation.visibility != super::Visibility::Private {
+                return Err(ContractError::Protobuf("Declare Host Operation: use Private visibility without a gRPC binding".into()));
+            }
+            use prost::Message;
+            use prost_reflect::ReflectMessage;
+            let root = TimeGetRequest::default().descriptor();
+            let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
+            let request = format!("{service}{method}Request");
+            let response = format!("{service}{method}Response");
+            let types = prost_types::FileDescriptorSet {
+                file: root.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
+            };
+            let descriptors = if service == "harmos.host.v1.Time" && matches!(method, "Get" | "Sleep") {
+                harmos_protocol::clock::declarations_types()
+            } else {
+                harmos_protocol::schema::operation_types(&types, &[&request, &response])
+                    .map_err(|error| ContractError::Protobuf(format!("Declare {}: {error}", operation.id)))?
+            };
+            let expected = super::Protobuf {
+                descriptors: descriptors.encode_to_vec(),
+                request,
+                response: response.clone(),
+                input: None,
+                output: (method == "Watch").then_some(response),
+            };
+            if protobuf != expected {
+                return Err(ContractError::Protobuf(format!("Declare {}: use the protocol-owned host payload contract", operation.id)));
+            }
+            operation.policy.validate().map_err(crate::operations::Error::from)?;
+        } else if crate::reserved(operation.id.as_str()) {
             use prost::Message;
             use prost_reflect::ReflectMessage;
             let root = OperationsListRequest::default().descriptor();
             let pool = root.parent_pool();
             let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
-            if !service.starts_with("harmos.host.v1.") {
+            if !service.starts_with("harmos.plugin.v1.") {
                 return Err(crate::operations::Error::ReservedOperation { id: operation.id.to_string() }.into());
             }
             let service = pool.get_service_by_name(service).ok_or(ContractError::Grpc)?;
@@ -347,8 +377,6 @@ impl Contract {
                     operation.id
                 )));
             }
-            // Required Contracts Use the Protocol's Binding Without Redeclaring It.
-            binding = mapping;
             operation.policy.validate().map_err(crate::operations::Error::from)?;
         } else {
             operation.policy.validate().map_err(crate::operations::Error::from)?;
@@ -360,15 +388,15 @@ impl Contract {
     pub fn clock(sleep: bool, policy: super::OperationPolicy, settings: &SchemaSettings) -> Result<Self, ContractError> {
         use prost::Message;
         policy.validate().map_err(crate::operations::Error::from)?;
-        let (id, request, response, method) = if sleep {
-            ("harmos.host.v1.Time/Sleep", "harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse", "Sleep")
+        let (id, request, response) = if sleep {
+            ("harmos.host.v1.Time/Sleep", "harmos.host.v1.TimeSleepRequest", "harmos.host.v1.TimeSleepResponse")
         } else {
-            ("harmos.host.v1.Time/Get", "harmos.host.v1.TimeGetRequest", "harmos.host.v1.TimeGetResponse", "Get")
+            ("harmos.host.v1.Time/Get", "harmos.host.v1.TimeGetRequest", "harmos.host.v1.TimeGetResponse")
         };
         let operation = OperationDefinition {
             id: harmos_domain::Identifier::new(id).map_err(crate::operations::Error::from)?,
             description: String::new(),
-            visibility: super::Visibility::Public,
+            visibility: super::Visibility::Private,
             policy,
             replay: super::ReplaySafety::Unknown,
             fingerprint: harmos_domain::Fingerprint([0; 32]),
@@ -380,7 +408,7 @@ impl Contract {
             input: None,
             output: None,
         };
-        Self::generated(operation, protobuf, Some(super::Grpc::new("harmos.host.v1", "Time", method)), settings)
+        Self::generated(operation, protobuf, None, settings)
     }
 
     pub(crate) fn generated(
@@ -394,15 +422,15 @@ impl Contract {
         })?;
         let fingerprint = protobuf.fingerprint(operation.id.as_str())?;
         operation.fingerprint = fingerprint;
-        let callers = if operation.id.as_str().starts_with("harmos.host.v1.") {
+        let callers = if operation.id.as_str().starts_with("harmos.plugin.v1.") {
             use prost_reflect::ReflectMessage;
-            let root = WireTimeGetRequest::default().descriptor();
+            let root = TimeGetRequest::default().descriptor();
             let (service, method) = operation.id.as_str().split_once('/').ok_or(ContractError::Grpc)?;
             let service = root.parent_pool().get_service_by_name(service).ok_or(ContractError::Grpc)?;
             let method = service.methods().find(|candidate| candidate.name() == method).ok_or(ContractError::Grpc)?;
             harmos_protocol::schema::method_callers(&method).map_err(|error| ContractError::Protobuf(error.to_string()))?
         } else {
-            WireCallers::All
+            Callers::All
         };
         Self {
             operation,
@@ -416,11 +444,11 @@ impl Contract {
         .with_grpc(binding)
     }
 
-    pub fn callers(&self) -> WireCallers {
-        WireCallers::try_from(self.callers).expect("validated operation callers")
+    pub fn callers(&self) -> Callers {
+        Callers::try_from(self.callers).expect("validated operation callers")
     }
 
-    pub(crate) fn with_callers(mut self, callers: WireCallers) -> Self {
+    pub(crate) fn with_callers(mut self, callers: Callers) -> Self {
         self.callers = callers as i32;
         self
     }
@@ -700,7 +728,7 @@ impl Contracts {
 
 /* === Private Functions === */
 
-const fn direction<D: super::Direction>() -> Option<SchemaDefinition> {
+const fn direction<D: super::Direction>() -> Option<declaration::Definition> {
     if D::STREAMED { Some(<D::Item as Described>::DEFINITION) } else { None }
 }
 
@@ -774,6 +802,22 @@ mod tests {
     }
 
     #[test]
+    fn host_metadata_retains_payload_authority_without_a_remote_binding() {
+        let original = Contract::clock(false, lifecycle::POLICY, &SchemaSettings::default()).unwrap();
+        let payload = original.protobuf().unwrap().clone();
+        let restored = Contract::from_protobuf(original.operation().clone(), payload.clone(), None, &SchemaSettings::default()).unwrap();
+        assert_eq!(restored, original);
+        let mut public = original.operation().clone();
+        public.visibility = super::super::Visibility::Public;
+        assert!(Contract::from_protobuf(public, payload.clone(), None, &SchemaSettings::default()).is_err());
+        let remote = super::super::Grpc::new("harmos.host.v1", "Time", "Get");
+        assert!(Contract::from_protobuf(original.operation().clone(), payload.clone(), Some(remote), &SchemaSettings::default()).is_err());
+        let mut forged = payload;
+        forged.request = "harmos.host.v1.TimeSleepRequest".into();
+        assert!(Contract::from_protobuf(original.operation().clone(), forged, None, &SchemaSettings::default()).is_err());
+    }
+
+    #[test]
     fn sdk_metadata_roundtrip() {
         for original in sdk_contracts() {
             let encoded = serde_json::to_vec(&original).unwrap();
@@ -795,7 +839,7 @@ mod tests {
                 ("/operation/policy/attempt_timeout/secs", json!(0)),
                 ("/operation/policy/retries", json!(RetryPolicy::OnTransient { total_attempts: 2, backoff })),
                 ("/fingerprint", json!("00".repeat(32))),
-                ("/callers", json!(WireCallers::Clients as i32)),
+                ("/callers", json!(Callers::Clients as i32)),
                 ("/schema", json!({"root": 0, "definitions": [[]]})),
             ] {
                 let mut forged = encoded.clone();

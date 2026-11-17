@@ -13,7 +13,6 @@ using Harmos.Plugins;
 using Harmos.Tests.Columns;
 using Harmos;
 using Xunit;
-using SdkPlugin = Harmos.Plugins.Plugin;
 
 namespace Harmos.Tests.Unit;
 
@@ -23,10 +22,10 @@ public sealed class TypedClockContracts
   public void ObserversPreserveSettingWithOrWithoutDefaultInterval()
   {
     var setting = new SettingValue { Duration = new Duration { Seconds = 2 } };
-    var plugin = new SdkPlugin("settings", "1.0.0")
-        .Observer("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval")
-        .Observer("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval")
-        .Setting("interval", setting);
+    var plugin = new Harmos.Plugins.Plugin("settings", "1.0.0")
+        .Register(ctx => ctx.Register("settings.only", null, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
+        .Register(ctx => ctx.Register("settings.default", new Duration { Seconds = 1 }, context => Task.FromResult(new TimeGetRequest()), intervalSetting: "interval"))
+        .Register(ctx => ctx.Register("interval", setting));
     var declarations = plugin.Declarations();
     Assert.Null(declarations.Streams[0].Interval);
     Assert.Equal("interval", declarations.Streams[0].IntervalSetting);
@@ -34,42 +33,42 @@ public sealed class TypedClockContracts
     Assert.Equal(declarations.Streams[0].IntervalSetting, declarations.Streams[1].IntervalSetting);
     var settings = SettingsDeclarations.Parser.ParseFrom(Assert.Single(declarations.Sections).Payload);
     Assert.Equal(setting, Assert.Single(settings.Values).Default);
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("invalid", "1.0.0")
-        .Observer("settings.missing", null, context => Task.FromResult(new TimeGetRequest())));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("invalid", "1.0.0")
+        .Register(ctx => ctx.Register("settings.missing", null, context => Task.FromResult(new TimeGetRequest()))));
   }
 
   [Fact]
   public void WindowObserversDeclareWindowSettingsAndMirroredOneValueRows()
   {
-    var declarations = new SdkPlugin("windows", "1.0.0")
-        .Observer("windows.sample", new Duration { Seconds = 1 }, context => Task.FromResult(new Reading()), windowSetting: "window")
-        .WindowObserver<Reading, ReadingColumns>("windows.columns", new Duration { Seconds = 1 },
-            (context, window) => Task.FromResult(new ReadingColumns()), windowSetting: "window")
+    var declarations = new Harmos.Plugins.Plugin("windows", "1.0.0")
+        .Register(ctx => ctx.Register("windows.sample", new Duration { Seconds = 1 }, context => Task.FromResult(new Reading()), windowSetting: "window"))
+        .Register(ctx => ctx.Register<Reading, ReadingColumns>("windows.columns", new Duration { Seconds = 1 },
+            (context, window) => Task.FromResult(new ReadingColumns()), windowSetting: "window"))
         .Declarations();
     Assert.Equal(["window", "window"], declarations.Streams.Select(stream => stream.WindowSetting));
     Assert.Equal([Reading.Descriptor.FullName, Reading.Descriptor.FullName], declarations.Streams.Select(stream => stream.Row));
 
     // Columns Repeat Every Row Field with the Same Number and Type.
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Reading, RetypedColumns>(
-        "windows.retyped", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new RetypedColumns())));
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Reading, PartialColumns>(
-        "windows.partial", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new PartialColumns())));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Reading, RetypedColumns>(
+        "windows.retyped", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new RetypedColumns()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Reading, PartialColumns>(
+        "windows.partial", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new PartialColumns()))));
 
     // Interval Rows Hold One Value per Field in Both Forms.
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
-        .Observer("windows.listed", new Duration { Seconds = 1 }, context => Task.FromResult(new Listed())));
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
-        .Observer("windows.present", new Duration { Seconds = 1 }, context => Task.FromResult(new Present())));
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0")
-        .Observer("windows.choice", new Duration { Seconds = 1 }, context => Task.FromResult(new Choice())));
-    Assert.Throws<ArgumentException>(() => new SdkPlugin("windows", "1.0.0").WindowObserver<Listed, Listed>(
-        "windows.listed", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new Listed())));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
+        .Register(ctx => ctx.Register("windows.listed", new Duration { Seconds = 1 }, context => Task.FromResult(new Listed()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
+        .Register(ctx => ctx.Register("windows.present", new Duration { Seconds = 1 }, context => Task.FromResult(new Present()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0")
+        .Register(ctx => ctx.Register("windows.choice", new Duration { Seconds = 1 }, context => Task.FromResult(new Choice()))));
+    Assert.Throws<ArgumentException>(() => new Harmos.Plugins.Plugin("windows", "1.0.0").Register(ctx => ctx.Register<Listed, Listed>(
+        "windows.listed", new Duration { Seconds = 1 }, (context, window) => Task.FromResult(new Listed()))));
   }
 
   [Fact]
   public void ClockRequirementsMergeReachableTypesWithoutWireServiceMessages()
   {
-    var plugin = new SdkPlugin("clock_client", "1.0.0").Requires(HostOperation.TimeSleep).Requires(HostOperation.TimeGet);
+    var plugin = new Harmos.Plugins.Plugin("clock_client", "1.0.0").Register(ctx => ctx.Register(HostOperation.TimeSleep)).Register(ctx => ctx.Register(HostOperation.TimeGet));
     var declarations = plugin.Declarations();
     var clock = Assert.Single(declarations.Types_.File, file => file.Name == "harmos/host/v1/time.proto");
     Assert.Equal(["TimeSleepRequest", "TimeSleepResponse", "TimeGetRequest", "TimeGetResponse"], clock.MessageType.Select(message => message.Name));
@@ -116,7 +115,7 @@ public sealed class TypedClockContracts
         MessageType = { new DescriptorProto { Name = "TimeSleepResponse" } }
       } }
     };
-    var bytes = Encoding.UTF8.GetBytes("harmos.host.v1.Time/Sleep\0")
+    var bytes = Encoding.UTF8.GetBytes("harmos.plugin.v1.Time/Sleep\0")
       .Concat(request.ToByteArray()).Concat(response.ToByteArray()).ToArray();
     var fingerprint = ByteString.CopyFrom(SHA256.HashData(bytes));
     Assert.Equal(fingerprint, declarations.Requires[0].Fingerprint);

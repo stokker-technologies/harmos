@@ -219,7 +219,7 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
     let mut storage_settings = crate::storage::fixture::config();
     storage_settings.transfer.chunk_bytes = Some(1024);
     let storage = StorageManager::in_memory(ObjectCatalog::new(), storage_settings).unwrap();
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |setup| {
         setup.settings().storage(&storage);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(256 * 1024),
@@ -285,12 +285,13 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
     access.0.store(true, Ordering::SeqCst);
 
     // Reflect the Original Message Names, Signed Encoding and Presence.
-    use tonic_reflection::pb::v1::{
-        self as reflection, server_reflection_request::MessageRequest, server_reflection_response::MessageResponse,
+    use {
+        tonic_reflection::pb, tonic_reflection::pb::v1::server_reflection_request::MessageRequest,
+        tonic_reflection::pb::v1::server_reflection_response::MessageResponse,
     };
-    let mut reflector = reflection::server_reflection_client::ServerReflectionClient::new(channel);
+    let mut reflector = pb::v1::server_reflection_client::ServerReflectionClient::new(channel);
     let reflected = reflector
-        .server_reflection_info(futures_util::stream::iter([reflection::ServerReflectionRequest {
+        .server_reflection_info(futures_util::stream::iter([pb::v1::ServerReflectionRequest {
             host: String::new(),
             message_request: Some(MessageRequest::FileContainingSymbol("generated.host.v1.Operations".into())),
         }]))
@@ -373,5 +374,5 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
 
     // Shut Down the Listener and Host.
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

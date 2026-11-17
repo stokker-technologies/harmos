@@ -22,10 +22,9 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from harmos._wire.model.v1 import callers_pb2 as harmos_dot_model_dot_v1_dot_callers__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(harmos/host/v1/access/certificates.proto\x12\x15harmos.host.v1.access\x1a\x1dharmos/model/v1/callers.proto\"\x1b\n\x19\x43\x65rtificatesCreateRequest\"5\n\x1a\x43\x65rtificatesCreateResponse\x12\x17\n\x0f\x63\x65rtificate_pem\x18\x01 \x01(\t2\x83\x01\n\x0c\x43\x65rtificates\x12s\n\x06\x43reate\x12\x30.harmos.host.v1.access.CertificatesCreateRequest\x1a\x31.harmos.host.v1.access.CertificatesCreateResponse\"\x04\xc8\xf3\x18\x01\x42!\xaa\x02\x1eHarmos.Host.V1.AccessResourcesb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n(harmos/host/v1/access/certificates.proto\x12\x15harmos.host.v1.access\"\x1b\n\x19\x43\x65rtificatesCreateRequest\"5\n\x1a\x43\x65rtificatesCreateResponse\x12\x17\n\x0f\x63\x65rtificate_pem\x18\x01 \x01(\tB!\xaa\x02\x1eHarmos.Host.V1.AccessResourcesb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,12 +32,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.host.v1.access
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\252\002\036Harmos.Host.V1.AccessResources'
-  _globals['_CERTIFICATES'].methods_by_name['Create']._loaded_options = None
-  _globals['_CERTIFICATES'].methods_by_name['Create']._serialized_options = b'\310\363\030\001'
-  _globals['_CERTIFICATESCREATEREQUEST']._serialized_start=98
-  _globals['_CERTIFICATESCREATEREQUEST']._serialized_end=125
-  _globals['_CERTIFICATESCREATERESPONSE']._serialized_start=127
-  _globals['_CERTIFICATESCREATERESPONSE']._serialized_end=180
-  _globals['_CERTIFICATES']._serialized_start=183
-  _globals['_CERTIFICATES']._serialized_end=314
+  _globals['_CERTIFICATESCREATEREQUEST']._serialized_start=67
+  _globals['_CERTIFICATESCREATEREQUEST']._serialized_end=94
+  _globals['_CERTIFICATESCREATERESPONSE']._serialized_start=96
+  _globals['_CERTIFICATESCREATERESPONSE']._serialized_end=149
 # @@protoc_insertion_point(module_scope)

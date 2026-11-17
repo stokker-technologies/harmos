@@ -440,8 +440,8 @@ Generate only a composed Python root into a product-owned module with:
 mise run generate -- --sdk python --descriptors path/to/product-descriptors.bin --output path/to/generated/client.py --namespace application
 ```
 
-Each language builds one complete SDK containing plugin authoring, its client root
-and host protocol needs. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
+Each language builds reusable carrier helpers, protocol support and connection plumbing.
+Products own authoring SDKs and generate their own client resources from product descriptors. Python is `harmos-sdk` (import `harmos`), Rust is `harmos`,
 C# is NuGet `Harmos`, and C++ is CMake `Harmos` (`Harmos::Cpp`). No audience
 selector exists. The host enforces faces and visibility at runtime. Context methods
 remain child calls and have no independent gRPC listener.
@@ -454,7 +454,7 @@ cancellation for each call. The transport options belong to that call:
 | SDK | Caller Control |
 | --- | --- |
 | Rust | Pass `tonic::Request<Q>` with metadata and `set_timeout`; drop the pending future or returned Watch to cancel observation. |
-| Python | Pass `metadata=`, `credentials=` and `timeout=` to the generated callable; retain its call object and use `cancel()`. |
+| Python | Pass `call_metadata=`, `credentials=` and `timeout=` to product SDK calls; colliding payload names add a `call_` prefix. Close a Watch with `await updates.aclose()`. |
 | C# | Pass `Grpc.Core.CallOptions` with Headers, Credentials, Deadline and CancellationToken. |
 | C++ | Pass `grpc::ClientContext&` as the first argument of every generated root method; configure metadata, credentials and deadline on it and use `TryCancel()`. |
 
@@ -489,7 +489,7 @@ those message classes, without an intermediate JSON representation:
 ```python
 from google.protobuf.duration_pb2 import Duration
 from harmos import VISIBILITY_PUBLIC
-from harmos.plugin import Context, Operation, Plugin, observer, on_stop, operation
+from harmos.plugin import Catalog, Context, Operation, Plugin, Registrar, observer, on_stop, operation
 from application import Reading, SetTemperature
 
 READ_SENSOR = Operation("sensor.read", SetTemperature, Reading, visibility=VISIBILITY_PUBLIC)
@@ -511,23 +511,31 @@ class Chamber:
     async def cleanup(self) -> None:
         self.target = 0.0
 
-plugin = Plugin(Chamber(), id="thermal", version="1.0.0", requires=[READ_SENSOR])
+def catalog() -> Catalog:
+    return Catalog(Chamber(), requires=[READ_SENSOR])
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+plugin = Plugin(id="thermal", version="1.0.0", register=register)
 # In the application's async entry point:
-await plugin.serve("127.0.0.1:53124")
+await plugin.run("127.0.0.1:53124")
 ```
 
 Python plugins are remote endpoints. The author supplies the bind address;
 the host never starts their process. Serving uses plain gRPC without TLS or
 credentials. Stop awaits cleanup hooks in declaration order, replies, and keeps
 the endpoint serving. `start(address)` returns an endpoint with its bound
-`address` and an async `close()` for applications that own the server lifecycle.
+`address` and an async `stop()` for applications that own the server lifecycle.
 
 `ctx.call(contract, request, policy=...)` dispatches Private operations inside the
 plugin. Other calls use typed unary children on the parent invocation; declare
 those contracts in `requires`. `ctx.watch(contract, request, max_item_bytes=...)`
 returns an async generator. Each item requires demand; exhaust it or await its
-`aclose()` method to cancel the watch. Import `Failure` and `FailureValue` from the
-SDK root and raise `Failure(FailureValue(...))` for a structured application
+`aclose()` method to cancel the watch. Import `FailureError` and `model` from the
+SDK root and raise `FailureError(model.Failure(...))` for a structured application
 failure; failures received from children retain every field. `ctx.cancelled()`
 waits for cooperative cancellation and returns its reason. Every operation must select Private, Protected or Public explicitly. `ctx.set(value)` and `ctx.get(Type)` retain
 invocation-local resources; ordinary `self` fields retain the author's instance state.
@@ -552,7 +560,7 @@ observer runs once per sample of each window; `@window_observer` answers the who
 window with its columns. An observer may declare `interval_setting` instead of a
 default `interval`, and `window_setting` to choose its window length; the host
 resolves both settings. Product settings
-and contributions travel as typed protobuf values in `Plugin(..., sections=[...])`.
+and contributions travel as typed protobuf values in `Catalog(..., sections=[...])`.
 
 For device-driven streams, decorate an async method with
 `@publisher("thermal.device", row=Reading)` and accept `(self, ctx, publisher)`.
@@ -616,7 +624,8 @@ against the packaged SDK. C++ stages the standalone example and test input in
 
 ## Install a Plugin from Its Own Codebase
 
-Each SDK includes a short entry program that uses both authoring and the client root:
+Each SDK includes a reference-product fixture entry program that uses carrier helpers
+and the fixture product's generated client root:
 [Rust](../sdk/rust/src/bin/install_itself.rs),
 [Python](../sdk/python/tests/fixtures/conformance/install_itself.py),
 [C#](../sdk/csharp/tests/Harmos.Conformance/InstallItself.cs) and

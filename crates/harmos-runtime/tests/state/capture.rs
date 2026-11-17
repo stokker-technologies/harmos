@@ -186,7 +186,7 @@ impl JournalCapture<Model> for Panics {
 async fn open(pending: u32, max: u32, fail: bool, tail: usize) -> (Runtime<Model>, mpsc::UnboundedReceiver<Group>, Arc<Semaphore>) {
     let (offered, observed) = mpsc::unbounded_channel();
     let release = Arc::new(Semaphore::new(0));
-    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+    let runtime = crate::support::app::start::<Model>(0, (), |setup| {
         setup.settings().register(changes_state_catalog());
         setup.settings().register(facts_registry());
         setup.settings().tail(tail);
@@ -231,7 +231,7 @@ async fn owned_transaction_survives_capture_after_tail_eviction() {
     assert!(retained.upgrade().is_none());
     release.add_permits(1);
     drop(second);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -258,7 +258,7 @@ async fn capture_preserves_evicted() {
     assert!(runtime.state.query::<Facts>(Position::ORIGIN).await.next().unwrap().is_err());
     release.add_permits(1);
     runtime.state.wait_until_captured(Position(2)).await.unwrap();
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(2));
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position(2));
 }
 
 #[tokio::test]
@@ -280,7 +280,7 @@ async fn stop_awaits_groups() {
     let stopping = tokio::spawn({
         let runtime = Arc::clone(&runtime);
 
-        async move { crate::support::app::shutdown(&runtime).await.unwrap() }
+        async move { crate::support::app::stop(&runtime).await.unwrap() }
     });
     let mut positions = Vec::new();
     for expected in [2, 3, 4, 6, 8] {
@@ -319,7 +319,7 @@ async fn failure_wakes_waiters() {
     assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
     assert_eq!(runtime.state.capture_status(), Err(CaptureError::Failed));
     assert!(matches!(runtime.records.publish(Observed("later".into())).await, Err(Error::CaptureFailed)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(
         runtime.state.capture_status(),
@@ -335,7 +335,7 @@ async fn oversize_never_applies() {
     assert_eq!(runtime.state.state().read(|state| *state).await.unwrap().value, 0);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert!(observed.try_recv().is_err());
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN);
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
@@ -355,12 +355,12 @@ async fn queued_groups_outlive() {
         let Recorded::Record(Facts::Observed(Observed(value))) = &entries[0].value else { panic!("typed record lost") };
         assert_eq!(value, &(expected - 1).to_string());
     }
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1100));
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position(1100));
 }
 
 #[tokio::test]
 async fn panic_fails_capture() {
-    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+    let runtime = crate::support::app::start::<Model>(0, (), |setup| {
         setup.settings().register(facts_registry());
         setup.settings().require_capture(
             CaptureLimits {
@@ -374,7 +374,7 @@ async fn panic_fails_capture() {
     .unwrap();
     runtime.records.publish(Observed("accepted".into())).await.unwrap();
     assert_eq!(runtime.state.wait_until_captured(Position(1)).await, Err(CaptureError::Failed));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(
         runtime.state.capture_status(),

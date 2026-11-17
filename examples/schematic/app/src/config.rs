@@ -39,7 +39,7 @@ pub struct Settings {
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
-pub struct LaunchConfig {
+pub struct StartConfig {
     pub document: crate::document::Document,
     pub settings: Settings,
 

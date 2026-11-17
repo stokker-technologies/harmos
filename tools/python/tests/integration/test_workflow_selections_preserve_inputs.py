@@ -170,7 +170,7 @@ class WorkflowTaskTests(unittest.TestCase):
     def test_prepare_installs_only_the_root_toolchain(self) -> None:
         toolchain = '[toolchain]\nchannel = "custom"\nprofile = "minimal"\ncomponents = ["rustfmt"]\ntargets = ["wasm32-wasip2"]\n'
         with (
-            patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv")),
+            patch.dict(os.environ, VIRTUAL_ENV=str(Path.cwd() / ".venv"), MISE_ENABLE_TOOLS="rust"),
             patch.object(Path, "read_text", return_value=toolchain),
             patch.object(harmos_tools.task.execute, "command", return_value=0) as execute,
             patch.object(cargo, "focused") as focused,

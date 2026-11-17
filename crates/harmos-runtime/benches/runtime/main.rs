@@ -96,7 +96,7 @@ async fn write_heavy_in_place() -> Duration {
         runtime.state.commit(deposit(1)).await.expect("accepted");
     }
     let elapsed = started.elapsed();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 
     elapsed
 }
@@ -142,7 +142,7 @@ async fn concurrent_in_place() -> (Duration, u64) {
     for reader in readers {
         reader.await.expect("readers never panic");
     }
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 
     (elapsed, reads.load(Ordering::Relaxed))
 }

@@ -28,21 +28,15 @@ pub(crate) use wasm_output::ChildOutput;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{
-    any::type_name,
-    any::{Any, TypeId},
-    collections::{BTreeMap, BTreeSet, HashMap},
-    marker::PhantomData,
-    mem,
-    num::NonZeroUsize,
-    result::Result as StdResult,
-    sync::{Arc, Mutex},
-    time::Duration,
+use {
+    std::any::Any, std::any::TypeId, std::any::type_name, std::collections::BTreeMap, std::collections::BTreeSet,
+    std::collections::HashMap, std::marker::PhantomData, std::mem, std::num::NonZeroUsize, std::result, std::sync::Arc, std::sync::Mutex,
+    std::time::Duration,
 };
 
 // Third Party Imports
 use prost::Message as _;
-use prost_types::{Duration as ProtoDuration, Timestamp};
+use prost_types::Timestamp;
 use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tonic::Status;
 
@@ -67,7 +61,7 @@ use harmos_protocol::policy::RetryPolicy;
 
 /* === Type Aliases === */
 
-type ChildResult = StdResult<Vec<u8>, Error>;
+type ChildResult = result::Result<Vec<u8>, Error>;
 type WatchResult = Result<Option<Vec<u8>>>;
 pub(crate) type Pending = BTreeMap<u64, PendingCall>;
 pub(crate) struct PendingCall {
@@ -402,14 +396,14 @@ impl Context {
     }
 
     /// Every wait is a child call to the host. No SDK timer advances scenario time.
-    /// Declare `.requires_host(HostOperation::TimeSleep)` when composing the plugin.
+    /// Register `HostOperation::TimeSleep` during the plugin register phase.
     pub async fn sleep(&self, duration: Duration) -> Result<()> {
-        let duration = ProtoDuration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
+        let duration = prost_types::Duration::try_from(duration).map_err(|error| Error::Invalid(error.to_string()))?;
         self.clock_call(TimeSleepRequest { duration: Some(duration) }).await?;
         Ok(())
     }
 
-    /// Read evidence time from the host; declare `.requires_host(HostOperation::TimeGet)`.
+    /// Read evidence time from the host; register `HostOperation::TimeGet`.
     pub async fn now(&self) -> Result<Timestamp> {
         self.clock_call(TimeGetRequest {}).await?.now.ok_or_else(|| Status::invalid_argument("Get Host Time: Missing Payload").into())
     }
@@ -634,7 +628,14 @@ mod tests {
     #[tokio::test]
     async fn settings_convenience_and_host_resource_share_operation_and_payload() {
         // Admit the Shared Settings Requirement.
-        let declarations = Plugin::new("caller", "1.0.0").requires_host(HostOperation::PluginsSettingsList).declarations().unwrap();
+        let declarations = Plugin::new("caller", "1.0.0")
+            .register(|ctx| {
+                ctx.register(HostOperation::PluginsSettingsList)?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+            .declarations()
+            .unwrap();
         let requires = declarations.requires.into_iter().map(|requirement| (requirement.id, requirement.fingerprint)).collect();
         let mut context = Context::new(Request::default(), "caller".into(), Arc::new(requires));
         let response = SettingsListResponse {

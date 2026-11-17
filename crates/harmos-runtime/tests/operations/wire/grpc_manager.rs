@@ -9,7 +9,6 @@
 
 /* === Modules === */
 
-#[path = "grpc_network.rs"]
 mod grpc_network;
 
 /* === Imports === */
@@ -21,7 +20,7 @@ use std::{
     num::NonZeroUsize,
     pin::Pin,
     sync::{Arc, Mutex},
-    task::{Context as TaskContext, Poll},
+    task::{self, Poll},
     time::Duration,
 };
 
@@ -347,7 +346,7 @@ impl harmos_runtime::operations::authorization::Authorizer for ExternalAccess {
         };
         let mut grants = Vec::new();
         match provider.definition.id.as_str() {
-            "harmos.host.v1.Operations/List" | "grpc.descendant" => (),
+            "application.host.v1.Operations/List" | "grpc.descendant" => (),
             "grpc.guarded" => {
                 match self.mode.load(std::sync::atomic::Ordering::Acquire) {
                     1 => {
@@ -433,7 +432,7 @@ impl Service<http::Request<Body>> for Endpoint {
     type Response = http::Response<Body>;
     type Error = Infallible;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send>>;
-    fn poll_ready(&mut self, _: &mut TaskContext<'_>) -> Poll<Result<(), Infallible>> {
+    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<(), Infallible>> {
         Poll::Ready(Ok(()))
     }
     fn call(&mut self, request: http::Request<Body>) -> Self::Future {
@@ -715,7 +714,7 @@ async fn external_catalog(
         request.metadata_mut().insert("authorization", token.parse().unwrap());
     }
     let response: tonic::Response<OperationsListResponse> = client
-        .unary(request, http::uri::PathAndQuery::from_static("/harmos.host.v1.Operations/List"), tonic_prost::ProstCodec::default())
+        .unary(request, http::uri::PathAndQuery::from_static("/application.host.v1.Operations/List"), tonic_prost::ProstCodec::default())
         .await?;
     Ok(response.into_inner().operations)
 }
@@ -724,7 +723,7 @@ async fn failures<F: Future<Output = ()>>(
     behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource(behavior);
     })
     .await
@@ -800,6 +799,6 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }

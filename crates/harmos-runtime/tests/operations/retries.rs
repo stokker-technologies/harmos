@@ -61,5 +61,5 @@ async fn retries_preserve_identity_backoff_and_child_settlement() {
     assert_ne!(seen[3], id);
 
     // Stop
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

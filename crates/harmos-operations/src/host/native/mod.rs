@@ -12,6 +12,7 @@
 /* === Modules === */
 
 mod catalog;
+pub mod declarations;
 mod registration;
 
 /* === Re-Exports === */

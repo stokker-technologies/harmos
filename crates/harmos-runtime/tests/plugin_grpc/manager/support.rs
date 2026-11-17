@@ -19,6 +19,27 @@ pub use process::Process;
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::{
+    num::NonZeroUsize,
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+// Third Party Imports
+use sha2::{Digest, Sha256};
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+// Local Imports
+use crate::storage::fixture::Backend;
+use crate::storage::fixture::RecoveryBackend;
+use crate::storage::fixture::history;
+use crate::storage::fixture::storage_settings;
+use harmos_conformance::host::plugins_client::PluginsClient;
 use harmos_protocol::host::PluginChange;
 use harmos_protocol::host::PluginEntry;
 use harmos_protocol::host::PluginManaged;
@@ -30,32 +51,11 @@ use harmos_protocol::host::PluginsCreateRequest;
 use harmos_protocol::host::PluginsListRequest;
 use harmos_protocol::host::PluginsWatchResponse;
 use harmos_protocol::host::plugin_change::Kind;
-use harmos_protocol::host::plugin_placement::Kind as WireKind;
-use harmos_protocol::host::plugins_client::PluginsClient;
+use harmos_protocol::host::plugin_placement;
 use harmos_protocol::host::plugins_watch_response::Event;
 use harmos_protocol::plugin::InstanceGetRequest;
 use harmos_protocol::plugin::InstanceGetResponse;
 use harmos_protocol::plugin::instance_client::InstanceClient;
-
-// Standard Library Imports
-use std::{
-    num::NonZeroUsize,
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
-// Third Party Imports
-use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, BufReader};
-// Local Imports
-use super::super::support as placement;
-use crate::storage::fixture::Backend;
-use crate::storage::fixture::RecoveryBackend;
-use crate::storage::fixture::history;
-use crate::storage::fixture::storage_settings;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -74,7 +74,7 @@ pub type Client = PluginsClient<tonic::transport::Channel>;
 /* === Structs === */
 
 pub struct Host {
-    pub runtime: Arc<Runtime<placement::App>>,
+    pub runtime: Arc<Runtime<super::super::support::App>>,
     pub manager: Manager,
     pub storage: StorageManager,
     pub client: Client,
@@ -136,6 +136,8 @@ impl Host {
             .await
             .unwrap();
         manager.start(&runtime).await.unwrap();
+        runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
+        runtime.operations.register_catalog(harmos_conformance::product::plugins_catalog(), Default::default()).await.unwrap();
         let policy = Arc::new(Policy(AtomicBool::new(true)));
         runtime.operations.register_authorizer(policy.clone()).unwrap();
         let transport = harmos_runtime::grpc::Settings {
@@ -163,7 +165,7 @@ impl Host {
         }
     }
     pub async fn close(self) {
-        self.runtime.shutdown().await.unwrap();
+        self.runtime.stop().await.unwrap();
     }
     pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();
@@ -198,7 +200,7 @@ impl harmos_runtime::operations::authorization::Authorizer for Policy {
 
 impl Peer {
     pub async fn start() -> Self {
-        let mut child = tokio::process::Command::new(placement::binary("harmos-conformance-plugin"))
+        let mut child = tokio::process::Command::new(super::super::support::binary("harmos-conformance-plugin"))
             .arg("--remote")
             .env("HARMOS_ADDRESS", "127.0.0.1:0")
             .stdout(std::process::Stdio::piped())
@@ -283,7 +285,7 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
         namespace: "plugin-manager-story".into(),
         directory: root.join("plugins"),
         target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
-        placement: placement::settings(),
+        placement: super::super::support::settings(),
         bundle: Default::default(),
         entries: nz(16),
         create_receipts: nz(64),
@@ -299,7 +301,7 @@ pub fn remote(name: &str, url: &str) -> PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
         placement: Some(PluginPlacement {
-            kind: Some(WireKind::Remote(PluginRemote { url: url.into() })),
+            kind: Some(plugin_placement::Kind::Remote(PluginRemote { url: url.into() })),
         }),
         value: Some(PluginValue { enabled: true }),
     }
@@ -308,7 +310,9 @@ pub fn managed(name: &str, content: PluginManaged, enabled: bool) -> PluginsCrea
     PluginsCreateRequest {
         request_id: name.into(),
         name: name.into(),
-        placement: Some(PluginPlacement { kind: Some(WireKind::Managed(content)) }),
+        placement: Some(PluginPlacement {
+            kind: Some(plugin_placement::Kind::Managed(content)),
+        }),
         value: Some(PluginValue { enabled }),
     }
 }
@@ -338,7 +342,7 @@ pub fn bundle(executable: bool) -> Vec<u8> {
 }
 pub fn bundle_with_startup(executable: bool, control: Option<&str>) -> Vec<u8> {
     use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
-    let bytes = std::fs::read(placement::binary("harmos-conformance-plugin")).unwrap();
+    let bytes = std::fs::read(super::super::support::binary("harmos-conformance-plugin")).unwrap();
     let source = Source {
         path: if cfg!(target_os = "windows") { "bin/plugin.exe" } else { "bin/plugin" },
         bytes: &bytes,

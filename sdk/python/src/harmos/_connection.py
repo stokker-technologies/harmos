@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Typed Host Client and Explicit Connection Ownership."""
+"""Explicit Connection Ownership for Product Resource Roots."""
 
 # === Imports === #
 
@@ -15,7 +15,6 @@ from typing import Self
 import grpc
 from grpc.aio import Channel
 
-from ._generated.client import ClientRoot
 from ._generated.shared import StorageTransferSettings
 from ._transfer import message_bytes
 
@@ -50,14 +49,6 @@ class Connection:
     async def close(self) -> None:
         if self._owned_channel is not None:
             await self._owned_channel.close()
-
-
-class Client(Connection, ClientRoot):
-    """Library Resources, With an Optional Owned Connection."""
-
-    def __init__(self, channel: Channel) -> None:
-        ClientRoot.__init__(self, channel)
-        Connection.__init__(self, channel)
 
 
 # === Public Functions === #

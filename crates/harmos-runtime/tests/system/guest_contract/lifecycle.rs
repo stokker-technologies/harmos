@@ -115,7 +115,7 @@ async fn guest_lifecycle_keeps_requests_resources_and_attempt_authority() {
     assert_ne!(first.generation, reloaded.generation);
     runtime.plugin.stop("sandbox_guest").await.unwrap();
     assert!(support::call(&runtime.operations, EchoOperation { say: "stopped".into() }).await.is_err());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 
     // Refuse a Child That Would Reenter Its Parent's Serial Lane
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
@@ -131,5 +131,5 @@ async fn guest_lifecycle_keeps_requests_resources_and_attempt_authority() {
     let (answer, ()) = tokio::join!(invocation, drive);
     assert!(matches!(answer, Err(harmos_runtime::Error::OperationFailed { .. })));
     runtime.plugin.stop("sandbox_guest").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

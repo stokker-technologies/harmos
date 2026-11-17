@@ -15,12 +15,11 @@
 
 // Standard Library Imports
 use std::convert::Infallible;
+use std::{error, iter, sync::Arc};
 // Third Party Imports
 use tonic::Status;
 
 // Local Imports
-use harmos_query::Error as QueryError;
-use harmos_storage::Error as StorageError;
 
 /* === Constants === */
 
@@ -43,15 +42,15 @@ pub enum Error<E = Infallible> {
     #[error(transparent)]
     Dependency(#[from] harmos_operations::execution::ResourceError),
 
-    #[error("runtime shutdown budget expired during {phase}; cleanup remains owned")]
-    ShutdownTimeout { phase: &'static str },
+    #[error("runtime stop budget expired during {phase}; cleanup remains owned")]
+    StopTimeout { phase: &'static str },
 
     #[error("application stop failed ({stop}); cleanup also failed: {cleanup}")]
     ApplicationLifecycle {
-        stop: std::sync::Arc<Error>,
+        stop: Arc<Error>,
 
         #[source]
-        cleanup: std::sync::Arc<Error>,
+        cleanup: Arc<Error>,
     },
 
     #[error("authenticated caller identity is required")]
@@ -126,22 +125,22 @@ pub enum Error<E = Infallible> {
         operation: String,
 
         #[source]
-        source: std::sync::Arc<dyn std::error::Error + Send + Sync>,
+        source: Arc<dyn error::Error + Send + Sync>,
     },
 
     #[error("operation `{operation}` could not finalize its invocation state")]
     OperationFinalization {
         operation: String,
-        outcome: Option<std::sync::Arc<Error>>,
+        outcome: Option<Arc<Error>>,
 
         #[source]
-        source: std::sync::Arc<Error>,
+        source: Arc<Error>,
     },
 
     #[error("operation physical settlement failed: {source}")]
     OperationSettlement {
         #[source]
-        source: std::sync::Arc<Error>,
+        source: Arc<Error>,
     },
 
     #[cfg(feature = "plugin-guest")]
@@ -156,7 +155,7 @@ pub enum Error<E = Infallible> {
         domain: &'static str,
 
         #[source]
-        source: std::sync::Arc<dyn std::error::Error + Send + Sync>,
+        source: Arc<dyn error::Error + Send + Sync>,
     },
 
     #[error("{domain} is not ready")]
@@ -165,7 +164,7 @@ pub enum Error<E = Infallible> {
     #[error("persistence failed: {source}")]
     Persistence {
         #[source]
-        source: std::sync::Arc<Error>,
+        source: Arc<Error>,
     },
 
     #[error("{domain} admission is closed")]
@@ -183,7 +182,7 @@ pub enum Error<E = Infallible> {
         kind: BackendFailure,
 
         #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Box<dyn error::Error + Send + Sync>,
     },
 
     #[error("invalid {field}: {reason}")]
@@ -251,26 +250,25 @@ pub use harmos_domain::state::PreparationError;
 
 impl<E> From<harmos_storage::Error> for Error<E> {
     fn from(error: harmos_storage::Error) -> Self {
-        use harmos_storage::Error as Storage;
         match error {
-            Storage::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
-            Storage::NotReady { domain } => Self::NotReady { domain },
-            Storage::IndexNotFound { name } => Self::NotRegistered {
+            harmos_storage::Error::OperationFailed { operation, source } => Self::OperationFailed { operation, source },
+            harmos_storage::Error::NotReady { domain } => Self::NotReady { domain },
+            harmos_storage::Error::IndexNotFound { name } => Self::NotRegistered {
                 domain: "storage index",
                 name: name.to_string(),
             },
-            Storage::Persistence { source } => Self::Persistence {
-                source: std::sync::Arc::new(std::sync::Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
+            harmos_storage::Error::Persistence { source } => Self::Persistence {
+                source: Arc::new(Arc::try_unwrap(source).map(Error::from).unwrap_or_else(|source| {
                     Error::backend("storage persistence", source.backend_failure().unwrap_or(BackendFailure::Permanent), source)
                 })),
             },
-            Storage::Closing { domain } => Self::Closing { domain },
-            Storage::AlreadyRegistered { domain, name } => Self::AlreadyRegistered { domain, name },
-            Storage::Backend { operation, kind, source } => Self::Backend { operation, kind, source },
-            Storage::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
-            Storage::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
-            Storage::Gap { requested, available } => Self::Gap { requested, available },
-            Storage::Domain(source) => source.into(),
+            harmos_storage::Error::Closing { domain } => Self::Closing { domain },
+            harmos_storage::Error::AlreadyRegistered { domain, name } => Self::AlreadyRegistered { domain, name },
+            harmos_storage::Error::Backend { operation, kind, source } => Self::Backend { operation, kind, source },
+            harmos_storage::Error::InvalidInput { field, reason } => Self::InvalidInput { field, reason },
+            harmos_storage::Error::ResourceExhausted { resource } => Self::ResourceExhausted { resource },
+            harmos_storage::Error::Gap { requested, available } => Self::Gap { requested, available },
+            harmos_storage::Error::Domain(source) => source.into(),
         }
     }
 }
@@ -359,7 +357,7 @@ impl<E> Error<E> {
         }
     }
 
-    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn backend(operation: &'static str, kind: BackendFailure, source: impl error::Error + Send + Sync + 'static) -> Self {
         Self::Backend {
             operation,
             kind,
@@ -368,9 +366,9 @@ impl<E> Error<E> {
     }
 }
 
-impl<E> From<QueryError> for Error<E> {
-    fn from(error: QueryError) -> Self {
-        Self::from(StorageError::from(error))
+impl<E> From<harmos_query::Error> for Error<E> {
+    fn from(error: harmos_query::Error) -> Self {
+        Self::from(harmos_storage::Error::from(error))
     }
 }
 
@@ -378,7 +376,7 @@ impl<E> From<QueryError> for Error<E> {
 
 /* === Private Functions === */
 
-fn operation_failure(mut source: &(dyn std::error::Error + 'static)) -> Option<harmos_operations::Failure> {
+fn operation_failure(mut source: &(dyn error::Error + 'static)) -> Option<harmos_operations::Failure> {
     use prost::Message;
     loop {
         if let Some(error) = source.downcast_ref::<Error>() {
@@ -402,8 +400,8 @@ fn operation_failure(mut source: &(dyn std::error::Error + 'static)) -> Option<h
 
 // The first failure along a source chain, read through the carrier that
 // transported it where that carrier hides it behind a transparent line.
-fn carried<'a>(source: &'a (dyn std::error::Error + 'static)) -> Option<&'a harmos_operations::Failure> {
-    std::iter::successors(Some(source), |link| link.source()).find_map(|link| {
+fn carried<'a>(source: &'a (dyn error::Error + 'static)) -> Option<&'a harmos_operations::Failure> {
+    iter::successors(Some(source), |link| link.source()).find_map(|link| {
         if let Some(error) = link.downcast_ref::<Error>() {
             return error.failure();
         }

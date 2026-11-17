@@ -75,7 +75,7 @@ pub(super) async fn restart(source: &Fixture) -> Fixture {
         settings,
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog());
     })
     .await
@@ -192,8 +192,8 @@ async fn close_retains_production() {
         config(),
     )
     .unwrap();
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    crate::support::app::stop(&f.runtime).await.unwrap();
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&restored).register(catalog());
     })
     .await
@@ -201,7 +201,7 @@ async fn close_retains_production() {
     let mut resumed = restored.resume_file(&token).await.unwrap();
     assert_eq!(resumed.length(), 17);
     resumed.abort().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     f.finish().await;
 }
 
@@ -238,7 +238,7 @@ async fn failed_recovery_releases() {
         }
         let storage: StorageManager = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, settings).unwrap();
         assert!(
-            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+            crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&storage).register(catalog());
             })
             .await

@@ -1,18 +1,9 @@
 // @generated from protocol descriptors; do not edit.
-pub use crate::wire::host::InvocationsCancelResponse;
-pub use crate::wire::host::InvocationsGetResponse;
-pub use crate::wire::host::InvocationsWatchResponse;
-pub use crate::wire::host::OperationsGetResponse;
-pub use crate::wire::host::OperationsListResponse;
-pub use crate::wire::host::TimeGetResponse;
-pub use crate::wire::host::TimeSleepResponse;
-pub use crate::wire::host::plugins::SettingsListResponse;
 pub use crate::wire::shared::Callers;
 pub use crate::wire::shared::Classification;
 pub use crate::wire::shared::Declarations;
 pub use crate::wire::shared::DiscoveredContract;
 pub use crate::wire::shared::DiscoveredOperation;
-pub use crate::wire::shared::Failure;
 pub use crate::wire::shared::File;
 pub use crate::wire::shared::FileMetadata;
 pub use crate::wire::shared::FileReference;
@@ -43,3 +34,6 @@ pub use crate::wire::shared::Upload;
 pub use crate::wire::shared::UploadState;
 pub use crate::wire::shared::Visibility;
 pub use crate::wire::shared::setting_value;
+pub mod model {
+    pub use crate::wire::shared::Failure;
+}

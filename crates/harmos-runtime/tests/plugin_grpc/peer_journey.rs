@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::Failure as WireFailure;
+use harmos_protocol::model;
 
 // Standard Library Imports
 
@@ -79,7 +79,7 @@ async fn public_peer_inherits_scope_cause_and_caller_cancellation_through_the_ho
     let harmos_runtime::plugin::grpc::CallError::Remote(failure) = call_error(&error) else {
         panic!("Expected Peer Failure");
     };
-    let failure = WireFailure::from(failure.as_ref());
+    let failure = model::Failure::from(failure.as_ref());
     assert_eq!(failure.operation, "fixture.peer");
     assert_eq!(failure.cause.unwrap().code, "fixture_cause");
     assert!(observed.recv().await.unwrap().0);
@@ -91,5 +91,5 @@ async fn public_peer_inherits_scope_cause_and_caller_cancellation_through_the_ho
     let (settled, outcome) = observed.recv().await.unwrap();
     assert!(settled);
     assert_eq!(outcome, harmos_runtime::operations::OperationOutcome::Succeeded);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -139,7 +139,9 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
                 identity = f"{file.package}.{service.name}/{method.name}"
                 audience = callers.get(identity, "CLIENTS")
                 faces = (
-                    ["plugin"]
+                    ["context"]
+                    if file.package.startswith("harmos.plugin.v1") and service.name in {"Time", "Operations", "Invocations", "Settings"}
+                    else ["plugin"]
                     if executor == "plugin"
                     else [
                         face for face, allowed in [("client", {"CLIENTS", "ALL"}), ("context", {"PLUGINS", "ALL"})] if audience in allowed
@@ -187,6 +189,19 @@ def table(descriptors: FileDescriptorSet) -> list[Method]:
     return methods
 
 
+def request_names(descriptors: FileDescriptorSet) -> set[str]:
+    """Keep Native Host Requests and Carrier Requests Out of Public Payload Barrels."""
+    names = {method["request"] for method in table(descriptors)}
+    names.update(
+        f"{file.package}.{message.name}"
+        for file in descriptors.file
+        if file.package.startswith("harmos.host.")
+        for message in file.message_type
+        if message.name.endswith("Request")
+    )
+    return names
+
+
 def payload_audiences(descriptors: FileDescriptorSet, *, library: FileDescriptorSet | None = None) -> dict[str, set[str]]:
     definitions: dict[str, DescriptorProto] = {}
 
@@ -223,6 +238,11 @@ def payload_audiences(descriptors: FileDescriptorSet, *, library: FileDescriptor
             definition = definitions.get(name)
             if definition is not None:
                 pending.extend(field.type_name.lstrip(".") for field in definition.field if field.type_name)
+    if library is not None:
+        library_audiences = payload_audiences(library)
+        for name in audiences:
+            if name.startswith("harmos."):
+                audiences[name] = library_audiences.get(name, {"client"})
     return audiences
 
 

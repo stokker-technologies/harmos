@@ -126,7 +126,7 @@ async fn resident(mut context: ServiceContext<Bank>) -> Result<(), std::io::Erro
 
 #[tokio::test]
 async fn handle_shares_manager() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -146,12 +146,12 @@ async fn handle_shares_manager() {
     let dynamic = manager.submit_resident("dynamic").await.unwrap();
     assert_eq!(runtime.operations.residents().len(), before + 1);
     assert_eq!(runtime.operations.resident_key(dynamic.id()), Some(harmos_runtime::operations::resident::Key::root("dynamic")));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn duplicate_service_refused() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -167,12 +167,12 @@ async fn duplicate_service_refused() {
         ),
         Err(Error::AlreadyRegistered { domain: "service", name }) if name == "boot"
     ));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn shutdown_preserves_work() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", resident);
     })
@@ -184,12 +184,12 @@ async fn shutdown_preserves_work() {
     assert!(matches!(manager.submit_resident("late").await, Err(Error::Closing { .. })));
     crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     assert_eq!(*runtime.operations.operation::<PingContractDeclaration>(PingContractDeclaration {}).await.unwrap(), 42);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn admission_rejects_reserved() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -206,12 +206,12 @@ async fn admission_rejects_reserved() {
         Err(Error::InvalidInput { field: "service name", .. })
     ));
     assert_eq!(runtime.operations.residents().into_keys().collect::<Vec<_>>(), before);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shutdown_join_started() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -263,14 +263,14 @@ async fn shutdown_join_started() {
     }
     assert_eq!(entered.load(Ordering::SeqCst), exited.load(Ordering::SeqCst));
     assert!(runtime.operations.residents().values().all(|instance| instance.health == Some(ServiceStatus::Stopped)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn concurrent_shutdowns_join() {
     let stopping = Arc::new(Notify::new());
     let release = Arc::new(Notify::new());
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("boot", {
             let stopping = stopping.clone();
@@ -310,5 +310,5 @@ async fn concurrent_shutdowns_join() {
         runtime.operations.resident(&harmos_runtime::operations::resident::Key::root("boot")).and_then(|item| item.health),
         Some(ServiceStatus::Stopped)
     );
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

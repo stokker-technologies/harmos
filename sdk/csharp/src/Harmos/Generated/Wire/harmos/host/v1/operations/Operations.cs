@@ -25,20 +25,15 @@ namespace Harmos.Clients;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "Ch9oYXJtb3MvaG9zdC92MS9vcGVyYXRpb25zLnByb3RvEg5oYXJtb3MuaG9z",
-            "dC52MRodaGFybW9zL21vZGVsL3YxL2NhbGxlcnMucHJvdG8aH2hhcm1vcy9t",
-            "b2RlbC92MS9vcGVyYXRpb24ucHJvdG8iFwoVT3BlcmF0aW9uc0xpc3RSZXF1",
-            "ZXN0Il4KFk9wZXJhdGlvbnNMaXN0UmVzcG9uc2USRAoKb3BlcmF0aW9ucxgB",
-            "IAMoCzIkLmhhcm1vcy5tb2RlbC52MS5EaXNjb3ZlcmVkT3BlcmF0aW9uUgpv",
-            "cGVyYXRpb25zIiYKFE9wZXJhdGlvbnNHZXRSZXF1ZXN0Eg4KAmlkGAEgASgJ",
-            "UgJpZCJbChVPcGVyYXRpb25zR2V0UmVzcG9uc2USQgoJb3BlcmF0aW9uGAEg",
-            "ASgLMiQuaGFybW9zLm1vZGVsLnYxLkRpc2NvdmVyZWRPcGVyYXRpb25SCW9w",
-            "ZXJhdGlvbjLDAQoKT3BlcmF0aW9ucxJbCgRMaXN0EiUuaGFybW9zLmhvc3Qu",
-            "djEuT3BlcmF0aW9uc0xpc3RSZXF1ZXN0GiYuaGFybW9zLmhvc3QudjEuT3Bl",
-            "cmF0aW9uc0xpc3RSZXNwb25zZSIEyPMYAxJYCgNHZXQSJC5oYXJtb3MuaG9z",
-            "dC52MS5PcGVyYXRpb25zR2V0UmVxdWVzdBolLmhhcm1vcy5ob3N0LnYxLk9w",
-            "ZXJhdGlvbnNHZXRSZXNwb25zZSIEyPMYA2IGcHJvdG8z"));
+            "dC52MRofaGFybW9zL21vZGVsL3YxL29wZXJhdGlvbi5wcm90byIXChVPcGVy",
+            "YXRpb25zTGlzdFJlcXVlc3QiXgoWT3BlcmF0aW9uc0xpc3RSZXNwb25zZRJE",
+            "CgpvcGVyYXRpb25zGAEgAygLMiQuaGFybW9zLm1vZGVsLnYxLkRpc2NvdmVy",
+            "ZWRPcGVyYXRpb25SCm9wZXJhdGlvbnMiJgoUT3BlcmF0aW9uc0dldFJlcXVl",
+            "c3QSDgoCaWQYASABKAlSAmlkIlsKFU9wZXJhdGlvbnNHZXRSZXNwb25zZRJC",
+            "CglvcGVyYXRpb24YASABKAsyJC5oYXJtb3MubW9kZWwudjEuRGlzY292ZXJl",
+            "ZE9wZXJhdGlvblIJb3BlcmF0aW9uYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.CallersReflection.Descriptor, global::Harmos.OperationReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Harmos.OperationReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.OperationsListRequest), global::Harmos.Clients.OperationsListRequest.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.OperationsListResponse), global::Harmos.Clients.OperationsListResponse.Parser, new[]{ "Operations" }, null, null, null, null),

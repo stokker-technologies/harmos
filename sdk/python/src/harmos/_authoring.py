@@ -18,7 +18,7 @@ from asyncio import Queue, Task
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from hashlib import sha256
 from importlib.metadata import version
-from typing import cast
+from typing import Protocol, cast
 
 # Third Party Imports
 import grpc
@@ -33,6 +33,7 @@ from grpc.aio import Server, ServicerContext
 from harmos._wire.model.v1.description_pb2 import Declarations
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
 from harmos._wire.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
+from harmos._wire.plugin.v1 import stream_pb2
 from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceGetRequest,
     InstanceGetResponse,
@@ -45,7 +46,6 @@ from harmos._wire.plugin.v1.instance_pb2 import (
 )
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
-from harmos._wire.plugin.v1.stream_pb2 import Window as WireWindow
 
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Operation, Stream, Window, message_types
@@ -75,31 +75,43 @@ type Cleanup = Callable[[], Awaitable[None] | None]
 # === Classes === #
 
 
-class Plugin:
+class Registration(Protocol):
+    def register(self, ctx: "Registrar") -> None: ...
+
+
+class Registrar:
+    """Declaration-Only Accumulation; Runtime Facilities Are Unavailable."""
+
+    def __init__(self) -> None:
+        self.operations: list[tuple[Operation[Message, Message], Handler]] = []
+        self.streams: list[tuple[Stream, Observer | WindowObserver | Producer, bool]] = []
+        self.cleanup: list[Cleanup] = []
+        self.requires: list[Operation] = []
+        self.sections: list[Message] = []
+        self.settings: list[SettingDeclaration] = []
+        self.messages: list[type[Message]] = []
+
+    def register(self, item: Registration) -> None:
+        item.register(self)
+
+
+class Catalog:
     def __init__(
         self,
         instance: object,
         *,
-        id: str,
-        version: str,
         requires: Sequence[Operation | HostOperation] = (),
         sections: Sequence[Message] = (),
         settings: Sequence[SettingDeclaration] = (),
         messages: Sequence[type[Message]] = (),
-        transfer: StorageTransferSettings | None = None,
     ) -> None:
         self.instance = instance
-        self.id = id
-        self.version = version
         self.requires = tuple(
             host_requirement(requirement) if isinstance(requirement, HostOperation) else requirement for requirement in requires
         )
         self.sections = tuple(sections)
         self.settings = tuple(settings)
         self.messages = tuple(messages)
-        self.transfer = StorageTransferSettings()
-        if transfer is not None:
-            self.transfer.CopyFrom(transfer)
 
     def _registrations(
         self,
@@ -126,6 +138,48 @@ class Plugin:
             if getattr(method, "__harmos_stop__", False):
                 cleanup.append(cast(Cleanup, getattr(self.instance, name)))
         return operations, streams, cleanup
+
+    def register(self, ctx: Registrar) -> None:
+        operations, streams, cleanup = self._registrations()
+        ctx.operations.extend(operations)
+        ctx.streams.extend(streams)
+        ctx.cleanup.extend(cleanup)
+        ctx.requires.extend(self.requires)
+        ctx.sections.extend(self.sections)
+        ctx.settings.extend(self.settings)
+        ctx.messages.extend(self.messages)
+
+
+class Plugin:
+    def __init__(
+        self,
+        *,
+        id: str,
+        version: str,
+        register: Callable[[Registrar], None],
+        transfer: StorageTransferSettings | None = None,
+    ) -> None:
+        self.id = id
+        self.version = version
+        registrar = Registrar()
+        register(registrar)
+        self._operations = list(registrar.operations)
+        self._streams = list(registrar.streams)
+        self._cleanup = list(registrar.cleanup)
+        self.requires = tuple(registrar.requires)
+        self.sections = tuple(registrar.sections)
+        self.settings = tuple(registrar.settings)
+        self.messages = tuple(registrar.messages)
+        self.transfer = StorageTransferSettings()
+        if transfer is not None:
+            self.transfer.CopyFrom(transfer)
+
+    def _registrations(
+        self,
+    ) -> tuple[
+        list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]], list[Cleanup]
+    ]:
+        return self._operations, self._streams, self._cleanup
 
     def declarations(self) -> Declarations:
         if not re.fullmatch(r"[a-z0-9._]+", self.id):
@@ -249,12 +303,12 @@ class Plugin:
         host = address.rsplit(":", 1)[0]
         return Endpoint(server, f"{host}:{port}")
 
-    async def serve(self, address: str) -> None:
+    async def run(self, address: str) -> None:
         endpoint = await self.start(address)
         try:
             await endpoint.server.wait_for_termination()
         finally:
-            await endpoint.close()
+            await endpoint.stop()
 
 
 class Endpoint:
@@ -262,7 +316,7 @@ class Endpoint:
         self.server = server
         self.address = address
 
-    async def close(self) -> None:
+    async def stop(self) -> None:
         await self.server.stop(None)
 
 
@@ -535,7 +589,7 @@ async def _read_publish(
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
 
 
-def _window(window: WireWindow) -> Window:
+def _window(window: stream_pb2.Window) -> Window:
     if not window.HasField("start"):
         raise ProtocolError("Read Samples: Window Start Time Required")
     validate_timestamp(window.start)

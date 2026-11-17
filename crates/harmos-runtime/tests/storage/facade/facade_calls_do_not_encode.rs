@@ -48,11 +48,11 @@ use std::sync::atomic::Ordering;
 #[tokio::test(start_paused = true)]
 async fn facade_calls_do_not_encode() {
     // Keep the Payload's Original Allocation Through Native Admission
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let request = payload(0);
     let result = runtime.for_call(&CallContext::default()).call::<Probe>(request.clone()).await.unwrap();
     assert!(Arc::ptr_eq(&request.bytes, &result.0));
     assert!(request.memory_reads.load(Ordering::SeqCst) > 0);
     assert_eq!(request.encodes.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

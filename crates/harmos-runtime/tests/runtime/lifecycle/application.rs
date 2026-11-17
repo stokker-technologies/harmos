@@ -172,7 +172,7 @@ impl Lifecycle for Preparing {
     async fn stop(&mut self, _: &Self::Context) -> Result<(), Self::Error> {
         unreachable!()
     }
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
         unreachable!()
     }
 }
@@ -216,7 +216,7 @@ impl Lifecycle for App {
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.0.counter.events.lock().unwrap().push(Phase::Cleanup);
         if self.0.cleanup_fails_once && self.0.counter.cleanup_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
             return Err(std::io::Error::other("controlled cleanup failure"));
@@ -310,7 +310,7 @@ async fn lifecycle_with_overrides() {
             stop_fails,
             cleanup_fails_once: false,
         };
-        let runtime = crate::support::app::launch::<App>((), config, |setup| {
+        let runtime = crate::support::app::start::<App>((), config, |setup| {
             setup.resource::<Counter>(fake.clone());
         })
         .await
@@ -319,7 +319,7 @@ async fn lifecycle_with_overrides() {
         assert_eq!(*runtime.operation(Read).await.unwrap(), 41);
         let pending = runtime.operation(Pending).start().await.unwrap();
         fake.entered.notified().await;
-        let (first, second) = tokio::join!(crate::support::app::shutdown(&runtime), crate::support::app::shutdown(&runtime));
+        let (first, second) = tokio::join!(crate::support::app::stop(&runtime), crate::support::app::stop(&runtime));
         assert_eq!(first.is_err(), stop_fails);
         assert_eq!(second.is_err(), stop_fails);
         assert!(pending.await.is_err());
@@ -339,7 +339,7 @@ async fn setup_errors_aggregate() {
         stop_fails: false,
         cleanup_fails_once: false,
     };
-    let error = match Runtime::<App>::launch((), config).await {
+    let error = match Runtime::<App>::start((), config).await {
         Ok(_) => panic!("invalid setup cannot launch"),
         Err(error) => error,
     };
@@ -361,7 +361,7 @@ async fn invalid_setup_cleanup() {
         stop_fails: false,
         cleanup_fails_once: true,
     };
-    let mut errors = match Runtime::<App>::launch((), config).await {
+    let mut errors = match Runtime::<App>::start((), config).await {
         Err(StartupError::Multiple { errors }) => errors,
         _ => panic!("setup and cleanup failures must both be reported"),
     };
@@ -385,10 +385,10 @@ async fn cleanup_retry_once() {
         cleanup_fails_once: true,
         ..Config::default()
     };
-    let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    assert!(crate::support::app::shutdown(&runtime).await.is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    let runtime = Runtime::<App>::start((), config).await.unwrap();
+    assert!(crate::support::app::stop(&runtime).await.is_err());
+    crate::support::app::stop(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 
@@ -401,8 +401,8 @@ async fn lifecycle_reports_failures() {
         cleanup_fails_once: true,
         ..Config::default()
     };
-    let runtime = Runtime::<App>::launch((), config).await.unwrap();
-    let error = crate::support::app::shutdown(&runtime).await.unwrap_err();
+    let runtime = Runtime::<App>::start((), config).await.unwrap();
+    let error = crate::support::app::stop(&runtime).await.unwrap_err();
     let first: &(dyn std::error::Error + 'static) = &error;
     let errors = std::iter::successors(Some(first), |source| source.source());
     let mut typed = errors.filter_map(|source| source.downcast_ref::<harmos_runtime::Error>());
@@ -411,10 +411,10 @@ async fn lifecycle_reports_failures() {
     });
     let (stop, cleanup) = combined.expect("both lifecycle failures are retained");
     assert!(matches!(stop.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application stop", .. }));
-    assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application cleanup", .. }));
+    assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application finalize", .. }));
 
-    assert!(crate::support::app::shutdown(&runtime).await.is_err());
-    assert!(crate::support::app::shutdown(&runtime).await.is_err());
+    assert!(crate::support::app::stop(&runtime).await.is_err());
+    assert!(crate::support::app::stop(&runtime).await.is_err());
     assert_eq!(*counter.events.lock().unwrap(), [Phase::Prepare, Phase::Initialize, Phase::Stop, Phase::Cleanup, Phase::Cleanup]);
 }
 
@@ -422,7 +422,7 @@ async fn lifecycle_reports_failures() {
 async fn prepare_settles_receipt() {
     for pending in [false, true] {
         let probe = Arc::new(PrepareProbe::default());
-        let mut startup = Box::pin(Runtime::<Preparing>::launch((), PreparingConfig { probe: probe.clone(), pending }));
+        let mut startup = Box::pin(Runtime::<Preparing>::start((), PreparingConfig { probe: probe.clone(), pending }));
         if pending {
             tokio::select! {
                 _ = probe.entered.notified() => (),

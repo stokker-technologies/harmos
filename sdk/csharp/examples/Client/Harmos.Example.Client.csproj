@@ -4,6 +4,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="$(RepoRoot)sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs" Link="Product/Client.g.cs" />
+    <Compile Include="$(RepoRoot)sdk/csharp/tests/Harmos.Tests/Generated/Wire/**/*.cs" Link="Product/Wire/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="../../src/Harmos/Harmos.csproj" />
   </ItemGroup>
 </Project>

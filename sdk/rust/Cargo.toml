@@ -24,12 +24,6 @@ publish.workspace = true
 # === Package Targets === #
 
 [[example]]
-name = "dynamic"
-
-[[example]]
-name = "client"
-
-[[example]]
 name = "plugin"
 
 # === Features === #

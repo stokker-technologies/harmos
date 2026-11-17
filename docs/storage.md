@@ -32,7 +32,7 @@ native storage catalog through `session.for_call(&ctx).storage()`, without appli
 services, plugins or listeners. Await `close()` and release the session before preparation returns.
 The full runtime opens the same registered backends with a fresh manager and worker;
 no live worker or backend session transfers between the assemblies. Offline maintenance
-can use `Runtime::<A>::builder(origin)` to open and close this session without
+can use `Builder::<A>::new(origin)` to open and close this session without
 starting a full runtime. After closing and releasing the session, `builder.start()`
 continues assembly. `builder.storage_cleanup()` retains cleanup after failed opening,
 cancellation or closing; await its receipt and, after fixing a backend failure, call

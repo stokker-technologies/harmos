@@ -38,24 +38,15 @@ class PythonClients(unittest.TestCase):
     def test_committed_roots_match_fresh_descriptor_generation(self) -> None:
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
-        output = Path(scratch.name) / "client.py"
+        output = Path(scratch.name) / "_generated/client.py"
+        output.parent.mkdir()
         library = FileDescriptorSet.FromString(LIBRARY.read_bytes())
         harmos_tools.build.resources.python.client(
             output, [method for method in harmos_tools.build.resources.descriptor.table(library) if method["face"] == "client"], library
         )
-        self.assertEqual(output.read_bytes(), (ROOT / "sdk/python/src/harmos/_generated/client.py").read_bytes())
-
-        harmos_tools.build.resource_roots.compose(ROOT, [APPLICATION], output, "application", language="python")
-        composed = FileDescriptorSet.FromString(LIBRARY.read_bytes())
-        composed.file.extend(FileDescriptorSet.FromString(APPLICATION.read_bytes()).file)
-        expected = Path(scratch.name) / "fixture.py"
-        harmos_tools.build.resources.python.client(
-            expected,
-            [method for method in harmos_tools.build.resources.descriptor.table(composed) if method["face"] == "client"],
-            composed,
-            module_prefixes={"application": "application._wire.application"},
-        )
-        self.assertEqual(output.read_bytes(), expected.read_bytes())
+        self.assertFalse(output.exists())
+        harmos_tools.build.resource_roots.compose(ROOT, [APPLICATION], output, "tests.fixtures.client", language="python")
+        self.assertEqual(output.read_bytes(), (ROOT / "sdk/python/tests/fixtures/client/_generated/client.py").read_bytes())
 
     def test_generation_refuses_collisions_faces_and_client_streams(self) -> None:
         descriptors = FileDescriptorSet.FromString(APPLICATION.read_bytes())

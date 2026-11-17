@@ -424,7 +424,7 @@ impl<A: Application> Resident<A> for Listener {
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> Result<()> {
+    async fn finalize(&mut self) -> Result<()> {
         Ok(())
     }
 }

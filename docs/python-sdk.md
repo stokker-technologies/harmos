@@ -8,7 +8,7 @@ preserve the public message types.
 ## Typed Client Calls
 
 ```python
-from harmos import Client
+from product import Client
 
 client = Client.connect("127.0.0.1:53124")
 try:
@@ -16,7 +16,7 @@ try:
     print(response.status.identity.application_name)
     operations = await client.operations.list()
     selected = await client.plugins.get("example")
-    updates = client.status.watch(metadata=(("authorization", token),))
+    updates = client.status.watch(call_metadata=(("authorization", token),))
     try:
         async for update in updates:
             print(update.status)
@@ -40,9 +40,10 @@ list in [SDK Call Contracts](architecture.md#sdk-call-contracts).
 
 Unary calls are typed awaitables. Streaming calls are async generators; use
 `await updates.aclose()` when ending demand early. Exhaustion, errors and closure
-cancel the owned native call. `metadata`, `credentials` and `timeout` are typed
-keyword overrides; timeout is in seconds. An omitted deadline remains governed by
-operation policy, with no literal SDK default.
+cancel the owned native call. `call_metadata`, `credentials` and `timeout` are typed
+keyword overrides; timeout is in seconds. If a payload field occupies a transport
+option name, generation prefixes that option with `call_` until it is distinct.
+An omitted deadline remains governed by operation policy, with no literal SDK default.
 
 `Client(channel)` borrows a caller-owned channel. `Client.connect(address)` owns
 its channel and closes it through `await client.close()`. Connection transfer
@@ -50,34 +51,43 @@ budgets use `transfer` and `message_ceiling`; invalid limits refuse before diali
 
 ## Public Types
 
-Import Client, connection options, errors and shared vocabulary such as
+Import connection plumbing, `FailureError` and shared vocabulary such as
 `SettingValue`, `Declarations`, `File`, `PageRequest` and `Position` from `harmos`.
 Client response types live in `harmos.client`; Context, Plugin, Operation, decorators,
 HostOperation and plugin response types live in `harmos.plugin`. Shared host replies
 are available from both audience barrels. Generated wire requests, version packages
-and transport carriers stay private.
+and transport carriers stay private. The protocol failure keeps its name at
+`harmos.model.Failure`; raise `FailureError(model.Failure(...))` after importing
+`FailureError` and `model` from `harmos`.
 
-Host operations declare their callers. CLIENTS and ALL operations appear on Client;
-PLUGINS and ALL operations appear on Context.host. Plugin connection services never
-appear as host resources. SDK projection does not replace host authorization.
+Harmos host operations have no wire services or client root. Products declare their
+own wrapper operations and CLIENTS, PLUGINS or ALL audiences. Generators project
+those product descriptors into one product-owned client over `Connection`; resource
+attributes are composed directly, without inheriting a Harmos client tree.
 
-Storage remains in-process. Applications supply their own operations for data,
-uploads and queries. Plugin observers answer host-granted interval windows;
-publishers send device rows while demand is open.
+Plugin contexts retain time, own settings, own invocation controls and admitted
+discovery as PLUGINS-only facilities on the invocation and Samples carriers.
+Products own remote storage, administration, uploads and queries.
 
 ## Plugin Settings and Host Calls
 
 ```python
 from harmos import SettingDeclaration, SettingValue
-from harmos.plugin import HostOperation, Plugin
+from harmos.plugin import Catalog, HostOperation, Plugin, Registrar
 
-plugin = Plugin(
-    handlers,
-    id="example",
-    version="1.0.0",
-    requires=[HostOperation.PLUGINS_SETTINGS_LIST],
-    settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
-)
+def catalog() -> Catalog:
+    return Catalog(
+        handlers,
+        requires=[HostOperation.PLUGINS_SETTINGS_LIST],
+        settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
+    )
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+plugin = Plugin(id="example", version="1.0.0", register=register)
 
 # Inside an operation handler or an observer answering a window:
 settings = await context.host.plugins.settings.list()
@@ -85,8 +95,7 @@ prefix = settings.value.values["prefix"].text
 ```
 
 Plugins.Settings.List selects the admitted calling entry when a plugin omits `name`.
-A plugin may name itself; the host refuses another entry. Clients supply the entry
-name. Both audiences receive declarations, complete values, revision and resolved
+A plugin may name itself; the host refuses another entry. The facility returns declarations, complete values, revision and resolved
 read cut; pass `at=cut` to reuse a cut. Client Plugins.Settings.Set replaces the complete map and requires its expected
 revision. Preserve each declared key and value variant. Plugin replacement preserves
 the entry name and settings; failed replacement preserves the serving bundle.

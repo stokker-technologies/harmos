@@ -15,21 +15,19 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::setting_value::Value;
+// Standard Library Imports
 
-use super::support::{self, Backends, Host};
-use harmos_protocol::host as wire;
-use harmos_protocol::host::plugins;
+// Third Party Imports
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
 };
 
-// Standard Library Imports
-
-// Third Party Imports
-
 // Local Imports
+use super::support::{self, Backends, Host};
+use harmos_protocol::host;
+use harmos_protocol::host::plugins;
+use harmos_protocol::model::setting_value::Value;
 
 /* === Constants === */
 
@@ -57,11 +55,11 @@ async fn replacement_keeps_the_entry_and_failed_staging_keeps_its_process() {
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let bundle = host.upload("original", support::bundle(true)).await;
-    let mut watch = host.client.watch(wire::PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
+    let mut watch = host.client.watch(host::PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
     host.client.create(support::managed("managed", bundle, true)).await.unwrap();
-    let first = support::state(&mut watch, "managed", wire::PluginState::Ready, 1).await;
+    let first = support::state(&mut watch, "managed", host::PluginState::Ready, 1).await;
     let original = support::Process::observe(first.process.as_ref().unwrap().id).await;
-    let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
+    let mut settings = harmos_conformance::host::plugins::settings_client::SettingsClient::new(host.channel.clone());
     let initial = settings.list(plugins::SettingsListRequest { name: Some(first.name.clone()), at: None }).await.unwrap().into_inner();
 
     let mut value = initial.value.unwrap();
@@ -79,26 +77,26 @@ async fn replacement_keeps_the_entry_and_failed_staging_keeps_its_process() {
 
     // Invalid Staging Leaves Both The Entry Revision And Its Serving Process.
     let invalid = host.upload("invalid", support::bundle(false)).await;
-    let invalid = wire::PluginsReplaceRequest {
+    let invalid = host::PluginsReplaceRequest {
         name: first.name.clone(),
-        placement: Some(wire::PluginPlacement {
-            kind: Some(wire::plugin_placement::Kind::Managed(invalid)),
+        placement: Some(host::PluginPlacement {
+            kind: Some(host::plugin_placement::Kind::Managed(invalid)),
         }),
         expected_revision: first.revision.clone(),
         request_id: "invalid".into(),
     };
     assert!(host.client.replace(invalid).await.is_err());
     let retained =
-        host.client.get(wire::PluginsGetRequest { name: first.name.clone(), at: None }).await.unwrap().into_inner().entry.unwrap();
+        host.client.get(host::PluginsGetRequest { name: first.name.clone(), at: None }).await.unwrap().into_inner().entry.unwrap();
     assert_eq!(retained.revision, first.revision);
     assert_eq!(retained.process, first.process);
 
     // Replace In Place And Replay Without Starting Another Activation.
     let bundle = host.upload("replacement", support::bundle(true)).await;
-    let request = wire::PluginsReplaceRequest {
+    let request = host::PluginsReplaceRequest {
         name: first.name.clone(),
-        placement: Some(wire::PluginPlacement {
-            kind: Some(wire::plugin_placement::Kind::Managed(bundle)),
+        placement: Some(host::PluginPlacement {
+            kind: Some(host::plugin_placement::Kind::Managed(bundle)),
         }),
         expected_revision: first.revision,
         request_id: "replace".into(),
@@ -128,19 +126,19 @@ async fn failed_candidate_readiness_reaps_before_removing_its_bundle() {
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
     let bundle = host.upload("original", support::bundle(true)).await;
-    let mut watch = host.client.watch(wire::PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
+    let mut watch = host.client.watch(host::PluginsWatchRequest { name: Some("managed".into()), at: None }).await.unwrap().into_inner();
     host.client.create(support::managed("managed", bundle, true)).await.unwrap();
-    let first = support::state(&mut watch, "managed", wire::PluginState::Ready, 1).await;
+    let first = support::state(&mut watch, "managed", host::PluginState::Ready, 1).await;
     let original = host.manager.activation("managed").await.unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let bundle = host.upload("candidate", support::bundle_with_startup(true, Some(&listener.local_addr().unwrap().to_string()))).await;
     let mut client = host.client.clone();
     let replacement = tokio::spawn(async move {
         client
-            .replace(wire::PluginsReplaceRequest {
+            .replace(host::PluginsReplaceRequest {
                 name: first.name,
-                placement: Some(wire::PluginPlacement {
-                    kind: Some(wire::plugin_placement::Kind::Managed(bundle)),
+                placement: Some(host::PluginPlacement {
+                    kind: Some(host::plugin_placement::Kind::Managed(bundle)),
                 }),
                 expected_revision: first.revision,
                 request_id: "candidate".into(),

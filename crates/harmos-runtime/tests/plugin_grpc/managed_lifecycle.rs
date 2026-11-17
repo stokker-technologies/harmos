@@ -42,7 +42,7 @@ async fn managed_sdk_plugin_is_described_and_stopped_with_its_host() {
     assert_eq!(activation.get().await.unwrap(), activation.description);
 
     // Host Shutdown Runs Stop Hooks And Reaps The Process
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     attached.stop("Already Stopped").await.unwrap();
     assert_eq!(std::fs::read(cleaned).unwrap(), b"stopped");
     assert!(!activation.is_connected());
@@ -53,7 +53,7 @@ async fn managed_sdk_plugin_is_described_and_stopped_with_its_host() {
 async fn a_stopping_host_refuses_to_start_a_plugin() {
     // The Host Has Begun Shutting Down Before Anyone Attaches.
     let runtime = support::runtime(None).await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 
     // Attaching Refuses With an Action Instead of Spawning a Process the Host Would Have to Reap.
     let placement = Placement::Managed(Managed {

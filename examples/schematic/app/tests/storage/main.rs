@@ -41,7 +41,7 @@ use schematic_app::protocol::{
 };
 use schematic_app::{
     app::Runtime,
-    config::{LaunchConfig, Settings},
+    config::{Settings, StartConfig},
     document::Document,
     services,
 };
@@ -103,13 +103,13 @@ async fn saved_preview_survives_atomic_replacement() {
     };
     let mut manager = None;
     let document = Document::new();
-    let launch = LaunchConfig {
+    let start = StartConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
         plugins: false,
     };
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
+    let runtime = Runtime::start_with(document.into_origin(), Some(start), |setup| {
         setup.settings().clock(clock);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
@@ -207,7 +207,7 @@ async fn saved_preview_survives_atomic_replacement() {
     let value = batch.as_record_batch().column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
     assert_eq!(value.values().as_ref(), &[2]);
     runtime.for_call(&CallContext::default()).storage().delete_snapshot(DeleteSnapshotRequest { snapshot: Some(saved) }).await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -239,13 +239,13 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     };
     let mut manager = None;
     let document = Document::new();
-    let launch = LaunchConfig {
+    let start = StartConfig {
         document: document.clone(),
         settings: Settings::new(directory.path().join("recordings")),
         plugins: false,
     };
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::launch_with(document.into_origin(), Some(launch), |setup| {
+    let runtime = Runtime::start_with(document.into_origin(), Some(start), |setup| {
         setup.settings().clock(clock);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
@@ -470,5 +470,5 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
         .await
         .unwrap();
     assert_eq!(deleted.state, UploadState::Abandoned as i32);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

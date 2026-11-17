@@ -87,5 +87,5 @@ async fn malformed_and_reserved_plugin_identities_are_refused_before_activation(
     remote.declarations(catalog);
     let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
     attached.stop("Identity Repaired").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

@@ -18,7 +18,6 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 // Local Imports
-use harmos_operations::listeners::{Context as DeliveryContext, Delivery, Source};
 use harmos_runtime::guest::{
     PluginArtifact, PluginBackend, PluginContributions, PluginDefinition, PluginDefinitions, PluginEndpoint, PluginLifecycle,
     PluginLifecycleAuthority, PluginManager, PluginScope, PluginTransition, Router,
@@ -27,11 +26,12 @@ use harmos_runtime::operations::{OperationPolicy, PluginRegistration, RetryPolic
 use harmos_runtime::schema::{Described, Field};
 use harmos_runtime::streams::PluginListenerRegistration;
 use harmos_runtime::{Error, Message, MessageError, Result, Runtime};
+use {harmos_operations::listeners, harmos_operations::listeners::Delivery, harmos_operations::listeners::Source};
 
 /* === Type Aliases === */
 
 type Backends = PluginBackend<Resources, Resources>;
-type Seen = Vec<(bool, u32, DeliveryContext)>;
+type Seen = Vec<(bool, u32, listeners::Context)>;
 
 /* === Structs === */
 
@@ -257,7 +257,7 @@ async fn hearing_first_handler(
     let _guard = AttemptGuard(resources.clone());
     let request = request.0;
     let result: ::core::result::Result<(), Failed> = async move {
-        assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
+        assert!(matches!(request.context(), listeners::Context::Stream { .. }));
         resources.seen.lock().unwrap().push((true, request.row().value, request.context()));
         resources.observed.notify_one();
         if true && request.row().value == 0 {
@@ -333,7 +333,7 @@ async fn hearing_second_handler(
     let _guard = AttemptGuard(resources.clone());
     let request = request.0;
     let result: ::core::result::Result<(), Failed> = async move {
-        assert!(matches!(request.context(), DeliveryContext::Stream { .. }));
+        assert!(matches!(request.context(), listeners::Context::Stream { .. }));
         resources.seen.lock().unwrap().push((false, request.row().value, request.context()));
         resources.observed.notify_one();
         if false && request.row().value == 0 {
@@ -535,7 +535,7 @@ async fn setup(block: bool, reenter: bool, tail: usize) -> (Runtime<Model>, Plug
 async fn setup_source(
     block: bool, reenter: bool, tail: usize, managed: bool,
 ) -> (Runtime<Model>, PluginManager<Resources, Resources>, Host) {
-    let runtime = crate::support::app::launch::<Model>((), (), |setup| {
+    let runtime = crate::support::app::start::<Model>((), (), |setup| {
         setup.resource::<OwnerResource>(OwnerResource(std::sync::OnceLock::new()));
         setup.settings().register(if managed { vec![] } else { stream_definitions() });
         setup.settings().tail(tail);
@@ -609,14 +609,14 @@ async fn reentrancy_preserve_logical() {
     assert_eq!(
         *host.owner.seen.lock().unwrap(),
         [
-            (true, 0, DeliveryContext::Stream { sequence: 1, missed: 0 }),
-            (false, 0, DeliveryContext::Stream { sequence: 1, missed: 0 }),
-            (true, 9, DeliveryContext::Stream { sequence: 2, missed: 0 }),
-            (false, 9, DeliveryContext::Stream { sequence: 2, missed: 0 })
+            (true, 0, listeners::Context::Stream { sequence: 1, missed: 0 }),
+            (false, 0, listeners::Context::Stream { sequence: 1, missed: 0 }),
+            (true, 9, listeners::Context::Stream { sequence: 2, missed: 0 }),
+            (false, 9, listeners::Context::Stream { sequence: 2, missed: 0 })
         ]
     );
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -630,7 +630,7 @@ async fn sources_never_commit() {
         assert!(!host.scope.as_ref().unwrap().is_ready());
         assert!(host.owner.seen.lock().unwrap().is_empty());
         manager.shutdown(&mut host).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -647,7 +647,7 @@ async fn listener_failure_fences() {
         assert!(matches!(host.view.as_ref().unwrap().lock().await.failure().as_deref(), Some(Error::OperationFailed { .. })));
         assert!(matches!(runtime.operations.definition(Heard::<false>::CALLBACK), Err(Error::Closing { .. })));
         manager.shutdown(&mut host).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     {
         let (runtime, mut manager, mut host) = setup(false, false, 8).await;
@@ -659,7 +659,7 @@ async fn listener_failure_fences() {
         assert_eq!(manager.status("listener").unwrap().state, harmos_runtime::guest::PluginState::Failed);
         assert_eq!(host.owner.seen.lock().unwrap().len(), 2);
         manager.shutdown(&mut host).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -682,7 +682,7 @@ async fn runtime_signals_listener() {
             gates.release.notified().await;
             Ok(())
         }
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        async fn finalize(&mut self) -> std::result::Result<(), Self::Error> {
             Ok(())
         }
     }
@@ -709,7 +709,7 @@ async fn runtime_signals_listener() {
         .unwrap();
     let lease = runtime.operations.submit_resident("blocked-cleanup").await.unwrap();
     gates.running.notified().await;
-    let mut stopping = Box::pin(crate::support::app::shutdown(&runtime));
+    let mut stopping = Box::pin(crate::support::app::stop(&runtime));
     tokio::select! {
         _ = async {
             gates.stopping.notified().await;
@@ -720,7 +720,7 @@ async fn runtime_signals_listener() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     drop(stopping);
     gates.release.notify_one();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     drop(lease);
 }
 
@@ -747,14 +747,14 @@ async fn pages_deliver_native() {
             assert_eq!(
                 *pair,
                 [
-                    (true, value as u32, DeliveryContext::Stream { sequence: value as u64 + 1, missed: 0 }),
-                    (false, value as u32, DeliveryContext::Stream { sequence: value as u64 + 1, missed: 0 })
+                    (true, value as u32, listeners::Context::Stream { sequence: value as u64 + 1, missed: 0 }),
+                    (false, value as u32, listeners::Context::Stream { sequence: value as u64 + 1, missed: 0 })
                 ]
             );
         }
     }
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -769,13 +769,13 @@ async fn overwrite_reports_logical() {
     observed(&host.owner, 1026).await;
     {
         let seen = host.owner.seen.lock().unwrap();
-        assert_eq!(seen[2], (true, 9, DeliveryContext::Stream { sequence: 10, missed: 8 }));
-        assert_eq!(seen[3], (false, 9, DeliveryContext::Stream { sequence: 10, missed: 8 }));
-        assert_eq!(seen.last(), Some(&(false, 520, DeliveryContext::Stream { sequence: 521, missed: 0 })));
+        assert_eq!(seen[2], (true, 9, listeners::Context::Stream { sequence: 10, missed: 8 }));
+        assert_eq!(seen[3], (false, 9, listeners::Context::Stream { sequence: 10, missed: 8 }));
+        assert_eq!(seen.last(), Some(&(false, 520, listeners::Context::Stream { sequence: 521, missed: 0 })));
     }
     assert!(host.scope.as_ref().unwrap().is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -794,7 +794,7 @@ async fn receipt_cleans_replacement() {
     assert!(runtime.streams.shutdown_listeners_for(&old).await.is_err());
     assert!(current.is_ready());
     manager.shutdown(&mut host).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -807,12 +807,15 @@ async fn source_preserves_staged() {
     observed(&host.owner, 4).await;
     assert_eq!(
         host.owner.seen.lock().unwrap()[2..],
-        [(true, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }), (false, 5, DeliveryContext::Stream { sequence: 5, missed: 3 }),]
+        [
+            (true, 5, listeners::Context::Stream { sequence: 5, missed: 3 }),
+            (false, 5, listeners::Context::Stream { sequence: 5, missed: 3 }),
+        ]
     );
     assert_eq!(host.view.as_ref().unwrap().lock().await.frontier("listener.samples"), Some(5));
     manager.shutdown(&mut host).await.unwrap();
     assert!(lease.admit_row(publication_row(6), 6, 0).is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 /* === Tests === */
@@ -827,7 +830,7 @@ async fn shutdown_releases_callback_before_source() {
     assert_eq!(host.owner.finished.load(Ordering::SeqCst), 1);
     let source_dropped = host.original_drop.clone();
     assert_eq!(source_dropped.load(Ordering::SeqCst), 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     drop((manager, host, runtime));
     assert_eq!(source_dropped.load(Ordering::SeqCst), 1);
 }

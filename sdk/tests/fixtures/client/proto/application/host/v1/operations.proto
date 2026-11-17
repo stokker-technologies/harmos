@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Operations
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/operations.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Operations {
+  // Return the complete admitted operation inventory; Private and unavailable operations are excluded.
+  rpc List(harmos.host.v1.OperationsListRequest) returns (harmos.host.v1.OperationsListResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Read one admitted operation contract; an unavailable or unauthorized identity refuses.
+  rpc Get(harmos.host.v1.OperationsGetRequest) returns (harmos.host.v1.OperationsGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

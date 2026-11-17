@@ -47,7 +47,7 @@ use std::sync::atomic::Ordering;
 #[tokio::test(start_paused = true)]
 async fn facade_calls_use_registered_policy() {
     // Start With a Registered Retrying Operation
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let request = payload(1);
     let mut context = CallContext::default();
     context.insert(Tag(37)).unwrap();
@@ -56,5 +56,5 @@ async fn facade_calls_use_registered_policy() {
     let result = runtime.for_call(&context).call::<Probe>(request.clone()).await.unwrap();
     assert_eq!(request.attempts.load(Ordering::SeqCst), 2);
     assert_eq!(result.1, Some(37));
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

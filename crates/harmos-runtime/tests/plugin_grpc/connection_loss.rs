@@ -54,5 +54,5 @@ async fn dropped_connection_fails_only_its_in_flight_calls() {
     let _replacement = support::activation(&mut status, 2).await;
     let input = payload(b"reconnected");
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

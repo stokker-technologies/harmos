@@ -20,7 +20,6 @@
 // Local Imports
 #include "client.hpp"
 #include "generated/types.hpp"
-#include "harmos/_generated/client.hpp"
 #include "harmos/harmos.hpp"
 #include "harmos/host/v1/time.pb.h"
 #include "plugin.hpp"
@@ -57,16 +56,15 @@ concept SetsSettings = requires(T root) { root.plugins.settings.set(string{}, ha
 /* === Public Functions === */
 
 TEST_CASE("Caller Options Select SDK Surfaces") {
-  REQUIRE(ReadsTime<harmos::Client>);
-  REQUIRE(ReadsTime<harmos::plugin::HostRoot>);
   REQUIRE(ReadsTime<fixture::Client>);
+  REQUIRE(ReadsTime<harmos::plugin::HostRoot>);
   STATIC_REQUIRE(ReadsTime<fixture::plugin::HostRoot>);
   STATIC_REQUIRE(Sleeps<fixture::plugin::HostRoot>);
-  REQUIRE(CreatesInvocation<harmos::Client>);
+  REQUIRE(CreatesInvocation<fixture::Client>);
   REQUIRE_FALSE(CreatesInvocation<harmos::plugin::HostRoot>);
-  REQUIRE(ListsSettings<harmos::Client>);
+  REQUIRE(ListsSettings<fixture::Client>);
   REQUIRE(ListsSettings<harmos::plugin::HostRoot>);
-  REQUIRE(SetsSettings<harmos::Client>);
+  REQUIRE(SetsSettings<fixture::Client>);
   REQUIRE_FALSE(SetsSettings<harmos::plugin::HostRoot>);
 }
 
@@ -76,7 +74,13 @@ TEST_CASE("A Declaration Refuses Duplicate Operations") {
       return request;
     });
     harmos::plugin::Plugin plugin("example", "1.0.0");
-    plugin.operation(echo).operation(echo);
+    plugin
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(echo);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(echo);
+        });
     REQUIRE_THROWS_AS(plugin.declarations(), invalid_argument);
   }
 }
@@ -91,7 +95,13 @@ TEST_CASE("An Observer Preserves Its Stream Contract") {
     interval.set_seconds(2);
     observer.every(interval);
     harmos::plugin::Plugin plugin("example", "1.0.0");
-    plugin.stream(stream).observer(observer);
+    plugin
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(stream);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(observer);
+        });
     auto declarations = plugin.declarations();
     REQUIRE(declarations.streams(0).row() == Value::descriptor()->full_name());
 
@@ -101,14 +111,19 @@ TEST_CASE("An Observer Preserves Its Stream Contract") {
     });
     incompatible.every(interval);
     harmos::plugin::Plugin invalid("example", "1.0.0");
-    invalid.stream(stream);
-    REQUIRE_THROWS_AS(invalid.observer(incompatible), invalid_argument);
+    invalid.add([&](harmos::plugin::Registrar &ctx) {
+      ctx.add(stream);
+    });
+    REQUIRE_THROWS_AS(invalid.add([&](harmos::plugin::Registrar &ctx) {
+      ctx.add(incompatible);
+    }),
+                      invalid_argument);
   }
 }
 
 TEST_CASE("Interval Observers Declare One Value per Field and Their Window Columns") {
-  using harmos::conformance::Graph;
   using ::conformance::model::v1::Values;
+  using harmos::conformance::Graph;
   Duration interval;
   interval.set_seconds(1);
   SECTION("Repeated, Map, Oneof and Optional Row Fields Are Refused") {
@@ -139,7 +154,13 @@ TEST_CASE("Interval Observers Declare One Value per Field and Their Window Colum
     });
     observer.every(interval).window_setting("window");
     harmos::plugin::Plugin plugin("example", "1.0.0");
-    plugin.stream(stream).observer(observer);
+    plugin
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(stream);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(observer);
+        });
     const auto declarations = plugin.declarations();
     REQUIRE(declarations.streams(0).window_setting() == "window");
     REQUIRE(declarations.streams(0).row() == Value::descriptor()->full_name());
@@ -156,9 +177,16 @@ TEST_CASE("A Declaration Preserves Typed Sections and Their Dependencies") {
     harmos::host::v1::TimeSleepRequest setting;
     setting.mutable_duration()->set_seconds(37);
     harmos::plugin::Plugin plugin("example", "1.0.0");
-    plugin.requires_operation(harmos::plugin::HostOperation::TimeGet)
-        .requires_operation(harmos::plugin::HostOperation::TimeSleep)
-        .section(setting);
+    plugin
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(harmos::plugin::HostOperation::TimeGet);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(harmos::plugin::HostOperation::TimeSleep);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(harmos::plugin::Contribution{setting});
+        });
     setting.mutable_duration()->set_seconds(99);
     const auto declarations = plugin.declarations();
     const auto decoded = harmos::plugin::decode<harmos::host::v1::TimeSleepRequest>(declarations.sections(0).payload());
@@ -185,15 +213,30 @@ TEST_CASE("Settings Preserve Typed Defaults and Refuse Duplicate Names") {
   interval.set_name("interval");
   interval.mutable_default_()->mutable_duration()->set_seconds(2);
   harmos::plugin::Plugin plugin("example", "1.0.0");
-  plugin.setting(flag).setting(interval).requires_operation(harmos::plugin::HostOperation::PluginsSettingsList);
+  plugin
+      .add([&](harmos::plugin::Registrar &ctx) {
+        ctx.add(flag);
+      })
+      .add([&](harmos::plugin::Registrar &ctx) {
+        ctx.add(interval);
+      })
+      .add([&](harmos::plugin::Registrar &ctx) {
+        ctx.add(harmos::plugin::HostOperation::PluginsSettingsList);
+      });
   const auto declarations = plugin.declarations();
   const auto settings = harmos::plugin::decode<harmos::SettingsDeclarations>(declarations.sections(0).payload());
   REQUIRE(settings.values(0).default_().has_flag());
   REQUIRE_FALSE(settings.values(0).default_().flag());
   REQUIRE(settings.values(1).default_().duration().seconds() == 2);
-  REQUIRE_THROWS_AS(plugin.setting(flag), invalid_argument);
+  REQUIRE_THROWS_AS(plugin.add([&](harmos::plugin::Registrar &ctx) {
+    ctx.add(flag);
+  }),
+                    invalid_argument);
   interval.clear_default_();
-  REQUIRE_THROWS_AS(harmos::plugin::Plugin("invalid", "1.0.0").setting(interval), invalid_argument);
+  REQUIRE_THROWS_AS(harmos::plugin::Plugin("invalid", "1.0.0").add([&](harmos::plugin::Registrar &ctx) {
+    ctx.add(interval);
+  }),
+                    invalid_argument);
   SimpleDescriptorDatabase database;
   for (const auto &file : declarations.types().file())
     REQUIRE(database.Add(file));

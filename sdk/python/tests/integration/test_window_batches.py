@@ -21,7 +21,6 @@ from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.struct_pb2 import Struct
-from google.protobuf.struct_pb2 import Value as JsonValue
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import AioRpcError
@@ -33,7 +32,7 @@ from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
 
 # Local Imports
-from harmos.plugin import Context, Plugin, observer, publisher, window_observer
+from harmos.plugin import Catalog, Context, Plugin, observer, publisher, window_observer
 from tests.fixtures.conformance import Graph, Value, Values, plugin
 from tests.support import calls
 
@@ -70,8 +69,8 @@ class WindowBatches(IsolatedAsyncioTestCase):
                     self.row.MergeFrom(reading(gain=1.5, count=-1, label="a", inner=inner(x=1), span=span(seconds=2)))
                 return self.row
 
-        endpoint = await Plugin(Reader(), id="example", version="1.0.0").start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        endpoint = await Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Reader()))).start("127.0.0.1:0")
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
@@ -98,7 +97,7 @@ class WindowBatches(IsolatedAsyncioTestCase):
         # Grant the Conformance Window Observer One Million Samples.
         limit = MessageSettings().message_bytes
         endpoint = await plugin().start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address, options=[("grpc.max_receive_message_length", limit)])
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
@@ -168,7 +167,7 @@ class WindowBatches(IsolatedAsyncioTestCase):
     async def test_windows_refuse_invalid_frames(self) -> None:
         # Serve the Conformance Fixture for Every Invalid Window.
         endpoint = await plugin().start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
@@ -202,7 +201,7 @@ class WindowBatches(IsolatedAsyncioTestCase):
 
     def test_declarations_refuse_rows_and_columns_without_one_value_per_field(self) -> None:
         # Interval Rows Hold One Plain Value per Field; Device Rows Are Unrestricted.
-        for row in (Graph, Graph.Nested, Struct, JsonValue):
+        for row in (Graph, Graph.Nested, Struct, struct_pb2.Value):
             self.assertRaises(ValueError, observer, "example.reading", row=row, interval=SECOND)
         publisher("example.device", row=Graph)
 

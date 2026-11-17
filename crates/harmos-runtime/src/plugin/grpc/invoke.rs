@@ -15,15 +15,15 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::Cancel as WireCancel;
+use harmos_protocol::plugin;
 use harmos_protocol::plugin::ChildResponse;
 use harmos_protocol::plugin::InstanceInvokeRequest;
 use harmos_protocol::plugin::InstanceInvokeResponse;
 use harmos_protocol::plugin::InstanceSamplesRequest;
 use harmos_protocol::plugin::Request;
-use harmos_protocol::plugin::child_response::Result as WireResult;
-use harmos_protocol::plugin::instance_samples_request::Frame as WireFrame;
-use harmos_protocol::plugin::response::Result as WireWireResult;
+use harmos_protocol::plugin::child_response;
+use harmos_protocol::plugin::instance_samples_request;
+use harmos_protocol::plugin::response;
 
 // Standard Library Imports
 use std::{
@@ -96,7 +96,12 @@ impl ChildReplies {
                 })
                 .await
                 .map_err(|_| ()),
-            Self::Samples(output) => output.send(InstanceSamplesRequest { frame: Some(WireFrame::Child(child)) }).await.map_err(|_| ()),
+            Self::Samples(output) => output
+                .send(InstanceSamplesRequest {
+                    frame: Some(instance_samples_request::Frame::Child(child)),
+                })
+                .await
+                .map_err(|_| ()),
         };
         result.map_err(|()| crate::Error::Closing { domain: "child response carrier" })
     }
@@ -164,7 +169,7 @@ impl NativeInstance for Invocation {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {
@@ -232,7 +237,7 @@ async fn invoke(
             match event {
                 Event::Cancel => {
                     cancelled = true;
-                    let cancel = WireCancel {
+                    let cancel = plugin::Cancel {
                         reason: format!("Operation {} Cancelled", binding.contract.id),
                     };
                     let _ = output
@@ -248,8 +253,8 @@ async fn invoke(
                         continue;
                     }
                     let result = match result {
-                        Ok(payload) => WireResult::Payload(payload),
-                        Err(error) => WireResult::Failure(failure(&error, &operation, "host")),
+                        Ok(payload) => child_response::Result::Payload(payload),
+                        Err(error) => child_response::Result::Failure(failure(&error, &operation, "host")),
                     };
                     let child = ChildResponse { call, result: Some(result) };
                     let _ = output
@@ -264,8 +269,8 @@ async fn invoke(
                             return Err(CallError::Protocol("Frame After Terminal Response".into()));
                         }
                         return match response.result {
-                            Some(WireWireResult::Payload(payload)) => Ok(payload),
-                            Some(WireWireResult::Failure(failure)) => Err(CallError::Remote(Box::new(failure.into()))),
+                            Some(response::Result::Payload(payload)) => Ok(payload),
+                            Some(response::Result::Failure(failure)) => Err(CallError::Remote(Box::new(failure.into()))),
                             None => Err(CallError::Protocol("Missing Response Result".into())),
                         };
                     }
@@ -353,7 +358,7 @@ pub(super) async fn watch_child(
         output
             .send(ChildResponse {
                 call,
-                result: Some(WireResult::Item(payload)),
+                result: Some(child_response::Result::Item(payload)),
             })
             .await?;
     }

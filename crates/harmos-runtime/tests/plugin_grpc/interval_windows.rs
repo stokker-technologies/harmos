@@ -95,7 +95,7 @@ async fn windows_cover_exact_sample_ranges_on_a_controlled_clock() {
     assert_eq!(samples.iter().map(|(at, _)| *at).collect::<Vec<_>>(), (1..=16).map(|second| second * SECOND).collect::<Vec<_>>());
     assert_eq!(sequences(&host, "fixture.counts"), (1..=16).collect::<Vec<_>>());
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -124,7 +124,7 @@ async fn a_window_larger_than_one_message_arrives_in_contiguous_parts() {
     assert_eq!(first[0].as_f64(), Some(1.0));
     assert_eq!(last[last.as_array().unwrap().len() - 1].as_f64(), Some(2_000_000.0));
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn a_sampling_scope_pauses_only_its_requested_streams_unscoped_schedule_wi
     assert!(overridden(&host).iter().all(|(_, _, scope)| scope.is_none()), "Sample No Unrequested Stream in the Scope");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -204,5 +204,5 @@ async fn a_controlled_step_longer_than_the_window_is_one_window() {
     assert_eq!(host.batches_of("fixture.counts"), expected, "Cover Exactly the Advanced Step");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

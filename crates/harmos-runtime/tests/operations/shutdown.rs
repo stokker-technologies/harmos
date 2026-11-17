@@ -124,7 +124,7 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone());
     })
     .await

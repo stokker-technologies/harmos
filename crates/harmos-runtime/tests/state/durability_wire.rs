@@ -36,7 +36,7 @@ async fn payload_own_shape() {
     let deposited = runtime.state.commit(deposit(7)).await.expect("accepted");
     let noted = runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
     runtime.state.wait_until_stored(noted.position).await;
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let lines = copy.members();
 
@@ -74,11 +74,11 @@ async fn another_build_reads() {
     runtime.records.publish(Noted("audited".to_owned())).await.expect("a fact cannot be refused");
     let expected = ledger(&runtime).await;
     let frontier = runtime.state.applied();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     // The other build's catalogs share not one variant name or position with
     // the ones that wrote this file, and share every definition.
-    let recovered = crate::support::app::launch::<other::Branch>(Ledger::default(), (), |setup| {
+    let recovered = crate::support::app::start::<other::Branch>(Ledger::default(), (), |setup| {
         setup.settings().register(other::movement_state_catalog());
         setup.settings().register(other::observed_registry());
         setup.settings().recover(Journal::<other::Branch>::open(&copy));
@@ -97,7 +97,7 @@ async fn another_build_reads() {
 
 #[tokio::test]
 async fn decode_matches_recovery() {
-    let runtime = crate::support::app::launch::<other::Branch>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<other::Branch>(Ledger::default(), (), |setup| {
         setup.settings().register(other::movement_state_catalog());
         setup.settings().register(other::observed_registry());
     })

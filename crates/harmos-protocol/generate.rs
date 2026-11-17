@@ -84,6 +84,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     for name in ["reflection.rs", "descriptors.bin", "guest-descriptors.bin", "clock-descriptors.bin", "message-options-descriptors.bin"] {
         fs::copy(output.path().join(name), destination.join(name))?;
     }
+    let memory = destination.join("../../harmos-domain/src/message/allocation/protobuf.rs");
+    fs::create_dir_all(memory.parent().ok_or("missing payload memory parent")?)?;
+    fs::copy(output.path().join("memory.rs"), memory)?;
     let destination = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/rust/src/context/types");
     fs::create_dir_all(&destination)?;
     for entry in fs::read_dir(&destination)? {
@@ -103,6 +106,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         "application.host.v1.rs",
         "application.host.v1.jobs.rs",
         "application.host.v1.plugins.rs",
+        "application.host.v1.access.rs",
+        "application.host.v1.status.rs",
         "client-descriptors.bin",
         "client-reflection.rs",
     ] {

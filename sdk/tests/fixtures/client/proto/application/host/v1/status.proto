@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Status
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/status.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Status {
+  // Read the current host identity and contributed health with the status history boundary.
+  rpc Get(harmos.host.v1.StatusGetRequest) returns (harmos.host.v1.StatusGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Validate the optional issued position, emit current status and then changes; this is a live view rather than historical status replay.
+  rpc Watch(harmos.host.v1.StatusWatchRequest) returns (stream harmos.host.v1.StatusWatchResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

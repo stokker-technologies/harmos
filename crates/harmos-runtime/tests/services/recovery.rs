@@ -64,7 +64,7 @@ impl Resident<App> for RetainedCleanup {
         std::future::pending().await
     }
 
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
         if self.attempts.fetch_add(1, Ordering::AcqRel) == 0 {
             if self.panic_first {
                 panic!("first original cleanup panics");
@@ -92,7 +92,7 @@ async fn stop_cleanup(
             lease.settle().await
         }
         CleanupRequest::Definition => runtime.operations.unregister_resident("retained-cleanup").await,
-        CleanupRequest::Runtime => crate::support::app::shutdown(runtime).await.map(|_| ()),
+        CleanupRequest::Runtime => crate::support::app::stop(runtime).await.map(|_| ()),
     }
 }
 
@@ -101,7 +101,7 @@ async fn stop_cleanup(
 #[tokio::test]
 async fn unregister_retains_cleanup() {
     for retry in [true, false] {
-        let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+        let runtime = Runtime::<App>::start((), ()).await.unwrap();
         let entered = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
         let cleaned = Arc::new(AtomicBool::new(false));
@@ -155,9 +155,9 @@ async fn unregister_retains_cleanup() {
             assert!(
                 !runtime.operations.watch_residents().borrow().contains_key(&harmos_runtime::operations::resident::Key::root("reload"))
             );
-            crate::support::app::shutdown(&runtime).await.unwrap();
+            crate::support::app::stop(&runtime).await.unwrap();
         } else {
-            let stopping = crate::support::app::shutdown(&runtime);
+            let stopping = crate::support::app::stop(&runtime);
             tokio::pin!(stopping);
             let pending =
                 std::future::poll_fn(|cx| std::task::Poll::Ready(std::future::Future::poll(stopping.as_mut(), cx).is_pending())).await;
@@ -189,7 +189,7 @@ async fn stop_joins_cleanup() {
         };
         let mut lease = None;
         let runtime = if tenant {
-            let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+            let runtime = Runtime::<App>::start((), ()).await.unwrap();
             runtime
                 .operations
                 .register_service(
@@ -203,7 +203,7 @@ async fn stop_joins_cleanup() {
             lease = Some(runtime.operations.submit_resident("cleanup").await.unwrap());
             runtime
         } else {
-            crate::support::app::launch::<App>((), (), |setup| {
+            crate::support::app::start::<App>((), (), |setup| {
                 setup.settings().service("cleanup", resident);
             })
             .await
@@ -212,14 +212,14 @@ async fn stop_joins_cleanup() {
         service_status(runtime.operations.watch_residents(), "cleanup", |status| matches!(status, ServiceStatus::Running { .. })).await;
 
         {
-            let stop = crate::support::app::shutdown(&runtime);
+            let stop = crate::support::app::stop(&runtime);
             tokio::pin!(stop);
             tokio::select! {
                 _ = &mut stop => panic!("cleanup has not finished"),
                 _ = entered.notified() => {}
             }
         }
-        let stop = crate::support::app::shutdown(&runtime);
+        let stop = crate::support::app::stop(&runtime);
         tokio::pin!(stop);
         assert!(futures_util::poll!(&mut stop).is_pending());
         assert!(!cleaned.load(Ordering::SeqCst));
@@ -236,7 +236,7 @@ async fn timeout_retains_cleanup() {
         [CleanupRequest::Instance, CleanupRequest::Definition, CleanupRequest::Runtime].map(|request| (panic_first, request))
     }) {
         let clock = crate::support::clock::Controlled::new();
-        let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        let runtime = crate::support::app::start::<App>((), (), |setup| {
             setup.settings().clock(clock.source());
         })
         .await
@@ -328,16 +328,16 @@ async fn timeout_retains_cleanup() {
         }
         drop(lease);
         if matches!(request, CleanupRequest::Instance | CleanupRequest::Runtime) {
-            assert!(crate::support::app::shutdown(&runtime).await.is_err());
+            assert!(crate::support::app::stop(&runtime).await.is_err());
         } else {
-            crate::support::app::shutdown(&runtime).await.unwrap();
+            crate::support::app::stop(&runtime).await.unwrap();
         }
     }
 }
 
 #[tokio::test]
 async fn exit_cause_preserved() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     let (release, gate) = tokio::sync::oneshot::channel();
     let gate = Arc::new(Mutex::new(Some(gate)));
     let attempts = Arc::new(AtomicUsize::new(0));
@@ -375,5 +375,5 @@ async fn exit_cause_preserved() {
     assert_eq!(source.to_string(), "original transport exit");
     assert!(observed.load(Ordering::Acquire));
     drop(lease);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

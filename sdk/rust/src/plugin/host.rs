@@ -1,5 +1,6 @@
 // @generated from protocol descriptors; do not edit.
-use crate::{Context, Error, OperationPolicy, Plugin, Result};
+use crate::plugin::{Dependency, Registrar, Registration};
+use crate::{Context, Error, OperationPolicy, Result};
 use harmos_protocol::host::InvocationsCancelRequest;
 use harmos_protocol::host::InvocationsCancelResponse;
 use harmos_protocol::host::InvocationsGetRequest;
@@ -32,17 +33,17 @@ pub enum HostOperation {
     TimeGet,
     TimeSleep,
 }
-impl Plugin {
-    pub fn requires_host(self, operation: HostOperation) -> Self {
-        match operation {
-            HostOperation::InvocationsGet => self.requires::<InvocationsGetRequest>(),
-            HostOperation::InvocationsCancel => self.requires::<InvocationsCancelRequest>(),
-            HostOperation::InvocationsWatch => self.requires::<InvocationsWatchRequest>(),
-            HostOperation::OperationsList => self.requires::<OperationsListRequest>(),
-            HostOperation::OperationsGet => self.requires::<OperationsGetRequest>(),
-            HostOperation::PluginsSettingsList => self.requires::<SettingsListRequest>(),
-            HostOperation::TimeGet => self.requires::<TimeGetRequest>(),
-            HostOperation::TimeSleep => self.requires::<TimeSleepRequest>(),
+impl Registration for HostOperation {
+    fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {
+        match self {
+            HostOperation::InvocationsGet => ctx.register(Dependency::<InvocationsGetRequest>::new()),
+            HostOperation::InvocationsCancel => ctx.register(Dependency::<InvocationsCancelRequest>::new()),
+            HostOperation::InvocationsWatch => ctx.register(Dependency::<InvocationsWatchRequest>::new()),
+            HostOperation::OperationsList => ctx.register(Dependency::<OperationsListRequest>::new()),
+            HostOperation::OperationsGet => ctx.register(Dependency::<OperationsGetRequest>::new()),
+            HostOperation::PluginsSettingsList => ctx.register(Dependency::<SettingsListRequest>::new()),
+            HostOperation::TimeGet => ctx.register(Dependency::<TimeGetRequest>::new()),
+            HostOperation::TimeSleep => ctx.register(Dependency::<TimeSleepRequest>::new()),
         }
     }
 }

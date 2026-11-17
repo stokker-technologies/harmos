@@ -2,7 +2,8 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
-Native storage and stream publication use the typed in-process facade. Bind one
+Native storage, stream publication, plugin activation and inspection, time, settings,
+status and invocations use the typed in-process facade. Bind one
 call context; the registered native operation owns admission, retries and cancellation:
 
 ```rust
@@ -21,11 +22,33 @@ the same calls during storage-only assembly, with cleanup receipts instead of an
 operation-manager getter. Backend implementations import their traits and contract
 values from `harmos_runtime::backend`; operation callers keep using the facade DTOs.
 
-The remaining locked `operation-boundary` direction moves plugin activation and
-the other host families to this facade, gives the builder sole manager ownership,
-and removes host-client roots and wire exposure. Products declare their own remote
+The remaining locked `operation-boundary` direction gives the builder sole manager ownership.
+Host-client roots and wire services are removed. Products declare their own remote
 wrappers. Those remaining changes are pending; their tasks and product pins live
 in `openspec/changes/operation-boundary/tasks.md`.
+
+The `plugins()` family supplies `load`, `bind`, `start_samples`, `stop_samples`,
+`settle` and `inspect` for managed or remote gRPC placement. Import its request types from `facade::plugins`. `load`
+returns an opaque activation handle; `bind` returns an opaque binding for one scope
+and clock. Use `binding.for_call()` for native calls under that clock, or
+`binding.for_call_with(CallOptions { policy: Some(policy) })` for one caller override. A sample start returns its own opaque handle, supplied to `StopSamplesRequest`;
+an old sample handle cannot stop a later run. Settlement closes every binding clone. Handles reject another runtime and a retired activation rather
+than following reconnects. A product settles a retired handle before loading again to acquire the next generation.
+
+`inspect(InspectRequest { placement, settings, metadata_bytes })` reads and validates
+frozen metadata without operation admission, sample demand or installed-state writes.
+The explicit positive `metadata_bytes` bounds the transport response; the registered
+inspection policy bounds the call. Managed inspection kills and reaps its candidate
+under `settings.stop_grace`; remote inspection detaches without sending Stop.
+Cancellation retains the process owner until cleanup, and runtime shutdown waits
+for that owner. Inspection invokes no acquisition or initialization hook.
+
+`time()` offers `get` and `sleep`; `invocations()` offers `create`, `get`, `cancel`
+and typed `watch`; `settings()` offers `list` and `set`; `status()` offers health,
+logs, trace events and diagnostics calls. Native watches accept `native_stream`
+outputs. `NativeInvocation::id()` supplies the identity used by invocation controls.
+Settings currently address registered persisted entries; their policy transfer to
+products remains part of the separate plugin-boundary change.
 
 Storage operation results now use operation-owned IPC frames and page DTOs.
 `ListRows` returns `RowOutput`, and column/projection batches contain schema and
@@ -60,8 +83,8 @@ Built-in host operations use generated `harmos_protocol::{model, host, plugin}` 
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
 `harmos_protocol::model::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
-`operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
-native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+`runtime.for_call(&ctx).invocations().get(request)` for a native unary call.
+`invocations().watch(request, output)` supplies typed bounded stream endpoints.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
 its timeout and cancellation policy. Status and cancellation expose only instances
 owned by the caller. Guest child controls use the SDK protobuf adapter and retain
@@ -75,17 +98,19 @@ An absent scope produces a refused failure with code `scope_required` and messag
 "Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
 meaning to the scope and does not require it for operations that do not ask for it.
 
-For a scoped unit of work that owns its time and sample ingestion, use
-`runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
-binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
-demand: call `start_samples(streams)` with exactly the streams the unit samples once the
-plugin has registered the unit and `stop_samples()` before its cleanup ends it, so no
-window reaches the plugin outside that interval; the plugin's other streams stay under
-its unscoped demand, which samples only while watched. `close()` returns
-within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
-not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
-share the admitted connection and retain independent clocks and Samples selections;
-see [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
+For a scoped unit that owns its time and sample ingestion, bind the loaded
+plugin through `caller.plugins().bind(BindRequest { plugin, scope, clock })`.
+`binding.for_call()` retains that unit for native calls. Binding opens no sample
+demand: `start_samples(StartSamplesRequest { binding, streams })` selects exactly
+the streams the unit samples and returns an opaque samples handle. Supply that
+handle to `stop_samples(StopSamplesRequest { samples })` before ending the unit,
+then settle the binding through `settle(SettleRequest::Binding(binding))`.
+The other streams stay under unscoped demand and sample only while watched.
+
+Scoped settlement retains the placement's `stop_grace`; a plugin that does not
+end its sample demand reports that failure and its remaining work is cancelled.
+Concurrent bindings share the admitted connection while retaining independent
+clocks and sample selections. See [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
 
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context
@@ -327,6 +352,27 @@ is a consequence, regardless of reporting order. Other failures remain separate
 roots. Without a preparation failure, missing resources are roots themselves.
 This rule describes a failed pass, not a resource dependency graph; Display
 summarizes consequences as operations unavailable because startup failed.
+
+## Carrier Registration
+
+Registration accumulates declaration values before serving. Its context has no
+runtime facilities, and inspecting `declarations()` enters no handler. A module
+returns its `catalog()`; the root register phase composes those values once:
+
+```rust
+fn register(ctx: &mut Registrar<'_>) -> Result<()> {
+    ctx.register(settings::catalog())?;
+    ctx.register(operations::catalog())?;
+    Ok(())
+}
+```
+
+The internal Rust helper accepts typed operations, streams, observers, dependencies,
+descriptors and opaque contributions without changing the plugin's type. Python
+uses `Registrar.register(Catalog(...))`; C# uses `Registrar.Register(Catalog())`;
+C++ uses `Registrar::add` because `register` is reserved. Products own their public
+registrars and translate declarations into these helpers. Native helper serving
+uses `run`, `RunAsync` in C#, and Python endpoints pair `start` with `stop`.
 
 ## Storage During Preparation
 
@@ -902,7 +948,7 @@ Private operations remain inside their declaring SDK process and are absent from
 
 Application lifecycle preparation owns resources and registers their concrete
 `Arc<T>` values. Runtime startup checks catalogs, resources and lanes before
-initialization. Test overrides still use `Runtime::launch_with` and replace
+initialization. Test overrides still use `Runtime::start_with` and replace
 resource lookups after application preparation. Owner cleanup closes acquired
 resources even when validation or initialization fails.
 
@@ -1061,15 +1107,16 @@ revisions are unchanged.
 
 Protocol roots follow their executor: `harmos_protocol::host` contains host operations,
 `harmos_protocol::plugin` contains plugin operations and connection carriers, and
-`harmos_protocol::model` contains shared values. Each host operation declares its
-callers. Public SDK code imports values from `harmos`, responses and client options
+`harmos_protocol::model` contains shared values. Each product wrapper declares its
+callers; Harmos host operations are private and have no wire services. Public SDK code imports values from `harmos`, responses and client options
 from `harmos::client`, and plugin authoring types from `harmos::plugin`.
 Managed bundle replacement
 uses `client.plugins.replace`; library-stored settings use
 `client.plugins.settings.list` and `.set`. Product operations expose any required
 storage access; the SDK has no library storage wire root.
 
-`harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
+`harmos::Client` is reusable connection plumbing with no resource root. A product
+client uses its transport handle and supplies `ClientSettings`.
 The caller supplies shared transfer settings and the required
 `retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
 limits use the generated 8 MiB message default; explicit ceilings must carry the
@@ -1078,7 +1125,8 @@ configured transfer chunk plus framing. The default chunk remains 4 MiB. For exa
 ```rust
 let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;
 let settings = harmos::ClientSettings::for_storage(transfer_settings, retained_bytes)?;
-let client = harmos::Client::new(channel, settings)?;
+let connection = harmos::Client::new(channel, settings)?;
+let client = ProductClient::new(connection.transport_handle());
 ```
 
 `retained_bytes` bounds descriptor-checked decoded allocations and SDK-owned queued values
@@ -1086,11 +1134,10 @@ across client clones and calls. Repeated, map and nested values are accounted be
 decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
-Discover contracts with `client.operations.list()` or `client.operations.get(id)`.
+A product client can expose discovery through its own `client.operations.list/get` wrappers.
 Typed `client.schemas.list()` and `client.streams.list()` expose their registries.
 Each List returns its payload directly. Calls take request content as arguments
-and own the transport context. A library-only dynamic call can bind a discovered
-operation to its library payloads:
+and own the transport context. A product wrapper can expose a typed call:
 
 ```rust
 let now = client.time.get().await?;
@@ -1100,7 +1147,7 @@ println!("{now:?}");
 For dynamic dispatch, obtain the contract and supply its encoded request content:
 
 ```rust
-let operation = client.operations.get("harmos.host.v1.Time/Get").await?;
+let operation = client.operations.get("application.host.v1.Time/Get").await?;
 let contract = operation.contract.ok_or("Time.Get has no contract")?;
 let payload = client.invocations.create(contract.id, contract.fingerprint, Vec::new()).await?;
 ```
@@ -1118,7 +1165,7 @@ including binary status details. Caller request metadata, extensions and timeout
 travel with the opening request. The server continues to own operation deadlines and retries.
 Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
 
-The [library client example](../sdk/rust/examples/client.rs) uses library contracts.
+The [library client example](../tools/conformance/examples/client.rs) uses library contracts.
 The [Schematic application client](../examples/schematic/protocol/examples/client.rs)
 calls `schematic.validate` through the application's generated `client.schematic.validate`
 resource. Build it with
@@ -1328,15 +1375,22 @@ harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<teste
 ```
 
 ```rust
-use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Result, wasm::Registration};
+
+#[derive(harmos::Message)]
+struct Echo { text: String }
 
 #[unsafe(no_mangle)]
 pub fn harmos_register() -> Registration {
     Registration::new(
         Plugin::new("example", "1.0.0")
-            .operation(Operation::new("example.echo", async |_: &Context, request: String| -> Result<String> {
-                Ok(request)
-            })),
+            .register(|ctx| {
+                ctx.register(Operation::new("example.echo", async |_: &Context, request: Echo| -> Result<Echo> {
+                    Ok(request)
+                }).visibility(harmos::Visibility::Public))?;
+                Ok(())
+            }).expect("Register Plugin Declarations"),
     )
     .capacity(2)
     .on_initialize(async |_: &Context, configuration: Vec<u8>| {
@@ -1568,7 +1622,7 @@ Plugin artifact crates declare `publish = false`.
 
 The [served plugin example](../sdk/rust/examples/plugin.rs) declares one public
 operation and a typed setting default. Declare settings with
-`Plugin::settings(SettingsDeclarations { values })`; every `SettingDeclaration`
+`Registrar::register(SettingsDeclarations { values })`; every `SettingDeclaration`
 contains a name, title, description and a selected `SettingValue` default. False
 flags and empty text remain present values. The SDK checks duplicate names and
 missing defaults when constructing the catalog. The library stores overrides and
@@ -1577,9 +1631,11 @@ applies defaults for the admitted plugin entry.
 ```rust
 use harmos::plugin::{HostOperation, Plugin};
 
-let plugin = Plugin::new("echo", "1.0.0")
-    .settings(declarations)
-    .requires_host(HostOperation::PluginsSettingsList);
+let plugin = Plugin::new("echo", "1.0.0").register(|ctx| {
+    ctx.register(declarations)?;
+    ctx.register(HostOperation::PluginsSettingsList)?;
+    Ok(())
+})?;
 // Inside a handler, `context` retains the calling plugin's identity.
 let settings = context.host().plugins.settings.list().await?;
 ```
@@ -1588,7 +1644,7 @@ let settings = context.host().plugins.settings.list().await?;
 calling plugin's trusted identity. Supplying another entry name is refused. Its
 response retains declarations, values, revision and issued read cut; issued cuts
 and name selection use the generated call options. Declare every host operation,
-clock and Watch requirement through `Plugin::requires_host` or a typed requirement.
+clock and Watch requirement through `Registrar::register` with `HostOperation` or a typed `Dependency`.
 
 Observer contexts can make declared child calls while answering one Samples window.
 Unary calls and Watches use the same carrier as that window, preserve structured

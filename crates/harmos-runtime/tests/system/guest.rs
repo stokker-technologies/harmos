@@ -13,7 +13,14 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::PluginState as EntryState;
+// Standard Library Imports
+use std::{num::NonZeroUsize, sync::Arc, time::SystemTime};
+
+// Third Party Imports
+use prost::Message;
+
+// Local Imports
+use harmos_protocol::host;
 use harmos_protocol::host::PluginValue;
 use harmos_protocol::host::PluginsDeleteRequest;
 use harmos_protocol::host::PluginsGetRequest;
@@ -30,12 +37,10 @@ use harmos_protocol::model::SettingValue;
 use harmos_protocol::model::setting_value::Value;
 use harmos_runtime::plugin::manager::Management;
 use harmos_runtime::{Identifier, Runtime, guest::PluginState};
-use prost::Message as _;
 use schematic_operations::protocol::plugin::{
     SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
 };
 use schematic_operations::protocol::{Connection, Point, Snapshot};
-use std::{num::NonZeroUsize, sync::Arc, time::SystemTime};
 
 /* === Constants === */
 
@@ -63,7 +68,7 @@ async fn guest_composition_walks() {
     // Boot Without a Guest Operation
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (storage, entries, root) = super::guest_contract::support::entries();
-    let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = Runtime::<crate::support::Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource(root);
         setup.settings().clock(clock).storage(&storage).plugins(entries.clone());
         setup.settings().register(crate::support::catalog());
@@ -92,7 +97,7 @@ async fn guest_composition_walks() {
         .register_guest(
             loaded,
             harmos_runtime::config::PluginSettings {
-                host_operations: [Identifier::new("harmos.host.v1.plugins.Settings/List").unwrap()].into_iter().collect(),
+                host_operations: [Identifier::new("harmos.plugin.v1.plugins.Settings/List").unwrap()].into_iter().collect(),
                 configuration: b"null".to_vec(),
                 ..Default::default()
             },
@@ -188,7 +193,7 @@ async fn guest_composition_walks() {
         if let Event::Change(change) = event
             && let Some(plugin_change::Kind::Entry(entry)) = change.kind
             && entry.value.is_some_and(|value| value.enabled)
-            && entry.state == EntryState::Ready as i32
+            && entry.state == host::PluginState::Ready as i32
         {
             break;
         }
@@ -217,5 +222,5 @@ async fn guest_composition_walks() {
     assert!(entries.settings_list(SettingsListRequest { name: Some(name), at: old_cut }).await.is_err());
     assert!(runtime.plugin.status("schematic_tools").is_none());
     assert!(runtime.operations.call_encoded("schematic.plugin.v1.Schematic/ProposeRoute", route.encode_to_vec()).await.is_err());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

@@ -81,7 +81,7 @@ async fn catalog_declares_records() {
 async fn derived_aggregate_writer() {
     use counter::{Counter, Down, Step, StepError, Tally, Underflow, Up, step_state_catalog};
 
-    let runtime = Runtime::<Counter>::launch_with(Tally::default(), (), |setup| {
+    let runtime = Runtime::<Counter>::start_with(Tally::default(), (), |setup| {
         setup.settings().register(step_state_catalog());
     })
     .await
@@ -132,7 +132,7 @@ async fn studio() -> Runtime<Studio> {
         applications: 0,
     };
 
-    Runtime::<Studio>::launch_with(origin, (), |setup| {
+    Runtime::<Studio>::start_with(origin, (), |setup| {
         setup.settings().register(change_state_catalog());
         setup.settings().register(fact_registry());
     })

@@ -15,16 +15,14 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::{InvocationsCreateRequest, InvocationsCreateResponse};
-
-use crate::execution::operations::instances::InstanceAccess;
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
+use crate::execution::operations::instances::InstanceAccess;
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host::{InvocationsCreateRequest, InvocationsCreateResponse};
 
 /* === Constants === */
 
@@ -47,9 +45,9 @@ impl ProtobufOperation for Create {
     type Response = InvocationsCreateResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.Invocations/Create";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Invocations", "Create"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;

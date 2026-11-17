@@ -27,22 +27,21 @@ from grpc.aio import EOF, AioRpcError
 from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
-    Failure,
+    FailureError,
     Position,
     ReadCut,
     SettingDeclaration,
     SettingsDeclarations,
-    SettingsListResponse,
     SettingValue,
     SettingValues,
+    model,
 )
-from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, publisher
+from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Values
 
 # Type Checking Imports
@@ -94,7 +93,7 @@ class Reader:
             return BytesValue(value=b"answered")
         try:
             return await context.call(ECHO, BytesValue(value=b"failure"))
-        except Failure as failure:
+        except FailureError as failure:
             return BytesValue(value=failure.value.SerializeToString())
 
     @publisher("example.device", row=BytesValue)
@@ -109,14 +108,18 @@ class WindowChildren(IsolatedAsyncioTestCase):
         reader = Reader()
         declaration = SettingDeclaration(name="interval", default=SettingValue(duration=Duration(seconds=2)))
         plugin = Plugin(
-            reader,
             id="example",
             version="1.0.0",
-            requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.PLUGINS_SETTINGS_LIST],
-            settings=[declaration],
+            register=lambda ctx: ctx.register(
+                Catalog(
+                    reader,
+                    requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.PLUGINS_SETTINGS_LIST],
+                    settings=[declaration],
+                )
+            ),
         )
         endpoint = await plugin.start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
@@ -189,27 +192,27 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).child_cancel.call, pending.call)
         self.assertEqual((await stream.read()).batch.columns, _columns(b"answered"))
         assert reader.pending is not None
-        with self.assertRaises(Failure):
+        with self.assertRaises(FailureError):
             await reader.pending
 
-        # A Late Retired Reply Cannot Corrupt the Next Window or Its Failure.
+        # A Late Retired Reply Cannot Corrupt the Next Window or Its FailureError.
         await stream.write(
             InstanceSamplesRequest(window=Window(start=Timestamp(seconds=103), period=Duration(seconds=1), count=1, sequence=4))
         )
         child = (await stream.read()).child
         self.assertGreater(child.call, pending.call)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=pending.call, payload=b"")))
-        failure = WireFailure(
+        failure = model.Failure(
             classification=CLASSIFICATION_REFUSED,
             code="denied",
             operation=ECHO.id,
             plugin="example",
             details={"key": "value"},
-            cause=WireFailure(code="source"),
+            cause=model.Failure(code="source"),
             diagnostics="details",
         )
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
-        self.assertEqual(WireFailure.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
+        self.assertEqual(model.Failure.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
         await stream.done_writing()
         self.assertIs(await stream.read(), EOF)
 
@@ -269,7 +272,11 @@ class WindowChildren(IsolatedAsyncioTestCase):
         # Reject Incomplete or Duplicate Settings at Declarations Construction.
         for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
             with self.assertRaises(ValueError):
-                Plugin(reader, id="example", version="1.0.0", settings=declarations).declarations()
+                Plugin(
+                    id="example",
+                    version="1.0.0",
+                    register=lambda ctx, declarations=declarations: ctx.register(Catalog(reader, settings=declarations)),
+                ).declarations()
 
 
 # === Public Functions === #

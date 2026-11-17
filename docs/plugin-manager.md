@@ -4,6 +4,20 @@
 Its client plugin-management resource is separate from the instance service that
 each plugin executable implements.
 
+## Native Activation and Inspection
+
+Products call `runtime.for_call(&ctx).plugins()` to load, bind a scope and clock,
+start or stop its samples, settle handles and inspect a candidate. Requests and
+opaque generation-fenced handles live in `harmos_runtime::facade::plugins`.
+A binding's `for_call()` calls native operations under its scoped clock. See the
+[Product Guide](product-guide.md) for policies and settlement.
+
+Inspection returns generic-validated frozen metadata within `metadata_bytes` and
+the registered operation deadline. It performs no installation, initialization,
+operation execution or sample demand. The existing process owner terminates and
+reaps managed candidates under the supplied placement teardown policy; remote
+inspection detaches its connection and leaves the remote process running.
+
 ## Host Composition
 
 Register the manager's object catalog with the storage backend and storage
@@ -40,7 +54,7 @@ existing placement policy and bundle limits. No resource budget is inferred
 from machine capacity. Namespace ownership is exclusive: a competing conditional
 write fails rather than overwriting another manager's registry.
 
-## Client Operations
+## In-Process Operations
 
 | Method | Request and Result |
 | --- | --- |
@@ -55,7 +69,8 @@ write fails rather than overwriting another manager's registry.
 | `Settings.List` | Name and optional issued cut; typed declarations, complete values, settings revision and resolved cut. |
 | `Settings.Set` | Name, complete typed value, expected settings revision and request identity; applied value, revision and durable receipt. |
 
-Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
+These host operations are private and have no gRPC service or Harmos client root.
+Products own any remote management wrappers. Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
 Replace changes a managed bundle while retaining the entry name, settings and product attachments. It validates the replacement description, contracts and sample channels before activating it. Failed staging leaves the previous bundle serving. Remote entries cannot be replaced by this operation. Set carries all writable
 fields and refuses stale revisions with the action to get again and retry.
 The entry also reports its runtime state, last connected description, declarations
@@ -120,7 +135,7 @@ unsettled process failures. A remote process remains owned by its external launc
 On host restart, persisted placement and enabled intent are restored. Enabled
 managed entries start from their installation, remote entries reconnect, and
 disabled entries remain stopped with no process. Startup and connection failures
-are reported per entry. Shut down through `runtime.shutdown().await` so the
+are reported per entry. Shut down through `runtime.stop().await` so the
 manager and attachments settle before storage closes.
 
 ## Product Responsibilities

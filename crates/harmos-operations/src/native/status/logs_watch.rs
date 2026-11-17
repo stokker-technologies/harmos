@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::status::LogsWatchRequest;
-use harmos_protocol::host::status::LogsWatchResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +21,10 @@ use futures_util::StreamExt;
 // Local Imports
 use super::StatusAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_protocol::host::status::LogsWatchRequest;
+use harmos_protocol::host::status::LogsWatchResponse;
+
+use crate::host::declarations::Events;
 
 /* === Constants === */
 
@@ -46,15 +47,23 @@ impl ProtobufOperation for LogsWatch {
     type Response = LogsWatchResponse;
     type Endpoints = ProtobufOutput<LogsWatchResponse>;
     const ID: &'static str = "harmos.host.v1.status.Logs/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.status", "Logs", "Watch"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        Self::run_with(context, request, output).await
+    }
+}
+
+impl LogsWatch {
+    pub(crate) async fn run_with(
+        context: ExecutionContext, request: LogsWatchRequest, output: &impl Events<LogsWatchResponse>,
+    ) -> Result<LogsWatchResponse, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;
         let access = access.0.get().ok_or(ServingError::Uninitialized)?;
         let mut events = access.logs_watch(request).await?;
-        let mut last = Self::Response::default();
+        let mut last = LogsWatchResponse::default();
         while let Some(event) = events.next().await {
             last = event?;
             output.send(last.clone()).await.map_err(ServingError::Stream)?;

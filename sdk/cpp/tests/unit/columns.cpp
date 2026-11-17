@@ -24,7 +24,6 @@
 #include "generated/types.hpp"
 #include "harmos/harmos.hpp"
 
-namespace authoring = harmos::plugin;
 using google::protobuf::DescriptorPool;
 using google::protobuf::DescriptorProto;
 using google::protobuf::Duration;
@@ -50,7 +49,7 @@ using std::vector;
 /* === Types === */
 
 namespace {
-using Value = harmos::conformance::Value;
+using harmos::conformance::Value;
 
 /* === Classes === */
 
@@ -153,26 +152,26 @@ TEST_CASE("Columns Encode Exactly as the Row's Repeated Columns Message") {
   const auto *descriptor = schema.file->FindMessageTypeByName("Row");
 
   SECTION("Rows Transpose into Packed Numerics and One Entry per Sample, Defaults Included") {
-    authoring::detail::Columns columns(descriptor);
+    harmos::plugin::detail::Columns columns(descriptor);
     for (const auto &row : rows)
       columns.append(*row);
     REQUIRE(columns.count() == 3);
-    REQUIRE(columns.encode(0, 3) == authoring::detail::encode(*schema.columns(rows, 0, 3)));
-    REQUIRE(columns.encode(1, 3) == authoring::detail::encode(*schema.columns(rows, 1, 3)));
-    REQUIRE(columns.encode(1, 2) == authoring::detail::encode(*schema.columns(rows, 1, 2)));
+    REQUIRE(columns.encode(0, 3) == harmos::plugin::detail::encode(*schema.columns(rows, 0, 3)));
+    REQUIRE(columns.encode(1, 3) == harmos::plugin::detail::encode(*schema.columns(rows, 1, 3)));
+    REQUIRE(columns.encode(1, 2) == harmos::plugin::detail::encode(*schema.columns(rows, 1, 2)));
     REQUIRE(columns.size(0, 3) == columns.encode(0, 3).size());
     REQUIRE(columns.size(2, 3) == columns.encode(2, 3).size());
   }
   SECTION("A Columns Message Encodes the Same Bytes") {
     const auto expected = schema.columns(rows, 0, 3);
-    authoring::detail::Columns columns(descriptor);
+    harmos::plugin::detail::Columns columns(descriptor);
     columns.extend(*expected, 3);
-    REQUIRE(columns.encode(0, 3) == authoring::detail::encode(*expected));
-    authoring::detail::Columns short_columns(descriptor);
+    REQUIRE(columns.encode(0, 3) == harmos::plugin::detail::encode(*expected));
+    harmos::plugin::detail::Columns short_columns(descriptor);
     REQUIRE_THROWS_AS(short_columns.extend(*expected, 4), invalid_argument);
   }
   SECTION("Bytes Rows Keep Empty Values") {
-    authoring::detail::Columns columns(Value::descriptor());
+    harmos::plugin::detail::Columns columns(Value::descriptor());
     Value first;
     first.set_value("a");
     columns.append(first);
@@ -187,15 +186,15 @@ TEST_CASE("Columns Encode Exactly as the Row's Repeated Columns Message") {
 TEST_CASE("Window Columns Must Repeat Every Row Field with Its Number and Type") {
   Schema schema;
   const auto *row = schema.file->FindMessageTypeByName("Row");
-  REQUIRE_NOTHROW(authoring::detail::validate_columns(row, schema.file->FindMessageTypeByName("Columns")));
-  REQUIRE_THROWS_AS(authoring::detail::validate_columns(row, row), invalid_argument);
-  REQUIRE_THROWS_AS(authoring::detail::validate_columns(row, schema.file->FindMessageTypeByName("Mismatched")), invalid_argument);
-  REQUIRE_THROWS_AS(authoring::detail::validate_columns(row, schema.file->FindMessageTypeByName("Extra")), invalid_argument);
-  REQUIRE_THROWS_AS(authoring::detail::validate_row(schema.file->FindMessageTypeByName("Columns")), invalid_argument);
+  REQUIRE_NOTHROW(harmos::plugin::detail::validate_columns(row, schema.file->FindMessageTypeByName("Columns")));
+  REQUIRE_THROWS_AS(harmos::plugin::detail::validate_columns(row, row), invalid_argument);
+  REQUIRE_THROWS_AS(harmos::plugin::detail::validate_columns(row, schema.file->FindMessageTypeByName("Mismatched")), invalid_argument);
+  REQUIRE_THROWS_AS(harmos::plugin::detail::validate_columns(row, schema.file->FindMessageTypeByName("Extra")), invalid_argument);
+  REQUIRE_THROWS_AS(harmos::plugin::detail::validate_row(schema.file->FindMessageTypeByName("Columns")), invalid_argument);
 }
 
 TEST_CASE("Parts Fit the Message Limit at Sample Boundaries") {
-  authoring::detail::Columns columns(Value::descriptor());
+  harmos::plugin::detail::Columns columns(Value::descriptor());
   for (int index = 0; index < 40; ++index) {
     Value row;
     row.set_value(string(static_cast<std::size_t>(index % 7), 'v'));
@@ -208,7 +207,7 @@ TEST_CASE("Parts Fit the Message Limit at Sample Boundaries") {
   for (const auto &[begin, end] : parts) {
     REQUIRE(begin == next);
     REQUIRE(end > begin);
-    REQUIRE(authoring::detail::framed_size(begin, end - begin, columns.size(begin, end), end == columns.count()) <= limit);
+    REQUIRE(harmos::plugin::detail::framed_size(begin, end - begin, columns.size(begin, end), end == columns.count()) <= limit);
     next = end;
   }
   REQUIRE(next == columns.count());

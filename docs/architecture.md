@@ -19,10 +19,31 @@ Library-history references keep their saved-storage path; no application bytes o
 metadata enter library persistence. Diagnostics and bundle installation use the
 same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
 
+## Lifecycle Vocabulary
+
+Host construction and activity use `Builder::new(origin)` → register → start →
+stop. Application preparation uses `Runtime::start(origin, config)` or
+`start_with`; `run` starts, awaits the product's stop-request future and stops.
+Runtime construction needs the initial state; Harmos does not select process
+signal policy. Resource acquisition/release hooks use initialize/finalize.
+Application prepare and application/service stop retain their existing semantics.
+
+The remaining plugin lifecycle cutover is locked direction under
+[Plugin Lifecycle](../openspec/changes/plugin-lifecycle/design.md): local inert
+register → admission → initialize → finalize. Registration declares typed module
+`catalog()` values and opaque product sections; `declarations()` remains the one
+frozen host-facing payload name. Generic carrier helpers accumulate registrations;
+products own public registrars. C++ uses `add` because `register` is reserved.
+Finalize must run once after every attempted initialize, including failure,
+timeout, cancellation and carrier loss. Cancel and settle work before finalize;
+there are no plugin start/stop hooks. Products hide Harmos types without aliases
+or path overrides; clashing names use qualified module paths.
+
 ## Plugin Boundary
 
-**Locked owner decision, 2026-11-16; not implemented:** several products embed
-Harmos. Harmos owns plugin runtime machinery; a product owns policy and everything
+**Locked owner decision, 2026-11-16; policy transfer pending:** several products embed
+Harmos. Typed activation and bounded inspection are implemented below; the product
+policy and carrier cutovers remain open. Harmos owns plugin runtime machinery; a product owns policy and everything
 an author touches. [Plugin Boundary](../openspec/changes/plugin-boundary/design.md)
 amends `operation-boundary` and `plugin-lifecycle` together.
 
@@ -64,9 +85,9 @@ and lifecycle changes; generated output stays tracked pending the separate decis
 
 `Runtime::for_call` and `Handle::for_call` accept a `CallContext` or a trusted
 `HostContext`. `StorageRuntime::for_call` offers the same storage calls before full
-startup. The facade's `storage()` group covers the native storage catalog;
-`streams().publish()` submits one native publication. Request and result DTOs live
-under `harmos_runtime::facade::{storage, streams}`. Watch methods take typed output
+startup. The facade groups cover storage, stream publication, plugins, time,
+settings, status and invocations. Request and result DTOs live under the corresponding
+`harmos_runtime::facade` module. Watch methods take typed output
 endpoints and return cancellable invocation handles.
 
 A `CallOptions` value on the call context replaces the registered operation policy
@@ -80,9 +101,34 @@ The runtime's whole-crate `domain` and `builtins` reexports are removed. Builder
 catalogs have explicit exports under `harmos_runtime::catalog`. Backend-authoring
 contracts and their value closure have explicit exports under
 `harmos_runtime::backend`, without managers or readers. Storage-only sessions expose
-`for_call` and cleanup, with no operation-manager getter. Builder ownership, the
-remaining manager privacy, facade groups and private host transport are still
-governed by the pending Operation Boundary inventory below.
+`for_call` and cleanup, with no operation-manager getter. Builder ownership and
+the remaining manager privacy follow the pending Operation Boundary inventory below.
+
+Plugin calls reuse the process, connection and scoped-publication owners in
+`crates/harmos-runtime/src/plugin/grpc`. Opaque facade handles retain their original
+connection and runtime identity; they cannot retarget after reconnect or settlement.
+Handle clones share one allocation, including frozen metadata and bound context;
+sample tokens retain a distinct run identity owned by the scoped sample actor.
+A binding's `for_call()` retains its unit clock and cancellation fence. Scoped
+settlement shares the existing completion signal, so concurrent callers observe one
+outcome without a second lifecycle lock or registry.
+
+The registered `plugins.activate`, `plugins.start_samples` and `plugins.inspect` policies use
+`GrpcPluginSettings.policy.load`. Facade activation and sample startup already own
+admission and perform the work directly, without a second competing load deadline. Other startup
+owners retain their existing load admission. Inspection uses bounded Instance.Get,
+validates frozen declarations and performs no installation or activation. Managed
+inspection retains a runtime stop participant through termination and reaping;
+remote inspection closes only its connection.
+
+Built-in registrations attach a native declaration to the existing carrier factory.
+Native admission keeps typed requests, responses and watch items; encoded admission
+uses the wire carrier. Both retain one registered policy and authorization owner.
+Watch behavior has one implementation shared by its two endpoint writers. Protocol
+generation emits allocation accounting for the native request and watch-item closure
+into `crates/harmos-domain/src/message/allocation/protobuf.rs`, using the locked Rust descriptor
+layout, so memory admission does not serialize payloads. Host-wire services are
+removed; encoded admission remains for product and plugin carriers.
 
 ## Storage and Query Ownership
 
@@ -738,8 +784,8 @@ and caller-face authorization remain independent checks.
 
     One SDK package per language, amended by the owner on
     2026-11-13: Python `harmos-sdk` (import `harmos`), Rust `harmos`, NuGet `Harmos`
-    and CMake `Harmos` (`Harmos::Cpp`) include authoring, client roots and host
-    protocol needs. Audience-specific builds and stub guards are removed. The host
+    and CMake `Harmos` (`Harmos::Cpp`) include carrier authoring helpers and shared protocol
+    and connection plumbing. Product clients are generated from product descriptors. Audience-specific builds and stub guards are removed. The host
     enforces faces and visibility at runtime, regardless of available bindings.
     The current four SDKs live in this repository, with
     the same concepts named consistently using each language's normal casing;
@@ -751,7 +797,7 @@ and caller-face authorization remain independent checks.
     `tools/conformance/`; Self-Sufficient Library SDK Ownership in
     `openspec/changes/operation-grammar/specs/operation-contract/spec.md`.
     **Proof:** the independent reference host runs the shared conformance suite in
-    each SDK. Four-language client-root fixtures compose library and product descriptors.
+    each SDK. Four-language client fixtures own product wrapper descriptors.
     Native plugin semantic parity is agreed; generic managed application clients remain
     Rust-only, while other languages use their generated application gRPC clients.
     C++ installs `Harmos::Cpp` with config-package dependencies; its conformance
@@ -759,8 +805,8 @@ and caller-face authorization remain independent checks.
     protocol input lives under `sdk/tests/fixtures/conformance/proto/`; generated fixture
     messages and implementations belong only to test and conformance targets in every SDK.
     C# builds every project through `sdk/csharp/Harmos.slnx`; central properties and
-    package versions own the .NET build. Committed client roots live in `src/Harmos/Generated`
-    and `tests/Harmos.Tests/Generated`. All build outputs live under `artifacts`; executable
+    package versions own the .NET build. Committed product fixture roots live in `tests/Harmos.Tests/Generated`;
+    `src/Harmos/Generated` contains carrier context helpers and protocol bindings. All build outputs live under `artifacts`; executable
     manifests from MSBuild are the path authority for test and fixture consumers. NuGet `Harmos`
     takes its version from the Cargo workspace and includes SourceLink and repository metadata.
 
@@ -1187,65 +1233,52 @@ lives at `proto/harmos/plugin/v1/behaviour.md` beside the connection service.
 
 ### Caller Options and SDK Projection
 
+Harmos host operations are private and in-process. Files under `proto/harmos/host/v1`
+retain payload definitions without service declarations, generated host RPC clients,
+listener routes or reflected services. A product declares its own wrapper services
+and authorizes product actions before calling the typed native facade.
+
 ```proto
-// model/v1/callers.proto
-extend google.protobuf.MethodOptions { Callers callers = 51001; }
-enum Callers { CALLERS_UNSPECIFIED = 0; CLIENTS = 1; PLUGINS = 2; ALL = 3; }
-// host/v1/time.proto
-rpc Get(TimeGetRequest) returns (TimeGetResponse) {
-  option (harmos.model.v1.callers) = ALL;
+// A product-owned host service declares its audience.
+rpc Get(GetRequest) returns (GetResponse) {
+  option (harmos.model.v1.callers) = CLIENTS;
 }
 ```
 
-Every RPC under host/ requires a present, recognized nonzero option;
-`mise run check -- --repository` compiles descriptors and checks it, alongside Buf
-format and lint. Generated descriptors retain custom method options. Runtime consumers must read
-those options from the raw descriptor bytes with prost_reflect; decoding and
-re-encoding through prost_types discards unknown custom options. A host method's
-executor package does not imply its callers. Plugin executor operations are called
-by the host by definition and carry no callers option; CLIENTS always means client
-programs, never the host. Host operations with CLIENTS or ALL
-generate the client surface; PLUGINS or ALL generate the plugin context. Plugin
-executor services generate connection stubs, never a host client/context resource.
-Reference documentation must use these same projections. Visibility, fingerprints,
-trusted identity, inherited scope and resource grants remain independent gates.
-The host must refuse a wrong caller before executing any handler or admitting a
-managed/encoded child; hiding the method in an SDK is not authorization.
+`callers.proto` remains shared generation input for product wrappers. CLIENTS and
+ALL project product client resources; PLUGINS and ALL project product context
+resources. The runtime enforces audience, visibility, fingerprints, caller identity,
+scope and grants independently of the generated surface. Reusing a payload does
+not grant access to its private host operation. Native protobuf wrapper declarations
+may supply their own `ProtobufOperation::service()` descriptor when the payload's
+pool does not contain the product service.
 
-`plugins.Settings.List` clients must supply name. Plugins may omit it or name their
-own trusted entry; another name is refused before storage access. Its response
-contains declarations, complete values, revision and resolved_at for both callers.
-Set is CLIENTS-only and replaces the complete map. No old top-level Settings
-service, forwarding adapter or request/response twin survives.
+The plugin carrier retains Instance, invocation, cancellation, windows and Samples.
+Its context facilities use `harmos.plugin.v1.Time/Get` and `/Sleep`,
+`Invocations/Get`, `/Cancel` and `/Watch`, `Operations/List` and `/Get`, and
+`harmos.plugin.v1.plugins.Settings/List`. These are PLUGINS-only contracts carried
+by admitted child calls, with no independent listener routes. Settings select only
+the calling plugin; invocation controls select only its owned invocations; discovery
+uses the same admission predicate as dispatch. The native handlers share these
+mechanics without exposing host service identities to the wire.
 
-The four public SDK barrels continue to hide wire packages. Shared values use the
-root barrel; generated client and plugin resources keep their existing call style:
-request content as arguments, owned transport context, and a single response field
-returned as the payload. Multi-field replies retain their complete response type.
-Python keeps wire modules under `_wire/model`, `_wire/host` and `_wire/plugin`.
-Rust protocol modules are `model`, `host` and `plugin`; SDK wire modules remain crate-private. ALL payloads are exported
-through the Rust/Python and C++ shared roots, and through
-C# `Harmos.Clients` (the context uses that same public payload type).
+Harmos supplies carrier helpers and reusable connection plumbing. It supplies no
+host client resource root in Rust, Python, C# or C++. Products generate their own
+clients from their descriptors. The reference product in `tools/conformance/src/product.rs`
+and `sdk/tests/fixtures/client/proto/` demonstrates that ownership in all four SDKs.
+Python product roots all compose ordinary resource attributes on `Connection`;
+there is no inherited library resource tree or alternative standalone renderer.
 
-Repository checks reject wire packages and version namespaces in public C++ headers,
-Python modules, stubs and exports, Rust wire module declarations and SDK guides.
-`source/protocol.py` owns code surfaces and export inventories; CI documentation
-checking in `ci/docs.py` owns SDK guides and local documentation links.
-The allow-list is internal generated directories (`detail`, `_generated`, `_wire`),
-canonical gRPC method paths, and protocol documentation that maps packages (`proto/**/*.md`
-and this architecture guide). Markdown link destinations may name protocol source files.
-Generated Python export inventories also reject duplicate public homes.
+Wire packages stay in internal generated modules. Reflection is optional and off
+by default. When enabled, it merges reachable payload graphs from served product
+contracts and registers their services; private host declarations have no binding
+and contribute no reflected service. The protocol's host payload files themselves
+contain no service descriptors.
 
-Reflection remains optional and off by default; `Operations` is supported discovery.
-When reflection is enabled, it merges the reachable message graphs from operation
-contracts before registering each served service once. Shared descriptor files are
-partial graphs, not conflicting complete registrations. Python generators relocate
-imports and message module metadata without changing canonical gRPC service identities.
-
-Wrong-caller admission uses one failure constructor in `harmos-operations/src/failure.rs`:
-`REFUSED`, code `-32604`, action `Call`, the refused operation, and a message naming both.
-Native gRPC, child replies, samples, guest imports and nested invocation failures
-preserve that record; the gRPC status is PermissionDenied, including after nesting.
+Wrong-caller admission preserves REFUSED, code `-32604`, action `Call`, the refused
+operation and its actionable message across direct, encoded and child calls.
+Unregistered host routes return Unimplemented. Conformance rules 33 and 34 cover
+private host wire isolation and product wrapper audiences.
 
 ### Product Wrappers and the Native Facade
 
@@ -1253,14 +1286,16 @@ preserve that record; the gRPC status is PermissionDenied, including after nesti
 replaces "The product-owned `protocol/composition.toml` is the single declarative
 composition input for both runtime assembly and SDK generation." Its purpose was
 matching caller admission and generated resources. Product wrapper descriptors
-will own remote exposure when the host-wire cutover lands. The composition reader, caller override map and generator `--composition` input
+own remote exposure. The composition reader, caller override map and generator `--composition` input
 are removed. Generators merge descriptor artifacts directly and project the declared
 audiences. Schematic and the four language fixtures use those same declarations.
-Host wire and SDK root removal remain pending in the breaking group.
+Host wire services and SDK resource roots are removed. A wrapper owns its remote
+grant identity and scopes; private host handlers retain domain validation without
+repeating a remote grant check.
 
 ```rust,ignore
 let reply = runtime.for_call(&ctx).storage().append_samples(request).await?;
-let plugin = runtime.for_call(&ctx).plugins().load(PluginSource::Process(process)).await?;
+let plugin = runtime.for_call(&ctx).plugins().load(LoadRequest { placement, settings }).await?;
 ```
 
 Every typed facade method dispatches its registered native operation under that
@@ -1284,8 +1319,7 @@ Plugin instance/invocation/window/sample/child frames stay on the wire, with plu
 context facilities for time, own settings, own invocation Get/Cancel/Watch and
 admitted discovery. Discovery applies the dispatch admission predicate.
 
-The source still exposes the older managers and host services until the breaking
-groups close; those are migration inputs, not the agreed product contract. See
+The source still exposes older managers until their breaking groups close; those are migration inputs, not the agreed product contract. See
 `openspec/changes/operation-boundary/tasks.md` for completed groups and usable pins.
 
 ### Streaming Field Expressions
@@ -1353,7 +1387,7 @@ undeclared or unauthorized operations are absent from List and unavailable to Ge
 
 **Locked replacement, proposed (`operation-boundary`):** core crates close storage
 coverage, consolidate statistics and own native declarations and the typed facade;
-all four SDKs move context calls to plugin facilities and delete host-client roots;
+all four SDKs use plugin context facilities and have no host-client resource roots;
 generators project product wrappers; conformance owns a wrapper fixture; Schematic,
 stories and benchmarks migrate together. The table below records the preceding
 executor-package migration, not the new delivery's completion.
@@ -1364,7 +1398,7 @@ from their source definitions; generated files have no independent ownership.
 | Owner | Landed Consumer Work |
 | --- | --- |
 | Core Crates | Model/host/plugin imports, one host declaration and handler per operation, caller admission on direct/encoded/child paths, descriptor-declared audiences, trusted settings selectors and effective callers in discovery. Storage remains Private and in-process. |
-| Rust SDK | Public barrels, flattened client roots, shared plugin context resources, product fixture bindings and host method identities. The SDK client example is dynamic; the Schematic client is generated from application descriptors. |
+| Rust SDK | Public payload barrels, shared connection plumbing, plugin context facilities and product wrapper fixture bindings. Reference product client examples live in conformance tooling; the Schematic client is generated from application descriptors. |
 | Python SDK | Typed public payloads, generated client/context resources and internal executor wire modules, migrated example and fixture imports. The packaged finite-schema projector validates the mandatory callers field in canonical contracts. |
 | C# SDK | Public payload namespaces, shared client/context reply types, generated roots and fixture bindings, caller-owned call context. |
 | C++ SDK | Public payload barrel, generated client/context methods, native protocol inventory, conformance fixture barrel, installed-package consumers. |
@@ -1374,7 +1408,7 @@ from their source definitions; generated files have no independent ownership.
 The narrowing-only stories in `crates/harmos-runtime/tests/plugin_grpc/application_faces.rs`
 and `tools/python/tests/integration/test_protocol_callers.py` are removed. The runtime file
 retains the scoped discovery wrapper proof, matching discovery to dispatch. Private host
-wire reachability and plugin context facilities remain open in the breaking group.
+wire services are absent and plugin context facilities stay on the carrier.
 
 Invocation selectors retain the submitting caller's ownership. A plugin cannot watch
 an invocation submitted by the host or another caller. A watch demand already in
@@ -1389,7 +1423,7 @@ and plugin/host/ folders and old shared v1 files. Apply the complete identity ma
 mandatory declared callers before enabling listeners. Products
 own storage wrappers and application-specific publication; no library Storage or
 Samples.Append service is recreated. Products expose their own wrapper services;
-library host-wire and host-client removal remain open in the breaking group.
+library host-wire services and host-client resource roots are removed.
 
 ## Managed Process Ownership
 
@@ -1693,7 +1727,7 @@ decoders and do not share this Rust descriptor-layout estimator.
 Plugin peer admission compares the configured transfer chunk plus framing with
 the peer's advertised bound. The transport message ceiling remains independent.
 Encoded Invocations.Create forwarding preserves an explicit native gRPC status,
-including its action, details and cause; conformance's Client Caller Refusal rule
+including its action, details and cause; conformance's Product Wrapper Audiences rule
 also compares direct and encoded Unimplemented failures.
 
 All four typed client generators flatten request fields in declaration order. Required
@@ -1748,5 +1782,5 @@ wire compilation, public-surface checks and operations reference rendering accep
 product roots, packages and namespaces; see
 [Protocol Generation](tooling.md#protocol-generation). The shared descriptor fixture proves a product
 Annotations resource beneath library Plugins alongside the sibling Jobs.Progress root.
-Python composed roots inherit Client connection ownership and preserve typed resource
+Python composed roots inherit Connection ownership and preserve typed resource
 properties. No application-side resource grafting is required.

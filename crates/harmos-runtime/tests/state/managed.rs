@@ -39,7 +39,7 @@ async fn cloned_read_handles() {
     let value = cloned.read(|state| state.balance(HOUSE)).await.unwrap();
     assert_eq!(value.value, 40);
     assert_eq!(value.position, redone.frontier);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -48,7 +48,7 @@ async fn state_survives_stop() {
     let manager = runtime.state.clone();
     let state = manager.state();
     manager.commit(deposit(7)).await.unwrap();
-    let through = crate::support::app::shutdown(&runtime).await.unwrap();
+    let through = crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(through, Position(1));
     assert!(manager.commit(deposit(1)).await.is_err());
     drop((manager, runtime));

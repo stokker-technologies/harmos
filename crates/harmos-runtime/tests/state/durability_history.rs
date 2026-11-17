@@ -45,7 +45,7 @@ async fn state_matches_replay() {
     assert_eq!(at_undo.value.balance, 4);
     assert_eq!(at_undo.position, undone.position);
     drop(journal);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let replayed = booted(Ledger::default(), |setup| {
         setup.settings().recover(Journal::<Bank>::open(&copy));
@@ -69,7 +69,7 @@ async fn state_matches_replay() {
         .expect("boot replay rebuilt the same state");
 
     assert_eq!(from_snapshot, rebuilt);
-    replayed.shutdown().await.unwrap();
+    replayed.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -98,7 +98,7 @@ async fn source_query_equals() {
         runtime.state.query::<Change>(Position::ORIGIN).await.collect::<Result<_, _>>().expect("the source serves the evicted prefix");
 
     assert_eq!(entries, expected);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -126,7 +126,7 @@ async fn refusals_distinguish_origin() {
     );
     let exact = runtime.state.state().at(anchor, Position(2)).await.expect("the caller's exact anchor needs no source");
     assert_eq!(exact.value.balance, 3);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -140,7 +140,7 @@ async fn inspector_recovers_read() {
         let receipt = runtime.state.commit(deposit(amount)).await.expect("accepted");
         runtime.state.wait_until_stored(receipt.position).await;
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let inspector = Runtime::<Bank>::inspect(Origin::initial(Ledger::default()), Journal::<Bank>::open(&copy))
         .await

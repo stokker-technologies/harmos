@@ -52,7 +52,7 @@ Your application defines each change; Harmos manages its accepted history.
 - **Explicit Visibility**: Private operations run inside their SDK process, Protected operations remain host/owner callable, and Public operations admit declared peers and clients through the host.
 - **[Plugin Management](docs/plugin-manager.md)**: Persist settings and manage native or WebAssembly plugin entries.
 - **Access and Host Status**: Compose library-owned TLS listeners, durable pairings, live trust rotation, contributed health and redacted diagnostics; see [Access and Host Status](docs/access-status.md).
-- **gRPC Interfaces** [`grpc`]: Register generated protobuf messages directly, expose typed operations and generate client contracts.
+- **gRPC Interfaces** [`grpc`]: Declare product wrappers over native operations and generate product client contracts.
 - **Simulation** [`simulation`]: Exercise supported workflows with repeatable seeds.
 
 ## Interfaces
@@ -76,7 +76,7 @@ settings through their plugin entries; see [Schematic](docs/schematic.md).
 
 ### Python
 
-Install `harmos-sdk` (import `harmos`) for plugin authoring and the host client root.
+Install `harmos-sdk` (import `harmos`) for plugin carrier helpers. Products own their author-facing SDKs and generated clients.
 Applications generate their own protobuf messages and own connection and authentication.
 
 #### Examples
@@ -88,22 +88,22 @@ to the application revision that produced them.
 
 ### Rust
 
-Plugin and client authors depend on `harmos`: import Client and shared messages from
-`harmos`, client response/options from `harmos::client`, and authoring types from
-`harmos::plugin`.
-Its protobuf messages, plugin builders and generated-contract clients compile without host code.
-Use generated resource calls such as `client.operations.list().await?`. Products
-generate their client and plugin context from application descriptors and declared audiences; see
-the [Schematic client](examples/schematic/protocol/examples/client.rs). The separate
-[Rust client example](sdk/rust/examples/client.rs) discovers and invokes an operation dynamically.
+Plugin carriers and generated product clients use `harmos` for shared messages,
+connection plumbing and internal authoring helpers. Products generate client resources
+from their own descriptors; Harmos has no host-client resource root. See the
+[Schematic client](examples/schematic/protocol/examples/client.rs) and the
+[reference product fixture](tools/conformance/src/product.rs). Plugin contexts keep
+time, own settings, own invocation controls and admitted discovery on the plugin carrier.
 The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed setting default
-and reads its calling entry through `Context::settings`. Discover contracts through
-`client.operations.list()`; public client response types live in `harmos::client`.
+and reads its calling entry through `Context::settings`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
+Assemble with `Builder::new(origin)`, register catalogs, then call `start()` and
+end with `Runtime::stop()`. `builder.run(stop_request)` starts, waits for the
+product's stop-request future and stops.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
-Native storage calls use `runtime.for_call(&ctx).storage()`; stream publication uses
-`runtime.for_call(&ctx).streams().publish(request)`. Each call uses its registered
+Native calls bind `runtime.for_call(&ctx)`, then select `storage()`, `streams()`,
+`plugins()`, `time()`, `settings()`, `status()` or `invocations()`. Each call uses its registered
 operation policy and retains typed payloads without encoding. See the
 [product guide](docs/product-guide.md) for call contexts and storage-only assembly.
 
@@ -144,8 +144,8 @@ operations, streams and observers. See the [C++ SDK guide](docs/tooling.md#c-plu
 for toolchain setup and managed or remote serving.
 
 Clients take request content directly, own their transport context and project single-field
-responses. Import `Client` from the SDK root, response types from its client boundary,
-and authoring types from its plugin boundary; wire packages remain internal.
+responses. Products generate their own client roots and keep wire packages internal;
+Harmos retains the carrier and connection helpers used by those SDKs.
 See [SDK Call Contracts](docs/architecture.md#sdk-call-contracts).
 
 #### Examples

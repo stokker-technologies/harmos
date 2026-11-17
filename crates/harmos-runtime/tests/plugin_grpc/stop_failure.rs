@@ -50,5 +50,5 @@ async fn failed_cleanup_closes_only_its_plugin_and_preserves_the_failure() {
         .unwrap();
     assert_eq!(response.value, b"host survives");
     peer.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

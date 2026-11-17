@@ -111,80 +111,86 @@ pub fn harmos_register() -> Registration {
         ..ordinary
     };
     let plugin = Plugin::new("sandbox_guest", env!("CARGO_PKG_VERSION"))
-        .operation(
-            Operation::new(LocalEcho::ID, async |_: &Context, request: LocalEcho| Ok(Echoed { said: request.say }))
-                .visibility(Visibility::Private),
-        )
-        .operation(
-            Operation::new(EchoOperation::ID, async move |context: &Context, request: EchoOperation| {
-                echo(&echo_owner, context, request).await
-            })
-            .visibility(Visibility::Public)
-            .policy(ordinary),
-        )
-        .operation(
-            Operation::new(ReadOperation::ID, async move |context: &Context, request: ReadOperation| {
-                read(&read_owner, context, request).await
-            })
-            .visibility(Visibility::Public)
-            .replay_safe()
-            .policy(retried),
-        )
-        .operation(
-            Operation::new(CountsOperation::ID, async move |_: &Context, _: CountsOperation| {
-                Ok(Value {
-                    value: counts_owner.ran.load(Ordering::SeqCst).to_string(),
+        .register(|ctx| {
+            ctx.register(
+                Operation::new(LocalEcho::ID, async |_: &Context, request: LocalEcho| Ok(Echoed { said: request.say }))
+                    .visibility(Visibility::Private),
+            )?;
+            ctx.register(
+                Operation::new(EchoOperation::ID, async move |context: &Context, request: EchoOperation| {
+                    echo(&echo_owner, context, request).await
                 })
-            })
-            .visibility(Visibility::Public)
-            .policy(ordinary),
-        )
-        .operation(
-            Operation::new(DeclineOperation::ID, async |_: &Context, _: DeclineOperation| -> Result<Echoed> {
-                Err(Error::failure(Classification::Permanent, "7", "the probe declines", "Choose Another Probe"))
-            })
-            .visibility(Visibility::Public)
-            .policy(ordinary),
-        )
-        .operation(
-            Operation::new(FailOperation::ID, async |_: &Context, _: FailOperation| -> Result<Echoed> { panic!("requested guest trap") })
                 .visibility(Visibility::Public)
                 .policy(ordinary),
-        )
-        .operation(
-            Operation::new(SpinOperation::ID, async |_: &Context, _: SpinOperation| -> Result<Echoed> {
-                loop {
-                    std::hint::black_box(1);
-                }
-            })
-            .visibility(Visibility::Public)
-            .policy(spin),
-        )
-        .operation(
-            Operation::new(WaitOperation::ID, async |_: &Context, _: WaitOperation| -> Result<Echoed> { std::future::pending().await })
+            )?;
+            ctx.register(
+                Operation::new(ReadOperation::ID, async move |context: &Context, request: ReadOperation| {
+                    read(&read_owner, context, request).await
+                })
                 .visibility(Visibility::Public)
-                .policy(wait),
-        )
-        .operation(
-            Operation::new(FinishOperation::ID, async move |context: &Context, request: FinishOperation| {
-                finish_owner.ran.fetch_add(1, Ordering::SeqCst);
-                if request.mode == 2 {
-                    return std::future::pending().await;
-                }
-                context.cancelled().await;
-                if request.mode == 1 {
-                    return std::future::pending().await;
-                }
-                Ok(Value { value: "42".into() })
-            })
-            .visibility(Visibility::Public)
-            .policy(finish),
-        )
-        .requires::<ProviderEchoOperation>()
-        .requires::<ReadOperation>()
-        .requires::<PublishProgress>()
-        .requires::<ForbiddenCreate>()
-        .stream(Stream::<Echoed>::new("progress"));
+                .replay_safe()
+                .policy(retried),
+            )?;
+            ctx.register(
+                Operation::new(CountsOperation::ID, async move |_: &Context, _: CountsOperation| {
+                    Ok(Value {
+                        value: counts_owner.ran.load(Ordering::SeqCst).to_string(),
+                    })
+                })
+                .visibility(Visibility::Public)
+                .policy(ordinary),
+            )?;
+            ctx.register(
+                Operation::new(DeclineOperation::ID, async |_: &Context, _: DeclineOperation| -> Result<Echoed> {
+                    Err(Error::failure(Classification::Permanent, "7", "the probe declines", "Choose Another Probe"))
+                })
+                .visibility(Visibility::Public)
+                .policy(ordinary),
+            )?;
+            ctx.register(
+                Operation::new(FailOperation::ID, async |_: &Context, _: FailOperation| -> Result<Echoed> {
+                    panic!("requested guest trap")
+                })
+                .visibility(Visibility::Public)
+                .policy(ordinary),
+            )?;
+            ctx.register(
+                Operation::new(SpinOperation::ID, async |_: &Context, _: SpinOperation| -> Result<Echoed> {
+                    loop {
+                        std::hint::black_box(1);
+                    }
+                })
+                .visibility(Visibility::Public)
+                .policy(spin),
+            )?;
+            ctx.register(
+                Operation::new(WaitOperation::ID, async |_: &Context, _: WaitOperation| -> Result<Echoed> { std::future::pending().await })
+                    .visibility(Visibility::Public)
+                    .policy(wait),
+            )?;
+            ctx.register(
+                Operation::new(FinishOperation::ID, async move |context: &Context, request: FinishOperation| {
+                    finish_owner.ran.fetch_add(1, Ordering::SeqCst);
+                    if request.mode == 2 {
+                        return std::future::pending().await;
+                    }
+                    context.cancelled().await;
+                    if request.mode == 1 {
+                        return std::future::pending().await;
+                    }
+                    Ok(Value { value: "42".into() })
+                })
+                .visibility(Visibility::Public)
+                .policy(finish),
+            )?;
+            ctx.register(harmos::plugin::Dependency::<ProviderEchoOperation>::new())?;
+            ctx.register(harmos::plugin::Dependency::<ReadOperation>::new())?;
+            ctx.register(harmos::plugin::Dependency::<PublishProgress>::new())?;
+            ctx.register(harmos::plugin::Dependency::<ForbiddenCreate>::new())?;
+            ctx.register(Stream::<Echoed>::new("progress"))?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations");
     Registration::new(plugin)
         .capacity(2)
         .lifecycle_policy(ordinary, ordinary)

@@ -68,6 +68,7 @@ native_payload!(Answer);
 /* === Structs === */
 
 pub struct NativeInvocation<O: NativeOperation> {
+    id: super::OperationInstanceId,
     future: BoxFuture<'static, crate::Result<Response<O::Response>>>,
     control: Arc<crate::supervision::instance::Instance>,
 }
@@ -112,6 +113,10 @@ impl<O: NativeOperation> std::future::Future for NativeInvocation<O> {
     }
 }
 impl<O: NativeOperation> NativeInvocation<O> {
+    pub fn id(&self) -> super::OperationInstanceId {
+        self.id
+    }
+
     pub fn request_cancel(&self) {
         self.control.request_cancel();
     }
@@ -175,6 +180,7 @@ impl super::Manager {
             parent.map(|parent| &parent.scope),
             parent.map_or(&[], |parent| parent.admission.held()),
         )?;
+        let id = running.id();
         let control = running.control.clone();
         let future = Box::pin(async move {
             let response = crate::clock::waiting(running).await?.0.clone();
@@ -183,7 +189,7 @@ impl super::Manager {
                 reason: "native response type differs",
             })
         });
-        Ok(NativeInvocation { future, control })
+        Ok(NativeInvocation { id, future, control })
     }
     pub async fn call_native<O: NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> crate::Result<O::Response> {
         let response = self.submit_native::<O>(request, ())?.await?;
@@ -210,7 +216,7 @@ impl Caller for HostContext {
                 }
                 let origin = context.source.check()?;
                 let entry = context.operations.entry_as(target.id, &origin)?;
-                if entry.declared().fingerprint != target.definition.fingerprint {
+                if !target.in_process && entry.declared().fingerprint != target.definition.fingerprint {
                     return Err(crate::Error::InvalidInput {
                         field: "declared operation",
                         reason: "callee fingerprint differs",
@@ -273,8 +279,9 @@ impl ChildInstance for NativeChild {
     fn join(self: Box<Self>) -> CallFuture<'static> {
         Box::pin(async move {
             let response = crate::clock::waiting(self.0).await.map_err(|error| InvocationError::failed(self.1.id, error))?.0.clone();
-            if self.1.protobuf_native {
-                let bytes = response.restore::<Vec<u8>>().ok_or(InvocationError::Response { operation: self.1.id })?;
+            if self.1.protobuf_native
+                && let Some(bytes) = response.clone().restore::<Vec<u8>>()
+            {
                 return (self.1.decode_protobuf)(&bytes).map_err(|error| InvocationError::failed(self.1.id, error));
             }
             Ok(response)
@@ -542,14 +549,16 @@ mod tests {
     static PARENT_CALLEES: [crate::operations::WireDeclaration; 1] = [LEAF_DESCRIPTION.copied()];
     const PARENT_OPERATION: crate::operations::OperationSpec<Parent> =
         crate::operations::OperationSpec::<Parent>::new(&PARENT_DESCRIPTION).calls(&PARENT_CALLEES);
-    async fn parent_handler(request: Parent, ctx: crate::operations::FunctionContext<Parent>) -> Result<Response<u64>, InvocationError> {
-        ctx.operation(LEAF_OPERATION, Leaf { value: request.value }).await
-    }
 
     fn parent_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(PARENT_OPERATION, const { &[] }, parent_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            PARENT_OPERATION,
+            const { &[] },
+            async move |request: Parent, ctx: crate::operations::FunctionContext<Parent>| -> Result<Response<u64>, InvocationError> {
+                ctx.operation(LEAF_OPERATION, Leaf { value: request.value }).await
+            },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     struct RetrySettings {
@@ -717,7 +726,7 @@ mod tests {
             },
         };
         let evidence = Evidence::default();
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource(RetrySettings { policy: retry });
             setup.settings().operation_middleware(Arc::new(Recorder(evidence.clone())));
         })
@@ -752,7 +761,7 @@ mod tests {
                 (0, crate::operations::OperationOutcome::Failed, Some(42)),
             ]
         );
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[derive(crate::Message, Debug, Default)]
@@ -773,22 +782,22 @@ mod tests {
 
     const DEADLINE_OPERATION: crate::operations::OperationSpec<Deadline> =
         crate::operations::OperationSpec::<Deadline>::new(&DEADLINE_DESCRIPTION);
-    async fn deadline_handler(
-        _request: Deadline, _: crate::operations::FunctionContext<Deadline>,
-    ) -> Result<Response<()>, std::convert::Infallible> {
-        std::future::pending().await
-    }
 
     fn deadline_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(DEADLINE_OPERATION, const { &[] }, deadline_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            DEADLINE_OPERATION,
+            const { &[] },
+            async move |_request: Deadline,
+                        _: crate::operations::FunctionContext<Deadline>|
+                        -> Result<Response<()>, std::convert::Infallible> { std::future::pending().await },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     #[tokio::test(start_paused = true)]
     async fn retry_override_keeps_declared_attempt_deadline() {
         let evidence = Evidence::default();
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.settings().operation_middleware(Arc::new(Recorder(evidence.clone())));
         })
         .await
@@ -818,7 +827,7 @@ mod tests {
         assert_eq!(observed, [(0, crate::operations::OperationOutcome::TimedOut), (1, crate::operations::OperationOutcome::TimedOut)]);
         assert!(runtime.operation(Deadline {}).await.is_err());
         assert_eq!(evidence.lock().unwrap().len(), 3);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     struct TimingProbe {
@@ -915,7 +924,7 @@ mod tests {
             now: Mutex::new(initial),
             observed: Mutex::new(Vec::new()),
         });
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<TimingProbe>(probe.clone());
             setup.settings().operation_middleware(Arc::new(TimingRecorder(probe.clone())));
         })
@@ -963,7 +972,7 @@ mod tests {
                 assert_eq!(observation.started_at.instant, initial.instant + Duration::from_secs(3) + prior);
             }
         }
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test(start_paused = true)]
@@ -992,7 +1001,7 @@ mod tests {
 
         #[tokio::test(start_paused = true)]
         async fn inherited_deadline_reports_applied_override() {
-            let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+            let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
             runtime
                 .register_batch(
                     harmos_operations::execution::__private::Catalog::new()
@@ -1009,7 +1018,7 @@ mod tests {
             assert!(matches!(error, crate::Error::OperationRefused(crate::Refusal::TimedOut {
                 ref operation, attempt: 1, timeout: applied, configured_by: "per-call gRPC deadline override",
             }) if operation == "test.deadline" && applied == timeout));
-            runtime.shutdown().await.unwrap();
+            runtime.stop().await.unwrap();
         }
     }
 
@@ -1066,16 +1075,16 @@ mod tests {
     static WAIT_PARENT_CALLEES: [crate::operations::WireDeclaration; 1] = [WAIT_CHILD_DESCRIPTION.copied()];
     const WAIT_PARENT_OPERATION: crate::operations::OperationSpec<WaitParent> =
         crate::operations::OperationSpec::<WaitParent>::new(&WAIT_PARENT_DESCRIPTION).calls(&WAIT_PARENT_CALLEES);
-    async fn wait_parent_handler(
-        _request: WaitParent, ctx: crate::operations::FunctionContext<WaitParent>,
-    ) -> Result<Response<()>, InvocationError> {
-        ctx.operation(WAIT_CHILD_OPERATION, WaitChild {}).await
-    }
 
     fn wait_parent_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(WAIT_PARENT_OPERATION, const { &[] }, wait_parent_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            WAIT_PARENT_OPERATION,
+            const { &[] },
+            async move |_request: WaitParent,
+                        ctx: crate::operations::FunctionContext<WaitParent>|
+                        -> Result<Response<()>, InvocationError> { ctx.operation(WAIT_CHILD_OPERATION, WaitChild {}).await },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     #[tokio::test]
@@ -1084,7 +1093,7 @@ mod tests {
             started: tokio::sync::Notify::new(),
             cancelled: std::sync::atomic::AtomicBool::new(false),
         });
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<CancellationProbe>(probe.clone());
         })
         .await
@@ -1099,13 +1108,13 @@ mod tests {
             matches!(running.cancel().await, Err(crate::Error::OperationRefused(crate::Refusal::Cancelled { operation, attempt: 1 })) if operation == "test.wait_parent")
         );
         assert!(probe.cancelled.load(std::sync::atomic::Ordering::SeqCst));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn handler_child_retains_admission_ancestors() {
         let retry = crate::RetryPolicy::Never;
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource(RetrySettings { policy: retry });
         })
         .await
@@ -1122,18 +1131,18 @@ mod tests {
             panic!("child must retain the admission cause");
         };
         assert!(matches!(source.downcast_ref::<crate::Error>(), Some(crate::Error::OperationLaneCycle { .. })));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn declared_calls_verify_activation_and_run_with_resources() {
-        let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+        let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
         let missing = harmos_operations::execution::__private::Catalog::new().entry(parent_operation().expect("representable operation"));
         assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
         let missing = harmos_operations::execution::__private::Catalog::new().entry(leaf_operation().expect("representable operation"));
         assert!(runtime.register_batch(missing.lane(crate::operations::Lane::default())).await.is_err());
-        runtime.shutdown().await.unwrap();
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        runtime.stop().await.unwrap();
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource(7_u64);
         })
         .await
@@ -1146,7 +1155,7 @@ mod tests {
         let child = runtime.operation(Parent { value: 5 }).await.unwrap();
         assert_eq!(*child, 12);
         assert_eq!(*direct, *child);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
@@ -1172,7 +1181,7 @@ mod tests {
             }
         }
 
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource(7_u64);
         })
         .await
@@ -1209,6 +1218,6 @@ mod tests {
         assert!(resources.resource::<u32>().is_err());
         let owner = resources.resource::<u64>().unwrap();
         assert_eq!(*owner, 7);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

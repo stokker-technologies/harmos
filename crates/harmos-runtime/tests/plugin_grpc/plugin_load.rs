@@ -172,7 +172,7 @@ async fn a_slow_plugin_misses_the_configured_load_deadline_and_a_per_call_overri
     let attached = attaching.await.unwrap();
     assert!(attached.activation().is_some(), "Start the Plugin Within the Overridden Deadline");
     attached.stop("Story Complete").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -214,5 +214,5 @@ async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
 
     // Ending the Blocked Read Lets the Abandoned Spawn Finish Before the Host Shuts Down.
     drop(hung);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

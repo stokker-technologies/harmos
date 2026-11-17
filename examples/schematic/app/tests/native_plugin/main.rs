@@ -24,20 +24,16 @@ use std::fs;
 use futures_util::StreamExt;
 
 // Local Imports
-use harmos_runtime::{Error as RuntimeError, streams::Item};
-use schematic_app::{
-    domain::model::schematic::progress::AnalysisProgress,
-    operations::{
-        AnalyzeExchange as ExchangeOperation, AnalyzeSchematic as AnalyzeOperation, AnalyzeUpload as UploadOperation,
-        Error as OperationError,
-        transfer::{Download as DownloadTransfer, Put as PutTransfer, Take as TakeTransfer, Upload as UploadTransfer},
-    },
-    protocol::{
-        Batch, Connection, Download, Point, Put, Record, Sample, SchematicAnalyzeExchangeHeader, SchematicAnalyzeRequest,
-        SchematicAnalyzeUploadHeader, Snapshot, Take, Upload,
-        plugin::{SchematicListDirectoriesRequest, SchematicProposeRouteRequest, SchematicValidateRequest},
-    },
-    services::{call, sidecar},
+use harmos_runtime::streams::Item;
+use {
+    schematic_app::domain::model::schematic::progress::AnalysisProgress, schematic_app::operations, schematic_app::operations::transfer,
+    schematic_app::protocol::Batch, schematic_app::protocol::Connection, schematic_app::protocol::Download, schematic_app::protocol::Point,
+    schematic_app::protocol::Put, schematic_app::protocol::Record, schematic_app::protocol::Sample,
+    schematic_app::protocol::SchematicAnalyzeExchangeHeader, schematic_app::protocol::SchematicAnalyzeRequest,
+    schematic_app::protocol::SchematicAnalyzeUploadHeader, schematic_app::protocol::Snapshot, schematic_app::protocol::Take,
+    schematic_app::protocol::Upload, schematic_app::protocol::plugin::SchematicListDirectoriesRequest,
+    schematic_app::protocol::plugin::SchematicProposeRouteRequest, schematic_app::protocol::plugin::SchematicValidateRequest,
+    schematic_app::services::call, schematic_app::services::sidecar,
 };
 
 /* === Constants === */
@@ -116,7 +112,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     // Upload Analysis and Observe Host-Owned Progress
     let mut progress = runtime.streams.watch::<AnalysisProgress>();
     let request = SchematicAnalyzeUploadHeader { title: "Board".into() };
-    let mut upload = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
+    let mut upload = runtime.operations.upload_protobuf::<operations::AnalyzeUpload>(request, support::settings()).unwrap();
     upload.send(support::snapshot().into()).await.unwrap();
     upload.finish_input().unwrap();
     assert_eq!(upload.join().await.unwrap().checked, 1);
@@ -126,7 +122,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
     // Exchange Snapshots and Findings in the Host
     let request = SchematicAnalyzeExchangeHeader { title: "Board".into() };
     let mut exchange =
-        runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
+        runtime.operations.exchange_protobuf::<operations::AnalyzeExchange>(request, support::settings(), support::settings()).unwrap();
     exchange.send(support::snapshot().into()).await.unwrap();
     exchange.finish_input().unwrap();
     assert!(exchange.next().await.unwrap().is_some());
@@ -137,16 +133,16 @@ async fn native_advice_and_host_streaming_share_one_document() {
 
     // Reject Invalid Analysis and Settle Cancellation Before Reusing Its Permit
     let request = SchematicAnalyzeUploadHeader { title: String::new() };
-    let invalid = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
+    let invalid = runtime.operations.upload_protobuf::<operations::AnalyzeUpload>(request, support::settings()).unwrap();
     invalid.finish_input().unwrap();
     let failure = invalid.join().await.unwrap_err();
-    let RuntimeError::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
-    assert!(matches!(source.downcast_ref::<OperationError>(), Some(OperationError::InvalidInput)));
+    let harmos_runtime::Error::OperationFailed { source, .. } = failure else { panic!("Expected Authored Input Failure: {failure:?}") };
+    assert!(matches!(source.downcast_ref::<operations::Error>(), Some(operations::Error::InvalidInput)));
     let request = SchematicAnalyzeUploadHeader { title: "Cancelled".into() };
-    let cancelled = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
+    let cancelled = runtime.operations.upload_protobuf::<operations::AnalyzeUpload>(request, support::settings()).unwrap();
     cancelled.cancel_and_settle().await.unwrap();
     let request = SchematicAnalyzeUploadHeader { title: "Resumed".into() };
-    let mut resumed = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
+    let mut resumed = runtime.operations.upload_protobuf::<operations::AnalyzeUpload>(request, support::settings()).unwrap();
     resumed.send(support::snapshot().into()).await.unwrap();
     resumed.finish_input().unwrap();
     assert_eq!(resumed.join().await.unwrap().checked, 1);
@@ -155,12 +151,13 @@ async fn native_advice_and_host_streaming_share_one_document() {
 
     // Hold the Shared Permit Until Upload Cancellation Settles
     let request = SchematicAnalyzeUploadHeader { title: "Held".into() };
-    let mut held = runtime.operations.upload_protobuf::<UploadOperation>(request, support::settings()).unwrap();
+    let mut held = runtime.operations.upload_protobuf::<operations::AnalyzeUpload>(request, support::settings()).unwrap();
     held.send(support::snapshot().into()).await.unwrap();
     let Item::Row(row) = progress.next().await.unwrap() else { panic!("Expected Held Progress") };
     assert_eq!(row.value.title, "Held");
     let request = SchematicAnalyzeExchangeHeader { title: "Waiting".into() };
-    let mut waiting = runtime.operations.exchange_protobuf::<ExchangeOperation>(request, support::settings(), support::settings()).unwrap();
+    let mut waiting =
+        runtime.operations.exchange_protobuf::<operations::AnalyzeExchange>(request, support::settings(), support::settings()).unwrap();
     waiting.send(support::snapshot().into()).await.unwrap();
     {
         let next = waiting.next();
@@ -186,7 +183,7 @@ async fn native_advice_and_host_streaming_share_one_document() {
         bytes: vec![0, 1, 255],
     };
     let request = Upload { transfer: 7 };
-    let mut upload = runtime.operations.upload_protobuf::<UploadTransfer>(request, support::settings()).unwrap();
+    let mut upload = runtime.operations.upload_protobuf::<transfer::Upload>(request, support::settings()).unwrap();
     upload.send(batch).await.unwrap();
     upload.finish_input().unwrap();
     let receipt = upload.join().await.unwrap();
@@ -202,11 +199,11 @@ async fn native_advice_and_host_streaming_share_one_document() {
             bytes: vec![3, 2, 1],
         }),
     };
-    assert_eq!(runtime.operations.call_protobuf::<PutTransfer>(request).await.unwrap().bytes, 3);
+    assert_eq!(runtime.operations.call_protobuf::<transfer::Put>(request).await.unwrap().bytes, 3);
     let request = Take { transfer: 8 };
-    assert_eq!(runtime.operations.call_protobuf::<TakeTransfer>(request).await.unwrap().bytes, [3, 2, 1]);
+    assert_eq!(runtime.operations.call_protobuf::<transfer::Take>(request).await.unwrap().bytes, [3, 2, 1]);
     let request = Download { transfer: 7 };
-    let mut download = runtime.operations.download_protobuf::<DownloadTransfer>(request, support::settings()).unwrap();
+    let mut download = runtime.operations.download_protobuf::<transfer::Download>(request, support::settings()).unwrap();
     let batch = download.next().await.unwrap().unwrap();
     assert_eq!((batch.records[0].sequence, batch.records[0].payload.as_slice()), (1, &[0, 255][..]));
     assert_eq!((batch.samples[0].sequence, batch.samples[0].timestamp_us, batch.samples[0].value), (2, 123, 1.5));
@@ -221,12 +218,12 @@ async fn native_advice_and_host_streaming_share_one_document() {
     let request = SchematicAnalyzeRequest {
         schematic: Some(support::snapshot().into()),
     };
-    let mut analysis = runtime.operations.download_protobuf::<AnalyzeOperation>(request, support::settings()).unwrap();
+    let mut analysis = runtime.operations.download_protobuf::<operations::AnalyzeSchematic>(request, support::settings()).unwrap();
     let mut findings = Vec::new();
     while let Some(finding) = analysis.next().await.unwrap() {
         findings.push(finding.text.clone());
     }
     assert_eq!(findings.len(), 3);
     assert_eq!(analysis.join().await.unwrap().checked, 3);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

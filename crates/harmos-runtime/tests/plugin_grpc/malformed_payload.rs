@@ -31,5 +31,5 @@ async fn malformed_payload_fails_only_its_invocation() {
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", Vec::new()).await.unwrap(), Vec::<u8>::new());
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

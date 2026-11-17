@@ -91,7 +91,7 @@ class PackagedCSharpConformance(unittest.TestCase):
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/CallerRequest.g.cs", consumer / "CallerRequest.g.cs")
             shutil.copytree(root / "sdk/csharp/tests/Harmos.Conformance/Generated", consumer / "Generated")
             shutil.copytree(root / "sdk/tests/fixtures/conformance/proto", consumer / "proto")
-            (consumer / "Program.cs").write_text("using Harmos.Conformance;\nawait new Fixture().Build().ServeAsync();\n", encoding="utf-8")
+            (consumer / "Program.cs").write_text("using Harmos.Conformance;\nawait new Fixture().Build().RunAsync();\n", encoding="utf-8")
             config = consumer / "NuGet.Config"
             config.write_text(
                 f'<configuration><packageSources><clear /><add key="fixture" value="{feed.as_posix()}" /><add key="nuget" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>',

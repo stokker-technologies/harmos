@@ -11,13 +11,10 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::StorageTransferSettings;
-
 // Standard Library Imports
 use std::{num::NonZeroUsize, time::Duration};
 
 // Third Party Imports
-use harmos::{Client, ClientSettings, client::Method};
 use tonic::transport::Endpoint;
 
 // Local Imports
@@ -28,6 +25,9 @@ use super::{
         messages::{Reply, Request},
     },
 };
+use harmos::{Client, ClientSettings, client::Method};
+use harmos_conformance::product::client::Root;
+use harmos_protocol::model::StorageTransferSettings;
 use harmos_runtime::operations::{
     ExecutionContext, Grpc, OperationPolicy, ProtobufInput, ProtobufOperation, ProtobufOutput, Registration, RetryPolicy, ServingError,
     Visibility,
@@ -127,7 +127,7 @@ impl ProtobufOperation for Wait {
 #[tokio::test]
 async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     // Register The Application's Generated Contracts And Start Its Listener.
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |_| {}).await.unwrap();
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |_| {}).await.unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
         .protobuf::<harmos_operations::host::List>()
         .unwrap()
@@ -142,6 +142,7 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
         .protobuf::<Wait>()
         .unwrap();
     runtime.operations.register_batch(registration).await.unwrap();
+    runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
     let attached = runtime
         .grpc()
         .attach(harmos_runtime::grpc::Settings {
@@ -161,7 +162,8 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     let client = Client::new(channel.clone(), settings).unwrap();
 
     // Discover And Bind The Exact Generated Application Types.
-    let page = client.operations.list().await.unwrap();
+    let resources = Root::new(client.transport_handle());
+    let page = resources.operations.list().await.unwrap();
     let contract =
         |id: &str| page.iter().filter_map(|operation| operation.contract.as_ref()).find(|operation| operation.id == id).unwrap().clone();
     let echo = Method::<Request, Reply>::new(contract("generated.echo")).unwrap();
@@ -296,7 +298,8 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
     assert_eq!(running.next().await.unwrap_err().code(), tonic::Code::ResourceExhausted);
 
     // Discovery Refuses A Complete Catalog Above The Carrier Ceiling.
-    let error = bounded.operations.list().await.unwrap_err();
+    let resources = Root::new(bounded.transport_handle());
+    let error = resources.operations.list().await.unwrap_err();
     assert_eq!(error.code(), tonic::Code::ResourceExhausted);
 
     assert!(error.message().contains("operations.list"));
@@ -332,5 +335,5 @@ async fn generated_sdk_client_invokes_streams_and_settles_cancellation() {
 
     // Close The Listener And Host.
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

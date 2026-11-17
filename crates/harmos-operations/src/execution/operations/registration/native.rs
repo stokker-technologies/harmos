@@ -120,11 +120,11 @@ pub trait NativeOperation: Send + Sync + 'static {
 
 impl Target {
     pub fn native<O: NativeOperation>() -> Result<Self, ServingError> {
-        let factory = OperationFactory::native::<O>()?;
+        let definition = description::<O>(O::ID)?;
         Ok(Self {
             in_process: true,
             id: O::ID,
-            definition: factory.definition,
+            definition,
             protobuf_native: false,
             request: TypeId::of::<O::Request>,
             response: TypeId::of::<O::Response>,
@@ -149,6 +149,40 @@ impl ExecutionContext {
     }
 }
 impl OperationFactory {
+    pub fn native_with_policy<O: NativeOperation>(policy: OperationPolicy) -> Result<Self, ServingError> {
+        let mut factory = Self::native::<O>()?;
+        factory.definition.policy = policy;
+        let declared = factory.definition.clone();
+        factory.declared = Arc::new(move || declared.clone());
+        factory.named = Arc::new(move |id| {
+            let mut declared = definition::<O>(id)?;
+            declared.policy = policy;
+            Ok(declared)
+        });
+        Ok(factory)
+    }
+
+    /// Use the Typed Declaration In Process and Retain the Separate Wire Carrier.
+    pub fn with_native<O: NativeOperation>(mut self) -> Result<Self, ServingError> {
+        if self.definition.id.as_str() != O::ID {
+            return Err(ServingError::EndpointTypes);
+        }
+        let original = (self.native_types)();
+        if (original.0, original.1) != (TypeId::of::<O::Request>(), TypeId::of::<O::Response>()) {
+            return Err(ServingError::EndpointTypes);
+        }
+        self.native = Arc::new(|_, resources, request, endpoints| {
+            Ok(Box::new(Instance::<O> {
+                request: *request.downcast().map_err(|_| ServingError::EndpointTypes)?,
+                endpoints: *endpoints.downcast().map_err(|_| ServingError::EndpointTypes)?,
+                resources,
+                marker: PhantomData,
+            }))
+        });
+        self.native_types = || (TypeId::of::<O::Request>(), TypeId::of::<O::Response>(), TypeId::of::<O::Endpoints>());
+        Ok(self)
+    }
+
     pub fn native<O: NativeOperation>() -> Result<Self, ServingError> {
         let declared = definition::<O>(O::ID)?;
         Ok(Self {
@@ -202,7 +236,7 @@ impl<O: NativeOperation> NativeInstance for Instance<O> {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {
@@ -219,6 +253,12 @@ impl<O: NativeOperation> NativeInstance for Instance<O> {
 /* === Private Functions === */
 
 fn definition<O: NativeOperation>(id: &str) -> Result<OperationDefinition, ServingError> {
+    let definition = description::<O>(id)?;
+    definition.validate()?;
+    Ok(definition)
+}
+
+fn description<O: NativeOperation>(id: &str) -> Result<OperationDefinition, ServingError> {
     // Native Types Are Matched By TypeId; This Identity Is Never A Wire Contract.
     let fingerprint = crate::schema::identity::operation(id, Fingerprint([0; 32]), Fingerprint([0; 32]), None, None);
     let definition = OperationDefinition {
@@ -229,7 +269,6 @@ fn definition<O: NativeOperation>(id: &str) -> Result<OperationDefinition, Servi
         replay: O::REPLAY,
         fingerprint,
     };
-    definition.validate()?;
     Ok(definition)
 }
 

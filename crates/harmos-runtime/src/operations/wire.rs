@@ -637,7 +637,7 @@ mod tests {
     #[cfg(feature = "grpc")]
     #[tokio::test]
     async fn protected_external_calls_are_refused() {
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.settings().operation_settings(crate::operations::Settings {
                 preparation_bytes: std::num::NonZeroUsize::new(4096),
                 ..Default::default()
@@ -658,12 +658,12 @@ mod tests {
             Err(Error::OperationUnauthorized { .. })
         ));
         assert_eq!(*runtime.operation(Probe { value: 7 }).await.unwrap(), 7);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn assigned_identity_fences_before_decoding() {
-        let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+        let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
         let batch = harmos_operations::execution::__private::Catalog::new().entry(probe_operation().expect("representable operation"));
         runtime.register_batch(batch.clone().lane(crate::operations::Lane::default())).await.unwrap();
         let entry = runtime.operations.entry(PROBE_OPERATION.entry().id).unwrap();
@@ -693,6 +693,6 @@ mod tests {
         runtime.unregister(&id).await.unwrap();
         runtime.register_batch(batch.lane(crate::operations::Lane::default())).await.unwrap();
         assert!(matches!(submit(fingerprint, generation), Err(Error::InvalidInput { field: "encoded operation identity", .. })));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

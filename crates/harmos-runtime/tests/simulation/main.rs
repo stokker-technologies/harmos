@@ -384,14 +384,14 @@ fn entropy_run(seed: u64) -> (SimulatedRuntime<Bank>, Vec<u64>) {
 // The Feature Only Adds: A Spawned Start Stays Send Under Simulation.
 #[tokio::test]
 async fn start_stays_send() {
-    let runtime = tokio::spawn(Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = tokio::spawn(Runtime::<Bank>::start_with(Ledger::default(), (), |setup| {
         setup.catalog(sim_operations_catalog(), crate::support::SERIAL);
         setup.settings().register(catalog()).register(streams());
     }))
     .await
     .expect("the spawned start completes")
     .expect("the bank runtime starts");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 mod atomic_records {

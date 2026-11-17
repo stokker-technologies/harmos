@@ -64,11 +64,7 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
     library_paths = descriptor.public_paths(
         configuration.library if configuration.library is not None and configuration.library.file else descriptors
     )
-    requests = set()
-    for requests_method in descriptor.table(descriptors):
-        if requests_method["face"] == "plugin":
-            continue
-        requests.add(requests_method["request"])
+    requests = descriptor.request_names(descriptors)
 
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     groups: dict[str, list[tuple[tuple[str, ...], str]]] = {"shared": [], "client": [], "plugin": []}
@@ -176,8 +172,13 @@ def client(
     methods: list[descriptor.Method],
     *,
     target: Path | None = None,
+    types_target: Path | None = None,
     configuration: Configuration | None = None,
 ) -> None:
+    if target is None and not methods:
+        (root / "sdk/rust/src/client/resources.rs").unlink(missing_ok=True)
+        (root / "sdk/rust/src/connection/resources.rs").unlink(missing_ok=True)
+        return
     configuration = configuration or Configuration()
     methods = call_fields(methods, configuration=configuration)
     selected: list[descriptor.Method] = []
@@ -389,6 +390,11 @@ def client(
         lines += ["}"]
     destination = target or root / "sdk/rust/src/connection/resources.rs"
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    if types_target is not None:
+        responses = sorted({method["response"] for method in methods if not method["response"].startswith(("harmos.", "google."))})
+        exports = ["// @generated from protocol descriptors; do not edit.", *[f"pub use {message(response)};" for response in responses]]
+        types_target.write_text("\n".join(exports) + "\n", encoding="utf-8", newline="\n")
+
     if target is None:
         exports = [*names.values(), *("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)]
         (root / "sdk/rust/src/client/resources.rs").write_text(
@@ -462,16 +468,22 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     message_names = _message_names(used, reserved)
     lines = [
         "// @generated from protocol descriptors; do not edit.",
-        "use crate::{Context, Error, Result, Plugin, OperationPolicy};",
+        "use crate::{Context, Error, Result, OperationPolicy};",
+        "use crate::plugin::{Dependency, Registrar, Registration};",
         "use std::num::NonZeroUsize;",
     ]
     lines += [f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full]]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
-    lines += ["}", "impl Plugin {", "    pub fn requires_host(self, operation: HostOperation) -> Self {", "        match operation {"]
+    lines += [
+        "}",
+        "impl Registration for HostOperation {",
+        "    fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {",
+        "        match self {",
+    ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        lines += [f"            HostOperation::{name} => self.requires::<{message_names[method['request']]}>(),"]
+        lines += [f"            HostOperation::{name} => ctx.register(Dependency::<{message_names[method['request']]}>::new()),"]
     lines += [
         "        }",
         "    }",
@@ -632,12 +644,11 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         lines += ["}"]
     if target is not None:
         source = "\n".join(lines)
-        start = source.index("impl Plugin {")
+        start = source.index("impl Registration for HostOperation {")
         end = source.index("#[derive(Clone)]", start)
         source = source[:start] + source[end:]
-        source = source.replace(
-            "use crate::{Context, Error, Result, Plugin, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};"
-        )
+        source = source.replace("use crate::{Context, Error, Result, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};")
+        source = source.replace("use crate::plugin::{Dependency, Registrar, Registration};", "")
         source = re.sub(r"(?<![:\w])Context\b", "harmos::plugin::Context", source)
         source = source.replace("crate::context::Watching", "harmos::plugin::Watching")
         source += "\n#[derive(Clone)]\npub struct PluginContext { pub host: HostRoot }\nimpl PluginContext {\n"

@@ -14,7 +14,7 @@
     <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
     <PackageOutputPath>$(ArtifactsPath)/packages</PackageOutputPath>
     <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RepoRoot)Cargo.toml')), '(?m)^version = &quot;([^&quot;]+)&quot;').Groups[1].Value)</Version>
-    <Description>Typed Harmos Plugin Authoring, Client Roots and Protocol Contracts for .NET</Description>
+    <Description>Harmos Plugin Carrier Helpers and Protocol Contracts for .NET</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/stokker-technologies/harmos</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

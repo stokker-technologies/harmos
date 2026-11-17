@@ -16,17 +16,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{io::Error as IoError, result::Result as StdResult};
+use std::{io, result};
 
 // Third Party Imports
 use tonic::Status;
-#[cfg(not(target_arch = "wasm32"))]
-use tonic::transport::Error as ServerError;
 
 // Local Imports
-use crate::{Classification, Failure};
+use crate::Classification;
+use crate::model::Failure;
 use harmos_protocol::plugin::response;
-use response::Result as ResponseResult;
 
 /* === Constants === */
 
@@ -34,7 +32,7 @@ use response::Result as ResponseResult;
 
 /* === Type Aliases === */
 
-pub type Result<T> = StdResult<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /* === Structs === */
 
@@ -49,11 +47,11 @@ pub enum Error {
     Transport(#[from] Status),
 
     #[error(transparent)]
-    Io(#[from] IoError),
+    Io(#[from] io::Error),
 
     #[cfg(not(target_arch = "wasm32"))]
     #[error(transparent)]
-    Server(#[from] ServerError),
+    Server(#[from] tonic::transport::Error),
 
     #[error("{0}")]
     Invalid(String),
@@ -81,7 +79,7 @@ impl Error {
         .into()
     }
 
-    pub(crate) fn response(self, operation: &str, plugin: &str) -> StdResult<ResponseResult, Status> {
+    pub(crate) fn response(self, operation: &str, plugin: &str) -> result::Result<response::Result, Status> {
         match self {
             Self::Transport(status) => Err(status),
             Self::Failure(mut failure) => {
@@ -91,9 +89,9 @@ impl Error {
                 if failure.plugin.is_empty() {
                     failure.plugin = plugin.into();
                 }
-                Ok(ResponseResult::Failure(*failure))
+                Ok(response::Result::Failure(*failure))
             }
-            error => Ok(ResponseResult::Failure(Failure {
+            error => Ok(response::Result::Failure(Failure {
                 classification: Classification::Permanent as i32,
                 code: "sdk_error".into(),
                 message: error.to_string(),

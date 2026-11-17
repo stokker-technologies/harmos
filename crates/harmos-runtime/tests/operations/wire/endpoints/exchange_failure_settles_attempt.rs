@@ -44,7 +44,7 @@ async fn exchange_failure_settles_attempt() {
         if matches!(settlement.as_ref(), Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert!(bounded(exchange.next()).await.is_none());
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
+    bounded(crate::support::app::stop(&runtime)).await.unwrap();
     assert_eq!(trace.new.load(Ordering::SeqCst), 1);
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }

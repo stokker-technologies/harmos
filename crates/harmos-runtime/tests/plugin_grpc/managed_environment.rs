@@ -52,7 +52,7 @@ async fn managed_plugin_receives_launch_environment() {
     }
 
     // Stop Reaps The Child After Its Cleanup Hook
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert!(!attached.activation().is_some_and(|activation| activation.is_connected()));
     assert_eq!(std::fs::read(cleaned).unwrap(), b"stopped");
 }

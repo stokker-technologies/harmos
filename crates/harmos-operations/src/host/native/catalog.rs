@@ -13,6 +13,12 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::{num::NonZeroUsize, sync::Arc};
+
+// Third Party Imports
+
+// Local Imports
 use crate::execution::operations::{
     ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
 };
@@ -30,7 +36,6 @@ use harmos_protocol::host::StreamsListRequest;
 use harmos_protocol::host::StreamsListResponse;
 use harmos_storage::follow::Entry;
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
-use std::{num::NonZeroUsize, sync::Arc};
 
 /* === Constants === */
 
@@ -43,9 +48,9 @@ macro_rules! operation {
             type Response = $response;
             type Endpoints = ();
             const ID: &'static str = concat!("harmos.host.v1.", $service, "/", $method);
-            const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", $service, $method));
+            const GRPC: Option<Grpc> = None;
             const POLICY: crate::OperationPolicy = super::POLICY;
-            const VISIBILITY: Visibility = Visibility::Public;
+            const VISIBILITY: Visibility = Visibility::Private;
             const RESOURCES: &'static [Resource] = $resources;
             fn grant(request: &Self::Request) -> Result<Option<Grant>, MessageError> {
                 Self::authorize(request)

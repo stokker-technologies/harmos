@@ -74,7 +74,7 @@ struct Retained {
 }
 
 pub(super) struct Boot<A: Application> {
-    pub(super) application: Option<super::launch::ApplicationCleanup<A>>,
+    pub(super) application: Option<super::start::ApplicationCleanup<A>>,
     pub(super) identity: Arc<()>,
     pub(super) storage: Option<StorageManager>,
     pub(super) runtime: Option<Runtime<A>>,
@@ -318,7 +318,7 @@ impl<A: Application> Boot<A> {
             self.writer.take();
         }
         let result = if let Some(runtime) = &self.runtime {
-            runtime.shutdown().await.map(|_| ())
+            runtime.stop().await.map(|_| ())
         } else if let Some(storage) = &self.storage {
             storage.close().await
         } else {
@@ -401,7 +401,7 @@ impl<A: Application> Boot<A> {
                         writer.take();
                     }
                     if let Some(runtime) = runtime {
-                        match runtime.shutdown().await {
+                        match runtime.stop().await {
                             Err(source) if physically_settled(&runtime) => {
                                 if failure_reported.swap(true, Ordering::AcqRel) {
                                     Ok(())

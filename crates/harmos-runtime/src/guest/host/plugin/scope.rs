@@ -758,7 +758,7 @@ mod tests {
         async fn run(&mut self, _: harmos_operations::execution::ExecutionContext) -> std::result::Result<(), Self::Error> {
             std::future::pending().await
         }
-        async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+        async fn finalize(&mut self) -> std::result::Result<(), Self::Error> {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -769,7 +769,7 @@ mod tests {
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
         let calls = Arc::new(AtomicUsize::new(0));
         let started = Arc::new(tokio::sync::Notify::new());
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<tokio::sync::Notify>(started.clone());
             setup.resource::<AtomicUsize>(calls.clone());
         })
@@ -793,14 +793,14 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert!(runtime.operations.resident_definition("worker.service").is_none());
         assert!(scope.operation::<Read>(Read).start().await.is_err());
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     #[tokio::test]
     async fn dynamic_entries_follow_scope_authority_and_withdrawal() {
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap());
         let initialized = Arc::new(AtomicUsize::new(0));
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<AtomicUsize>(initialized.clone());
         })
         .await
@@ -820,7 +820,7 @@ mod tests {
         assert!(stale.start().await.is_err());
         assert!(scope.register_batch(batch.lane(crate::operations::Lane::default())).await.is_err());
         assert!(runtime.operations.definitions().iter().all(|definition| definition.id.as_str() != "read"));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
     #[tokio::test]
     async fn transport_restart_renews_only_the_committed_inventory() {
@@ -836,7 +836,7 @@ mod tests {
             },
         };
         let scope = PluginScope::new("worker", PluginGeneration::fresh().unwrap()).with_streams(std::slice::from_ref(&stream));
-        let runtime = crate::Runtime::<Model>::launch((), ()).await.unwrap();
+        let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
         let registration = runtime.streams.stage_plugin(&scope, [stream.clone()]).await.unwrap();
         assert!(scope.commit());
         let revision = registration.leases()[0].stream().definition().version();
@@ -847,6 +847,6 @@ mod tests {
         let mut changed = stream;
         changed.window += 1;
         assert!(matches!(runtime.streams.stage_plugin(&scope, [changed]).await, Err(crate::streams::StreamRegistrationError::Inventory)));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

@@ -9,7 +9,7 @@
 [project]
 name = "harmos-sdk"
 version = "0.1.14"
-description = "Harmos plugin authoring and host clients"
+description = "Harmos plugin carrier helpers and protocol contracts"
 requires-python = ">=3.13"
 license = "Apache-2.0"
 dependencies = ["grpcio>=1.85.1", "protobuf>=7.35.1,<8"]

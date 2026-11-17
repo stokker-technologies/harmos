@@ -224,7 +224,7 @@ def compose(
             check=check,
         )
     elif language == "rust":
-        harmos_tools.build.resources.rust.client(repository, clients, target=output)
+        harmos_tools.build.resources.rust.client(repository, clients, target=output, types_target=output.with_name("client_types.rs"))
         harmos_tools.build.resources.rust.host(repository, contexts, target=output.with_name("plugin.rs"))
     elif language == "cpp":
         harmos_tools.build.resources.cpp.client(repository, clients, namespace=namespace, target=output)

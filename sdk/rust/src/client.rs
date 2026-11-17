@@ -15,7 +15,6 @@
 
 pub use crate::connection::{CallOptions, ClientTransport, Input, Method, NoItems, Running, Watching};
 include!("client/types.rs");
-include!("client/resources.rs");
 
 #[doc(hidden)]
 pub use crate::connection::{action_error, request_id};

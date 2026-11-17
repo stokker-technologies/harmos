@@ -89,7 +89,7 @@ class PackagedConformance(IsolatedAsyncioTestCase):
             "    try:\n"
             "        await asyncio.to_thread(sys.stdin.read)\n"
             "    finally:\n"
-            "        await endpoint.close()\n"
+            "        await endpoint.stop()\n"
             "asyncio.run(main())\n",
             encoding="utf-8",
         )

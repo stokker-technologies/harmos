@@ -20,8 +20,6 @@
 // Local Imports
 #include "client.hpp"
 
-namespace application_wire = application::host::v1;
-namespace chrono = std::chrono;
 using grpc::CallbackServerContext;
 using grpc::ClientContext;
 using grpc::CreateChannel;
@@ -45,18 +43,18 @@ using std::string;
 /* === Classes === */
 
 namespace {
-class Watch final : public ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> {
+class Watch final : public ServerWriteReactor<application::host::v1::jobs::ProgressWatchResponse> {
   mutex mutex_;
   bool writing_ = true;
   bool cancelled_ = false;
   promise<void> &cancelled;
-  application_wire::jobs::ProgressWatchResponse opening;
+  application::host::v1::jobs::ProgressWatchResponse opening;
 
 public:
   Watch(CallbackServerContext *context, promise<void> &event) : cancelled(event) {
     const auto metadata = context->client_metadata().find("authorization");
     const auto token = metadata == context->client_metadata().end() ? "" : string(metadata->second.data(), metadata->second.size());
-    const auto deadline = context->deadline() != chrono::system_clock::time_point::max();
+    const auto deadline = context->deadline() != std::chrono::system_clock::time_point::max();
     opening.set_value(token + (deadline ? ":deadline" : ":missing"));
     StartWrite(&opening);
   }
@@ -77,10 +75,10 @@ public:
     delete this;
   }
 };
-struct Progress final : application_wire::jobs::Progress::CallbackService {
+struct Progress final : application::host::v1::jobs::Progress::CallbackService {
   promise<void> cancelled;
-  ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> *Watch(CallbackServerContext *context,
-                                                                           const application_wire::jobs::ProgressWatchRequest *) override {
+  ServerWriteReactor<application::host::v1::jobs::ProgressWatchResponse> *
+  Watch(CallbackServerContext *context, const application::host::v1::jobs::ProgressWatchRequest *) override {
     return new ::Watch(context, cancelled);
   }
 };
@@ -105,7 +103,7 @@ TEST_CASE("One call preserves metadata deadline override and cancellation") {
     // Own the Context for the Whole Stream and Supply All Three Per-Call Controls.
     auto context = std::make_shared<ClientContext>();
     context->AddMetadata("authorization", "Bearer fixture");
-    context->set_deadline(chrono::system_clock::time_point(chrono::seconds(4102444800)));
+    context->set_deadline(std::chrono::system_clock::time_point(std::chrono::seconds(4102444800)));
     fixture::client::JobsProgressWatchOptions options{.context = context};
     const auto forwarded = options;
     REQUIRE(forwarded.context == options.context);

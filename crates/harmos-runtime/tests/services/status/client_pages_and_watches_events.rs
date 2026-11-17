@@ -16,11 +16,11 @@
 // Standard Library Imports
 
 // Third Party Imports
-use harmos_protocol::host::status as wire;
 use tracing_subscriber::prelude::*;
 
 // Local Imports
 use super::support::*;
+use harmos_protocol::host::status;
 
 /* === Constants === */
 
@@ -49,7 +49,7 @@ async fn client_pages_and_watches_events() -> Result {
     let secret = "example-secret-material";
     host.status.redaction.register(secret.into())?;
     for index in 0..2 {
-        let event = wire::Event {
+        let event = status::Event {
             message: format!("event {index}: {secret}"),
             fields: std::collections::HashMap::from([("token".into(), "another-sensitive-value".into())]),
             ..Default::default()
@@ -57,17 +57,17 @@ async fn client_pages_and_watches_events() -> Result {
         host.status.record_log(event.clone())?;
         host.status.record_trace(event)?;
     }
-    let mut logs = wire::logs_client::LogsClient::new(host.channel.clone());
-    let mut traces = wire::trace_events_client::TraceEventsClient::new(host.channel.clone());
+    let mut logs = harmos_conformance::host::status::logs_client::LogsClient::new(host.channel.clone());
+    let mut traces = harmos_conformance::host::status::trace_events_client::TraceEventsClient::new(host.channel.clone());
     let first = logs
-        .list(wire::LogsListRequest {
+        .list(status::LogsListRequest {
             at: None,
             page: Some(page(1, String::new())),
         })
         .await?
         .into_inner();
     let trace_first = traces
-        .list(wire::TraceEventsListRequest {
+        .list(status::TraceEventsListRequest {
             at: None,
             page: Some(page(1, String::new())),
         })
@@ -79,21 +79,21 @@ async fn client_pages_and_watches_events() -> Result {
     assert!(!first.events[0].fields["token"].contains("another-sensitive-value"));
     assert_eq!(first.events[0].observed_at.as_ref().unwrap().seconds, 0);
     // New Events Do Not Move an Existing Page Boundary
-    let third = wire::Event {
+    let third = status::Event {
         message: format!("third {secret}"),
         ..Default::default()
     };
     host.status.record_log(third.clone())?;
     host.status.record_trace(third)?;
     let second = logs
-        .list(wire::LogsListRequest {
+        .list(status::LogsListRequest {
             at: first.resolved_at.clone(),
             page: Some(page(1, first.next_page_token.clone())),
         })
         .await?
         .into_inner();
     let trace_second = traces
-        .list(wire::TraceEventsListRequest {
+        .list(status::TraceEventsListRequest {
             at: trace_first.resolved_at.clone(),
             page: Some(page(1, trace_first.next_page_token.clone())),
         })
@@ -105,7 +105,7 @@ async fn client_pages_and_watches_events() -> Result {
     assert_eq!(trace_second.events[0].sequence, 2);
     assert!(
         traces
-            .list(wire::TraceEventsListRequest {
+            .list(status::TraceEventsListRequest {
                 at: None,
                 page: Some(page(1, first.next_page_token))
             })
@@ -115,7 +115,7 @@ async fn client_pages_and_watches_events() -> Result {
     let mut invented = first.resolved_at.clone().unwrap();
     invented.sequence = 900;
     assert!(
-        logs.list(wire::LogsListRequest {
+        logs.list(status::LogsListRequest {
             at: Some(invented),
             page: Some(page(1, String::new()))
         })
@@ -124,7 +124,7 @@ async fn client_pages_and_watches_events() -> Result {
     );
     // Follow From the Page Cut Without Losing the Opening Race
     let mut log_watch = logs
-        .watch(wire::LogsWatchRequest {
+        .watch(status::LogsWatchRequest {
             at: first.resolved_at,
             max_bytes: 4096,
             max_events: 1,
@@ -132,7 +132,7 @@ async fn client_pages_and_watches_events() -> Result {
         .await?
         .into_inner();
     let mut trace_watch = traces
-        .watch(wire::TraceEventsWatchRequest {
+        .watch(status::TraceEventsWatchRequest {
             at: trace_first.resolved_at,
             max_bytes: 4096,
             max_events: 1,
@@ -162,10 +162,10 @@ async fn client_pages_and_watches_events() -> Result {
     assert_eq!(span_close.events[0].fields["event"], "span_close");
     // A Slow Watch Receives an Explicit Retention Gap
     let old = log.resolved_at;
-    let mut slow = logs.watch(wire::LogsWatchRequest { at: old, max_bytes: 4096, max_events: 1 }).await?.into_inner();
+    let mut slow = logs.watch(status::LogsWatchRequest { at: old, max_bytes: 4096, max_events: 1 }).await?.into_inner();
     slow.message().await?;
     for _ in 0..20 {
-        host.status.record_log(wire::Event {
+        host.status.record_log(status::Event {
             message: "retention event".into(),
             ..Default::default()
         })?;
@@ -173,7 +173,7 @@ async fn client_pages_and_watches_events() -> Result {
     assert!(slow.message().await.is_err());
     // A Fresh List Cannot Resolve an Evicted Issued Position
     assert!(
-        logs.list(wire::LogsListRequest {
+        logs.list(status::LogsListRequest {
             at: second.resolved_at,
             page: Some(page(1, String::new()))
         })

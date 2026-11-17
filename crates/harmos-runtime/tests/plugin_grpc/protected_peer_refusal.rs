@@ -42,5 +42,5 @@ async fn protected_peer_operation_is_refused_across_plugins() {
     assert_eq!(host.runtime.operations.call_encoded("example.plugin.v1.Lifecycle/Initialize", input.clone()).await.unwrap(), input);
     // The Declaring Plugin Also Calls It Through the Host Carrier.
     assert_eq!(host.runtime.operations.call_encoded("fixture.self", input.clone()).await.unwrap(), input);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

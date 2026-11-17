@@ -13,17 +13,16 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::StatusGetRequest;
-use harmos_protocol::host::status_client::StatusClient;
-
 // Standard Library Imports
 use std::sync::{Arc, Mutex};
 
 // Third Party Imports
-use harmos_protocol::host::access;
 
 // Local Imports
 use super::support::*;
+use harmos_conformance::host::status_client::StatusClient;
+use harmos_protocol::host::StatusGetRequest;
+use harmos_protocol::host::access;
 
 /* === Constants === */
 
@@ -64,7 +63,7 @@ async fn client_pairs_and_rotates_access() -> Result {
     let host = Host::start().await?;
     let principals = Arc::new(Mutex::new(Vec::new()));
     host.runtime.operations.register_authorizer(Arc::new(AccessPolicy(principals.clone())))?;
-    let mut listener = access::listener_client::ListenerClient::new(host.channel.clone());
+    let mut listener = harmos_conformance::host::access::listener_client::ListenerClient::new(host.channel.clone());
     let original = listener.get(access::ListenerGetRequest {}).await?.into_inner();
     assert!(!original.value.as_ref().unwrap().enabled);
     let enabled = host.enable().await?;
@@ -79,7 +78,7 @@ async fn client_pairs_and_rotates_access() -> Result {
             .is_err()
     );
     // Pair a Second Client Using the Pinned Certificate
-    let mut pairings = access::pairings_client::PairingsClient::new(host.channel.clone());
+    let mut pairings = harmos_conformance::host::access::pairings_client::PairingsClient::new(host.channel.clone());
     let first = pairings.create(access::PairingsCreateRequest { label: "First Client".into() }).await?.into_inner();
     let channel = paired(&first).await?;
     let mut client = StatusClient::new(channel.clone());
@@ -87,7 +86,7 @@ async fn client_pairs_and_rotates_access() -> Result {
     let identity = client.get(authorized(StatusGetRequest {}, &first.credential)).await?.into_inner().status.unwrap().identity.unwrap();
     assert!(principals.lock().unwrap().contains(&first.pairing.as_ref().unwrap().id));
     // Rotate Live Trust and Refuse the Old Credential on an Existing Connection
-    let mut certificates = access::certificates_client::CertificatesClient::new(host.channel.clone());
+    let mut certificates = harmos_conformance::host::access::certificates_client::CertificatesClient::new(host.channel.clone());
     let rotated = certificates.create(access::CertificatesCreateRequest {}).await?.into_inner();
     assert_ne!(rotated.certificate_pem, first.pinned_certificate_pem);
     assert_eq!(client.get(authorized(StatusGetRequest {}, &first.credential)).await.unwrap_err().code(), tonic::Code::Unauthenticated);
@@ -106,8 +105,10 @@ async fn client_pairs_and_rotates_access() -> Result {
     host.close().await?;
     // Restart Retains Credentials and Trust Under the Same Host Identity
     let reopened = Host::with_store(store).await?;
-    let bound =
-        access::listener_client::ListenerClient::new(reopened.channel.clone()).get(access::ListenerGetRequest {}).await?.into_inner();
+    let bound = harmos_conformance::host::access::listener_client::ListenerClient::new(reopened.channel.clone())
+        .get(access::ListenerGetRequest {})
+        .await?
+        .into_inner();
     let mut retained = second.clone();
     retained.endpoint = bound.bound_endpoint;
     let mut current = StatusClient::new(paired(&retained).await?);
@@ -115,7 +116,7 @@ async fn client_pairs_and_rotates_access() -> Result {
         current.get(authorized(StatusGetRequest {}, &retained.credential)).await?.into_inner().status.unwrap().identity.unwrap().host_id,
         identity.host_id
     );
-    let mut pairings = access::pairings_client::PairingsClient::new(reopened.channel.clone());
+    let mut pairings = harmos_conformance::host::access::pairings_client::PairingsClient::new(reopened.channel.clone());
     pairings.delete(access::PairingsDeleteRequest { name: retained.pairing.unwrap().id }).await?;
     assert_eq!(current.get(authorized(StatusGetRequest {}, &retained.credential)).await.unwrap_err().code(), tonic::Code::Unauthenticated);
     drop((current, pairings));

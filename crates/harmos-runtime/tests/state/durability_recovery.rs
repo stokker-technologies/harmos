@@ -46,7 +46,7 @@ async fn restart_recovers_history() {
     // A derived handle is a handle: the writer stops when the last one goes.
     drop(handle);
 
-    assert_eq!(live.shutdown().await.unwrap(), applied, "shutdown drained the whole tail");
+    assert_eq!(live.stop().await.unwrap(), applied, "shutdown drained the whole tail");
 
     let recovered = booted(Ledger::default(), |setup| {
         setup.settings().recover(Journal::<Bank>::open(&copy));
@@ -129,7 +129,7 @@ async fn redelivery_forwards_stored() {
 
     assert_eq!(ledger(&recovered).await.balance, 13, "the current bonus applies once");
     assert_eq!(recovered.state.applied(), Position(10), "the matching record retains its position");
-    crate::support::app::shutdown(&recovered).await.unwrap();
+    crate::support::app::stop(&recovered).await.unwrap();
 
     let written = mirror.lines();
 
@@ -168,7 +168,7 @@ async fn stop_flushes_batch() {
     for amount in [10, 20] {
         live.state.commit(deposit(amount)).await.expect("accepted");
     }
-    let settled = live.shutdown().await.unwrap();
+    let settled = live.stop().await.unwrap();
 
     // The settled frontier is read back after the flush; the drain alone had
     // synced nothing under a three-entry batch.
@@ -232,7 +232,7 @@ async fn tail_restores_state() {
     }
     let expected = ledger(&live).await;
     let applied = live.state.applied();
-    live.shutdown().await.unwrap();
+    live.stop().await.unwrap();
 
     // Boot the same equation the other way round: the origin is the snapshot,
     // and the entries above its horizon are the rest.
@@ -257,5 +257,5 @@ async fn seeded(copy: &Store) {
         runtime.state.commit(deposit(amount * 2)).await.expect("accepted");
         runtime.state.commit(withdraw(amount)).await.expect("accepted");
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
