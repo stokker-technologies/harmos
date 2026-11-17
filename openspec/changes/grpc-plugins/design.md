@@ -2,7 +2,7 @@
 
 ## Product Integration Repair Contract
 
-The active local repair branch is `fix/product-integration-gaps`. This repair adds
+The scoped integration repair adds
 `Runtime::bind_grpc(&Activation, scope, Clock) -> ScopedBinding` for an already
 admitted activation. The lease owns scoped calls and clock propagation on the same
 connection. Binding opens no Samples demand: `start_samples(streams)` opens the scope's
@@ -17,46 +17,24 @@ rewriting claims. Python, C# and C++ do not use the Rust memory estimator. No
 library generator emits a path-based Rust input dispatch match; the empty-match
 lint finding belongs to a product's generator and needs no library source change.
 The settlement Send repair named in the attached notes is already in the base.
-Task group 12 owns this inventory; other open changes are not being implemented.
+Task group 12 records this completed repair inventory; final proof is retained in 8.1–8.2.
 
-## Resuming
+## Current Delivery Contract
 
-Integration branch: `feat/grpc-plugins`; every change under `openspec/changes/` is delivered together on it.
-All changes use the one `grpc-plugins` implementation marker. Source and proof are tracked separately in tasks.
-Next work is the first unticked tasks in wave order; resolve confirmations before changing those contracts.
-Final validation waits for source closure; completed source does not close native proof.
+The retained source is implemented; final native Linux/Windows proof stays in tasks
+8.1–8.2. Those tasks cover remote disconnect, managed process settlement, integration
+repairs, refusal propagation, SDK packaging and generation drift in one combined
+candidate. Release rehearsal and published assets remain `release-assets-layout`
+2.1; generated product-client proof remains its 2.3.
 
-| Wave | Implementation Waves | State and Next Work | Ownership |
-| --- | --- | --- | --- |
-| 1 | Protocol 2.1–2.5; `facility-trim`; `tooling-streamline`; `align-ci-release` | Protocol source landed; tooling follow-ups and native proof remain | `proto/`, protocol and conformance; tooling and CI |
-| 2 | Host 3.1–3.9; Rust SDK 4.1–4.6; removal 6.1–6.4, 6.6–6.7; pilot SDKs 5.x | Native cutover, virtual clock, SDK rename, engine relocation and framed-path removal landed; cross-platform final proof remains open | Runtime, operations, SDKs, examples and retained tests |
-| 3 | Authoritative host protobuf: 2.6, 3.10–3.12, host portion of 6.5; 6.9 | Built-in and native example handlers use generated messages; replaced host DTOs/codecs and the operations runtime feature are removed | Protocol, operations, runtime; contract-only consumers |
-| 4 | `authoring-without-macros`; 6.10 | Ordered declaration replacement and field-reading derive consolidation landed; consumer proof follows domain reduction | Macro consumers, `crates/harmos-macros`, `sdk/rust/derive` |
-| 5 | Reduced domain: 6.8 | Foundation reduction landed; operation behavior and retained guest declarations live in operations, portable policy values in protocol | Domain, protocol, operations, runtime and consumers |
-| 6 | Guests 7.1 and guest portion of 6.5 | Deferred until lifecycle/child-control design; after wave 5, fold guests into optional SDK Wasm support and delete guest macros together | SDK adapter, guest fixtures and runtime guest host |
-| Any | Conformance 6.11; packaging 6.12 | Low-risk placement work may run at any time; preserve executable/release interfaces and runtime bundle reading | `tools/conformance`, `tools/packaging`, runtime and tooling callers |
-| Final | `test-stories`; SDK client 4.7; guides; validation 8.x | Story work and native Linux/Windows/hosted proof remain; SDK client source is implemented | Tests, SDK client, documentation and CI |
-
-After the last gRPC wave in both products, `storage-interface` designs and implements the Harmos
-extensions first. A product consumes them and extracts storage in its own `storage-interface` change.
-Neither storage implementation nor extraction belongs to these gRPC waves.
-
-Give a worker one whole task, its specification section and an explicit disjoint path ownership list.
-Name its focused `mise run build -- --package ... --check` and `mise run test -- --package ... --target ...` selections;
-pass `--features` where required. Run `mise run format -- --language ...` and the applicable scoped check before handoff.
-A handoff is at most ten lines: task, owned paths, changes, focused proof, format/check result and remaining follow-ups.
-SDK system suites run in Nightly only. No full lane has been established for this candidate; native Linux proof remains open.
-
-Status: implementation is partial. Native plugins now use gRPC placement; the framed path and
-`plugin-grpc` feature are gone. Runtime defaults to `grpc`; `plugin-guest` still selects the
-existing Wasm host path, and `generate-proto` selects contract generation. `sdk/rust` is the
-public package/library `harmos`, with native plugin builders and its Message derive landed.
-The SDK client binds generated application messages to protocol contracts; managed calls
-retain cancellation settlement and bounded outgoing queues without host dependencies. The former `crates/harmos-sdk` engine lives in
-`crates/harmos-operations/src/execution/`; the old SDK root and `crates/harmos` facade are deleted.
-Host protobuf adoption, macro replacement, derive consolidation and domain reduction
-have landed. Task 7.1 replaces the guest packages with optional SDK WebAssembly support
-and protobuf guest messages. Source and proof remain separate until their tasks close.
+The historical migration inventories below describe completed slices. Their old
+branch names, host-client roots, composition narrowing, two-level visibility,
+plugin authoring/registry ownership and lifecycle names are superseded by the
+current proposal and `operation-boundary`, `plugin-boundary`, `plugin-lifecycle`.
+The only public host surface is build/start, operation calls, backend authoring and
+plugin authoring through the product-owned contract; managers remain internal.
+Generated output stays tracked. `proto/harmos/` is the sole maintained protocol
+source; the obsolete copied draft under this change is removed.
 
 ## Crate Structure
 
@@ -335,7 +313,7 @@ including deterministic multi-day data, restart, late samples and finalization.
 
 ## Protocol
 
-The complete definition is `proto/harmos/v1/plugin.proto`, with its compatibility rules in
+The complete definition is `proto/harmos/plugin/v1/instance.proto`, with its compatibility rules in
 `proto/README.md`; the landed behavioural contract is `proto/harmos/v1/behaviour.md`.
 The change-local `proto/` copy must stay aligned until it is retired; tooling checker repair belongs to `tooling-streamline` 4.3. In outline:
 
