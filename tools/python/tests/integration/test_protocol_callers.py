@@ -90,6 +90,41 @@ class ProtocolCallers(unittest.TestCase):
         finally:
             scratch_directory.cleanup()
 
+    def test_product_public_surfaces_use_configured_roots_and_namespace(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        for relative, content in (
+            ("python/example/__init__.py", "from example._wire.values_pb2 import Value"),
+            ("include/values.hpp", "using ::example::model::v1::Value;"),
+            ("managed/Value.cs", "namespace ExampleSDK.V1;"),
+            ("native/lib.rs", "pub mod v1;"),
+        ):
+            with self.subTest(path=relative):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    check_public_surfaces(
+                        root,
+                        namespace="example",
+                        csharp_namespace="ExampleSDK",
+                        python_package=Path("python/example"),
+                        cpp_include=Path("include"),
+                        csharp_source=Path("managed"),
+                        rust_source=Path("native"),
+                    )
+                path.unlink()
+                check_public_surfaces(
+                    root,
+                    namespace="example",
+                    csharp_namespace="ExampleSDK",
+                    python_package=Path("python/example"),
+                    cpp_include=Path("include"),
+                    csharp_source=Path("managed"),
+                    rust_source=Path("native"),
+                )
+
 
 # === Private Functions === #
 

@@ -69,38 +69,54 @@ METHODS = VALUES = 2
 # === Public Functions === #
 
 
-def generate(directory: Path) -> Path:
+def generate(
+    directory: Path,
+    *,
+    descriptors: Path | FileDescriptorSet | None = None,
+    output: Path = Path(OUTPUT),
+    namespaces: tuple[str, ...] = (),
+    exclude: tuple[str, ...] = ("google.", "harmos.host."),
+    namespace: str = "harmos",
+    overview_paragraphs: tuple[str, ...] | None = None,
+) -> Path:
     """Write One Page per Protocol Package and an Overview Under target/docs/generated/."""
-    scratch_directory = tempfile.TemporaryDirectory()
-    scratch = scratch_directory.name
-    try:
-        image = Path(scratch) / "protocol.binpb"
-        policy.execute(directory, ["buf", "build", "--as-file-descriptor-set", "-o", str(image)])
-        descriptors = FileDescriptorSet.FromString(image.read_bytes())
-    finally:
-        scratch_directory.cleanup()
+    if descriptors is None:
+        scratch_directory = tempfile.TemporaryDirectory()
+        try:
+            image = Path(scratch_directory.name) / "protocol.binpb"
+            policy.execute(directory, ["buf", "build", "--as-file-descriptor-set", "-o", str(image)])
+            descriptors = FileDescriptorSet.FromString(image.read_bytes())
+        finally:
+            scratch_directory.cleanup()
+    elif isinstance(descriptors, Path):
+        descriptors = FileDescriptorSet.FromString((directory / descriptors).read_bytes())
     packages: dict[str, list[FileDescriptorProto]] = {}
     for file in sorted(descriptors.file, key=lambda item: item.name):
-        if not file.package.startswith(("google.", "harmos.host.")):
-            packages.setdefault(file.package, []).append(file)
+        if (
+            file.package.startswith(exclude)
+            or namespaces
+            and not any(file.package == prefix or file.package.startswith(prefix + ".") for prefix in namespaces)
+        ):
+            continue
+        packages.setdefault(file.package, []).append(file)
     owners = {}
     for package, files in packages.items():
         for file in files:
             for name, _, _ in _definitions(file):
                 owners[f".{package}.{name}"] = (package, name)
-    output = policy.inside(directory, OUTPUT)
+    output = policy.inside(directory, str(output))
     if output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True)
-    ordered = sorted(packages, key=lambda package: (not package.startswith("harmos."), package))
+    ordered = sorted(packages, key=lambda package: (not package.startswith(namespace + "."), package))
     for order, package in enumerate(ordered, start=1):
-        content = page(package, packages[package], owners, order)
+        content = page(package, packages[package], owners, order, namespace=namespace)
         (output / f"{package}.md").write_text(content, encoding="utf-8", newline="\n")
-    (output / "overview.md").write_text(overview(ordered, packages), encoding="utf-8", newline="\n")
+    (output / "overview.md").write_text(overview(ordered, packages, paragraphs=overview_paragraphs), encoding="utf-8", newline="\n")
     return output
 
 
-def page(package: str, files: list[FileDescriptorProto], owners: dict, order: int) -> str:
+def page(package: str, files: list[FileDescriptorProto], owners: dict, order: int, *, namespace: str = "harmos") -> str:
     """One Package: Its Services with Their Operations, Then Its Messages and Enums."""
     lines = _frontmatter(package, f"Operations and messages of the {package} protocol package.", order)
     services = [(file, index, service) for file in files for index, service in enumerate(file.service)]
@@ -113,7 +129,7 @@ def page(package: str, files: list[FileDescriptorProto], owners: dict, order: in
         for position, method in enumerate(service.method):
             request = ("stream " if method.client_streaming else "") + _type(method.input_type, package, owners)
             response = ("stream " if method.server_streaming else "") + _type(method.output_type, package, owners)
-            audience = "Host" if package.startswith("harmos.plugin.") else "Product-Defined"
+            audience = "Host" if package.startswith(namespace + ".plugin.") else "Product-Defined"
             description = _cell(comments.get((SERVICES, index, METHODS, position)))
             lines.append(f"| `{service.name}.{method.name}` | {request} | {response} | {audience} | {description} |")
         lines.append("")
@@ -158,16 +174,22 @@ def page(package: str, files: list[FileDescriptorProto], owners: dict, order: in
     return "\n".join(lines).rstrip() + "\n"
 
 
-def overview(ordered: list[str], packages: dict[str, list[FileDescriptorProto]]) -> str:
+def overview(ordered: list[str], packages: dict[str, list[FileDescriptorProto]], *, paragraphs: tuple[str, ...] | None = None) -> str:
     lines = _frontmatter("Overview", "Protocol packages, their services and their operations.", 0)
+    lines += (
+        list(paragraphs)
+        if paragraphs is not None
+        else [
+            "Each page lists one protocol package, its messages and enums, and its declared services.",
+            "The plugin protocol defines facilities the host invokes on a plugin; shared model messages",
+            "describe their payloads. Schematic packages demonstrate product-owned remote wrappers.",
+            "",
+            "Host operations are native-only and products choose their own remote wrappers. See",
+            "[Native Storage Operations](../../../storage/) and [Architecture](../../../architecture/)",
+            "for native contracts. The retired host-client projection is excluded from this reference.",
+        ]
+    )
     lines += [
-        "Each page lists one protocol package, its messages and enums, and its declared services.",
-        "The plugin protocol defines facilities the host invokes on a plugin; shared model messages",
-        "describe their payloads. Schematic packages demonstrate product-owned remote wrappers.",
-        "",
-        "Host operations are native-only and products choose their own remote wrappers. See",
-        "[Native Storage Operations](../../../storage/) and [Architecture](../../../architecture/)",
-        "for native contracts. The retired host-client projection is excluded from this reference.",
         "",
         "| Package | Services | Operations | Messages |",
         "| --- | ---: | ---: | ---: |",
@@ -220,6 +242,8 @@ def _type(name: str, package: str, owners: dict) -> str:
     if name.startswith(".google.protobuf."):
         short = name.removeprefix(".google.protobuf.")
         return f"[google.protobuf.{short}]({WELL_KNOWN}#{short.lower()})"
+    if name not in owners:
+        return f"`{name.lstrip('.')}`"
     owner, relative = owners[name]
     if owner == package:
         return f"[{relative}](#{_anchor(relative)})"

@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 from argparse import ArgumentParser
+from dataclasses import replace
 from pathlib import Path
 
 # Third Party Imports
@@ -27,6 +28,7 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 import harmos_tools.build.resource_roots
 import harmos_tools.build.resources.descriptor
 import harmos_tools.build.resources.python
+from harmos_tools.build.resources.configuration import Configuration
 
 from ..process import spawn_flags
 
@@ -44,23 +46,36 @@ ROOT = Path(__file__).resolve().parents[5]
 # === Public Functions === #
 
 
-def protocols() -> tuple[str, ...]:
-    definitions = []
-    for face in ("model", "host", "plugin"):
-        for path in (ROOT / "proto/harmos" / face).rglob("*.proto"):
-            definitions.append(path.relative_to(ROOT / "proto").as_posix())
-    return tuple(sorted(definitions))
+def protocols(*, root: Path = ROOT, namespace: str = "harmos", proto_root: Path | None = None) -> tuple[str, ...]:
+    proto_root = proto_root or root / "proto"
+    return tuple(sorted(path.relative_to(proto_root).as_posix() for path in (proto_root / namespace).rglob("*.proto")))
 
 
-def generate(output: Path) -> None:
-    definitions = protocols()
+def generate(
+    output: Path,
+    *,
+    root: Path = ROOT,
+    namespace: str = "harmos",
+    proto_root: Path | None = None,
+    descriptors: Path | None = None,
+    files: tuple[str, ...] | None = None,
+    module_prefixes: dict[str, str] | None = None,
+    configuration: Configuration | None = None,
+) -> None:
+    """Compile Product-Owned Wire Modules and Render Their Typed Resources."""
+    configuration = configuration or Configuration(namespace=namespace)
+    namespace = configuration.namespace
+    proto_root = proto_root or root / "proto"
+    definitions = files if files is not None else protocols(root=root, namespace=namespace, proto_root=proto_root)
+    if not definitions:
+        raise ValueError("Generate Python Protocol: Supply Protocol Files or a Populated proto_root/namespace Directory")
     generated = tuple(
-        name.removesuffix(".proto").replace("harmos/", "harmos/_wire/", 1) + suffix
+        name.removesuffix(".proto").replace(namespace + "/", namespace + "/_wire/", 1) + suffix
         for name in definitions
         for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
     )
     output.mkdir(parents=True, exist_ok=True)
-    for path in (output / "harmos").rglob("*_pb2*"):
+    for path in (output / namespace).rglob("*_pb2*"):
         name = path.relative_to(output).as_posix()
         if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in generated:
             path.unlink()
@@ -68,56 +83,53 @@ def generate(output: Path) -> None:
         sys.executable,
         "-m",
         "grpc_tools.protoc",
-        f"-I{ROOT / 'proto'}",
+        f"-I{proto_root}",
         f"-I{Path(grpc_tools.__file__).parent / '_proto'}",
         f"--python_out={output}",
         f"--pyi_out={output}",
         f"--grpc_python_out={output}",
         *definitions,
     ]
-    subprocess.run(command, check=True, cwd=ROOT, creationflags=spawn_flags())
-    # All Protocol Packages Are Private Implementation Modules.
-    for face in ("model", "host", "plugin"):
-        source = output / "harmos" / face
-        destination = output / "harmos/_wire" / face
-        if source.is_dir():
-            for path in source.rglob("*_pb2*"):
-                if not path.is_file() or not path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")):
-                    continue
-                target = destination / path.relative_to(source)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(path), target)
-    for name in generated:
-        path = output / name
-        source = path.read_text(encoding="utf-8")
-        for face in ("model", "host", "plugin"):
-            source = source.replace(f"from harmos.{face}", f"from harmos._wire.{face}")
-            source = source.replace(f"import harmos.{face}.", f"import harmos._wire.{face}.")
-            source = source.replace(
-                f"BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos.{face}.",
-                f"BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.{face}.",
-            )
-        path.write_text(source, encoding="utf-8", newline="\n")
-    # Generated Convenience Calls Require the Experimental Submodule Explicitly.
-    for name in generated:
-        if name.endswith("_pb2_grpc.py"):
-            path = output / name
-            source = path.read_text(encoding="utf-8")
-            if "grpc.experimental." in source:
-                path.write_text(
-                    source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1), encoding="utf-8", newline="\n"
+    subprocess.run(command, check=True, cwd=root, creationflags=spawn_flags())
+    prefixes = {"harmos": "harmos._wire", namespace: namespace + "._wire", **(module_prefixes or {})}
+    for name in definitions:
+        for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
+            relative = name.removesuffix(".proto") + suffix
+            source_path = output / relative
+            destination = output / relative.replace(namespace + "/", namespace + "/_wire/", 1)
+            source = source_path.read_text(encoding="utf-8")
+            for prefix, replacement in sorted(prefixes.items(), key=lambda item: -len(item[0])):
+                source = source.replace(f"from {prefix}.", f"from {replacement}.")
+                source = source.replace(f"import {prefix}.", f"import {replacement}.")
+                source = source.replace(f"from {prefix} import ", f"from {replacement} import ")
+                source = source.replace(
+                    f"BuildTopDescriptorsAndMessages(DESCRIPTOR, '{prefix}.", f"BuildTopDescriptorsAndMessages(DESCRIPTOR, '{replacement}."
                 )
-    descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-    harmos_tools.build.resources.python.exports(output / "harmos/_generated", descriptors)
+            if suffix == "_pb2_grpc.py" and "grpc.experimental." in source:
+                source = source.replace("import grpc\n", "import grpc\nimport grpc.experimental\n", 1)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(source, encoding="utf-8", newline="\n")
+            if source_path != destination:
+                source_path.unlink()
+    descriptor_path = descriptors or root / "crates/harmos-protocol/src/descriptors.bin"
+    schema = FileDescriptorSet.FromString(descriptor_path.read_bytes())
+    if configuration.library is None:
+        configuration = replace(configuration, library=schema)
+    methods = harmos_tools.build.resources.descriptor.table(schema)
+    harmos_tools.build.resources.python.exports(output / namespace / "_generated", schema, configuration=configuration)
     harmos_tools.build.resources.python.host(
-        output / "harmos/_generated/host.py",
-        [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"],
-        descriptors,
+        output / namespace / "_generated/host.py",
+        [method for method in methods if method["face"] == "context"],
+        schema,
+        configuration=configuration,
+        module_prefixes=module_prefixes,
     )
     harmos_tools.build.resources.python.client(
-        output / "harmos/_generated/client.py",
-        [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"],
-        descriptors,
+        output / namespace / "_generated/client.py",
+        [method for method in methods if method["face"] == "client"],
+        schema,
+        configuration=configuration,
+        module_prefixes=module_prefixes,
     )
 
 
@@ -250,28 +262,18 @@ def main() -> None:
     try:
         output = Path(scratch)
         generate(output)
+        expected = set(generated) | {"harmos/__init__.py", "harmos/client.py", "harmos/plugin/__init__.py"}
+        expected.update(path.relative_to(output).as_posix() for path in (output / "harmos/_generated").rglob("*.py"))
+        existing = set()
+        for path in (committed / "harmos").rglob("*"):
+            if path.is_file() and (path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) or "_generated" in path.parts):
+                existing.add(path.relative_to(committed).as_posix())
         changed = [
             name
-            for name in (
-                *generated,
-                "harmos/_generated/client.py",
-                "harmos/_generated/shared.py",
-                "harmos/_generated/client_types.py",
-                "harmos/_generated/plugin_types.py",
-                "harmos/_generated/host.py",
-                "harmos/__init__.py",
-                "harmos/client.py",
-                "harmos/plugin/__init__.py",
-            )
-            if not (committed / name).exists() or not filecmp.cmp(output / name, committed / name, shallow=False)
+            for name in sorted(expected)
+            if not (committed / name).is_file() or not filecmp.cmp(output / name, committed / name, shallow=False)
         ]
-        changed += [
-            path.relative_to(committed).as_posix()
-            for path in (committed / "harmos").rglob("*_pb2*")
-            if path.is_file()
-            and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"))
-            and path.relative_to(committed).as_posix() not in generated
-        ]
+        changed += sorted(existing - expected)
         generated_client = output / "client"
         generate_client_fixture(generated_client)
         client = ROOT / "sdk/python/tests/fixtures/client"

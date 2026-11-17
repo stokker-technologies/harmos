@@ -50,3 +50,6 @@
 - [x] 11.2 Remove the operations runtime feature and its cfg gates/dependent feature selections; crates/harmos-operations/Cargo.toml now has no runtime feature and native execution is unconditional. Native consumer and independent Wasm verification remain open under 4.1; source presence does not claim that proof passed.
 - [x] 11.3 Replace private catalog references with the existing public catalog composition API, preserving membership and names.
 - [x] 11.4 Apply imported Rust names in touched files and the default Tokio runtime in SDK/example entry points; review README impact.
+- [x] 12.1 Repair shared Python payload/transport collisions, C# message qualification and configured C++ namespace exports; preserve original names across all four language renderers without composition inputs or aliases.
+- [x] 12.2 Parameterize shared public-surface checks, Python wire compilation and operations reference rendering for product roots, namespaces and packages; update maintained tooling contracts.
+- [x] 12.3 Prove descriptor-table generator fixtures, focused tooling tests, tools-only Python formatting, static and compile checks; leave library SDK regeneration to the combined SDK delivery and keep commits local. Aggregate Python format checking still fails on `sdk/cpp/tests/unit/catalog.cpp:110–111`; the SDK owner must repair it for 4.1.

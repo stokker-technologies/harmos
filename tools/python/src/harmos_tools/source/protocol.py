@@ -61,21 +61,36 @@ def main() -> None:
         scratch_directory.cleanup()
 
 
-def check_public_surfaces(root: Path) -> None:
+def check_public_surfaces(
+    root: Path,
+    *,
+    namespace: str = "harmos",
+    csharp_namespace: str | None = None,
+    python_package: Path | None = None,
+    cpp_include: Path = Path("sdk/cpp/include"),
+    cpp_examples: Path = Path("sdk/cpp/examples"),
+    csharp_source: Path | None = None,
+    rust_source: Path = Path("sdk/rust/src"),
+) -> None:
     """Keep Protocol Implementation Names Out of Consumer Entry Points.
 
     Allow internal generated directories (detail, _generated, _wire) and canonical
     gRPC method paths. CI documentation checking owns the guide surface.
     """
-    wire = re.compile(r"\b_wire\b|\w+_wire\b|\bHarmos\.Internal\b|\b(?:[A-Za-z_]\w*(?:\.|::))+v\d+\b|[/\\]v\d+[/\\]")
+    python_package = root / (python_package or Path(f"sdk/python/src/{namespace}"))
+    csharp_namespace = csharp_namespace or namespace.title()
+    csharp_source = root / (csharp_source or Path(f"sdk/csharp/src/{namespace.title()}"))
+    wire = re.compile(
+        r"\b_wire\b|\w+_wire\b|\b" + re.escape(csharp_namespace) + r"\.Internal\b|\b(?:[A-Za-z_]\w*(?:\.|::))+v\d+\b|[/\\]v\d+[/\\]"
+    )
     grpc_path = re.compile(r"/?[a-zA-Z_]\w*(?:\.\w+)*\.v\d+(?:\.\w+)*/[A-Za-z_]\w*")
-    candidates = sorted((root / "sdk/cpp/include").rglob("*.hpp"))
-    candidates += sorted((root / "sdk/cpp/examples").glob("*/generated/*.hpp"))
+    candidates = sorted((root / cpp_include).rglob("*.hpp"))
+    candidates += sorted((root / cpp_examples).glob("*/generated/*.hpp"))
     candidates += [
         path
-        for path in (root / "sdk/python/src/harmos").rglob("*")
+        for path in python_package.rglob("*")
         if path.suffix in {".py", ".pyi"}
-        and not any(part.startswith("_") for part in path.relative_to(root / "sdk/python/src/harmos").parts[:-1])
+        and not any(part.startswith("_") for part in path.relative_to(python_package).parts[:-1])
         and (not path.name.startswith("_") or path.name == "__init__.py")
     ]
     findings = []
@@ -89,7 +104,7 @@ def check_public_surfaces(root: Path) -> None:
                 findings.append(f"{relative.as_posix()}:{number}: Public Surface Names a Wire Package")
     exports: dict[str, Path] = {}
     for name in ("__init__.py", "client.py", "plugin/__init__.py"):
-        path = root / "sdk/python/src/harmos" / name
+        path = python_package / name
         if not path.is_file():
             continue
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -109,11 +124,11 @@ def check_public_surfaces(root: Path) -> None:
                 if item.value in exports:
                     findings.append(f"{path.relative_to(root)}: Duplicate Public Export {item.value}")
                 exports[item.value] = path
-    for path in sorted((root / "sdk/csharp/src/Harmos").rglob("*.cs")):
+    for path in sorted(csharp_source.rglob("*.cs")):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"^namespace .*\.V\d+\b", line):
                 findings.append(f"{path.relative_to(root)}:{number}: Public Wire Namespace")
-    for path in sorted((root / "sdk/rust/src").rglob("*.rs")):
+    for path in sorted((root / rust_source).rglob("*.rs")):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if re.search(r"\bpub\s+mod\s+(?:wire|v\d+)\b", line):
                 findings.append(f"{path.relative_to(root).as_posix()}:{number}: Public Wire Module")

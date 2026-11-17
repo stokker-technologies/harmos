@@ -51,6 +51,7 @@ def protocols(
     package: str | None = None,
     files: set[str] | None = None,
     namespace_override: str | None = None,
+    namespace_mappings: dict[str, str] | None = None,
 ) -> None:
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
     schema = FileDescriptorSet.FromString(descriptors.read_bytes())
@@ -87,7 +88,7 @@ def protocols(
                 command += [f"--plugin=protoc-gen-grpc={plugin}", f"--grpc_out={output}", "--grpc_opt=internal_access"]
             subprocess.run([*command, file.name], check=True, creationflags=spawn_flags())
             for path in output.glob("*.cs"):
-                source = _wire_source(path.read_text(encoding="utf-8"), path.name, file, requests, namespace_override)
+                source = _wire_source(path.read_text(encoding="utf-8"), path.name, file, requests, namespace_override, namespace_mappings)
                 path.write_text(source, encoding="utf-8", newline="\n")
         if check:
             expected = set()
@@ -97,7 +98,7 @@ def protocols(
             for path in destination.rglob("*.cs"):
                 existing.add(path.relative_to(destination))
             if expected != existing or any((scratch / path).read_bytes() != (destination / path).read_bytes() for path in expected):
-                raise ValueError("Check C# Protocol: Regenerate With mise run generate -- --protocol")
+                raise ValueError("Check C# Protocol: Regenerate With mise run generate -- --sdk csharp")
         else:
             destination.mkdir(parents=True, exist_ok=True)
             for old in destination.rglob("*.cs"):
@@ -116,9 +117,10 @@ def _wire_source(
     file: FileDescriptorProto,
     requests: set[str],
     namespace_override: str | None,
+    namespace_mappings: dict[str, str] | None = None,
 ) -> str:
     """Apply the Public Payload and Internal Carrier Namespace Contract."""
-    source = message(source)
+    source = message(source, namespace_mappings)
     if namespace_override is not None:
         source = source.replace("namespace Harmos.Clients {", f"namespace {namespace_override} {{")
         source = source.replace("global::Harmos.Clients.", f"global::{namespace_override}.")
