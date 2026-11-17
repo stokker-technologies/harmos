@@ -47,14 +47,22 @@ Group 5 Pin: `b3b37c6e115dddfdbd8dff72dbccfda969be08d4` (streaming Float64 scale
 
 ## 6. Statistics Consolidation
 
-- [ ] 6.1 Move moment, quantile, order-statistic and histogram kernels under `harmos-query::statistics` (crate-internal), make transform modules and the benchmark percentile helper delegate to them, and delete duplicates. Accept when no kernel exists outside that module; prove with the existing aggregate and histogram tests via `mise run test -- --package harmos-query --target lib`.
-- [ ] 6.2 Make several percentiles of one field share one spool and rank selection in aggregate execution. Prove with a deterministic test that counts spool passes and compares results with single-percentile requests.
-- [ ] 6.3 Add mergeable summaries with first/last carrying time and position, and expose ordered first/last as aggregate measures. Prove merge equivalence over adjacent ranges with deterministic data.
-- [ ] 6.4 Add the box-summary transform (quartiles, Tukey whiskers, bounded deterministic outliers with total count). Prove constant, extreme-range and over-bound outlier cases; document the transform in `docs/storage.md`.
+- [x] 6.1 Move moment, quantile, order-statistic and histogram kernels under `harmos-query::statistics` (crate-internal), make transform modules and the benchmark percentile helper delegate to them, and delete duplicates. Accept when no kernel exists outside that module; prove with the existing aggregate and histogram tests via `mise run test -- --package harmos-query --target lib`.
+- [x] 6.2 Make several percentiles of one field share one spool and rank selection in aggregate execution. Prove with a deterministic test that counts spool passes and compares results with single-percentile requests.
+- [x] 6.3 Add mergeable summaries with first/last carrying time and position, and expose ordered first/last as aggregate measures. Prove merge equivalence over adjacent ranges with deterministic data.
+- [x] 6.4 Add the box-summary transform (quartiles, Tukey whiskers, bounded deterministic outliers with total count). Prove constant, extreme-range and over-bound outlier cases; document the transform in `docs/storage.md`.
 
 ## 7. Bounded Bucket Summaries
 
-- [ ] 7.1 Add the bucket-summary transform with a bucket bound, width doubling and pairwise merge, preserving first/last/min/max points with positions, count, mean and moments, plus continuation from a supplied prior summary and source cut. Prove that continued summaries equal whole-range summaries, cancellation and the bucket bound with deterministic data through `list_rows`; document it in `docs/storage.md`.
+- [x] 7.1 Add the bucket-summary transform with a bucket bound, width doubling and pairwise merge, preserving first/last/min/max points with positions, count, mean and moments, plus continuation from a supplied prior summary and source cut. Prove that continued summaries equal whole-range summaries, cancellation and the bucket bound with deterministic data through `list_rows`; document it in `docs/storage.md`.
+
+Groups 6–7 Pin: `9745a250b5ae1882864c1e1b7e4b530d0211d780` (local statistics checkpoint; not pushed).
+The checkpoint includes shared exact percentile selection, ordered mergeable summaries,
+box summaries and bounded bucket continuations. Windows proof passed: targeted build,
+Rust lint, format and dependency check; 31 query unit tests, 9 query integration stories,
+33 operations unit tests, the native ListRows statistics story, 4 aggregate codec stories
+and the grouped time-bucket replacement story. The existing query bench passed one
+Criterion smoke run. Group 8, combined validation and Linux/hosted proof remain open.
 
 ## 8. Additive Revision Handoff
 

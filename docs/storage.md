@@ -99,7 +99,8 @@ percentiles, floating-point RMS, population standard deviation, and ordered
 field. Null, missing and non-finite numeric values do not participate. First/last
 retain the selected scalar's type. An ungrouped empty aggregate returns one row:
 count and sum are zero and all other measures are null; grouped empty input has
-no rows. Exact integer/rational sum, mean and median preserve their existing
+no rows. Empty histograms retain all configured bins with zero counts; empty grouped
+time buckets have no rows. Exact integer/rational sum, mean and median preserve their existing
 exact output. Percentiles use linear interpolation at `(count - 1) * rank / 100`;
 all percentile measures and a floating median of the same field share a spool
 and rank-selection passes.
@@ -156,6 +157,7 @@ removals or a changed query selection require recomputation. The continuation is
 an opaque revision-specific payload: keep product and Harmos revisions aligned.
 Products own storage, admission, bucket and response budgets.
 
+Box and bucket values convert to Float64 before statistics and extrema selection.
 Times must be Int64 nanoseconds or Arrow nanosecond timestamps, and positions
 must be UInt64. Null times/positions refuse. Null/non-finite values contribute no
 moments. Empty input returns one identity row (zero count, null points/moments)

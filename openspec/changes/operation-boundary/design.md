@@ -114,12 +114,16 @@ breaking group so products can adopt them on an otherwise unchanged surface.
   with a capability error when the backend lacks them. Alternative rejected: products calling
   backends directly before start, which is the bypass this change removes.
 
-### D2. One Statistics Home (Proposed)
+### D2. One Statistics Home (Implemented in Groups 6–7)
 
-Keep `harmos-domain` `Aggregate` and query plan types; consolidate kernels under
-`harmos-query::statistics` around `Summary`, shared `Quantiles`, mergeable summaries,
+Keep `harmos-domain` `Aggregate` and query plan types; kernels live under the private
+`harmos-query::statistics` module around `Summary`, shared `Quantiles`, mergeable summaries,
 box summaries and bucket summaries. Transform modules delegate to these kernels; the
 benchmark helper uses them too. Exposure is only through `storage.list_rows` transforms.
+
+The normal library surface has no statistics namespace. The existing `testing`
+feature exports the numeric spool for integration and benchmark evidence; production
+consumers use transforms. Statistics checkpoint pins and proof belong in tasks.md.
 
 - Multi-percentile requests share one spool and rank selection per field
   (`Quantiles::values` already does this; aggregate execution adopts it).
