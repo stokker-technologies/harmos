@@ -74,6 +74,24 @@ CHECKS = [
 
 TESTS = [
     {
+        "language": "python",
+        "platform": "unix",
+        "runner": "ubuntu-24.04",
+        "minutes": 120,
+        "layer": "integration",
+        "label": "SDK / Python",
+        "arguments": "--package harmos-sdk --target integration",
+    },
+    {
+        "language": "python",
+        "platform": "windows",
+        "runner": "windows-2022",
+        "minutes": 120,
+        "layer": "integration",
+        "label": "SDK / Python",
+        "arguments": "--package harmos-sdk --target integration",
+    },
+    {
         "language": "rust",
         "platform": "unix",
         "runner": "ubuntu-24.04",
