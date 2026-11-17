@@ -14,9 +14,9 @@
 use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_domain::model::storage::query::Query;
-use harmos_operations::storage::{ListRows, ListRowsRequest};
+use harmos_operations::storage::{ListRows, ListRowsRequest, RowOutput};
 use harmos_protocol::model;
-use harmos_query::QueryArrow;
+use harmos_query::arrow::{ArrowBatch, ArrowSchema};
 use harmos_query::transform::Transform;
 use harmos_query::transform::filter::Clause;
 use harmos_query::transform::filter::Compare;
@@ -115,7 +115,8 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         page: None,
     };
     let schema = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
-    assert!(matches!(QueryArrow::try_from(schema.rows[0].clone()).unwrap(), QueryArrow::Schema(_)));
+    let RowOutput::Schema(bytes) = &schema.rows[0] else { panic!("Expected Schema") };
+    ArrowSchema::from_ipc(bytes.clone()).unwrap();
     assert_eq!(fixture.data.control.record_rows_examined.load(Ordering::Relaxed), 0);
     request.page = Some(model::PageRequest {
         page_token: schema.next_page_token,
@@ -137,7 +138,8 @@ async fn filtered_physical_pages_return_progress_without_rescanning_the_prefix()
         let response = fixture.runtime.operations.call_native::<ListRows>(request.clone()).await.unwrap();
         assert_eq!(response.resolved_at, filtered.resolved_at);
         for row in response.rows {
-            if let QueryArrow::Batch(batch) = QueryArrow::try_from(row).unwrap() {
+            if let RowOutput::Batch(bytes) = row {
+                let batch = ArrowBatch::from_ipc(bytes).unwrap();
                 let values =
                     batch.as_record_batch().column_by_name("item").unwrap().as_any().downcast_ref::<arrow_array::StringArray>().unwrap();
                 items.extend(values.iter().map(|item| item.unwrap().to_owned()));

@@ -36,9 +36,9 @@ use harmos_domain::schema::graph::{Field, Kind};
 use harmos_domain::schema::{self, Cardinality, graph};
 use harmos_domain::{Aggregate, Identifier, Message};
 use harmos_operations::execution::operations::{ExecutionContext, NativeOperation};
+use harmos_operations::storage::RowOutput;
 use harmos_operations::storage::SavedSnapshots;
 use harmos_operations::storage::{ListRows, ListRowsRequest};
-use harmos_query::QueryOutput;
 use harmos_query::arrow::ArrowBatch;
 use harmos_storage::{
     ObjectCatalog, PayloadEncoding, RecordInput, SchemaKey, StorageBackends, StorageFilesystemSettings, StorageFuture, StorageManager,
@@ -200,7 +200,7 @@ async fn read(context: &ExecutionContext, key: &SchemaKey, after: u64, transform
         };
         let result = ListRows::run(context.clone(), request, &()).await.unwrap();
         for output in result.rows {
-            if let QueryOutput::Batch(bytes) = output {
+            if let RowOutput::Batch(bytes) = output {
                 batches.push(ArrowBatch::from_ipc(bytes).unwrap());
             }
         }

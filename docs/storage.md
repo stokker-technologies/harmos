@@ -620,9 +620,13 @@ let result = context.call_native::<GetFileBytes>(GetFileBytesRequest {
 }).await?;
 ```
 
-Requests and results are native Rust values; schema graphs, mutations, positions,
-file sessions, queries, conditional outcomes and Arrow pages retain their native
-owners. Shared `File`, `Upload`, `FileReference`, positions, cuts and
+Requests and results are native Rust values. Storage operations own their column
+selectors, index and projection definitions, status and page DTOs. `ListRows`
+returns ordered `RowOutput::Schema` and `RowOutput::Batch` IPC frames. Column and
+projection pages carry an `IpcBatch` with schema and batch bytes; they expose no
+Arrow arrays, engine readers or internal seek cursors. Continue with the opaque
+`next_page_token` rather than an engine cursor. Backend-authoring contracts remain
+available to backend implementations. Shared `File`, `Upload`, `FileReference`, positions, cuts and
 receipts are vocabulary a product can reuse at its serialization boundary.
 `Plugins.Create` and `Plugins.Replace` still accept an immutable bundle reference.
 

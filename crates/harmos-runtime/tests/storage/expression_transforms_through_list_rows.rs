@@ -24,8 +24,8 @@ use arrow_array::{BooleanArray, Float64Array};
 use super::super::writes;
 use super::{fixture, mutation, records};
 use harmos_protocol::model::PageRequest;
-use harmos_query::QueryArrow;
-use harmos_runtime::builtins::storage::{self, Contains, Offset, ScalarValue, Scale, Transform};
+use harmos_query::arrow::ArrowBatch;
+use harmos_runtime::builtins::storage::{self, Contains, Offset, RowOutput, ScalarValue, Scale, Transform};
 
 /* === Constants === */
 
@@ -94,7 +94,8 @@ async fn expression_transforms_through_list_rows() {
     loop {
         let response = fixture.runtime.operations.call_native::<storage::ListRows>(request.clone()).await.unwrap();
         for output in response.rows {
-            if let QueryArrow::Batch(batch) = QueryArrow::try_from(output).unwrap() {
+            if let RowOutput::Batch(bytes) = output {
+                let batch = ArrowBatch::from_ipc(bytes).unwrap();
                 let batch = batch.as_record_batch();
                 let values = batch.column_by_name("shifted").unwrap().as_any().downcast_ref::<Float64Array>().unwrap();
                 shifted.extend(values.iter());

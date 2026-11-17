@@ -15,15 +15,16 @@
 
 /* === Imports === */
 
-use super::requests::{ArrowPage, ColumnSelection, IndexPage, IndexSelection, ProjectionPage, ProjectionSelection};
+use super::requests::{ColumnPage, ColumnSelection, IndexEntry, IndexPage, IndexSelection, IpcBatch, ProjectionPage, ProjectionSelection};
 
 use super::requests::required;
 
+use super::requests::ColumnSource;
 use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::model;
+use harmos_query::arrow::{ArrowBatch, ArrowSchema};
 use harmos_query::columnar::Cancellation;
-use harmos_query::columnar::ColumnSource;
 use harmos_storage::ReadLimits;
 use harmos_storage::StorageManager;
 use prost::Message;
@@ -33,7 +34,7 @@ use std::num::NonZeroUsize;
 
 pub(super) async fn columns(
     context: &ExecutionContext, selection: Option<ColumnSelection>, at: Option<model::ReadCut>, page: Option<model::PageRequest>,
-) -> Result<(ArrowPage, model::ReadCut, String), ServingError> {
+) -> Result<(ColumnPage, model::ReadCut, String), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -41,7 +42,7 @@ pub(super) async fn columns(
         context,
         async {
             let selection = required(selection)?;
-            let source: ColumnSource = required(selection.source.clone())?;
+            let source = required(selection.source.clone())?.into_engine();
 
             let mut plan = selection.clone();
             plan.work = None;
@@ -80,7 +81,14 @@ pub(super) async fn columns(
             read.validate()?;
             let result = selected.list_column_rows(&read, &cancel).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: ArrowPage = result;
+            let result = ColumnPage {
+                batch: ipc_batch(ArrowBatch::try_new(result.batch)?)?,
+                complete: result.complete,
+                scanned: result.scanned,
+                bytes_read: result.bytes_read,
+                columns_read: result.columns_read,
+                payload_rows: result.payload_rows,
+            };
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -101,7 +109,7 @@ pub(super) async fn indexes(
         context,
         async {
             let selection = required(selection)?;
-            let source: ColumnSource = required(source)?;
+            let source = required(source)?.into_engine();
 
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
@@ -144,6 +152,10 @@ pub(super) async fn indexes(
             };
             let result = selected.list_index_entries(&read, &cancel).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
+            let result = IndexPage {
+                entries: result.entries.into_iter().map(|entry| IndexEntry { key: entry.key, position: entry.position }).collect(),
+                complete: result.complete,
+            };
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -164,7 +176,7 @@ pub(super) async fn projections(
         context,
         async {
             let selection = required(selection)?;
-            let source: ColumnSource = required(source)?;
+            let source = required(source)?.into_engine();
 
             let name = harmos_storage::Identifier::new(selection.name.clone()).map_err(harmos_domain::Error::from)?;
             let mut plan = selection.clone();
@@ -210,7 +222,12 @@ pub(super) async fn projections(
             };
             let result = storage.list_projection_rows(&read).await?;
             let next = result.next.as_ref().map(|cursor| snapshots.seal_cursor(&selected, &plan, cursor)).transpose()?.unwrap_or_default();
-            let result: ProjectionPage = result;
+            let result = ProjectionPage {
+                batch: ipc_batch(ArrowBatch::try_new(result.batch)?)?,
+                frontier: result.frontier,
+                revision: result.revision,
+                changed_keys: result.changed_keys,
+            };
             response_bytes(&result, selected.cut(), &next, maximum)?;
 
             Ok((result, selected.cut().clone(), next))
@@ -221,6 +238,14 @@ pub(super) async fn projections(
 }
 
 /* === Private Functions === */
+
+fn ipc_batch(batch: ArrowBatch) -> crate::Result<IpcBatch> {
+    let schema = ArrowSchema::try_new(batch.as_record_batch().schema())?;
+    Ok(IpcBatch {
+        schema: schema.ipc_bytes().to_vec(),
+        data: batch.ipc_bytes().to_vec(),
+    })
+}
 
 fn bounds(
     storage: &StorageManager, page: &model::PageRequest, cut: &model::ReadCut, repeated_key: bool,

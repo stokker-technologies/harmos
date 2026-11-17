@@ -13,9 +13,9 @@
 
 use super::{Fixture, config};
 use harmos_domain::Message;
-use harmos_operations::storage as operations;
+use harmos_operations::storage;
+use harmos_operations::storage::RowOutput;
 use harmos_protocol::model;
-use harmos_query::QueryOutput;
 use harmos_storage::query::RecordSelection;
 use harmos_storage::query::Source;
 use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
@@ -68,7 +68,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     }
     let original = fixture.storage.flush().await.unwrap();
     let saved =
-        fixture.runtime.operations.call_native::<operations::CreateSnapshot>(operations::CreateSnapshotRequest { at: None }).await.unwrap();
+        fixture.runtime.operations.call_native::<storage::CreateSnapshot>(storage::CreateSnapshotRequest { at: None }).await.unwrap();
     let cut = saved.resolved_at.clone().unwrap();
     let source = Some(Source::Records(RecordSelection {
         schema: schema.clone(),
@@ -77,7 +77,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source_start: None,
         source_end: None,
     }));
-    let selection = operations::ListRowsRequest {
+    let selection = storage::ListRowsRequest {
         merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
@@ -88,7 +88,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
             page_token: String::new(),
         }),
     };
-    let first = fixture.runtime.operations.call_native::<operations::ListRows>(selection.clone()).await.unwrap();
+    let first = fixture.runtime.operations.call_native::<storage::ListRows>(selection.clone()).await.unwrap();
     assert_eq!(first.resolved_at, Some(cut.clone()));
     assert!(!first.next_page_token.is_empty());
 
@@ -125,7 +125,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     let mut current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+        .call_native::<storage::ListRows>(storage::ListRowsRequest {
             merge: None,
             at: None,
             ..selection.clone()
@@ -138,7 +138,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     loop {
         assert_eq!(current.resolved_at.as_ref().unwrap().positions[0].sequence, newer.sequence);
         for row in &current.rows {
-            if let QueryOutput::Batch(bytes) = row {
+            if let RowOutput::Batch(bytes) = row {
                 durable_rows += harmos_query::arrow::ArrowBatch::from_ipc(bytes.clone()).unwrap().as_record_batch().num_rows();
             }
         }
@@ -148,7 +148,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         current = fixture
             .runtime
             .operations
-            .call_native::<operations::ListRows>(operations::ListRowsRequest {
+            .call_native::<storage::ListRows>(storage::ListRowsRequest {
                 merge: None,
                 at: None,
                 page: Some(model::PageRequest {
@@ -163,7 +163,7 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     assert_eq!(durable_rows, 5);
 
     // Replay The Native Continuation Without Changing Its Page.
-    let request = operations::ListRowsRequest {
+    let request = storage::ListRowsRequest {
         merge: None,
         source: source.clone(),
         at: Some(cut.clone()),
@@ -173,11 +173,11 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
             ..selection.page.clone().unwrap()
         }),
     };
-    let second = fixture.runtime.operations.call_native::<operations::ListRows>(request.clone()).await.unwrap();
+    let second = fixture.runtime.operations.call_native::<storage::ListRows>(request.clone()).await.unwrap();
     let replay = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+        .call_native::<storage::ListRows>(storage::ListRowsRequest {
             merge: None,
             page: request.page.clone(),
             ..selection.clone()
@@ -197,28 +197,28 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
         source_end: None,
     }));
     changed.page.as_mut().unwrap().page_token = first.next_page_token.clone();
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(changed).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(changed).await.is_err());
     let mut tampered = selection.clone();
     tampered.page.as_mut().unwrap().page_token = "é".repeat(104);
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(tampered).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(tampered).await.is_err());
     let mut foreign = selection.clone();
     foreign.at.as_mut().unwrap().positions[0].history.as_mut().unwrap().epoch = "foreign".into();
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(foreign).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(foreign).await.is_err());
     let mut unissued = selection.clone();
     unissued.at.as_mut().unwrap().revisions.push(model::ResourceRevision {
         name: "unissued".into(),
         revision: vec![1],
     });
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(unissued).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(unissued).await.is_err());
 
     let mut resume = request.clone();
     resume.page.as_mut().unwrap().page_token = second.next_page_token;
     let mut count = 0;
     loop {
-        let response = fixture.runtime.operations.call_native::<operations::ListRows>(resume.clone()).await.unwrap();
+        let response = fixture.runtime.operations.call_native::<storage::ListRows>(resume.clone()).await.unwrap();
         assert_eq!(response.resolved_at, Some(cut.clone()));
         for row in response.rows {
-            if let QueryOutput::Batch(bytes) = row {
+            if let RowOutput::Batch(bytes) = row {
                 count += harmos_query::arrow::ArrowBatch::from_ipc(bytes).unwrap().as_record_batch().num_rows();
             }
         }
@@ -229,14 +229,14 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     }
     assert_eq!(count, 4);
     assert_eq!(cut.positions[0].sequence, original.sequence);
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(resume.clone()).await.unwrap().next_page_token.is_empty());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(resume.clone()).await.unwrap().next_page_token.is_empty());
     fixture.data.control.block_write.store(false, Ordering::SeqCst);
     fixture.data.control.write_release.notify_waiters();
     let latest = flush.await.unwrap().unwrap();
     let current = fixture
         .runtime
         .operations
-        .call_native::<operations::ListRows>(operations::ListRowsRequest {
+        .call_native::<storage::ListRows>(storage::ListRowsRequest {
             merge: None,
             at: None,
             ..selection.clone()
@@ -247,10 +247,10 @@ async fn issued_pages_keep_their_cut_while_newer_writes_are_blocked() {
     fixture
         .runtime
         .operations
-        .call_native::<operations::DeleteSnapshot>(operations::DeleteSnapshotRequest { snapshot: saved.snapshot })
+        .call_native::<storage::DeleteSnapshot>(storage::DeleteSnapshotRequest { snapshot: saved.snapshot })
         .await
         .unwrap();
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(resume).await.is_err());
-    assert!(fixture.runtime.operations.call_native::<operations::ListRows>(selection).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(resume).await.is_err());
+    assert!(fixture.runtime.operations.call_native::<storage::ListRows>(selection).await.is_err());
     fixture.finish().await;
 }

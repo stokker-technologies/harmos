@@ -22,9 +22,9 @@
 // Local Imports
 use super::super::writes;
 use super::{fixture, mutation, records};
-use harmos_operations::storage;
+use harmos_operations::storage::{self, RowOutput};
 use harmos_protocol::model::PageRequest;
-use harmos_query::QueryArrow;
+use harmos_query::arrow::ArrowBatch;
 
 /* === Constants === */
 
@@ -87,7 +87,8 @@ async fn native_row_pages_replay_and_keep_their_durable_image() {
         request.page.as_mut().unwrap().page_token = page.next_page_token;
     }
     for output in outputs {
-        if let QueryArrow::Batch(batch) = QueryArrow::try_from(output).unwrap() {
+        if let RowOutput::Batch(bytes) = output {
+            let batch = ArrowBatch::from_ipc(bytes).unwrap();
             rows += batch.as_record_batch().num_rows();
         }
     }

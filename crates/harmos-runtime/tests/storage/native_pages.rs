@@ -18,17 +18,13 @@ mod compound_mutation_through_operations;
 use super::{Fixture, config};
 use harmos_domain::Message;
 use harmos_operations::storage;
-use harmos_operations::storage::{ColumnSelection, IndexSelection, ProjectionSelection};
+use harmos_operations::storage::{
+    ColumnKind, ColumnPredicate, ColumnSelection, ColumnSource, IndexDefinition, IndexSelection, ProjectionDefinition, ProjectionSelection,
+    ProjectionTransform,
+};
 use harmos_protocol::model;
-use harmos_query::columnar::ColumnKind;
-use harmos_query::columnar::ColumnPredicate;
-use harmos_query::columnar::ColumnSource;
-use harmos_query::index::IndexDefinition;
-use harmos_storage::MutationId;
-use harmos_storage::ReadLimits;
-use harmos_storage::query::projection::ProjectionDefinition;
-use harmos_storage::query::projection::ProjectionTransform;
-use harmos_storage::{Identifier, PayloadEncoding, RecordInput, SchemaKey};
+use harmos_query::arrow::{ArrowBatch, ArrowSchema};
+use harmos_storage::{Identifier, MutationId, PayloadEncoding, ReadLimits, RecordInput, SchemaKey};
 use std::{
     num::{NonZeroU32, NonZeroUsize},
     sync::atomic::Ordering,
@@ -105,7 +101,11 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         page: Some(page.clone()),
     };
     let first = fixture.runtime.operations.call_native::<storage::ListColumnRows>(request.clone()).await.unwrap();
-    let decoded = first.page.unwrap().batch;
+    let batch = first.page.unwrap().batch;
+    let schema = ArrowSchema::from_ipc(batch.schema).unwrap();
+    let batch = ArrowBatch::from_ipc(batch.data).unwrap();
+    batch.validate_schema(schema.as_schema()).unwrap();
+    let decoded = batch.as_record_batch();
     assert_eq!(decoded.num_rows(), 0);
     assert!(!first.next_page_token.is_empty());
     request.at = first.resolved_at.clone();
@@ -129,7 +129,11 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
             .await
             .unwrap();
         assert_eq!(response.resolved_at, request.at);
-        let decoded = response.page.unwrap().batch;
+        let batch = response.page.unwrap().batch;
+        let schema = ArrowSchema::from_ipc(batch.schema).unwrap();
+        let batch = ArrowBatch::from_ipc(batch.data).unwrap();
+        batch.validate_schema(schema.as_schema()).unwrap();
+        let decoded = batch.as_record_batch();
         let column = decoded.column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
         values.extend(column.values().iter().copied());
         if response.next_page_token.is_empty() {

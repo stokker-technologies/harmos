@@ -15,7 +15,7 @@
 
 /* === Imports === */
 
-use super::requests::{QueryOutput, Transform};
+use super::requests::{RowOutput, Transform};
 
 use super::requests::required;
 
@@ -24,8 +24,8 @@ use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_domain::model::storage::query::{Query, TimeMerge};
 use harmos_protocol::model;
-use harmos_query::QueryStep;
 use harmos_query::columnar::Cancellation;
+use harmos_query::{QueryArrow, QueryStep};
 use harmos_storage::QueryReader;
 use harmos_storage::query::RowSlice;
 use harmos_storage::query::Source;
@@ -41,7 +41,7 @@ use std::{
 
 #[derive(Clone)]
 pub(super) struct Page {
-    pub(super) rows: Vec<QueryOutput>,
+    pub(super) rows: Vec<RowOutput>,
     pub(super) resolved_at: model::ReadCut,
     pub(super) next_page_token: String,
 }
@@ -222,7 +222,13 @@ pub(super) async fn list(
             };
             let next = sequence.checked_add(1).ok_or_else(expired)?;
             let (rows, next_page_token) = match step {
-                QueryStep::Output(output) => (vec![output.output()], snapshots.token(&identity, &plan, next)?),
+                QueryStep::Output(output) => {
+                    let output = match output {
+                        QueryArrow::Schema(schema) => RowOutput::Schema(schema.ipc_bytes().to_vec()),
+                        QueryArrow::Batch(batch) => RowOutput::Batch(batch.ipc_bytes().to_vec()),
+                    };
+                    (vec![output], snapshots.token(&identity, &plan, next)?)
+                }
                 QueryStep::Progress => (Vec::new(), snapshots.token(&identity, &plan, next)?),
                 QueryStep::Complete => {
                     session.reader = None;
