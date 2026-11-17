@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # ***
-"""Run Compiler Commands With An Owned Foreground Sccache Server."""
+"""Run Compiler Commands with an Owned Foreground Sccache Server."""
 
 # === Imports === #
 
@@ -68,7 +68,7 @@ def run(
     *,
     statistics: dict | None = None,
 ) -> int:
-    """Require The Declared Backend And Clean Up Only Our Process."""
+    """Require the Declared Backend and Clean Up Only Our Process."""
     try:
         return _configured(command, shell, statistics=statistics)
     except CacheError:
@@ -151,10 +151,10 @@ def _execute(
     }
     # The Server Logs Its Port Only After Backend Readiness And Binding Port 0.
     try:
-        # Run the Native Command
-        command = ["sccache"]
+        # Start the Owned Server
+        server_command = ["sccache"]
         server = subprocess.Popen(
-            command,
+            server_command,
             creationflags=spawn_flags(),
             env=server_environment,
             stdout=subprocess.DEVNULL,
@@ -292,10 +292,10 @@ def _execute(
                 finally:
                     if server.poll() is None:
                         try:
-                            # Run the Native Command
-                            command = ["sccache", "--show-stats", "--stats-format", "json"]
+                            # Collect Cache Statistics
+                            statistics_command = ["sccache", "--show-stats", "--stats-format", "json"]
                             result = subprocess.run(
-                                command,
+                                statistics_command,
                                 creationflags=spawn_flags(),
                                 env=child_environment,
                                 stdin=subprocess.DEVNULL,
@@ -362,7 +362,7 @@ def _report(
     *,
     warning: bool = False,
 ) -> None:
-    """Emit Only Fixed Classifications And Validated Native Version And Error Codes."""
+    """Emit Only Fixed Classifications and Validated Native Version and Error Codes."""
     try:
         # Run the Native Command
         command = ["sccache", "--version"]
@@ -391,7 +391,7 @@ def _report(
 
 
 def _write_error(line: str) -> str | None:
-    """Classify Native Write Failures Without Exposing Backend URLs Or Credentials."""
+    """Classify Native Write Failures without Exposing Backend URLs or Credentials."""
     _, marker, reason = line.partition("Error executing cache write: ")
     if not marker:
         return None
