@@ -152,8 +152,10 @@ means. Floating-point regrouping can change the final rounding.
 
 Only the first output row carries non-null Binary `continuation` bytes. Persist
 those bytes with the envelope through ordinary object or file operations. Supply
-them as `prior` with unchanged fields, initial width, bucket cap and history;
-`source_cut` must equal the retained ListRows source cut and may only advance.
+them as `prior` with unchanged fields, initial width and history, and an equal or
+smaller bucket cap. A smaller cap merges adjacent buckets by doubling width;
+a larger cap requires recomputation. `source_cut` must equal the retained
+ListRows source cut and may only advance.
 New rows must have strictly increasing, nonzero positions after the prior cut
 and at or before the new cut. Continue over append-only source ranges; updates,
 removals or a changed query selection require recomputation. The continuation is
