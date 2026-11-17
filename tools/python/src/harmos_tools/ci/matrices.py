@@ -79,7 +79,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "integration",
-        "label": "Python",
+        "label": "SDK / Python",
         "arguments": "--package harmos-sdk --target integration",
     },
     {
@@ -88,7 +88,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "integration",
-        "label": "Python",
+        "label": "SDK / Python",
         "arguments": "--package harmos-sdk --target integration",
     },
     {
