@@ -1,5 +1,10 @@
 # Facility Trim
 
+## Release Readiness
+
+The removals are landed. Task 3.1 retains combined native Linux/Windows query,
+stream and state proof; source inspection does not close it.
+
 ## Why
 
 Harmos carries facilities that no application uses or that are not its responsibility. Each one
@@ -25,15 +30,15 @@ State management stays. It is a Harmos feature that applications build on.
 - The public signal namespace and statistical stream-batch API are removed.
 - The original kernel-retention choice is superseded by [operation-boundary](../operation-boundary/tasks.md), which owns one
   crate-internal statistics/aggregation home in `harmos-query`, available through storage
-  `list_rows` transforms, and removal of duplicate kernels. This is locked direction;
-  consolidation is not claimed landed by this removal change.
+  `list_rows` transforms, and removal of duplicate kernels. That consolidation is
+  landed under its owning group; native final proof remains open here.
 
 ### Simulation
 
 Simulation stays. It was built to accelerate time in tests, and until now nothing could use it
 for that, because a plugin in another process has its own clock. The host-owned clock in
 `grpc-plugins` removes that obstacle: the simulation clock becomes the host's virtual clock, and
-A product runs its stories on it. Its tests of state recovery, replay identity and inverse laws
+a product runs its stories on it. Its tests of state recovery, replay identity and inverse laws
 stay as they are.
 
 ## Impact
