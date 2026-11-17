@@ -19,6 +19,7 @@ use std::time::Duration;
 
 // Local Imports
 use harmos_operations::plugin::Grant;
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::Invocation;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
@@ -153,7 +154,7 @@ async fn fetch(channel: tonic::transport::Channel, bearer: &'static str, path: &
     client.ready().await.map_err(|_| tonic::Status::unavailable("channel"))?;
     let mut request = tonic::Request::new(harmos_runtime::operations::Response::new(Fetch { value }));
     request.metadata_mut().insert("authorization", bearer.parse().unwrap());
-    let settings = harmos_runtime::grpc::server::Settings::default();
+    let settings = GrpcServerSettings::default();
     let codec = harmos_runtime::grpc::Codec::<harmos_runtime::grpc::Transcoded, Fetch, harmos_runtime::operations::Response<Fetch>>::new(
         settings.decode,
         settings.encode,
@@ -183,7 +184,7 @@ async fn external_request_grants() {
     // Authenticate Real gRPC Requests Before Authorizing Their Request Scope
     let settings = harmos_runtime::grpc::Settings {
         address: "127.0.0.1:0".parse().unwrap(),
-        operations: harmos_runtime::grpc::server::Settings::default(),
+        operations: GrpcServerSettings::default(),
         reflection: false,
         tls: None,
         connections: std::num::NonZeroUsize::new(4).unwrap(),

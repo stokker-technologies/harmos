@@ -10,11 +10,9 @@
 /* === Modules === */
 
 #[cfg(feature = "grpc")]
-#[path = "endpoints/input_failure_settles_attempt.rs"]
 mod input_failure_settles_attempt;
 
 #[cfg(feature = "grpc")]
-#[path = "endpoints/exchange_failure_settles_attempt.rs"]
 mod exchange_failure_settles_attempt;
 
 /* === Imports === */
@@ -35,6 +33,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::app::App;
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy, StreamInput, StreamOutput, StreamSettings, stream};
 use harmos_runtime::{Error, Runtime};
 
@@ -819,7 +818,7 @@ async fn grpc_stall_names_operation() {
         .await
         .unwrap();
     let capacity = NonZeroUsize::new(4096).unwrap();
-    let settings = harmos_runtime::grpc::server::Settings {
+    let settings = GrpcServerSettings {
         calls: NonZeroUsize::new(1).unwrap(),
         decode: DecodeSettings {
             message_bytes: capacity,

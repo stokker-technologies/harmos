@@ -34,6 +34,7 @@ use tonic::{
 // Local Imports
 use super::app::App;
 use harmos_runtime::Error;
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::grpc::authentication::{Authenticate, Authentication, Authenticator};
 use harmos_runtime::grpc::middleware::{Enter, Invocation, Middleware, Observation};
 use harmos_runtime::grpc::{Codec, DecodeSettings, EncodeSettings};
@@ -635,10 +636,10 @@ fn limits() -> (DecodeSettings, EncodeSettings) {
         },
     )
 }
-fn wire_settings() -> harmos_runtime::grpc::server::Settings {
+fn wire_settings() -> GrpcServerSettings {
     let (decode, encode) = limits();
     let capacity = NonZeroUsize::new(4096).unwrap();
-    harmos_runtime::grpc::server::Settings {
+    GrpcServerSettings {
         calls: NonZeroUsize::new(8).unwrap(),
         decode,
         encode,
@@ -649,7 +650,7 @@ fn wire_settings() -> harmos_runtime::grpc::server::Settings {
 }
 fn settings() -> harmos_runtime::grpc::Settings {
     harmos_runtime::grpc::Settings {
-        operations: harmos_runtime::grpc::server::Settings::default(),
+        operations: GrpcServerSettings::default(),
         reflection: false,
         address: "127.0.0.1:0".parse().unwrap(),
         tls: None,
@@ -702,7 +703,7 @@ async fn external_catalog(
 ) -> Result<Vec<harmos_operations::host::DiscoveredOperation>, tonic::Status> {
     use harmos_protocol::host::OperationsListRequest;
     use harmos_protocol::host::OperationsListResponse;
-    let settings = harmos_runtime::grpc::server::Settings::default();
+    let settings = GrpcServerSettings::default();
     let (decode, encode) = (settings.decode, settings.encode);
     let mut client = tonic::client::Grpc::new(channel)
         .max_decoding_message_size(decode.message_bytes.get())

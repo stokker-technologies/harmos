@@ -29,6 +29,7 @@ use super::app::App;
 use harmos_operations::execution::operations::{
     ExecutionContext, Grpc, ProtobufDependency, ProtobufInput, ProtobufOperation, ProtobufOutput, ServingError, Visibility,
 };
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::operations::{
     EncodedInvocation, OperationPolicy, ProtobufDownload, ProtobufExchange, ProtobufUpload, Registration, RetryPolicy,
 };
@@ -260,7 +261,7 @@ async fn generated_messages_are_registered_reflected_and_admitted() {
         calls_per_connection: NonZeroUsize::new(8).unwrap(),
         request_timeout: Duration::from_secs(5),
         shutdown_timeout: Duration::from_secs(5),
-        operations: harmos_runtime::grpc::server::Settings {
+        operations: GrpcServerSettings {
             decode: harmos_runtime::grpc::DecodeSettings {
                 message_bytes: NonZeroUsize::new(128 * 1024).unwrap(),
                 retained_bytes: NonZeroUsize::new(64 * 1024).unwrap(),

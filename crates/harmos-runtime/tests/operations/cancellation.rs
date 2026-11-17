@@ -25,6 +25,7 @@ use tokio::sync::Notify;
 
 // Local Imports
 use super::app::App;
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::operations::{OperationPolicy, RetryPolicy};
 use harmos_runtime::{Error, Refusal, Runtime};
 
@@ -176,7 +177,7 @@ pub(crate) async fn remote<A: harmos_runtime::Application>(runtime: &Runtime<A>,
     };
     let attached = runtime.grpc().attach(settings).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
-    let transport = harmos_runtime::grpc::server::Settings::default();
+    let transport = GrpcServerSettings::default();
     let transport = harmos_runtime::grpc::client::Settings {
         decode: transport.decode,
         encode: transport.encode,

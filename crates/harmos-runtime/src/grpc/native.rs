@@ -26,6 +26,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 // Local Imports
 use super::{Codec, InputEnvelope, server};
 use crate::Error;
+use crate::config::GrpcServerSettings;
 use crate::operations::{EncodedInvocation, GrpcBinding, StreamItem};
 use harmos_operations::execution::operations::{WireStreamLimits, WireStreams};
 
@@ -50,7 +51,7 @@ struct Output {
 
 struct Endpoint {
     binding: GrpcBinding,
-    settings: server::Settings,
+    settings: GrpcServerSettings,
 }
 
 struct Pending {
@@ -380,7 +381,7 @@ impl tonic::server::StreamingService<StreamItem<super::ControlEnvelope<Vec<u8>, 
 
 /* === Public Functions === */
 
-pub(crate) fn serve(authority: server::Authority, settings: server::Settings, request: http::Request<Body>) -> server::HttpFuture {
+pub(crate) fn serve(authority: server::Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> server::HttpFuture {
     Box::pin(async move {
         let server::Authority::Binding(binding) = authority else {
             return Status::internal("native operation binding required").into_http();
@@ -447,32 +448,35 @@ mod tests {
     use std::convert::Infallible;
     use std::time::Duration;
 
-    use tonic::{Code, client::Grpc, transport};
+    use futures_util::stream;
+    use tonic::{Code, client::Grpc, codegen::http::uri::PathAndQuery, transport};
 
     use super::*;
-    use crate::grpc::{Encode, Wire};
+    use crate::grpc::{self, Encode, Wire};
     use crate::operations;
     use crate::operations::{
         ExecutionContext, OperationPolicy, ProtobufInput, ProtobufOperation, Registration, RetryPolicy, ServingError, Visibility,
     };
+    use crate::state::Never;
+    use crate::{Application, Lifecycle, Runtime, Setup, Startup};
     use harmos_protocol::host::OperationsListRequest;
 
     struct Model;
     struct Collect;
 
-    impl crate::Lifecycle for Model {
+    impl Lifecycle for Model {
         type Config = ();
         type Error = Infallible;
-        type Context = crate::Startup<Self>;
+        type Context = Startup<Self>;
 
-        async fn prepare(_: (), _: &mut crate::Setup<Self>) -> Result<Self, Self::Error> {
+        async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Self::Error> {
             Ok(Self)
         }
     }
 
-    impl crate::Application for Model {
+    impl Application for Model {
         type State = ();
-        type Transaction = crate::state::Never;
+        type Transaction = Never;
         type Record = ();
     }
 
@@ -481,7 +485,7 @@ mod tests {
         type Response = OperationsListRequest;
         type Endpoints = ProtobufInput<OperationsListRequest>;
         const ID: &'static str = "native.collect";
-        const GRPC: Option<crate::operations::Grpc> = Some(crate::operations::Grpc::new("fixture.host.v1", "Native", "Collect"));
+        const GRPC: Option<operations::Grpc> = Some(operations::Grpc::new("fixture.host.v1", "Native", "Collect"));
         const POLICY: OperationPolicy = OperationPolicy {
             timeout: Duration::from_secs(30),
             attempt_timeout: Duration::from_secs(30),
@@ -501,14 +505,14 @@ mod tests {
     #[tokio::test]
     async fn malformed_native_stream_input_is_invalid_argument() {
         // Register the Native Protobuf Operation
-        let runtime = crate::Runtime::<Model>::start((), ()).await.unwrap();
+        let runtime = Runtime::<Model>::start((), ()).await.unwrap();
         let registration = Registration::new(Default::default()).protobuf::<Collect>().unwrap();
         runtime.operations.register_batch(registration).await.unwrap();
 
         // Connect to Its Native gRPC Adapter
         let attached = runtime
             .grpc()
-            .attach(crate::grpc::Settings {
+            .attach(grpc::Settings {
                 address: "127.0.0.1:0".parse().unwrap(),
                 ..Default::default()
             })
@@ -520,11 +524,11 @@ mod tests {
 
         // Send a Valid Opening and a Malformed Protobuf Stream Item
         let frames = [InputEnvelope::Request(Vec::new()), InputEnvelope::Item(vec![0xff])].map(operations::Response::new);
-        let request = Request::new(futures_util::stream::iter(frames));
-        let settings = server::Settings::default();
+        let request = Request::new(stream::iter(frames));
+        let settings = GrpcServerSettings::default();
         let codec =
             Codec::<Raw, Vec<u8>, operations::Response<InputEnvelope<Vec<u8>, Vec<u8>>>>::new(settings.decode, settings.encode).unwrap();
-        let result = client.client_streaming(request, http::uri::PathAndQuery::from_static("/fixture.host.v1.Native/Collect"), codec).await;
+        let result = client.client_streaming(request, PathAndQuery::from_static("/fixture.host.v1.Native/Collect"), codec).await;
         assert_eq!(result.err().expect("malformed input must fail").code(), Code::InvalidArgument);
 
         // Settle the Listener and Runtime
@@ -564,20 +568,20 @@ mod tests {
             if required > 64 { Err(Status::resource_exhausted("fixture credit")) } else { Ok(()) }
         };
         let error = Raw::encode_admitted(&payload, &mut bytes, 65536, &mut admit).unwrap_err();
-        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+        assert_eq!(error.code(), Code::ResourceExhausted);
         assert!(bytes.is_empty());
         assert_eq!(bytes.capacity(), capacity);
 
         for tag in [None, Some(1), Some(2)] {
             let output = Output { bytes: payload.clone(), tag };
             let error = output.write_admitted(&mut bytes, 65536, &mut admit).unwrap_err();
-            assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+            assert_eq!(error.code(), Code::ResourceExhausted);
             assert!(bytes.is_empty());
             assert_eq!(bytes.capacity(), capacity);
         }
 
         let error = Raw::encode_admitted(&payload, &mut bytes, 64, &mut |_| Ok(())).unwrap_err();
-        assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+        assert_eq!(error.code(), Code::ResourceExhausted);
         assert!(bytes.is_empty());
         assert_eq!(bytes.capacity(), capacity);
     }

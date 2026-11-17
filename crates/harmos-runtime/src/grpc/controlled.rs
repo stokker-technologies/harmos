@@ -25,6 +25,7 @@ use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
 
 // Local Imports
 use super::{Codec, Event, Wire, server};
+use crate::config::GrpcServerSettings;
 use crate::operations::{Direction, RequestShape, StreamItem};
 use crate::{MemorySize, MessageError};
 use harmos_operations::execution::grpc::DecodeInput;
@@ -44,7 +45,7 @@ type Forward = Pin<Box<dyn Future<Output = Result<bool, Status>> + Send>>;
 
 struct Endpoint<O> {
     authority: server::Authority,
-    settings: server::Settings,
+    settings: GrpcServerSettings,
     operation: PhantomData<fn() -> O>,
 }
 
@@ -228,7 +229,7 @@ pub(super) fn is_managed(authority: &server::Authority, path: &str) -> bool {
     }
 }
 
-pub(super) fn serve<O, W>(authority: server::Authority, settings: server::Settings, request: http::Request<Body>) -> server::HttpFuture
+pub(super) fn serve<O, W>(authority: server::Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> server::HttpFuture
 where
     O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,

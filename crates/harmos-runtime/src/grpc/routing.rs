@@ -26,6 +26,7 @@ use tonic::{body::Body, codegen::http};
 
 // Local Imports
 use super::server;
+use crate::config::GrpcServerSettings;
 
 /* === Constants === */
 
@@ -33,14 +34,14 @@ use super::server;
 
 /* === Type Aliases === */
 
-pub(crate) type Handler = fn(server::Authority, server::Settings, http::Request<Body>) -> server::HttpFuture;
+pub(crate) type Handler = fn(server::Authority, GrpcServerSettings, http::Request<Body>) -> server::HttpFuture;
 
 /* === Structs === */
 
 #[derive(Clone)]
 pub(super) struct Router {
     operations: crate::operations::Manager,
-    settings: server::Settings,
+    settings: GrpcServerSettings,
     calls: server::Calls,
 }
 
@@ -51,7 +52,7 @@ pub(super) struct Router {
 /* === Implementations === */
 
 impl Router {
-    pub(super) fn new(operations: crate::operations::Manager, settings: server::Settings) -> Result<Self, tonic::Status> {
+    pub(super) fn new(operations: crate::operations::Manager, settings: GrpcServerSettings) -> Result<Self, tonic::Status> {
         settings.validate()?;
         Ok(Self {
             operations,
