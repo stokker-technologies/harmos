@@ -21,7 +21,6 @@ import unittest
 from pathlib import Path
 
 # Third Party Imports
-
 # Local Imports
 from harmos_tools.build.cpp import environment
 from harmos_tools.build.paths import output
