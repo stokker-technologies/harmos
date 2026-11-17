@@ -70,6 +70,9 @@ impl SampleStore {
     pub fn range(&self, range: RangeToInclusive<u64>) -> Result<impl Iterator<Item = (&u64, &StoredRow)>> {
         Ok(self.materialize()?.range(range))
     }
+    pub fn iter(&self) -> impl Iterator<Item = (&u64, &StoredRow)> {
+        self.materialize().expect("validated sample row image").iter()
+    }
     pub fn keys(&self) -> impl Iterator<Item = &u64> {
         self.materialize().expect("validated sample row image").keys()
     }

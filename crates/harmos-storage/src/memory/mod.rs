@@ -705,6 +705,9 @@ impl StorageBackend for Backend {
             if self.control.fail_open.load(Ordering::SeqCst) {
                 return Err(failure(BackendFailure::Permanent));
             }
+            // Backend Snapshot Tokens Belong to One Open Session.
+            let _transaction = self.conditional.lock().unwrap();
+            self.snapshots.lock().unwrap().clear();
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
