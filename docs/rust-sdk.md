@@ -4,29 +4,6 @@ The `harmos` crate supplies reusable connection plumbing and native or WebAssemb
 Import shared values from `harmos`, client facilities from `harmos::client`, and plugin
 facilities from `harmos::plugin`. Wire modules remain private implementation details.
 
-## Client Calls
-
-[The reference product client example](../tools/conformance/examples/client.rs) discovers operations and
-reads host time. Pass the host URL as its first argument and provide the consumer-owned
-retention budget in `HARMOS_CLIENT_RETAINED_BYTES`.
-
-```rust
-let connection = Client::connect(address, settings).await?;
-let client = ProductClient::new(connection.transport_handle());
-let operations = client.operations.list().await?;
-let now = client.time.get().await?;
-```
-
-Methods take request content directly. A response containing one field returns that
-field; responses containing several fields retain their named payload. Each `_with`
-method takes operation options whose `context` owns that call's metadata, deadline
-and cancellation. Operation policies own default deadlines and retries.
-
-Plugin settings use one host resource. A client selects a plugin entry and replaces
-its complete settings map through `client.plugins.settings.set(...)`. The Rust
-generator makes the plugin name a required client argument to `list(name)`; a
-plugin handler may omit the selector to read its own entry.
-
 ## Plugin Context
 
 ```rust

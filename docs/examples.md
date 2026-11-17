@@ -31,7 +31,7 @@ uses the application's generated resource root.
 
 The shared descriptor fixture is
 [annotations.proto](../sdk/tests/fixtures/client/proto/application/host/v1/plugins/annotations.proto).
-It adds application-owned `Annotations.Get` under the library `Plugins` parent,
+It adds application-owned `Annotations.Get` under the product `Plugins` parent,
 alongside the sibling application `Jobs` root:
 
 ```text

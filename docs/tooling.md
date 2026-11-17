@@ -376,7 +376,7 @@ python_protocol.generate(
     proto_root=root / "contracts",
     descriptors=descriptor_path,
     configuration=configuration,
-    module_prefixes={"shared": "shared._wire"},
+    module_prefixes={"shared": "shared.protocol"},
 )
 check_public_surfaces(
     root,
@@ -401,7 +401,7 @@ operations.generate(
 
 `python_protocol.generate` discovers `.proto` files below `proto_root/namespace`;
 `files` can instead supply an explicit tuple of paths relative to `proto_root`.
-The configured namespace is moved beneath `_wire`; `module_prefixes` rewrites
+The configured namespace is private; `module_prefixes` rewrites
 external imports without changing protobuf identities. Protoc's own private wire
 import aliases remain compiler-owned; the shared resource renderers emit no import
 or type renames. Public-surface roots are relative to `root` or absolute paths within
@@ -445,34 +445,6 @@ Products own authoring SDKs and generate their own client resources from product
 C# is NuGet `Harmos`, and C++ is CMake `Harmos` (`Harmos::Cpp`). No audience
 selector exists. The host enforces faces and visibility at runtime. Context methods
 remain child calls and have no independent gRPC listener.
-
-## Control for Each Call
-
-Generated roots preserve caller metadata/credentials, a deadline override and
-cancellation for each call. The transport options belong to that call:
-
-| SDK | Caller Control |
-| --- | --- |
-| Rust | Pass `tonic::Request<Q>` with metadata and `set_timeout`; drop the pending future or returned Watch to cancel observation. |
-| Python | Pass `call_metadata=`, `credentials=` and `timeout=` to product SDK calls; colliding payload names add a `call_` prefix. Close a Watch with `await updates.aclose()`. |
-| C# | Pass `Grpc.Core.CallOptions` with Headers, Credentials, Deadline and CancellationToken. |
-| C++ | Pass `grpc::ClientContext&` as the first argument of every generated root method; configure metadata, credentials and deadline on it and use `TryCancel()`. |
-
-C++ Watch methods return `std::unique_ptr<grpc::ClientReader<Response>>` and borrow
-that same caller-owned context. Keep the context alive until the reader finishes;
-cancel it explicitly when abandoning the Watch. The former ClientWatch wrapper and
-its inaccessible context are removed. For example:
-
-```cpp
-grpc::ClientContext context;
-context.AddMetadata("authorization", credential);
-context.set_deadline(deadline);
-auto response = client.access.pairings.create(context, request);
-```
-
-The four SDKs exercise `one_call_preserves_metadata_deadline_override_and_cancellation`
-(normal PascalCase in C#), using events and transport option inspection without
-sampling elapsed or remaining wall-clock time. A later call keeps its own options.
 
 ## Python Plugin SDK
 

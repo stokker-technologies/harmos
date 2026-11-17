@@ -86,10 +86,3 @@ producing partial archives. Diagnostics and stored-file reads share
 and full-content digest verification. The service manager retains archive lifetime. Supply a positive
 `StatusSettings.read_timeout` for each bounded content read lease; it does not expire
 the retained archive or change replacement semantics.
-
-Rust clients use generated contracts under `harmos_protocol::client` and its `access`/`status` modules.
-The mechanical root exposes `client.access.listener`, `client.access.pairings`,
-`client.access.certificates` and `client.status` with its nested resources. Host applications delete their duplicate listener,
-pairing/rotation handlers, generic status services and collection machinery after
-composing these services. Keep application identity, fact contributors, authorization,
-settings persistence and secret-store integration in the application.

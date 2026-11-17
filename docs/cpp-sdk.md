@@ -94,57 +94,8 @@ Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers case
 
 Import carrier and connection helpers, errors and shared messages from `harmos`.
 Products generate their own client roots; Harmos provides no `harmos::Client`.
-Client response and options types have their single public path in `harmos::client`;
-authoring types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
+Authoring types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
 Wire requests and transport adapters stay in private generated headers.
-Protocol definitions are grouped by model, host and plugin executor. Each product wrapper
-operation's callers option selects its client and plugin-context surfaces: `CLIENTS`,
-`PLUGINS` or `ALL`. The descriptor owns that audience; runtime assembly has no
-caller overrides.
-
-```cpp
-using product::Client;
-
-auto client = Client::connect("127.0.0.1:53124");
-const auto inventory = client.operations.list();
-const auto response = client.status.get();
-std::cout << response.status().identity().application_name() << '\n';
-```
-
-Typed calls take required request content in declaration order, followed by a defaulted
-per-call options value. For example, `client.plugins.get("example")` and
-`client.plugins.list(PluginsListOptions{.at = cut})` own their requests and contexts.
-Import `PluginsListOptions` from the product client boundary when naming it. Mutations generate
-retry identity when `request_id` is absent. Options can retain a shared ClientContext
-for metadata, cancellation or deadline overrides. Operation policy owns the default
-deadline. Streaming calls return an owned `ClientStream`; `next()` pulls one item,
-and cancellation or destruction ends demand.
-
-Exactly one response field returns its payload, including a repeated collection;
-streams project each item likewise. Empty and multiple-field responses retain their
-message. Status retains its status and resolved read cut. See the full list in
-[SDK Call Contracts](architecture.md#sdk-call-contracts).
-
-`client.operations.get` selects one complete operation identity. A dynamic call uses
-the discovered contract's fingerprint and encoded request bytes:
-
-```cpp
-const auto operation = client.operations.get(operation_id);
-const auto response = client.invocations.create(
-    operation_id, operation.contract().fingerprint(), encoded_request);
-```
-
-Typed schema and stream inventories are `client.schemas.list` and `client.streams.list`.
-Application-generated clients can compose their own resources beneath
-`client.plugins` with their own product settings operations.
-`client.plugins.replace` takes a managed placement and the entry's expected
-revision to replace a bundle in place.
-
-Storage operations are owned in-process. A product declares its own typed wire
-operations over them. `harmos/transfer.hpp` retains shared carrier sizing for
-`Client::connect`, plugin admission and product transfer wrappers; it does not
-declare library storage calls. Shared `File`, `Upload` and `FileReference` remain
-available to those wrappers.
 
 ## Typed Settings
 

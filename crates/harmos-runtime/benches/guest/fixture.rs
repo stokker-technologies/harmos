@@ -7,31 +7,34 @@
  * ***
  */
 
-// Compose The Same Schematic Commands Across Real Carrier Boundaries.
+// Compose the Same Schematic Commands Across Real Carrier Boundaries.
 
 /* === Modules === */
-
-#[path = "../../../harmos-storage/tests/support/storage.rs"]
-#[allow(dead_code, reason = "The Carrier Fixture Needs Only the Native File Callee's Backends")]
-mod backend;
 
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
-#[cfg(feature = "plugin-guest")]
+use std::io::Error;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{env, fs};
 
 // Third Party Imports
+use prost::Message;
+use serde_json::Value;
+use tempfile::TempDir;
 
 // Local Imports
-use harmos_runtime::Runtime;
-use prost::Message as _;
+use harmos_runtime::guest::Host;
+use harmos_runtime::plugin::{grpc, manager};
+use harmos_runtime::{Application, Identifier, Lifecycle, Runtime, Setup, Startup, config, operations, state, storage};
+use harmos_storage::memory::{Backend, RecoveryBackend};
+use harmos_storage::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings, StoreHistory};
 use schematic_operations::protocol::plugin::{
     SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
 };
@@ -50,7 +53,7 @@ pub struct Model;
 pub struct Fixture {
     pub runtime: Arc<Runtime<Model>>,
     pub startup_elapsed: Duration,
-    _directory: tempfile::TempDir,
+    _directory: TempDir,
 }
 
 /* === Enums === */
@@ -59,30 +62,28 @@ pub struct Fixture {
 
 /* === Implementations === */
 
-impl harmos_runtime::Lifecycle for Model {
+impl Lifecycle for Model {
     type Config = ();
-    type Error = std::io::Error;
-    type Context = harmos_runtime::Startup<Self>;
+    type Error = Error;
+    type Context = Startup<Self>;
 
-    async fn prepare(_: (), _setup: &mut harmos_runtime::Setup<Self>) -> std::result::Result<Self, Self::Error> {
+    async fn prepare(_: (), _setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
         Ok(Self)
     }
 }
 
-impl harmos_runtime::Application for Model {
+impl Application for Model {
     type State = ();
-    type Transaction = harmos_runtime::state::Never;
+    type Transaction = state::Never;
     type Record = ();
 }
 
 impl Fixture {
-    #[cfg(feature = "plugin-guest")]
-    #[allow(dead_code, reason = "Each Carrier Benchmark Selects Its Matching Constructor")]
     pub async fn guest() -> Self {
         let (runtime, host_elapsed, directory) = runtime().await;
         let started = Instant::now();
-        let bytes = std::fs::read(artifact("schematic-guest")).unwrap();
-        let settings = harmos_runtime::config::PluginGuestSettings {
+        let bytes = fs::read(artifact("schematic-guest")).unwrap();
+        let settings = config::PluginGuestSettings {
             stream_window: None,
             component_bytes: nz(64 * 1024 * 1024),
             memory_bytes: nz(256 * 1024 * 1024),
@@ -93,9 +94,9 @@ impl Fixture {
             tables: nz(8),
             instances: nz(8),
         };
-        let host = harmos_runtime::guest::Host::with_settings(&runtime, settings).unwrap();
+        let host = Host::with_settings(&runtime, settings).unwrap();
         let loaded = host.load(&bytes).unwrap();
-        runtime.plugin.register_guest(loaded, plugin_settings(), harmos_runtime::operations::Lane::default()).await.unwrap();
+        runtime.plugin.register_guest(loaded, plugin_settings(), operations::Lane::default()).await.unwrap();
         runtime.plugin.initialize().await.unwrap();
         Self {
             runtime,
@@ -138,14 +139,14 @@ pub fn payload(symbols: usize) -> SchematicValidateRequest {
 }
 
 pub fn artifact(name: &str) -> PathBuf {
-    let executable = std::env::current_exe().unwrap();
+    let executable = env::current_exe().unwrap();
     let fixtures = executable.parent().unwrap().parent().unwrap().join("fixtures");
     let stamp_path = fixtures.join("stamp.json");
-    let bytes = std::fs::read(stamp_path).unwrap();
-    let stamp: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let bytes = fs::read(stamp_path).unwrap();
+    let stamp: Value = serde_json::from_slice(&bytes).unwrap();
 
     assert_eq!(stamp["profile"], "bench");
-    let target = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    let target = format!("{}-{}", env::consts::OS, env::consts::ARCH);
     assert_eq!(stamp["target"], target);
     let relative = stamp["metadata"]["artifacts"][name].as_str().unwrap_or_else(|| panic!("missing bench artifact {name}"));
     fixtures.join(relative)
@@ -153,31 +154,56 @@ pub fn artifact(name: &str) -> PathBuf {
 
 /* === Private Functions === */
 
-async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
+async fn runtime() -> (Arc<Runtime<Model>>, Duration, TempDir) {
     let started = Instant::now();
     let preparation_bytes = nz(64 * 1024 * 1024);
     let directory = tempfile::tempdir().unwrap();
-    let catalog = harmos_runtime::plugin::manager::catalog();
-    let storage = harmos_runtime::storage::StorageManager::with_catalog(
+    let catalog = manager::catalog();
+    let history = StoreHistory {
+        store: Identifier::new("test-store").unwrap(),
+        epoch: Identifier::new("test-epoch").unwrap(),
+    };
+    let storage = storage::StorageManager::with_catalog(
         catalog.clone(),
-        harmos_runtime::storage::StorageBackends {
-            primary: Arc::new(backend::Backend::with_catalog(catalog, backend::history())),
-            state: Arc::new(backend::RecoveryBackend::new(backend::history())),
+        storage::StorageBackends {
+            primary: Arc::new(Backend::with_catalog(catalog, history.clone())),
+            state: Arc::new(RecoveryBackend::new(history)),
         },
-        backend::storage_settings(),
+        StorageSettings {
+            transfer: Default::default(),
+            policy: Default::default(),
+            filesystem: StorageFilesystemSettings {
+                poll_interval: Duration::from_millis(100),
+                max_entries: nz(100_000),
+                event_capacity: nz(1024),
+            },
+            request: StorageRequestSettings {
+                max_file_productions: nz(256),
+                max_mutation_receipts: nz(1024),
+                max_pending_queries: nz(64),
+                max_active_queries: nz(4),
+                max_pending_write_batches: nz(256),
+                max_active_file_operations: nz(1),
+                max_pending_write_bytes: nz(16 * 1024 * 1024),
+            },
+            response: StorageResponseSettings {
+                batch_rows: nz(64),
+                batch_bytes: nz(64 * 1024),
+            },
+        },
     )
     .unwrap();
-    let entries = harmos_runtime::plugin::manager::Manager::new(
+    let entries = manager::Manager::new(
         storage.clone(),
-        harmos_runtime::plugin::manager::PluginManagerSettings {
+        manager::PluginManagerSettings {
             namespace: "guest-benchmark".into(),
             directory: directory.path().join("plugins"),
             target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
-            placement: harmos_runtime::plugin::grpc::PlacementSettings {
+            placement: grpc::PlacementSettings {
                 reconnect_delay: Duration::from_millis(100),
                 stop_grace: Duration::from_secs(10),
                 stream_window: nz(4),
-                interval_window: std::time::Duration::from_secs(1),
+                interval_window: Duration::from_secs(1),
                 interval_lag: Default::default(),
             },
             bundle: Default::default(),
@@ -193,9 +219,9 @@ async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
     .unwrap();
     let runtime = Runtime::<Model>::start_with((), (), |setup| {
         setup.settings().storage(&storage).plugins(entries.clone());
-        setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
-        setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());
-        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+        setup.catalog(harmos_operations::storage_catalog(), operations::Lane::default());
+        setup.catalog(schematic_operations::transfer::files_catalog(), operations::Lane::default());
+        setup.settings().operation_settings(operations::Settings {
             queued: nz(64),
             lifecycle_queued: nz(16),
             preparation_bytes: Some(preparation_bytes),
@@ -209,19 +235,19 @@ async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
     (runtime, host_elapsed, directory)
 }
 
-fn plugin_settings() -> harmos_runtime::config::PluginSettings {
-    harmos_runtime::config::PluginSettings {
+fn plugin_settings() -> config::PluginSettings {
+    config::PluginSettings {
         configuration: b"null".to_vec(),
         requires: Vec::new(),
         grants: Vec::new(),
-        host_operations: ["schematic.host.v1.Files/Hash", "harmos.host.v1.plugins.Settings/List"]
+        host_operations: ["schematic.host.v1.Files/Hash", "harmos.plugin.v1.plugins.Settings/List"]
             .into_iter()
-            .map(|id| harmos_runtime::Identifier::new(id).unwrap())
+            .map(|id| Identifier::new(id).unwrap())
             .collect(),
         initialization_timeout: Duration::from_secs(30),
         shutdown_timeout: Duration::from_secs(30),
         encoding_memory_bytes: nz(4 * 1024 * 1024),
-        restart: harmos_runtime::config::PluginRestartSettings {
+        restart: config::PluginRestartSettings {
             retries: 0,
             backoff_base: Duration::from_millis(100),
             backoff_cap: Duration::from_secs(5),

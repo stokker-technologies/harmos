@@ -41,12 +41,6 @@ let runtime = Arc::new(runtime);
 manager.start(&runtime).await?;
 ```
 
-The host's existing gRPC listener projects the registered operations. Generated
-Rust clients use `harmos_protocol::client::plugins_client::PluginsClient`;
-`harmos::client::Client` exposes the descriptor-generated `client.plugins`
-hierarchy for the same request/response contracts.
-Native hosts can also use the `Management` trait on `Manager` directly.
-
 `PluginManagerSettings` supplies entry and mutation-receipt capacities, encoded
 registry bytes, command queue capacity, retained cuts,
 Watch capacity and Get/Watch response bytes. It also contains the
@@ -165,7 +159,7 @@ value's variant against its declared default. Settings have a revision separate
 from the plugin entry revision. Resending the same request identity and normalized
 value replays its original receipt, including after restart; changed input refuses.
 
-`/harmos.host.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
+`/harmos.plugin.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
 The SDK handler remains named `context`. Running plugins explicitly read settings;
 there is no change notification. Host stream intervals configured by setting name
 use the value selected for that activation; restart to apply a changed interval.

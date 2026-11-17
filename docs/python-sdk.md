@@ -5,57 +5,12 @@ Install `harmos-sdk` on Python 3.13 or later. The SDK and repository tooling shi
 Compiler-owned protobuf internals are the private untyped boundary; generated stubs
 preserve the public message types.
 
-## Typed Client Calls
-
-```python
-from product import Client
-
-client = Client.connect("127.0.0.1:53124")
-try:
-    response = await client.status.get()
-    print(response.status.identity.application_name)
-    operations = await client.operations.list()
-    selected = await client.plugins.get("example")
-    updates = client.status.watch(call_metadata=(("authorization", token),))
-    try:
-        async for update in updates:
-            print(update.status)
-            break
-    finally:
-        await updates.aclose()
-finally:
-    await client.close()
-```
-
-Typed calls take required request content positionally and optional fields as
-keyword-only arguments. For example, `client.status.logs.list(at=cut, page=page)` and
-`client.plugins.settings.set("example", values, revision)` construct their own
-requests. A missing `request_id` is generated; pass an explicit identity when
-replaying a mutation. Callers never construct transport requests.
-
-Exactly one response field returns its payload, including a repeated collection;
-empty or multiple-field responses retain the response message. Status responses
-retain status and resolved read-cut metadata. See the complete retained-response
-list in [SDK Call Contracts](architecture.md#sdk-call-contracts).
-
-Unary calls are typed awaitables. Streaming calls are async generators; use
-`await updates.aclose()` when ending demand early. Exhaustion, errors and closure
-cancel the owned native call. `call_metadata`, `credentials` and `timeout` are typed
-keyword overrides; timeout is in seconds. If a payload field occupies a transport
-option name, generation prefixes that option with `call_` until it is distinct.
-An omitted deadline remains governed by operation policy, with no literal SDK default.
-
-`Client(channel)` borrows a caller-owned channel. `Client.connect(address)` owns
-its channel and closes it through `await client.close()`. Connection transfer
-budgets use `transfer` and `message_ceiling`; invalid limits refuse before dialing.
-
 ## Public Types
 
 Import connection plumbing, `FailureError` and shared vocabulary such as
 `SettingValue`, `Declarations`, `File`, `PageRequest` and `Position` from `harmos`.
-Client response types live in `harmos.client`; Context, Plugin, Operation, decorators,
-HostOperation and plugin response types live in `harmos.plugin`. Shared host replies
-are available from both audience barrels. Generated wire requests, version packages
+Context, Plugin, Operation, decorators, HostOperation and plugin response types
+live in `harmos.plugin`. Generated wire requests, version packages
 and transport carriers stay private. The protocol failure keeps its name at
 `harmos.model.Failure`; raise `FailureError(model.Failure(...))` after importing
 `FailureError` and `model` from `harmos`.
@@ -163,7 +118,7 @@ library and product descriptors, refuses descriptor conflicts and resource colli
 and writes the root and public response barrel. Runtime assembly has no audience
 overrides. Change the product declaration to change its generated audience.
 The product root retains SDK connection ownership. Import `Client` from `application`; call `client.jobs.start(value)`
-and `client.plugins.annotations.get(name)` alongside ordinary library resources.
+and `client.plugins.annotations.get(name)` alongside its other product resources.
 The generated read-only properties retain complete nested parents and static types.
 No handwritten attribute grafting is needed. Commit and regenerate these outputs
 when adopting a new contract pin. The shared fixture lives under
@@ -182,7 +137,7 @@ The [client](../sdk/python/examples/client.py) discovers operations, reads statu
 consumes one status update and closes its stream and connection. The
 [plugin](../sdk/python/examples/plugin.py) serves a public echo operation with a typed
 prefix setting; its first stdout line announces its bound endpoint. Two integration
-stories drive these actual entry points through gRPC. They use library calls only.
+stories drive these actual entry points through gRPC. The client uses the reference product wrappers; the plugin uses carrier facilities.
 The separate [dynamic invocation example](../sdk/python/examples/invocation.py)
 discovers an operation's fingerprint and calls `client.invocations.create(...)` with
 encoded bytes; it returns the unwrapped response bytes and owns its connection:
