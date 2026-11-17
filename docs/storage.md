@@ -28,8 +28,8 @@ its existing retained-reader behavior; this migration makes no reclamation chang
 
 During application preparation, register the primary and recovery backends as usual,
 then open `setup.settings().storage_only().await?`. The returned session admits the
-native storage catalog through `operations()`, without application services, plugins
-or listeners. Await `close()` and release the session before preparation returns.
+native storage catalog through `session.for_call(&ctx).storage()`, without application
+services, plugins or listeners. Await `close()` and release the session before preparation returns.
 The full runtime opens the same registered backends with a fresh manager and worker;
 no live worker or backend session transfers between the assemblies. Offline maintenance
 can use `Runtime::<A>::builder(origin)` to open and close this session without
@@ -59,13 +59,13 @@ of later source writes. Products implement physical copy and disposal in their b
 
 `storage.list_rows` accepts streaming `Transform::Scale`, `Transform::Offset` and
 `Transform::Contains` values exported with their plan types from
-`harmos_runtime::builtins::storage`. Each names an input
+`harmos_runtime::facade::storage`. Each names an input
 `field` and an output `name`; a new name appends a column and an existing name replaces
 that column. Chain transforms to scale a numeric field, offset the result and project
 only the columns a product needs.
 
 ```rust
-use harmos_runtime::builtins::storage::{Contains, Offset, ScalarValue, Scale, Transform};
+use harmos_runtime::facade::storage::{Contains, Offset, ScalarValue, Scale, Transform};
 
 let transforms = vec![
     Transform::Scale(Scale { field: "payload.value".into(), name: "scaled".into(), factor: 2.0 }),
@@ -573,7 +573,7 @@ retained content reads. File deletion remains a separate advertised capability. 
 backend and its journal/checkpoint format are retained.
 
 Private in-process storage operations expose these capabilities; a product owns
-any wire wrapper and its policy. Register `builtins::storage_catalog()` and supply a storage manager with
+any wire wrapper and its policy. Register `harmos_runtime::catalog::storage_catalog()` and supply a storage manager with
 `setup.settings().storage(&storage)`. The runtime supplies the retained snapshot registry,
 bounded by the consumer's `StorageRequestSettings.max_active_queries`; backend construction
 and every row/byte/work allowance remain consumer-owned. Embedders composing resources

@@ -12,19 +12,19 @@
 /* === Imports === */
 
 use arrow_array::UInt64Array;
-use harmos::encoding::Message as WireMessage;
+use harmos::encoding::Message;
 use harmos::{Client, ClientSettings, FileMetadata, PageRequest, StorageTransferSettings, UploadState};
-use harmos_query::columnar::ColumnKind;
+use harmos_query::arrow::ArrowBatch;
 use harmos_runtime::Identifier;
-use harmos_runtime::builtins::storage as operations;
-use harmos_runtime::builtins::storage::{
-    ColumnSelection, ColumnSource, CreateSnapshotRequest, DeleteSnapshotRequest, GetObjectRequest, ListColumnRowsRequest, MutationId,
-    SchemaInput, SetObjectRequest, set_object_response::Outcome,
-};
+use harmos_runtime::catalog;
 use harmos_runtime::clock::Clock;
-use harmos_runtime::operations::NativeHost;
+use harmos_runtime::facade::storage::{
+    ColumnKind, ColumnSelection, ColumnSource, CreateSnapshotRequest, DeleteSnapshotRequest, GetObjectRequest, ListColumnRowsRequest,
+    MutationId, SchemaInput, SetObjectRequest, set_object_response::Outcome,
+};
+use harmos_runtime::operations::CallContext;
 use harmos_runtime::{
-    Identified, Message,
+    Identified,
     storage::{
         ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject,
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
@@ -34,7 +34,7 @@ use harmos_storage::ReadLimits;
 use schematic_app::operations::transfer::{
     FilesHash, FilesRead, UploadsAppend, UploadsCreate, UploadsDelete, UploadsGet, UploadsPublish, UploadsResume,
 };
-use schematic_app::protocol::client::Client as SchematicClient;
+use schematic_app::protocol::client;
 use schematic_app::protocol::{
     Connection, FilesHashRequest, FilesReadRequest, FilesReadResponse, Snapshot, UploadMutation, UploadsAppendRequest,
     UploadsCreateRequest, UploadsDeleteRequest, UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
@@ -53,7 +53,7 @@ use std::{
 
 /* === Structs === */
 
-#[derive(Message, Clone, Debug, Default)]
+#[derive(harmos_runtime::Message, Clone, Debug, Default)]
 struct Preview {
     id: String,
     symbols: u64,
@@ -124,7 +124,7 @@ async fn saved_preview_survives_atomic_replacement() {
     // Retain a Saved Preview Through the Private Native Operations.
     let first = storage.write_object(&Preview { id: "board".into(), symbols: 2 }).await.unwrap();
     storage.flush().await.unwrap();
-    let retained = runtime.operations.call_native::<operations::CreateSnapshot>(CreateSnapshotRequest { at: None }).await.unwrap();
+    let retained = runtime.for_call(&CallContext::default()).storage().create_snapshot(CreateSnapshotRequest { at: None }).await.unwrap();
     let saved_cut = retained.resolved_at.unwrap();
     let saved = retained.snapshot.unwrap();
     assert_eq!(saved.at.as_ref().unwrap().sequence, first.position.sequence);
@@ -140,8 +140,9 @@ async fn saved_preview_survives_atomic_replacement() {
     };
     let mutation = storage.mutation_window().unwrap();
     let current = runtime
-        .operations
-        .call_native::<operations::GetObject>(GetObjectRequest {
+        .for_call(&CallContext::default())
+        .storage()
+        .get_object(GetObjectRequest {
             schema: Some(encoded.schema.clone()),
             item: "board".into(),
             at: None,
@@ -164,12 +165,15 @@ async fn saved_preview_survives_atomic_replacement() {
 
     // Replace the Live Preview and Refuse a Stale Writer.
     assert!(matches!(
-        runtime.operations.call_native::<operations::SetObject>(request.clone()).await.unwrap().outcome,
+        runtime.for_call(&CallContext::default()).storage().set_object(request.clone()).await.unwrap().outcome,
         Some(Outcome::Applied(_))
     ));
     let mut stale = request;
     stale.mutation.as_mut().unwrap().key = Identifier::new("stale-update").unwrap();
-    assert!(matches!(runtime.operations.call_native::<operations::SetObject>(stale).await.unwrap().outcome, Some(Outcome::Conflict(_))));
+    assert!(matches!(
+        runtime.for_call(&CallContext::default()).storage().set_object(stale).await.unwrap().outcome,
+        Some(Outcome::Conflict(_))
+    ));
 
     // Read the Saved Value and Release Its Cut.
     let limits = ReadLimits {
@@ -177,8 +181,9 @@ async fn saved_preview_survives_atomic_replacement() {
         bytes: NonZeroUsize::new(65536).unwrap(),
     };
     let page = runtime
-        .operations
-        .call_native::<operations::ListColumnRows>(ListColumnRowsRequest {
+        .for_call(&CallContext::default())
+        .storage()
+        .list_column_rows(ListColumnRowsRequest {
             at: Some(saved_cut),
             page: Some(PageRequest {
                 page_size: 8,
@@ -198,9 +203,10 @@ async fn saved_preview_survives_atomic_replacement() {
         .unwrap()
         .page
         .unwrap();
-    let value = page.batch.column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
+    let batch = ArrowBatch::from_ipc(page.batch.data).unwrap();
+    let value = batch.as_record_batch().column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
     assert_eq!(value.values().as_ref(), &[2]);
-    runtime.operations.call_native::<operations::DeleteSnapshot>(DeleteSnapshotRequest { snapshot: Some(saved) }).await.unwrap();
+    runtime.for_call(&CallContext::default()).storage().delete_snapshot(DeleteSnapshotRequest { snapshot: Some(saved) }).await.unwrap();
     runtime.shutdown().await.unwrap();
 }
 
@@ -340,19 +346,9 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     let file = published.file.unwrap();
 
     // Discover the Application Contract and Use Its Generic Call Path.
-    runtime
-        .operations
-        .register_batch(
-            harmos_runtime::operations::Registration::new(Default::default())
-                .protobuf::<harmos_runtime::builtins::host::List>()
-                .unwrap()
-                .protobuf::<harmos_runtime::builtins::host::Get>()
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    runtime.register_catalog(catalog::host_catalog(), Default::default()).await.unwrap();
     runtime.operations.register_catalog(schematic_app::operations::operations_catalog(), Default::default()).await.unwrap();
-    runtime.operations.register_catalog(harmos_runtime::builtins::lifecycle_catalog(), Default::default()).await.unwrap();
+    runtime.operations.register_catalog(catalog::lifecycle_catalog(), Default::default()).await.unwrap();
     let listener = runtime
         .grpc()
         .attach(harmos_runtime::grpc::Settings {
@@ -365,7 +361,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     let settings = ClientSettings::for_storage(StorageTransferSettings::default(), NonZeroUsize::new(16 * 1024 * 1024).unwrap()).unwrap();
     let client = Client::connect(address, settings).await.unwrap();
     // Validate Through the Application's Generated Content-Argument Client.
-    let schematic = SchematicClient::new(client.transport_handle());
+    let schematic = client::Client::new(client.transport_handle());
     let diagnostics = schematic
         .schematic
         .validate(Snapshot {
@@ -404,7 +400,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
         at: None,
     };
     let response = client.invocations.create(contract.id.clone(), contract.fingerprint.clone(), request.encode_to_vec()).await.unwrap();
-    let generic = <FilesReadResponse as WireMessage>::decode(response.as_slice()).unwrap();
+    let generic = <FilesReadResponse as Message>::decode(response.as_slice()).unwrap();
     assert_eq!(generic.bytes, payload[..4]);
     drop(schematic);
     drop(client);

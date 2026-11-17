@@ -60,6 +60,27 @@ return opaque generation-fenced handles. No `PluginBackend` trait. Installation
 policy never becomes a second activation owner. Regenerate once with the operation
 and lifecycle changes; generated output stays tracked pending the separate decision.
 
+## Typed Native Calls
+
+`Runtime::for_call` and `Handle::for_call` accept a `CallContext` or a trusted
+`HostContext`. `StorageRuntime::for_call` offers the same storage calls before full
+startup. The facade's `storage()` group covers the native storage catalog;
+`streams().publish()` submits one native publication. Request and result DTOs live
+under `harmos_runtime::facade::{storage, streams}`. Watch methods take typed output
+endpoints and return cancellable invocation handles.
+
+A `CallOptions` value on the call context replaces the registered operation policy
+for that invocation. Binding removes it from the admitted context: descendants
+use their own policies, while caller metadata still propagates. A scoped binding
+retains parent cancellation and lane ancestry, and refuses a parent belonging to
+another runtime. The facade has no scheduler or retry policy of its own. Native
+payloads retain their allocation and are never encoded for dispatch.
+
+The runtime's whole-crate `domain` and `builtins` reexports are removed. Builder
+catalogs have explicit exports under `harmos_runtime::catalog`. Backend-authoring
+exports, manager privacy, the remaining facade groups and private host transport
+are still governed by the pending Operation Boundary inventory below.
+
 ## Storage and Query Ownership
 
 **Locked direction, 2026-11-14:** the dependency order is

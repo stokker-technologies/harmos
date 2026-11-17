@@ -2,17 +2,28 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
-The locked `operation-boundary` direction moves product calls to a typed Rust facade:
-`runtime.for_call(&ctx).storage().append_samples(..)` and
-`runtime.for_call(&ctx).plugins().load(PluginSource::Process(..))`. Each method uses
-the registered native operation policy. The builder owns managers and accepts the
-backends, catalog and settings; backend-authoring contracts stay public. Storage-only
-assembly supports prerequisite writes and maintenance without listeners or plugins.
-Products declare wrappers for remote surfaces. The plugin protocol and all four plugin
-SDKs, generation, Wasm guests and conformance remain; host-client resource roots are
-removed in the breaking group. These are agreed contracts with implementation pending;
-existing examples below migrate with their owning task groups. Completed groups and
-product pins are recorded in `openspec/changes/operation-boundary/tasks.md`.
+Native storage and stream publication use the typed in-process facade. Bind one
+call context; the registered native operation owns admission, retries and cancellation:
+
+```rust
+use harmos_runtime::facade::storage::InfoRequest;
+use harmos_runtime::operations::CallContext;
+
+let ctx = CallContext::default();
+let info = runtime.for_call(&ctx).storage().info(InfoRequest {}).await?;
+```
+
+`for_call` also accepts a trusted `HostContext`; operation handlers can use
+`host.for_call()` to retain the parent cancellation scope. Add `CallOptions` to a
+context to override one invocation's policy. Children keep their own registered
+policies and inherit the other context values. `StorageRuntime::for_call` provides
+the same calls during storage-only assembly.
+
+The remaining locked `operation-boundary` direction moves plugin activation and
+the other host families to this facade, gives the builder sole manager ownership,
+and removes host-client roots and wire exposure. Products declare their own remote
+wrappers. Those remaining changes are pending; their tasks and product pins live
+in `openspec/changes/operation-boundary/tasks.md`.
 
 Storage operation results now use operation-owned IPC frames and page DTOs.
 `ListRows` returns `RowOutput`, and column/projection batches contain schema and
@@ -479,8 +490,8 @@ Stream producers use `output.send_owned(response).await?` to retain the same own
 through queueing and encoding; ordinary stream payloads keep their existing `Send`
 contract. Protobuf payloads and RPC paths remain unchanged.
 
-Harmos serves no built-in operation by default. Place `builtins::lifecycle_catalog()` on a
-runtime lane with `setup.catalog(builtins::lifecycle_catalog(), lane)` to provide the
+Harmos serves no built-in operation by default. Place `harmos_runtime::catalog::lifecycle_catalog()` on a
+runtime lane with `setup.catalog(harmos_runtime::catalog::lifecycle_catalog(), lane)` to provide the
 Status, Cancel and Watch operations (gRPC `/harmos.host.v1.Invocations/Get`, `/Cancel`
 and the server stream `/Watch`) over the manager's instances. Each answers only
 for active instances the caller submitted or holds a resident lease on; unknown,
@@ -1483,7 +1494,9 @@ status payloads use `Harmos.V1.StatusResources` while `client.Status` retains it
 ## Built-In Operation Ownership
 
 `harmos-operations` holds native host, lifecycle, storage and stream contracts and
-execution. `harmos-runtime` exposes them under `harmos_runtime::builtins`.
+execution. `harmos-runtime` exports their builder catalogs explicitly under
+`harmos_runtime::catalog`; native storage and publication DTOs live under
+`harmos_runtime::facade::{storage, streams}`.
 Guest lifecycle messages belong to `harmos-protocol`; the optional adapter and
 component world live under `sdk/rust/src/wasm/` and `sdk/rust/wit/`.
 

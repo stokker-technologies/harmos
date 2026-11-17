@@ -100,6 +100,11 @@ and reads its calling entry through `Context::settings`. Discover contracts thro
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
+Native storage calls use `runtime.for_call(&ctx).storage()`; stream publication uses
+`runtime.for_call(&ctx).streams().publish(request)`. Each call uses its registered
+operation policy and retains typed payloads without encoding. See the
+[product guide](docs/product-guide.md) for call contexts and storage-only assembly.
+
 Host operations, state catalogs and record registries are values; data shapes use
 field-reading derives. See [Native Operation Values](docs/product-guide.md#native-operation-values).
 
@@ -192,10 +197,10 @@ choose a fresh storage root for those product changes. Plugin history retains it
 written definitions across shape changes and plugin removal. Wire compatibility
 versions remain explicit.
 
-Built-in operation contracts live in `harmos-operations`, re-exported as
-`harmos_runtime::builtins`. Its `host_catalog()`, `lifecycle_catalog()`, `storage_catalog()`,
-`streams_catalog()` and `builtins_catalog()` functions return owned catalogs
-without depending on `harmos-runtime`.
+Built-in operation contracts live in `harmos-operations`. Hosts register the explicit
+`host_catalog()`, `lifecycle_catalog()`, `storage_catalog()`, `streams_catalog()` or
+`builtins_catalog()` exports under `harmos_runtime::catalog`. Native storage request
+and result types are exported under `harmos_runtime::facade::storage`.
 
 ## Contributing
 

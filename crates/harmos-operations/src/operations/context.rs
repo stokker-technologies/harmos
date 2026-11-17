@@ -183,6 +183,15 @@ impl CallContext {
         self.values.get(&TypeId::of::<T>())?.downcast_ref()
     }
 
+    /// Remove a Typed Value and Its Portable Projection From This Context Only.
+    pub fn remove<T: Send + Sync + 'static>(&mut self) -> Option<Arc<T>> {
+        let kind = TypeId::of::<T>();
+        let value = self.values.remove(&kind)?;
+        self.portable.retain(|key, _| self.portable_types.get(key.as_str()) != Some(&kind));
+        self.portable_types.retain(|_, registered| *registered != kind);
+        value.downcast().ok()
+    }
+
     pub fn require<T: Send + Sync + 'static>(&self) -> Result<&T, ContextError> {
         self.get().ok_or_else(|| ContextError::Missing { name: type_name::<T>().to_owned() })
     }
@@ -214,3 +223,33 @@ impl CallContext {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{CallContext, ContextValue};
+
+    #[derive(crate::Message)]
+    #[harmos_path(crate)]
+    struct Trace {
+        value: u64,
+    }
+
+    impl ContextValue for Trace {
+        const KEY: &'static str = "trace";
+    }
+
+    #[test]
+    fn removing_a_typed_value_removes_its_portable_projection_only_from_the_copy() {
+        let mut original = CallContext::default();
+        original.insert_portable(Trace { value: 17 }).unwrap();
+        let mut copy = original.clone();
+        let removed = copy.remove::<Trace>().unwrap();
+        assert_eq!(removed.value, 17);
+        assert!(copy.get::<Trace>().is_none());
+        assert!(copy.value::<Trace>().unwrap().is_none());
+        assert!(copy.portable().is_empty());
+        assert_eq!(original.value::<Trace>().unwrap().unwrap().value, 17);
+        copy.insert_portable(Trace { value: 29 }).unwrap();
+        assert_eq!(copy.value::<Trace>().unwrap().unwrap().value, 29);
+    }
+}

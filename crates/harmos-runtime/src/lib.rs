@@ -13,6 +13,7 @@ pub mod bundle;
 pub mod clock;
 pub mod config;
 mod error;
+pub mod facade;
 pub mod filesystem;
 
 mod application;
@@ -41,9 +42,8 @@ mod supervision;
 
 pub use application::{Application, Startup};
 pub use error::{BackendFailure, Error};
-pub use harmos_domain as domain;
+pub use facade::{Call, CallOptions};
 pub use harmos_domain::{DefinitionId, Identified};
-pub use harmos_operations as builtins;
 pub use harmos_operations::model;
 
 pub use harmos_domain::{
@@ -113,19 +113,6 @@ pub mod __private {
     pub use harmos_domain::config::SchemaSettings;
     pub use harmos_operations::__private::CarrierContext;
     pub use harmos_operations::execution::__private::Catalog;
-    pub use harmos_operations::inventory as PluginInventory;
-    pub use harmos_operations::plugin::{Grant as PluginGrant, Requirement as PluginRequirement, Requirements as PluginRequirements};
-    pub use harmos_operations::{Registrar as PluginRegistrar, RegistrationError as PluginRegistrationError};
-
-    // A stream declaration is authored wherever its row type is, host core or
-    // no host core, so these three are as unconditional as the attribute that
-    // generates them.
-
-    // How generated code names a type the tokens it was handed cannot spell.
-
-    // Ungated on purpose: a hand-written contribution in a crate that compiles
-
-    // no authoring attributes at all still resolves the same paths.
 
     pub use harmos_operations::__private::Answer;
 
@@ -165,7 +152,10 @@ pub mod catalog {
 
     /* === Re-Exports === */
 
-    pub use harmos_operations::catalog::*;
+    pub use harmos_operations::catalog::{
+        InertCatalog, ListenerEntry, Member, Node, OperationEntry, RequirementEntry, Visitor, WireEntry, count, try_for_each,
+    };
+    pub use harmos_operations::{builtins_catalog, host_catalog, lifecycle_catalog, storage_catalog, streams_catalog};
 
     /* === Imports === */
 
