@@ -21,25 +21,34 @@ pub use process::Process;
 
 // Standard Library Imports
 use std::{
+    env, fs,
     num::NonZeroUsize,
-    path::Path,
+    path::{Path, PathBuf},
+    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::task::JoinHandle;
+use tonic::Streaming;
+use tonic::transport::{Channel, Endpoint};
 
 // Local Imports
+use super::super::support::{self, App};
 use crate::storage::fixture::Backend;
 use crate::storage::fixture::RecoveryBackend;
 use crate::storage::fixture::history;
 use crate::storage::fixture::storage_settings;
+use crate::support::{app, booted, fixtures, report};
 use harmos_conformance::host::plugins_client::PluginsClient;
+use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
 use harmos_protocol::host::PluginChange;
 use harmos_protocol::host::PluginEntry;
 use harmos_protocol::host::PluginManaged;
@@ -57,12 +66,16 @@ use harmos_protocol::plugin::InstanceGetRequest;
 use harmos_protocol::plugin::InstanceGetResponse;
 use harmos_protocol::plugin::instance_client::InstanceClient;
 use harmos_runtime::config::GrpcServerSettings;
+use harmos_runtime::operations::authorization::{Authorization, Authorizer, Provider};
+use harmos_runtime::operations::{CallContext, Lane};
 use harmos_runtime::{
-    Runtime,
+    Identifier, Result, Runtime,
     clock::Clock,
+    grpc,
     plugin::manager::{self, Manager, PluginManagerSettings},
     storage::{StorageBackends, StorageManager},
 };
+use harmos_storage::FileMetadata;
 
 /* === Constants === */
 
@@ -70,18 +83,18 @@ use harmos_runtime::{
 
 /* === Type Aliases === */
 
-pub type Client = PluginsClient<tonic::transport::Channel>;
+pub type Client = PluginsClient<Channel>;
 
 /* === Structs === */
 
 pub struct Host {
-    pub runtime: Arc<Runtime<super::super::support::App>>,
+    pub runtime: Arc<Runtime<App>>,
     pub manager: Manager,
     pub storage: StorageManager,
     pub client: Client,
     pub policy: Arc<Policy>,
-    pub channel: tonic::transport::Channel,
-    _listener: harmos_runtime::grpc::Attached,
+    pub channel: Channel,
+    _listener: grpc::Attached,
 }
 
 pub struct Policy(pub AtomicBool);
@@ -94,8 +107,8 @@ pub struct Backends {
 pub struct Peer {
     pub url: String,
     pub description: InstanceGetResponse,
-    child: tokio::process::Child,
-    drain: tokio::task::JoinHandle<()>,
+    child: Child,
+    drain: JoinHandle<()>,
 }
 
 /* === Enums === */
@@ -114,10 +127,11 @@ impl Backends {
 }
 impl Host {
     pub async fn start(root: &Path, backends: &Backends) -> Self {
-        let (clock, _) = Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
+        let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
         Self::with_clock(root, backends, clock).await
     }
     pub async fn with_clock(root: &Path, backends: &Backends, clock: Clock) -> Self {
+        report::diagnostics();
         let storage = StorageManager::with_catalog(
             manager::catalog(),
             StorageBackends {
@@ -128,20 +142,18 @@ impl Host {
         )
         .unwrap();
         let manager = Manager::new(storage.clone(), settings(root)).unwrap();
-        let runtime = crate::support::booted(Default::default(), |setup| {
+        let runtime = booted(Default::default(), |setup| {
             setup.settings().clock(clock).storage(&storage).plugins(manager.clone());
         })
         .await;
         let runtime = Arc::new(runtime);
-        crate::support::app::register(&runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
-            .await
-            .unwrap();
+        app::register(&runtime, harmos_operations::storage_catalog(), Lane::default()).await.unwrap();
         manager.start(&runtime).await.unwrap();
         runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
         runtime.operations.register_catalog(harmos_conformance::product::plugins_catalog(), Default::default()).await.unwrap();
         let policy = Arc::new(Policy(AtomicBool::new(true)));
         runtime.operations.register_authorizer(policy.clone()).unwrap();
-        let transport = harmos_runtime::grpc::Settings {
+        let transport = grpc::Settings {
             address: "127.0.0.1:0".parse().unwrap(),
             reflection: false,
             tls: None,
@@ -152,8 +164,7 @@ impl Host {
             operations: GrpcServerSettings::default(),
         };
         let listener = runtime.grpc().attach(transport).await.unwrap();
-        let channel =
-            tonic::transport::Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
+        let channel = Endpoint::from_shared(format!("http://{}", listener.local_addr())).unwrap().connect().await.unwrap();
         let client = Client::new(channel.clone());
         Self {
             runtime,
@@ -172,8 +183,8 @@ impl Host {
         let digest = Sha256::digest(&bytes).to_vec();
         let mut production = self
             .storage
-            .produce_file(harmos_storage::FileMetadata {
-                id: harmos_runtime::Identifier::new(name).unwrap(),
+            .produce_file(FileMetadata {
+                id: Identifier::new(name).unwrap(),
                 scope: None,
                 media_type: "application/x-tar".into(),
                 expected_length: Some(bytes.len() as u64),
@@ -191,21 +202,19 @@ impl Host {
     }
 }
 
-impl harmos_runtime::operations::authorization::Authorizer for Policy {
-    fn authorize(
-        &self, _: &harmos_runtime::operations::CallContext, provider: harmos_runtime::operations::authorization::Provider<'_>,
-    ) -> harmos_runtime::Result<Option<harmos_runtime::operations::authorization::Authorization>> {
-        Ok(self.0.load(Ordering::SeqCst).then(|| harmos_runtime::operations::authorization::Authorization::Full(provider.contract.clone())))
+impl Authorizer for Policy {
+    fn authorize(&self, _: &CallContext, provider: Provider<'_>) -> Result<Option<Authorization>> {
+        Ok(self.0.load(Ordering::SeqCst).then(|| Authorization::Full(provider.contract.clone())))
     }
 }
 
 impl Peer {
     pub async fn start() -> Self {
-        let mut child = tokio::process::Command::new(super::super::support::binary("harmos-conformance-plugin"))
+        let mut child = Command::new(support::binary("harmos-conformance-plugin"))
             .arg("--remote")
             .env("HARMOS_ADDRESS", "127.0.0.1:0")
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
             .kill_on_drop(true)
             .spawn()
             .unwrap();
@@ -240,13 +249,13 @@ impl Drop for Peer {
 
 pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     // Serve This Codebase's Plugin in Its Own Process
-    let mut command = tokio::process::Command::from(crate::support::fixtures::command(program));
+    let mut command = Command::from(fixtures::command(program));
     let mut peer = command
         .args(arguments)
         .args(["--install-itself", "serve"])
         .env("HARMOS_ADDRESS", "127.0.0.1:0")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
         .kill_on_drop(true)
         .spawn()
         .unwrap();
@@ -261,7 +270,7 @@ pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     let host = Host::start(root.path(), &backends).await;
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
     let address = format!("http://{}", host._listener.local_addr());
-    let mut command = tokio::process::Command::from(crate::support::fixtures::command(program));
+    let mut command = Command::from(fixtures::command(program));
     let result = command.args(arguments).args(["--install-itself", &address, &endpoint]).kill_on_drop(true).output().await.unwrap();
     assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
     assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "hello");
@@ -274,11 +283,11 @@ pub async fn installs_itself(program: &Path, arguments: &[&str]) {
     drain.await.unwrap();
 }
 
-pub fn language_binary(name: &str, local: &str) -> std::path::PathBuf {
-    if std::env::var_os("STKR_TEST_PROFILE").is_some() {
-        return crate::support::fixtures::binary(name, None);
+pub fn language_binary(name: &str, local: &str) -> PathBuf {
+    if env::var_os("STKR_TEST_PROFILE").is_some() {
+        return fixtures::binary(name, None);
     }
-    crate::support::fixtures::workspace().join(local)
+    fixtures::workspace().join(local)
 }
 
 pub fn settings(root: &Path) -> PluginManagerSettings {
@@ -286,7 +295,7 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
         namespace: "plugin-manager-story".into(),
         directory: root.join("plugins"),
         target: if cfg!(target_os = "windows") { "x86_64-pc-windows-msvc" } else { "x86_64-unknown-linux-gnu" }.into(),
-        placement: super::super::support::settings(),
+        placement: support::settings(),
         bundle: Default::default(),
         entries: nz(16),
         create_receipts: nz(64),
@@ -320,7 +329,7 @@ pub fn managed(name: &str, content: PluginManaged, enabled: bool) -> PluginsCrea
 pub fn list() -> PluginsListRequest {
     PluginsListRequest { at: None }
 }
-pub async fn state(watch: &mut tonic::Streaming<PluginsWatchResponse>, name: &str, state: PluginState, activation: u64) -> PluginEntry {
+pub async fn state(watch: &mut Streaming<PluginsWatchResponse>, name: &str, state: PluginState, activation: u64) -> PluginEntry {
     loop {
         let response = watch.message().await.unwrap().expect("plugin state event");
         let entry = match response.event {
@@ -342,8 +351,7 @@ pub fn bundle(executable: bool) -> Vec<u8> {
     bundle_with_startup(executable, None)
 }
 pub fn bundle_with_startup(executable: bool, control: Option<&str>) -> Vec<u8> {
-    use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
-    let bytes = std::fs::read(super::super::support::binary("harmos-conformance-plugin")).unwrap();
+    let bytes = fs::read(support::binary("harmos-conformance-plugin")).unwrap();
     let source = Source {
         path: if cfg!(target_os = "windows") { "bin/plugin.exe" } else { "bin/plugin" },
         bytes: &bytes,

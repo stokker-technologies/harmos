@@ -17,6 +17,7 @@ pub mod clock;
 #[path = "../../../harmos-storage/tests/support/events.rs"]
 pub mod events;
 pub mod fixtures;
+pub mod report;
 
 /* === Re-Exports === */
 
