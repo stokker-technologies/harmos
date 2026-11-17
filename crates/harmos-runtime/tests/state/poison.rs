@@ -42,7 +42,7 @@ async fn poison_refuses_verbs() {
     // The writer is never restarted in place: a second attempt is refused too,
     // and the runtime stops at the frontier it reached.
     assert!(matches!(runtime.state.commit(deposit(2)).await, Err(Error::Unavailable)));
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1));
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position(1));
 }
 
 #[tokio::test]
@@ -59,7 +59,7 @@ async fn next_boot_recovers() {
 
     let poisoned = quietly(live.state.commit(Change::Explode)).await;
     let observer = live.state.clone();
-    let settled = live.shutdown().await.unwrap();
+    let settled = live.stop().await.unwrap();
 
     assert!(matches!(poisoned, Err(Error::Unavailable)));
     assert_eq!(settled, Position(2), "the intact tail drained on the way out");

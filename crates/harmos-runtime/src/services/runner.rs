@@ -84,7 +84,7 @@ pub(super) trait ErasedResident<A: Application>: Send {
 
     fn run(&mut self, context: ServiceContext<A>) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>>;
 
-    fn cleanup(&mut self) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>>;
+    fn finalize(&mut self) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>>;
 }
 
 trait Create<A: Application>: Send + Sync + 'static {
@@ -230,7 +230,7 @@ where
         })
     }
 
-    fn cleanup(&mut self) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>> {
+    fn finalize(&mut self) -> Pin<Box<dyn Future<Output = std::result::Result<(), Failure>> + Send + '_>> {
         Box::pin(async move {
             if !self.stopped {
                 self.transition(OperationPhase::Stopping);
@@ -241,7 +241,7 @@ where
                 self.stopped = true;
             }
             self.transition(OperationPhase::Finalizing);
-            Resident::cleanup(&mut self.resident).await.map_err(|error| Failure {
+            Resident::finalize(&mut self.resident).await.map_err(|error| Failure {
                 message: error.to_string(),
                 source: Arc::new(error),
             })
@@ -383,7 +383,7 @@ fn spawn<A: Application, C: Create<A>>(create: Arc<C>, start: Start) -> (Task<Ou
 }
 
 pub(super) async fn cleanup<A: Application>(resident: &mut dyn ErasedResident<A>) -> Result<()> {
-    let mut future = std::pin::pin!(async { resident.cleanup().await });
+    let mut future = std::pin::pin!(async { resident.finalize().await });
     std::future::poll_fn(|context| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| future.as_mut().poll(context))) {
         Ok(poll) => poll.map(|result| {
             result.map_err(|failure| Error::TaskFailed {

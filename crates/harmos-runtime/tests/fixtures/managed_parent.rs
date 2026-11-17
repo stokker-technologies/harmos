@@ -48,7 +48,7 @@ fn main() {
     let arguments = arguments.collect();
     let executor = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
     executor.block_on(async {
-        let runtime = harmos_runtime::Runtime::<Model>::launch_with((), (), |_| {}).await.unwrap();
+        let runtime = harmos_runtime::Runtime::<Model>::start_with((), (), |_| {}).await.unwrap();
         let placement = Placement::Managed(Managed {
             executable,
             arguments,

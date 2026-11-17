@@ -54,13 +54,17 @@ struct Output {
 fn main() -> Result<()> {
     let cleanup = std::env::args().nth(1).expect("Cleanup Evidence Path");
     let plugin = Plugin::new("placement", "1.0.0")
-        .operation(Operation::new("placement.echo", echo).visibility(Visibility::Protected))
-        .operation(Operation::new("placement.environment", environment).visibility(Visibility::Protected))
+        .register(|ctx| {
+            ctx.register(Operation::new("placement.echo", echo).visibility(Visibility::Protected))?;
+            ctx.register(Operation::new("placement.environment", environment).visibility(Visibility::Protected))?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations")
         .on_stop(move || {
             std::fs::write(&cleanup, b"stopped")?;
             Ok(())
         });
-    plugin.serve()
+    plugin.run()
 }
 
 async fn echo(_: &Context, input: Input) -> Result<Output> {

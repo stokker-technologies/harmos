@@ -27,16 +27,16 @@ internal static class HostContracts
 }
 public static class HostRequirements
 {
-  public static Plugin Requires(this Plugin plugin, HostOperation operation) => operation switch
+  public static Registrar Register(this Registrar ctx, HostOperation operation) => operation switch
   {
-    HostOperation.InvocationsGet => plugin.Requires(Harmos.Plugins.HostOperation.InvocationsGet),
-    HostOperation.InvocationsCancel => plugin.Requires(Harmos.Plugins.HostOperation.InvocationsCancel),
-    HostOperation.InvocationsWatch => plugin.Requires(Harmos.Plugins.HostOperation.InvocationsWatch),
-    HostOperation.OperationsList => plugin.Requires(Harmos.Plugins.HostOperation.OperationsList),
-    HostOperation.OperationsGet => plugin.Requires(Harmos.Plugins.HostOperation.OperationsGet),
-    HostOperation.PluginsSettingsList => plugin.Requires(Harmos.Plugins.HostOperation.PluginsSettingsList),
-    HostOperation.TimeGet => plugin.Requires(Harmos.Plugins.HostOperation.TimeGet),
-    HostOperation.TimeSleep => plugin.Requires(Harmos.Plugins.HostOperation.TimeSleep),
+    HostOperation.InvocationsGet => ctx.Register(Harmos.Plugins.HostOperation.InvocationsGet),
+    HostOperation.InvocationsCancel => ctx.Register(Harmos.Plugins.HostOperation.InvocationsCancel),
+    HostOperation.InvocationsWatch => ctx.Register(Harmos.Plugins.HostOperation.InvocationsWatch),
+    HostOperation.OperationsList => ctx.Register(Harmos.Plugins.HostOperation.OperationsList),
+    HostOperation.OperationsGet => ctx.Register(Harmos.Plugins.HostOperation.OperationsGet),
+    HostOperation.PluginsSettingsList => ctx.Register(Harmos.Plugins.HostOperation.PluginsSettingsList),
+    HostOperation.TimeGet => ctx.Register(Harmos.Plugins.HostOperation.TimeGet),
+    HostOperation.TimeSleep => ctx.Register(Harmos.Plugins.HostOperation.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")
   };
 }

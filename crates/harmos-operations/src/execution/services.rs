@@ -44,7 +44,7 @@ pub trait Service: Send + Sized + 'static {
     fn stop(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
     }
-    fn cleanup(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+    fn finalize(&mut self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
     }
 }

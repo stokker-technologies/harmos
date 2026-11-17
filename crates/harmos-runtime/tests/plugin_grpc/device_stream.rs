@@ -33,5 +33,5 @@ async fn device_samples_need_no_window_and_keep_source_time_separate() {
 
     // Stop Closes Demand Before The SDK Stop Hook Replies
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

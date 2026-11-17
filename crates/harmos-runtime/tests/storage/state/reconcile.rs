@@ -73,7 +73,7 @@ impl Store {
     }
     async fn seed(&self) {
         let storage = self.manager();
-        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -97,7 +97,7 @@ impl Store {
         let payload = harmos_runtime::Message::encode(&Balance { value: 8 });
         storage.append_records(vec![record(&schema(), &Identifier::new("saved-balance").unwrap(), &payload)]).await.unwrap();
         runtime.state.commit(deposit(3)).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -170,7 +170,7 @@ async fn saved_facts_reconcile() {
         let started = Arc::new(Notify::new());
         let signal = started.clone();
         let saved = storage.clone();
-        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup
                 .settings()
                 .storage(&storage)
@@ -198,7 +198,7 @@ async fn saved_facts_reconcile() {
         .unwrap();
         started.notified().await;
         assert_eq!(runtime.state.applied(), Position(2));
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -211,7 +211,7 @@ async fn reconciliation_precedes_services() {
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
-    let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let opening = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup
             .settings()
             .storage(&storage)
@@ -252,7 +252,7 @@ async fn reconciliation_precedes_services() {
     store.recovery.control.flush_release.notify_one();
     let runtime = opening.await.unwrap();
     assert_eq!(runtime.state.stored(), Position(2));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -261,7 +261,7 @@ async fn failed_reconcile_repairs() {
     let storage = store.manager();
     let started = Arc::new(AtomicBool::new(false));
     let mark = started.clone();
-    let result = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let result = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup
             .settings()
             .storage(&storage)
@@ -289,7 +289,7 @@ async fn failed_reconcile_repairs() {
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
     // Boot failure is not a rollback of admitted repairs.
     let storage = store.manager();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -300,7 +300,7 @@ async fn failed_reconcile_repairs() {
     .await
     .unwrap();
     assert_eq!(runtime.state.state().read(|state| state.balances[&HOUSE]).await.unwrap().value, 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -313,7 +313,7 @@ async fn cancelled_reconcile_seals() {
     let keep = retained.clone();
     let cleanup = CleanupCapture::default();
     {
-        let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let opening = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup
                 .settings()
@@ -355,7 +355,7 @@ async fn repair_save_blocks() {
     let mark = started.clone();
     store.recovery.control.flush_failures.store(1, Ordering::SeqCst);
     assert!(
-        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup
                 .settings()
                 .storage(&storage)
@@ -388,7 +388,7 @@ async fn reconcile_requires_managed() {
     let store = Store::new();
     let storage = store.manager();
     assert!(
-        crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(&storage).reconcile(|_, _| async { Ok(()) });
         })
         .await
@@ -396,7 +396,7 @@ async fn reconcile_requires_managed() {
     );
     assert!(!store.data.control.open.load(Ordering::SeqCst));
     assert!(!store.recovery.control.open.load(Ordering::SeqCst));
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -406,7 +406,7 @@ async fn reconcile_requires_managed() {
     })
     .await
     .unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -418,7 +418,7 @@ async fn reconcile_panic_saves() {
             let cleanup = CleanupCapture::default();
             let capture = cleanup.clone();
             let opening_storage = storage.clone();
-            let startup = crate::support::app::launch::<Bank>(Ledger::default(), (), move |setup| {
+            let startup = crate::support::app::start::<Bank>(Ledger::default(), (), move |setup| {
                 capture.capture(setup);
                 setup
                     .settings()
@@ -451,7 +451,7 @@ async fn cancelled_boot_settles() {
     store.recovery.control.block_flush.store(true, Ordering::SeqCst);
     let cleanup = CleanupCapture::default();
     {
-        let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let opening = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup
                 .settings()

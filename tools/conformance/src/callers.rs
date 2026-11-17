@@ -281,7 +281,7 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
     // Compose a Host From Declared Audiences.
     let counter = Arc::new(AtomicU64::new(0));
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<AtomicU64>(counter.clone());
         setup.settings().clock(clock);
         setup.settings().operation_settings(operations::Settings {
@@ -298,7 +298,7 @@ pub async fn run(rule: usize, address: &str) -> Result<()> {
 
     let outcome =
         if rule == 33 { client_refusal(&runtime, &counter).await } else { plugin_refusal(&runtime, &counter, &controller, address).await };
-    runtime.shutdown().await.map_err(invalid)?;
+    runtime.stop().await.map_err(invalid)?;
     outcome
 }
 

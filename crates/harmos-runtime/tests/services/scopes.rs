@@ -62,7 +62,7 @@ fn register(manager: &OperationManager, resources: Arc<Resources>) {
 
 #[tokio::test]
 async fn control_retains_join() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -111,12 +111,12 @@ async fn control_retains_join() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn final_release_joins() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -145,12 +145,12 @@ async fn final_release_joins() {
     resources.cleanup.notify_one();
     release.await.unwrap();
     assert_eq!(resources.finished.load(SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn dropped_lease_cleanup() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -175,12 +175,12 @@ async fn dropped_lease_cleanup() {
     assert_eq!(resources.started.load(SeqCst), 2);
     resources.cleanup.notify_one();
     second.release().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn unregister_reserves_name() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -227,7 +227,7 @@ async fn unregister_reserves_name() {
     ));
     resources.cleanup.notify_one();
     replacement.release().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -246,7 +246,7 @@ async fn shutdown_preserve_typed() {
         }
     }
 
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -266,7 +266,7 @@ async fn shutdown_preserve_typed() {
     assert!(typed(&error), "{error:?}");
     assert!(typed(&lease.release().await.unwrap_err()));
     for _ in 0..2 {
-        assert!(typed(&crate::support::app::shutdown(&runtime).await.unwrap_err()));
+        assert!(typed(&crate::support::app::stop(&runtime).await.unwrap_err()));
     }
 }
 
@@ -282,7 +282,7 @@ async fn unregister_drops_factory() {
             self.dropped.fetch_add(1, SeqCst);
         }
     }
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -307,12 +307,12 @@ async fn unregister_drops_factory() {
         .unwrap();
     runtime.operations.unregister_resident("unused").await.unwrap();
     assert_eq!(dropped.load(SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn resident_not_reinitialized() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
         setup.settings().service("one-shot", |_service| async { Ok::<(), std::io::Error>(()) });
     })
@@ -327,12 +327,12 @@ async fn resident_not_reinitialized() {
         .unwrap();
     assert!(matches!(runtime.operations.submit_resident("one-shot").await, Err(Error::NotReady { domain: "retired assembly service" })));
     assert_eq!(runtime.operations.resident(&key).unwrap().health, Some(ServiceStatus::Stopped));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn factory_panic_reported() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         assembly(setup);
     })
     .await
@@ -359,5 +359,5 @@ async fn factory_panic_reported() {
             ..
         })
     ));
-    assert!(matches!(crate::support::app::shutdown(&runtime).await, Err(Error::TaskFailed { .. })));
+    assert!(matches!(crate::support::app::stop(&runtime).await, Err(Error::TaskFailed { .. })));
 }

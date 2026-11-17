@@ -18,6 +18,8 @@ pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 
 /* === Imports === */
 
+use harmos::plugin::{Registrar, Registration};
+
 use harmos::plugin::HostOperation;
 
 // Standard Library Imports
@@ -30,8 +32,8 @@ use harmos::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Stream, Window};
 use harmos::{Classification, Failure, Message, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
-use prost::Message as ProtoMessage;
-use prost_types::{Duration as ProtoDuration, FileDescriptorSet};
+use prost::Message as _;
+use prost_types::FileDescriptorSet;
 use std::{future::Future, num::NonZeroUsize, task::Poll, time::Duration};
 
 /* === Constants === */
@@ -190,29 +192,33 @@ impl OperationRequest for HostFail {
 /* === Private Functions === */
 
 pub fn plugin() -> Plugin {
+    Plugin::new("conformance", "1.0.0").register(|ctx| ctx.register(catalog())).expect("Register Plugin Declarations")
+}
+
+pub fn catalog() -> impl Registration {
     let interval = Stream::<Value>::new("conformance.interval");
-    let observer = Observer::new(&interval, sequence).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let observer = Observer::new(&interval, sequence).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let device = Stream::<Value>::new("conformance.device").publish_on(device);
     let settings = Stream::<Value>::new("conformance.settings");
-    let configured = Observer::new(&settings, sequence).every(ProtoDuration { seconds: 1, nanos: 0 }).interval_setting("interval");
+    let configured = Observer::new(&settings, sequence).every(prost_types::Duration { seconds: 1, nanos: 0 }).interval_setting("interval");
     let children_stream = Stream::<Value>::new("conformance.window_children");
-    let children_observer = Observer::new(&children_stream, window_children).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let children_observer = Observer::new(&children_stream, window_children).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let context_stream = Stream::<Value>::new("conformance.window_context");
-    let context_observer = Observer::new(&context_stream, window_context).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let context_observer = Observer::new(&context_stream, window_context).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let failure_stream = Stream::<Value>::new("conformance.window_failure");
-    let failure_observer = Observer::new(&failure_stream, window_failure).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let failure_observer = Observer::new(&failure_stream, window_failure).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let watch_stream = Stream::<Value>::new("conformance.window_watch");
-    let watch_observer = Observer::new(&watch_stream, window_watch).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let watch_observer = Observer::new(&watch_stream, window_watch).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let cancel_stream = Stream::<Value>::new("conformance.window_cancel");
-    let cancel_observer = Observer::new(&cancel_stream, window_cancel).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let cancel_observer = Observer::new(&cancel_stream, window_cancel).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let refusal_stream = Stream::<Value>::new("conformance.window_caller_refusal");
-    let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let refusal_observer = Observer::new(&refusal_stream, window_caller_refusal).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let window_stream = Stream::<Value>::new("conformance.window");
-    let window_observer = Observer::window(&window_stream, window).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let window_observer = Observer::window(&window_stream, window).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let oversized_stream = Stream::<Value>::new("conformance.oversized");
-    let oversized_observer = Observer::new(&oversized_stream, oversized).every(ProtoDuration { seconds: 1, nanos: 0 });
-    Plugin::new("conformance", "1.0.0")
-        .settings(SettingsDeclarations {
+    let oversized_observer = Observer::new(&oversized_stream, oversized).every(prost_types::Duration { seconds: 1, nanos: 0 });
+    move |ctx: &mut Registrar<'_>| {
+        ctx.register(SettingsDeclarations {
             values: vec![
                 SettingDeclaration {
                     name: "enabled".into(),
@@ -251,76 +257,78 @@ pub fn plugin() -> Plugin {
                     title: "Interval".into(),
                     description: String::new(),
                     default: Some(SettingValue {
-                        value: Some(setting_value::Value::Duration(ProtoDuration { seconds: 2, nanos: 0 })),
+                        value: Some(setting_value::Value::Duration(prost_types::Duration { seconds: 2, nanos: 0 })),
                     }),
                 },
             ],
-        })
-        .message::<PayloadOnly>()
-        .operation(Operation::new("conformance.local", local).visibility(Visibility::Private).replay_safe())
-        .operation(Operation::new("conformance.local_call", local_call).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.step.0", echo).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.children", children).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.failure", failure).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.policy", policy).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.schema", schema).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.nested", nested).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.projected", projected).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.clock", clock).visibility(Visibility::Public))
-        .operation(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::Visibility::Protected))
-        .operation(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())
-        .operation(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.watch", watch).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.settings_read", settings_read).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.discover", discover).visibility(Visibility::Public))
-        .operation(Operation::new("conformance.caller_refusal", caller_refusal).visibility(Visibility::Public))
-        .requires::<CreateInvocation>()
-        .requires::<PeerPublic>()
-        .requires::<PeerProtected>()
-        .requires::<OwnProtected>()
-        .requires::<PeerLocal>()
-        .requires::<HostWatch>()
-        .requires::<HostEcho>()
-        .requires::<HostPending>()
-        .requires::<HostFail>()
-        .requires::<Graph>()
-        .requires_host(HostOperation::TimeSleep)
-        .requires_host(HostOperation::TimeGet)
-        .requires_host(HostOperation::PluginsSettingsList)
-        .requires_host(HostOperation::OperationsList)
-        .requires_host(HostOperation::OperationsGet)
-        .stream(interval)
-        .stream(device)
-        .stream(settings)
-        .stream(children_stream)
-        .observer(children_observer)
-        .stream(context_stream)
-        .observer(context_observer)
-        .stream(failure_stream)
-        .observer(failure_observer)
-        .stream(watch_stream)
-        .observer(watch_observer)
-        .stream(cancel_stream)
-        .observer(cancel_observer)
-        .stream(refusal_stream)
-        .observer(refusal_observer)
-        .stream(window_stream)
-        .observer(window_observer)
-        .stream(oversized_stream)
-        .observer(oversized_observer)
-        .observer(observer)
-        .observer(configured)
-        .section(Graph {
-            interval: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+        })?;
+        ctx.register(harmos::plugin::Descriptor::<PayloadOnly>::new())?;
+        ctx.register(Operation::new("conformance.local", local).visibility(Visibility::Private).replay_safe())?;
+        ctx.register(Operation::new("conformance.local_call", local_call).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.step.0", echo).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.children", children).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.cancel", cancel).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.failure", failure).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.child_failure", child_failure).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.policy", policy).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.schema", schema).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.nested", nested).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.projected", projected).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.clock", clock).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("example.plugin.v1.Lifecycle/Initialize", echo).visibility(harmos::Visibility::Protected))?;
+        ctx.register(Operation::new("example.plugin.v1.Steps/Execute", resources).visibility(Visibility::Public).replay_safe())?;
+        ctx.register(Operation::new("conformance.cancel_reason", cancel_reason).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.watch", watch).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.peer_call", peer_call).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.settings_read", settings_read).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.discover", discover).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.caller_refusal", caller_refusal).visibility(Visibility::Public))?;
+        ctx.register(harmos::plugin::Dependency::<CreateInvocation>::new())?;
+        ctx.register(harmos::plugin::Dependency::<PeerPublic>::new())?;
+        ctx.register(harmos::plugin::Dependency::<PeerProtected>::new())?;
+        ctx.register(harmos::plugin::Dependency::<OwnProtected>::new())?;
+        ctx.register(harmos::plugin::Dependency::<PeerLocal>::new())?;
+        ctx.register(harmos::plugin::Dependency::<HostWatch>::new())?;
+        ctx.register(harmos::plugin::Dependency::<HostEcho>::new())?;
+        ctx.register(harmos::plugin::Dependency::<HostPending>::new())?;
+        ctx.register(harmos::plugin::Dependency::<HostFail>::new())?;
+        ctx.register(harmos::plugin::Dependency::<Graph>::new())?;
+        ctx.register(HostOperation::TimeSleep)?;
+        ctx.register(HostOperation::TimeGet)?;
+        ctx.register(HostOperation::PluginsSettingsList)?;
+        ctx.register(HostOperation::OperationsList)?;
+        ctx.register(HostOperation::OperationsGet)?;
+        ctx.register(interval)?;
+        ctx.register(device)?;
+        ctx.register(settings)?;
+        ctx.register(children_stream)?;
+        ctx.register(children_observer)?;
+        ctx.register(context_stream)?;
+        ctx.register(context_observer)?;
+        ctx.register(failure_stream)?;
+        ctx.register(failure_observer)?;
+        ctx.register(watch_stream)?;
+        ctx.register(watch_observer)?;
+        ctx.register(cancel_stream)?;
+        ctx.register(cancel_observer)?;
+        ctx.register(refusal_stream)?;
+        ctx.register(refusal_observer)?;
+        ctx.register(window_stream)?;
+        ctx.register(window_observer)?;
+        ctx.register(oversized_stream)?;
+        ctx.register(oversized_observer)?;
+        ctx.register(observer)?;
+        ctx.register(configured)?;
+        ctx.register(harmos::plugin::Contribution(Graph {
+            interval: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
-        })
+        }))?;
+        Ok(())
+    }
 }
 
 async fn caller_refusal(ctx: &Context, value: Value) -> Result<Value> {
-    let request = <CreateInvocation as ProtoMessage>::decode(include_bytes!("caller-request.bin").as_slice())
+    let request = <CreateInvocation as prost::Message>::decode(include_bytes!("caller-request.bin").as_slice())
         .map_err(|error| harmos::Error::Invalid(format!("Create Invocation: {error}")))?;
     match ctx.call(request).await {
         Err(harmos::Error::Failure(failure)) if value.value != b"propagate" => Ok(Value { value: failure.encode_to_vec() }),
@@ -338,33 +346,33 @@ async fn local_call(ctx: &Context, request: Value) -> Result<Value> {
         b"retry" => Some(harmos::OperationPolicy {
             retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
+                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
                 deterministic_jitter: true,
             }),
             ..Default::default()
         }),
         b"deadline" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 3, nanos: 0 }),
-            attempt_timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 3, nanos: 0 }),
+            attempt_timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
             ..Default::default()
         }),
         b"overall" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 2, nanos: 0 }),
-            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 2, nanos: 0 }),
+            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         b"retry-bound" => Some(harmos::OperationPolicy {
-            timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             retries: Some(harmos::RetryPolicy {
                 total_attempts: 2,
-                initial: Some(ProtoDuration { seconds: 3600, nanos: 0 }),
+                initial: Some(prost_types::Duration { seconds: 3600, nanos: 0 }),
                 ..Default::default()
             }),
             ..Default::default()
         }),
         b"cancel" => Some(harmos::OperationPolicy {
-            cancellation_timeout: Some(ProtoDuration { seconds: 1, nanos: 0 }),
+            cancellation_timeout: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
             ..Default::default()
         }),
         _ => None,
@@ -388,8 +396,8 @@ async fn policy(ctx: &Context, request: Value) -> Result<Value> {
             Some(harmos::OperationPolicy {
                 retries: Some(harmos::RetryPolicy {
                     total_attempts: 3,
-                    initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-                    maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
+                    initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                    maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
                     deterministic_jitter: true,
                 }),
                 ..Default::default()

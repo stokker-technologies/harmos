@@ -12,6 +12,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+#include <functional>
 
 // Third Party Imports
 
@@ -33,4 +34,5 @@
 
 namespace harmos::conformance {
 ::harmos::plugin::Plugin plugin();
-}
+std::function<void(::harmos::plugin::Registrar &)> catalog();
+} // namespace harmos::conformance

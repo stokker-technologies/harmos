@@ -39,6 +39,6 @@ async fn input_failure_settles_attempt() {
     assert!(matches!(*source, Error::TaskFailed { domain: "gRPC input", .. }));
     assert!(matches!(settlement.as_deref(), Some(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
-    bounded(crate::support::app::shutdown(&runtime)).await.unwrap();
+    bounded(crate::support::app::stop(&runtime)).await.unwrap();
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 1);
 }

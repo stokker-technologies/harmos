@@ -451,7 +451,7 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         if let Some(streams) = &self.streams {
             streams.complete();
         }
@@ -569,7 +569,7 @@ fn layout(
 // Count Allocation from Fields Without Constructing a Generated Message.
 fn measure(descriptor: &MessageDescriptor, input: crate::execution::grpc::DecodeInput<'_>, largest: usize) -> Result<usize, MessageError> {
     use crate::execution::grpc::{DecodeScalar, DecodeValue};
-    use harmos_domain::__private::decoding_add as add;
+    use harmos_domain::__private;
     use prost_reflect::Kind;
     let mut memory = largest;
     input.fields(&mut |field| {
@@ -580,19 +580,22 @@ fn measure(descriptor: &MessageDescriptor, input: crate::execution::grpc::Decode
                 extra = measure(&message, input.child(field.bytes()?)?, largest)?;
                 if definition.is_list() || definition.is_map() {
                     // Include Vector Growth or Hash-Table Nodes and Control Bytes.
-                    extra = add(extra, largest.checked_mul(4).ok_or_else(|| MessageError::borrowed("protobuf allocation overflows"))?)?;
-                    extra = add(extra, 128)?;
+                    extra = __private::decoding_add(
+                        extra,
+                        largest.checked_mul(4).ok_or_else(|| MessageError::borrowed("protobuf allocation overflows"))?,
+                    )?;
+                    extra = __private::decoding_add(extra, 128)?;
                 }
-                memory = add(memory, extra)?;
+                memory = __private::decoding_add(memory, extra)?;
                 return Ok(());
             }
             Kind::String | Kind::Bytes => {
                 let length = if matches!(definition.kind(), Kind::String) { field.text()?.len() } else { field.bytes()?.len() };
                 extra = length.checked_mul(2).ok_or_else(|| MessageError::borrowed("protobuf allocation overflows"))?;
                 if definition.is_list() {
-                    extra = add(extra, 4 * std::mem::size_of::<String>())?;
+                    extra = __private::decoding_add(extra, 4 * std::mem::size_of::<String>())?;
                 }
-                memory = add(memory, extra)?;
+                memory = __private::decoding_add(memory, extra)?;
                 return Ok(());
             }
             Kind::Double | Kind::Fixed64 | Kind::Sfixed64 => DecodeScalar::Bits64,
@@ -601,7 +604,7 @@ fn measure(descriptor: &MessageDescriptor, input: crate::execution::grpc::Decode
         };
         if definition.is_list() {
             field.scalars(scalar, &mut |_| {
-                extra = add(extra, 4 * std::mem::size_of::<u64>())?;
+                extra = __private::decoding_add(extra, 4 * std::mem::size_of::<u64>())?;
                 Ok(())
             })?;
         } else {
@@ -610,7 +613,7 @@ fn measure(descriptor: &MessageDescriptor, input: crate::execution::grpc::Decode
             }
             field.scalar(scalar)?;
         }
-        memory = add(memory, extra)?;
+        memory = __private::decoding_add(memory, extra)?;
         Ok(())
     })?;
     Ok(memory)

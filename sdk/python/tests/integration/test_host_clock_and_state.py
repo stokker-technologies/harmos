@@ -21,8 +21,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
-from harmos import CLASSIFICATION_REFUSED
-from harmos import FailureValue as WireFailure
+from harmos import CLASSIFICATION_REFUSED, FailureValue, SettingDeclaration, SettingValue
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
@@ -31,7 +30,7 @@ from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SamplesSelection, Window
 
 # Local Imports
-from harmos.plugin import HostOperation, Plugin
+from harmos.plugin import Catalog, HostOperation, Plugin, Registrar
 from tests.fixtures.conformance import Value, Values, plugin
 from tests.support import calls
 from tests.support.author import Author
@@ -48,14 +47,28 @@ from tests.support.author import Author
 
 
 class HostClockAndState(IsolatedAsyncioTestCase):
+    def test_catalogs_accumulate_without_entering_handlers(self) -> None:
+        author = Author()
+
+        def register(ctx: Registrar) -> None:
+            ctx.register(Catalog(author))
+            ctx.register(Catalog(object(), settings=[SettingDeclaration(name="flag", default=SettingValue(flag=False))]))
+
+        plugin = Plugin(id="author", version="1.0.0", register=register)
+        declarations = plugin.declarations()
+        self.assertEqual({operation.id for operation in declarations.operations}, {"author.wait", "author.state"})
+        self.assertEqual(len(declarations.sections), 1)
+        self.assertEqual(author.calls, 0)
+        self.assertEqual(author.cleaned, 0)
+
     async def test_fixture_reports_wrong_caller_failures_from_invocations_and_windows(self) -> None:
         # Serve the Contributions Used by the Reference Host's Caller Refusal Journey.
         endpoint = await plugin().start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
-        failure = WireFailure(
+        failure = FailureValue(
             classification=CLASSIFICATION_REFUSED,
             operation="harmos.host.v1.Invocations/Create",
             code="caller_not_allowed",
@@ -72,7 +85,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
         terminal = await call.read()
         value = Value.FromString(terminal.response.payload)
-        self.assertEqual(WireFailure.FromString(value.value), failure)
+        self.assertEqual(FailureValue.FromString(value.value), failure)
         self.assertIs(await call.read(), EOF)
 
         # Preserve the Same Refusal From an Unanswered Window at Controlled Host Time.
@@ -87,7 +100,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
         batch = (await stream.read()).batch
         self.assertTrue(batch.last)
-        self.assertEqual(WireFailure.FromString(Values.FromString(batch.columns).value[0]), failure)
+        self.assertEqual(FailureValue.FromString(Values.FromString(batch.columns).value[0]), failure)
         stream.cancel()
 
         # Keep the Plugin Connection Usable After Both Refusals.
@@ -100,14 +113,14 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         # Serve an Instance with Clock Requirements and a Typed Settings Section.
         author = Author()
         plugin = Plugin(
-            author,
             id="author",
             version="1.0.0",
-            requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_GET],
-            sections=[Value(value=b"settings")],
+            register=lambda ctx: ctx.register(
+                Catalog(author, requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_GET], sections=[Value(value=b"settings")])
+            ),
         )
         endpoint = await plugin.start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
@@ -163,7 +176,11 @@ class HostClockAndState(IsolatedAsyncioTestCase):
 
         # Duplicate Declarations Fail When the Author Builds the Declarations.
         with self.assertRaises(ValueError):
-            Plugin(author, id="author", version="1.0.0", requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_SLEEP]).declarations()
+            Plugin(
+                id="author",
+                version="1.0.0",
+                register=lambda ctx: ctx.register(Catalog(author, requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_SLEEP])),
+            ).declarations()
 
 
 # === Public Functions === #

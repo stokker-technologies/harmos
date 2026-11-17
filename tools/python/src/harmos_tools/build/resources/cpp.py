@@ -343,7 +343,7 @@ def host(
         "HostRoot Context::host() {",
         "  return {" + ", ".join("{*this}" for node in nodes if len(node) == 1) + "};",
         "}",
-        "Plugin& Plugin::requires_operation(HostOperation operation) {",
+        "Registrar& Registrar::add(HostOperation operation) {",
         "  switch (operation) {",
     ]
     for method in methods:
@@ -352,7 +352,7 @@ def host(
         expression = f'Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)' + (
             ".watch()" if method["server_streaming"] else ""
         )
-        source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
+        source += [f"    case HostOperation::{name}: return add(Dependency{{{expression}}});"]
     source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
     boundary = source.index(f"namespace {configuration.namespace}::plugin {{")
     body = "\n".join(source[boundary:])

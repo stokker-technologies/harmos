@@ -11,7 +11,7 @@
 
 mod application;
 mod partial;
-mod shutdown;
+mod stop;
 
 /* === Imports === */
 
@@ -76,9 +76,9 @@ impl JournalConsumer<Editor> for Held {
 /* === Tests === */
 
 #[tokio::test]
-async fn shutdown_drains_attached() {
+async fn stop_drains_attached() {
     let (mirror, (checkpoint, _)) = Mirror::new();
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(mirror);
     })
@@ -89,7 +89,7 @@ async fn shutdown_drains_attached() {
         runtime.state.commit(rename(title)).await.expect("accepted");
     }
     let applied = runtime.state.applied();
-    let settled = crate::support::app::shutdown(&runtime).await.unwrap();
+    let settled = crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(applied, Position(3));
     assert_eq!(settled, applied, "shutdown drains to the applied frontier");
@@ -99,7 +99,7 @@ async fn shutdown_drains_attached() {
 #[tokio::test]
 async fn poisoned_writer_evacuates() {
     let (mirror, (checkpoint, _)) = Mirror::new();
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(mirror);
     })
@@ -119,7 +119,7 @@ async fn poisoned_writer_evacuates() {
 
     // The runtime evacuates without being asked: the writer is gone, so the
     // supervisor folds the intact tail out and stops rather than restarting.
-    let settled = crate::support::app::shutdown(&runtime).await.unwrap();
+    let settled = crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(settled, Position(1));
     assert_eq!(checkpoint.load(Ordering::Acquire), 1, "the entry committed before the panic reached storage");
@@ -127,18 +127,18 @@ async fn poisoned_writer_evacuates() {
 
 #[tokio::test]
 async fn repeat_stop_frontier() {
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
     .expect("nothing was recovered");
 
     runtime.state.commit(rename("once")).await.expect("accepted");
-    let settled = crate::support::app::shutdown(&runtime).await.unwrap();
+    let settled = crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(settled, Position(1));
     assert_eq!(
-        crate::support::app::shutdown(&runtime).await.unwrap(),
+        crate::support::app::stop(&runtime).await.unwrap(),
         settled,
         "a repeat stop joins nothing and reports the frontier the first saw"
     );
@@ -146,7 +146,7 @@ async fn repeat_stop_frontier() {
 
 #[tokio::test]
 async fn handles_allow_shutdown() {
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
     })
     .await
@@ -156,7 +156,7 @@ async fn handles_allow_shutdown() {
     let retained = runtime.handle();
 
     // The stop does not wait on a live handle.
-    let settled = crate::support::app::shutdown(&runtime).await.unwrap();
+    let settled = crate::support::app::stop(&runtime).await.unwrap();
 
     assert_eq!(settled, Position::ORIGIN);
     assert!(
@@ -168,7 +168,7 @@ async fn handles_allow_shutdown() {
 #[tokio::test(start_paused = true)]
 async fn slow_flush_notices() {
     let held = Held::default();
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(held.clone());
     })
@@ -177,7 +177,7 @@ async fn slow_flush_notices() {
     let mut notices = runtime.notices();
 
     // The held flush outlasts the grace window, so the paused clock reaches it.
-    let mut stopping = pin!(crate::support::app::shutdown(&runtime));
+    let mut stopping = pin!(crate::support::app::stop(&runtime));
     tokio::select! {
         _ = &mut stopping => panic!("the held flush keeps the stop joining"),
         changed = notices.changed() => changed.expect("the runtime publishes notices"),
@@ -192,7 +192,7 @@ async fn slow_flush_notices() {
 #[tokio::test]
 async fn abandoned_stop_resumes() {
     let held = Held::default();
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(held.clone());
     })
@@ -203,7 +203,7 @@ async fn abandoned_stop_resumes() {
     // Abandoned mid-join, which is what a host-side timeout around a stop
     // does: the frontier must not go out with the dropped future.
     {
-        let mut stopping = pin!(crate::support::app::shutdown(&runtime));
+        let mut stopping = pin!(crate::support::app::stop(&runtime));
         tokio::select! {
             _ = &mut stopping => panic!("the held flush keeps the stop joining"),
             () = held.entered.notified() => {}
@@ -212,8 +212,23 @@ async fn abandoned_stop_resumes() {
 
     held.open();
     assert_eq!(
-        crate::support::app::shutdown(&runtime).await.unwrap(),
+        crate::support::app::stop(&runtime).await.unwrap(),
         Position(1),
         "the next stop resumes the join rather than panicking on a spent handle"
     );
+}
+
+#[tokio::test]
+async fn runtime_run_stops_like_stop() {
+    let (mirror, (checkpoint, _)) = Mirror::new();
+    let mut builder = harmos_runtime::Builder::<Editor>::new(Sheet::default());
+    builder.register(catalog());
+    builder.attach(mirror);
+    builder.initialize(std::time::Duration::from_secs(1), |runtime| async move {
+        runtime.state.commit(rename("kept")).await?;
+        harmos_runtime::Result::Ok(())
+    });
+    let position = builder.run(async {}).await.unwrap();
+    assert_eq!(position, Position(1));
+    assert_eq!(checkpoint.load(Ordering::Acquire), position.0);
 }

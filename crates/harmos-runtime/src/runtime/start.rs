@@ -86,22 +86,31 @@ impl Drop for Preparation {
 }
 
 impl<A: Application> Runtime<A> {
-    pub async fn launch(origin: impl Into<crate::state::Origin<A::State>>, config: A::Config) -> Result<Self, StartupError> {
-        let launch = Self::launch_with(origin, config, |_| {});
-        Box::pin(launch).await
+    pub async fn start(origin: impl Into<crate::state::Origin<A::State>>, config: A::Config) -> Result<Self, StartupError> {
+        let start = Self::start_with(origin, config, |_| {});
+        Box::pin(start).await
     }
 
-    pub async fn launch_with(
+    /// Start the Application, Wait for Its Stop Request and Settle Runtime Owners.
+    pub async fn run(
+        origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, stop: impl Future<Output = ()>,
+    ) -> Result<crate::state::Position, StartupError> {
+        let runtime = Self::start(origin, config).await?;
+        stop.await;
+        runtime.stop().await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
+    }
+
+    pub async fn start_with(
         origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
     ) -> Result<Self, StartupError> {
         let clock = crate::clock::Clock::default();
-        crate::clock::scope(clock, Box::pin(Self::launch_clocked(origin, config, overrides))).await
+        crate::clock::scope(clock, Box::pin(Self::start_clocked(origin, config, overrides))).await
     }
 
-    async fn launch_clocked(
+    async fn start_clocked(
         origin: impl Into<crate::state::Origin<A::State>>, config: A::Config, overrides: impl FnOnce(&mut Setup<A>),
     ) -> Result<Self, StartupError> {
-        let mut setup = Setup::<A>::new(Self::builder(origin));
+        let mut setup = Setup::<A>::new(Builder::new(origin));
         let mut preparation = Preparation {
             cleanup: setup.settings().startup_cleanup(),
             armed: true,
@@ -231,8 +240,8 @@ impl<A: Application> Resource for Owner<A> {
                     *self.failure.lock().expect("application lifecycle outcome is healthy") = Some(Arc::new(error));
                 }
             }
-            let cleanup = guarded("cleanup", self.application.cleanup()).await.map_err(|source| Error::TaskFailed {
-                domain: "application cleanup",
+            let cleanup = guarded("finalize", self.application.finalize()).await.map_err(|source| Error::TaskFailed {
+                domain: "application finalize",
                 source: Arc::from(source),
             });
             let Err(cleanup) = cleanup else { return Ok(()) };

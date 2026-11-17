@@ -50,5 +50,5 @@ async fn duplicate_operation_names_both_owners() {
     let input = payload(b"original");
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

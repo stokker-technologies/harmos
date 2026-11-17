@@ -34,5 +34,5 @@ async fn cancellation_observable_queued() {
 
     // The cancelled queued instance was never constructed.
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

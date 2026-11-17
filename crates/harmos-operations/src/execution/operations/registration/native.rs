@@ -202,7 +202,7 @@ impl<O: NativeOperation> NativeInstance for Instance<O> {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {

@@ -120,29 +120,26 @@ namespace harmos::plugin {
 HostRoot Context::host() {
   return {{*this}, {*this}, {*this}, {*this}};
 }
-Plugin &Plugin::requires_operation(HostOperation operation) {
+Registrar &Registrar::add(HostOperation operation) {
   switch (operation) {
   case HostOperation::InvocationsGet:
-    return requires_operation(
-        Operation<InvocationsGetRequest, InvocationsGetResponse>("harmos.host.v1.Invocations/Get", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<InvocationsGetRequest, InvocationsGetResponse>("harmos.host.v1.Invocations/Get", VISIBILITY_PUBLIC)});
   case HostOperation::InvocationsCancel:
-    return requires_operation(
-        Operation<InvocationsCancelRequest, InvocationsCancelResponse>("harmos.host.v1.Invocations/Cancel", VISIBILITY_PUBLIC));
+    return add(
+        Dependency{Operation<InvocationsCancelRequest, InvocationsCancelResponse>("harmos.host.v1.Invocations/Cancel", VISIBILITY_PUBLIC)});
   case HostOperation::InvocationsWatch:
-    return requires_operation(
-        Operation<InvocationsWatchRequest, InvocationsWatchResponse>("harmos.host.v1.Invocations/Watch", VISIBILITY_PUBLIC).watch());
+    return add(Dependency{
+        Operation<InvocationsWatchRequest, InvocationsWatchResponse>("harmos.host.v1.Invocations/Watch", VISIBILITY_PUBLIC).watch()});
   case HostOperation::OperationsList:
-    return requires_operation(
-        Operation<OperationsListRequest, OperationsListResponse>("harmos.host.v1.Operations/List", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<OperationsListRequest, OperationsListResponse>("harmos.host.v1.Operations/List", VISIBILITY_PUBLIC)});
   case HostOperation::OperationsGet:
-    return requires_operation(Operation<OperationsGetRequest, OperationsGetResponse>("harmos.host.v1.Operations/Get", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<OperationsGetRequest, OperationsGetResponse>("harmos.host.v1.Operations/Get", VISIBILITY_PUBLIC)});
   case HostOperation::PluginsSettingsList:
-    return requires_operation(
-        Operation<SettingsListRequest, SettingsListResponse>("harmos.host.v1.plugins.Settings/List", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<SettingsListRequest, SettingsListResponse>("harmos.host.v1.plugins.Settings/List", VISIBILITY_PUBLIC)});
   case HostOperation::TimeGet:
-    return requires_operation(Operation<TimeGetRequest, TimeGetResponse>("harmos.host.v1.Time/Get", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<TimeGetRequest, TimeGetResponse>("harmos.host.v1.Time/Get", VISIBILITY_PUBLIC)});
   case HostOperation::TimeSleep:
-    return requires_operation(Operation<TimeSleepRequest, TimeSleepResponse>("harmos.host.v1.Time/Sleep", VISIBILITY_PUBLIC));
+    return add(Dependency{Operation<TimeSleepRequest, TimeSleepResponse>("harmos.host.v1.Time/Sleep", VISIBILITY_PUBLIC)});
   default:
     throw invalid_argument("Declare Host Requirement: Unknown Operation");
   }

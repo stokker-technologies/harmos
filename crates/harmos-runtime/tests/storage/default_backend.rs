@@ -54,7 +54,7 @@ use harmos_runtime::storage::ReadLimits;
 async fn unconfigured_runtime_saves_data_and_recovery_in_memory() {
     // Start Without a Backend or Storage Configuration
     let clock = Controlled::new();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().clock(clock.source()).register(catalog()).managed_storage(ManagedStorageSettings {
             replay: ReadLimits {
                 rows: NonZeroUsize::new(16).unwrap(),
@@ -84,7 +84,7 @@ async fn unconfigured_runtime_saves_data_and_recovery_in_memory() {
     assert_eq!(state.value, 7);
 
     // A Separate Runtime Starts With Independent Empty Adapters
-    let other = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let other = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().clock(clock.source()).register(catalog());
     })
     .await
@@ -92,7 +92,7 @@ async fn unconfigured_runtime_saves_data_and_recovery_in_memory() {
     assert_eq!(other.storage().unwrap().status().saved.sequence, 0);
     assert_eq!(other.storage().unwrap().status().recovery_saved.sequence, 0);
     assert_ne!(storage.get_saved_position().history, other.storage().unwrap().get_saved_position().history);
-    crate::support::app::shutdown(&other).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&other).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(storage.status().closed);
 }

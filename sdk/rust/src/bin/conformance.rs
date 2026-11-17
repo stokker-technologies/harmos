@@ -42,9 +42,9 @@ fn main() -> harmos::Result<()> {
     }
     let plugin = conformance::plugin();
     if arguments.iter().any(|argument| argument == "--remote") {
-        plugin.remote().serve()
+        plugin.remote().run()
     } else {
-        plugin.serve()
+        plugin.run()
     }
 }
 

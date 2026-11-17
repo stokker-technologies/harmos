@@ -34,32 +34,29 @@ use tokio::{
     net::TcpListener,
     sync::{Mutex, mpsc, oneshot},
 };
-use tonic::transport::Server as RpcServer;
+use tonic::transport;
 use tonic::{Request, Response, Status, Streaming};
 
 // Local Imports
 use crate::{Context, Error, Operation, Plugin, Result, columns::Columns, context::ChildOutput, operation::Handler};
 use harmos_protocol::model::Declarations;
 use harmos_protocol::model::Visibility;
-use harmos_protocol::plugin::Request as InvocationRequest;
-use harmos_protocol::plugin::Response as InvocationResponse;
+use harmos_protocol::plugin;
+
 use harmos_protocol::plugin::Sample;
 use harmos_protocol::plugin::response;
-use harmos_protocol::plugin::{
-    InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
-    InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse, instance_invoke_request, instance_invoke_response,
-    instance_samples_request,
-    instance_server::{Instance as Service, InstanceServer},
+use {
+    harmos_protocol::plugin::InstanceGetRequest, harmos_protocol::plugin::InstanceGetResponse,
+    harmos_protocol::plugin::InstanceInvokeRequest, harmos_protocol::plugin::InstanceInvokeResponse,
+    harmos_protocol::plugin::InstanceSamplesRequest, harmos_protocol::plugin::InstanceSamplesResponse,
+    harmos_protocol::plugin::InstanceStopRequest, harmos_protocol::plugin::InstanceStopResponse,
+    harmos_protocol::plugin::instance_invoke_request, harmos_protocol::plugin::instance_invoke_response,
+    harmos_protocol::plugin::instance_samples_request, harmos_protocol::plugin::instance_server,
+    harmos_protocol::plugin::instance_server::InstanceServer,
 };
 
 use prost_types::Timestamp;
-use std::{
-    env,
-    future::{self, Future},
-    io,
-    result::Result as StdResult,
-    task::{Context as TaskContext, Poll},
-};
+use {std::env, std::future, std::future::Future, std::io, std::result, std::task, std::task::Poll};
 
 /* === Constants === */
 
@@ -67,7 +64,7 @@ use std::{
 
 /* === Type Aliases === */
 
-type Output<T> = Pin<Box<dyn Stream<Item = StdResult<T, Status>> + Send>>;
+type Output<T> = Pin<Box<dyn Stream<Item = result::Result<T, Status>> + Send>>;
 
 /* === Structs === */
 
@@ -112,8 +109,8 @@ struct Job {
 /* === Implementations === */
 
 impl Future for Completion {
-    type Output = StdResult<Result<Vec<u8>>, oneshot::error::RecvError>;
-    fn poll(mut self: Pin<&mut Self>, cx: &mut TaskContext<'_>) -> Poll<Self::Output> {
+    type Output = result::Result<Result<Vec<u8>>, oneshot::error::RecvError>;
+    fn poll(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.result).poll(cx)
     }
 }
@@ -134,8 +131,8 @@ impl Drop for Settled {
 }
 
 #[tonic::async_trait]
-impl Service for Server {
-    async fn get(&self, request: Request<InstanceGetRequest>) -> StdResult<Response<InstanceGetResponse>, Status> {
+impl instance_server::Instance for Server {
+    async fn get(&self, request: Request<InstanceGetRequest>) -> result::Result<Response<InstanceGetResponse>, Status> {
         if request.into_inner().revision == 0 {
             return Err(Status::invalid_argument("Revision Must Be at Least One"));
         }
@@ -144,7 +141,7 @@ impl Service for Server {
 
     type InvokeStream = Output<InstanceInvokeResponse>;
 
-    async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> StdResult<Response<Self::InvokeStream>, Status> {
+    async fn invoke(&self, request: Request<Streaming<InstanceInvokeRequest>>) -> result::Result<Response<Self::InvokeStream>, Status> {
         let mut input = request.into_inner();
         let Some(instance_invoke_request::Frame::Request(request)) = input.message().await?.and_then(|frame| frame.frame) else {
             return Err(Status::invalid_argument("Request Must Be First"));
@@ -171,7 +168,7 @@ impl Service for Server {
 
     type SamplesStream = Output<InstanceSamplesResponse>;
 
-    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> StdResult<Response<Self::SamplesStream>, Status> {
+    async fn samples(&self, request: Request<Streaming<InstanceSamplesRequest>>) -> result::Result<Response<Self::SamplesStream>, Status> {
         let mut input = request.into_inner();
         let Some(instance_samples_request::Frame::Open(open)) = input.message().await?.and_then(|frame| frame.frame) else {
             return Err(Status::invalid_argument("Open Must Be First"));
@@ -181,7 +178,7 @@ impl Service for Server {
         let producer = publication.producer.clone();
         let message_bytes = self.message_bytes;
         let mut context = Context::new(
-            InvocationRequest {
+            plugin::Request {
                 scope: open.scope,
                 operation: open.stream,
                 ..Default::default()
@@ -201,7 +198,7 @@ impl Service for Server {
         Ok(Response::new(output_stream(receiver)))
     }
 
-    async fn stop(&self, _: Request<InstanceStopRequest>) -> StdResult<Response<InstanceStopResponse>, Status> {
+    async fn stop(&self, _: Request<InstanceStopRequest>) -> result::Result<Response<InstanceStopResponse>, Status> {
         for cleanup in &self.cleanup {
             cleanup().map_err(|error| Status::internal(error.to_string()))?;
         }
@@ -215,7 +212,7 @@ impl Service for Server {
 
 /* === Public Functions === */
 
-pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<()> {
+pub(crate) async fn run(plugin: Plugin, declarations: Declarations) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
     harmos_protocol::transfer::message_bytes(&plugin.transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
         Error::Invalid("Start Plugin: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing".into())
@@ -283,7 +280,7 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
     println!("harmos listening {address}");
     io::stdout().flush()?;
     tracing::info!(%address, "Plugin Listening");
-    let result = RpcServer::builder()
+    let result = transport::Server::builder()
         .add_service(InstanceServer::new(server).max_decoding_message_size(message_bytes).max_encoding_message_size(message_bytes))
         .serve_with_incoming_shutdown(incoming, async move {
             if plugin.remote {
@@ -300,7 +297,7 @@ pub(crate) async fn serve(plugin: Plugin, declarations: Declarations) -> Result<
 
 /* === Private Functions === */
 
-fn output_stream<T: Send + 'static>(receiver: mpsc::Receiver<StdResult<T, Status>>) -> Output<T> {
+fn output_stream<T: Send + 'static>(receiver: mpsc::Receiver<result::Result<T, Status>>) -> Output<T> {
     Box::pin(stream::unfold(receiver, |mut receiver| async move { receiver.recv().await.map(|item| (item, receiver)) }))
 }
 
@@ -340,7 +337,7 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
 
 async fn dispatch(
     jobs: &mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>,
-) -> StdResult<Completion, Status> {
+) -> result::Result<Completion, Status> {
     let (complete, receiver) = oneshot::channel();
     let (started, ready) = oneshot::channel();
     let (settled, settlement) = oneshot::channel();
@@ -360,8 +357,8 @@ async fn dispatch(
 
 async fn invoke(
     jobs: mpsc::Sender<Job>, handler: Arc<dyn Handler>, context: Context, payload: Vec<u8>, input: &mut Streaming<InstanceInvokeRequest>,
-    output: &mpsc::Sender<StdResult<InstanceInvokeResponse, Status>>,
-) -> StdResult<(), Status> {
+    output: &mpsc::Sender<result::Result<InstanceInvokeResponse, Status>>,
+) -> result::Result<(), Status> {
     let mut complete = dispatch(&jobs, handler, context.clone(), payload).await?;
     let mut eof = false;
     let result = loop {
@@ -385,7 +382,7 @@ async fn invoke(
     };
     output
         .send(Ok(InstanceInvokeResponse {
-            frame: Some(instance_invoke_response::Frame::Response(InvocationResponse { result: Some(result) })),
+            frame: Some(instance_invoke_response::Frame::Response(plugin::Response { result: Some(result) })),
         }))
         .await
         .map_err(|_| Status::cancelled("Host Closed"))?;
@@ -394,8 +391,9 @@ async fn invoke(
 
 async fn samples(
     jobs: mpsc::Sender<Job>, observer: Option<(Arc<dyn Handler>, Columns)>, producer: Option<Arc<dyn Handler>>, mut context: Context,
-    input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<StdResult<InstanceSamplesResponse, Status>>, message_bytes: usize,
-) -> StdResult<(), Status> {
+    input: &mut Streaming<InstanceSamplesRequest>, output: &mpsc::Sender<result::Result<InstanceSamplesResponse, Status>>,
+    message_bytes: usize,
+) -> result::Result<(), Status> {
     let (samples, mut rows) = mpsc::channel(1);
     context.samples = Some(samples);
     let mut producing = match producer {
@@ -436,7 +434,7 @@ async fn samples(
                         if window.count == 0 {
                             return Err(Status::invalid_argument("Sample Window: a window holds at least one sample"));
                         }
-                        let mut window_context = Context::new(InvocationRequest {
+                        let mut window_context = Context::new(plugin::Request {
                             operation: context.operation.clone(), scope: context.scope.clone(), ..Default::default()
                         }, context.plugin.clone(), context.requires.clone());
                         window_context.calls = context.calls.clone();

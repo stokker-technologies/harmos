@@ -21,7 +21,6 @@
 #include "columns.hpp"
 #include "harmos/harmos.hpp"
 
-using google::protobuf::Descriptor;
 using google::protobuf::FieldDescriptor;
 using google::protobuf::Message;
 using google::protobuf::internal::WireFormatLite;
@@ -67,7 +66,7 @@ string type_name(const FieldDescriptor *field) {
 } // namespace
 
 namespace harmos::plugin::detail {
-void validate_row(const Descriptor *row) {
+void validate_row(const google::protobuf::Descriptor *row) {
   for (int index = 0; index < row->field_count(); ++index) {
     const auto *field = row->field(index);
     const auto declare = "Declare Observer " + string(row->full_name()) + ": Make Field " + string(field->name()) + " ";
@@ -80,7 +79,7 @@ void validate_row(const Descriptor *row) {
   }
 }
 
-void validate_columns(const Descriptor *row, const Descriptor *columns) {
+void validate_columns(const google::protobuf::Descriptor *row, const google::protobuf::Descriptor *columns) {
   validate_row(row);
   const auto declare = "Declare Window Observer " + string(columns->full_name()) + ": ";
   if (columns->field_count() != row->field_count())
@@ -94,7 +93,7 @@ void validate_columns(const Descriptor *row, const Descriptor *columns) {
   }
 }
 
-Columns::Columns(const Descriptor *row) : row_(row) {
+Columns::Columns(const google::protobuf::Descriptor *row) : row_(row) {
   validate_row(row);
   for (int index = 0; index < row->field_count(); ++index) {
     const auto *field = row->field(index);

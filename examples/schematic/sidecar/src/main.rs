@@ -45,7 +45,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let report = capture()?;
-    let outcome = schematic_sidecar::plugin().serve();
+    let outcome = schematic_sidecar::plugin().run();
     let flushed = report.as_ref().map(FlushGuard::flush).transpose();
     outcome?;
     flushed?;

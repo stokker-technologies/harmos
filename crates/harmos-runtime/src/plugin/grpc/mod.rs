@@ -326,7 +326,7 @@ impl<A: Application> Runtime<A> {
         };
         admission.seal();
         activation.admission = Some(Arc::new(admission));
-        Ok(Attached::launch(
+        Ok(Attached::run(
             operations,
             self.streams.clone(),
             crate::operations::Lane::default().name(),
@@ -526,10 +526,10 @@ impl Attached {
             activation,
             publications,
         };
-        Ok(Self::launch(operations, streams, lane, settings, participant, connected))
+        Ok(Self::run(operations, streams, lane, settings, participant, connected))
     }
 
-    fn launch<A: Application>(
+    fn run<A: Application>(
         operations: crate::operations::Manager, streams: crate::streams::StreamManager<A>, lane: &'static str, settings: PlacementSettings,
         participant: crate::runtime::StopParticipant, connected: ConnectedPlugin,
     ) -> Self {

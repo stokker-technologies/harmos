@@ -187,7 +187,7 @@ impl Host {
 
     async fn stop(self) {
         self.attached.stop("Benchmark Complete").await.unwrap();
-        self.runtime.shutdown().await.unwrap();
+        self.runtime.stop().await.unwrap();
     }
 }
 

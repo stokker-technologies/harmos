@@ -6,7 +6,6 @@ using System.Reflection;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
-using IOFile = System.IO.File;
 
 namespace Harmos.Tests.Support;
 
@@ -18,15 +17,15 @@ internal static class ReferenceHost
     if (string.IsNullOrEmpty(path))
     {
       var directory = new DirectoryInfo(AppContext.BaseDirectory);
-      while (directory is not null && !IOFile.Exists(Path.Combine(directory.FullName, "Harmos.slnx")))
+      while (directory is not null && !System.IO.File.Exists(Path.Combine(directory.FullName, "Harmos.slnx")))
         directory = directory.Parent;
       var sdk = directory?.FullName ?? throw new InvalidOperationException("Missing C# Solution");
       var configuration = typeof(ReferenceHost).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()!.Configuration;
       path = name == "HARMOS_CSHARP_PLUGIN"
-        ? Path.GetFullPath(IOFile.ReadAllText(Path.Combine(sdk, "artifacts", "paths", configuration, "Harmos.Conformance.txt")).Trim(), sdk)
+        ? Path.GetFullPath(System.IO.File.ReadAllText(Path.Combine(sdk, "artifacts", "paths", configuration, "Harmos.Conformance.txt")).Trim(), sdk)
         : Path.GetFullPath(Path.Combine(sdk, "..", "..", "target", configuration == "Release" ? "release" : "debug", OperatingSystem.IsWindows() ? "harmos-conformance.exe" : "harmos-conformance"));
     }
-    if (string.IsNullOrEmpty(path) || !IOFile.Exists(path))
+    if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
       throw new InvalidOperationException($"Missing Build Output: {name}; Run mise run build -- --language csharp");
     return path;
   }

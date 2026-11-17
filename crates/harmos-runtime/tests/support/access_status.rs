@@ -121,7 +121,7 @@ impl Host {
     }
     pub async fn with_store(store: Arc<Store>) -> Result<Self> {
         let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
-        let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = Runtime::<Model>::start_with((), (), |setup| {
             setup.settings().clock(clock);
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(NonZeroUsize::new(4 * 1024 * 1024).unwrap()),
@@ -172,7 +172,7 @@ impl Host {
     pub async fn close(self) -> Result {
         drop(self.channel);
         self.management.detach().await?;
-        self.runtime.shutdown().await?;
+        self.runtime.stop().await?;
         Ok(())
     }
     pub async fn enable(&self) -> Result<access::ListenerSetResponse> {

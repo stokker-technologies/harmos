@@ -243,3 +243,82 @@ products own their author surfaces. Generated code remains tracked.
    cancellation followed by finalize as plugins do? Proposed default: yes for both, in a
    follow-up change once the owner confirms; this change only renames `cleanup` to `finalize`,
    so its tasks do not depend on the answer.
+
+## Lifecycle Worker Source Inventory
+
+The base SDK's Rust `Plugin` was already monomorphic at `6702367a8`.
+Typed registrar entry points preserve that property and replace the declaration
+builder surface; no second erasure or catalog runtime is introduced.
+
+Locked at `6702367a8` before implementation on 2026-11-17. This worker owns
+runtime construction/start/stop/run and application/service/carrier hook names,
+the four SDK registration and lifecycle helpers, Instance/guest lifecycle protocol,
+placement lifecycle calls, their conformance fixtures and affected examples/docs.
+Host-client deletion and manager ownership remain with the other workers.
+
+| Owner | Sources | Consumers |
+| --- | --- | --- |
+| Host Lifecycle | `crates/harmos-runtime/src/runtime.rs`, `runtime/launch.rs`, `runtime/lifecycle.rs` | Runtime stories/benches, Schematic, conformance |
+| Resource Hooks | `crates/harmos-operations/src/execution/**`, runtime services/authored/component adapters | Application, service, listener and storage carrier implementations |
+| SDK Lifecycle/Registration | `sdk/{rust,python,csharp,cpp}` authoring, serving and guest helpers | SDK fixtures/examples, conformance, Schematic sidecar/guest |
+| Carrier Lifecycle | `proto/harmos/plugin/v1/{instance,guest}.proto`, model declarations, guest declaration/dispatch and gRPC placement | Generated tracked bindings, reference servers and protocol tests |
+
+Resource listener and manager shutdown APIs retain their names; only runtime host
+verbs change. Per-invocation guest finalize remains distinct from plugin finalize.
+The initial state is a required construction argument in the current runtime.
+`Builder::new(origin)` constructs the existing registration builder; application
+`Runtime::start(origin, config)` retains application-owned preparation.
+`run` accepts the product's stop-request future, then settles stop even when waiting
+fails. This avoids library-owned signal policy and permits deterministic proof.
+The worker task overrides the original tasks.md prohibition on revision pins.
+
+Constructor deviation from D1: the running handle remains `Runtime<A>` and the
+pending registration value is `Builder<A>`. Its constructor is
+`Builder::new(origin) -> Self`; `Runtime::new -> Builder` fails the mandatory
+`clippy::new_ret_no_self` gate. The old `Runtime::builder` is deleted rather than
+retained as an alias. Replacing the running handle type would unnecessarily
+cross the parallel runtime-ownership group's source boundary.
+
+## Qualified Name Inventory
+
+The lifecycle caller migration also qualified the private aliases encountered in
+its files. Rust names migrated include `GuestError`, `WireCancel`, `WireResult`,
+`WireWireResult`, `WireFrame`, `StdResult`, `StorageError`, `QueryError`, `Storage`,
+`EngineManager`, `EngineWorker`, `TraceContext`, `TaskContext`, `RequestFrame`,
+`WireFailure`, `WireKind`, `ProtocolDuration`, `SleepOperation`, `Batch`,
+`DeliveryContext`, `EntryState`, `RuntimeResult`, `Graph`, `RuntimeError`,
+`ExchangeOperation`, `AnalyzeOperation`, `UploadOperation`, `OperationError`,
+`DownloadTransfer`, `PutTransfer`, `TakeTransfer`, `UploadTransfer`, `ProtoDuration`,
+`ChangeKind`, `PlacementKind`, `SettingKind`, `RpcServer`, `InvocationRequest`,
+`InvocationResponse`, `Service` and `ProtoMessage`; module/function aliases
+`config`, `reflection`, `blocking`, `placement` and `add` now use their owners.
+C++ namespace aliases `chrono`, `wire`, `authoring`, `fixture_types`, `sdk` and
+`host_wire` are gone in touched sources; same-name message aliases became ordinary
+using declarations. C# `SdkContext` and `SdkPlugin` are qualified, and same-name
+message/status aliases became imports or qualified references. Python `WireWindow`
+and `JsonValue` use their owning modules, and `WireFailure` uses `FailureValue`.
+
+Anonymous Rust trait imports bring colliding extension traits into method scope
+without introducing a renamed symbol. The SDK's `extern crate self as harmos`
+serves derive expansion inside its defining crate. Composed C++ callback/container
+type definitions (`Observe`, `Requirements`, `ValueOperation`) are definitions,
+not imported renames.
+
+The existing public runtime clock reexports (`Clock as Source`, `Execution as
+Clock`), shared integration/benchmark test path overrides and generated public
+payload renames remain open. Renaming that public clock surface or relocating
+shared fixture modules overlaps other workers' consumers; the requested scope
+decision is pending. Host-client generator aliases belong with the parallel
+host-client removal. These are unresolved items, not accepted exceptions.
+
+## Native Phase Integration Boundary
+
+`operations/manager/entry.rs::retirement_control` currently recognizes only staged
+SDK `Action::Shutdown`; `submission.rs::admit_entry` refuses other submissions
+after operation admission closes. Native gRPC activations use `GrpcAdmission`
+instead of that staged lifecycle. The remaining initialize/finalize integration
+must use one manager-owned policy/retirement authority, including admission gates
+and failure rollback. The lifecycle worker has not added an alternate scheduler,
+carrier protocol or teardown bypass while ownership of that integration is
+unresolved. The existing native and Wasm plugin hooks remain until that complete
+replacement is integrated; this checkpoint does not complete plugin-lifecycle.

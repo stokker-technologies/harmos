@@ -47,7 +47,7 @@ impl PublicationHost for Publications {
 #[tokio::test]
 async fn native_publication_preserves_payload_and_batch_metadata() {
     let publications = Arc::new(Publications::default());
-    let runtime = harmos_runtime::Runtime::<super::app::App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<super::app::App>::start_with((), (), |setup| {
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(1024 * 1024).unwrap()),
             ..Default::default()
@@ -70,5 +70,5 @@ async fn native_publication_preserves_payload_and_batch_metadata() {
     };
     runtime.operations.call_native::<harmos_operations::streams::Publish>(request.clone()).await.unwrap();
     assert_eq!(*publications.0.lock().unwrap(), vec![request]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

@@ -15,5 +15,5 @@ mod plugin;
 /* === Public Functions === */
 
 fn main() -> harmos::Result<()> {
-    plugin::plugin().serve()
+    plugin::plugin().run()
 }

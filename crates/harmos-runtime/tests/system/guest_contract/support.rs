@@ -24,13 +24,11 @@ use harmos_runtime::plugin::{
     manager::{self, Manager, PluginManagerSettings},
 };
 use harmos_runtime::storage::{StorageBackends, StorageManager};
-use harmos_runtime::{
-    Error, Result as RuntimeResult,
-    clock::Clock,
-    config::{PluginGuestSettings, PluginSettings},
-    guest::Host,
-};
 use tempfile::TempDir;
+use {
+    harmos_runtime::Error, harmos_runtime::clock::Clock, harmos_runtime::config::PluginGuestSettings,
+    harmos_runtime::config::PluginSettings, harmos_runtime::guest::Host,
+};
 
 use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use harmos_protocol::model::Callers;
@@ -234,7 +232,7 @@ impl harmos_runtime::operations::ContextValue for RetryChoice {
 
 pub async fn runtime(owner: Arc<ProviderOwner>, lane: Lane, clock: Clock) -> Arc<Runtime<Bank>> {
     let (storage, entries, root) = entries();
-    let runtime = Runtime::<Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = Runtime::<Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<ProviderOwner>(owner);
         setup.resource(root);
         setup.settings().storage(&storage).plugins(entries.clone());
@@ -317,7 +315,7 @@ pub fn settings(configuration: &str) -> PluginSettings {
 pub fn sandbox() -> Vec<u8> {
     crate::support::fixtures::component("harmos-sandbox-guest")
 }
-pub async fn call<Q: OperationRequest>(runtime: &OperationManager, request: Q) -> RuntimeResult<Q::Response> {
+pub async fn call<Q: OperationRequest>(runtime: &OperationManager, request: Q) -> harmos_runtime::Result<Q::Response> {
     let bytes = runtime.call_encoded(Q::ID, request.encode_to_vec()).await?;
     <Q::Response as prost::Message>::decode(bytes.as_slice()).map_err(|source| Error::OperationPayload {
         operation: Q::ID.into(),

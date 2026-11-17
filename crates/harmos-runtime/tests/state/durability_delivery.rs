@@ -31,7 +31,7 @@ async fn unacked_item_redelivered() {
     live.state.commit(deposit(100)).await.expect("accepted");
     live.state.commit(pay(1, 10)).await.expect("accepted");
     live.state.commit(pay(7, 10)).await.expect("accepted");
-    live.shutdown().await.unwrap();
+    live.stop().await.unwrap();
 
     let (checkpoint, dispatched) = &watched;
     assert_eq!(*dispatched.lock().expect("the listener is never poisoned"), vec![1], "the held payout was never dispatched");
@@ -44,7 +44,7 @@ async fn unacked_item_redelivered() {
     })
     .await;
     let restored = ledger(&recovered).await;
-    crate::support::app::shutdown(&recovered).await.unwrap();
+    crate::support::app::stop(&recovered).await.unwrap();
 
     assert_eq!(
         *dispatched.lock().expect("the listener is never poisoned"),

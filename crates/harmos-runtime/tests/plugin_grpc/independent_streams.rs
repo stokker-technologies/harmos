@@ -54,5 +54,5 @@ async fn independent_intervals_keep_each_streams_order_and_host_time() {
     let input = super::invoke_support::payload(b"still available");
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

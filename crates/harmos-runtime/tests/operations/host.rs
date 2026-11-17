@@ -124,7 +124,7 @@ async fn runtime() -> (Runtime<App>, Arc<Gate>) {
         cleanup: Notify::new(),
         request: Mutex::new(None),
     });
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Gate>(gate.clone());
         setup.settings().lanes(harmos_runtime::operations::LaneSet::new([crate::support::SERIAL]).unwrap());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
@@ -177,7 +177,7 @@ async fn owned_request_survives_caller_cancellation() {
 
     // A Native Worker May Own The Request Allocation After The Caller Cancels.
     assert!(instance.cancel().await.is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(budget.available_permits(), 0);
     drop(retained);
     assert_eq!(budget.available_permits(), 64);
@@ -191,7 +191,7 @@ async fn refused_owned_request_releases_admission() {
     let claims = harmos_runtime::operations::RequestClaims::retain(permit);
     assert!(OperationHost::submit_owned::<TickerDeclaration>(&runtime.operations, TickerDeclaration {}, claims).await.is_err());
     assert_eq!(budget.available_permits(), 64);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -210,7 +210,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         assert_eq!(*called.await.unwrap(), 8);
         assert_eq!(gate.completed.load(Ordering::SeqCst), 2);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -219,7 +219,7 @@ async fn host_instances_settle() {
         assert!(instance.cancel().await.is_err());
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
         assert_eq!(gate.cleaned.load(Ordering::SeqCst), 1);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -230,7 +230,7 @@ async fn host_instances_settle() {
         // Dropping an unsettled instance cancels it.
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 0);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     {
         let (runtime, gate) = runtime().await;
@@ -243,7 +243,7 @@ async fn host_instances_settle() {
         gate.release.add_permits(1);
         cleaned.await;
         assert_eq!(gate.completed.load(Ordering::SeqCst), 1);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -298,7 +298,7 @@ async fn builtin_controls_instance() {
     let refused = operations.call_protobuf::<harmos_operations::lifecycle::Cancel>(harmos_operations::lifecycle::Cancel::of(unknown)).await;
     assert!(hidden(refused.err()));
     assert_ne!(cancelled.invocation.as_ref().unwrap().outcome, Outcome::Succeeded.as_str());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -366,5 +366,5 @@ async fn resident_leases_watched() {
     // A Stopped Resident Leaves the Index Like a Settled Request
     let stopped = operations.call_protobuf::<harmos_operations::lifecycle::Get>(harmos_operations::lifecycle::Get::of(id)).await;
     assert!(hidden(stopped.err()));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

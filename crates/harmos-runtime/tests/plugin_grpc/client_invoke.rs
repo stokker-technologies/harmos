@@ -148,5 +148,5 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .await;
     assert!(result.unwrap().into_inner().now.is_some());
     drop(listener);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

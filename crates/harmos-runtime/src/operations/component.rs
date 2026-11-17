@@ -20,7 +20,7 @@ use tokio::sync::mpsc;
 // Local Imports
 use super::Context;
 use super::children::{CHILD_REQUESTS, ChildRequest, Children};
-use crate::guest::Error as GuestError;
+use crate::guest;
 use crate::guest::host::session::Endpoint;
 use crate::operations::{FailureKind, OperationDefinition, WireAnswer, WireCommand};
 use crate::{Error, Identifier, operations::Lane};
@@ -81,7 +81,7 @@ pub enum ComponentError {
     Declaration(#[from] harmos_operations::operations::Error),
 
     #[error("guest operation transport failed")]
-    Transport(#[from] GuestError),
+    Transport(#[from] guest::Error),
 
     #[error("guest operation response codec failed")]
     Payload(#[from] crate::MessageError),
@@ -253,7 +253,7 @@ impl Component {
                 acknowledged(answer)?;
                 Ok(())
             }
-            Err(GuestError::Unavailable { .. }) => {
+            Err(guest::Error::Unavailable { .. }) => {
                 self.endpoint.settle().await?;
                 Ok(())
             }
@@ -367,7 +367,7 @@ impl Carrier for SdkOperation {
         result.map(::core::convert::Into::into).map_err(|error| error.in_operation(operation))
     }
 
-    async fn cleanup(&mut self) -> Result<(), ComponentError> {
+    async fn finalize(&mut self) -> Result<(), ComponentError> {
         let Some(state) = self.state.as_mut() else {
             return Ok(());
         };
@@ -420,11 +420,11 @@ fn classify(error: &ComponentError) -> FailureKind {
             code @ (FailureKind::Invalid | FailureKind::Unauthorized | FailureKind::Cancelled) => code,
             _ => FailureKind::Permanent,
         },
-        ComponentError::Transport(GuestError::Unavailable { .. } | GuestError::Execution { .. }) => FailureKind::Ambiguous,
+        ComponentError::Transport(guest::Error::Unavailable { .. } | guest::Error::Execution { .. }) => FailureKind::Ambiguous,
         ComponentError::Payload(_)
         | ComponentError::Declaration(_)
         | ComponentError::Catalog { .. }
-        | ComponentError::Transport(GuestError::Malformed { .. }) => FailureKind::Invalid,
+        | ComponentError::Transport(guest::Error::Malformed { .. }) => FailureKind::Invalid,
         _ => FailureKind::Permanent,
     }
 }
@@ -439,7 +439,7 @@ fn ready(answer: WireAnswer) -> Result<Vec<u8>, ComponentError> {
 fn acknowledged(answer: WireAnswer) -> Result<(), ComponentError> {
     let payload = ready(answer)?;
     if !payload.is_empty() {
-        let error = GuestError::Malformed {
+        let error = guest::Error::Malformed {
             method: "operate".to_owned(),
             message: "guest control acknowledgement contains an unexpected payload".to_owned(),
         };

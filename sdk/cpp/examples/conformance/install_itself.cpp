@@ -28,7 +28,6 @@ using std::size_t;
 
 /* === Public Functions === */
 
-using Value = harmos::conformance::Value;
 using harmos::Client;
 using harmos::StorageTransferSettings;
 using harmos::VISIBILITY_PUBLIC;
@@ -36,6 +35,7 @@ using harmos::client::PLUGIN_STATE_READY;
 using harmos::client::PluginEntry;
 using harmos::client::PluginPlacement;
 using harmos::client::PluginValue;
+using harmos::conformance::Value;
 using harmos::plugin::Context;
 using harmos::plugin::Operation;
 using harmos::plugin::Plugin;
@@ -45,11 +45,12 @@ using std::string;
 int install_itself(int argc, char **argv) {
   if (argc == 3 && string(argv[2]) == "serve") {
     Plugin("example", "1.0.0")
-        .operation(Operation<Value, Value>("example.echo", VISIBILITY_PUBLIC,
-                                           [](Context &, Value request) {
-                                             return request;
-                                           }))
-        .serve("127.0.0.1:0");
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(Operation<Value, Value>("example.echo", VISIBILITY_PUBLIC, [](Context &, Value request) {
+            return request;
+          }));
+        })
+        .run("127.0.0.1:0");
     return 0;
   }
   StorageTransferSettings transfer;

@@ -28,7 +28,7 @@ use harmos_operations::storage::{Capabilities, CapabilitiesRequest, Info, InfoRe
 use harmos_runtime::runtime::{BootstrapStatus, StorageFailure};
 use harmos_runtime::state::Never;
 use harmos_runtime::storage::{MutationId, MutationItem};
-use harmos_runtime::{Application, Identifier, Lifecycle, Runtime, Setup, Startup, StartupError};
+use harmos_runtime::{Application, Builder, Identifier, Lifecycle, Setup, Startup, StartupError};
 
 /* === Constants === */
 
@@ -81,7 +81,7 @@ async fn storage_only_runtime_admits_operations() {
         config(),
     )
     .unwrap();
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
     let minimal = builder.storage_only().await.unwrap();
     let operations = minimal.operations();
@@ -110,7 +110,7 @@ async fn storage_only_runtime_admits_operations() {
     assert_eq!(primary.records.lock().unwrap().len(), 1);
     assert_eq!(runtime.storage().unwrap().get_saved_position().sequence, 1);
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 2);
     assert_eq!(recovery.control.closes.load(Ordering::SeqCst), 2);
 
@@ -123,7 +123,7 @@ async fn storage_only_runtime_admits_operations() {
         config(),
     )
     .unwrap();
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
     let session = builder.storage_only().await.unwrap();
     primary.control.fail_close.store(true, Ordering::SeqCst);
@@ -141,7 +141,7 @@ async fn storage_only_runtime_admits_operations() {
     primary.control.fail_close.store(false, Ordering::SeqCst);
     failure.cleanup.retry().await.unwrap();
     assert!(!primary.control.open.load(Ordering::SeqCst));
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
 
     // Cancel Opening at an Explicit Backend Boundary

@@ -66,7 +66,7 @@ async fn errors_never_retry() {
         assert!(matches!(runtime.operation(Request { failures: 10, failure, ..request() }).await, Err(Error::OperationFailed { .. })));
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 4);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -83,7 +83,7 @@ async fn ambiguous_timeout_replay() {
         .unwrap();
     assert!(matches!(runtime.operation(Slow(request())).await, Err(Error::OperationRefused(Refusal::TimedOut { .. }))));
     assert_eq!(owner.runs.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn repeated_calls_execute_handlers() {
     }
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
 
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn unregister_reserves_owner() {
         .unwrap();
     assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -191,7 +191,7 @@ async fn operations_use_structured() {
     assert!(
         matches!(runtime.operation(Parent(request())).await, Err(Error::OperationFailed { source, .. }) if matches!(source.downcast_ref::<Failed>(), Some(Failed::Invocation(harmos_runtime::operations::InvocationError::Failed { source, .. })) if matches!(source.downcast_ref::<Error>(), Some(Error::OperationLaneCycle { .. }))))
     );
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -212,7 +212,7 @@ async fn concurrent_ancestor_reentry() {
 
     // An independent root still uses this bounded lane normally.
     assert_eq!(runtime.operation(request()).await.unwrap().value, 7);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -229,7 +229,7 @@ async fn shutdown_releases_bindings() {
         .await
         .unwrap();
     runtime.operation(request()).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(matches!(runtime.operation(request()).start().await, Err(Error::Closing { .. })));
     drop(owner);
     drop(runtime);
@@ -246,7 +246,7 @@ async fn handler_panic_settles() {
         .unwrap();
     assert!(matches!(runtime.operation(Request { value: usize::MAX, ..request() }).await, Err(Error::OperationPanicked { .. })));
     runtime.operations.unregister(&harmos_runtime::QualifiedId::qualify("host", COMPUTE_OPERATION.entry().id).unwrap()).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -272,13 +272,13 @@ async fn operation_catalog_binding() {
     assert!(runtime.operations.definition(COMPUTE_OPERATION.entry().id).is_err());
     assert!(runtime.operations.definition(SLOW_OPERATION.entry().id).is_ok());
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn catalog_boot_atomic() {
     let owner = Arc::new(Owner::default());
-    let result = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let result = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
         setup
@@ -292,7 +292,7 @@ async fn catalog_boot_atomic() {
     assert_eq!(Arc::strong_count(&owner), 1);
 
     let owner = Arc::new(Owner { bias: 20, ..Owner::default() });
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource::<Owner>(owner.clone());
         setup.catalog(operations_catalog(), crate::support::SERIAL);
@@ -303,7 +303,7 @@ async fn catalog_boot_atomic() {
     assert_eq!(owner.runs.load(Ordering::SeqCst), 0);
     assert_eq!(runtime.operation(request()).await.unwrap().value, 27);
     assert_eq!(owner.prepared.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "plugin-guest")]
@@ -354,7 +354,7 @@ async fn providers_route_explicitly() {
     let surviving = runtime.operation(request()).await.unwrap();
     assert_eq!(surviving.value, 17);
     assert_eq!(owner.runs.load(Ordering::SeqCst), 3);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "simulation")]

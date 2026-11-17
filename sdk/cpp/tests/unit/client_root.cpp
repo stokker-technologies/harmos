@@ -18,12 +18,6 @@
 
 #include "client.hpp"
 
-namespace host_plugins_wire = harmos::host::v1::plugins;
-namespace host_status_wire = harmos::host::v1::status;
-namespace client_types = harmos::client;
-namespace host_wire = harmos::host::v1;
-namespace application_wire = application::host::v1;
-using RpcStatus = grpc::Status;
 using grpc::CallbackServerContext;
 using grpc::CreateChannel;
 using grpc::InsecureChannelCredentials;
@@ -44,33 +38,33 @@ using std::string;
 /* === Classes === */
 
 namespace {
-struct Status final : host_wire::Status::CallbackService {
-  ServerUnaryReactor *Get(CallbackServerContext *context, const host_wire::StatusGetRequest *,
-                          host_wire::StatusGetResponse *response) override {
+struct Status final : harmos::host::v1::Status::CallbackService {
+  ServerUnaryReactor *Get(CallbackServerContext *context, const harmos::host::v1::StatusGetRequest *,
+                          harmos::host::v1::StatusGetResponse *response) override {
     response->mutable_status()->mutable_identity()->set_application_name("status:selection");
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
 };
-struct Diagnostics final : host_status_wire::Diagnostics::CallbackService {
-  ServerUnaryReactor *Get(CallbackServerContext *context, const host_status_wire::DiagnosticsGetRequest *request,
-                          host_status_wire::DiagnosticsGetResponse *response) override {
+struct Diagnostics final : harmos::host::v1::status::Diagnostics::CallbackService {
+  ServerUnaryReactor *Get(CallbackServerContext *context, const harmos::host::v1::status::DiagnosticsGetRequest *request,
+                          harmos::host::v1::status::DiagnosticsGetResponse *response) override {
     response->set_name("diagnostics:" + request->name());
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
 };
-struct Jobs final : application_wire::Jobs::Service {
-  RpcStatus Start(ServerContext *, const application_wire::JobsStartRequest *request,
-                  application_wire::JobsStartResponse *response) override {
+struct Jobs final : application::host::v1::Jobs::Service {
+  grpc::Status Start(ServerContext *, const application::host::v1::JobsStartRequest *request,
+                     application::host::v1::JobsStartResponse *response) override {
     response->set_value("start:" + request->value());
-    return RpcStatus::OK;
+    return grpc::Status::OK;
   }
 };
-class ProgressWatch final : public ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> {
-  application_wire::jobs::ProgressWatchResponse response_;
+class ProgressWatch final : public ServerWriteReactor<application::host::v1::jobs::ProgressWatchResponse> {
+  application::host::v1::jobs::ProgressWatchResponse response_;
   string value_;
   bool finished_ = false;
 
@@ -85,7 +79,7 @@ public:
       return;
     }
     if (finished_) {
-      Finish(RpcStatus::OK);
+      Finish(grpc::Status::OK);
       return;
     }
     response_.set_value("finished:" + value_);
@@ -96,53 +90,53 @@ public:
     delete this;
   }
 };
-struct Progress final : application_wire::jobs::Progress::CallbackService {
-  ServerWriteReactor<application_wire::jobs::ProgressWatchResponse> *
-  Watch(CallbackServerContext *, const application_wire::jobs::ProgressWatchRequest *request) override {
+struct Progress final : application::host::v1::jobs::Progress::CallbackService {
+  ServerWriteReactor<application::host::v1::jobs::ProgressWatchResponse> *
+  Watch(CallbackServerContext *, const application::host::v1::jobs::ProgressWatchRequest *request) override {
     return new ProgressWatch(request->value());
   }
 };
-struct Annotations final : application_wire::plugins::Annotations::Service {
-  RpcStatus Get(ServerContext *, const application_wire::plugins::AnnotationsGetRequest *request,
-                application_wire::plugins::AnnotationsGetResponse *response) override {
+struct Annotations final : application::host::v1::plugins::Annotations::Service {
+  grpc::Status Get(ServerContext *, const application::host::v1::plugins::AnnotationsGetRequest *request,
+                   application::host::v1::plugins::AnnotationsGetResponse *response) override {
     response->set_value(request->name());
-    return RpcStatus::OK;
+    return grpc::Status::OK;
   }
 };
-struct Settings final : host_plugins_wire::Settings::CallbackService {
-  ServerUnaryReactor *List(CallbackServerContext *context, const host_plugins_wire::SettingsListRequest *request,
-                           host_plugins_wire::SettingsListResponse *response) override {
+struct Settings final : harmos::host::v1::plugins::Settings::CallbackService {
+  ServerUnaryReactor *List(CallbackServerContext *context, const harmos::host::v1::plugins::SettingsListRequest *request,
+                           harmos::host::v1::plugins::SettingsListResponse *response) override {
     (*response->mutable_value()->mutable_values())["label"].set_text(request->name());
     response->set_revision("settings-revision");
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
-  ServerUnaryReactor *Set(CallbackServerContext *context, const host_plugins_wire::SettingsSetRequest *request,
-                          host_plugins_wire::SettingsSetResponse *response) override {
+  ServerUnaryReactor *Set(CallbackServerContext *context, const harmos::host::v1::plugins::SettingsSetRequest *request,
+                          harmos::host::v1::plugins::SettingsSetResponse *response) override {
     *response->mutable_value() = request->value();
     response->set_revision(request->request_id());
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
 };
-struct Plugins final : host_wire::Plugins::CallbackService {
-  ServerUnaryReactor *Replace(CallbackServerContext *context, const host_wire::PluginsReplaceRequest *request,
-                              host_wire::PluginsReplaceResponse *response) override {
+struct Plugins final : harmos::host::v1::Plugins::CallbackService {
+  ServerUnaryReactor *Replace(CallbackServerContext *context, const harmos::host::v1::PluginsReplaceRequest *request,
+                              harmos::host::v1::PluginsReplaceResponse *response) override {
     response->mutable_entry()->set_name(request->name());
     *response->mutable_entry()->mutable_placement() = request->placement();
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
 };
-struct Invocations final : host_wire::Invocations::CallbackService {
-  ServerUnaryReactor *Create(CallbackServerContext *context, const host_wire::InvocationsCreateRequest *request,
-                             host_wire::InvocationsCreateResponse *response) override {
+struct Invocations final : harmos::host::v1::Invocations::CallbackService {
+  ServerUnaryReactor *Create(CallbackServerContext *context, const harmos::host::v1::InvocationsCreateRequest *request,
+                             harmos::host::v1::InvocationsCreateResponse *response) override {
     response->set_payload(request->operation() + request->fingerprint() + request->payload());
     auto *reactor = context->DefaultReactor();
-    reactor->Finish(RpcStatus::OK);
+    reactor->Finish(grpc::Status::OK);
     return reactor;
   }
 };
@@ -200,7 +194,7 @@ TEST_CASE("A client composes services and their nested resources") {
     REQUIRE_FALSE(client.plugins.settings.set("example", values, current.revision()).revision().empty());
     REQUIRE(client.plugins.settings.set("example", values, current.revision(), {.request_id = "replay", .context = {}}).revision() ==
             "replay");
-    client_types::PluginPlacement placement;
+    harmos::client::PluginPlacement placement;
     placement.mutable_managed()->set_sha256(string(32, 'x'));
     const auto replaced =
         client.plugins.replace("example", placement, current.revision(), {.request_id = "bundle-replacement", .context = {}});

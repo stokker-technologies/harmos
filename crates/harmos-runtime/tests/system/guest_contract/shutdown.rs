@@ -112,5 +112,5 @@ async fn guest_shutdown_retains_the_original_cleanup_after_a_deadline() {
         }
     }
     assert_eq!(runtime.plugin.status("sandbox_guest").unwrap().attempts, original.attempts);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

@@ -326,6 +326,27 @@ roots. Without a preparation failure, missing resources are roots themselves.
 This rule describes a failed pass, not a resource dependency graph; Display
 summarizes consequences as operations unavailable because startup failed.
 
+## Carrier Registration
+
+Registration accumulates declaration values before serving. Its context has no
+runtime facilities, and inspecting `declarations()` enters no handler. A module
+returns its `catalog()`; the root register phase composes those values once:
+
+```rust
+fn register(ctx: &mut Registrar<'_>) -> Result<()> {
+    ctx.register(settings::catalog())?;
+    ctx.register(operations::catalog())?;
+    Ok(())
+}
+```
+
+The internal Rust helper accepts typed operations, streams, observers, dependencies,
+descriptors and opaque contributions without changing the plugin's type. Python
+uses `Registrar.register(Catalog(...))`; C# uses `Registrar.Register(Catalog())`;
+C++ uses `Registrar::add` because `register` is reserved. Products own their public
+registrars and translate declarations into these helpers. Native helper serving
+uses `run`, `RunAsync` in C#, and Python endpoints pair `start` with `stop`.
+
 ## Storage During Preparation
 
 Register storage before full startup, then use `setup.settings().storage_only().await?`
@@ -900,7 +921,7 @@ Private operations remain inside their declaring SDK process and are absent from
 
 Application lifecycle preparation owns resources and registers their concrete
 `Arc<T>` values. Runtime startup checks catalogs, resources and lanes before
-initialization. Test overrides still use `Runtime::launch_with` and replace
+initialization. Test overrides still use `Runtime::start_with` and replace
 resource lookups after application preparation. Owner cleanup closes acquired
 resources even when validation or initialization fails.
 
@@ -1326,15 +1347,22 @@ harmos = { git = "https://github.com/stokker-technologies/harmos", rev = "<teste
 ```
 
 ```rust
-use harmos::{Context, Operation, Plugin, Result, wasm::Registration};
+use harmos::plugin::{Context, Operation, Plugin};
+use harmos::{Result, wasm::Registration};
+
+#[derive(harmos::Message)]
+struct Echo { text: String }
 
 #[unsafe(no_mangle)]
 pub fn harmos_register() -> Registration {
     Registration::new(
         Plugin::new("example", "1.0.0")
-            .operation(Operation::new("example.echo", async |_: &Context, request: String| -> Result<String> {
-                Ok(request)
-            })),
+            .register(|ctx| {
+                ctx.register(Operation::new("example.echo", async |_: &Context, request: Echo| -> Result<Echo> {
+                    Ok(request)
+                }).visibility(harmos::Visibility::Public))?;
+                Ok(())
+            }).expect("Register Plugin Declarations"),
     )
     .capacity(2)
     .on_initialize(async |_: &Context, configuration: Vec<u8>| {
@@ -1566,7 +1594,7 @@ Plugin artifact crates declare `publish = false`.
 
 The [served plugin example](../sdk/rust/examples/plugin.rs) declares one public
 operation and a typed setting default. Declare settings with
-`Plugin::settings(SettingsDeclarations { values })`; every `SettingDeclaration`
+`Registrar::register(SettingsDeclarations { values })`; every `SettingDeclaration`
 contains a name, title, description and a selected `SettingValue` default. False
 flags and empty text remain present values. The SDK checks duplicate names and
 missing defaults when constructing the catalog. The library stores overrides and
@@ -1575,9 +1603,11 @@ applies defaults for the admitted plugin entry.
 ```rust
 use harmos::plugin::{HostOperation, Plugin};
 
-let plugin = Plugin::new("echo", "1.0.0")
-    .settings(declarations)
-    .requires_host(HostOperation::PluginsSettingsList);
+let plugin = Plugin::new("echo", "1.0.0").register(|ctx| {
+    ctx.register(declarations)?;
+    ctx.register(HostOperation::PluginsSettingsList)?;
+    Ok(())
+})?;
 // Inside a handler, `context` retains the calling plugin's identity.
 let settings = context.host().plugins.settings.list().await?;
 ```
@@ -1586,7 +1616,7 @@ let settings = context.host().plugins.settings.list().await?;
 calling plugin's trusted identity. Supplying another entry name is refused. Its
 response retains declarations, values, revision and issued read cut; issued cuts
 and name selection use the generated call options. Declare every host operation,
-clock and Watch requirement through `Plugin::requires_host` or a typed requirement.
+clock and Watch requirement through `Registrar::register` with `HostOperation` or a typed `Dependency`.
 
 Observer contexts can make declared child calls while answering one Samples window.
 Unary calls and Watches use the same carrier as that window, preserve structured

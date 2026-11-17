@@ -85,7 +85,7 @@ impl Physical {
         if let Some(control) = control.upgrade() {
             control.transition(Phase::Finalizing);
         }
-        guarded(name, self.instance.cleanup()).await
+        guarded(name, self.instance.finalize()).await
     }
 }
 impl<D: RequestShape> Bound<D> {

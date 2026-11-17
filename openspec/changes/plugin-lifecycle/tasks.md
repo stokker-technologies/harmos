@@ -3,7 +3,7 @@
 Each group commits with Conventional Commits on the integration branch, keeps the build green
 and proves only its changed behavior through focused `mise run test`, `mise run build` and
 `mise run generate` invocations; full lanes run only after group 7 closes. Products adopt the
-revision that landed this change in their own change; never name revisions in this file.
+revision that landed this change in their own change; record the product-pinnable worker revision below (owner override).
 
 ## 1. Inventory and Contract
 
@@ -13,7 +13,7 @@ revision that landed this change in their own change; never name revisions in th
 
 ## 2. Host Verbs and Hook Names
 
-- [ ] 2.1 Rename `Runtime::launch`/`launch_with` to `start`/`start_with`, `shutdown`/`shutdown_with_timeout` to `stop`/`stop_with_timeout`, add `Runtime::new` construction and `run` (start, wait for a stop request, stop) per design.md D1, and migrate runtime stories, benchmarks and the Schematic example. Prove with a new story `runtime_run_stops_like_stop` in `crates/harmos-runtime/tests/integration` via `mise run test -- --paths <story file>` and `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app`.
+- [x] 2.1 Rename `Runtime::launch`/`launch_with` to `start`/`start_with`, `shutdown`/`shutdown_with_timeout` to `stop`/`stop_with_timeout`, add `Builder::new` construction (D1 constructor deviation recorded in design.md) and `run` (start, wait for a stop request, stop) per design.md D1, and migrate runtime stories, benchmarks and the Schematic example. Prove with `runtime::lifecycle::runtime_run_stops_like_stop` via `mise run test -- --package harmos-runtime --target integration --exact runtime::lifecycle::runtime_run_stops_like_stop` and `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app`.
 - [ ] 2.2 Rename `cleanup` to `finalize` on `Lifecycle`, `Service`, `Carrier`, `ServiceInstance` and `NativeInstance` with unchanged semantics, keeping `prepare` and the `stop` hooks (design.md D5). Prove with the existing resource-store setup-error and service restart stories after renaming their scenarios, run through `mise run test -- --paths <story file>`.
 - [ ] 2.3 Rename SDK serving entry points to `run` (Rust, Python, C++ `run`; C# `RunAsync`) and the Python endpoint `close` to `stop`; update the four SDK guides and `docs/product-guide.md`. Prove with each SDK's focused fixture build and `mise run check -- --repository`.
 
@@ -23,6 +23,21 @@ revision that landed this change in their own change; never name revisions in th
 - [ ] 3.2 Dissolve `harmos::wasm::Registration` into the plugin value plus `harmos::wasm::Guest` carrying capacity, keeping the `harmos_register` export symbol and the stamped-metadata check. Prove with the guest registration stories in `crates/harmos-runtime/tests` and the Wasm fixture build.
 - [ ] 3.3 Implement matching accumulation in Python/C#/C++ carrier helpers and product-owned fixture registrars (C++ `add`), replacing builder composition without author-facing Harmos types. Prove focused fixtures in every language and include generated changes in `plugin-boundary` task 6.1's coordinated regeneration; update helper guidance.
 - [ ] 3.4 Give every contributing module in the Schematic example, SDK fixtures and conformance plugins a `catalog()` registered once by a root register function, and update the four SDK guides and `docs/product-guide.md` with the register phase, module catalogs and the inert-registration rule. Prove with the Schematic build, `mise run build -- --package harmos-conformance` and `mise run check -- --repository`.
+
+### Lifecycle Worker Checkpoint
+
+- [x] Host construction/start/stop/run source and migrated runtime/Schematic callers;
+  `Builder::new(origin)` returns its own registration type and `run` takes a product-owned stop future.
+- [x] Internal Rust, Python, C# and C++ declaration accumulation, replacing the former
+  declaration builder methods; module catalogs in the four conformance fixtures and Schematic.
+  Rust settings registrations merge into one settings declaration section before duplicate validation.
+- [x] Serving helpers use run/RunAsync; Python endpoints pair start/stop. SDK consumers,
+  generators and maintained guides migrate with the source. Generated output stays tracked.
+- [ ] Complete the native/Wasm lifecycle and guest wrapper replacement after the manager
+  integration boundary in design.md is assigned; no hook/protocol compatibility path was added.
+- [ ] Finish the public clock/shared-test-support and host-client-generated alias inventory;
+  these unresolved items remain under group 6 rather than becoming exceptions.
+- [ ] Combined source closure, all affected conformance rules, Linux and hosted proof.
 
 ## 4. Plugin Phases on the Wire and in the Host
 
@@ -47,6 +62,10 @@ revision that landed this change in their own change; never name revisions in th
 - [ ] 7.1 Run `openspec validate plugin-lifecycle --strict`, the format task and the Rust, Python, C# and C++ language checks on the combined tree, and confirm every source item above is closed; report any pending native platform or hosted proof explicitly.
 
 ## Workflow Follow-Up
+
+- The native SDK metadata unit harness compiles its Wasmtime dev-dependency closure.
+  Separating guest compiler-contract fixtures from that harness is a feedback-loop
+  opportunity outside this lifecycle patch; it needs its own owned test/package change.
 
 - Owner decision on design.md Open Question 1 (application `prepare`, application and service `stop` hooks); a confirmed answer becomes its own change.
 - A security and prerequisite phase between admission and initialize is a possible later change.

@@ -69,15 +69,21 @@ publishers send device rows while demand is open.
 
 ```python
 from harmos import SettingDeclaration, SettingValue
-from harmos.plugin import HostOperation, Plugin
+from harmos.plugin import Catalog, HostOperation, Plugin, Registrar
 
-plugin = Plugin(
-    handlers,
-    id="example",
-    version="1.0.0",
-    requires=[HostOperation.PLUGINS_SETTINGS_LIST],
-    settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
-)
+def catalog() -> Catalog:
+    return Catalog(
+        handlers,
+        requires=[HostOperation.PLUGINS_SETTINGS_LIST],
+        settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
+    )
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+plugin = Plugin(id="example", version="1.0.0", register=register)
 
 # Inside an operation handler or an observer answering a window:
 settings = await context.host.plugins.settings.list()

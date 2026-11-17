@@ -101,6 +101,9 @@ and reads its calling entry through `Context::settings`. Discover contracts thro
 `client.operations.list()`; public client response types live in `harmos::client`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
+Assemble with `Builder::new(origin)`, register catalogs, then call `start()` and
+end with `Runtime::stop()`. `builder.run(stop_request)` starts, waits for the
+product's stop-request future and stops.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
 Native storage calls use `runtime.for_call(&ctx).storage()`; stream publication uses
 `runtime.for_call(&ctx).streams().publish(request)`. Each call uses its registered

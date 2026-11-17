@@ -195,7 +195,7 @@ async fn restore_defers_borrow() {
         ran: std::sync::atomic::AtomicUsize::new(0),
         operations: std::sync::OnceLock::new(),
     });
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |setup| {
         setup
             .resource::<BorrowOwner>(owner.clone())
             .operation(borrow_owner_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
@@ -216,13 +216,13 @@ async fn restore_defers_borrow() {
     assert_eq!(*restored, 7);
     assert_eq!(owner.borrowed.load(std::sync::atomic::Ordering::SeqCst), 1);
     drop((first, second, restored));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn macro_retains_owner() {
     let original = Arc::new(7_u32);
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |setup| {
         setup
             .resource::<u32>(original.clone())
             .operation(
@@ -243,7 +243,7 @@ async fn macro_retains_owner() {
     assert!(std::ptr::eq(inferred.as_ref(), original.as_ref()));
     assert!(inferred.ptr_eq(&declared));
     drop((inferred, declared));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     drop(runtime);
     let recovered = harmos_runtime::operations::Response::from_owner(original).try_unwrap().unwrap();
     assert_eq!(recovered, 7);

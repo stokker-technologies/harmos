@@ -16,22 +16,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{
-    collections::BTreeMap,
-    future::Future,
-    pin::Pin,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-        mpsc as blocking,
-    },
-    task::{Context, Poll},
-    time::{Duration, SystemTime},
+use {
+    std::collections::BTreeMap, std::future::Future, std::pin::Pin, std::sync, std::sync::Arc, std::sync::Mutex,
+    std::sync::atomic::AtomicBool, std::sync::atomic::Ordering, std::task::Context, std::task::Poll, std::time::Duration,
+    std::time::SystemTime,
 };
 
 // Third Party Imports
 use prost::Message;
-use prost_types::Duration as ProtocolDuration;
+
 use tokio::{
     sync::{Notify, mpsc, oneshot},
     time::Instant,
@@ -42,17 +35,17 @@ use super::{
     invoke_support::{HostFixture, payload, pending},
     support,
 };
-use harmos_operations::clock::{ClockAccess, Sleep as SleepOperation};
 use harmos_protocol::host::{TimeSleepRequest, TimeSleepResponse};
-use harmos_runtime::{
-    Scope,
-    clock::{Clock, Reading, Sleep, Source},
-    operations::{
-        ExecutionContext, Lane, NativeOperation, OperationFactory, OperationPolicy, ProtobufDependency, ProtobufOperation,
-        Registration as Batch, Resource, ServingError,
-        middleware::{Enter, Invocation, Middleware},
-    },
-    plugin::grpc::{Placement, PlacementSettings},
+use {harmos_operations::clock, harmos_operations::clock::ClockAccess};
+use {
+    harmos_runtime::Scope, harmos_runtime::clock::Clock, harmos_runtime::clock::Reading, harmos_runtime::clock::Sleep,
+    harmos_runtime::clock::Source, harmos_runtime::operations, harmos_runtime::operations::ExecutionContext,
+    harmos_runtime::operations::Lane, harmos_runtime::operations::NativeOperation, harmos_runtime::operations::OperationFactory,
+    harmos_runtime::operations::OperationPolicy, harmos_runtime::operations::ProtobufDependency,
+    harmos_runtime::operations::ProtobufOperation, harmos_runtime::operations::Resource, harmos_runtime::operations::ServingError,
+    harmos_runtime::operations::middleware::Enter, harmos_runtime::operations::middleware::Invocation,
+    harmos_runtime::operations::middleware::Middleware, harmos_runtime::plugin::grpc::Placement,
+    harmos_runtime::plugin::grpc::PlacementSettings,
 };
 
 /* === Constants === */
@@ -72,7 +65,7 @@ struct Controlled {
 
 struct Registration {
     entered: oneshot::Sender<()>,
-    release: blocking::Receiver<()>,
+    release: sync::mpsc::Receiver<()>,
 }
 
 struct TimeState {
@@ -220,10 +213,10 @@ impl ProtobufOperation for TypedSleeper {
     type Endpoints = ();
     const ID: &'static str = "fixture.typed_sleeper";
     const POLICY: OperationPolicy = harmos_operations::host::POLICY;
-    const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<SleepOperation>()];
+    const OPERATIONS: &'static [ProtobufDependency] = &[ProtobufDependency::of::<clock::Sleep>()];
     const RESOURCES: &'static [Resource] = &[Resource::of::<harmos_operations::execution::operations::Calls>()];
     async fn run(context: ExecutionContext, request: TimeSleepRequest, _: &()) -> Result<TimeSleepResponse, ServingError> {
-        Ok(context.call_protobuf::<SleepOperation>(request).await?.into_owned())
+        Ok(context.call_protobuf::<clock::Sleep>(request).await?.into_owned())
     }
 }
 
@@ -285,7 +278,7 @@ async fn retain_rows(requested: usize) {
     assert_eq!(host.samples().into_iter().map(|(_, row)| row).collect::<Vec<_>>(), values, "Retain Consecutive Scoped Samples");
     assert_eq!(source.pending(), 0, "Remove Scoped Timers on Close");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 /// One Sleep Spanning `requested` Samples, in Several Windows, Observes Every One of Them.
@@ -315,7 +308,7 @@ async fn count_after_sleep(requested: u64) {
     assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Sample It Spans");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 /* === Tests === */
@@ -330,11 +323,11 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/calls", Clock::with_clock(source.clone())).await.unwrap();
     let request = TimeSleepRequest {
-        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+        duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
     };
 
     // Register Native Protobuf Calls Before Returning Their Invocation Handle.
-    let (call, _) = unit.operations().submit_protobuf::<SleepOperation>(request, None).unwrap();
+    let (call, _) = unit.operations().submit_protobuf::<clock::Sleep>(request, None).unwrap();
     assert_eq!(source.pending(), 1, "Admit Native Scoped Sleep");
     let admission = admissions.recv().await.unwrap();
     source.advance_by(Duration::from_secs(1));
@@ -351,7 +344,7 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     assert_eq!(source.pending(), 0, "Cancel Encoded Scoped Sleep");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -365,7 +358,7 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     unit.start_samples(["fixture.scoped_samples"]).await.unwrap();
     source.wait_registered().await;
     let (entered, registering) = oneshot::channel();
-    let (release, held) = blocking::channel();
+    let (release, held) = sync::mpsc::channel();
     *source.hold.lock().unwrap() = Some(Registration { entered, release: held });
     source.advance_by(Duration::from_secs(1));
     registering.await.unwrap();
@@ -382,7 +375,7 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     assert_eq!(source.pending(), 0, "Remove the Timer After Cancelling Registration");
     assert!(host.rows().is_empty(), "Cancel the Sample Being Prepared");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -481,7 +474,7 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     }
     assert_eq!(right_source.pending(), 0, "Remove Right's Timers on Close");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -489,7 +482,9 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     // Register a Product Native Operation That Declares Its Clock Wait.
     let (admitted, mut admissions) = mpsc::unbounded_channel();
     let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
-    let registration = Batch::new(Lane::default()).operation(OperationFactory::native::<NativeSleep>().unwrap(), NativeSleep::ID).unwrap();
+    let registration = operations::Registration::new(Lane::default())
+        .operation(OperationFactory::native::<NativeSleep>().unwrap(), NativeSleep::ID)
+        .unwrap();
     host.runtime.register_batch(registration).await.unwrap();
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
@@ -507,7 +502,7 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     assert_eq!(source.pending(), 0, "Settle the Native Wait");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -534,7 +529,7 @@ async fn closing_during_an_in_flight_window_settles_without_failure() {
     assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
     assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Window");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -557,9 +552,9 @@ async fn stopping_samples_during_an_in_flight_window_keeps_calls_and_restarts_de
 
     // Calls Stay Bound: a Scoped Sleep Still Runs on the Unit Clock.
     let request = TimeSleepRequest {
-        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+        duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
     };
-    let (call, _) = unit.operations().submit_protobuf::<SleepOperation>(request, None).unwrap();
+    let (call, _) = unit.operations().submit_protobuf::<clock::Sleep>(request, None).unwrap();
     assert_eq!(source.pending(), 1, "Register the Call's Sleep After Samples Stopped");
     source.advance_by(Duration::from_secs(1));
     call.await.unwrap();
@@ -576,7 +571,7 @@ async fn stopping_samples_during_an_in_flight_window_keeps_calls_and_restarts_de
     unit.close().await.unwrap();
     assert_eq!(host.rows().len(), 1, "Publish the Restarted Demand's Sample");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -584,13 +579,13 @@ async fn typed_child_sleeps_register_at_admission() {
     // A Host Operation Calls Time.Sleep as a Typed Child Inside the Unit.
     let (admitted, mut admissions) = mpsc::unbounded_channel();
     let host = HostFixture::with_middleware(Arc::new(Gate(admitted))).await;
-    host.runtime.register_batch(Batch::new(Lane::default()).protobuf::<TypedSleeper>().unwrap()).await.unwrap();
+    host.runtime.register_batch(operations::Registration::new(Lane::default()).protobuf::<TypedSleeper>().unwrap()).await.unwrap();
     let sdk = host.sdk("caller").await;
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let source = Controlled::new();
     let unit = host.runtime.bind_grpc(&attached.activation().unwrap(), "unit/typed", Clock::with_clock(source.clone())).await.unwrap();
     let request = TimeSleepRequest {
-        duration: Some(ProtocolDuration { seconds: 1, nanos: 0 }),
+        duration: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
     };
 
     // The Child's Timer Exists Before Middleware Sees the Child Call.
@@ -604,5 +599,5 @@ async fn typed_child_sleeps_register_at_admission() {
     assert_eq!(source.pending(), 0, "Settle the Typed Child Sleep");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

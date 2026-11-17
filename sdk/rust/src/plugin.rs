@@ -13,9 +13,12 @@
 
 include!("plugin/types.rs");
 mod host;
+mod registration;
 include!("plugin/host_exports.rs");
 
 /* === Re-Exports === */
+
+pub use registration::{Contribution, Dependency, Descriptor, Registrar, Registration};
 
 pub use crate::context::{Context, Watching};
 pub use crate::operation::Operation;
@@ -33,8 +36,8 @@ use std::{
 
 // Local Imports
 #[cfg(test)]
-use crate::setting_value::Value as SettingKind;
-use crate::{Error, Message, OperationRequest, Result, message::merge_types, stream::StreamDefinition};
+use crate::setting_value;
+use crate::{Error, Message, Result, message::merge_types, stream::StreamDefinition};
 #[cfg(test)]
 use crate::{SettingDeclaration, SettingValue};
 use harmos_protocol::model::Declarations;
@@ -108,51 +111,9 @@ impl Plugin {
         self
     }
 
-    pub fn operation(mut self, operation: Operation) -> Self {
-        self.operations.push(operation);
-        self
-    }
-    pub fn stream<T: Message>(mut self, stream: Stream<T>) -> Self {
-        self.streams.push(stream.definition);
-        self
-    }
-    pub fn observer(mut self, observer: Observer) -> Self {
-        self.observers.push(observer);
-        self
-    }
-    /// Register a Payload Descriptor Without Adding an Operation, Stream or Section.
-    pub fn message<T: Message>(mut self) -> Self {
-        self.messages.push((T::name(), T::types()));
-        self
-    }
-
-    pub fn section<T: Message>(mut self, value: T) -> Self {
-        self.sections.push((
-            Section {
-                r#type: T::name(),
-                payload: value.encode_to_vec(),
-            },
-            T::types(),
-        ));
-        self
-    }
-
-    /// Declare the library-stored settings and their typed defaults.
-    pub fn settings(self, declarations: SettingsDeclarations) -> Self {
-        self.section(declarations)
-    }
-
-    pub fn requires<Q: OperationRequest>(mut self) -> Self {
-        let mut types = Q::types();
-        crate::message::merge_descriptor_types(&mut types, Q::Response::types());
-        self.requirements.push(Required {
-            id: Q::ID.into(),
-            request: Q::name(),
-            response: Q::Response::name(),
-            watch: Q::WATCH,
-            types,
-        });
-        self
+    pub fn register(mut self, register: impl FnOnce(&mut Registrar<'_>) -> Result<()>) -> Result<Self> {
+        register(&mut Registrar { plugin: &mut self })?;
+        Ok(self)
     }
 
     /// Stop hooks complete in registration order before the RPC replies.
@@ -346,8 +307,12 @@ mod tests {
     #[test]
     fn declarations_describes_values_without_running_handlers_or_cleanup() {
         let plugin = Plugin::new("declarations_fixture", "1.0.0")
-            .operation(Operation::new("declarations.read", not_called).visibility(Visibility::Protected))
-            .section(Settings { interval_ms: 250 })
+            .register(|ctx| {
+                ctx.register(Operation::new("declarations.read", not_called).visibility(Visibility::Protected))?;
+                ctx.register(crate::plugin::Contribution(Settings { interval_ms: 250 }))?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
             .on_stop(|| panic!("Declarations Inspection Entered Cleanup"));
         let declarations = plugin.declarations().unwrap();
         assert_eq!(declarations.operations.len(), 1);
@@ -363,27 +328,56 @@ mod tests {
             values: vec![
                 SettingDeclaration {
                     name: "flag".into(),
-                    default: Some(SettingValue { value: Some(SettingKind::Flag(false)) }),
+                    default: Some(SettingValue {
+                        value: Some(setting_value::Value::Flag(false)),
+                    }),
                     ..Default::default()
                 },
                 SettingDeclaration {
                     name: "text".into(),
                     default: Some(SettingValue {
-                        value: Some(SettingKind::Text(String::new())),
+                        value: Some(setting_value::Value::Text(String::new())),
                     }),
                     ..Default::default()
                 },
             ],
         };
-        let reported = Plugin::new("settings", "1.0.0").settings(declarations.clone()).declarations().unwrap();
+        let reported = Plugin::new("settings", "1.0.0")
+            .register(|ctx| {
+                for declaration in declarations.clone().values {
+                    ctx.register(SettingsDeclarations { values: vec![declaration] })?;
+                }
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
+            .declarations()
+            .unwrap();
         let decoded = <SettingsDeclarations as prost::Message>::decode(reported.sections[0].payload.as_slice()).unwrap();
         assert_eq!(decoded, declarations);
         let mut duplicate = declarations.clone();
         duplicate.values.push(duplicate.values[0].clone());
-        assert!(Plugin::new("settings", "1.0.0").settings(duplicate).declarations().is_err());
+        assert!(
+            Plugin::new("settings", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(duplicate)?;
+                    Ok(())
+                })
+                .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
         let mut missing = declarations;
         missing.values[0].default = None;
-        assert!(Plugin::new("settings", "1.0.0").settings(missing).declarations().is_err());
+        assert!(
+            Plugin::new("settings", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(missing)?;
+                    Ok(())
+                })
+                .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
         let unset = SettingsDeclarations {
             values: vec![SettingDeclaration {
                 name: "unset".into(),
@@ -391,14 +385,27 @@ mod tests {
                 ..Default::default()
             }],
         };
-        assert!(Plugin::new("settings", "1.0.0").settings(unset).declarations().is_err());
+        assert!(
+            Plugin::new("settings", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(unset)?;
+                    Ok(())
+                })
+                .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
     }
 
     #[test]
     fn duplicate_operations_are_rejected_at_declarations_construction() {
         let plugin = Plugin::new("test", "1.0.0")
-            .operation(Operation::new("test.duplicate", empty).visibility(Visibility::Protected))
-            .operation(Operation::new("test.duplicate", empty).visibility(Visibility::Protected));
+            .register(|ctx| {
+                ctx.register(Operation::new("test.duplicate", empty).visibility(Visibility::Protected))?;
+                ctx.register(Operation::new("test.duplicate", empty).visibility(Visibility::Protected))?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations");
         assert!(plugin.declarations().is_err());
     }
 
@@ -406,9 +413,67 @@ mod tests {
     fn observer_must_own_one_declared_stream() {
         let stream = Stream::<()>::new("test.samples");
         let observer = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
-        assert!(Plugin::new("test", "1.0.0").observer(observer).declarations().is_err());
+        assert!(
+            Plugin::new("test", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(observer)?;
+                    Ok(())
+                })
+                .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
         let first = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
         let second = Observer::new(&stream, observe).every(Duration { seconds: 1, nanos: 0 });
-        assert!(Plugin::new("test", "1.0.0").stream(stream).observer(first).observer(second).declarations().is_err());
+        assert!(
+            Plugin::new("test", "1.0.0")
+                .register(|ctx| {
+                    ctx.register(stream)?;
+                    ctx.register(first)?;
+                    ctx.register(second)?;
+                    Ok(())
+                })
+                .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
+    }
+}
+
+#[cfg(test)]
+mod registration_tests {
+    use super::{Contribution, Plugin, Registrar, Registration};
+    use crate::{Context, Message, Operation, Result, Visibility};
+
+    mod settings {
+        use super::{Contribution, Registrar, Registration};
+
+        pub fn catalog() -> impl Registration {
+            |ctx: &mut Registrar<'_>| ctx.register(Contribution(()))
+        }
+    }
+
+    #[derive(crate::Message)]
+    struct Echo {
+        value: String,
+    }
+
+    async fn echo(_: &Context, request: Echo) -> Result<Echo> {
+        Ok(request)
+    }
+
+    #[test]
+    fn module_catalogs_accumulate_typed_values_without_entering_handlers() {
+        let plugin = Plugin::new("registration", "1.0.0")
+            .register(|ctx| {
+                ctx.register(settings::catalog())?;
+                ctx.register(Operation::new("registration.echo", echo).visibility(Visibility::Public))?;
+                Ok(())
+            })
+            .unwrap();
+        let declarations = plugin.declarations().unwrap();
+        assert_eq!(declarations.sections.len(), 1);
+        assert_eq!(declarations.operations.len(), 1);
+        assert_eq!(declarations.operations[0].request, Echo::name());
     }
 }

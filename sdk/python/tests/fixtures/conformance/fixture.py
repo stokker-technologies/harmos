@@ -25,15 +25,28 @@ from harmos import (
     VISIBILITY_PROTECTED,
     VISIBILITY_PUBLIC,
     Failure,
+    FailureValue,
     OperationPolicy,
     RetryPolicy,
     SettingDeclaration,
     SettingValue,
     TimeGetResponse,
 )
-from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, Window, observer, operation, publisher, window_observer
+from harmos.plugin import (
+    Catalog,
+    Context,
+    HostOperation,
+    Operation,
+    Plugin,
+    Publisher,
+    Registrar,
+    Window,
+    observer,
+    operation,
+    publisher,
+    window_observer,
+)
 
 from . import Graph, PayloadOnly, Value, Values
 from ._caller import REQUEST
@@ -77,7 +90,7 @@ class Fixture:
             return Value(value=(await context.cancelled()).encode())
         if request.value in (b"retry", b"retry-bound"):
             if context.attempt == 1:
-                raise Failure(WireFailure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
+                raise Failure(FailureValue(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
             return Value(value=str(context.attempt).encode())
         return request
 
@@ -115,14 +128,14 @@ class Fixture:
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
         raise Failure(
-            WireFailure(
+            FailureValue(
                 classification=CLASSIFICATION_PERMANENT,
                 code="fixture_failure",
                 message="Fixture Failed",
                 action="Use Another Input",
                 operation="conformance.failure",
                 plugin="conformance",
-                cause=WireFailure(
+                cause=FailureValue(
                     classification=CLASSIFICATION_TRANSIENT,
                     code="fixture_cause",
                     message="Fixture Cause",
@@ -327,10 +340,16 @@ class ClockFixture:
 
 
 def plugin() -> Plugin:
-    return Plugin(
+    return Plugin(id="conformance", version="1.0.0", register=register)
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+def catalog() -> Catalog:
+    return Catalog(
         Fixture(),
-        id="conformance",
-        version="1.0.0",
         requires=[
             PEER_PUBLIC,
             PEER_PROTECTED,

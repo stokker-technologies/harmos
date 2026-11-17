@@ -202,5 +202,5 @@ async fn scoped_discovery_wrappers_match_dispatch() {
     let found = OperationsGetResponse::decode(payload.as_slice()).unwrap();
     assert_eq!(found.operation.unwrap().contract.unwrap().id, "harmos.host.v1.Time/Get");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

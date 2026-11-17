@@ -16,17 +16,14 @@
 # Third Party Imports
 
 # Local Imports
-from ._types import Graph as Graph
-from ._types import PayloadOnly as PayloadOnly
-from ._types import Value as Value
-from ._types import Values as Values
-from .fixture import plugin
+from ._types import Graph, PayloadOnly, Value, Values
+from .fixture import catalog, plugin, register
 
 # Type Checking Imports
 
 # === Public Exports === #
 
-__all__ = ["Graph", "PayloadOnly", "Value", "Values", "plugin"]
+__all__ = ["Graph", "PayloadOnly", "Value", "Values", "catalog", "plugin", "register"]
 
 # === Constants === #
 

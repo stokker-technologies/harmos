@@ -23,7 +23,7 @@ use std::sync::Arc;
 // Third Party Imports
 
 // Local Imports
-use crate::config::{LaunchConfig, Settings};
+use crate::config::{Settings, StartConfig};
 use crate::document::Document;
 use crate::error::Error;
 use crate::records::{Records, records_registry};
@@ -63,7 +63,7 @@ pub struct SchematicEditor;
 /* === Implementations === */
 
 impl Lifecycle for SchematicEditor {
-    type Config = Option<LaunchConfig>;
+    type Config = Option<StartConfig>;
     type Error = io::Error;
     type Context = Startup<Self>;
 
@@ -106,17 +106,17 @@ impl Application for SchematicEditor {
 /* === Public Functions === */
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn launch(document: Document, config: &Settings) -> Result<Arc<Runtime>, Error> {
+pub async fn start(document: Document, config: &Settings) -> Result<Arc<Runtime>, Error> {
     let origin = document.clone().into_origin();
-    let config = LaunchConfig {
+    let config = StartConfig {
         document,
         settings: config.clone(),
         plugins: true,
     };
-    let runtime = Arc::new(Runtime::launch(origin, Some(config)).await?);
+    let runtime = Arc::new(Runtime::start(origin, Some(config)).await?);
     let manager = runtime.operations.deref().context().resource::<Manager>().map_err(io::Error::other)?;
     if let Err(error) = Box::pin(manager.start(&runtime)).await {
-        runtime.shutdown().await.map_err(io::Error::other)?;
+        runtime.stop().await.map_err(io::Error::other)?;
         return Err(io::Error::other(error).into());
     }
     Ok(runtime)

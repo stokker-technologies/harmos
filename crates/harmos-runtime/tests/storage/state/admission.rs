@@ -245,7 +245,7 @@ async fn journal_awaits_data() {
         policy.clone(),
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+    let runtime = crate::support::app::start::<Model>(0, (), |setup| {
         setup
             .settings()
             .storage(&storage)
@@ -319,5 +319,5 @@ async fn journal_awaits_data() {
     }
     drop(view);
     storage.close().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

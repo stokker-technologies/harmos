@@ -120,7 +120,7 @@ impl Fixture {
     }
 
     pub async fn finish(self) {
-        self.runtime.shutdown().await.unwrap();
+        self.runtime.stop().await.unwrap();
     }
 }
 
@@ -191,7 +191,7 @@ async fn runtime() -> (Arc<Runtime<Model>>, Duration, tempfile::TempDir) {
         },
     )
     .unwrap();
-    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+    let runtime = Runtime::<Model>::start_with((), (), |setup| {
         setup.settings().storage(&storage).plugins(entries.clone());
         setup.catalog(harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default());
         setup.catalog(schematic_operations::transfer::files_catalog(), harmos_runtime::operations::Lane::default());

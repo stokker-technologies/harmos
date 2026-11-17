@@ -317,7 +317,7 @@ def host(
             "{",
             "  internal Plugin RequiresLibrary(Harmos.Plugins.HostOperation operation)",
             "  {",
-            "    transport.Requires(operation);",
+            "    transport.Register(ctx => ctx.Register(operation));",
             "    return this;",
             "  }",
             "}",
@@ -336,14 +336,18 @@ def host(
         "}",
         "public static class HostRequirements",
         "{",
-        "  public static Plugin Requires(this Plugin plugin, HostOperation operation) => operation switch",
+        "  public static Registrar Register(this Registrar ctx, HostOperation operation) => operation switch"
+        if configuration.namespace == "harmos"
+        else "  public static Plugin Requires(this Plugin plugin, HostOperation operation) => operation switch",
         "  {",
     ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
         contract = f"Harmos.Plugins.HostOperation.{name}" if target is not None and method["owner"] == "harmos" else f"HostContracts.{name}"
         lines += [
-            f"    HostOperation.{name} => plugin.{'RequiresLibrary' if configuration.namespace != 'harmos' and method['owner'] == 'harmos' else 'Requires'}({contract}),"
+            f"    HostOperation.{name} => ctx.Register({contract}),"
+            if configuration.namespace == "harmos"
+            else f"    HostOperation.{name} => plugin.{'RequiresLibrary' if method['owner'] == 'harmos' else 'Requires'}({contract}),"
         ]
     lines += [
         '    _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")',

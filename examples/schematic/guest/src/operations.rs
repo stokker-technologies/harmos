@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos::plugin::{Registrar, Registration};
+
 use harmos::plugin::HostOperation;
 
 use harmos::plugin::{Context, Operation, Plugin};
@@ -49,11 +51,17 @@ use harmos::setting_value::Value;
 /* === Public Functions === */
 
 pub fn plugin() -> Plugin {
-    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
-        .settings(schematic_protocol::settings_declarations())
-        .requires_host(HostOperation::PluginsSettingsList)
-        .operation(Operation::new(SchematicValidateRequest::ID, validate).visibility(Visibility::Public).policy(super::POLICY))
-        .operation(Operation::new(SchematicProposeRouteRequest::ID, route).visibility(Visibility::Public).policy(super::POLICY))
+    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION")).register(|ctx| ctx.register(catalog())).expect("Register Plugin Declarations")
+}
+
+pub fn catalog() -> impl Registration {
+    move |ctx: &mut Registrar<'_>| {
+        ctx.register(schematic_protocol::settings_declarations())?;
+        ctx.register(HostOperation::PluginsSettingsList)?;
+        ctx.register(Operation::new(SchematicValidateRequest::ID, validate).visibility(Visibility::Public).policy(super::POLICY))?;
+        ctx.register(Operation::new(SchematicProposeRouteRequest::ID, route).visibility(Visibility::Public).policy(super::POLICY))?;
+        Ok(())
+    }
 }
 
 /* === Private Functions === */

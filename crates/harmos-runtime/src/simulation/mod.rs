@@ -297,7 +297,7 @@ where
         let Some(runtime) = self.runtime.as_ref() else {
             return Ok(self.stopped);
         };
-        self.stopped = self.executor.block_on(runtime.shutdown())?;
+        self.stopped = self.executor.block_on(runtime.stop())?;
         self.runtime.take();
         Ok(self.stopped)
     }
@@ -399,7 +399,7 @@ where
         let configure = Arc::clone(&self.configure);
         let memory = self.memory.source(true);
         let clock = self.executor.clock();
-        let mut runtime = self.executor.block_on(Runtime::<A>::launch_with(origin, self.config.clone(), move |setup| {
+        let mut runtime = self.executor.block_on(Runtime::<A>::start_with(origin, self.config.clone(), move |setup| {
             setup.settings().clock(clock);
             configure(setup);
             setup.settings().simulation_recovery(memory);
@@ -479,8 +479,8 @@ where
         self.resident.stop().await.map_err(std::io::Error::other)
     }
 
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
-        self.resident.cleanup().await.map_err(std::io::Error::other)
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
+        self.resident.finalize().await.map_err(std::io::Error::other)
     }
 }
 

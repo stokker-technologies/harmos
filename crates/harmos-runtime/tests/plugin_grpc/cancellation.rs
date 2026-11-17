@@ -41,5 +41,5 @@ async fn cancellation_reaches_the_plugin_before_settlement() {
     // Cancellation Leaves The Connection Usable
     let input = payload(b"after cancellation");
     assert_eq!(host.runtime.operations.call_encoded("fixture.echo", input.clone()).await.unwrap(), input);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

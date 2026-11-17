@@ -123,7 +123,7 @@ impl std::task::Wake for StopNotification {
 #[tokio::test]
 async fn services_stop_first() {
     let trace = Arc::new(Cancellation::default());
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.resource::<Cancellation>(trace.clone());
     })
     .await
@@ -162,7 +162,7 @@ async fn services_stop_first() {
     assert!(std::future::Future::poll(changed.as_mut(), &mut context).is_pending());
 
     // Observe the Stop Notification Synchronously, Before Scheduling Cleanup
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(cancelled.get(), Some(&false));
     assert!(lease.status().cancellation_requested());
     assert!(matches!(operation.await, Err(Error::OperationRefused(harmos_runtime::Refusal::Cancelled { .. }))));
@@ -174,7 +174,7 @@ async fn services_stop_first() {
 async fn budget_retains_journal() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
@@ -183,27 +183,24 @@ async fn budget_retains_journal() {
     })
     .await
     .unwrap();
-    assert!(matches!(
-        runtime.shutdown_with_timeout(Duration::ZERO).await,
-        Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })
-    ));
+    assert!(matches!(runtime.stop_with_timeout(Duration::ZERO).await, Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })));
     let accepted = runtime.state.commit(crate::runtime::probe::rename("open")).await.unwrap();
     assert_eq!(accepted.position, Position(1));
     for _ in 0..2 {
-        assert!(matches!(runtime.shutdown_with_timeout(Duration::from_millis(10)).await, Err(Error::ShutdownTimeout { phase: "journal" })));
+        assert!(matches!(runtime.stop_with_timeout(Duration::from_millis(10)).await, Err(Error::StopTimeout { phase: "journal" })));
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
     release.notify_one();
-    assert_eq!(runtime.shutdown_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position(1));
+    assert_eq!(runtime.stop_with_timeout(Duration::from_secs(1)).await.unwrap(), Position(1));
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position(1));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test(start_paused = true)]
-async fn shutdown_budget_shared() {
+async fn stop_budget_shared() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let release = Arc::new(Notify::new());
-    let runtime = crate::support::app::launch::<Editor>(Sheet::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Editor>(Sheet::default(), (), |setup| {
         setup.settings().attach(HeldDrain {
             attempts: attempts.clone(),
             release: release.clone(),
@@ -213,15 +210,15 @@ async fn shutdown_budget_shared() {
     .unwrap();
     let participant = runtime.stop_participant();
     let started = tokio::time::Instant::now();
-    let mut stopping = pin!(runtime.shutdown_with_timeout(Duration::from_millis(10)));
+    let mut stopping = pin!(runtime.stop_with_timeout(Duration::from_millis(10)));
     // The first poll fixes the shared deadline while the participant still holds.
     assert!(futures_util::FutureExt::now_or_never(stopping.as_mut()).is_none(), "the stop waits for its participant");
     tokio::time::advance(Duration::from_millis(6)).await;
     drop(participant);
-    assert!(matches!(stopping.await, Err(Error::ShutdownTimeout { phase: "journal" })));
+    assert!(matches!(stopping.await, Err(Error::StopTimeout { phase: "journal" })));
     // The journal phase spends what the participant phase left of the budget.
     assert_eq!(started.elapsed(), Duration::from_millis(10));
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
     release.notify_one();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

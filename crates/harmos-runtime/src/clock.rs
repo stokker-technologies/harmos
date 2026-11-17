@@ -238,7 +238,7 @@ pub(crate) mod tests {
         // Configure One Source For The Host
         let clock = clock(123);
         let observations = Arc::new(Mutex::new(Vec::new()));
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.settings().clock(clock.clone()).operation_middleware(Arc::new(Evidence(observations.clone())));
         })
         .await
@@ -266,6 +266,6 @@ pub(crate) mod tests {
         assert_eq!(observed[0].started_at.timestamp, dates[0]);
         assert_eq!(observed[0].elapsed, Duration::from_secs(5));
         assert!(runtime.operations.clock().same_source(&clock));
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

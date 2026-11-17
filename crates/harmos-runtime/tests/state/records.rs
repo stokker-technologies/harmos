@@ -79,19 +79,19 @@ impl harmos_runtime::Application for Model {
 
 #[tokio::test]
 async fn undeclared_record_refused() {
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let refused = runtime.records.publish(Noted("absent".into())).await;
     assert!(matches!(refused,
         Err(Error::RecordDeclaration { source: DecodeError::UnknownDefinition { id } })
         if id.as_str() == "manager.note"
     ));
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn producers_share_order() {
-    let runtime = crate::support::app::launch::<Model>((), (), |setup| {
+    let runtime = crate::support::app::start::<Model>((), (), |setup| {
         setup.settings().register(records_registry());
     })
     .await
@@ -105,7 +105,7 @@ async fn producers_share_order() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[1].metadata.principal, Some(PrincipalId::new("editor")));
     assert_eq!(entries[1].metadata.causation, Some(harmos_runtime::state::CausationId(first.position)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -120,7 +120,7 @@ async fn discovery_shares_producer() {
         value: String,
     }
 
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let schema = SchemaKey {
         payload_encoding: harmos_runtime::storage::PayloadEncoding::PostcardV1,
         id: harmos_runtime::Identifier::new("plugin.note").unwrap(),
@@ -190,7 +190,7 @@ async fn discovery_shares_producer() {
     assert_eq!(producer.definitions().len(), 1);
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     drop(producer);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 /* === Tests === */
@@ -227,7 +227,7 @@ async fn record_registration_uses_runtime_schema_settings() {
         if !accepted {
             settings.preparation_bytes = NonZeroUsize::new(64 * 1024).unwrap();
         }
-        let runtime = crate::support::app::launch::<Model>((), (), |setup| {
+        let runtime = crate::support::app::start::<Model>((), (), |setup| {
             setup.settings().schema_settings(settings);
         })
         .await
@@ -235,6 +235,6 @@ async fn record_registration_uses_runtime_schema_settings() {
         let result = runtime.records.register("configured", key.clone(), graph.clone()).await;
         assert_eq!(result.is_ok(), accepted, "{result:?}");
         assert_eq!(runtime.records.definition(&key).is_some(), accepted);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }

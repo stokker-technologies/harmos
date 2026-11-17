@@ -56,9 +56,9 @@ resources include only operations callable by plugins.
 the in-memory storage and recording consumer, configures `Setup<Self>`, and places the
 operation catalog value. The application composes `transactions_state_catalog()`,
 `records_registry()` and stream definitions as values. Transaction entries explicitly
-select `.reversible::<Inverse>()` or `.barrier()`. `app::launch` calls `Runtime::launch`; shutdown drains work
+select `.reversible::<Inverse>()` or `.barrier()`. `app::start` calls `Runtime::start`; shutdown drains work
 before owner stop and cleanup. Tests can replace prepared resource allocations
-through `Runtime::launch_with` while keeping that preparation path.
+through `Runtime::start_with` while keeping that preparation path.
 
 The native plugin depends on `harmos`; its unary protobuf contracts and
 operation builder values live in `sidecar/src/operations.rs`, using messages generated

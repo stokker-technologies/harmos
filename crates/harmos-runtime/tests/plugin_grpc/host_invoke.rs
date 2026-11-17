@@ -37,5 +37,5 @@ async fn host_invokes_registered_plugin_operation() {
     // Stop Removes Operations From The Registry
     attached.stop("Story Complete").await.unwrap();
     assert!(host.runtime.operations.definition("fixture.echo").is_err());
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

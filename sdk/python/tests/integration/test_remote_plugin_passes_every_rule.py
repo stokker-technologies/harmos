@@ -34,7 +34,7 @@ class RemotePlugin(IsolatedAsyncioTestCase):
     async def test_remote_plugin_passes_every_rule(self) -> None:
         # Serve the Author's Instance at an Explicit Remote Address.
         endpoint = await plugin().start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
 
         # Run Every Protocol Rule Through the Language-Neutral Reference Host.
         status, stdout, stderr = await host.run(endpoint.address)

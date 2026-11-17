@@ -112,7 +112,7 @@ async fn guest_sandbox_preserves_fuel_memory_and_trap_causes() {
         let retired = runtime.plugin.status("sandbox_guest").unwrap();
         assert!(!retired.cleanup_pending);
         assert!(retired.last_failure.is_some());
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 
     // Bound Suspended Work Using the Host's Virtual Clock
@@ -136,5 +136,5 @@ async fn guest_sandbox_preserves_fuel_memory_and_trap_causes() {
     let retired = runtime.plugin.status("sandbox_guest").unwrap();
     assert!(!retired.cleanup_pending);
     assert!(retired.last_failure.is_some());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

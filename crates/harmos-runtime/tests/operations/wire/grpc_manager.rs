@@ -15,14 +15,9 @@ mod grpc_network;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{
-    convert::Infallible,
-    future::Future,
-    num::NonZeroUsize,
-    pin::Pin,
-    sync::{Arc, Mutex},
-    task::{Context as TaskContext, Poll},
-    time::Duration,
+use {
+    std::convert::Infallible, std::future::Future, std::num::NonZeroUsize, std::pin::Pin, std::sync::Arc, std::sync::Mutex, std::task,
+    std::task::Poll, std::time::Duration,
 };
 
 // Third Party Imports
@@ -433,7 +428,7 @@ impl Service<http::Request<Body>> for Endpoint {
     type Response = http::Response<Body>;
     type Error = Infallible;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send>>;
-    fn poll_ready(&mut self, _: &mut TaskContext<'_>) -> Poll<Result<(), Infallible>> {
+    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<(), Infallible>> {
         Poll::Ready(Ok(()))
     }
     fn call(&mut self, request: http::Request<Body>) -> Self::Future {
@@ -724,7 +719,7 @@ async fn failures<F: Future<Output = ()>>(
     behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource(behavior);
     })
     .await
@@ -800,6 +795,6 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }

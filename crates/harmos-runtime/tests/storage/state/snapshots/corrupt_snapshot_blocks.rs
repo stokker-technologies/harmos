@@ -14,9 +14,9 @@ async fn corrupt_snapshot_blocks() {
     for field in ["schema", "position", "undo", "receipts", "tail", "boundary"] {
         let store = Store::new();
         let storage = store.manager(config());
-        let runtime = launch(policy(100), &storage).await;
+        let runtime = start(policy(100), &storage).await;
         runtime.state.as_principal(PrincipalId::new("author")).commit_keyed(RequestKey::new("key"), deposit(4)).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
         {
             let mut snapshot = store.recovery.snapshot.lock().unwrap();
             let snapshot = snapshot.as_mut().unwrap();
@@ -42,7 +42,7 @@ async fn corrupt_snapshot_blocks() {
         }
         let storage = store.manager(config());
         assert!(
-            crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+            crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
                 setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                     replay: limits(),
                     capture: limits(),

@@ -159,7 +159,7 @@ pub trait Resident<A: Application>: Send + 'static {
         async { Ok(()) }
     }
 
-    fn cleanup(&mut self) -> impl Future<Output = std::result::Result<(), Self::Error>> + Send;
+    fn finalize(&mut self) -> impl Future<Output = std::result::Result<(), Self::Error>> + Send;
 }
 
 /* === Implementations === */
@@ -343,9 +343,9 @@ impl<A: Application> Resident<A> for AuthoredService {
         Ok(())
     }
 
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+    async fn finalize(&mut self) -> std::result::Result<(), Self::Error> {
         if let Some(instance) = &mut self.instance {
-            instance.cleanup().await?;
+            instance.finalize().await?;
         }
         self.instance = None;
         Ok(())
@@ -514,7 +514,7 @@ where
 
     // Closures must not own asynchronous resources beyond their run future.
     // Resource-owning services implement Resident and retain their cleanup state.
-    async fn cleanup(&mut self) -> std::result::Result<(), Self::Error> {
+    async fn finalize(&mut self) -> std::result::Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -598,7 +598,7 @@ mod tests {
             Ok(())
         }
 
-        async fn cleanup(&mut self) -> Result<()> {
+        async fn finalize(&mut self) -> Result<()> {
             self.counts.cleaned.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
@@ -609,7 +609,7 @@ mod tests {
         use crate::operations::RegistrationExt;
 
         let counts = Arc::new(Counts::default());
-        let runtime = crate::Runtime::<Model>::launch_with((), (), |setup| {
+        let runtime = crate::Runtime::<Model>::start_with((), (), |setup| {
             setup.resource::<Counts>(counts.clone());
         })
         .await
@@ -634,7 +634,7 @@ mod tests {
         runtime.unregister(&crate::QualifiedId::parse("host.worker").unwrap()).await.unwrap();
         assert_eq!(counts.stopped.load(Ordering::SeqCst), 2);
         assert_eq!(counts.cleaned.load(Ordering::SeqCst), 2);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
         assert_eq!(counts.initialized.load(Ordering::SeqCst), 2);
     }
 }

@@ -214,5 +214,5 @@ async fn external_request_grants() {
     // Shut Down The External Interface And Host
     drop(channel);
     attached.detach().await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

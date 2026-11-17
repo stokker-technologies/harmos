@@ -71,7 +71,7 @@ async fn builtin_grpc_roundtrip() {
     }
 
     let release = Arc::new(tokio::sync::Notify::new());
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<tokio::sync::Notify>(release.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(std::num::NonZeroUsize::new(16 * 1024).unwrap()),
@@ -131,12 +131,12 @@ async fn builtin_grpc_roundtrip() {
     assert!(cancelled.invocation.unwrap().cancellation_requested);
     assert!(parked.await.is_err());
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn external_authority_parity() {
-    let runtime = crate::support::app::launch::<App>((), (), |_| {}).await.unwrap();
+    let runtime = crate::support::app::start::<App>((), (), |_| {}).await.unwrap();
     runtime
         .operations
         .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
@@ -244,10 +244,10 @@ async fn external_authority_parity() {
     mode.store(0, std::sync::atomic::Ordering::Release);
     assert_eq!(external_call(channel.clone(), Some("Bearer alice"), "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:alice");
     assert!(runtime.operations.register_authorizer(policy).is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     // Existing Explicit Anonymous Routes Have No New Registration Requirement.
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     runtime
         .operations
         .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
@@ -262,8 +262,8 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.host.v1.Identity/Guarded").await.unwrap(), "external:anonymous");
-    crate::support::app::shutdown(&runtime).await.unwrap();
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     runtime
         .operations
         .register_operation(guarded_declaration_operation().expect("representable operation"), harmos_runtime::operations::Lane::default())
@@ -286,12 +286,12 @@ async fn external_authority_parity() {
     let attached = runtime.grpc().attach(settings()).await.unwrap();
     let channel = tonic::transport::Endpoint::from_shared(format!("http://{}", attached.local_addr())).unwrap().connect().await.unwrap();
     assert_eq!(external_call(channel, None, "/fixture.host.v1.Identity/Guarded").await.unwrap_err().code(), tonic::Code::PermissionDenied);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn empty_manager_attaches() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     for round in 0..2 {
         let attached = runtime.grpc().attach(settings()).await.unwrap();
@@ -316,7 +316,7 @@ async fn empty_manager_attaches() {
     same.address = address;
     let rebound = runtime.grpc().attach(same).await.unwrap();
     assert_eq!(rebound.local_addr(), address);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(runtime.grpc().attach(settings()).await.is_err());
 }
@@ -324,7 +324,7 @@ async fn empty_manager_attaches() {
 #[tokio::test]
 async fn independent_listeners() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
@@ -401,7 +401,7 @@ async fn independent_listeners() {
     assert_eq!(call(replacement_channel.clone(), Some("Bearer alice")).await.unwrap(), "alice");
 
     // Shutdown Cancels Both Before Draining Their Independent Residents.
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert!(call(replacement_channel, Some("Bearer alice")).await.is_err());
     assert!(call(secure_channel, Some("Bearer alice")).await.is_err());
     assert!(runtime.grpc().local_addr().is_none());
@@ -412,7 +412,7 @@ async fn independent_listeners() {
 #[tokio::test]
 async fn stalled_listener_settles() {
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
     })
     .await
@@ -480,7 +480,7 @@ async fn stalled_listener_settles() {
         assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
         replacement.detach().await.unwrap();
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -488,7 +488,7 @@ async fn shutdown_streams_unavailable() {
     use harmos_runtime::grpc::InputEnvelope;
     let uploading = Arc::new(tokio::sync::Notify::new());
     let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::holding_and_uploading(stopped.clone(), uploading.clone()));
     })
     .await
@@ -561,7 +561,7 @@ async fn shutdown_streams_unavailable() {
     assert_eq!(streamed.code(), tonic::Code::Unavailable, "{streamed:?}");
     assert_eq!(uploaded.code(), tonic::Code::Unavailable, "{uploaded:?}");
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -637,7 +637,7 @@ async fn status_propagation() {
 
 #[tokio::test]
 async fn runtime_stops_listener() {
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
@@ -666,7 +666,7 @@ async fn runtime_stops_listener() {
     assert_eq!(alice.unwrap(), "alice");
     assert_eq!(bob.unwrap(), "bob");
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Unauthenticated, tonic::Code::Ok, tonic::Code::Ok]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(runtime.grpc().local_addr().is_none());
     assert!(call(channel, Some("Bearer alice")).await.is_err());
 }
@@ -813,7 +813,7 @@ async fn native_batch_streaming_preserves_principals() {
 async fn streaming_principals(native: bool) {
     use harmos_runtime::grpc::InputEnvelope;
     let behavior = Arc::new(Behavior::uploading(Arc::new(tokio::sync::Notify::new())));
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(behavior.clone());
     })
     .await
@@ -929,14 +929,14 @@ async fn streaming_principals(native: bool) {
         }
     }
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::Ok; 3]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[cfg(feature = "grpc")]
 #[tokio::test]
 async fn configured_tls_serves() {
     use tonic::transport::{Certificate, ClientTlsConfig, Identity, ServerTlsConfig};
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
@@ -972,7 +972,7 @@ async fn configured_tls_serves() {
         .await
         .unwrap();
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1025,7 +1025,7 @@ async fn observes_cancel_deadline() {
         for expired in [false, true] {
             let clock = crate::support::clock::Controlled::new();
             let stopped = Arc::new(tokio::sync::Semaphore::new(0));
-            let runtime = crate::support::app::launch::<App>((), (), |setup| {
+            let runtime = crate::support::app::start::<App>((), (), |setup| {
                 setup.settings().clock(clock.source());
                 setup.resource::<Behavior>(Behavior::holding(stopped.clone()));
             })
@@ -1079,7 +1079,7 @@ async fn observes_cancel_deadline() {
             (stopped.acquire()).await.unwrap().forget();
             assert_eq!(*trace.lock().unwrap(), [if expired { tonic::Code::DeadlineExceeded } else { tonic::Code::Cancelled }]);
 
-            crate::support::app::shutdown(&runtime).await.unwrap();
+            crate::support::app::stop(&runtime).await.unwrap();
         }
     })
     .await
@@ -1090,7 +1090,7 @@ async fn observes_cancel_deadline() {
 async fn authentication_bounded_operation() {
     let clock = crate::support::clock::Controlled::new();
     let authenticating = Arc::new(tokio::sync::Notify::new());
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.settings().clock(clock.source());
     })
     .await
@@ -1117,7 +1117,7 @@ async fn authentication_bounded_operation() {
     let result = calling.await;
     assert_eq!(result.unwrap_err().code(), tonic::Code::DeadlineExceeded);
     assert_eq!(*trace.lock().unwrap(), [tonic::Code::DeadlineExceeded]);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1126,7 +1126,7 @@ async fn access_never_grant() {
         ServerReflectionRequest, server_reflection_client::ServerReflectionClient, server_reflection_request::MessageRequest,
         server_reflection_response::MessageResponse,
     };
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
@@ -1168,7 +1168,7 @@ async fn access_never_grant() {
     assert!(response.message().await.unwrap().is_none());
     assert_eq!(call(channel.clone(), Some("Bearer bob")).await.unwrap_err().code(), tonic::Code::PermissionDenied);
     assert_eq!(call(channel, Some("Bearer alice")).await.unwrap(), "alice");
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1179,7 +1179,7 @@ async fn reload_certificate_preserves_stream() {
     let first = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let second = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
     let certificate = ServerCertificate::from_pem(first.cert.pem().as_bytes(), first.signing_key.serialize_pem().as_bytes()).unwrap();
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Behavior>(Behavior::read());
     })
     .await
@@ -1263,7 +1263,7 @@ async fn reload_certificate_preserves_stream() {
     assert!(stream.message().await.unwrap().is_none());
     drop(stream);
     attached.detach().await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1303,7 +1303,7 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
         )
     }
     let next = Arc::new(tokio::sync::Semaphore::new(0));
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup
             .resource::<tokio::sync::Semaphore>(next.clone())
             .operation(progress_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
@@ -1343,7 +1343,7 @@ async fn native_stream_progress_outlives_listener_and_operation_totals() {
     awake.abort();
     let _ = awake.await;
     tokio::time::resume();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -1385,7 +1385,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     let mut storage_settings = crate::storage::fixture::config();
     storage_settings.transfer.chunk_bytes = Some(1024);
     let storage = StorageManager::in_memory(ObjectCatalog::new(), storage_settings).unwrap();
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.settings().storage(&storage);
         setup
             .resource::<tokio::sync::Notify>(finished.clone())
@@ -1452,7 +1452,7 @@ async fn settled_stream_drain_keeps_idle_deadline() {
     awake.abort();
     let _ = awake.await;
     tokio::time::resume();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 async fn generated_call<Q, R>(channel: tonic::transport::Channel, path: &'static str, request: Q) -> Result<R, tonic::Status>
