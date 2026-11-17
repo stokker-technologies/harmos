@@ -7,21 +7,28 @@
 # ***
 
 
-"""Generate Python Resource Classes and Public Payload Exports."""
+"""Generate Python Resource Surfaces."""
 
 # === Imports === #
 
 # Standard Library Imports
+import keyword
 import subprocess
 import sys
 from pathlib import Path
 
+# isort: split
+
 # Third Party Imports
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
+# isort: split
+
 # Local Imports
-from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, table
 from harmos_tools.process import spawn_flags
+
+from . import descriptor
+from .configuration import Configuration
 
 # Type Checking Imports
 
@@ -29,20 +36,44 @@ from harmos_tools.process import spawn_flags
 
 # === Constants === #
 
+SCALARS = {
+    1: "float",
+    2: "float",
+    3: "int",
+    4: "int",
+    5: "int",
+    6: "int",
+    7: "int",
+    8: "bool",
+    9: "str",
+    12: "bytes",
+    13: "int",
+    15: "int",
+    16: "int",
+    17: "int",
+    18: "int",
+}
+
 
 # === Types === #
 
 # === Classes === #
 
-
 # === Public Functions === #
 
 
-def exports(target: Path, descriptors: FileDescriptorSet) -> None:
+def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
-    methods = table(descriptors)
-    audiences = payload_audiences(descriptors)
-    requests = {method["request"] for method in methods}
+    configuration = configuration or Configuration()
+    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    methods = descriptor.table(descriptors)
+    audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
+    requests = set()
+    for requests_method in methods:
+        if requests_method["face"] == "plugin":
+            continue
+        requests.add(requests_method["request"])
+
     carriers = {
         "Request",
         "Response",
@@ -54,45 +85,97 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
         "ChildWatchCancel",
     }
     groups: dict[str, list[tuple[str, str, str]]] = {"shared": [], "client_types": [], "plugin_types": []}
-    messages: set[tuple[str, str]] = set()
     for file in descriptors.file:
-        if not file.package.startswith("harmos.") or file.name.endswith("guest.proto"):
+        if not file.package.startswith((f"{configuration.namespace}.", "harmos.")):
             continue
-        if ".plugin." in file.package:
+        if file.name.endswith("guest.proto"):
             continue
-        module = file.name.removesuffix(".proto").replace("/", ".").replace("harmos.", "harmos._wire.", 1) + "_pb2"
-        messages.update((module, definition.name) for definition in file.message_type)
+        if file.package.startswith("harmos.plugin."):
+            continue
+        module = (
+            file.name.removesuffix(".proto")
+            .replace("/", ".")
+            .replace(f"{configuration.namespace}.", f"{configuration.namespace}._wire.", 1)
+            + "_pb2"
+        )
         for definition in [*file.message_type, *file.enum_type]:
-            if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
+            if f"{file.package}.{definition.name}" in requests:
                 continue
-            # The Wire Failure Value and the Runtime Failure Exception Have Distinct Public Names.
-            name = "FailureValue" if definition.name == "Failure" else definition.name
+            if definition.name in carriers:
+                continue
+            name = (
+                "FailureValue"
+                if definition.name == "Failure"
+                else definition.name
+                if configuration.namespace == "harmos"
+                else descriptor.public_name(f"{file.package}.{definition.name}", public_names)
+            )
             groups_for_type = (
-                {"shared"}
+                {"plugin_types"}
+                if ".plugin." in file.package
+                else {"shared"}
                 if ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
-                groups[group].append((module, definition.name, name))
+                source = module
+                original = definition.name
+                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
+                    library_shared = ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
+                    source = "harmos" if library_shared else "harmos.client" if group == "client_types" else "harmos.plugin"
+                    original = "FailureValue" if definition.name == "Failure" else definition.name
+                groups[group].append((source, original, name))
         for definition in file.enum_type:
             groups_for_type = (
-                {"shared"}
+                {"plugin_types"}
+                if ".plugin." in file.package
+                else {"shared"}
                 if ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
-                groups[group].extend((module, value.name, value.name) for value in definition.value)
+                source = (
+                    module
+                    if file.package.startswith(f"{configuration.namespace}.")
+                    else "harmos"
+                    if group == "shared"
+                    else "harmos.client"
+                    if group == "client_types"
+                    else "harmos.plugin"
+                )
+                groups[group].extend((source, value.name, value.name) for value in definition.value)
+    messages = set()
+    for messages_file in descriptors.file:
+        if not (messages_file.package.startswith(f"{configuration.namespace}.")):
+            continue
+        for messages_definition in messages_file.message_type:
+            messages.add(
+                (
+                    messages_file.name.removesuffix(".proto")
+                    .replace("/", ".")
+                    .replace(f"{configuration.namespace}.", f"{configuration.namespace}._wire.", 1)
+                    + "_pb2",
+                    messages_definition.name,
+                )
+            )
+
     target.mkdir(parents=True, exist_ok=True)
     for group, entries in groups.items():
         lines = ["# @generated from protocol descriptors; do not edit."]
         lines += [
             f"from {module} import {original}" + (f" as {name}" if original != name else "") for module, original, name in sorted(entries)
         ]
-        public_module = "harmos" if group == "shared" else "harmos." + group.removesuffix("_types")
-        lines += [f'{name}.__module__ = "{public_module}"' for module, original, name in sorted(entries) if (module, original) in messages]
+        public_module = f"{configuration.namespace}" if group == "shared" else f"{configuration.namespace}." + group.removesuffix("_types")
+        for module, original, name in sorted(entries):
+            if (module, original) in messages:
+                lines += [f'{name}.__module__ = "{public_module}"']
+                if configuration.namespace != "harmos":
+                    lines += [f'{name}.__qualname__ = "{name}"']
         lines += ["", "__all__ = [", *[f"    {name!r}," for name in sorted(name for _, _, name in entries)], "]", ""]
         (target / f"{group}.py").write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
+    if configuration.namespace != "harmos":
+        return
     # The Public Barrels Are Generated From the Same Inventory as Call Signatures.
     package = target.parent
 
@@ -167,13 +250,23 @@ def exports(target: Path, descriptors: FileDescriptorSet) -> None:
     )
 
 
-def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, *, module_prefixes: dict[str, str] | None = None) -> None:
+def client(
+    target: Path,
+    methods: list[descriptor.Method],
+    descriptors: FileDescriptorSet,
+    *,
+    module_prefixes: dict[str, str] | None = None,
+    configuration: Configuration | None = None,
+) -> None:
     """Generate Content Arguments and Exactly-One-Field Response Projection."""
-    selected: list[Method] = []
+    configuration = configuration or Configuration()
+    selected: list[descriptor.Method] = []
     for method in methods:
         method = method.copy()
         if method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
-            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
+            method["fields"] = [
+                descriptor.Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]
+            ]
         selected.append(method)
     methods = selected
     nodes: set[tuple[str, ...]] = {()}
@@ -195,33 +288,17 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
             "Generate Python Client: Resource Collides With a Method; Correct the source protocol declarations or explicit public exports before regenerating"
         )
     composed = any(method["owner"] != "harmos" for method in methods)
-    composed_package = composed and target.parent.name == "_generated"
+    composed_package = composed and target.parent.name == "_generated" and configuration.namespace == "harmos"
     root_name = "Client" if composed_package else "ClientRoot"
     names = {node: root_name if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
-    library = Path(__file__).resolve().parents[6] / "crates/harmos-protocol/src/descriptors.bin"
-    library_methods = table(FileDescriptorSet.FromString(library.read_bytes()))
+    library_methods = descriptor.table(configuration.library_descriptors())
     library_leaves = {tuple(method["path"]) for method in library_methods if method["face"] == "client"}
-    narrowed = not library_leaves <= leaves
+    narrowed = configuration.namespace != "harmos" or not library_leaves <= leaves
     library_nodes: set[tuple[str, ...]] = {()}
     for method in methods:
         if method["owner"] == "harmos":
             library_nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
-    messages: dict[str, tuple[str, str]] = {}
-
-    def record(definitions: list[DescriptorProto], package: str, module: str, parent: str = "") -> None:
-        for definition in definitions:
-            name = parent + definition.name
-            messages[f"{package}.{name}"] = (module, name)
-            record(list(definition.nested_type), package, module, name + ".")
-
-    for file in descriptors.file:
-        module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
-        if module.startswith("harmos."):
-            module = module.replace("harmos.", "harmos._wire.", 1)
-        for prefix, replacement in (module_prefixes or {}).items():
-            if module.startswith(prefix + "."):
-                module = module.replace(prefix + ".", replacement + ".", 1)
-        record(list(file.message_type), file.package, module)
+    messages = _message_types(descriptors, configuration.namespace, module_prefixes)
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
         field["type"]
@@ -229,24 +306,11 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    message_names = {full: messages[full][1] for full in used}
-    imported_modules: dict[str, set[str]] = {}
-    for full in used:
-        module, name = messages[full]
-        imported_modules.setdefault(name.split(".", 1)[0], set()).add(module)
-    duplicates = {name for name, modules in imported_modules.items() if len(modules) > 1}
-    for full in used:
-        module, name = messages[full]
-        if name.split(".", 1)[0] in duplicates:
-            message_names[full] = f"{module}.{name}"
+    imports, message_names = _message_imports(messages, used)
 
-    def field_type(field: Field) -> str:
-        value = (
-            message_names[field["type"]]
-            if field["type"]
-            else {1: "float", 2: "float", 8: "bool", 9: "str", 12: "bytes"}.get(field["kind"], "int")
-        )
-        return f"Sequence[{value}]" if field["repeated"] else value
+    def field_type(field: descriptor.Field) -> str:
+        value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "int")
+        return f"dict[str, {value}]" if field["map"] else f"Sequence[{value}]" if field["repeated"] else value
 
     lines = [
         "# @generated from protocol descriptors; do not edit.",
@@ -261,14 +325,7 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
         lines += ["from harmos import _connection"]
     elif composed:
         lines += ["import harmos", "from harmos import client"]
-    imports = set()
-    for full in sorted(used):
-        module, name = messages[full]
-        if message_names[full].startswith(module + "."):
-            imports.add(f"import {module}")
-        else:
-            imports.add(f"from {module} import {name.split('.', 1)[0]}")
-    lines += sorted(imports)
+    lines += imports
     for node in sorted(nodes, key=lambda value: (-len(value), value)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
         parent = ""
@@ -285,28 +342,46 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
             lines += ["        super().__init__(channel)"]
         lines += ["        self._channel = channel"]
         storage = "_composed_" if composed else "_library_"
-        lines += [f"        self.{storage}{child[-1]} = {names[child]}(channel)" for child in children]
+        lines += [f"        self.{storage}{_identifier(child[-1])} = {names[child]}(channel)" for child in children]
         for child in children:
-            lines += ["", "    @property", f"    def {child[-1]}(self) -> {names[child]}:", f"        return self.{storage}{child[-1]}"]
+            lines += [
+                "",
+                "    @property",
+                f"    def {_identifier(child[-1])}(self) -> {names[child]}:",
+                f"        return self.{storage}{_identifier(child[-1])}",
+            ]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             request, response = (message_names[method[key]] for key in ("request", "response"))
             required = [field for field in method["fields"] if not field["optional"]]
             optional = [field for field in method["fields"] if field["optional"]]
-            parameters = [f"{field['name']}: {field_type(field)}" for field in required]
+            parameters = [f"{_identifier(field['name'])}: {field_type(field)}" for field in required]
             parameters += ["*"]
-            parameters += [f"{field['name']}: {field_type(field)} | None = None" for field in optional]
+            parameters += [f"{_identifier(field['name'])}: {field_type(field)} | None = None" for field in optional]
             parameters += ["metadata: Metadata | None = None", "timeout: float | None = None", "credentials: CallCredentials | None = None"]
             payload = method["payload_field"]
             result = field_type(payload) if payload else response
             result = result.replace("Sequence[", "list[")
             stream_call = method["server_streaming"]
             returns = f"AsyncGenerator[{result}]" if stream_call else result
-            lines += ["", f"    async def {method['path'][-1]}(self, {', '.join(parameters)}) -> {returns}:"]
+            lines += ["", f"    async def {_identifier(method['path'][-1])}(self, {', '.join(parameters)}) -> {returns}:"]
             values = [
                 f"{field['name']}="
-                + ("request_id if request_id is not None else str(uuid4())" if field["name"] == "request_id" else field["name"])
+                + (
+                    "request_id if request_id is not None else str(uuid4())"
+                    if field["name"] == "request_id"
+                    else _identifier(field["name"])
+                )
                 for field in method["fields"]
             ]
+            for index, field in enumerate(method["fields"]):
+                if keyword.iskeyword(field["name"]):
+                    values[index] = f"**{{{field['name']!r}: {_identifier(field['name'])}}}"
+            for group in sorted({field["oneof"] for field in method["fields"] if field["oneof"]}):
+                variants = ", ".join(_identifier(field["name"]) for field in method["fields"] if field["oneof"] == group)
+                lines += [
+                    f"        if sum(value is not None for value in ({variants},)) > 1:",
+                    f'            raise ValueError("Choose At Most One {group} Variant")',
+                ]
             lines += [f"        request = {request}({', '.join(values)})"]
             path = f"/{method['package']}.{method['service']}/{method['method']}"
             call = f"{'stream' if stream_call else 'unary'}(self._channel, {path!r}, request, {response}, metadata=metadata, timeout=timeout, credentials=credentials)"
@@ -339,8 +414,11 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
                 if payload and payload["repeated"]:
                     value = f"list({value})"
                 lines += [f"        return {value}"]
+    source = "\n".join(lines) + "\n"
+    if configuration.namespace != "harmos":
+        source = source.replace("metadata: Metadata", "call_metadata: Metadata").replace("metadata=metadata,", "metadata=call_metadata,")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    target.write_text(source, encoding="utf-8", newline="\n")
     if composed_package:
         package = target.parent.parent
         requests = {method["request"] for method in methods}
@@ -388,22 +466,15 @@ def client(target: Path, methods: list[Method], descriptors: FileDescriptorSet, 
 
 def host(
     target: Path,
-    methods: list[Method],
+    methods: list[descriptor.Method],
     descriptors: FileDescriptorSet,
     *,
     module_prefixes: dict[str, str] | None = None,
     context_wrapper: bool = False,
+    configuration: Configuration | None = None,
 ) -> None:
-    modules = {}
-    for file in descriptors.file:
-        module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
-        if module.startswith("harmos."):
-            module = module.replace("harmos.", "harmos._wire.", 1)
-        for package, prefix in (module_prefixes or {}).items():
-            if module.startswith(package + "."):
-                module = prefix + module.removeprefix(package)
-        for definition in file.message_type:
-            modules[f"{file.package}.{definition.name}"] = module
+    configuration = configuration or Configuration()
+    messages = _message_types(descriptors, configuration.namespace, module_prefixes)
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
         field["type"]
@@ -412,13 +483,11 @@ def host(
         if field["type"]
     )
 
-    def field_type(field: Field) -> str:
-        value = (
-            field["type"].rsplit(".", 1)[-1]
-            if field["type"]
-            else {1: "float", 2: "float", 8: "bool", 9: "str", 12: "bytes"}.get(field["kind"], "int")
-        )
-        return f"list[{value}]" if field["repeated"] else value
+    imports, message_names = _message_imports(messages, used)
+
+    def field_type(field: descriptor.Field) -> str:
+        value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "int")
+        return f"dict[str, {value}]" if field["map"] else f"list[{value}]" if field["repeated"] else value
 
     nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
@@ -426,13 +495,14 @@ def host(
         "# @generated from protocol descriptors; do not edit.",
         "from collections.abc import AsyncGenerator",
         "from enum import Enum",
+        "from uuid import uuid4",
         "from typing import TYPE_CHECKING, cast",
         "from google.protobuf.message import Message",
         "from harmos._contracts import Operation",
         "from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC",
         "from harmos._wire.model.v1.policy_pb2 import OperationPolicy",
     ]
-    lines += [f"from {modules[full]} import {full.rsplit('.', 1)[-1]}" for full in sorted(used)]
+    lines += imports
     lines += ["if TYPE_CHECKING:", "    from harmos._invocation import Context", "class HostOperation(Enum):"]
     if not methods:
         lines += ["    pass"]
@@ -441,7 +511,7 @@ def host(
         lines += [f'    {name} = "{method["package"]}.{method["service"]}/{method["method"]}"']
     for method in methods:
         name = "_".join(method["path"]).upper()
-        request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+        request_type, response_type = (message_names[method[key]] for key in ("request", "response"))
         lines += [
             f"_{name} = Operation(HostOperation.{name}.value, {request_type}, {response_type}, visibility=VISIBILITY_PUBLIC, watch={method['server_streaming']})"
         ]
@@ -456,7 +526,7 @@ def host(
         "class HostRoot:",
         "    def __init__(self, context: 'Context') -> None:",
     ]
-    lines += [f"        self.{node[-1]} = {names[node]}(context)" for node in nodes if len(node) == 1]
+    lines += [f"        self.{_identifier(node[-1])} = {names[node]}(context)" for node in nodes if len(node) == 1]
     if not nodes:
         lines += ["        pass"]
     for node in nodes:
@@ -465,13 +535,15 @@ def host(
             "    def __init__(self, context: 'Context') -> None:",
             "        self._context = context",
         ]
-        lines += [f"        self.{child[-1]} = {names[child]}(context)" for child in nodes if child[:-1] == node]
+        lines += [f"        self.{_identifier(child[-1])} = {names[child]}(context)" for child in nodes if child[:-1] == node]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "_".join(method["path"]).upper()
-            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
-            parameters = [f"{field['name']}: {field_type(field)}" for field in method["fields"] if not field["optional"]]
+            request_type, response_type = (message_names[method[key]] for key in ("request", "response"))
+            parameters = [f"{_identifier(field['name'])}: {field_type(field)}" for field in method["fields"] if not field["optional"]]
             parameters += ["*"]
-            parameters += [f"{field['name']}: {field_type(field)} | None = None" for field in method["fields"] if field["optional"]]
+            parameters += [
+                f"{_identifier(field['name'])}: {field_type(field)} | None = None" for field in method["fields"] if field["optional"]
+            ]
             if method["server_streaming"]:
                 parameters += ["max_item_bytes: int"]
             else:
@@ -480,9 +552,17 @@ def host(
             result = field_type(payload) if payload else response_type
             if method["server_streaming"]:
                 result = f"AsyncGenerator[{result}]"
+            values = []
+            for field in method["fields"]:
+                value = (
+                    "request_id if request_id is not None else str(uuid4())"
+                    if field["name"] == "request_id"
+                    else _identifier(field["name"])
+                )
+                values.append(f"**{{{field['name']!r}: {value}}}" if keyword.iskeyword(field["name"]) else f"{field['name']}={value}")
             lines += [
-                f"    async def {method['path'][-1]}(self{', ' if parameters else ''}{', '.join(parameters)}) -> {result}:",
-                f"        request = {request_type}({', '.join(field['name'] + '=' + field['name'] for field in method['fields'])})",
+                f"    async def {_identifier(method['path'][-1])}(self{', ' if parameters else ''}{', '.join(parameters)}) -> {result}:",
+                f"        request = {request_type}({', '.join(values)})",
             ]
             indent = "        "
             if method["server_streaming"]:
@@ -519,5 +599,70 @@ def host(
 
 
 # === Private Functions === #
+
+
+def _message_types(descriptors: FileDescriptorSet, namespace: str, module_prefixes: dict[str, str] | None) -> dict[str, tuple[str, str]]:
+    types: dict[str, tuple[str, str]] = {}
+
+    def record(definitions: list[DescriptorProto], package: str, module: str, parent: str = "") -> None:
+        for definition in definitions:
+            name = parent + definition.name
+            types[f"{package}.{name}"] = (module, name)
+            for enum in definition.enum_type:
+                types[f"{package}.{name}.{enum.name}"] = (module, f"{name}.{enum.name}")
+            record(list(definition.nested_type), package, module, name + ".")
+
+    for file in descriptors.file:
+        module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
+        for owner in {"harmos", namespace}:
+            if module.startswith(owner + "."):
+                module = module.replace(owner + ".", owner + "._wire.", 1)
+                break
+        for prefix, replacement in (module_prefixes or {}).items():
+            if module.startswith(prefix + "."):
+                module = replacement + module.removeprefix(prefix)
+        record(list(file.message_type), file.package, module)
+        for enum in file.enum_type:
+            types[f"{file.package}.{enum.name}"] = (module, enum.name)
+    return types
+
+
+def _message_imports(types: dict[str, tuple[str, str]], used: set[str]) -> tuple[list[str], dict[str, str]]:
+    names = {full: types[full][1] for full in used}
+    modules: dict[str, set[str]] = {}
+    for full in used:
+        module, name = types[full]
+        modules.setdefault(name.split(".", 1)[0], set()).add(module)
+    duplicates = {name for name, values in modules.items() if len(values) > 1}
+    duplicates.update(
+        {
+            "Metadata",
+            "Channel",
+            "CallCredentials",
+            "ClientRoot",
+            "Sequence",
+            "Operation",
+            "Message",
+            "OperationPolicy",
+            "HostOperation",
+            "Context",
+            "Enum",
+            "AsyncGenerator",
+        }
+    )
+    imports = set()
+    for full in used:
+        module, name = types[full]
+        if name.split(".", 1)[0] in duplicates:
+            names[full] = f"{module}.{name}"
+            imports.add(f"import {module}")
+        else:
+            imports.add(f"from {module} import {name.split('.', 1)[0]}")
+    return sorted(imports), names
+
+
+def _identifier(name: str) -> str:
+    return name + "_" if keyword.iskeyword(name) else name
+
 
 # === Entry Point === #

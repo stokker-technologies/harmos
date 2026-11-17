@@ -58,7 +58,7 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     ]:
         (root / folder).mkdir(parents=True, exist_ok=True)
     methods = harmos_tools.build.resources.descriptor.table(descriptors)
-    harmos_tools.build.resources.cpp.exports(root, descriptors)
+    type_names = harmos_tools.build.resources.cpp.exports(root, descriptors)
     harmos_tools.build.resources.rust.exports(root, descriptors)
     harmos_tools.build.resources.python.exports(root / "sdk/python/src/harmos/_generated", descriptors)
     conformance = root / "sdk/rust/tests/fixtures/conformance/descriptors.bin"
@@ -132,9 +132,9 @@ def generate(root: Path, descriptors: FileDescriptorSet | None = None, *, namesp
     harmos_tools.build.resources.csharp.client(root, clients, namespace=namespace)
     if namespace == "harmos":
         harmos_tools.build.resources.csharp.host(root, [method for method in methods if method["face"] == "context"])
-    harmos_tools.build.resources.cpp.client(root, clients, namespace=namespace)
+    harmos_tools.build.resources.cpp.client(root, clients, namespace=namespace, type_names=type_names)
     if namespace == "harmos":
-        harmos_tools.build.resources.cpp.host(root, [method for method in methods if method["face"] == "context"])
+        harmos_tools.build.resources.cpp.host(root, [method for method in methods if method["face"] == "context"], type_names=type_names)
     fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
     if fixture.is_file():
         for language, target, fixture_namespace in [

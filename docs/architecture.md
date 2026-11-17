@@ -358,6 +358,16 @@ method inventory so audience ownership has one source. Composition entry points 
 contracts remain stable across this source organization. Generated bindings
 remain tracked and regeneration is the only authoring path. The protocol
 drift test compares committed sources and descriptor projections byte for byte.
+`build/resources/sdk.py` owns complete SDK generation and drift comparison;
+`build/resources/configuration.py` carries namespace, original library descriptors,
+selector policy and compiler location. Products pin the `harmos-tools` package and
+retain their invocation inputs rather than copying these renderers. The shared
+C# wire projector lives in `build/csharp_protocol.py`; the native C# task selects
+its pinned compiler and delegates to it. The descriptor inventory retains map,
+oneof, explicit presence, copy and nested enum metadata. Public payload ownership
+uses the original library audience inventory even when a product narrows its calls.
+Generated output remains tracked. See [Repository Tooling](tooling.md)
+for the complete-SDK invocation.
 See the mapping below for the migrated identities and consumer ownership.
 
 ## Invariants

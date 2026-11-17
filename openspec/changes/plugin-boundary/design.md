@@ -16,7 +16,7 @@ Verified in this worktree before authoring:
 | Installation mixed into activation | `crates/harmos-runtime/src/plugin/manager/content.rs:48` prepares content; `:83` inspects a bundle and `:109` extracts it. |
 | Persisted settings and replay receipts | `crates/harmos-runtime/src/plugin/manager/settings.rs:88` sets values; `:98` replays receipts and `:149` commits the registry. |
 | Generic carrier already carries opaque bytes | `proto/harmos/plugin/v1/invocation.proto:37` carries invocation payloads; `:65` carries child payloads; `proto/harmos/model/v1/description.proto:47` carries product sections. |
-| Shared renderer implementation | `tools/python/src/harmos_tools/build/resource_roots.py:77` builds descriptor tables; `:440`, `:824`, `:1185` and `:1793` locate language renderers. Compare the consuming product's implementation before moving code. |
+| Shared renderer implementation | `tools/python/src/harmos_tools/build/resources/descriptor.py` owns the descriptor table; the sibling `python.py`, `rust.py`, `csharp.py` and `cpp.py` own language rendering. `resource_roots.py` and `resources/sdk.py` compose those engines. |
 
 Architecture invariants being amended: invariant 8 assigns plugin management
 "entries, typed settings, placement, activation and shutdown"; invariant 9 says
@@ -151,3 +151,39 @@ revisions replace integration-only overrides before final validation.
   and prove settlement on every refusal path with controlled events.
 - [Cross-change generation churn] → one final coordinated regeneration; no
   compatibility path or manual generated edits.
+
+### Generator Source Inventory (Task 1.2 Scope)
+
+Task 2.1 owns `tools/python/src/harmos_tools/build/resource_roots.py`,
+`build/resources/`, shared C# protocol projection, and SDK generation entry points.
+The consuming product contributes its descriptor schema and four renderers; those
+duplicate modules are deleted after adoption. Product-specific selector defaults,
+namespace/output paths and authored barrel exports remain product configuration.
+Focused generator fixtures live in `tools/python/tests/`; `docs/tooling.md` and
+this architecture contract document the invocation. Generated SDK files remain
+tracked and are changed only through generation tasks. Runtime, protocol declarations
+and SDK host-client removal belong to the operation-boundary worker.
+
+The consumer uses a checkout-local tooling override during joint development.
+After this change merges, its integration owner must bump the immutable Harmos
+revision, remove the override and prove the published dependency graph.
+
+The generator source inventory includes the native entry points
+`tools/python/src/harmos_tools/csharp.py` and `build/cpp.py`, which delegate to
+the shared wire projector and reuse the C++ export table. README claims are
+unchanged; invocation inputs and adapter prerequisites live in `docs/tooling.md`.
+The complete-SDK fixture proves repeatable generation, read-only drift checks
+and obsolete-output retirement. Its C# compiler boundary is substituted; the
+native C# generation task separately proves the real wire projection.
+
+Intentional generated-output changes in this generator group are Rust call-option
+`Clone` implementations and C++ constructor parameter names matching their
+`channel` field. Richer descriptor inputs also receive nested enum/message paths,
+keyword escaping, repeated-enum encoding and qualified conflicting type names.
+Existing library Python and C# outputs remain byte-identical. Required public
+barrel renames (wire failure versus the public exception, and adapter exports)
+remain generated; internal call imports use module qualification instead of aliases.
+
+The consuming inventory differs from the older task path: `render_resources.py`
+is already split into `build/resources/{schema,python,rust,csharp,cpp}.py`. Those
+are the actual duplicate implementation files to delete during adoption.
