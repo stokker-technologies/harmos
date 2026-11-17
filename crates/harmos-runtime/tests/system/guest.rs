@@ -64,7 +64,7 @@ use schematic_operations::protocol::{Connection, Point, Snapshot};
 
 #[tokio::test]
 async fn guest_composition_walks() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Boot Without a Guest Operation
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let (storage, entries, root) = super::guest_contract::support::entries();

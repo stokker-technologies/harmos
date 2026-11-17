@@ -50,7 +50,7 @@ use harmos::OperationRequest;
 
 #[tokio::test]
 async fn guest_dependencies_keep_admission_and_retire_saved_authority() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Refuse the Declared Requirement Before Activating Without Its Provider
     let runtime = harmos_runtime::Runtime::<crate::support::Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.settings().register(crate::support::catalog());

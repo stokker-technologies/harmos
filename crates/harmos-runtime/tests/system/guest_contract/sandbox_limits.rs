@@ -62,7 +62,7 @@ use harmos_runtime::{
 
 #[tokio::test]
 async fn guest_sandbox_preserves_fuel_memory_and_trap_causes() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
 
     // Compile Once Per Host Policy and Reject Invalid Bounds
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);

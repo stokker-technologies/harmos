@@ -50,7 +50,7 @@ async fn values(stream: &harmos_runtime::streams::PublishedStream) -> Vec<String
 
 #[tokio::test]
 async fn guest_publications_abort_staging_and_survive_replacement() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Refuse Initialization After a Staged Publication
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let lane = harmos_runtime::operations::Lane::default();

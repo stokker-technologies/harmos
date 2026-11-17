@@ -51,7 +51,7 @@ use std::{
 
 #[tokio::test]
 async fn guest_lifecycle_keeps_requests_resources_and_attempt_authority() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Boot the Host and Collect Inert Guest Metadata
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let owner = Arc::new(support::ProviderOwner::default());

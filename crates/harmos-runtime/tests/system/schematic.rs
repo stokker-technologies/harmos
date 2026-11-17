@@ -36,7 +36,7 @@ enum Startup {
 
 #[test]
 fn cli_backends_reopen() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     let directory = tempfile::tempdir().unwrap();
     let reports = tempfile::tempdir().unwrap();
     let report_directory = env::var_os("STKR_TEST_REPORT_DIR").map(PathBuf::from).unwrap_or_else(|| reports.path().to_owned());
@@ -82,7 +82,7 @@ fn cli_backends_reopen() {
 
 #[test]
 fn cli_streams_settle() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     let directory = tempfile::tempdir().unwrap();
     let reports = tempfile::tempdir().unwrap();
     let report_directory = env::var_os("STKR_TEST_REPORT_DIR").map(PathBuf::from).unwrap_or_else(|| reports.path().to_owned());

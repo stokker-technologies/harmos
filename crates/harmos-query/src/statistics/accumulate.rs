@@ -163,7 +163,7 @@ impl Accumulator {
         let values = self.scratch.ranks(&ranks, check)?;
         statistics
             .iter()
-            .zip(values.chunks_exact(2))
+            .zip(values.as_chunks::<2>().0)
             .map(|(statistic, values)| {
                 if *statistic == Aggregate::Median && self.kind != Some(ScalarKind::Float) {
                     let midpoint = scalar::exact(&values[0])

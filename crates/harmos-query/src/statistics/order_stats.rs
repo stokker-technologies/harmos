@@ -237,10 +237,11 @@ fn sort(values: &mut [[u8; SLOT]], check: &mut impl FnMut() -> Result<()>) -> Re
     let mut comparisons = 0usize;
     values.sort_unstable_by(|left, right| {
         comparisons += 1;
-        if comparisons.is_multiple_of(1024) && failure.is_none() {
-            if let Err(error) = check() {
-                failure = Some(error);
-            }
+        if comparisons.is_multiple_of(1024)
+            && failure.is_none()
+            && let Err(error) = check()
+        {
+            failure = Some(error);
         }
         let result = compare(left, right);
         match result {
