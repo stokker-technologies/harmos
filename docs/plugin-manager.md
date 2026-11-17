@@ -159,7 +159,7 @@ value's variant against its declared default. Settings have a revision separate
 from the plugin entry revision. Resending the same request identity and normalized
 value replays its original receipt, including after restart; changed input refuses.
 
-`/harmos.host.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
+`/harmos.plugin.v1.plugins.Settings/List` called by a plugin reads only the calling entry's values.
 The SDK handler remains named `context`. Running plugins explicitly read settings;
 there is no change notification. Host stream intervals configured by setting name
 use the value selected for that activation; restart to apply a changed interval.

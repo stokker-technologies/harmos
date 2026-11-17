@@ -5,6 +5,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     include(../../cmake/Protocol.cmake)
 endif()
 
+get_filename_component(repository_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
+
 set(fixture_sync_protocols
     application/host/v1/jobs.proto
     application/host/v1/plugins/annotations.proto
@@ -31,10 +33,10 @@ set(fixture_protocols ${fixture_sync_protocols} ${fixture_callback_protocols})
 add_library(harmos_client_fixture STATIC)
 harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/fixtures/client/proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" SYNC_SERVER ${fixture_sync_protocols}
-    IMPORT_DIRS "${PROJECT_SOURCE_DIR}/../../proto")
+    IMPORT_DIRS "${repository_root}/proto")
 harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/fixtures/client/proto"
     "${CMAKE_CURRENT_BINARY_DIR}/generated" ${fixture_callback_protocols}
-    IMPORT_DIRS "${PROJECT_SOURCE_DIR}/../../proto")
+    IMPORT_DIRS "${repository_root}/proto")
 
 target_link_libraries(harmos_client_fixture PUBLIC Harmos::Cpp)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -42,7 +44,7 @@ set(fixture_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/fixtures/client/pro
 set(fixture_dependencies ${fixture_protocols})
 list(TRANSFORM fixture_dependencies PREPEND "${fixture_root}/")
 get_target_property(protobuf_includes protobuf::libprotobuf INTERFACE_INCLUDE_DIRECTORIES)
-set(fixture_imports "--proto_path=${PROJECT_SOURCE_DIR}/../../proto")
+set(fixture_imports "--proto_path=${repository_root}/proto")
 foreach(directory IN LISTS protobuf_includes)
     list(APPEND fixture_imports "--proto_path=${directory}")
 endforeach()
@@ -53,20 +55,20 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descrip
     DEPENDS ${fixture_dependencies}
     VERBATIM)
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
-    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.cpp"
+    BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.hpp" "${CMAKE_CURRENT_BINARY_DIR}/generated/plugin.cpp"
     COMMAND "${Python3_EXECUTABLE}" -m harmos_tools.build.cpp
         --fixture-client "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
         --fixture-descriptors "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/../.."
+    WORKING_DIRECTORY "${repository_root}"
     DEPENDS
-        "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/build/resource_roots.py"
-        "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/build/resources/descriptor.py"
-        "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/build/resources/cpp.py"
-        "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/build/cpp.py"
-        "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/source/protocol.py"
-        "${PROJECT_SOURCE_DIR}/.clang-format"
+        "${repository_root}/tools/python/src/harmos_tools/build/resource_roots.py"
+        "${repository_root}/tools/python/src/harmos_tools/build/resources/descriptor.py"
+        "${repository_root}/tools/python/src/harmos_tools/build/resources/cpp.py"
+        "${repository_root}/tools/python/src/harmos_tools/build/cpp.py"
+        "${repository_root}/tools/python/src/harmos_tools/source/protocol.py"
+        "${repository_root}/sdk/cpp/.clang-format"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-        "${PROJECT_SOURCE_DIR}/../../crates/harmos-protocol/src/descriptors.bin"
+        "${repository_root}/crates/harmos-protocol/src/descriptors.bin"
     VERBATIM)
 
 target_include_directories(harmos_client_fixture PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated")

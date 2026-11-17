@@ -261,6 +261,7 @@ def main() -> None:
             f"-DVCPKG_INSTALLED_DIR={ROOT / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
             f"-DCMAKE_BUILD_TYPE={'Debug' if options.profile == 'dev' else 'Release'}",
+            f"-DPython3_EXECUTABLE={sys.executable}",
         ]
         subprocess.run(
             command,
