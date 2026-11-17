@@ -15,24 +15,18 @@
 
 /* === Imports === */
 
-use harmos::plugin::{Registrar, Registration};
-
-use harmos::plugin::HostOperation;
-
-use harmos::plugin::{Context, Operation, Plugin};
-use harmos::{Error, OperationRequest, Result, Visibility};
-use schematic_protocol::plugin::{
-    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
-};
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
-use schematic_protocol::Point;
-
+use harmos::plugin::{Context, HostOperation, Operation, Registrar, Registration};
 use harmos::setting_value::Value;
+use harmos::{Error, OperationRequest, Result, Visibility};
+use schematic_protocol::Point;
+use schematic_protocol::plugin::{
+    SchematicProposeRouteRequest, SchematicProposeRouteResponse, SchematicValidateRequest, SchematicValidateResponse,
+};
 
 /* === Constants === */
 
@@ -49,10 +43,6 @@ use harmos::setting_value::Value;
 /* === Implementations === */
 
 /* === Public Functions === */
-
-pub fn plugin() -> Plugin {
-    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION")).register(|ctx| ctx.register(catalog())).expect("Register Plugin Declarations")
-}
 
 pub fn catalog() -> impl Registration {
     move |ctx: &mut Registrar<'_>| {
