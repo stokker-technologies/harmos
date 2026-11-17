@@ -197,6 +197,8 @@ Linux, combined-source validation and hosted proof remain open under task 11.
 
 - [x] 11.4 Repair Nightly 44052203394's extracted C++ conformance consumer: resolve generator dependencies from the active tooling source tree and retain its Python interpreter, preserving the reference product's wrapper client. Windows proof passed: 121 tooling tests, development-profile C++ SDK build, installed consumer, 24 C++ unit tests and both integration stories. Native Linux and hosted proof remain under 11.1.
 
+- [x] 11.5 Return the same gRPC NotFound status and message for nonexistent and caller-filtered operation lookups, preserve InvalidArgument for malformed identities, and recognize native host leaf errors at the wrapped gRPC error boundary. Prove the focused operations.get gRPC regression, existing catalog tests, touched-crate compile checks and Rust formatting.
+
 ## Workflow Follow-Up
 
 - Products adopt group 8's revision for storage and statistics, then the revision that landed groups 9–10 in the task that removes their use of the removed surface.

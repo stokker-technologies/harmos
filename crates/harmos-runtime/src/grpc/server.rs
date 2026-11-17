@@ -19,17 +19,39 @@ pub use concurrency::Calls;
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc};
+use std::{error, future::Future, marker::PhantomData, pin::Pin, sync::Arc};
 
 // Third Party Imports
+use bytes::Bytes;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use tonic::{Request, Response, Status, Streaming, body::Body, codegen::http};
+use prost::Message;
+use tokio::sync::Semaphore;
+use tonic::{
+    Code, Request, Response, Status, Streaming,
+    body::Body,
+    codegen::{BoxFuture, http},
+    server::{ClientStreamingService, ServerStreamingService, StreamingService, UnaryService},
+};
 
 // Local Imports
+use super::inbound::TrustedContext;
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
-use crate::operations::{RequestShape, Running, StreamItem};
-use crate::{Error, Refusal, operations::Manager};
+use crate::clock::Clock;
+
+#[cfg(feature = "plugin-guest")]
+use crate::operations::Caller;
+
+use crate::operations::{Direction, GrpcBinding, OperationManager, RequestShape, Running, StreamItem};
+use crate::{
+    Error, Refusal,
+    operations::{self, Manager},
+};
+use harmos_operations::WRONG_CALLER;
+use harmos_operations::execution::ServingError;
+use harmos_operations::execution::operations::streaming;
+use harmos_operations::operations::FailureKind;
+use harmos_protocol::model::Failure;
 
 /* === Constants === */
 
@@ -54,10 +76,10 @@ struct Endpoint<O> {
 pub enum Authority {
     TrustedHost(Manager),
 
-    Binding(crate::operations::GrpcBinding),
+    Binding(GrpcBinding),
 
     #[cfg(feature = "plugin-guest")]
-    Plugin(crate::operations::Caller),
+    Plugin(Caller),
 }
 
 /* === Traits === */
@@ -65,7 +87,7 @@ pub enum Authority {
 /* === Implementations === */
 
 impl Authority {
-    pub(super) fn clock(&self) -> &crate::clock::Clock {
+    pub(super) fn clock(&self) -> &Clock {
         match self {
             Self::TrustedHost(operations) => operations.clock(),
             Self::Binding(binding) => binding.operations.clock(),
@@ -74,11 +96,11 @@ impl Authority {
         }
     }
 
-    pub fn trusted_host(operations: &crate::operations::OperationManager) -> Self {
+    pub fn trusted_host(operations: &OperationManager) -> Self {
         Self::TrustedHost(operations.execution())
     }
 
-    pub(super) fn preparation(&self) -> Option<Arc<tokio::sync::Semaphore>> {
+    pub(super) fn preparation(&self) -> Option<Arc<Semaphore>> {
         match self {
             Self::TrustedHost(operations) => operations.preparation.clone(),
             Self::Binding(binding) => binding.operations.preparation.clone(),
@@ -88,7 +110,7 @@ impl Authority {
     }
 
     pub(super) fn contextual<T>(&self, request: &Request<T>) -> Self {
-        let Some(context) = request.extensions().get::<super::inbound::TrustedContext>() else {
+        let Some(context) = request.extensions().get::<TrustedContext>() else {
             return self.clone();
         };
         match self {
@@ -116,8 +138,8 @@ impl Settings {
         Calls::validate(self.calls)?;
         self.decode.validate()?;
         self.encode.validate()?;
-        harmos_operations::execution::operations::streaming::validate(&self.input).map_err(|error| status(error.into()))?;
-        harmos_operations::execution::operations::streaming::validate(&self.output).map_err(|error| status(error.into()))?;
+        streaming::validate(&self.input).map_err(|error| status(error.into()))?;
+        streaming::validate(&self.output).map_err(|error| status(error.into()))?;
         if self.opening_timeout.is_zero() {
             return Err(Status::invalid_argument("gRPC opening timeout must be positive"));
         }
@@ -125,12 +147,12 @@ impl Settings {
     }
 }
 
-impl<O> tonic::server::UnaryService<StreamItem<O::Request>> for Endpoint<O>
+impl<O> UnaryService<StreamItem<O::Request>> for Endpoint<O>
 where
     O: RequestShape,
 {
-    type Response = crate::operations::Response<O::Response>;
-    type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
+    type Response = operations::Response<O::Response>;
+    type Future = BoxFuture<Response<Self::Response>, Status>;
     fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         Box::pin(async move {
@@ -139,18 +161,18 @@ where
         })
     }
 }
-impl<O> tonic::server::ServerStreamingService<StreamItem<O::Request>> for Endpoint<O>
+impl<O> ServerStreamingService<StreamItem<O::Request>> for Endpoint<O>
 where
-    O: crate::operations::RequestShape,
+    O: RequestShape,
 {
-    type Response = StreamItem<<O::Output as crate::operations::Direction>::Item>;
-    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item>;
-    type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
+    type Response = StreamItem<<O::Output as Direction>::Item>;
+    type ResponseStream = Items<<O::Output as Direction>::Item>;
+    type Future = BoxFuture<Response<Self::ResponseStream>, Status>;
     fn call(&mut self, request: Request<StreamItem<O::Request>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
-            let (output, items) = crate::operations::stream(settings.output).map_err(status)?;
+            let (output, items) = operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request.into_inner(), output).map_err(status)?;
             let operation = instance.operation().to_owned();
             let output = super::stream(instance, items).map(move |result| result.map_err(|error| in_operation(status(error), &operation)));
@@ -165,16 +187,13 @@ where
         })
     }
 }
-impl<O> tonic::server::ClientStreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
-    for Endpoint<O>
+impl<O> ClientStreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as Direction>::Item>>> for Endpoint<O>
 where
-    O: crate::operations::RequestShape,
+    O: RequestShape,
 {
-    type Response = crate::operations::Response<O::Response>;
-    type Future = tonic::codegen::BoxFuture<Response<Self::Response>, Status>;
-    fn call(
-        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>>,
-    ) -> Self::Future {
+    type Response = operations::Response<O::Response>;
+    type Future = BoxFuture<Response<Self::Response>, Status>;
+    fn call(&mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as Direction>::Item>>>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
@@ -183,24 +202,21 @@ where
                 .timeout(settings.opening_timeout, super::open(request.into_inner()))
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
-            let (input, endpoint) = crate::operations::stream(settings.input).map_err(status)?;
+            let (input, endpoint) = operations::stream(settings.input).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, endpoint).map_err(status)?;
             let operation = instance.operation().to_owned();
             super::input(instance, input, incoming).await.map(Response::new).map_err(|error| in_operation(input_status(error), &operation))
         })
     }
 }
-impl<O> tonic::server::StreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>
-    for Endpoint<O>
+impl<O> StreamingService<StreamItem<InputEnvelope<O::Request, <O::Input as Direction>::Item>>> for Endpoint<O>
 where
-    O: crate::operations::RequestShape,
+    O: RequestShape,
 {
-    type Response = StreamItem<<O::Output as crate::operations::Direction>::Item>;
-    type ResponseStream = Items<<O::Output as crate::operations::Direction>::Item>;
-    type Future = tonic::codegen::BoxFuture<Response<Self::ResponseStream>, Status>;
-    fn call(
-        &mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>>>>,
-    ) -> Self::Future {
+    type Response = StreamItem<<O::Output as Direction>::Item>;
+    type ResponseStream = Items<<O::Output as Direction>::Item>;
+    type Future = BoxFuture<Response<Self::ResponseStream>, Status>;
+    fn call(&mut self, request: Request<Streaming<StreamItem<InputEnvelope<O::Request, <O::Input as Direction>::Item>>>>) -> Self::Future {
         let authority = self.authority.contextual(&request);
         let settings = self.settings;
         Box::pin(async move {
@@ -209,8 +225,8 @@ where
                 .timeout(settings.opening_timeout, super::open(request.into_inner()))
                 .await
                 .map_err(|_| Status::deadline_exceeded("operation opening timed out"))??;
-            let (input, receiving) = crate::operations::stream(settings.input).map_err(status)?;
-            let (sending, output) = crate::operations::stream(settings.output).map_err(status)?;
+            let (input, receiving) = operations::stream(settings.input).map_err(status)?;
+            let (sending, output) = operations::stream(settings.output).map_err(status)?;
             let instance = authority.submit_charged::<O, _>(request, (receiving, sending)).map_err(status)?;
             let operation = instance.operation().to_owned();
             let output = super::exchange(instance, input, incoming, output)
@@ -232,10 +248,7 @@ where
 pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
     O: RequestShape,
-    W: Wire<O::Request>
-        + Wire<<O::Input as crate::operations::Direction>::Item>
-        + Wire<<O::Output as crate::operations::Direction>::Item>
-        + Wire<O::Response>,
+    W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
 {
     if super::controlled::is_managed(&authority, request.uri().path()) {
         return super::controlled::serve::<O, W>(authority, settings, request);
@@ -244,7 +257,7 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<W, O::Request, crate::operations::Response<O::Response>>::new(settings.decode, settings.encode) {
+        let codec = match Codec::<W, O::Request, operations::Response<O::Response>>::new(settings.decode, settings.encode) {
             Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
@@ -258,11 +271,8 @@ where
 }
 pub fn download<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::RequestShape,
-    W: Wire<O::Request>
-        + Wire<<O::Input as crate::operations::Direction>::Item>
-        + Wire<<O::Output as crate::operations::Direction>::Item>
-        + Wire<O::Response>,
+    O: RequestShape,
+    W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
 {
     if super::controlled::is_managed(&authority, request.uri().path()) {
         return super::controlled::serve::<O, W>(authority, settings, request);
@@ -271,10 +281,7 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<W, O::Request, StreamItem<<O::Output as crate::operations::Direction>::Item>>::new(
-            settings.decode,
-            settings.encode,
-        ) {
+        let codec = match Codec::<W, O::Request, StreamItem<<O::Output as Direction>::Item>>::new(settings.decode, settings.encode) {
             Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
@@ -288,11 +295,8 @@ where
 }
 pub fn upload<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::RequestShape,
-    W: Wire<O::Request>
-        + Wire<<O::Input as crate::operations::Direction>::Item>
-        + Wire<<O::Output as crate::operations::Direction>::Item>
-        + Wire<O::Response>,
+    O: RequestShape,
+    W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
 {
     if super::controlled::is_managed(&authority, request.uri().path()) {
         return super::controlled::serve::<O, W>(authority, settings, request);
@@ -301,12 +305,10 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<
-            W,
-            InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>,
-            crate::operations::Response<O::Response>,
-        >::new(settings.decode, settings.encode)
-        {
+        let codec = match Codec::<W, InputEnvelope<O::Request, <O::Input as Direction>::Item>, operations::Response<O::Response>>::new(
+            settings.decode,
+            settings.encode,
+        ) {
             Ok(codec) => codec.with_preparation(authority.preparation()),
             Err(error) => return error.into_http(),
         };
@@ -320,11 +322,8 @@ where
 }
 pub fn exchange<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
 where
-    O: crate::operations::RequestShape,
-    W: Wire<O::Request>
-        + Wire<<O::Input as crate::operations::Direction>::Item>
-        + Wire<<O::Output as crate::operations::Direction>::Item>
-        + Wire<O::Response>,
+    O: RequestShape,
+    W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
 {
     if super::controlled::is_managed(&authority, request.uri().path()) {
         return super::controlled::serve::<O, W>(authority, settings, request);
@@ -333,15 +332,14 @@ where
         if let Err(error) = settings.validate() {
             return error.into_http();
         }
-        let codec = match Codec::<
-            W,
-            InputEnvelope<O::Request, <O::Input as crate::operations::Direction>::Item>,
-            StreamItem<<O::Output as crate::operations::Direction>::Item>,
-        >::new(settings.decode, settings.encode)
-        {
-            Ok(codec) => codec.with_preparation(authority.preparation()),
-            Err(error) => return error.into_http(),
-        };
+        let codec =
+            match Codec::<W, InputEnvelope<O::Request, <O::Input as Direction>::Item>, StreamItem<<O::Output as Direction>::Item>>::new(
+                settings.decode,
+                settings.encode,
+            ) {
+                Ok(codec) => codec.with_preparation(authority.preparation()),
+                Err(error) => return error.into_http(),
+            };
         let call = Endpoint::<O> {
             authority,
             settings,
@@ -353,7 +351,7 @@ where
 
 /* === Private Functions === */
 
-fn code(error: &Error) -> tonic::Code {
+fn code(error: &Error) -> Code {
     // Preserve Known Runtime Denials Through Authored Child Failures. Bound Wrapping.
     let mut error = error;
     let mut wrapped = false;
@@ -363,11 +361,23 @@ fn code(error: &Error) -> tonic::Code {
                 if let Some(status) = source.downcast_ref::<Status>() {
                     return status.code();
                 }
+                if matches!(source.downcast_ref::<ServingError>(), Some(ServingError::Codec(_))) {
+                    return Code::InvalidArgument;
+                }
+                if let Some(error) = source.downcast_ref::<harmos_operations::Error>() {
+                    return match error {
+                        harmos_operations::Error::NotFound { .. } => Code::NotFound,
+                        harmos_operations::Error::NotReady { .. } => Code::Unavailable,
+                        harmos_operations::Error::ResourceExhausted { .. } => Code::ResourceExhausted,
+                        harmos_operations::Error::InvalidInput { .. } | harmos_operations::Error::Message(_) => Code::InvalidArgument,
+                        _ => Code::Internal,
+                    };
+                }
                 if let Some(inner) = source.downcast_ref::<Error>().or_else(|| ungranted(source.as_ref())) {
                     error = inner;
                     wrapped = true;
                 } else {
-                    return tonic::Code::Internal;
+                    return Code::Internal;
                 }
             }
             _ => {
@@ -383,32 +393,32 @@ fn code(error: &Error) -> tonic::Code {
                     | Error::OperationUnauthorized { .. } => leaf_code(error),
                     #[cfg(feature = "plugin-guest")]
                     Error::OperationCaller { .. } => leaf_code(error),
-                    _ => tonic::Code::Internal,
+                    _ => Code::Internal,
                 };
             }
         }
     }
-    tonic::Code::Internal
+    Code::Internal
 }
 
-fn leaf_code(error: &Error) -> tonic::Code {
+fn leaf_code(error: &Error) -> Code {
     match error {
-        Error::OperationRefused(Refusal::TimedOut { .. }) => tonic::Code::DeadlineExceeded,
-        Error::OperationRefused(Refusal::Cancelled { .. }) => tonic::Code::Cancelled,
-        Error::OperationRefused(Refusal::Unavailable) | Error::NotReady { .. } | Error::Closing { .. } => tonic::Code::Unavailable,
-        Error::ResourceExhausted { .. } => tonic::Code::ResourceExhausted,
-        Error::InvalidInput { .. } | Error::OperationPayload { .. } => tonic::Code::InvalidArgument,
-        Error::Unauthenticated => tonic::Code::Unauthenticated,
-        Error::PermissionDenied | Error::OperationUnauthorized { .. } => tonic::Code::PermissionDenied,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => Code::DeadlineExceeded,
+        Error::OperationRefused(Refusal::Cancelled { .. }) => Code::Cancelled,
+        Error::OperationRefused(Refusal::Unavailable) | Error::NotReady { .. } | Error::Closing { .. } => Code::Unavailable,
+        Error::ResourceExhausted { .. } => Code::ResourceExhausted,
+        Error::InvalidInput { .. } | Error::OperationPayload { .. } => Code::InvalidArgument,
+        Error::Unauthenticated => Code::Unauthenticated,
+        Error::PermissionDenied | Error::OperationUnauthorized { .. } => Code::PermissionDenied,
         #[cfg(feature = "plugin-guest")]
-        Error::OperationCaller { .. } => tonic::Code::Unauthenticated,
-        _ => tonic::Code::Internal,
+        Error::OperationCaller { .. } => Code::Unauthenticated,
+        _ => Code::Internal,
     }
 }
 // An Encoded Provider's Prepared Grant The Caller Lacks Keeps Its Runtime Denial.
-fn ungranted<'a>(source: &'a (dyn std::error::Error + Send + Sync + 'static)) -> Option<&'a Error> {
+fn ungranted<'a>(source: &'a (dyn error::Error + Send + Sync + 'static)) -> Option<&'a Error> {
     #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-    if let Some(crate::operations::ComponentError::Unauthorized(inner)) = source.downcast_ref() {
+    if let Some(operations::ComponentError::Unauthorized(inner)) = source.downcast_ref() {
         return Some(inner);
     }
     let _ = source;
@@ -448,14 +458,11 @@ fn caller_refusal(mut error: &Error) -> Option<&str> {
 
 pub(super) fn status(error: Error) -> Status {
     if let Some(failure) = error.operation_failure()
-        && failure.refusal_code() == Some(harmos_operations::WRONG_CALLER)
-        && failure.code() == harmos_operations::operations::FailureKind::Unauthorized
+        && failure.refusal_code() == Some(WRONG_CALLER)
+        && failure.code() == FailureKind::Unauthorized
     {
-        let mut status = Status::with_details(
-            tonic::Code::PermissionDenied,
-            failure.cause(),
-            prost::Message::encode_to_vec(&harmos_protocol::model::Failure::from(&failure.clone().without_diagnostics())).into(),
-        );
+        let details = Failure::from(&failure.clone().without_diagnostics()).encode_to_vec();
+        let mut status = Status::with_details(Code::PermissionDenied, failure.cause(), details.into());
         status.set_source(Arc::new(error));
         return status;
     }
@@ -468,13 +475,13 @@ pub(super) fn status(error: Error) -> Status {
     status
 }
 pub(super) fn in_operation(status: Status, operation: &str) -> Status {
-    if status.code() != tonic::Code::DeadlineExceeded {
+    if status.code() != Code::DeadlineExceeded {
         return status;
     }
     let mut named = Status::with_details_and_metadata(
         status.code(),
         format!("operation {operation}: {}", status.message()),
-        bytes::Bytes::copy_from_slice(status.details()),
+        Bytes::copy_from_slice(status.details()),
         status.metadata().clone(),
     );
     named.set_source(Arc::new(status));
@@ -509,7 +516,7 @@ fn input_status(error: InputError) -> Status {
                 .as_deref()
                 .is_some_and(|error| matches!(error, Error::OperationFinalization { .. } | Error::OperationSettlement { .. }))
             {
-                tonic::Code::Internal
+                Code::Internal
             } else {
                 code(source)
             }
@@ -522,3 +529,54 @@ fn input_status(error: InputError) -> Status {
 }
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use tonic::Code;
+
+    use super::status;
+    use crate::Error;
+    use harmos_operations::MessageError;
+    use harmos_operations::execution::ServingError;
+
+    #[test]
+    fn native_host_statuses_survive_wrapped_failures() {
+        let cases = [
+            (harmos_operations::Error::NotFound { entity: "operation" }, Code::NotFound),
+            (harmos_operations::Error::NotReady { domain: "operation discovery" }, Code::Unavailable),
+            (harmos_operations::Error::ResourceExhausted { resource: "operations" }, Code::ResourceExhausted),
+            (
+                harmos_operations::Error::InvalidInput {
+                    field: "operation",
+                    reason: "invalid identity",
+                },
+                Code::InvalidArgument,
+            ),
+            (harmos_operations::Error::Message(MessageError::new("invalid identity")), Code::InvalidArgument),
+            (harmos_operations::Error::UnknownInstance(1), Code::Internal),
+        ];
+        for (source, expected) in cases {
+            let source: Error = Error::OperationFailed {
+                operation: "operations.get".into(),
+                source: Arc::new(source),
+            };
+            let error = Error::TaskFailed {
+                domain: "host operation",
+                source: Arc::new(source),
+            };
+            assert_eq!(status(error).code(), expected);
+        }
+
+        let source = ServingError::Codec(MessageError::new("invalid identity"));
+        let source: Error = Error::OperationFailed {
+            operation: "operations.get".into(),
+            source: Arc::new(source),
+        };
+        let error = Error::TaskFailed {
+            domain: "host preparation",
+            source: Arc::new(source),
+        };
+        assert_eq!(status(error).code(), Code::InvalidArgument);
+    }
+}
