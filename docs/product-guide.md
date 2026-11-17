@@ -17,7 +17,9 @@ let info = runtime.for_call(&ctx).storage().info(InfoRequest {}).await?;
 `host.for_call()` to retain the parent cancellation scope. Add `CallOptions` to a
 context to override one invocation's policy. Children keep their own registered
 policies and inherit the other context values. `StorageRuntime::for_call` provides
-the same calls during storage-only assembly.
+the same calls during storage-only assembly, with cleanup receipts instead of an
+operation-manager getter. Backend implementations import their traits and contract
+values from `harmos_runtime::backend`; operation callers keep using the facade DTOs.
 
 The remaining locked `operation-boundary` direction moves plugin activation and
 the other host families to this facade, gives the builder sole manager ownership,

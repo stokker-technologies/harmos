@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 // Local Imports
 use super::{BootstrapCleanup, BootstrapStatus, Builder, boot};
-use crate::operations::{Lane, Manager, OperationManager, instances::Instances, lane::Lanes};
+use crate::operations::{Lane, Manager, instances::Instances, lane::Lanes};
 use crate::supervision::Task;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Result, clock, storage};
@@ -45,8 +45,15 @@ use harmos_storage::{self, StorageFuture, StorageManager, WorkerOwner};
 /* === Structs === */
 
 /// A Storage Session Borrowing Assembly Until Its Operations Have Drained.
+///
+/// ```compile_fail,E0599
+/// use harmos_runtime::runtime::StorageRuntime;
+/// fn manager(session: &StorageRuntime<'_>) {
+///     session.operations();
+/// }
+/// ```
 pub struct StorageRuntime<'a> {
-    operations: OperationManager,
+    operations: Manager,
     cleanup: boot::Cleanup,
     receipt: BootstrapCleanup,
     assembly: PhantomData<&'a mut ()>,
@@ -127,13 +134,14 @@ impl<A: Application> Builder<A> {
         });
         self.storage_cleanup = Some(receipt.clone());
         let runtime = StorageRuntime {
-            operations: OperationManager::new(operations.clone()),
+            operations: operations.clone(),
             cleanup,
             receipt,
             assembly: PhantomData,
         };
         let opened: Result<()> = async {
-            runtime.operations.register_catalog(storage_catalog(), Lane::default()).await?;
+            let registration = crate::operations::Registration::catalog(storage_catalog(), Lane::default())?;
+            runtime.operations.register_native(registration)?;
             storage
                 .start_with(Arc::new(()), |mut worker| {
                     let task = Task::spawn(move |_| async move {
@@ -162,11 +170,7 @@ impl<A: Application> Builder<A> {
 
 impl StorageRuntime<'_> {
     pub fn for_call(&self, context: &(impl crate::facade::CallContextSource + ?Sized)) -> crate::Call {
-        crate::Call::new(self.operations.execution(), context)
-    }
-
-    pub fn operations(&self) -> &OperationManager {
-        &self.operations
+        crate::Call::new(self.operations.clone(), context)
     }
 
     /// Drain Admitted Operations and Close Both Backends Before Full Startup.
@@ -220,3 +224,47 @@ impl WorkerOwner for Worker {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+
+    use crate::operations::NativeOperation;
+    use crate::plugin::grpc::Load;
+    use crate::state::Never;
+    use crate::{Application, Lifecycle, Runtime, Setup, Startup};
+
+    struct Minimal;
+
+    impl Lifecycle for Minimal {
+        type Config = ();
+        type Error = Infallible;
+        type Context = Startup<Self>;
+
+        async fn prepare(_: (), _: &mut Setup<Self>) -> Result<Self, Infallible> {
+            Ok(Self)
+        }
+    }
+
+    impl Application for Minimal {
+        type State = ();
+        type Transaction = Never;
+        type Record = ();
+    }
+
+    #[tokio::test]
+    async fn storage_only_excludes_plugin_activation_until_full_startup() {
+        // Admit Storage Without Plugin Activation
+        let mut builder = Runtime::<Minimal>::builder(());
+        let session = builder.storage_only().await.unwrap();
+        assert!(session.operations.definition(Load::ID).is_err());
+        assert!(session.operations.definitions().iter().all(|entry| !entry.id.as_str().starts_with("plugins.")));
+
+        // Full Startup Registers the Plugin Operation
+        session.close().await.unwrap();
+        drop(session);
+        let runtime = builder.start().await.unwrap();
+        assert!(runtime.operations.definition(Load::ID).is_ok());
+        runtime.shutdown().await.unwrap();
+    }
+}

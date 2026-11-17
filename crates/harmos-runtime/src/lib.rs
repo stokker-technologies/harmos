@@ -17,6 +17,7 @@ pub mod facade;
 pub mod filesystem;
 
 mod application;
+pub mod backend;
 #[cfg(feature = "grpc")]
 pub mod grpc;
 pub mod prelude;

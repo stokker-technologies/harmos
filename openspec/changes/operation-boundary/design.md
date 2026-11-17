@@ -67,6 +67,20 @@ lockfiles resolve differing dependency revisions, and SDK lint preparation inher
 `VIRTUAL_ENV` and relies on uv ignoring the mismatched environment. Lockfile and SDK
 environment cleanup remain outside the native facade slice.
 
+The runtime ownership group's source inventory includes runtime assembly and cleanup
+(`runtime.rs`, `runtime/**`), the `backend` barrel, manager exports and accessors in
+`lib.rs`, `prelude.rs`, `operations/**`, `services/**`, `state/**`, `records/**`,
+`streams/**`, `storage/**`, `grpc/**` and `guest/**`; their Schematic, runtime-story,
+benchmark and conformance consumers; the product dependency check and its manifest
+fixtures; and the affected architecture, storage and product guides. Plugin activation
+and installed-state policy implementation stays with the plugin groups.
+
+Additional consumer findings: only storage and publication currently have capability
+facades. State/history, service control, listener configuration and guest/plugin setup
+still have manager callers, so their operation replacements must precede removal of
+those exports. The shared backend conformance kit also accepts `StorageManager`;
+its signature must migrate before enforcing the complete product dependency fence.
+
 Owner amendments override D3's generic caller example: the public calling shape is
 `runtime.for_call(&ctx).storage().append_samples(..)` and
 `.plugins().load(PluginSource::Process(..))`, dispatching native operations under
