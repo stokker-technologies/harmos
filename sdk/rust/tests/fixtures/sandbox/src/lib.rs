@@ -42,25 +42,6 @@ use std::{
 
 /* === Structs === */
 
-#[derive(harmos::Message)]
-#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateRequest")]
-struct ForbiddenCreate {
-    operation: String,
-    fingerprint: Vec<u8>,
-    payload: Vec<u8>,
-}
-
-#[derive(harmos::Message)]
-#[harmos(package = "harmos.host.v1", file = "harmos/host/v1/invocations.proto", name = "InvocationsCreateResponse")]
-struct ForbiddenResult {
-    payload: Vec<u8>,
-}
-
-impl OperationRequest for ForbiddenCreate {
-    type Response = ForbiddenResult;
-    const ID: &'static str = "harmos.host.v1.Invocations/Create";
-}
-
 #[derive(Default)]
 struct Owner {
     initialized: Mutex<Option<Context>>,
@@ -186,7 +167,7 @@ pub fn harmos_register() -> Registration {
             ctx.register(harmos::plugin::Dependency::<ProviderEchoOperation>::new())?;
             ctx.register(harmos::plugin::Dependency::<ReadOperation>::new())?;
             ctx.register(harmos::plugin::Dependency::<PublishProgress>::new())?;
-            ctx.register(harmos::plugin::Dependency::<ForbiddenCreate>::new())?;
+            ctx.register(harmos::plugin::Dependency::<ClientEchoOperation>::new())?;
             ctx.register(Stream::<Echoed>::new("progress"))?;
             Ok(())
         })
@@ -265,13 +246,7 @@ async fn progress(context: &Context, value: &str) -> Result<()> {
 }
 async fn echo(owner: &Owner, context: &Context, request: EchoOperation) -> Result<Echoed> {
     if request.say == "caller-refusal" {
-        context
-            .call(ForbiddenCreate {
-                operation: String::new(),
-                fingerprint: Vec::new(),
-                payload: Vec::new(),
-            })
-            .await?;
+        context.call(ClientEchoOperation { say: request.say.clone() }).await?;
     }
     if let Some(say) = request.say.strip_prefix("local:") {
         return context.call(LocalEcho { say: say.into() }).await;

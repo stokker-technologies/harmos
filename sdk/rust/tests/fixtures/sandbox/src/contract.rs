@@ -63,6 +63,12 @@ pub struct ProviderEchoOperation {
 }
 
 #[derive(harmos::Message, Debug, Clone, PartialEq)]
+#[harmos(package = "example.host.v1", file = "example/host/v1/client.proto")]
+pub struct ClientEchoOperation {
+    pub say: String,
+}
+
+#[derive(harmos::Message, Debug, Clone, PartialEq)]
 #[harmos(package = "harmos.sandbox.local", file = "harmos/sandbox/local.proto")]
 pub struct LocalEcho {
     pub say: String,
@@ -133,6 +139,10 @@ impl harmos::OperationRequest for EchoOperation {
 impl harmos::OperationRequest for ProviderEchoOperation {
     type Response = Echoed;
     const ID: &'static str = "provider.echo";
+}
+impl harmos::OperationRequest for ClientEchoOperation {
+    type Response = Echoed;
+    const ID: &'static str = "example.host.v1.Client/Echo";
 }
 impl harmos::OperationRequest for ReadOperation {
     type Response = Value;

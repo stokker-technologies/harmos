@@ -1414,7 +1414,11 @@ finite attempt capability. A retained generation context may call declared depen
 or publish while its generation remains active, but cannot submit or control children.
 The runtime owns loading, fuel, memory, deadlines and host authority. Consumers
 set resource-scoped `PluginSettings::grants` on declared requirements; a guest
-cannot grant itself access through its catalog. Stream-hosting
+cannot grant itself access through its catalog. Consumers also list every host-routed external requirement in
+`PluginSettings::host_operations`. Client-only product operations can be declared
+for admission, but calls from a guest still retain the product's caller refusal.
+Harmos host operations are private and cannot serve as external guest requirements.
+Stream-hosting
 consumers supply `PluginGuestSettings::stream_window`. The SDK does not depend on `harmos-operations`. Development guest workspaces optimize
 `harmos` and `harmos-protocol` at level 2 to keep descriptor validation within the
 existing fuel budget; release builds optimize these normally.

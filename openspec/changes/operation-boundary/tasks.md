@@ -185,6 +185,8 @@ Linux, combined-source validation and hosted proof remain open under task 11.
 
 - [ ] 11.1 Run `openspec validate operation-boundary --strict`, the format task and the Rust, Python, C# and C++ language checks on the combined tree, and confirm every source item above is closed; report any pending native platform or hosted proof explicitly.
 
+- [x] 11.2 Repair Nightly guest admission and caller-refusal fixtures, preserve memory-backend reader leases during session close, and update the facade compiler fixture after host export removal. Prove with focused guest-contract, maintenance-copy and facade acceptance stories, touched-package compile checks and formatting; compare the C++ formatter pin and line endings if its reported failure no longer reproduces.
+
 ## Workflow Follow-Up
 
 - Products adopt group 8's revision for storage and statistics, then the revision that landed groups 9–10 in the task that removes their use of the removed surface.
