@@ -90,9 +90,9 @@ A binding's `for_call()` retains its unit clock and cancellation fence. Scoped
 settlement shares the existing completion signal, so concurrent callers observe one
 outcome without a second lifecycle lock or registry.
 
-The registered `plugins.activate` and `plugins.inspect` policies use
-`GrpcPluginSettings.policy.load`. An already admitted facade load performs startup
-directly; it does not submit a second load with a competing deadline. Other startup
+The registered `plugins.activate`, `plugins.start_samples` and `plugins.inspect` policies use
+`GrpcPluginSettings.policy.load`. Facade activation and sample startup already own
+admission and perform the work directly, without a second competing load deadline. Other startup
 owners retain their existing load admission. Inspection uses bounded Instance.Get,
 validates frozen declarations and performs no installation or activation. Managed
 inspection retains a runtime stop participant through termination and reaping;

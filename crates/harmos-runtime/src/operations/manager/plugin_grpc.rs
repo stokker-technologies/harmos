@@ -128,7 +128,7 @@ impl Manager {
             OperationFactory::native_with_policy::<facade::Load>(self.registry.plugin_load),
             OperationFactory::native_with_policy::<facade::Inspect>(self.registry.plugin_load),
             OperationFactory::native::<facade::Bind>(),
-            OperationFactory::native::<facade::StartSamples>(),
+            OperationFactory::native_with_policy::<facade::StartSamples>(self.registry.plugin_load),
             OperationFactory::native::<facade::StopSamples>(),
             OperationFactory::native::<facade::Settle>(),
         ];

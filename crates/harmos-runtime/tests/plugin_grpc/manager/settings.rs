@@ -223,8 +223,8 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     use futures_util::stream;
     use harmos_protocol::host::plugins::SettingsListRequest;
     use harmos_protocol::plugin;
-    use harmos_protocol::plugin::instance_samples_request as request;
-    use harmos_protocol::plugin::instance_samples_response as response;
+    use harmos_protocol::plugin::instance_samples_request;
+    use harmos_protocol::plugin::instance_samples_response;
     use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
     use std::{
         sync::{
@@ -289,13 +289,13 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let completion = completion.clone();
         let fingerprint = managed_fingerprint.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             for (index, name) in [None, Some("caller"), Some("remote")].into_iter().enumerate() {
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
                         samples: vec![],
-                        frame: Some(response::Frame::Child(harmos_protocol::plugin::ChildRequest {
+                        frame: Some(instance_samples_response::Frame::Child(harmos_protocol::plugin::ChildRequest {
                             call: index as u64 + 1,
                             operation: id.into(),
                             fingerprint: fingerprint.clone(),
@@ -305,7 +305,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                     }))
                     .await
                     .unwrap();
-                let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                     panic!("Expected Child Reply");
                 };
                 results.send(reply).unwrap();
@@ -353,12 +353,12 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let fingerprint = fingerprint.clone();
         let observed = observed.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             output
                 .send(Ok(plugin::InstanceSamplesResponse {
                     samples: vec![],
-                    frame: Some(response::Frame::Child(ChildRequest {
+                    frame: Some(instance_samples_response::Frame::Child(ChildRequest {
                         call: 1,
                         operation: id.into(),
                         fingerprint,
@@ -368,7 +368,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                 }))
                 .await
                 .unwrap();
-            let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Child Reply");
             };
             let Some(Result::Failure(failure)) = reply.result else {

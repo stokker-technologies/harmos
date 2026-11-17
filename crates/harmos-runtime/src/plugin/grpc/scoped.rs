@@ -22,7 +22,7 @@ use std::{collections::BTreeSet, sync::Arc};
 use tokio::sync::{mpsc, oneshot, watch};
 
 // Local Imports
-use super::{Activation, Error, Outcome, publish::Publications};
+use super::{Activation, Error, LoadOptions, Outcome, publish::Publications};
 use crate::{
     Application, Runtime,
     clock::Clock,
@@ -63,7 +63,7 @@ pub(super) struct Generation(Arc<()>);
 
 /// A Request to Open the Scope's Sample Demand for Its Requested Streams, or to Settle It.
 enum Samples {
-    Start(BTreeSet<String>, oneshot::Sender<Result<Generation, Error>>),
+    Start(BTreeSet<String>, Option<LoadOptions>, oneshot::Sender<Result<Generation, Error>>),
     Stop(Option<Generation>, oneshot::Sender<Result<(), Error>>),
 }
 
@@ -161,10 +161,10 @@ impl<A: Application> Binding<A> {
                 },
             };
             match request {
-                Samples::Start(_, reply) if sampling.is_some() => {
+                Samples::Start(_, _, reply) if sampling.is_some() => {
                     let _ = reply.send(Err(Error::Invalid("Start Scoped Samples: demand is already open; stop it first".into())));
                 }
-                Samples::Start(requested, mut reply) => {
+                Samples::Start(requested, options, mut reply) => {
                     if let Some(undeclared) = requested.iter().find(|stream| !source.sampling.contains_key(*stream)) {
                         let _ = reply.send(Err(Error::Invalid(format!(
                             "Start Scoped Samples: the plugin declares no stream `{undeclared}`; request only streams it declares"
@@ -172,7 +172,7 @@ impl<A: Application> Binding<A> {
                         continue;
                     }
                     let _activity = host.activity("Start Scoped Samples");
-                    // Opening the Scope's Demands Is One Plugin Load, Bounded by That Operation's Deadline.
+                    // The Facade Already Admitted Startup; Direct Owners Enter the Load Operation Here.
                     let prepare = {
                         let (streams, activation, settings, operations) =
                             (streams.clone(), activation.clone(), source.settings.clone(), operations.clone());
@@ -185,7 +185,12 @@ impl<A: Application> Binding<A> {
                         () = super::disconnected(closing.clone()) => Err(Error::Invalid("Start Scoped Samples: the binding is closing; bind the scope again after close() returns".into())),
                         // A Caller That Stopped Waiting Has Withdrawn Its Start.
                         () = reply.closed() => continue,
-                        prepared = super::load::load(&source.operations, activation.owner(), super::LoadOptions::default(), prepare) => prepared,
+                        prepared = async {
+                            match options {
+                                Some(options) => super::load::load(&source.operations, activation.owner(), options, prepare).await,
+                                None => prepare.await,
+                            }
+                        } => prepared,
                     };
                     if reply.is_closed() {
                         continue;
@@ -281,12 +286,12 @@ impl ScopedBinding {
     /// `stop_samples` or `close`, and the Activation's Other Streams Stay Under Its Unscoped Demand.
     pub async fn start_samples<S: Into<String>>(&self, streams: impl IntoIterator<Item = S>) -> Result<(), Error> {
         let streams = streams.into_iter().map(Into::into).collect::<BTreeSet<_>>();
-        self.request(|reply| Samples::Start(streams, reply), "Start Scoped Samples").await.map(|_| ())
+        self.request(|reply| Samples::Start(streams, Some(LoadOptions::default()), reply), "Start Scoped Samples").await.map(|_| ())
     }
 
     pub(super) async fn start_generation(&self, streams: Vec<String>) -> Result<Generation, Error> {
         let streams = streams.into_iter().collect();
-        self.request(|reply| Samples::Start(streams, reply), "Start Scoped Samples").await
+        self.request(|reply| Samples::Start(streams, None, reply), "Start Scoped Samples").await
     }
 
     pub(super) async fn stop_generation(&self, generation: Generation) -> Result<(), Error> {
@@ -339,7 +344,7 @@ impl Drop for ScopedBinding {
 fn refuse(request: Samples) {
     let error = Error::Invalid("Scoped Samples: the binding is closing; bind the scope again after close() returns".into());
     match request {
-        Samples::Start(_, reply) => {
+        Samples::Start(_, _, reply) => {
             let _ = reply.send(Err(error));
         }
         Samples::Stop(_, reply) => {
