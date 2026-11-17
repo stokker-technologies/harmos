@@ -25,8 +25,9 @@ use std::sync::atomic::Ordering;
 // Local Imports
 use crate::storage::{Backend, RecoveryBackend, StorageManager, config, history, record, schema};
 use harmos_runtime::backend::StorageBackends;
+use harmos_runtime::catalog;
 use harmos_runtime::facade::storage::{CapabilitiesRequest, InfoRequest, MutateRequest, MutationId, MutationItem};
-use harmos_runtime::operations::CallContext;
+use harmos_runtime::operations::{CallContext, Lane, Registration};
 use harmos_runtime::runtime::{BootstrapStatus, StorageFailure};
 use harmos_runtime::state::Never;
 use harmos_runtime::{Application, Identifier, Lifecycle, Runtime, Setup, Startup, StartupError};
@@ -84,6 +85,8 @@ async fn storage_only_runtime_admits_operations() {
     .unwrap();
     let mut builder = Runtime::<Minimal>::builder(());
     builder.storage(&manager);
+    let registration = Registration::catalog(catalog::storage_catalog(), Lane::default()).unwrap();
+    builder.with_registration(registration);
     let minimal = builder.storage_only().await.unwrap();
     let call = minimal.for_call(&CallContext::default());
     let capabilities = call.storage().capabilities(CapabilitiesRequest {}).await.unwrap();
