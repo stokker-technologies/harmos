@@ -3,21 +3,21 @@
 ## Boundary and Sequence
 
 ```text
-protocol <- reduced native storage contracts <- harmos-storage
-                                               ^ operations <- runtime
-a product operations -> product-storage -> Harmos storage interface
+harmos-domain <- harmos-query <- harmos-storage <- harmos-operations <- harmos-runtime
+product operations -> Harmos typed native operations -> storage backend contract
+product SQLite backend -> Harmos backend authoring contract and conformance kit
 ```
 
-The owner permits parallel work at the landed Harmos host surfaces (see Locked Implementation Decisions). Settle the semantics below before
-implementation, implement and prove Harmos, publish a usable revision, then a product adopts it in
-its separate `storage-interface` change and extracts application persistence. Integration-only
-local overrides may support coupled work; final validation uses the published upstream pin.
-There is no storage extraction during the gRPC migration.
+The interface, memory backend and conformance kit are landed. A product supplies durable
+storage; it accesses storage only through Harmos operations, never a public manager or
+engine. `operation-boundary` owns the remaining builder/facade migration and offline
+storage drain/reopen. `plugin-boundary` owns plugin contract, SDK and registry policy;
+`plugin-lifecycle` owns verbs and hooks. No composition file or library host wire API
+is part of the final contract. Generated protocol sources remain tracked.
 
-The interface already separates query snapshots from recovery snapshots, accepted writes from
-durability, and independent backend writes from cross-method transactions. Preserve these
-distinctions, existing schema/object/record/stream/file capabilities, mutation receipts and
-replay-idempotent writes. Do not introduce product execution or cycle identifiers into Harmos.
+Final native platform/hosted proof and publication remain open. Product extraction,
+adoption, durable restart and consumer performance proof belong to the product. Local
+overrides are integration aids only; final product validation uses a published pin.
 
 ## Backend Responsibilities and Reference Backend
 
@@ -27,18 +27,12 @@ conditional update is in `objects.rs`, and planning/fallback execution in `query
 backend implementations must migrate together; unsupported capabilities return explicit
 capability errors unless a specified equivalent bounded fallback exists.
 
-The reference implementation proposed for this change is a durable SQLite backend under
-`crates/harmos-storage`, with Arrow-native batch scan support and durable indexed/projection
-tables. It implements all five capabilities, including transactional compare/exchange and
-projection-frontier persistence; settle its module/feature and dependency footprint before
-implementation. SQLite alone is not proof of native columnar scan efficiency: demonstrate the
-batch/pruning path without reconstructing every selected row payload.
-
-Extend `crates/harmos-storage/tests/support/storage.rs` for deterministic fault/ordering proof;
-it is not the durable reference. Preserve `src/state/file/` as the production reference recovery
-backend; its checksummed checkpoints/JSONL journal do not implement the new query facilities.
-The reference is generic, with no a product dependency. a product keeps its own physical backend
-behind the extended interface, preserving required resumable files, receipts and enumeration.
+Harmos retains the backend contract, process-lifetime memory backend and importable
+conformance kit in `crates/harmos-storage/src/{backend.rs,memory/,conformance.rs}`.
+SQLite and disk recovery implementations belong to a product. Memory restart stories
+prove reuse of the same backend instance, never process or disk durability. Product
+backends must prove the five extension contracts, atomic receipts and retained cuts
+with the conformance kit and their own durable restart fixtures.
 
 ## Product Consumer Ownership
 
@@ -198,32 +192,18 @@ token (or absent). A conflict consumes its admitted position with a durable outc
 or derived index. An accepted position identifies the immutable request for replay; an identical
 retry returns the same receipt even after later writers/restart, while changed bytes/expectation
 at that position conflict. Admission position allocation and durability remain distinct; no
-cross-method transaction is implied. The SQLite reference atomically writes object, revision,
+cross-method transaction is implied. A supporting backend atomically writes object, revision,
 receipt and derived index effects in one immediate transaction with full synchronous durability.
 Cancellation before admission prevents writes; after transaction admission a dropped waiter
 cannot retract the committed request and retry must use its original identity.
 
 ### 1.6 Reference Backend
 
-```toml
-[features]
-sqlite = ["dep:rusqlite"]
-# Workspace dependency; the storage package inherits this optionally.
-[workspace.dependencies]
-rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
-# Existing Arrow 60.1 IPC/array/select dependencies are reused.
-```
-
-Reason: `harmos_storage::sqlite::SqliteBackend` implements the existing backend plus all five
-extensions. SQLite holds typed durable rows, metadata, receipts, index entries, projection
-outputs and separately encoded Arrow leaf-column chunks. Scans fetch only selected/predicate/
-position columns and use chunk position bounds before decoding; they never reconstruct payload
-rows on the native path. Ingestion builds column chunks once from stored schema graphs. No
-external service, concrete connection escape or product-specific key is exposed. An explicit
-format identity/version is checked before use; incompatible data is refused with instructions
-to back up and reset deliberately, never reset automatically. SQLite in-memory mode is the
-reference mechanics fixture; the existing deterministic `tests/support/storage.rs` additionally
-exercises generic fallback and controlled cancellation. The file recovery backend stays intact.
+The former bundled SQLite feature, dependency and file-recovery backend are removed.
+Harmos supplies the contract, default memory primary/recovery adapters and backend
+conformance kit. A product implements durable SQLite and runs the kit against it.
+Unsupported acceleration still refuses explicitly or uses the specified bounded
+fallback; no backend may silently weaken atomicity, receipts or saved-cut semantics.
 
 ### 1.7 Locked Workload and Budgets
 
@@ -246,6 +226,14 @@ Native full scans, ingest, catch-up, restart/replay and contention are measured,
 these targets. Consumer finalization/report numbers and native Linux proof remain in tasks 3.x.
 No later result may loosen a budget to pass. Local concurrent-writer CPU/I/O contention must be
 disclosed with measurements; hosted Nightly remains the authoritative regression environment.
+
+## Release Readiness
+
+Release-blocking: native platform correctness, authorized hosted proof and the published
+revision/product pin in tasks 4.1–4.2. Later: the proposed performance targets and Nightly
+comparison/history automation below, plus remaining measurements in tasks 3.2 and 3.10–3.13.
+These tasks stay open; landed optimizations are not new measurements. Numerical budgets
+need owner acceptance before they can gate a release.
 
 ## Proposed Nightly Budget Scheme
 
@@ -286,8 +274,8 @@ or hosted proof is complete.
 
 ## Consumer Adoption
 
-The query-backend implementers remain the SQLite reference and deterministic storage fixture.
-Consumer adoption adds no external backend or product-specific core API.
+The library query-backend implementers are the memory reference and deterministic fixtures.
+A product supplies its durable backend through the backend contract and conformance kit.
 
 The deterministic test backend now retains an immutable `Arc<Snapshot>` per token and checks
 its exact cut; page reads no longer clone the full saved image. This preserves snapshot contents
