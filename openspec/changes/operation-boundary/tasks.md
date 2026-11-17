@@ -188,13 +188,12 @@ Linux, combined-source validation and hosted proof remain open under task 11.
 - [x] 11.2 Repair Nightly guest admission and caller-refusal fixtures, preserve memory-backend reader leases during session close, and update the facade compiler fixture after host export removal. Prove with focused guest-contract, maintenance-copy and facade acceptance stories, touched-package compile checks and formatting; compare the C++ formatter pin and line endings if its reported failure no longer reproduces.
 
 - [ ] 11.3 Repair Nightly 44039729986 after the host-wire cutover without restoring removed services or SDK roots.
-  - [x] Remove superseded host-client/service guide sections and correct the remaining plugin facility identities; documentation, repository contracts and Rust dependency checks pass. Python regeneration has no tracked drift and the three example journeys pass through product wrappers.
-  - [x] Resolve C++ fixture dependencies and imports from their source directory independently of the top-level CMake project, retain the tooling interpreter for installed consumers, and prove the SDK and installed consumer builds in the development profile.
-  - [x] Delete obsolete host-service/client guide sections, correct generator documentation and prove `ci:docs`, `check:rust` and `check:repository`.
-  - [x] Point Python example fixture servers at the reference product wrappers; regenerate through the Python SDK task and prove its drift check and focused examples.
-  - [ ] Resolve C++ fixture inputs from their source directory in both SDK and installed-consumer builds, retain the selected Python interpreter and prove the installed consumer.
-  - [ ] Grant the Schematic guest benchmark's plugin settings facility and prove one system benchmark run.
-  - [ ] Prove focused guest-contract stories, the SDK conformance journey, touched-package compilation and formatting, then run the Rust integration lane once and report its actual counts.
+  - [x] Remove superseded host-client/service guide sections and correct generator examples and plugin facility identities; prove `ci:docs`, `check:rust` and `check:repository`.
+  - [x] Resolve C++ fixture dependencies and imports from their source directory independently of the top-level CMake project, retain the tooling interpreter for installed consumers, and prove development-profile SDK and installed-consumer builds and all 24 C++ unit tests.
+  - [x] Point Python example fixture servers at the reference product wrappers; regenerate through the Python SDK task and prove its drift check, examples and all 16 Python SDK stories.
+  - [x] Correct the guest benchmark's settings grant to the plugin facility, remove its test-source path override and import rename, and prove development-profile runtime and benchmark compile checks and the single format run.
+  - [ ] Run the system benchmark once; its required bench-profile producer conflicts with the worker build prohibition and awaits the owner's decision.
+  - [ ] Prove focused guest-contract stories and the SDK conformance journey, then run the Rust integration lane once and report its actual counts.
 
 ## Workflow Follow-Up
 
