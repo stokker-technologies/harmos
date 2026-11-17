@@ -4,7 +4,8 @@
 
 A stable release and a Nightly SHALL publish the same asset layout: one protocol archive, one
 conformance archive per platform, one compliance archive, one index `release.json` and
-`SHA256SUMS`.
+`SHA256SUMS`. Stable releases SHALL include the documentation archive; Nightly SHALL
+attach its documentation archive when available and report an absent archive.
 
 #### Scenario: Asset List Matches the Layout
 
@@ -15,7 +16,9 @@ conformance archive per platform, one compliance archive, one index `release.jso
 
 Nightly SHALL attach `harmos-reports-<version>.zip` with benchmark results and coverage and SHALL
 summarize them in its release notes. A failed benchmark or coverage job SHALL NOT prevent
-publication.
+publication. Nightly publication SHALL depend only on packaging and its Product
+build prerequisite; checks, tests, documentation, dry-run, benchmarks and coverage
+SHALL report independently without gating that publication.
 
 #### Scenario: Results Are Published
 
