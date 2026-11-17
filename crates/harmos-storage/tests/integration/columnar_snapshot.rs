@@ -15,8 +15,11 @@
 
 // Standard Library Imports
 use std::{
+    future::{Future, poll_fn},
     num::{NonZeroU32, NonZeroUsize},
     sync::{Arc, atomic::Ordering},
+    task::Poll,
+    time::{Duration, UNIX_EPOCH},
 };
 
 // Third Party Imports
@@ -24,6 +27,9 @@ use arrow_array::{Float64Array, UInt64Array};
 
 // Local Imports
 use crate::manager::backend;
+use crate::manager::fixture::{self, Fixture};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::graph;
 use harmos_domain::{Message, schema::Described};
 use harmos_query::columnar::ArrowScan;
 use harmos_query::columnar::Cancellation;
@@ -31,6 +37,7 @@ use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnPredicate;
 use harmos_query::columnar::ColumnSource;
 use harmos_query::columnar::TimeBounds;
+use harmos_query::{arrow::ArrowBatch, source};
 use harmos_storage::query::columnar::list_column_rows;
 use harmos_storage::*;
 
@@ -79,9 +86,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
         version: NonZeroU32::MIN,
         payload_encoding: PayloadEncoding::PostcardV1,
     };
-    let graph =
-        harmos_domain::schema::graph::Schema::from_declaration(Sample::DEFINITION, &harmos_domain::config::SchemaSettings::default())
-            .unwrap();
+    let graph = graph::Schema::from_declaration(Sample::DEFINITION, &SchemaSettings::default()).unwrap();
     let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
     primary.append_schemas(StorageBatch::new(vec![schema.clone()]).into()).await.unwrap();
     fallback.append_schemas(StorageBatch::new(vec![schema]).into()).await.unwrap();
@@ -190,4 +195,141 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
     primary.delete_session().await.unwrap();
     fallback.delete_snapshot(&saved_fallback).await.unwrap();
     fallback.delete_session().await.unwrap();
+}
+
+fn sample_columns(schema: &StorageSchema, scope: &Identifier, count: usize) -> writes::DecodedBatch {
+    let stream = Identifier::new("columnar.samples").unwrap();
+    let rows = (0..count)
+        .map(|index| StoredRow {
+            record: StoredRecord {
+                position: schema.position.clone(),
+                schema: schema.key.clone(),
+                scope: Some(scope.clone()),
+                item: Identifier::new("execution").unwrap(),
+                source: Some(Identifier::new("device").unwrap()),
+                source_time: Some(UNIX_EPOCH + Duration::from_nanos(index as u64)),
+                payload: Sample {
+                    time_ns: index as i64,
+                    value: index as f64,
+                    unused: vec![],
+                }
+                .encode(),
+            },
+            stream: stream.clone(),
+            sequence: index as u64 + 1,
+        })
+        .collect::<Vec<_>>();
+    writes::DecodedBatch {
+        schema: schema.key.clone(),
+        destination: stream,
+        data: ArrowBatch::try_new(source::stream(schema, &rows).unwrap()).unwrap(),
+    }
+}
+
+async fn columnar_fixture(settings: StorageSettings) -> (Fixture, StorageSchema) {
+    let fixture = Fixture::new(settings).await;
+    let key = SchemaKey {
+        id: Identifier::new("sample.columns").unwrap(),
+        version: NonZeroU32::MIN,
+        payload_encoding: PayloadEncoding::PostcardV1,
+    };
+    let graph = graph::Schema::from_declaration(Sample::DEFINITION, &SchemaSettings::default()).unwrap();
+    fixture.storage.write_schema(key.clone(), graph).await.unwrap();
+    fixture.storage.flush().await.unwrap();
+    let schema = fixture.storage.lookup_schema(&key).await.unwrap();
+    (fixture, schema)
+}
+
+#[tokio::test]
+async fn columnar_append_conformance_and_reopened_receipt() {
+    let (fixture, schema) = columnar_fixture(backend::storage_settings()).await;
+    let scope = Identifier::new("execution.columns").unwrap();
+    let batch = sample_columns(&schema, &scope, 100);
+    let (mutation, accepted) = conformance::columnar_appends(&fixture.storage, &scope, &batch).await.unwrap();
+    let reopened = fixture.storage.new_session().unwrap();
+    fixture.finish().await;
+    fixture::start(&reopened).await;
+    conformance::columnar_reopened(&reopened, &scope, &batch, &mutation, &accepted).await.unwrap();
+    reopened.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn columnar_append_acceptance_waits_for_atomic_durability_and_bounds_batches() {
+    let mut settings = backend::storage_settings();
+    settings.request.max_pending_write_batches = NonZeroUsize::MIN;
+    let (fixture, schema) = columnar_fixture(settings).await;
+    let scope = Identifier::new("execution.columns").unwrap();
+    let batch = sample_columns(&schema, &scope, 100);
+    fixture.data.control.block_flush.store(true, Ordering::SeqCst);
+    let (mutation, accepted) = conformance::columnar_pending(&fixture.storage, &scope, &batch).await.unwrap();
+    let flushing = tokio::spawn({
+        let storage = fixture.storage.clone();
+        async move { storage.flush().await }
+    });
+    fixture.data.control.flush_entered.notified().await;
+    assert!(!fixture.storage.mutation_durable(&mutation, &accepted).unwrap());
+    assert_eq!(fixture.storage.append_sample_batch(&mutation, Some(&scope), &batch).await.unwrap(), accepted);
+    assert!(fixture.data.rows.lock().unwrap().is_empty());
+    let second = MutationId {
+        key: Identifier::new("second").unwrap(),
+        ..mutation.clone()
+    };
+    let mut waiting = Box::pin(fixture.storage.append_sample_batch(&second, Some(&scope), &batch));
+    assert!(poll_fn(|context| Poll::Ready(waiting.as_mut().poll(context))).await.is_pending());
+    assert_eq!(fixture.storage.status().pending_batches, 1);
+    assert!(fixture.storage.status().pending_bytes <= fixture.storage.settings().request.max_pending_write_bytes.get());
+    fixture.data.control.block_flush.store(false, Ordering::SeqCst);
+    fixture.data.control.flush_release.notify_one();
+    flushing.await.unwrap().unwrap();
+    let second = waiting.await.unwrap();
+    assert_eq!(second.sequence, accepted.sequence + 100);
+    fixture.storage.flush().await.unwrap();
+    assert!(fixture.storage.mutation_durable(&mutation, &accepted).unwrap());
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn columnar_append_refuses_oversized_retention_and_conflicting_metadata() {
+    let mut settings = backend::storage_settings();
+    settings.request.max_pending_write_bytes = nz(64 * 1024);
+    let (fixture, schema) = columnar_fixture(settings).await;
+    let scope = Identifier::new("execution.columns").unwrap();
+    let oversized = sample_columns(&schema, &scope, 10_000);
+    conformance::columnar_admission_bounds(&fixture.storage, &scope, &oversized).await.unwrap();
+    let batch = sample_columns(&schema, &scope, 2);
+    let mutation = MutationId {
+        window: fixture.storage.mutation_window().unwrap().id,
+        key: Identifier::new("refused").unwrap(),
+    };
+    let foreign = Identifier::new("foreign").unwrap();
+    assert!(fixture.storage.append_sample_batch(&mutation, Some(&foreign), &batch).await.is_err());
+    let mut changed = batch.clone();
+    changed.destination = foreign;
+    assert!(fixture.storage.append_sample_batch(&mutation, Some(&scope), &changed).await.is_err());
+    let accepted = fixture.storage.append_sample_batch(&mutation, Some(&scope), &batch).await.unwrap();
+    assert_eq!(accepted.sequence, schema.position.sequence + 2);
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn columnar_append_replays_after_lost_durable_acknowledgement() {
+    let (fixture, schema) = columnar_fixture(backend::storage_settings()).await;
+    let scope = Identifier::new("execution.columns").unwrap();
+    let batch = sample_columns(&schema, &scope, 100);
+    let mutation = MutationId {
+        window: fixture.storage.mutation_window().unwrap().id,
+        key: Identifier::new("lost.acknowledgement").unwrap(),
+    };
+    fixture.data.control.flush_failures.store(1, Ordering::SeqCst);
+    let accepted = fixture.storage.append_sample_batch(&mutation, Some(&scope), &batch).await.unwrap();
+    assert!(fixture.storage.flush().await.is_err());
+    assert_eq!(fixture.data.rows.lock().unwrap().len(), 100);
+    assert!(!fixture.storage.mutation_durable(&mutation, &accepted).unwrap());
+    fixture.storage.retry_transient_persistence();
+    assert_eq!(fixture.storage.append_sample_batch(&mutation, Some(&scope), &batch).await.unwrap(), accepted);
+    fixture.storage.flush().await.unwrap();
+    fixture.storage.wait_mutation_durable(&mutation, &accepted).await.unwrap();
+    assert_eq!(fixture.data.rows.lock().unwrap().len(), 100);
+    assert_eq!(fixture.data.control.write_sizes.lock().unwrap().last(), Some(&1));
+    fixture.finish().await;
 }

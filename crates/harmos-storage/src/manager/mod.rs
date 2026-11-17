@@ -206,6 +206,7 @@ pub(super) enum Operation {
     Records(StorageBatch<StoredRecord>),
     ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
     Stream(StorageBatch<StoredRow>),
+    SampleColumns(Arc<crate::writes::SampleAppend>),
     Recovery(StorageBatch<RecoveryEntry>),
     Snapshot(StorageBatch<RecoverySnapshot>),
 }

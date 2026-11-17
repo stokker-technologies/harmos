@@ -43,7 +43,9 @@ def run(directory: Path, selected: str | None) -> int:
     output = directory / "target/benchmarks/storage"
     output.mkdir(parents=True, exist_ok=True)
     target = (
-        "integration-time-merge"
+        "integration-columnar-append"
+        if selected == "columnar_append"
+        else "integration-time-merge"
         if selected == "time_merge"
         else "integration-query"
         if selected == "query"

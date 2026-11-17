@@ -88,6 +88,18 @@ including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries an
 bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their
 task group closes. Floating-point population RMS/standard deviation are accepted.
 
+`AppendSamples` admits one immutable Arrow batch through
+`StorageBackend::append_sample_columns(&writes::SampleAppend)`. Admission validates
+columns, reserves contiguous positions in Arrow row order, and fingerprints the
+whole IPC unit; it never constructs sample row payloads. Providers advertise
+`columnar_append` and atomically commit the complete batch and mutation receipt.
+An accepted position alone is insufficient for acknowledgement: the native receipt
+has `completed=true` and `durable_at` only after that commit. Identical replay
+preserves the original accepted frontier, including after backend reopen.
+The memory reference retains Arrow batches and materializes row payloads on reads;
+its durability lasts only as long as its backend instance. Existing typed row
+callers retain their row API; Arrow ingestion has no row-conversion fallback.
+
 ### Inventory Before the Split
 
 This is the required pre-move inventory. Every path is relative to `crates/harmos-storage/src/`.

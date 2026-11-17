@@ -99,7 +99,7 @@ impl Backend {
                 .map(|(sequence, record)| (*sequence, record.clone()))
                 .collect();
             *target.records.lock().unwrap() = records;
-            *target.rows.lock().unwrap() = image.rows.range(..=through).map(|(key, value)| (*key, value.clone())).collect();
+            *target.rows.lock().unwrap() = image.rows.range(..=through)?.map(|(key, value)| (*key, value.clone())).collect();
             *target.projections.lock().unwrap() = image.projections.clone();
             *target.indexes.lock().unwrap() = image.indexes.clone();
             *target_receipts = image

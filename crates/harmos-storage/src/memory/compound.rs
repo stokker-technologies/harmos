@@ -154,7 +154,7 @@ impl Backend {
                             && !identities.contains(&(object.value.schema.id.clone(), object.value.item.clone()))
                     });
                     records.delete_scope(scope);
-                    self.rows.lock().unwrap().retain(|_, row| row.record.scope.as_ref() != Some(scope));
+                    self.rows.lock().unwrap().retain(|_, row| row.record.scope.as_ref() != Some(scope))?;
                     self.files.lock().unwrap().retain(|_, file| file.metadata.scope.as_ref() != Some(scope));
                     self.blobs.lock().unwrap().retain(|_, (file, _)| file.metadata.scope.as_ref() != Some(scope));
                     self.saved_productions.lock().unwrap().retain(|_, (checkpoint, _)| checkpoint.metadata.scope.as_ref() != Some(scope));

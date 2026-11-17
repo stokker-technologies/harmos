@@ -270,7 +270,7 @@ impl Backend {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
             scan(
-                image.rows.values(),
+                image.rows.values()?,
                 snapshot,
                 page,
                 |row| &row.record.position,

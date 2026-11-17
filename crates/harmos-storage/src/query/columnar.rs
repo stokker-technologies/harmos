@@ -40,6 +40,7 @@ pub struct StorageCapabilities {
     pub file_deletion: bool,
     pub mutation_receipts: bool,
     pub native_arrow: bool,
+    pub columnar_append: bool,
     pub native_index: bool,
     pub durable_projections: bool,
     pub conditional_objects: bool,

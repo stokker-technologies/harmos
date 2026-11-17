@@ -177,6 +177,11 @@ name = "integration-query"
 path = "benches/query/main.rs"
 harness = false
 
+[[bench]]
+name = "integration-columnar-append"
+path = "benches/columnar_append/main.rs"
+harness = false
+
 # === Example Targets === #
 
 # === Workspace Lints === #
