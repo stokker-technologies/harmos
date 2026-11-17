@@ -28,11 +28,11 @@
 
 - [x] 2.11 Borrow raw managed-journal JSON payloads for transaction decoding and skip unknown record payload trees, preserving snapshot decoding and recognized Prepared payloads; verify recovery behavior without claiming a universal budget for consumer-owned application state.
 
-- [x] 2.12 Add unique consuming ReadBatch projection with preallocation peak admission, retained claims, typed conversion errors and fail-fast saturation behavior; verify ownership, alias, failure and concurrent-admission invariants and hand the usable interface to Dokime.
+- [x] 2.12 Add unique consuming ReadBatch projection with preallocation peak admission, retained claims, typed conversion errors and fail-fast saturation behavior; verify ownership, alias, failure and concurrent-admission invariants and hand the usable interface to product.
 
 - [x] 2.14 Provide caller-scoped admission for composed typed readers, object point reads and bounded projected-page collections; preserve the shared dependency group across retries, refuse unavailable grouped query slots without self-wait, and prove saturation and retained allocation lifetimes.
 
-- [x] 2.13 Review remaining coordinated Dokime constraints for backend write workspace, opened-file identity, transport framing allowances and Value conversion; distinguish existing facilities from new contracts, agree any required changes and preserve consumer safeguards until replacements are verified.
+- [x] 2.13 Review remaining coordinated a product constraints for backend write workspace, opened-file identity, transport framing allowances and Value conversion; distinguish existing facilities from new contracts, agree any required changes and preserve consumer safeguards until replacements are verified.
 
 - [x] 2.15 Add consuming two-input ReadBatch projection for owned composed results; admit caller scratch and internal guard-vector growth before allocation, preserve every input claim, reject aliases and overflow, and prove sequential folds and failure lifetimes.
 
@@ -77,7 +77,7 @@
 - [x] 4.1 Review all writer handoffs and combined migration inventory; complete targeted checks and close every implementation item before declaring source complete.
 - [x] 4.2 Run one final combined measurement after source closure: rerun identical comparison workloads and new filesystem workloads, execute the untimed real sidecar/guest Hash bridge correctness checks, compare latency/throughput/memory with native baseline results and repair regressions; label new workloads without baselines and report achieved and missed targets truthfully.
 - [x] 4.3 Present complete candidate and request remote delivery authorization unless subsequently granted.
-- [x] 4.5 Once the complete implementation is verified better than or comparable to its existing benchmark baselines, message the Dokime storage optimization chat to adopt the new Harmos code and run its own benchmarks; identify the actual available revision/worktree and measurement evidence without implying unpublished code is released.
+- [x] 4.5 Once the complete implementation is verified better than or comparable to its existing benchmark baselines, message the product storage optimization chat to adopt the new Harmos code and run its own benchmarks; identify the actual available revision/worktree and measurement evidence without implying unpublished code is released.
 - [ ] 4.4 After authorized push, verify remote revision, start required all-platform local CI simulation alongside hosted checks, enable ready review auto-merge and report actual proof; no monitoring.
 
 ## Workflow Follow-Up

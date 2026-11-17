@@ -14,7 +14,7 @@ Every runtime, handler, template and observer SHALL expose `operation(request)` 
 
 ### Requirement: Clean API Retirement
 
-Request-taking call, builder run, template host, Invocation id and the routing enum SHALL be removed without aliases. SDK Host and Dokime StepHost SHALL become OperationHost and StepOperationHost.
+Request-taking call, builder run, template host, Invocation id and the routing enum SHALL be removed without aliases. SDK Host and a product StepHost SHALL become OperationHost and StepOperationHost.
 
 #### Scenario: Migrated Consumer
 - **WHEN** a consumer uses the unified invocation

@@ -1,7 +1,7 @@
 # gRPC Plugins
 
 Status: partially implemented; `design.md` records landed boundaries, remaining waves and decisions awaiting confirmation.
-Replaces `plugin-grpc-protocol`. The Dokime change `grpc-plugins` is the product side.
+Replaces `plugin-grpc-protocol`. The product change `grpc-plugins` is the product side.
 
 ## Why
 
@@ -33,7 +33,7 @@ nothing about tests or any product concept.
 - `sdk/rust` is the `harmos` product crate, exposing plugin authoring and the client without
   host code. Host embedders use runtime; proto owns contracts and operations own their handlers.
 - Client-facing gRPC declarations accept generated protobuf messages and descriptors directly,
-  enabling Dokime's adoption without service adapters or a duplicate conversion layer.
+  enabling a product's adoption without service adapters or a duplicate conversion layer.
 
 ## Locked Decisions
 
@@ -65,7 +65,7 @@ nothing about tests or any product concept.
   change): `sdk/rust` becomes `harmos`; surviving host engine code moves from
   `crates/harmos-sdk` to host owners. `harmos-sdk-go` is removed; Go follows the pilot.
 - Domain retains only non-wire native state/recovery and storage foundations. Storage interface
-  extensions and Dokime extraction follow the last gRPC wave in separate `storage-interface`
+  extensions and a product extraction follow the last gRPC wave in separate `storage-interface`
   changes with before/after multi-day benchmarks.
 - `operation-visibility` stays its own change and ships in the same revision; this change then
   removes its `Host` level.

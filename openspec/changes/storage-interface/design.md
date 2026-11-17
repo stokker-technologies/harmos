@@ -5,11 +5,11 @@
 ```text
 protocol <- reduced native storage contracts <- harmos-storage
                                                ^ operations <- runtime
-Dokime operations -> dokime-storage -> Harmos storage interface
+a product operations -> product-storage -> Harmos storage interface
 ```
 
 The owner permits parallel work at the landed Harmos host surfaces (see Locked Implementation Decisions). Settle the semantics below before
-implementation, implement and prove Harmos, publish a usable revision, then Dokime adopts it in
+implementation, implement and prove Harmos, publish a usable revision, then a product adopts it in
 its separate `storage-interface` change and extracts application persistence. Integration-only
 local overrides may support coupled work; final validation uses the published upstream pin.
 There is no storage extraction during the gRPC migration.
@@ -37,12 +37,12 @@ batch/pruning path without reconstructing every selected row payload.
 Extend `crates/harmos-storage/tests/support/storage.rs` for deterministic fault/ordering proof;
 it is not the durable reference. Preserve `src/state/file/` as the production reference recovery
 backend; its checksummed checkpoints/JSONL journal do not implement the new query facilities.
-The reference is generic, with no Dokime dependency. Dokime keeps its own physical backend
+The reference is generic, with no a product dependency. a product keeps its own physical backend
 behind the extended interface, preserving required resumable files, receipts and enumeration.
 
-## Dokime Consumer Ownership
+## Product Consumer Ownership
 
-Dokime's separate change merges both runtime storage folders into `dokime-storage` and removes
+a product's separate change merges both runtime storage folders into `product-storage` and removes
 concrete SQLite `State` escapes. Break writer-to-preview/query/runtime edges first: storage
 owns persisted preview/index shapes, captured schemas, codecs and storage query inputs;
 operations own host validation, parameter expansion and expression evaluation. Runtime owns
@@ -64,7 +64,7 @@ replacement. Include snapshot reads during index/projection advancement and old-
 Run native Windows and Linux proof during implementation, not during specification authoring.
 
 Capture before/after measurements on the same hardware, revision pair, dataset, query plans,
-page sizes and durability settings. Compare existing Harmos storage suites and Dokime
+page sizes and durability settings. Compare existing Harmos storage suites and a product
 `benches/storage/{query,contention,ingestion}.rs`, `benches/integration/{telemetry,plots,documents}.rs`
 and `benches/integration/finalization.rs` where applicable; adapt surviving ingest benchmarks
 to the gRPC host path. Existing finalization cases cover only 1/4-hour executions and do not
@@ -77,7 +77,7 @@ cost, cancellation/stop latency and product finalization/report time. Separate w
 selective/indexed reads and contention. Verify result parity outside timing and keep raw
 benchmark artifacts with reproducible commands and workload metadata. Settle numerical
 regression budgets before accepting measurements; do not infer performance from source size.
-Harmos proves the generic facilities before Dokime extraction; Dokime compares its own
+Harmos proves the generic facilities before a product extraction; a product compares its own
 before/after extraction with identical multi-day inputs and records unresolved regressions.
 
 ## Locked Implementation Decisions

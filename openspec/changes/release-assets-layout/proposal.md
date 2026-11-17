@@ -2,7 +2,7 @@
 
 ## Why
 
-Dokime adopts one bundled asset layout for stable releases and Nightly. The two projects keep their
+a product adopts one bundled asset layout for stable releases and Nightly. The two projects keep their
 tooling duplicated but harmonized, so Harmos uses the same shape. Harmos's own release changes
 anyway: `cargo-harmos`, today its only archives, is removed by `facility-trim`, and `grpc-plugins`
 adds protocol definitions and language SDKs.
@@ -32,7 +32,7 @@ benchmarks.json                     Nightly only: latest benchmark results, fixe
 Nightly is the release run with `channel=nightly`: no version tag, no registry publication, and
 benchmarks and coverage added. The validation jobs of CI and the publish and verify jobs of
 Release are reusable workflows that Nightly calls; it adds only freshness, benchmarks, coverage
-and the report. Dokime and Harmos keep the same Nightly: triggers and timezone, a run that never
+and the report. a product and Harmos keep the same Nightly: triggers and timezone, a run that never
 cancels, one freshness contract (tag comparison, duplicate revision detection, lookup errors fail
 closed), stage and job names, one named artifact interface, one publish entry point, digest
 verification, and an idempotent result report guarded by the publication identity. Products,

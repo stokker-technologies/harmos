@@ -10,4 +10,4 @@ Use stream movement to rearm operation timeout, retain total deadlines for unary
 
 ## Impact
 
-Harmos SDK stream endpoints, runtime execution and gRPC ingress; Dokime adopts the merged revision in ../dokime.wt/idle-deadlines. Harmos delivers first.
+Harmos SDK stream endpoints, runtime execution and gRPC ingress; a product adopts the merged revision in ../product.wt/idle-deadlines. Harmos delivers first.

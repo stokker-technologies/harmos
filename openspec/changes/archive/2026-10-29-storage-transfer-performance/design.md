@@ -2,7 +2,7 @@
 
 ## Agreed Direction
 
-Payload handoffs consume ownership. Inspection borrows. Retry, replay and Arrow aliases share immutable allocations. The locked prototype-streamline task 1.17 in dokime-storage-facilities supersedes storage allocation claims and read-session admission; configured serialized queue/page bounds and query concurrency remain. Encoding may construct a required representation; intermediate copies require concrete justification. Preserve wire formats, data integrity, durability, ordering, cancellation, mutation identities and bounded admission. The user explicitly chose independent typed backend writes over cross-type atomic transactions.
+Payload handoffs consume ownership. Inspection borrows. Retry, replay and Arrow aliases share immutable allocations. The locked prototype-streamline task 1.17 in product-storage-facilities supersedes storage allocation claims and read-session admission; configured serialized queue/page bounds and query concurrency remain. Encoding may construct a required representation; intermediate copies require concrete justification. Preserve wire formats, data integrity, durability, ordering, cancellation, mutation identities and bounded admission. The user explicitly chose independent typed backend writes over cross-type atomic transactions.
 
 ## Typed Backend And Shipped JSON
 

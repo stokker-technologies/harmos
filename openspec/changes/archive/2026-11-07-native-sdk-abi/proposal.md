@@ -22,7 +22,7 @@ languages translate thinly over one Rust core. Assess a real C++20 sidecar first
 ## Impact
 
 Domain schema, SDK wire table, sidecar kit, FFI, C++ SDK, focused tasks and docs.
-No wire changes, gRPC work, Go or Dokime edits. The owner authorizes integration
+No wire changes, gRPC work, Go or a product edits. The owner authorizes integration
 of the prototype into dev through one immediately squash-merged PR after focused
 native build/demo proof and a CLEAN delivery scan. The earlier gRPC-based C++
 proposal is superseded by this C ABI prototype; its broader features are not

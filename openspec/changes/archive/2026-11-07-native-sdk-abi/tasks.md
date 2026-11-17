@@ -26,6 +26,6 @@
 
 ## Workflow Follow-Up
 
-- Dokime's Python SDK adopting the shared core is separate follow-up work.
+- a product's Python SDK adopting the shared core is separate follow-up work.
 - The owner authorizes immediate squash delivery to dev after a CLEAN scan. No full lanes, lint tasks or simulations; hosted CI owns broader proof.
 - Future API review: nanoarrow construction verbosity and ctx.operation reaching only this plugin's registered operations. No API redesign in this delivery.

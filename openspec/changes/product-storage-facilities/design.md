@@ -6,7 +6,7 @@ The paired consumer owns its adoption and published dependency pin. No local ove
 
 ## Consumer Evidence
 
-Dokime's native output capture retains opened handles and resumable producers; a path-only CaptureFile loses original-object identity and exact retry state. Accepted append calls can outlive their initiating caller, so retained data must belong to actual accepted work.
+a product's native output capture retains opened handles and resumable producers; a path-only CaptureFile loses original-object identity and exact retry state. Accepted append calls can outlive their initiating caller, so retained data must belong to actual accepted work.
 
 ## Design Constraints
 
@@ -18,7 +18,7 @@ Opened native file handles are process-local capabilities, not serialized path s
 
 Opened-file reads preserve independent caller cursors and the original filesystem object. On Windows, `FileExt::seek_read` changes the file cursor shared by duplicated handles, so native readers use `ReOpenFile` to create an independent same-object read handle. This requires the supplied handle to allow a subsequent read open; exclusive handles such as `tempfile::tempfile()` are rejected with an explicit invalid-input error. The independent reader requests read access and permits read, write and delete sharing so delete-on-close sources remain compatible. It never resolves or reopens a source path.
 
-The native `FrozenFile` backing retains its private named temporary until its readers, captures and blocking workers release it. Do not unlink it before a Windows independent reopen: corporate filesystem filters can deny reopening deleted-while-open temporaries. Native coverage retains named source owners and verifies independent cloned cursors, snapshot reads/capture after source removal and refusal of an exclusive tempfile handle. Dokime temporary producers must likewise keep named or shareable delete-on-close owners rather than calling `NamedTempFile::into_file()` before native reads. Local filesystem failures include the failing step and local path, preserve the native error source, and use a diagnostic handle-path lookup without reopening by that path. Dokime's opened/frozen consumers that use anonymous tempfiles are `runtime/storage/{artifacts,native_outputs}.rs` and `server/grpc/bundle.rs`; the ZIP and JSON bundle tempfiles are read through the opened-file API, and the empty output snapshot is frozen there.
+The native `FrozenFile` backing retains its private named temporary until its readers, captures and blocking workers release it. Do not unlink it before a Windows independent reopen: corporate filesystem filters can deny reopening deleted-while-open temporaries. Native coverage retains named source owners and verifies independent cloned cursors, snapshot reads/capture after source removal and refusal of an exclusive tempfile handle. a product temporary producers must likewise keep named or shareable delete-on-close owners rather than calling `NamedTempFile::into_file()` before native reads. Local filesystem failures include the failing step and local path, preserve the native error source, and use a diagnostic handle-path lookup without reopening by that path. a product's opened/frozen consumers that use anonymous tempfiles are `runtime/storage/{artifacts,native_outputs}.rs` and `server/grpc/bundle.rs`; the ZIP and JSON bundle tempfiles are read through the opened-file API, and the empty output snapshot is frozen there.
 
 Backend workers retain their actual input/output owners through blocking work. Request ownership follows accepted request retention, including cancellation after acceptance; consumer scratch budgets remain consumer-owned.
 
@@ -28,7 +28,7 @@ Batch writes use shared StorageBatch ownership without a scratch-admission carri
 
 ## Integration and Validation
 
-The Dokime manifest keeps its published dependency while an untracked local Cargo patch selects all required Harmos packages from this worktree. Verify the resolved graph before consumer checks. Do not commit the override or local-path lockfile resolution. Publish/pin/remove-override remains a separate future authorized delivery step.
+The product manifest keeps its published dependency while an untracked local Cargo patch selects all required Harmos packages from this worktree. Verify the resolved graph before consumer checks. Do not commit the override or local-path lockfile resolution. Publish/pin/remove-override remains a separate future authorized delivery step.
 
 Use project-task compiler preflight. The read-path follow-up authorizes focused executed tests and timing diagnostics without timing assertions. Other consumer integration and final validation tasks remain open. Full agreed source, including consumer removal, must be ready before the prototype build. File polling is allowed under the shared Harmos filesystem policy.
 
@@ -46,11 +46,11 @@ or JSON-only fixtures to complete earlier measurement tasks.
 
 ## Publication Decision
 
-Retain existing Harmos delivery rings and authored per-stream window sizes, as the user explicitly selected. Typed publication remains infallible. Reverse the abandoned central stream-policy and window-removal changes while preserving unrelated native storage work. Dokime live plots remain storage-authoritative; saved-frontier notifications serve those observers without replacing the pre-storage payload queue or SDK listener delivery.
+Retain existing Harmos delivery rings and authored per-stream window sizes, as the user explicitly selected. Typed publication remains infallible. Reverse the abandoned central stream-policy and window-removal changes while preserving unrelated native storage work. a product live plots remain storage-authoritative; saved-frontier notifications serve those observers without replacing the pre-storage payload queue or SDK listener delivery.
 
 ## Immutable Mutable-Source Snapshots
 
-Freeze an opened source into a private native-owned temporary file before backend creation or capture waits. The immutable FrozenFile exposes length and SHA-256 but no writable handle; its owner survives backend retries even if the original producer changes. StorageManager::freeze_opened_file reuses bounded opened-file reads and verifies source stability. StorageManager::capture_frozen_file retains that owner inside existing OpenedCapture. Partial freezes may be discarded on cancellation, with in-flight blocking IO retaining its actual file and batch owners until completion. Disk errors propagate; no replacement arbitrary total-size ceiling is introduced. Dokime retains digest-based deduplication and removes its duplicate copy/hash loop.
+Freeze an opened source into a private native-owned temporary file before backend creation or capture waits. The immutable FrozenFile exposes length and SHA-256 but no writable handle; its owner survives backend retries even if the original producer changes. StorageManager::freeze_opened_file reuses bounded opened-file reads and verifies source stability. StorageManager::capture_frozen_file retains that owner inside existing OpenedCapture. Partial freezes may be discarded on cancellation, with in-flight blocking IO retaining its actual file and batch owners until completion. Disk errors propagate; no replacement arbitrary total-size ceiling is introduced. a product retains digest-based deduplication and removes its duplicate copy/hash loop.
 
 ## Current Source Inventory
 

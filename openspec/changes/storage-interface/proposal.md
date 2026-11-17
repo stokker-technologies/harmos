@@ -19,13 +19,13 @@ Applications need these generic facilities without exposing concrete backend API
 
 ## Scope and Order
 
-Design and implement the generic Harmos interfaces first. Dokime consumes the published Harmos
-revision in its own change named `storage-interface`, then extracts `dokime-storage` from
-`crates/dokime-runtime/src/storage/` and `src/runtime/storage/`. Its persisted shapes live there;
-no Dokime domain crate or reverse dependency on runtime is introduced.
+Design and implement the generic Harmos interfaces first. a product consumes the published Harmos
+revision in its own change named `storage-interface`, then extracts `product-storage` from
+`crates/product-runtime/src/storage/` and `src/runtime/storage/`. Its persisted shapes live there;
+no a product domain crate or reverse dependency on runtime is introduced.
 
 Execution/step-range statistics, history filters and tokens, finalization/seals, report capture,
-artifact inventory and fresh-root refusal remain Dokime behaviour. Logs, support bundles,
+artifact inventory and fresh-root refusal remain a product behaviour. Logs, support bundles,
 exports/report spools, plugin installation, desktop root lease/backup, client pairing/download
 files, command-line and build tooling remain with their owners. This change adds no general
 all-disk ownership API, storage migration policy or cross-method transaction assumption.

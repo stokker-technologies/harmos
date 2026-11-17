@@ -46,5 +46,5 @@ A durable reference backend SHALL implement all five extensions. Every backend S
 The extensions SHALL follow the owner-authorized combined delivery sequence: the landed Harmos host surfaces precede storage implementation, which may run beside guest migration; consumer extraction follows its last gRPC wave in its own storage-interface change. Both changes SHALL supply reproducible before/after benchmarks including multi-day data, restart and late samples against agreed regression budgets.
 
 #### Scenario: Consumer Extraction
-- **WHEN** Dokime adopts the published extension revision and extracts application persistence
+- **WHEN** a product adopts the published extension revision and extracts application persistence
 - **THEN** it retains product semantics and named non-persistence owners and compares identical multi-day workloads before and after

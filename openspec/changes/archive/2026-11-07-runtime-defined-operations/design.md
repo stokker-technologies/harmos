@@ -1,7 +1,7 @@
 # Design
 
-The owner approved this additive extension on 2026-11-07. Dokime's evidence is in
-`openspec/changes/dokime-python/design.md`, Authoring Integration. This worktree
+The owner approved this additive extension on 2026-11-07. a product's evidence is in
+`openspec/changes/product-python/design.md`, Authoring Integration. This worktree
 is `harmos.wt/runtime-bindings`, branch `feat/runtime-defined-operations`, based
 on fresh `origin/dev`; the primary checkout's unrelated lockfile is untouched.
 
@@ -18,7 +18,7 @@ admitted plugin scope and resource snapshot.
 
 Validation is focused tests, `check:rust` and lint as explicitly requested; no
 full simulation. Publication is one immediately squash-merged PR into Harmos dev.
-Only Dokime's feature branch adopts the published revision. The paired worktree
+Only a product's feature branch adopts the published revision. The paired worktree
 is cleaned and retired after adoption, as explicitly authorized.
 
 `Contract::from_schema` computes the owned graph's fingerprint in Harmos, avoiding

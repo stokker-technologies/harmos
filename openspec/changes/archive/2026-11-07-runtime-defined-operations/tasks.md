@@ -13,4 +13,4 @@
 
 ## Workflow Follow-Up
 
-- Publish one PR to Harmos dev and squash immediately; adopt its published revision only in Dokime feat/dokime-python, then clean and retire this worktree and branch.
+- Publish one PR to Harmos dev and squash immediately; adopt its published revision only in a product feat/product-python, then clean and retire this worktree and branch.

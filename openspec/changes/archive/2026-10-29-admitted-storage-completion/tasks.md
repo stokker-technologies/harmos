@@ -9,7 +9,7 @@
 - [x] 1.7 Repair release-profile authoring library selection in tools/python/src/harmos_tools/build/fixtures.py using emitted Cargo profile provenance and the authoritative shipping Harmos profile; preserve widest-feature selection and genuine ambiguity refusal, and prove actual native Cargo profile/ABI selection without adding a Python test framework; retain full release-Product validation as a publication prerequisite.
 - [x] 1.8 Adopt canonical generated release fixes for restored-package Dry profile selection and installer working-directory ownership in the root release workflow, package helpers and managed starter copies; preserve all tag, checksum and executable assertions, prove real Windows installation of immutable v0.1.3 without replacing published bytes.
 - [ ] 2.1 Push the complete candidate through a protected PR and immediately run the default required Windows/Linux local simulation in parallel with hosted CI; repair affected failures only and retain actual results.
-- [ ] 2.2 Verify the published SHA and hand off the storage contract and proof to Dokime; replace its local Cargo override with the published revision before its candidate push.
+- [ ] 2.2 Verify the published SHA and hand off the storage contract and proof to a product; replace its local Cargo override with the published revision before its candidate push.
 - [ ] 2.3 Verify required hosted checks and protected integration, preserving auto-merge and the retained day-long drop worktree.
 
 - [ ] 2.4 Deliver the canonical release-tooling correction through a protected dev review and the next version calculated by Prepare; verify its required hosted Dry, rehearsal, Tag, registries, immutable assets and both native installer checks without replacing v0.1.3.

@@ -128,7 +128,7 @@ message StreamDeclaration {
 
 message Section {
   // Fully qualified message name of the payload, for example
-  // "dokime.v1.Suites". At most one section per name.
+  // "product.v1.Suites". At most one section per name.
   string type = 1;
   bytes payload = 2;
 }

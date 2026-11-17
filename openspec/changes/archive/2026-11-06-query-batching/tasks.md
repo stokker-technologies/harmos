@@ -3,7 +3,7 @@
 ## Implementation
 
 - [x] 1.1 Port and harden the owned production modules against current dev.
-- [x] 1.2 Expose the bounded spool through the existing Harmos facade and define its Dokime adoption contract.
+- [x] 1.2 Expose the bounded spool through the existing Harmos facade and define its a product adoption contract.
 - [x] 1.3 Add deterministic regressions, review README impact and update the existing topic guide.
 - [x] 1.4 Complete focused query and touched-module proof; review the full diff and required-term scan.
 

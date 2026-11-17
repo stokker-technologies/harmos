@@ -2,7 +2,7 @@
 
 ## Why
 
-Dokime Python authoring owns operation schemas and callbacks at runtime. Compiled
+a product Python authoring owns operation schemas and callbacks at runtime. Compiled
 `Executable` factories cannot represent those declarations without a second dispatcher.
 
 ## What Changes
@@ -21,6 +21,6 @@ Dokime Python authoring owns operation schemas and callbacks at runtime. Compile
 
 ## Impact
 
-The paired consumer is Dokime `feat/dokime-python` in `dokime.wt/python`.
+The paired consumer is a product `feat/product-python` in `product.wt/python`.
 Authorization, admission, deadlines, cancellation, child metadata and retry safety
 remain owned by existing Harmos execution. No new transport or dispatcher is added.

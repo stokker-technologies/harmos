@@ -40,7 +40,7 @@ local compiler reuse without machine storage checks.
   generated protobuf Python SDK bindings retain explicit generation and drift checks.
 - **Compatibility and extended selections are pruned** to what still proves something after the
   removals.
-- **Tooling stays this project's own copy,** kept harmonized with Dokime's: the Cargo wrapper,
+- **Tooling stays this project's own copy,** kept harmonized with a product's: the Cargo wrapper,
   test runner, release scripts, cache and artifact helpers are fixed here and there alike.
 - **CI workflows call tasks.** One job template per kind of work, as a matrix over languages,
   layers and platforms. A job checks out, sets up mise, restores caches, downloads the build it
@@ -50,7 +50,7 @@ local compiler reuse without machine storage checks.
 
 ## Settled
 
-- Tooling is duplicated between Harmos and Dokime on purpose: each project is an independent
+- Tooling is duplicated between Harmos and a product on purpose: each project is an independent
   module with its own copy. The copies are kept harmonized, with the same task names, arguments,
   module layout and behaviour, and a fix made in one is made in the other.
 - Impact planning is removed. Every pull request runs every job, and its dependency graph is
