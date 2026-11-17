@@ -16,16 +16,16 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import unittest
 from pathlib import Path
-
-from harmos_tools.build.cpp import environment
-from harmos_tools.build.paths import output
-from harmos_tools.process import spawn_flags
 
 # Third Party Imports
 
 # Local Imports
+from harmos_tools.build.cpp import environment
+from harmos_tools.build.paths import output
+from harmos_tools.process import spawn_flags
 
 # Type Checking Imports
 
@@ -74,6 +74,7 @@ class PackagedConformance(unittest.TestCase):
             f"-DCMAKE_TOOLCHAIN_FILE={toolchain}",
             f"-DVCPKG_INSTALLED_DIR={root / 'target/cpp/vcpkg_installed'}",
             "-DVCPKG_MANIFEST_INSTALL=OFF",
+            f"-DPython3_EXECUTABLE={sys.executable}",
         ]
         build.mkdir(parents=True, exist_ok=True)
         log = (build / "configure.log").open("w", encoding="utf-8")

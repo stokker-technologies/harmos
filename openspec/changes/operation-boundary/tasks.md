@@ -195,6 +195,8 @@ Linux, combined-source validation and hosted proof remain open under task 11.
   - [ ] Run the system benchmark once; its required bench-profile producer conflicts with the worker build prohibition and awaits the owner's decision.
   - [x] Prove all seven focused guest-contract stories and the SDK conformance journey, then run the Rust integration lane once: 796 passed, zero failed and zero skipped on Windows. Native Linux and hosted validation remain with the integration owner.
 
+- [x] 11.4 Repair Nightly 44052203394's extracted C++ conformance consumer: resolve generator dependencies from the active tooling source tree and retain its Python interpreter, preserving the reference product's wrapper client. Windows proof passed: 121 tooling tests, development-profile C++ SDK build, installed consumer, 24 C++ unit tests and both integration stories. Native Linux and hosted proof remain under 11.1.
+
 ## Workflow Follow-Up
 
 - Products adopt group 8's revision for storage and statistics, then the revision that landed groups 9–10 in the task that removes their use of the removed surface.
