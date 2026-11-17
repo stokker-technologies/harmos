@@ -21,22 +21,23 @@ describes. With four SDK languages the reference has to be generated from source
 ## Decisions
 
 Publication scope was proposed on 2026-11-13. The owner settled release-line entries on
-2026-11-14; site implementation and the remaining generator choices are still pending.
+2026-11-14 and selected Starlight for phase one on 2026-11-17. SDK references follow the
+SDK restructures; deployment remains open.
 
 - Old releases are never copied into the repository. A release's documentation is the documentation
   at its tag. Maintained Markdown keeps stating current contracts only.
 - One entry per supported release line showing its latest patch, plus `latest` and `dev`.
   `latest` selects the newest stable line; `dev` follows the development branch.
 - Installers do not bundle the documentation. The website is the way documentation is read.
+- Starlight renders guides and generated operations pages with static search; the guide trial is dropped.
+- Phase one archives contain guides and the operations reference. Task 2.2 adds the four SDK references.
 - The documentation archive is a required asset of a stable release. In Nightly it is built by a
   parallel job that may fail; Nightly publication does not depend on it.
 
 ## Open
 
-- Confirm the site generator: the release triage describes Starlight as selected, but the
-  recorded proposal still requires a guide trial against Docusaurus. Task 0.2 owns resolution;
-  this reconciliation does not invent a locked decision or a successful trial.
 - The reference generator per language, to be verified as current before adoption.
+- The deployment target of the assembled image.
 
 ## Impact
 

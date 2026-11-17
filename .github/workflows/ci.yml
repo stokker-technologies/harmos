@@ -62,12 +62,13 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,uv
   docs:
+    name: Build / Documentation
     needs: [impact]
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.docs == 'true'
-    uses: ./.github/workflows/validation.yml
+    uses: ./.github/workflows/validate-build-docs.yml
     with:
       channel: stable
-      selection: docs
+      profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   check:
     needs: [impact]
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.check == 'true'
@@ -81,6 +82,7 @@ jobs:
     needs:
     - impact
     - package_rust
+    - docs
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.release_dry == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:
@@ -91,6 +93,7 @@ jobs:
     needs:
     - impact
     - package_rust
+    - docs
     if: always() && needs.impact.result == 'success' && needs.impact.outputs.release_rehearsal == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     uses: ./.github/workflows/validation.yml
     with:

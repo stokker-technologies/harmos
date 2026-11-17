@@ -1,0 +1,76 @@
+name: Validation / Build Documentation
+'on':
+  workflow_call:
+    inputs:
+      channel:
+        description: ci, stable or nightly
+        type: string
+        required: true
+      profile:
+        description: Build Profile
+        type: string
+        default: dev
+permissions:
+  contents: read
+env:
+  PROFILE: ${{ inputs.profile }}
+  MISE_LOCKED: '1'
+  MISE_EXPERIMENTAL: '1'
+  CARGO_INCREMENTAL: '0'
+  CARGO_HOME: ${{ github.workspace }}/.cache/cargo
+  pnpm_config_store_dir: ${{ github.workspace }}/.cache/pnpm
+  UV_CACHE_DIR: ${{ github.workspace }}/.cache/uv
+  GIT_CONFIG_COUNT: '1'
+  GIT_CONFIG_KEY_0: core.longpaths
+  GIT_CONFIG_VALUE_0: 'true'
+jobs:
+  build_docs:
+    name: Build / Documentation (Any)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        fetch-depth: 0
+    - id: setup
+      uses: ./.github/actions/setup
+      with:
+        platform: ${{ runner.os == 'Windows' && 'windows' || 'unix' }}
+        bootstrap: '[]'
+        prepare-arguments: --docs-only
+    - name: Check Site Formatting
+      run: mise run format -- --language typescript --check
+    - name: Lint the Site
+      run: mise run lint -- --language typescript
+    - name: Check Guide Public Surfaces
+      run: mise run ci:docs
+    - run: mise run docs:build -- --archive ${{ inputs.profile == 'release' && inputs.channel != 'nightly' && '--release' || '' }}
+      name: Build Documentation and Check Local Links
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      with:
+        name: build-docs-${{ env.PROFILE }}-any
+        path: target/docs/harmos-docs.zip
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+      if: success()
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.mise-cache-hit != 'true' &&
+        steps.setup.outputs.mise-path != ''
+      with:
+        key: ${{ steps.setup.outputs.mise-cache-primary-key }}
+        path: ${{ steps.setup.outputs.mise-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.pnpm-cache-hit != 'true' &&
+        steps.setup.outputs.pnpm-path != ''
+      with:
+        key: ${{ steps.setup.outputs.pnpm-cache-primary-key }}
+        path: ${{ steps.setup.outputs.pnpm-path }}
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      if: success() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request' && steps.setup.outputs.uv-cache-hit != 'true' &&
+        steps.setup.outputs.uv-path != ''
+      with:
+        key: ${{ steps.setup.outputs.uv-cache-primary-key }}
+        path: ${{ steps.setup.outputs.uv-path }}
+    env:
+      MISE_ENABLE_TOOLS: aqua:bufbuild/buf,node,pnpm,python,uv

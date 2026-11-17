@@ -31,20 +31,6 @@ env:
   GIT_CONFIG_KEY_0: core.longpaths
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
-  docs:
-    if: inputs.selection == 'docs'
-    name: Check / Documentation
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-    - uses: ./.github/actions/setup
-      with:
-        platform: unix
-    - name: Check Guides and Links
-      run: mise run ci:docs --
-    env:
-      MISE_ENABLE_TOOLS: python,uv
   check_quick:
     if: inputs.selection == 'check_quick'
     name: Check / Repository / Quick
@@ -58,7 +44,7 @@ jobs:
     - name: Run Quick Checks
       run: mise run ci:quick-check --
     env:
-      MISE_ENABLE_TOOLS: python,uv,rust,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
+      MISE_ENABLE_TOOLS: python,uv,rust,node,pnpm,taplo,go,go:github.com/rhysd/actionlint/cmd/actionlint,aqua:koalaman/shellcheck,aqua:bufbuild/buf
   check:
     if: inputs.selection == 'check'
     name: Check / ${{ matrix.label }}
@@ -184,6 +170,12 @@ jobs:
         name: build-python-${{ env.PROFILE }}
         path: target/build/${{ env.PROFILE }}/any/python
         github-token: ${{ github.token }}
+    - name: Download Documentation
+      if: inputs.channel == 'stable'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-docs-${{ env.PROFILE }}-any
+        path: target/docs
     - name: Run Project Task
       run: mise run release:publish -- --dry --channel ${{ inputs.channel }}
       env:
@@ -248,6 +240,12 @@ jobs:
         name: build-python-${{ env.PROFILE }}
         path: target/build/${{ env.PROFILE }}/any/python
         github-token: ${{ github.token }}
+    - name: Download Documentation
+      if: inputs.channel == 'stable'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-docs-${{ env.PROFILE }}-any
+        path: target/docs
     - name: Run Project Task
       run: mise run release:rehearse -- --profile ${{ env.PROFILE }}
       env:

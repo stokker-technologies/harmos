@@ -200,6 +200,12 @@ def report(directory: Path, results: dict, url: str) -> bool:
     notes += "\n\n" + marker + "\n" + reports.table(summary, results, url) + "\n"
     replaced = {f"harmos-reports-{version}.zip", "benchmarks.json", "release.json", assets.SUMS}
     inventory = [assets.describe(root, directory / item["path"]) for item in files if item["name"] not in replaced]
+    documentation = assets.documentation_archive(directory, root, f"v{version}", "nightly")
+    if documentation is not None:
+        inventory = [item for item in inventory if item["name"] != documentation.name]
+        inventory.append(assets.describe(root, documentation))
+    attached = any(item["name"] == "harmos-docs-nightly.zip" for item in inventory)
+    notes += f"\nDocumentation Archive: {'Attached' if attached else 'Unavailable; see documentation build results'}.\n"
     for destination in reports.stage(directory, shared, version):
         inventory.append(assets.describe(root, destination))
     document["notes"] = notes

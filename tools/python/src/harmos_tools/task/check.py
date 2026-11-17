@@ -69,6 +69,9 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             extra = ["--extended"] if options.extended else []
             execute.task("lint:rust", *extra)
             execute.task("check:rust")
+        if language == "typescript":
+            # Check the Documentation Site
+            execute.task("lint:typescript")
     # Check Repository Inputs
     execute.task("check:repository")
     if options.language in (None, "python"):

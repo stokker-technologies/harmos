@@ -51,7 +51,7 @@ The generator reads each operation's callers option: shared operations appear on
 both the client and plugin context; client administration stays on the client.
 `Time`, `Operations` and invocation Get/Cancel/Watch are shared. Invocation Create
 is client-only. A product's declarative composition may narrow these audiences;
-see [Product Composition and Narrowing](architecture.md#product-composition-and-narrowing).
+see [Product Composition and Narrowing](architecture.md#product-wrappers-and-the-native-facade).
 The host remains responsible for caller authorization.
 
 ## Interval Observers

@@ -71,6 +71,20 @@ jobs:
       with:
         name: release-manifest
         path: target/release-assets
+    - name: Download Required Documentation
+      if: '!inputs.report && inputs.channel == ''stable'''
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-docs-${{ inputs.profile }}-any
+        path: target/docs
+        run-id: ${{ inputs.build-run || github.run_id }}
+        github-token: ${{ github.token }}
+    - name: Download Nightly Documentation
+      if: inputs.report && fromJSON(inputs.results).docs.result == 'success'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+      with:
+        name: build-docs-${{ inputs.profile }}-any
+        path: target/docs
     - name: Download Available Results
       if: inputs.report
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333

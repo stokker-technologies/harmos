@@ -13,6 +13,7 @@
 
 # Standard Library Imports
 import hashlib
+import json
 import shutil
 import zipfile
 from datetime import UTC, datetime
@@ -20,8 +21,8 @@ from pathlib import Path
 
 # Third Party Imports
 # Local Imports
-import harmos_tools.package.run
-
+from ..docs import site
+from ..package import run
 from ..package.changelog import notes
 from . import layout, policy, reports
 
@@ -48,7 +49,7 @@ def inventory(directory: Path, settings: dict, selected: str, tag: str, profile:
     profile = policy.profile() if profile is None else profile
     name = layout.conformance_name(directory, settings, selected, tag[1:])
     relative = f"target/package/{profile}/{selected}/rust/{name}"
-    harmos_tools.package.run.regular(directory, relative)
+    run.regular(directory, relative)
     return [{"name": name, "path": relative, "target": selected}]
 
 
@@ -98,7 +99,7 @@ def stage(
     for selected in targets:
         for asset in inventory(directory, settings, selected, tag, profile):
             destination = root / selected / asset["name"]
-            shutil.copyfile(harmos_tools.package.run.regular(directory, asset["path"]), destination)
+            shutil.copyfile(run.regular(directory, asset["path"]), destination)
             files.append(describe(root, destination))
     content = notes(directory, tag) if release_notes is None else release_notes
     if source_revision is not None:
@@ -110,11 +111,11 @@ def stage(
         raise policy.ToolError(
             "protocol archive requires definitions; Rebuild and stage the declared release packages before verifying their inventory"
         )
-    behaviour = harmos_tools.package.run.regular(directory, "proto/harmos/plugin/v1/behaviour.md")
+    behaviour = run.regular(directory, "proto/harmos/plugin/v1/behaviour.md")
     archive = zipfile.ZipFile(protocol, "w", compression=zipfile.ZIP_DEFLATED)
     try:
         for path in [*definitions, behaviour]:
-            original = harmos_tools.package.run.regular(source, path.relative_to(source).as_posix())
+            original = run.regular(source, path.relative_to(source).as_posix())
             archive.write(original, original.relative_to(source).as_posix())
     finally:
         archive.close()
@@ -131,7 +132,7 @@ def stage(
                 )
             abi = layout.triple(directory, settings, selected)
             for name in ("NOTICE", "THIRD-PARTY-NOTICES", f"crates/{abi}/workspace.cdx.json", "python/any/sdk.cdx.json"):
-                original = harmos_tools.package.run.regular(source, name)
+                original = run.regular(source, name)
                 # Preserve Each Target's Notices; Python's Locked Inventory Is Shared.
                 if name.startswith("python/") and selected != targets[0]:
                     first = directory / "target/package" / profile / targets[0] / "compliance" / name
@@ -146,6 +147,9 @@ def stage(
     finally:
         archive.close()
     files.append(describe(root, compliance))
+    documentation = documentation_archive(directory, root, tag, channel, profile=profile)
+    if documentation is not None:
+        files.append(describe(root, documentation))
     if channel == "nightly":
         for destination in reports.stage(directory, shared, tag[1:]):
             files.append(describe(root, destination))
@@ -204,6 +208,29 @@ def staging_root(directory: Path) -> Path:
 def package(settings: dict) -> str:
     """The GitLab Generic Package That Carries The Release Downloads."""
     return settings.get("package", settings["product"])
+
+
+def documentation_archive(directory: Path, root: Path, tag: str, channel: str, *, profile: str = "release") -> Path | None:
+    """Stage the Matching Documentation Entry; Stable Release Publication Requires It."""
+    source = policy.inside(directory, f"{site.OUTPUT}/{site.ARCHIVE}")
+    if not source.is_file() or source.is_symlink():
+        if channel == "stable" and profile == "release":
+            raise policy.ToolError("Publish Release: Documentation Is Required; Run mise run docs:build -- --release --archive")
+        return None
+    archive = zipfile.ZipFile(source)
+    try:
+        stamp = json.loads(archive.read(site.STAMP))
+    finally:
+        archive.close()
+    version = tag.removeprefix("v")
+    major, minor, _ = version.split(".")
+    entry = "dev" if channel == "nightly" or profile != "release" else f"{major}.{minor}"
+    if stamp.get("entry") != entry or stamp.get("version") != version:
+        arguments = "--release --archive" if entry != "dev" else "--archive"
+        raise policy.ToolError(f"Stage Documentation: Expected Entry {entry} Version {version}; Run mise run docs:build -- {arguments}")
+    destination = root / SHARED / f"harmos-docs-{'nightly' if channel == 'nightly' else version}.zip"
+    shutil.copyfile(source, destination)
+    return destination
 
 
 # === Private Functions === #

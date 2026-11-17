@@ -1,6 +1,10 @@
 name: Setup
 description: Setup
 inputs:
+  prepare-arguments:
+    description: Arguments for the Preparation Task
+    required: false
+    default: ''
   platform:
     description: Platform
     required: true
@@ -174,7 +178,7 @@ runs:
       mise_dir: ${{ env.MISE_DATA_DIR }}
   - name: Prepare Locked Python Environment
     shell: bash
-    run: mise run prepare --
+    run: mise run prepare -- ${{ inputs.prepare-arguments }}
     env:
       CI_INPUT_ARCHIVES: '[]'
       CI_OUTPUT_ARCHIVES: '[]'

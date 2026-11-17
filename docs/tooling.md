@@ -56,6 +56,51 @@ running its stories and passes the selected profile to package consumers.
 Python wheel and reference-host stories consume exports from that same profile.
 Generated-Python-only checks need Python and uv.
 
+## Documentation Site
+
+The Starlight project in `site/` renders maintained guides directly from `docs/`,
+with static search and a release selector. Each guide's first heading becomes its
+page title. `harmos_tools.docs.operations` generates reference pages from the
+protocol definitions and their comments, using a `buf` descriptor set with source
+information. Plugin facilities and product-owned wrapper examples appear in the
+reference; native-only host calls use the native API guides. The retired
+host-client projection is excluded. SDK references follow the SDK migrations.
+
+```sh
+mise run prepare -- --docs-only
+mise run docs:serve
+mise run docs:build
+mise run docs:build -- --release --archive
+mise run docs:image -- --archive target/docs/harmos-docs.zip
+```
+
+`docs:serve` previews `/dev/` with live reload. `docs:build` writes
+`target/docs/dev/` and checks every local page, heading anchor and asset link.
+`--release` builds the current version's release line under `/<MAJOR.MINOR>/`;
+`--archive` packs the entry into `target/docs/harmos-docs.zip`, with its pages at
+the archive root and a `docs.json` entry/version/revision stamp. Edit guides in
+`docs/`; generated pages stay under `target/docs/generated/`.
+
+`tools/python/src/harmos_tools/release/assets.py` validates the archive's entry and
+version before adding it to the release index and checksums. Stable release
+publication requires `harmos-docs-<version>.zip`. Nightly builds documentation in
+parallel with publication; its final report attaches `harmos-docs-nightly.zip`
+when available and records whether it was attached. Documentation failure does
+not block Nightly package publication. Pull requests and `dev` pushes require
+`Build / Documentation`. Documentation-only paths, including `site/` and its
+Python generator package, select only documentation jobs through `ci:impact`.
+
+`docs:image` downloads the newest archive of each stable release line and the
+Nightly archive using the declared GitHub repository and `GH_TOKEN`, or assembles
+the given local archives. It writes `versions.json`, per-page `latest` redirects
+and a root redirect, then packs `target/docs/harmos-docs-site.zip`. It builds no
+old sources. Deployment remains a separate decision.
+
+The site owns its package manifest, dependency lock, formatter configuration and
+assets. `format` and `lint` include its TypeScript/CSS/JSON through Biome;
+`--language typescript` selects that tooling alone. The documentation CI job also
+checks those sources, so site-only changes retain their formatting and lint gates.
+
 ## CI Impact Planning
 
 The hidden `ci:impact` task owns pure `classify(paths)` and `plan(classes, event)`
