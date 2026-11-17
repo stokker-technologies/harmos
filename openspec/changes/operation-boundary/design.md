@@ -168,8 +168,10 @@ host verbs of the `plugin-lifecycle` change.
 
 - Managers are crate-internal owners; plugin activation, clock binding and sample start/stop
   that products did through managers become in-process host operations.
-- Operation results use operation-owned DTOs (an Arrow IPC batch payload plus schema) instead
-  of `QueryOutput`.
+- Operation result ownership is implemented in task 9.3: `RowOutput` carries ordered IPC
+  frames, and `IpcBatch` carries column/projection schema and batch bytes. Selectors, index
+  and projection definitions, pages and statuses are operation-owned DTOs; engine seek
+  cursors stay behind continuation tokens. The remaining facade items are proposed.
 - Cross-crate internals stay `pub` only inside unexposed implementation crates; products may
   not depend on `harmos-domain`, `harmos-query`, `harmos-storage`, `harmos-operations` or
   `harmos-protocol` directly. A repository check rejects those dependencies in examples.

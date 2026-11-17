@@ -1214,6 +1214,12 @@ No manager, manager getter, `Deref`, engine, query or reader is reachable throug
 product facade or its operation results. Backend-authoring traits and their full DTO,
 catalog and codec closure remain public through one authoring module.
 
+The storage operation result boundary is implemented in
+`crates/harmos-operations/src/storage/native/requests.rs`: operation-owned selectors,
+definitions, pages, statuses and IPC payloads replace query-engine response types.
+Internal seek cursors remain behind opaque continuation tokens. The builder and
+typed facade migration remains tracked in the open tasks.
+
 A product exposes remote behavior with its own wrapper operations and declared
 CLIENTS, PLUGINS or ALL audience. SDK generators project those descriptors. The four
 plugin SDKs, protocol generation, Wasm guests and conformance remain; Harmos host-client

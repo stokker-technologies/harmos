@@ -79,6 +79,12 @@ Criterion smoke run. Group 8, combined validation and Linux/hosted proof remain 
 - [ ] 9.7 Migrate Harmos's own consumers: Schematic example, runtime and storage stories, SDK fixtures and benchmarks, to the facade and operations; add the repository check rejecting direct internal-crate dependencies outside implementation crates. Prove with `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app` and `mise run check -- --repository`.
 - [ ] 9.8 Update `docs/architecture.md`, `docs/product-guide.md` and `docs/storage.md` to the builder and facade contract and remove direct manager examples; prove with `mise run check -- --repository`.
 
+Native Result DTO Checkpoint Pin: `552d7df6a3a386d93b8beaf6263d16f96391c006` (9.3).
+Storage operations own row IPC frames, column/index/projection selectors, definitions,
+pages and status values. Engine seek cursors stay behind continuation tokens. Windows
+proof passed: build, Rust lint, format and focused storage and statistics-consumer stories.
+The remaining facade tasks stay open.
+
 ## 10. Private Host Operations
 
 - [ ] 10.1 Add plugin protocol host facilities to `proto/harmos/plugin/v1` and the carrier for every call the plugin SDK contexts make today (time get/sleep, own settings list, own invocation Get/Cancel/Watch, admitted discovery List/Get) and move all four plugin SDK contexts to them without removing any capability. Prove with the plugin carrier stories, existing child-call stories and per-language SDK fixture tests.
@@ -88,6 +94,18 @@ Criterion smoke run. Group 8, combined validation and Linux/hosted proof remain 
 - [ ] 10.5 Delete Harmos host-client roots and host RPC clients; retain internal Rust/Python/C#/C++ carrier helpers, shared generation, supported guest ABI, generic conformance and reusable connection plumbing under D7 and `plugin-boundary`. Move management messages to products and hide other reused payload types behind product author APIs. Coordinate one final regeneration with `plugin-boundary` and `plugin-lifecycle` through the generate tasks; prove focused generated consumers in every language.
 - [ ] 10.6 Move conformance to a fixture product that declares wrappers, replace wrong-caller rules with unreachable-host-operation and wrapper-audience rules, keep plugin protocol rules; make Schematic declare wrappers for what its client uses. Prove with `mise run build -- --package harmos-conformance` and the Schematic client example build.
 - [ ] 10.7 Update `docs/architecture.md` (Caller Options and SDK Projection, Application Operations in Discovery, Next Pin), SDK guides and the README for private host operations, product wrappers and plugin protocol facilities; prove with `mise run check -- --repository`.
+
+Plugin Discovery Checkpoint Pin: `aec532eb34965b8b177d13526267ddd3ac1988e0` (10.4;
+includes the native result DTO checkpoint). Shared child admission enforces declared
+requirements, fingerprints, audience and provider visibility through product List/Get
+wrappers, preserving fingerprint failure classification. Windows proof passed: runtime,
+Schematic and conformance builds, Rust lint, format, wrapper discovery, protected host/peer,
+child-call and 13 scoped-sleep stories. Host exposure and SDK cutover tasks stay open.
+
+The first `--paths` test selection expanded to the entire integration binary and failed
+before fixture preparation. Focused affected stories passed after building the fixtures;
+that broader run has not been repeated. Use `--story` or `--exact` for focused proof.
+Linux, combined-source validation and hosted proof remain open under task 11.
 
 ## 11. Integration
 

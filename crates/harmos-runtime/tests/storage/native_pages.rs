@@ -259,6 +259,21 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         })
         .await
         .unwrap();
+    let status = fixture
+        .runtime
+        .operations
+        .call_native::<storage::GetProjectionStatus>(storage::GetProjectionStatusRequest {
+            name: "projected".into(),
+            revision: created.revision.clone(),
+            at: projected.resolved_at.clone(),
+            source: Some(source.clone()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(status.resolved_at, projected.resolved_at);
+    let status = status.status.unwrap();
+    assert_eq!(status.rows, 4);
+    assert_eq!(status.changed_keys, 0);
     let mut request = storage::ListProjectionRowsRequest {
         selection: Some(ProjectionSelection {
             name: "projected".into(),
@@ -286,7 +301,16 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         .await
         .unwrap();
     assert_eq!(next.resolved_at, request.at);
-    assert_ne!(first.page.unwrap().batch, next.page.unwrap().batch);
+    let first = first.page.unwrap().batch;
+    let schema = ArrowSchema::from_ipc(first.schema).unwrap();
+    let first = ArrowBatch::from_ipc(first.data).unwrap();
+    first.validate_schema(schema.as_schema()).unwrap();
+
+    let next = next.page.unwrap().batch;
+    let schema = ArrowSchema::from_ipc(next.schema).unwrap();
+    let next = ArrowBatch::from_ipc(next.data).unwrap();
+    next.validate_schema(schema.as_schema()).unwrap();
+    assert_ne!(first.as_record_batch(), next.as_record_batch());
     fixture
         .runtime
         .operations
