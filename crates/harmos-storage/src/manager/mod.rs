@@ -96,6 +96,7 @@ pub(super) struct Inner {
     pub(super) recovery: Arc<dyn StateBackend>,
     pub(super) has_objects: bool,
     pub(super) catalog: super::ObjectCatalog,
+    pub(super) sample_schema: Mutex<Option<StorageSchema>>,
     pub(super) state: Mutex<State>,
     pub(super) changed: watch::Sender<u64>,
     pub(super) lifecycle: tokio::sync::RwLock<Lifecycle>,
@@ -206,6 +207,7 @@ pub(super) enum Operation {
     Records(StorageBatch<StoredRecord>),
     ObjectGroup { schemas: StorageBatch<StorageSchema>, objects: StorageBatch<super::ObjectEntry>, bytes: usize },
     Stream(StorageBatch<StoredRow>),
+    SampleColumns(Arc<crate::writes::SampleAppend>),
     Recovery(StorageBatch<RecoveryEntry>),
     Snapshot(StorageBatch<RecoverySnapshot>),
 }
@@ -341,6 +343,7 @@ impl StorageManager {
                 primary,
                 content: Mutex::new(None),
                 recovery: state_backend,
+                sample_schema: Mutex::new(None),
                 has_objects: catalog.definition_count() != 0,
                 catalog,
                 state: Mutex::new(State {

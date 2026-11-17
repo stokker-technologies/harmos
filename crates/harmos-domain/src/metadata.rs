@@ -96,6 +96,11 @@ impl MemorySize for Identifier {
 }
 
 impl Identifier {
+    /// Validate a Borrowed Identifier Without Allocating an Owned Value.
+    pub const fn validate(value: &str) -> Result<(), IdentifierError> {
+        validate_identifier(value)
+    }
+
     pub fn new(value: impl Into<String>) -> Result<Self, IdentifierError> {
         let value = value.into();
         validate_identifier(&value)?;

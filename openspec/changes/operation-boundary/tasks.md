@@ -68,6 +68,14 @@ Criterion smoke run. Group 8, combined validation and Linux/hosted proof remain 
 
 - [ ] 8.1 With groups 2–7 closed, run focused proof for every touched story, `mise run format` and the Rust and Python language checks on owned work, regenerate SDK bindings if contracts changed (`mise run generate -- --sdk rust`, then python, csharp, cpp), and commit. Accept when the commit is the usable additive revision products adopt; record in design.md Migration Plan that the additive groups are closed.
 
+## G2. Columnar Sample Appends
+
+- [x] G2 Implement the product storage mapping gap end to end: retain each AppendSamples Arrow batch as one backend unit, validate scope and ordering without row payload conversion, commit its mutation receipt atomically, implement memory retention and importable conformance for accepted/completed receipts, replay/reopen and bounded admission, and add the 128-stream, 1 kHz, 100 ms-window samples/s benchmark. Prove with the storage build, Rust lint, focused storage and conformance stories, format, and one `mise run bench -- --storage --filter columnar_append` run. Record the product-pinnable revision after proof.
+
+G2 Source Pin: `93fcfb7a4117cd4b57dd9238f8e0b064ac534d5b` (local worker checkpoint; publish with the combined additive delivery before product adoption).
+
+G2 Proof: Windows `mise run build -- --package harmos-storage --lib`, `mise run test -- --package harmos-storage` (167 passed, including six columnar/conformance stories), `mise run lint`, `mise run format`, `mise run check:rust`, `mise run ci:docs` and `mise run bench -- --storage --filter columnar_append` passed. Native Linux and persistent-product backend proof remain part of integration; benchmark measurements are reported at handoff.
+
 ## 9. Idiomatic Facade
 
 - [ ] 9.1 Make the builder accept backends, catalog and storage settings and own manager construction, start and close; delete public `StorageManager` constructors and `setup.settings().storage(..)`. Prove with the runtime storage stories after migrating them to the builder.

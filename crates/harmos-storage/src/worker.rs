@@ -617,6 +617,7 @@ impl Operation {
             }
             Self::Records(values) => sum(values.as_slice()),
             Self::Stream(values) => sum(values.as_slice()),
+            Self::SampleColumns(append) => Ok(append.batch.data.ipc_bytes().len()),
             Self::File(values) => sum(values.as_slice()),
             Self::Recovery(_) | Self::Snapshot(_) => Ok(0),
         }
@@ -660,6 +661,7 @@ impl Operation {
             Self::ObjectGroup { objects, .. } => objects.as_slice().last().unwrap().position.sequence,
             Self::Records(records) => records.as_slice().last().unwrap().position.sequence,
             Self::Stream(rows) => rows.as_slice().last().unwrap().record.position.sequence,
+            Self::SampleColumns(append) => append.through.sequence,
             Self::Recovery(entries) => entries.as_slice().last().unwrap().position.sequence,
             Self::Snapshot(snapshot) => snapshot.as_slice()[0].through.sequence,
         }

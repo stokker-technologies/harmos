@@ -226,7 +226,7 @@ used by both the primary adapter and manager.
 
 `memory::Backend` implements all required primary methods and its supported optional
 methods. Its capabilities report conditional objects, projection publication,
-file sessions/deletion, compound mutations and mutation receipts. Native Arrow and native indexes
+file sessions/deletion, compound mutations, columnar append and mutation receipts. Native Arrow and native indexes
 report false; shared bounded execution provides those reads. Immutable record
 views and selected-record rank seeks are implemented. The four remaining optional
 methods retain their declared defaults: `get_work` returns zero counters,
@@ -861,16 +861,51 @@ a later large admission. Checked admission sizes are reused when batching and
 persisting. Larger state captures still split at the existing atomic byte ceiling.
 Physical chunking and on-disk transaction costs belong to product measurements.
 
+## Columnar Sample Appends
+
+`AppendSamples` forwards one Arrow batch to
+`StorageBackend::append_sample_columns(&writes::SampleAppend)` without converting
+samples into row payloads or hashing them individually. Advertise
+`StorageCapabilities.columnar_append`; unsupported providers refuse explicitly.
+`SampleAppend` carries the authorized scope, schema, immutable Arrow data, first
+and final assigned positions, and the mutation header. The sequence column is
+nonnull and consecutive in Arrow row order. Authored scopes and stream identities
+must match the authorized scope and destination; missing scopes inherit admission's
+scope. Payload fields must match the registered schema.
+
+Commit the whole batch and `append.receipt()` atomically. Return that receipt only
+after both are durable, covering `append.through`; replay of the same mutation and
+unchanged IPC batch returns the original receipt. A pending native response has
+`completed=false` and no `durable_at`. A completed response sets both; consumers
+retain outstanding batches until that durable acknowledgement. Queue admission
+charges retained Arrow buffers, IPC allocation and mutation/cursor metadata against
+`request.max_pending_write_bytes`, and one batch against
+`request.max_pending_write_batches`. Waiting admission uses the operation's existing
+policy; an allocation larger than the whole budget refuses before acceptance.
+
+The memory reference retains columnar batches and builds row views only for reads
+and maintenance that require them. Existing typed row producers still use
+`append_samples`; the native Arrow ingestion path has no row fallback. Backend
+products can reuse `conformance::columnar_appends`, `columnar_pending` (with their
+commit gated), `columnar_admission_bounds` and `columnar_reopened` to prove order,
+scope, bounded admission and durable replay. Their own restart tests reopen the
+actual persistent owner; memory proves close/reopen of its shared instance.
+
+Run `mise run bench -- --storage --filter columnar_append` to measure IPC decode,
+admission and durable memory-backend completion for 128 streams at 1 kHz in 100 ms
+windows: 1,280 batches carrying 128,000 samples. It reports samples/s without a
+timing assertion. Persistent backend throughput requires the product's own run.
+
 ## Native Provider Hooks
 
-`StorageBackend` has 52 hooks and `StateBackend` has eight. Implement the names in
+Implement the primary and recovery hook names declared in
 `crates/harmos-storage/src/backend.rs` and `src/state/mod.rs`; there are no old-name
 aliases. Storage and recovery sessions have distinct Create/Delete hooks. Appends
 retain their assigned-position replay and durable-receipt contracts. Private flush
 remains an explicit recovery barrier.
 
 `capabilities()` owns `file_sessions`, `file_deletion` and
-`mutation_receipts` alongside query capabilities. Unsupported capabilities refuse
+`mutation_receipts` and `columnar_append` alongside query capabilities. Unsupported capabilities refuse
 explicitly. `get_projection_definition(name, revision)` returns a definition and
 revision, selecting current when revision is absent. `get_projection_status` accepts
 an optional exact frontier; absence returns the newest readable durable status for

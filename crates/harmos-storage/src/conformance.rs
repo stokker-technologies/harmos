@@ -18,13 +18,16 @@
 // Standard Library Imports
 
 // Third Party Imports
+use arrow_array::{StructArray, UInt64Array};
 
 // Local Imports
 use crate::query::{FileSelection, RecordSelection, StreamSelection};
+use crate::writes::{DecodedBatch, convert};
 use crate::{
-    CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MutationId, MutationItem, ObjectPoint, ObjectValue, ObjectVersion,
-    ObjectVersionToken, RecordInput, Result, ScanPage, StorageManager, StoredRecord, StoredRow, StreamInput,
+    CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MemorySize, MutationId, MutationItem, ObjectPoint, ObjectValue,
+    ObjectVersion, ObjectVersionToken, RecordInput, Result, ScanPage, StorageCursor, StorageManager, StoredRecord, StoredRow, StreamInput,
 };
+use harmos_query::arrow::ArrowBatch;
 
 /* === Constants === */
 
@@ -242,6 +245,148 @@ pub async fn scoped_deletion(storage: &StorageManager, fixture: ScopeFixture) ->
         || before.read_file(&file, 0, storage.settings().response.batch_bytes).await? != fixture.bytes
     {
         return Err(invalid("retain deleted objects and file bytes until their pinned cuts release"));
+    }
+    Ok(())
+}
+
+/// Prove Column Order, Authorized Scope, Immutable Replay and Durable Receipts.
+/// Supply a Fresh Destination With at Least Two Rows and a Scope-Owned Item.
+/// Return the Identity and Frontier for the Product's Restart Proof.
+pub async fn columnar_appends(storage: &StorageManager, scope: &Identifier, batch: &DecodedBatch) -> Result<(MutationId, StorageCursor)> {
+    if batch.data.as_record_batch().num_rows() < 2 {
+        return Err(invalid("supply at least two sample rows for the ordering proof"));
+    }
+    let mutation = MutationId {
+        window: storage.mutation_window()?.id,
+        key: Identifier::new("conformance.sample.columns").expect("valid conformance identity"),
+    };
+    let before = storage.status().accepted;
+    let accepted = storage.append_sample_batch(&mutation, Some(scope), batch).await?;
+    if accepted.sequence != before.sequence + batch.data.as_record_batch().num_rows() as u64
+        || storage.append_sample_batch(&mutation, Some(scope), batch).await? != accepted
+    {
+        return Err(invalid("assign contiguous sample positions once and preserve replay's accepted frontier"));
+    }
+    storage.flush().await?;
+    storage.wait_mutation_durable(&mutation, &accepted).await?;
+    if !storage.mutation_durable(&mutation, &accepted)? {
+        return Err(invalid("acknowledge sample completion only after data and receipt are durable"));
+    }
+    let schema = storage.lookup_schema(&batch.schema).await?;
+    let expected = convert::records(Some(scope), batch, &schema.schema)?;
+    let metadata = batch.data.as_record_batch().column_by_name("_storage").unwrap().as_any().downcast_ref::<StructArray>().unwrap();
+    let sequence = metadata.column_by_name("sequence").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap();
+    let cut = storage.snapshot(&accepted).await?;
+    let selection = StreamSelection {
+        schema: batch.schema.clone(),
+        scope: Some(scope.clone()),
+        item: None,
+        stream: Some(batch.destination.clone()),
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let mut after = before.sequence;
+    let mut index = 0;
+    while index < expected.len() {
+        let page = ScanPage {
+            after,
+            rows: storage.settings().response.batch_rows,
+            bytes: storage.settings().response.batch_bytes,
+        };
+        let (rows, _) = cut.scan::<StoredRow>(&selection, page).await?;
+        if rows.is_empty() {
+            return Err(invalid("return every committed columnar sample within bounded response pages"));
+        }
+        for row in rows {
+            let Some(expected) = expected.get(index) else {
+                return Err(invalid("never duplicate columnar samples"));
+            };
+            if row.record.position.sequence != before.sequence + index as u64 + 1
+                || row.record.payload != expected.payload
+                || row.record.scope.as_ref() != Some(scope)
+                || row.record.item != expected.item
+                || row.record.source != expected.source
+                || row.record.source_time != expected.source_time
+                || row.stream != batch.destination
+                || row.sequence != sequence.value(index)
+            {
+                return Err(invalid("preserve columnar sample order, payloads, metadata and exact authorized scope"));
+            }
+            after = row.record.position.sequence;
+            index += 1;
+        }
+    }
+    let foreign = Identifier::new(format!("{}.other", scope.as_str())).expect("valid conformance scope");
+    let selection = StreamSelection { scope: Some(foreign), ..selection };
+    let (rows, _) = cut
+        .scan::<StoredRow>(
+            &selection,
+            ScanPage {
+                after: before.sequence,
+                rows: storage.settings().response.batch_rows,
+                bytes: storage.settings().response.batch_bytes,
+            },
+        )
+        .await?;
+    if !rows.is_empty() {
+        return Err(invalid("isolate columnar samples by exact scope"));
+    }
+    let mut changed = batch.clone();
+    changed.data = ArrowBatch::try_new(batch.data.as_record_batch().slice(0, expected.len() - 1))?;
+    if storage.append_sample_batch(&mutation, Some(scope), &changed).await.is_ok() {
+        return Err(invalid("refuse changed sample batches under an existing mutation identity"));
+    }
+    Ok((mutation, accepted))
+}
+
+/// Gate Backend Completion Before Calling; Acceptance Must Remain Replayable Without Durability.
+pub async fn columnar_pending(storage: &StorageManager, scope: &Identifier, batch: &DecodedBatch) -> Result<(MutationId, StorageCursor)> {
+    let mutation = MutationId {
+        window: storage.mutation_window()?.id,
+        key: Identifier::new("conformance.sample.pending").expect("valid conformance identity"),
+    };
+    let accepted = storage.append_sample_batch(&mutation, Some(scope), batch).await?;
+    if storage.mutation_durable(&mutation, &accepted)? || storage.append_sample_batch(&mutation, Some(scope), batch).await? != accepted {
+        return Err(invalid("report acceptance without durable completion while the backend commit is gated"));
+    }
+    let status = storage.status();
+    if status.pending_batches > storage.settings().request.max_pending_write_batches.get()
+        || status.pending_bytes > storage.settings().request.max_pending_write_bytes.get()
+    {
+        return Err(invalid("keep outstanding columnar batches and retained bytes within consumer admission bounds"));
+    }
+    Ok((mutation, accepted))
+}
+
+/// Run After Reopening the Product Backend to Prove Receipt Recovery.
+pub async fn columnar_reopened(
+    storage: &StorageManager, scope: &Identifier, batch: &DecodedBatch, mutation: &MutationId, accepted: &StorageCursor,
+) -> Result<()> {
+    let before = storage.status().accepted;
+    let replay = storage.append_sample_batch(mutation, Some(scope), batch).await?;
+    if &replay != accepted || storage.status().accepted != before || !storage.mutation_durable(mutation, accepted)? {
+        return Err(invalid("restore the original durable sample receipt without admitting duplicate rows"));
+    }
+    Ok(())
+}
+
+/// Oversized Retained Arrow Allocations Must Refuse Before Taking Queue Capacity.
+pub async fn columnar_admission_bounds(storage: &StorageManager, scope: &Identifier, oversized: &DecodedBatch) -> Result<()> {
+    let before = storage.status();
+    let mutation = MutationId {
+        window: storage.mutation_window()?.id,
+        key: Identifier::new("conformance.sample.capacity").expect("valid conformance identity"),
+    };
+    if oversized.data.memory_size() <= storage.settings().request.max_pending_write_bytes.get() {
+        return Err(invalid("supply a sample batch retaining more than max_pending_write_bytes"));
+    }
+    if !matches!(storage.append_sample_batch(&mutation, Some(scope), oversized).await, Err(Error::ResourceExhausted { .. })) {
+        return Err(invalid("refuse sample allocations exceeding the consumer's pending byte budget"));
+    }
+    let after = storage.status();
+    if after.accepted != before.accepted || after.pending_bytes != before.pending_bytes || after.pending_batches != before.pending_batches {
+        return Err(invalid("release columnar admission capacity on refusal without advancing acceptance"));
     }
     Ok(())
 }
