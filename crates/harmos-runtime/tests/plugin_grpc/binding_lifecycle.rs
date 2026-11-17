@@ -18,17 +18,12 @@
 use harmos_protocol::host::TimeGetResponse;
 use harmos_protocol::plugin::InstanceSamplesResponse;
 use harmos_protocol::plugin::Sample;
-use harmos_protocol::plugin::instance_samples_request::Frame as RequestFrame;
+use harmos_protocol::plugin::instance_samples_request;
 
 // Standard Library Imports
-use std::{
-    collections::BTreeSet,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc as blocking,
-    },
-    time::{Duration, SystemTime},
+use {
+    std::collections::BTreeSet, std::sync, std::sync::Arc, std::sync::Mutex, std::sync::atomic::AtomicBool, std::sync::atomic::AtomicUsize,
+    std::sync::atomic::Ordering, std::time::Duration, std::time::SystemTime,
 };
 
 // Third Party Imports
@@ -64,7 +59,7 @@ use harmos_runtime::{
 struct Racing {
     name: &'static str,
     entered: oneshot::Sender<()>,
-    release: blocking::Receiver<()>,
+    release: sync::mpsc::Receiver<()>,
 }
 
 /// Reports a Samples Response Dropped by the Host.
@@ -164,7 +159,7 @@ impl Hung {
             let open = open.clone();
             let half_close = half_close.clone();
             tokio::spawn(async move {
-                let Some(RequestFrame::Open(selection)) = input.message().await.unwrap().unwrap().frame else {
+                let Some(instance_samples_request::Frame::Open(selection)) = input.message().await.unwrap().unwrap().frame else {
                     panic!("Expected Open");
                 };
                 open.send(selection.scope.clone()).unwrap();
@@ -206,7 +201,7 @@ async fn device() -> Remote {
     remote.samples(|mut input| {
         let (output, receiver) = mpsc::channel(1);
         tokio::spawn(async move {
-            let Some(RequestFrame::Open(selection)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Open(selection)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Open");
             };
             if !selection.scope.is_empty() {
@@ -245,12 +240,12 @@ async fn windowed(registered: Arc<AtomicBool>, refused: Arc<AtomicUsize>) -> Rem
         let registered = registered.clone();
         let refused = refused.clone();
         tokio::spawn(async move {
-            let Some(RequestFrame::Open(_)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Open(_)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Open");
             };
             // Answer Each Window Until the Host Half-Closes the Demand.
             while let Some(request) = input.message().await.ok().flatten() {
-                let Some(RequestFrame::Window(window)) = request.frame else { continue };
+                let Some(instance_samples_request::Frame::Window(window)) = request.frame else { continue };
                 if !registered.load(Ordering::SeqCst) {
                     refused.fetch_add(1, Ordering::SeqCst);
                     let _ = output.send(Err(Status::failed_precondition("Start the Unit Before Requesting Its Samples"))).await;
@@ -329,7 +324,7 @@ async fn managed_stop_reaps_a_plugin_whose_scoped_drain_outlives_stop_grace() {
     // Shutdown Succeeds and the Accepted Sample Is Still Delivered.
     host.signals.storage_release.notify_one();
     advancing.await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert_eq!(rows(&host, "unit/slow"), 2);
 }
 
@@ -379,7 +374,7 @@ async fn closing_against_a_plugin_that_ignores_half_close_is_bounded_by_stop_gra
     let error = stopping.await.unwrap().unwrap_err();
     assert!(matches!(error.as_ref(), Error::Deadline { .. }), "Report the Root Drain Deadline: {error}");
     assert_eq!(hung.released.recv().await.unwrap(), "");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -430,7 +425,7 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
     assert!(matches!(attached.stop("Already Exited").await.unwrap_err().as_ref(), Error::Exit(_)));
     assert!(!support::running(process), "Reap the Exited Process");
     assert!(host.runtime.bind_grpc(&activation, "unit/late", Clock::virtual_at(SystemTime::UNIX_EPOCH).0).await.is_err());
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -441,7 +436,7 @@ async fn a_bind_reaching_the_lock_after_attachment_stop_is_refused() {
     let attached = host.runtime.attach_grpc(Placement::Remote(sdk.address.clone()), support::settings()).await.unwrap();
     let activation = attached.activation().unwrap();
     let (entered, entering) = oneshot::channel();
-    let (release, parked) = blocking::channel();
+    let (release, parked) = sync::mpsc::channel();
 
     // Stop the Attachment Completely While the Bind Is Parked.
     let stopping = tokio::spawn(async move {
@@ -460,7 +455,7 @@ async fn a_bind_reaching_the_lock_after_attachment_stop_is_refused() {
     stopping.await.unwrap().unwrap();
     let error = bound.err().expect("Refuse a Binding After Its Attachment Stopped");
     assert!(matches!(error, Error::Invalid(_)), "Refuse as Invalid: {error}");
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -476,7 +471,7 @@ async fn runtime_shutdown_settles_a_live_binding_and_reaps_its_plugin() {
     unit_time.advance_until(Duration::from_secs(5), || rows(&host, "unit/shutdown") == 1).await.unwrap();
 
     // Shutdown Settles the Binding, Stops the Plugin and Reaps Its Process.
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert!(!support::running(process), "Reap the Managed Plugin");
     binding.close().await.unwrap();
     attached.stop("Already Stopped").await.unwrap();
@@ -518,7 +513,7 @@ async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     assert!(actions.contains("Settle Plugin Publications"), "Report the Attachment's Settlement Failure");
     assert!(!support::running(process), "Kill and Reap the Disconnected Process");
     assert_eq!(rows(&host, "unit/cut"), 1);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -553,7 +548,7 @@ async fn binding_during_reconnect_waits_for_the_next_activation() {
     }
     bound.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert_eq!((rows(&host, "unit/live"), rows(&host, "unit/next")), (1, 1));
 }
 
@@ -587,7 +582,7 @@ async fn a_virtual_runtime_clock_reaches_teardown_deadlines_against_a_plugin_ign
     let error = stopping.await.unwrap().unwrap_err();
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Root Drain Deadline: {error}");
     assert_eq!(hung.remote.stops(), 1, "Tell the Plugin to Stop After Its Drain Deadline");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -617,7 +612,7 @@ async fn a_bind_registered_before_attachment_stop_is_settled_by_the_stop() {
     binding.close().await.unwrap();
     abandoned.await.unwrap();
     assert_eq!(remote.stops(), 1);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -663,7 +658,7 @@ async fn a_drain_that_spends_the_grace_still_tells_the_managed_plugin_to_stop_be
     assert!(matches!(error.as_ref(), Error::Deadline { action: "Settle Plugin Publications" }), "Report the Drain Deadline First: {error}");
     assert!(!support::running(process), "Kill and Reap the Managed Plugin");
     assert_eq!(hung.remote.stops(), 1);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -708,7 +703,7 @@ async fn a_remote_cleanup_that_misses_its_deadline_still_reconnects_cleanly() {
     assert!(next.is_connected(), "Keep the Next Activation Connected");
     bound.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert_eq!(rows(&host, "unit/next"), 1);
 }
 
@@ -743,7 +738,7 @@ async fn sample_demand_runs_only_between_start_and_stop_while_calls_stay_bound()
     assert!(host.runtime.bind_grpc(&activation, "unit/window", Clock::virtual_at(SystemTime::UNIX_EPOCH).0).await.is_err());
     binding.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert_eq!(rows(&host, "unit/window"), 2, "Commit Every Sample Accepted Inside the Window");
 }
 
@@ -836,7 +831,7 @@ async fn a_close_after_an_abandoned_stop_keeps_the_stop_deadline() {
     assert_eq!(hung.half_closed.recv().await.unwrap(), "");
     time.advance_by(grace).await;
     stopping.await.unwrap().unwrap_err();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -867,7 +862,7 @@ async fn sample_requests_during_settlement_are_refused_at_once() {
     time.advance_by(grace).await;
     stopping.await.unwrap().unwrap_err();
     binding.close().await.unwrap_err();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -893,5 +888,5 @@ async fn a_withdrawn_start_opens_no_demand() {
     binding.start_samples(["probe"]).await.unwrap();
     binding.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

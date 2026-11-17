@@ -147,5 +147,5 @@ async fn client_invokes_public_plugin_through_the_host_and_protected_is_refused(
         .await;
     assert_eq!(result.unwrap_err().code(), tonic::Code::Unimplemented);
     drop(listener);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

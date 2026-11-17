@@ -58,7 +58,7 @@ async fn watch_delivery_accounts_for_rows_overruns_and_shutdown() {
     // Shutdown Drains the Pending Rows Before Closing Both Watches.
     runtime.streams.publish(pulse(published + 1));
     runtime.streams.publish(pulse(published + 2));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     for watching in [&mut live, &mut stalled] {
         for sample in (published + 1)..=(published + 2) {
             assert!(matches!(next(watching).await, Some(Item::Row(At { value, .. })) if value == pulse(sample)));

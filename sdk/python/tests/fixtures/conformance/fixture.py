@@ -33,12 +33,14 @@ from harmos import (
 )
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
 from harmos.plugin import (
+    Catalog,
     Context,
     HostOperation,
     Operation,
     Plugin,
     Publisher,
     TimeGetResponse,
+    Registrar,
     Window,
     observer,
     operation,
@@ -338,10 +340,16 @@ class ClockFixture:
 
 
 def plugin() -> Plugin:
-    return Plugin(
+    return Plugin(id="conformance", version="1.0.0", register=register)
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+def catalog() -> Catalog:
+    return Catalog(
         Fixture(),
-        id="conformance",
-        version="1.0.0",
         requires=[
             PEER_PUBLIC,
             PEER_PROTECTED,

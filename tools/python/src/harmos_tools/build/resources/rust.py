@@ -454,16 +454,22 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     )
     lines = [
         "// @generated from protocol descriptors; do not edit.",
-        "use crate::{Context, Error, Result, Plugin, OperationPolicy};",
+        "use crate::{Context, Error, Result, OperationPolicy};",
+        "use crate::plugin::{Dependency, Registrar, Registration};",
         "use std::num::NonZeroUsize;",
     ]
     lines += [f"use {message(full)};" for full in sorted(used)]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
-    lines += ["}", "impl Plugin {", "    pub fn requires_host(self, operation: HostOperation) -> Self {", "        match operation {"]
+    lines += [
+        "}",
+        "impl Registration for HostOperation {",
+        "    fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {",
+        "        match self {",
+    ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        lines += [f"            HostOperation::{name} => self.requires::<{method['request'].rsplit('.', 1)[-1]}>(),"]
+        lines += [f"            HostOperation::{name} => ctx.register(Dependency::<{method['request'].rsplit('.', 1)[-1]}>::new()),"]
     lines += [
         "        }",
         "    }",
@@ -624,12 +630,11 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         lines += ["}"]
     if target is not None:
         source = "\n".join(lines)
-        start = source.index("impl Plugin {")
+        start = source.index("impl Registration for HostOperation {")
         end = source.index("#[derive(Clone)]", start)
         source = source[:start] + source[end:]
-        source = source.replace(
-            "use crate::{Context, Error, Result, Plugin, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};"
-        )
+        source = source.replace("use crate::{Context, Error, Result, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};")
+        source = source.replace("use crate::plugin::{Dependency, Registrar, Registration};", "")
         source = re.sub(r"\bContext\b", "harmos::plugin::Context", source)
         source = source.replace("crate::context::Watching", "harmos::plugin::Watching")
         source += "\n#[derive(Clone)]\npub struct PluginContext { pub host: HostRoot }\nimpl PluginContext {\n"

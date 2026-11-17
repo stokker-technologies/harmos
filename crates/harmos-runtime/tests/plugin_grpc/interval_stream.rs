@@ -56,5 +56,5 @@ async fn host_windows_are_stored_in_order_with_host_timestamps() {
     attached.stop("Story Complete").await.unwrap();
     controller.advance_by(std::time::Duration::from_secs(10)).await;
     assert_eq!(host.rows().len(), 3);
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

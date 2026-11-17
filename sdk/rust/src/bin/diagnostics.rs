@@ -28,7 +28,7 @@ use harmos::{Error, Message, Result, Visibility};
 use harmos_protocol::model::setting_value;
 
 use prost::Message as _;
-use prost_types::{Duration as ProtoDuration, Timestamp};
+use prost_types::Timestamp;
 use std::{env, fs, future, num::NonZeroUsize, path::PathBuf, sync::Mutex, time::Duration};
 use tokio::sync::Notify;
 use tonic::Code;
@@ -97,33 +97,37 @@ fn main() -> Result<()> {
         println!("observer_reading");
         future::pending::<Result<Isolation>>().await
     })
-    .every(ProtoDuration { seconds: 1, nanos: 0 });
+    .every(prost_types::Duration { seconds: 1, nanos: 0 });
     let children = Stream::<SampleReading>::new("execution.children");
-    let child_observer = Observer::new(&children, samples_children).every(ProtoDuration { seconds: 1, nanos: 0 });
+    let child_observer = Observer::new(&children, samples_children).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let device = Stream::<Isolation>::new("execution.device").publish_on(async |context: &Context, _: Publisher<Isolation>| {
         context.cancelled().await;
         Ok(())
     });
     Plugin::new("execution", "1.0.0")
-        .stream(children)
-        .observer(child_observer)
-        .stream(device)
-        .requires_host(HostOperation::PluginsSettingsList)
-        .requires_host(HostOperation::InvocationsWatch)
-        .operation(Operation::new("execution.stale", stale_context).visibility(Visibility::Protected))
-        .operation(Operation::new("execution.clock", clock_and_resource).visibility(Visibility::Protected))
-        .operation(Operation::new("execution.isolation", isolation).visibility(Visibility::Protected))
-        .operation(Operation::new("execution.reading_released", reading_released).visibility(Visibility::Protected))
-        .stream(reading)
-        .observer(observer)
-        .requires_host(HostOperation::TimeSleep)
-        .requires_host(HostOperation::TimeGet)
+        .register(|ctx| {
+            ctx.register(children)?;
+            ctx.register(child_observer)?;
+            ctx.register(device)?;
+            ctx.register(HostOperation::PluginsSettingsList)?;
+            ctx.register(HostOperation::InvocationsWatch)?;
+            ctx.register(Operation::new("execution.stale", stale_context).visibility(Visibility::Protected))?;
+            ctx.register(Operation::new("execution.clock", clock_and_resource).visibility(Visibility::Protected))?;
+            ctx.register(Operation::new("execution.isolation", isolation).visibility(Visibility::Protected))?;
+            ctx.register(Operation::new("execution.reading_released", reading_released).visibility(Visibility::Protected))?;
+            ctx.register(reading)?;
+            ctx.register(observer)?;
+            ctx.register(HostOperation::TimeSleep)?;
+            ctx.register(HostOperation::TimeGet)?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations")
         .on_stop(move || {
             fs::write(&cleanup, b"cleaned")?;
             Ok(())
         })
         .remote()
-        .serve()
+        .run()
 }
 
 async fn clock_and_resource(ctx: &Context, _: Input) -> Result<Evidence> {

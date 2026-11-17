@@ -101,7 +101,7 @@ impl Lifecycle for InitializingApp {
         Err(Failure::Stop)
     }
 
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.0.cleanup_attempts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
@@ -134,7 +134,7 @@ impl Lifecycle for App {
         panic!("an uninitialized application only requires cleanup")
     }
 
-    async fn cleanup(&mut self) -> Result<(), Self::Error> {
+    async fn finalize(&mut self) -> Result<(), Self::Error> {
         self.0.cleanup_attempts.fetch_add(1, Ordering::SeqCst);
         if !self.0.allow_cleanup.load(Ordering::SeqCst) {
             return Err(std::io::Error::other("controlled cleanup failure"));
@@ -170,7 +170,7 @@ async fn partial_cleanup_retry() {
         config(),
     )
     .unwrap();
-    let error = crate::support::app::launch::<App>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::start::<App>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await
@@ -209,7 +209,7 @@ async fn logical_failure_settles() {
         config(),
     )
     .unwrap();
-    let error = crate::support::app::launch::<InitializingApp>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
+    let error = crate::support::app::start::<InitializingApp>(State(probe.clone()), Config { probe: probe.clone() }, |setup| {
         setup.settings().storage(&storage);
     })
     .await
@@ -241,7 +241,7 @@ async fn cancelled_initialization_reports() {
     let probe = Arc::new(Probe::default());
     probe.block_initialize.store(true, Ordering::SeqCst);
     {
-        let opening = Runtime::<InitializingApp>::launch(State(probe.clone()), Config { probe: probe.clone() });
+        let opening = Runtime::<InitializingApp>::start(State(probe.clone()), Config { probe: probe.clone() });
         tokio::pin!(opening);
         tokio::select! {
             _ = &mut opening => panic!("initialization is blocked"),

@@ -121,7 +121,7 @@ async fn runtime_selected_ids() {
         device: "configured".into(),
         reads: AtomicUsize::new(0),
     });
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Bench>(resources.clone());
         setup.catalog(operations_catalog(), harmos_runtime::operations::Lane::default());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
@@ -170,13 +170,13 @@ async fn runtime_selected_ids() {
     assert!(matches!(runtime.register_batch(duplicate).await, Err(harmos_runtime::Error::AlreadyRegistered { .. })));
     assert!(runtime.operations.definition("devices.duplicate").is_err());
     assert_eq!(resources.reads.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn needs_lacks_registration() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
-    assert_eq!(crate::support::app::shutdown(&runtime).await.unwrap(), Position::ORIGIN);
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
+    assert_eq!(crate::support::app::stop(&runtime).await.unwrap(), Position::ORIGIN);
 }
 
 #[tokio::test]
@@ -185,7 +185,7 @@ async fn nested_resources_shared() {
         device: "sim://rig-a".to_owned(),
         reads: AtomicUsize::new(0),
     });
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Bench>(resources.clone());
     })
     .await
@@ -197,7 +197,7 @@ async fn nested_resources_shared() {
     assert_eq!(parent.seen, 0);
     let following = runtime.operation(ReadContractDeclaration { nested: false }).start().await.unwrap().await.unwrap();
     assert_eq!(following.seen, 2, "parent, child and following attempt share one value");
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -237,7 +237,7 @@ async fn private_grpc_refused() {
     }
 
     assert!(matches!(PRIVATE_OPERATION.wire().contract(), Err(harmos_runtime::operations::ContractError::RestrictedGrpc { .. })));
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     let registration = Registration::new(harmos_runtime::operations::Lane::default())
         .operation(private_operation().expect("representable operation"), PRIVATE_OPERATION.entry().id)
         .unwrap();
@@ -248,5 +248,5 @@ async fn private_grpc_refused() {
         Some(harmos_runtime::operations::ContractError::RestrictedGrpc { .. })
     ));
     assert!(runtime.operations.definition(PRIVATE_OPERATION.entry().id).is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

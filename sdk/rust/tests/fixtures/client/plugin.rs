@@ -1,5 +1,6 @@
 // @generated from protocol descriptors; do not edit.
 use harmos::{Error, OperationPolicy, Result};
+
 use harmos_protocol::host::InvocationsCancelRequest;
 use harmos_protocol::host::InvocationsCancelResponse;
 use harmos_protocol::host::InvocationsGetRequest;

@@ -76,5 +76,11 @@ pub fn plugin() -> Plugin {
         }
     })
     .visibility(Visibility::Public);
-    Plugin::new("consumption", env!("CARGO_PKG_VERSION")).operation(consume).operation(progress)
+    Plugin::new("consumption", env!("CARGO_PKG_VERSION"))
+        .register(|ctx| {
+            ctx.register(consume)?;
+            ctx.register(progress)?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations")
 }

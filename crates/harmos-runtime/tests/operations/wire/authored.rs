@@ -108,7 +108,7 @@ impl Drop for AttemptGuard {
 
 async fn runtime() -> (Runtime<App>, Arc<Trace>) {
     let trace = Arc::new(Trace::default());
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Trace>(trace.clone()).operation(
             read_contract_declaration_operation().expect("representable operation"),
             harmos_runtime::operations::Lane::default(),
@@ -147,5 +147,5 @@ async fn authored_request_completes_cancels_and_panics() {
     assert_eq!(trace.dropped.load(Ordering::SeqCst), 3);
 
     // Stop
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

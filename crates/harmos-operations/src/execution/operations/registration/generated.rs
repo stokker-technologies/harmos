@@ -457,7 +457,7 @@ impl<O: ProtobufOperation> NativeInstance for Instance<O> {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         if let Some(streams) = &self.streams {
             streams.complete();
         }

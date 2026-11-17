@@ -55,6 +55,7 @@ using std::vector;
 /* === Types === */
 
 namespace {
+using ::conformance::model::v1::Values;
 using harmos::conformance::Value;
 using harmos::plugin::Context;
 using harmos::plugin::v1::Instance;
@@ -92,17 +93,16 @@ public:
       stream.sample = [observer](Context &context) -> unique_ptr<Message> {
         return std::make_unique<Value>(observer(context));
       };
-    serve(std::move(stream));
+    start(std::move(stream));
   }
-  SamplesHost(std::function<::conformance::model::v1::Values(Context &, const harmos::plugin::Window &)> observer, size_t limit)
-      : message_bytes(limit) {
+  SamplesHost(std::function<Values(Context &, const harmos::plugin::Window &)> observer, size_t limit) : message_bytes(limit) {
     harmos::plugin::detail::StreamDefinition stream;
     stream.declaration.set_id("example.rows");
     stream.row = Value::descriptor();
     stream.window = [observer](Context &context, const harmos::plugin::Window &window) -> unique_ptr<Message> {
-      return std::make_unique<::conformance::model::v1::Values>(observer(context, window));
+      return std::make_unique<Values>(observer(context, window));
     };
-    serve(std::move(stream));
+    start(std::move(stream));
   }
   ~SamplesHost() {
     server->Shutdown();
@@ -127,13 +127,21 @@ public:
   }
 
 private:
-  void serve(harmos::plugin::detail::StreamDefinition stream) {
+  void start(harmos::plugin::detail::StreamDefinition stream) {
     streams.push_back(std::move(stream));
     const auto declarations = harmos::plugin::Plugin("example", "1.0.0")
-                                  .requires_operation(echo)
-                                  .requires_operation(watching)
-                                  .requires_operation(harmos::plugin::HostOperation::TimeGet)
-                                  .requires_operation(harmos::plugin::HostOperation::PluginsSettingsList)
+                                  .add([&](harmos::plugin::Registrar &ctx) {
+                                    ctx.add(harmos::plugin::Dependency{echo});
+                                  })
+                                  .add([&](harmos::plugin::Registrar &ctx) {
+                                    ctx.add(harmos::plugin::Dependency{watching});
+                                  })
+                                  .add([&](harmos::plugin::Registrar &ctx) {
+                                    ctx.add(harmos::plugin::HostOperation::TimeGet);
+                                  })
+                                  .add([&](harmos::plugin::Registrar &ctx) {
+                                    ctx.add(harmos::plugin::HostOperation::PluginsSettingsList);
+                                  })
                                   .declarations();
     for (const auto &requirement : declarations.requires_())
       requirements[requirement.id()] = requirement.fingerprint();
@@ -198,7 +206,7 @@ public:
       REQUIRE(response.ByteSizeLong() <= limit);
       REQUIRE(response.ByteSizeLong() ==
               harmos::plugin::detail::framed_size(batch.offset(), batch.count(), batch.columns().size(), batch.last()));
-      const auto columns = harmos::plugin::decode<::conformance::model::v1::Values>(batch.columns());
+      const auto columns = harmos::plugin::decode<Values>(batch.columns());
       REQUIRE(static_cast<uint64_t>(columns.value_size()) == batch.count());
       values.insert(values.end(), columns.value().begin(), columns.value().end());
       if (parts)
@@ -339,7 +347,7 @@ TEST_CASE("A Window That Cannot Be Answered Fails the Call") {
   SECTION("A Sample Larger Than the Message Limit Fails the Window") {
     SamplesHost host(
         [](Context &, const harmos::plugin::Window &window) {
-          ::conformance::model::v1::Values columns;
+          Values columns;
           for (uint64_t index = 0; index < window.count; ++index)
             columns.add_value(string(index == 1 ? 100 : 1, 'x'));
           return columns;
@@ -352,7 +360,7 @@ TEST_CASE("A Window That Cannot Be Answered Fails the Call") {
   SECTION("Columns Must Hold One Value per Sample") {
     SamplesHost host(
         [](Context &, const harmos::plugin::Window &) {
-          return ::conformance::model::v1::Values{};
+          return Values{};
         },
         64);
     Samples samples(host);

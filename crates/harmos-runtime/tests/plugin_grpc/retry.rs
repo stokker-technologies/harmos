@@ -35,5 +35,5 @@ async fn retry_preserves_the_request_and_waits_on_the_host_clock() {
 
     // Stop The Plugin After Settlement
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

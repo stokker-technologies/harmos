@@ -65,6 +65,6 @@ async fn python_plugin_sleep_and_now_share_the_virtual_host_clock() {
     assert_eq!(clock.date(), std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(3600));
     assert_eq!(result.unwrap(), super::invoke_support::payload(&3600_i64.to_le_bytes()));
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
     assert!(sdk.close().await.success());
 }

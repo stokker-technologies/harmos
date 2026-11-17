@@ -187,7 +187,7 @@ impl Host {
 
     async fn stop(self) {
         self.attached.stop("Benchmark Complete").await.unwrap();
-        self.runtime.shutdown().await.unwrap();
+        self.runtime.stop().await.unwrap();
     }
 }
 
@@ -265,7 +265,7 @@ impl Case<'_> {
 fn main() {
     let mut arguments = std::env::args().skip(1);
     match arguments.next().as_deref() {
-        Some(plugin::MODE) => plugin::serve(arguments),
+        Some(plugin::MODE) => plugin::run(arguments),
         _ => {
             benches();
             Criterion::default().configure_from_args().final_summary();

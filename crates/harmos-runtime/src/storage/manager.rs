@@ -18,14 +18,12 @@ pub(crate) use harmos_storage::encoded_size;
 // Standard Library Imports
 use std::num::NonZeroUsize;
 use std::ops::Deref;
-use std::result::Result as StdResult;
+use std::result;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 // Third Party Imports
-use harmos_storage::{
-    BackendFailure, Error as StorageError, StorageFuture, StorageManager as EngineManager, Worker as EngineWorker, WorkerOwner,
-};
+use {harmos_storage::BackendFailure, harmos_storage::StorageFuture, harmos_storage::WorkerOwner};
 
 // Local Imports
 use super::{ObjectCatalog, StorageBackends, StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings};
@@ -42,10 +40,10 @@ use crate::{Application, Error, Result, Runtime};
 /* === Structs === */
 
 pub struct StorageManager {
-    engine: EngineManager,
+    engine: harmos_storage::StorageManager,
 }
 
-struct Worker(EngineWorker);
+struct Worker(harmos_storage::Worker);
 
 struct Owner {
     leases: Mutex<Vec<Lease>>,
@@ -64,7 +62,7 @@ impl Clone for StorageManager {
 }
 
 impl Deref for StorageManager {
-    type Target = EngineManager;
+    type Target = harmos_storage::StorageManager;
     fn deref(&self) -> &Self::Target {
         &self.engine
     }
@@ -104,7 +102,7 @@ impl StorageManager {
         let execution = crate::clock::current();
         let backends = StorageBackends::in_memory(catalog.clone(), execution.clone())?;
         Ok(Self {
-            engine: EngineManager::with_catalog_execution(catalog, backends, settings, execution)?,
+            engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)?,
         })
     }
 
@@ -114,7 +112,7 @@ impl StorageManager {
     pub fn with_catalog(catalog: ObjectCatalog, backends: StorageBackends, settings: StorageSettings) -> Result<Self> {
         let execution = crate::clock::current();
         Ok(Self {
-            engine: EngineManager::with_catalog_execution(catalog, backends, settings, execution)?,
+            engine: harmos_storage::StorageManager::with_catalog_execution(catalog, backends, settings, execution)?,
         })
     }
 }
@@ -132,7 +130,7 @@ impl StorageManager {
         self.engine.close().await.map_err(Into::into)
     }
 
-    pub(crate) fn engine(&self) -> EngineManager {
+    pub(crate) fn engine(&self) -> harmos_storage::StorageManager {
         self.engine.clone()
     }
 
@@ -149,7 +147,7 @@ impl StorageManager {
             .start_with(operations.resident_identity(), |worker| {
                 let lease = operations
                     .start_service::<A>(Once::new(ServiceDefinition::new("harmos-storage"), Worker(worker)), true, false)
-                    .map_err(|error| StorageError::backend("start storage worker", BackendFailure::Permanent, error))?;
+                    .map_err(|error| harmos_storage::Error::backend("start storage worker", BackendFailure::Permanent, error))?;
                 Ok(Box::new(Owner { leases: Mutex::new(vec![lease]) }))
             })
             .await
@@ -159,10 +157,10 @@ impl StorageManager {
 
 impl<A: Application> Resident<A> for Worker {
     type Error = Error;
-    async fn cleanup(&mut self) -> Result<()> {
+    async fn finalize(&mut self) -> Result<()> {
         self.0.cleanup().await.map_err(Into::into)
     }
-    async fn run(&mut self, mut context: ServiceContext<A>) -> StdResult<(), Error> {
+    async fn run(&mut self, mut context: ServiceContext<A>) -> result::Result<(), Error> {
         context.ready();
         context.until_stopping(self.0.run()).await.unwrap_or(Ok(())).map_err(|error| error.into())
     }
@@ -175,7 +173,7 @@ impl WorkerOwner for Owner {
             let mut failure = None;
             for receipt in receipts {
                 if let Err(error) = receipt.await {
-                    failure.get_or_insert_with(|| StorageError::backend("stop storage worker", BackendFailure::Permanent, error));
+                    failure.get_or_insert_with(|| harmos_storage::Error::backend("stop storage worker", BackendFailure::Permanent, error));
                 }
             }
             failure.map_or(Ok(()), Err)

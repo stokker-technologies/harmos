@@ -47,7 +47,7 @@ use std::sync::atomic::Ordering;
 #[tokio::test(start_paused = true)]
 async fn facade_override_applies_to_one_call() {
     // Override One Call's Retry Policy
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let request = payload(1);
     let mut context = CallContext::default();
     context
@@ -70,5 +70,5 @@ async fn facade_override_applies_to_one_call() {
     let request = payload(1);
     runtime.for_call(&CallContext::default()).call::<Probe>(request.clone()).await.unwrap();
     assert_eq!(request.attempts.load(Ordering::SeqCst), 2);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

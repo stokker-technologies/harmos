@@ -64,5 +64,5 @@ async fn context_watch_refuses_an_invocation_owned_by_another_caller() {
     assert_eq!(failure.context().operation(), Some("harmos.plugin.v1.Invocations/Watch"), "{failure:?}");
     target.request_cancel();
     assert_eq!(target.await.unwrap(), payload(b"target"));
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

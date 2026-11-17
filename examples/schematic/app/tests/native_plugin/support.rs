@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 // Local Imports
 use harmos_runtime::plugin::manager::Manager;
-use schematic_app::config::{LaunchConfig, Settings};
+use schematic_app::config::{Settings, StartConfig};
 use schematic_app::{app::Runtime, document::Document};
 
 /* === Constants === */
@@ -46,13 +46,13 @@ pub async fn host() -> Arc<Runtime> {
     let (clock, _) = harmos_runtime::clock::Clock::virtual_at(std::time::SystemTime::UNIX_EPOCH);
     let document = Document::new();
     let recordings = tempfile::tempdir().unwrap();
-    let config = LaunchConfig {
+    let config = StartConfig {
         document: document.clone(),
         settings: Settings::new(recordings.path()),
         plugins: true,
     };
     let runtime = Arc::new(
-        Runtime::launch_with(document.into_origin(), Some(config), |setup| {
+        Runtime::start_with(document.into_origin(), Some(config), |setup| {
             setup.settings().clock(clock);
             setup.resource(recordings);
         })

@@ -121,7 +121,7 @@ async fn lane_validation_and_capacity_control_admission() {
             entered,
             release: Semaphore::new(0),
         });
-        let runtime = crate::support::app::launch::<App>((), (), |setup| {
+        let runtime = crate::support::app::start::<App>((), (), |setup| {
             setup.resource::<Gauge>(gauge.clone());
         })
         .await
@@ -143,6 +143,6 @@ async fn lane_validation_and_capacity_control_admission() {
         assert_eq!(gauge.maximum.load(Ordering::SeqCst), admitted);
         assert_eq!(gauge.ran.load(Ordering::SeqCst), count);
         assert_eq!(gauge.active.load(Ordering::SeqCst), 0);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }

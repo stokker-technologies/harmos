@@ -54,7 +54,7 @@ impl Fixture {
     pub(crate) async fn new(config: StorageSettings) -> Self {
         let storage_fixture = shared::Fixture::build_with(config, |backends, config| StorageManager::new(backends, config).unwrap());
         let storage = &storage_fixture.storage;
-        let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             setup.settings().storage(storage);
             setup.settings().operation_settings(harmos_runtime::operations::Settings {
                 preparation_bytes: Some(
@@ -72,7 +72,7 @@ impl Fixture {
 
     pub(crate) async fn finish(self) {
         self.storage.close().await.unwrap();
-        crate::support::app::shutdown(&self.runtime).await.unwrap();
+        crate::support::app::stop(&self.runtime).await.unwrap();
     }
 }
 

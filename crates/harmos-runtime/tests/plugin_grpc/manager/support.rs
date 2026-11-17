@@ -165,7 +165,7 @@ impl Host {
         }
     }
     pub async fn close(self) {
-        self.runtime.shutdown().await.unwrap();
+        self.runtime.stop().await.unwrap();
     }
     pub async fn upload(&self, name: &str, bytes: Vec<u8>) -> PluginManaged {
         let digest = Sha256::digest(&bytes).to_vec();

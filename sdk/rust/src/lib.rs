@@ -33,7 +33,7 @@
 //!     let set = Operation::new("thermal.set", set_temperature).visibility(Visibility::Public);
 //!     let temperature = Stream::<Temperature>::new("thermal.temperature");
 //!     let observer = Observer::new(&temperature, read_temperature).every(Duration { seconds: 1, nanos: 0 });
-//!     Plugin::new("thermal", "1.0.0").operation(set).stream(temperature).observer(observer).serve()
+//!     Plugin::new("thermal", "1.0.0").register(|ctx| { ctx.register(set)?; ctx.register(temperature)?; ctx.register(observer)?; Ok(()) }).expect("Register Plugin Declarations").run()
 //! }
 //! ```
 //!

@@ -84,5 +84,5 @@ async fn guest_publications_abort_staging_and_survive_replacement() {
     assert_eq!(values(&stream).await, ["4", "5", "6", "7"]);
     runtime.plugin.stop("sandbox_guest").await.unwrap();
     assert_eq!(values(&stream).await, ["4", "5", "6", "7"]);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

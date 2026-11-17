@@ -81,5 +81,5 @@ async fn peer_admission_uses_configured_chunk_plus_framing() {
     let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
     assert!(attached.activation().unwrap().is_connected());
     attached.stop("Story Complete").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

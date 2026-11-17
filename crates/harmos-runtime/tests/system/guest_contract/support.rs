@@ -232,7 +232,7 @@ impl harmos_runtime::operations::ContextValue for RetryChoice {
 
 pub async fn runtime(owner: Arc<ProviderOwner>, lane: Lane, clock: Clock) -> Arc<Runtime<Bank>> {
     let (storage, entries, root) = entries();
-    let runtime = Runtime::<Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = Runtime::<Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<ProviderOwner>(owner);
         setup.resource(root);
         setup.settings().storage(&storage).plugins(entries.clone());

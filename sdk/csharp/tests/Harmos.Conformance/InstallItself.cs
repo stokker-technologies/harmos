@@ -8,6 +8,7 @@ using Grpc.Core;
 using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
+using Harmos.Conformance;
 
 internal static class InstallItself
 {
@@ -16,8 +17,8 @@ internal static class InstallItself
     if (arguments is ["serve"])
     {
       await new Plugin("example", "1.0.0")
-          .Operation(new Operation<Harmos.Conformance.Value, Harmos.Conformance.Value>("example.echo", Visibility.Public), (_, request) => Task.FromResult(request))
-          .ServeAsync("127.0.0.1:0", remote: true);
+          .Register(ctx => ctx.Register(new Operation<Value, Value>("example.echo", Visibility.Public), (_, request) => Task.FromResult(request)))
+          .RunAsync("127.0.0.1:0", remote: true);
       return;
     }
     var transfer = new StorageTransferSettings();

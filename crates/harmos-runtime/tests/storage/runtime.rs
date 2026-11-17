@@ -63,7 +63,7 @@ async fn configured() -> Fixture {
         settings,
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog());
     })
     .await
@@ -84,8 +84,8 @@ async fn runtime_owns_storage() {
     ));
     write(handle.storage().unwrap(), "final").await;
     f.storage.append_recovery_entries(vec![b"logical-state".to_vec()]).await.unwrap();
-    let settled = crate::support::app::shutdown(&f.runtime).await.unwrap();
-    assert_eq!(crate::support::app::shutdown(&f.runtime).await.unwrap(), settled);
+    let settled = crate::support::app::stop(&f.runtime).await.unwrap();
+    assert_eq!(crate::support::app::stop(&f.runtime).await.unwrap(), settled);
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
@@ -144,7 +144,7 @@ async fn producers_flush_storage() {
         storage.flush().await.unwrap();
         participant.finish();
     });
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
     task.await.unwrap();
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 2);
     assert_eq!(f.data.records.lock().unwrap().len(), 2);
@@ -156,12 +156,12 @@ async fn stop_retains_frontier() {
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.permanent.store(true, Ordering::SeqCst);
     write(&f.storage, "retry").await;
-    assert!(crate::support::app::shutdown(&f.runtime).await.is_err());
+    assert!(crate::support::app::stop(&f.runtime).await.is_err());
     assert!(f.data.control.open.load(Ordering::SeqCst));
     assert!(f.storage.status().closing);
     assert!(matches!(f.runtime.start_storage(f.storage.clone()).await, Err(Error::Closing { domain: "runtime" })));
     f.data.control.permanent.store(false, Ordering::SeqCst);
-    assert_eq!(crate::support::app::shutdown(&f.runtime).await.unwrap(), Position::ORIGIN);
+    assert_eq!(crate::support::app::stop(&f.runtime).await.unwrap(), Position::ORIGIN);
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
 }
@@ -172,11 +172,11 @@ async fn close_retries_journal() {
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.recovery.control.fail_close.store(true, Ordering::SeqCst);
     write(&f.storage, "saved").await;
-    assert!(crate::support::app::shutdown(&f.runtime).await.is_err());
+    assert!(crate::support::app::stop(&f.runtime).await.is_err());
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     f.recovery.control.fail_close.store(false, Ordering::SeqCst);
-    let (first, second) = tokio::join!(crate::support::app::shutdown(&f.runtime), crate::support::app::shutdown(&f.runtime));
+    let (first, second) = tokio::join!(crate::support::app::stop(&f.runtime), crate::support::app::stop(&f.runtime));
     assert_eq!(first.unwrap(), second.unwrap());
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 2);
@@ -189,7 +189,7 @@ async fn cancelled_stop_retains() {
     f.data.control.block_flush.store(true, Ordering::SeqCst);
     write(&f.storage, "pending").await;
     {
-        let stop = crate::support::app::shutdown(&f.runtime);
+        let stop = crate::support::app::stop(&f.runtime);
         tokio::pin!(stop);
         tokio::select! {
             _ = &mut stop => panic!("flush is blocked"),
@@ -200,7 +200,7 @@ async fn cancelled_stop_retains() {
     assert!(f.storage.status().running);
     f.data.control.block_flush.store(false, Ordering::SeqCst);
     f.data.control.flush_release.notify_one();
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
 }
 
@@ -212,9 +212,9 @@ async fn manager_replacement_refused() {
     assert!(first.runtime.start_storage(second.storage.clone()).await.is_err());
     assert!(second.runtime.start_storage(first.storage.clone()).await.is_err());
     assert!(second.runtime.storage().is_some());
-    crate::support::app::shutdown(&second.runtime).await.unwrap();
+    crate::support::app::stop(&second.runtime).await.unwrap();
     write(&first.storage, "still-owned").await;
-    crate::support::app::shutdown(&first.runtime).await.unwrap();
+    crate::support::app::stop(&first.runtime).await.unwrap();
     assert_eq!(first.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(second.data.control.closes.load(Ordering::SeqCst), 1);
 }
@@ -224,13 +224,13 @@ async fn final_drain_saved() {
     let data = Arc::new(Backend::new(history()));
     let recovery = Arc::new(RecoveryBackend::new(history()));
     let storage = StorageManager::new(StorageBackends { primary: data.clone(), state: recovery }, config()).unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).attach(FinalDrain(storage.clone()));
     })
     .await
     .unwrap();
     runtime.start_storage(storage).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(data.records.lock().unwrap().len(), 1);
 }
@@ -240,7 +240,7 @@ async fn stop_seals_registration() {
     let f = configured().await;
     let mut participant = f.runtime.stop_participant();
     {
-        let stop = crate::support::app::shutdown(&f.runtime);
+        let stop = crate::support::app::stop(&f.runtime);
         tokio::pin!(stop);
         assert!(
             std::future::poll_fn(|context| std::task::Poll::Ready(std::future::Future::poll(stop.as_mut(), context).is_pending())).await,
@@ -251,7 +251,7 @@ async fn stop_seals_registration() {
     participant.stopping().await;
     participant.finish();
     assert!(matches!(f.runtime.start_storage(f.storage.clone()).await, Err(Error::Closing { domain: "runtime" })));
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
     assert!(!f.data.control.open.load(Ordering::SeqCst));
     assert!(!f.recovery.control.open.load(Ordering::SeqCst));
 }
@@ -262,11 +262,11 @@ async fn stop_retries_uncertain() {
     f.runtime.start_storage(f.storage.clone()).await.unwrap();
     f.data.control.flush_failures.store(1, Ordering::SeqCst);
     write(&f.storage, "uncertain").await;
-    assert!(crate::support::app::shutdown(&f.runtime).await.is_err());
+    assert!(crate::support::app::stop(&f.runtime).await.is_err());
     assert_eq!(f.data.saved.load(Ordering::SeqCst), 1);
     assert_eq!(f.storage.status().saved.sequence, 0);
     assert!(f.storage.status().pending_bytes > 0);
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
     assert_eq!(f.storage.status().saved.sequence, 1);
     assert_eq!(f.data.control.writes.lock().unwrap().as_slice(), &[1, 1]);
     assert_eq!(f.storage.status().pending_bytes, 0);

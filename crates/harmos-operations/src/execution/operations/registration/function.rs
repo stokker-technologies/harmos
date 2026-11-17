@@ -416,7 +416,7 @@ where
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
     fn transferred(&self) -> bool {

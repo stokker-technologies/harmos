@@ -57,5 +57,5 @@ async fn commits_undo_redo_and_new_history_update_availability() {
     assert_eq!(support::balance(&runtime, support::HOUSE).await, 7);
 
     // Stop
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

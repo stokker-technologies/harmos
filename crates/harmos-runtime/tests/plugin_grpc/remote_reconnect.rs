@@ -133,7 +133,7 @@ async fn remote_reconnect_exposes_process_identity_and_retires_old_handles() {
     attached.stop("Removed").await.unwrap();
     assert_eq!(remote.stops(), 1);
     assert_eq!(remote.get().await.started_at, third.description.started_at);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -168,7 +168,7 @@ async fn a_reconnect_refused_by_its_settings_keeps_reconnecting() {
     let second = support::activation(&mut status, 2).await;
     assert_eq!(second.settings, first.settings);
     attached.stop("Story Complete").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -208,5 +208,5 @@ async fn a_reconnect_whose_samples_never_answer_is_bounded_and_stoppable() {
     attached.stop("Story Complete").await.unwrap();
     abandoned.await.unwrap();
     assert_eq!(remote.stops(), 0, "Never Stop a Peer Whose Activation Was Not Admitted");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

@@ -182,7 +182,7 @@ fn parent_contract_declaration_operation()
 
 async fn runtime() -> (Runtime<App>, Arc<Counts>) {
     let counts = Arc::new(Counts::default());
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Counts>(counts.clone());
     })
     .await
@@ -216,7 +216,7 @@ async fn aliases_preserve_values() {
     let Error::OperationFailed { operation, source } = error else { panic!("expected authored failure") };
     assert_eq!(operation, "outcomes.compute");
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Instrument)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -237,12 +237,12 @@ async fn deadlines_remain_distinct() {
     let error = runtime.operation(ParentContractDeclaration { mode: Mode::Wait }).start().await.unwrap().await.unwrap_err();
     let Error::OperationFailed { source, .. } = error else { panic!("expected parent failure") };
     assert!(matches!(source.downcast_ref::<Failed>(), Some(Failed::Child(Error::OperationRefused(Refusal::TimedOut { .. })))));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
 async fn failure_never_emit() {
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.resource(Counts::default());
         setup.operation(
@@ -263,5 +263,5 @@ async fn failure_never_emit() {
         .filter(|entry| matches!(entry.value.source, FactSource::Work(_)))
         .collect();
     assert!(facts.is_empty());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

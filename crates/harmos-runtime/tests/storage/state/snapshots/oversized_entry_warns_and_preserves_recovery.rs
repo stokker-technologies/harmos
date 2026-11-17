@@ -21,14 +21,14 @@ async fn oversized_entry_warns_and_preserves_recovery() {
         let storage = store.manager(config());
         let mut policy = policy(10000);
         policy.max_bytes = NonZeroUsize::new(1024).unwrap();
-        let runtime = launch(policy.clone(), &storage).await;
+        let runtime = start(policy.clone(), &storage).await;
         runtime.state.commit(deposit(4)).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
         let storage = store.manager(config());
-        let runtime = launch(policy.clone(), &storage).await;
+        let runtime = start(policy.clone(), &storage).await;
         let journal = runtime.state.as_principal(PrincipalId::new("editor"));
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(2048))).await.unwrap();
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
         assert_eq!(store.snapshot().through.sequence, 1);
         {
             let captured = warnings.0.lock().unwrap();
@@ -40,13 +40,13 @@ async fn oversized_entry_warns_and_preserves_recovery() {
             }
         }
         let storage = store.manager(config());
-        let runtime = launch(policy, &storage).await;
+        let runtime = start(policy, &storage).await;
         assert_eq!(balance(&runtime).await, 4);
         assert_eq!(runtime.state.applied(), Position(2));
         let facts: Vec<_> = runtime.state.query::<Fact>(Position(1)).await.collect();
         assert_eq!(facts.len(), 1);
         assert!(facts[0].is_ok());
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     .with_subscriber(subscriber)
     .await;

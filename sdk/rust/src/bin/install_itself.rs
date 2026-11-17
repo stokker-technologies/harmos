@@ -51,9 +51,15 @@ use harmos_conformance::product::client::{PluginsWatchOptions, Root};
 pub fn run(arguments: &[String]) -> Result<()> {
     if arguments == ["serve"] {
         return Plugin::new("example", "1.0.0")
-            .operation(Operation::new("example.echo", |_: &Context, value: Value| async { Ok(value) }).visibility(Visibility::Public))
+            .register(|ctx| {
+                ctx.register(
+                    Operation::new("example.echo", |_: &Context, value: Value| async { Ok(value) }).visibility(Visibility::Public),
+                )?;
+                Ok(())
+            })
+            .expect("Register Plugin Declarations")
             .remote()
-            .serve();
+            .run();
     }
     let runtime = Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(async {

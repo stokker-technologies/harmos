@@ -94,6 +94,6 @@ async fn guest_cancellation_keeps_the_cooperative_final_response() {
             assert!(!retired.cleanup_pending);
             assert!(retired.last_failure.is_some());
         }
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }

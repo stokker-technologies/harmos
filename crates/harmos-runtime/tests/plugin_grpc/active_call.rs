@@ -41,5 +41,5 @@ async fn an_in_flight_plugin_call_blocks_virtual_time_until_settlement() {
     assert!(answer.is_ok());
     assert_eq!(clock.date(), std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1));
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -63,5 +63,5 @@ async fn numeric_plugin_operation_is_admitted_and_invoked() {
     // Retire the Original Activation.
     attached.stop("Numeric Step Complete").await.unwrap();
     assert!(host.runtime.operations.definition("fixture.step.0").is_err());
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

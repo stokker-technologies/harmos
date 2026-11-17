@@ -48,10 +48,15 @@ use harmos_protocol::model::Visibility;
 #[test]
 fn guest_registration_describes_values_before_initialization() {
     // Compose the Same Unary Builder Used by Native Plugins
-    let plugin = Plugin::new("guest_fixture", "1.0.0").operation(
-        Operation::new("guest.echo", async |_: &Context, _: ()| -> Result<()> { panic!("inspection entered a handler") })
-            .visibility(Visibility::Protected),
-    );
+    let plugin = Plugin::new("guest_fixture", "1.0.0")
+        .register(|ctx| {
+            ctx.register(
+                Operation::new("guest.echo", async |_: &Context, _: ()| -> Result<()> { panic!("inspection entered a handler") })
+                    .visibility(Visibility::Protected),
+            )?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations");
     let registration = Registration::new(plugin)
         .capacity(2)
         .on_initialize(async |_: &Context, _: Vec<u8>| panic!("inspection initialized a plugin"))

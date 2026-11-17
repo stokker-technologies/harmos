@@ -254,8 +254,8 @@ async fn balance(runtime: &Runtime<Bank>) -> i64 {
     runtime.state.state().read(|state| state.balances.get(&HOUSE).copied().unwrap_or(0)).await.unwrap().value
 }
 
-async fn launch(snapshot: SnapshotPolicy, storage: &StorageManager) -> Runtime<Bank> {
-    crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+async fn start(snapshot: SnapshotPolicy, storage: &StorageManager) -> Runtime<Bank> {
+    crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),

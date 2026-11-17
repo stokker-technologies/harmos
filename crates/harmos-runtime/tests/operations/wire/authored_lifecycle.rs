@@ -85,7 +85,7 @@ fn request_operation() -> ::core::result::Result<harmos_runtime::operations::Ope
 async fn retries_clone_the_original_request() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let runtime =
-        harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
+        harmos_runtime::Runtime::<crate::operations::probe::Editor>::start_with(crate::operations::probe::Sheet::default(), (), |setup| {
             setup.operation(request_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
         })
         .await
@@ -93,7 +93,7 @@ async fn retries_clone_the_original_request() {
     let request = Request { value: 19, events: events.clone() };
     let call = runtime.operation(request).start().await.unwrap();
     assert_eq!(*call.join().await.unwrap(), 20);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(*events.lock().unwrap(), ["run", "request dropped", "run", "request dropped", "request dropped"]);
 }
 
@@ -105,7 +105,7 @@ async fn transfer_blocks_retry() {
     };
     let runs = Arc::new(AtomicUsize::new(0));
     let runtime =
-        harmos_runtime::Runtime::<crate::operations::probe::Editor>::launch_with(crate::operations::probe::Sheet::default(), (), |setup| {
+        harmos_runtime::Runtime::<crate::operations::probe::Editor>::start_with(crate::operations::probe::Sheet::default(), (), |setup| {
             setup
                 .resource::<AtomicUsize>(runs.clone())
                 .operation(streaming_operation().expect("representable operation"), harmos_runtime::operations::Lane::default());
@@ -138,7 +138,7 @@ async fn transfer_blocks_retry() {
             assert_eq!(*receive.recv().await.unwrap(), 7);
         }
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[derive(harmos_runtime::Message, Debug, Default)]

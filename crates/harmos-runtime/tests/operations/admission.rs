@@ -115,7 +115,7 @@ impl Drop for AttemptGuard {
 /* === Private Functions === */
 
 async fn runtime(counts: Arc<Counts>) -> Runtime<App> {
-    crate::support::app::launch::<App>((), (), |setup| {
+    crate::support::app::start::<App>((), (), |setup| {
         setup.resource::<Counts>(counts);
         setup.settings().operation_settings(Settings {
             queued: NonZeroUsize::new(1).unwrap(),
@@ -151,7 +151,7 @@ async fn queue_refuses_construction() {
         Err(Error::ResourceExhausted { resource: "operation admission queue" })
     ));
 
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     drop((first, second));
 }
 
@@ -187,7 +187,7 @@ async fn queued_cancel_unbuilt() {
     first.request_cancel();
     assert!(matches!(first.join().await, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -202,7 +202,7 @@ async fn instances_leave_lookup() {
         assert!(runtime.operations.status(id).is_none());
     }
     assert_eq!(counts.drops.load(Ordering::SeqCst), 64);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -215,5 +215,5 @@ async fn thread_submission_works() {
     instance.join().await.unwrap();
     assert_eq!(counts.constructed.load(Ordering::SeqCst), 1);
     assert_eq!(counts.drops.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

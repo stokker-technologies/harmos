@@ -13,14 +13,14 @@ use super::*;
 async fn cancelled_snapshot_releases() {
     let store = Store::new();
     let storage = store.manager(config());
-    let runtime = launch(policy(100), &storage).await;
+    let runtime = start(policy(100), &storage).await;
     runtime.state.commit(deposit(4)).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     store.recovery.control.block_read.store(true, Ordering::SeqCst);
     let storage = store.manager(config());
     let cleanup = CleanupCapture::default();
     {
-        let opening = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+        let opening = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
             cleanup.capture(setup);
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),

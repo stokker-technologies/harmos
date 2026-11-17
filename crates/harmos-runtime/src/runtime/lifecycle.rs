@@ -39,8 +39,8 @@ pub(super) type Outcome = std::result::Result<Position, Failure>;
 
 /* === Structs === */
 
-pub(super) struct Shutdown<A: Application> {
-    application: Option<super::launch::ApplicationCleanup<A>>,
+pub(super) struct Stop<A: Application> {
+    application: Option<super::start::ApplicationCleanup<A>>,
     handles: Handle<A>,
     participants: Participants,
     journal_handles: Weak<()>,
@@ -94,12 +94,12 @@ impl<A: Application> Runtime<A> {
         self.storage.get()
     }
 
-    pub async fn shutdown_with_timeout(&self, timeout: Duration) -> Result<Position> {
+    pub async fn stop_with_timeout(&self, timeout: Duration) -> Result<Position> {
         let deadline = self.operations.clock().now().checked_add(timeout).filter(|_| !timeout.is_zero()).ok_or(Error::InvalidInput {
-            field: "runtime shutdown timeout",
+            field: "runtime stop timeout",
             reason: "must be positive and representable",
         })?;
-        match self.operations.clock().timeout_at(deadline, self.shutdown()).await {
+        match self.operations.clock().timeout_at(deadline, self.stop()).await {
             Ok(result) => result,
             Err(_) => {
                 let stopping = self.stopping.lock().expect("runtime transition is healthy");
@@ -107,13 +107,13 @@ impl<A: Application> Runtime<A> {
                     Stopping::Running(_) => "admission",
                     Stopping::Closing { progress, .. } => *progress.borrow(),
                 };
-                tracing::error!(phase, ?timeout, "runtime shutdown budget exhausted; original cleanup retained");
-                Err(Error::ShutdownTimeout { phase })
+                tracing::error!(phase, ?timeout, "runtime stop budget exhausted; original cleanup retained");
+                Err(Error::StopTimeout { phase })
             }
         }
     }
 
-    pub async fn shutdown(&self) -> Result<Position> {
+    pub async fn stop(&self) -> Result<Position> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
@@ -136,7 +136,7 @@ impl<A: Application> Runtime<A> {
                 let _clock = crate::clock::enter(self.operations.clock().clone());
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
-                let original = Shutdown {
+                let original = Stop {
                     application: self.application.clone(),
                     handles: self.handle(),
                     participants: self.participants.clone(),
@@ -153,7 +153,7 @@ impl<A: Application> Runtime<A> {
                 };
             }
             let Stopping::Closing { cleanup, outcome, .. } = &*stopping else {
-                unreachable!("shutdown retains its driver before awaiting it");
+                unreachable!("stop retains its driver before awaiting it");
             };
             (cleanup.clone(), outcome.clone())
         };
@@ -161,17 +161,17 @@ impl<A: Application> Runtime<A> {
             .settle()
             .await
             .map_err(|source| Arc::try_unwrap(source).unwrap_or_else(|source| Error::TaskFailed { domain: "runtime cleanup", source }))?;
-        outcome(completed.get().expect("physical shutdown published its outcome"))
+        outcome(completed.get().expect("physical stop published its outcome"))
     }
 }
 
-impl<A: Application> Resource for Shutdown<A> {
+impl<A: Application> Resource for Stop<A> {
     fn finalize(&mut self) -> Finalize<'_> {
         Box::pin(async move { self.finish().await.map_err(Arc::new) })
     }
 }
 
-impl<A: Application> Shutdown<A> {
+impl<A: Application> Stop<A> {
     async fn finish(&mut self) -> Result<()> {
         if let Drain::Running(supervisor) = &mut self.state {
             #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
@@ -198,7 +198,7 @@ impl<A: Application> Shutdown<A> {
             if self.handles.operations.service_cleanup_pending(false) {
                 return Err(services.err().unwrap_or(Error::NotReady { domain: "service cleanup" }));
             }
-            // Original SDK Shutdown Keeps Its Dispatcher Until Application Cleanup Settles.
+            // Original SDK Stop Keeps Its Dispatcher Until Application Cleanup Settles.
             self.progress.send_replace("operations");
             self.handles.operations.shutdown().await?;
             self.progress.send_replace("participants");
@@ -212,7 +212,7 @@ impl<A: Application> Shutdown<A> {
             self.handles.state.seal();
             self.progress.send_replace("journal");
             let mut settled = joined(self.handles.operations.clock(), supervisor, &self.journal_handles, &self.notices).await;
-            if let Some(source) = self.application.as_ref().and_then(super::launch::ApplicationCleanup::failure)
+            if let Some(source) = self.application.as_ref().and_then(super::start::ApplicationCleanup::failure)
                 && settled.is_ok()
             {
                 settled = Err(Failure { domain: "application", source });

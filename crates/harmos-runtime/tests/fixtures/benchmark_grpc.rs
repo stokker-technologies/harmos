@@ -35,7 +35,7 @@ fn main() {
             lifecycle_queued: NonZeroUsize::new(16).unwrap(),
             preparation_bytes: Some(preparation_bytes),
         };
-        let runtime = harmos_runtime::Runtime::<protocol::Model>::launch_with((), (), |setup| {
+        let runtime = harmos_runtime::Runtime::<protocol::Model>::start_with((), (), |setup| {
             setup.settings().operation_settings(settings);
             setup.catalog(protocol::operations_catalog(), harmos_runtime::operations::Lane::default());
         })
@@ -52,6 +52,6 @@ fn main() {
         .await
         .unwrap();
         drop(attached);
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     });
 }

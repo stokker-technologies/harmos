@@ -53,7 +53,7 @@ use std::{
 async fn guest_dependencies_keep_admission_and_retire_saved_authority() {
     let _report = crate::report::system();
     // Refuse the Declared Requirement Before Activating Without Its Provider
-    let runtime = harmos_runtime::Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<crate::support::Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.settings().register(crate::support::catalog());
         setup.operation(
             harmos_runtime::operations::OperationFactory::protobuf::<support::Publisher>().unwrap(),
@@ -68,7 +68,7 @@ async fn guest_dependencies_keep_admission_and_retire_saved_authority() {
     assert!(matches!(runtime.operations.validate_requirements(&candidate), Err(harmos_runtime::Error::NotRegistered {
         domain: "host provider", name,
     }) if name == "sandbox_guest/provider.echo"));
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 
     // Admit the Guest's Declared Host Dependencies
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
@@ -158,5 +158,5 @@ async fn guest_dependencies_keep_admission_and_retire_saved_authority() {
     let retired = runtime.plugin.status("sandbox_guest").unwrap();
     assert!(!retired.cleanup_pending);
     assert!(retired.last_failure.is_some());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

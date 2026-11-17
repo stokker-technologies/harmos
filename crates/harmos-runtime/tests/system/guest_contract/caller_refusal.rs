@@ -53,7 +53,7 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let lane = Lane::default();
     let (storage, entries, root) = support::entries();
-    let runtime = Runtime::<crate::support::Bank>::launch_with(crate::support::Ledger::default(), (), |setup| {
+    let runtime = Runtime::<crate::support::Bank>::start_with(crate::support::Ledger::default(), (), |setup| {
         setup.resource::<support::ProviderOwner>(Arc::new(support::ProviderOwner::default()));
         setup.resource(root);
         setup.settings().storage(&storage).plugins(entries.clone());
@@ -87,5 +87,5 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
     // The Guest Remains Usable After the Refusal.
     let response = support::call(&runtime.operations, EchoOperation { say: "after refusal".into() }).await.unwrap();
     assert_eq!(response.said, "heard after refusal");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

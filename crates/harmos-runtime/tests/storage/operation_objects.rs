@@ -67,7 +67,7 @@ async fn object_batch_atomic() {
         config(),
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
@@ -93,7 +93,7 @@ async fn object_batch_atomic() {
     assert!(storage.write_objects_once(&mutation, vec![]).await.is_err());
     let admitted = storage.write_objects_once(&mutation, vec![good]).await.unwrap();
     assert_eq!(admitted[0].position.sequence, 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -110,7 +110,7 @@ async fn native_object_exchange_preserves_conflicts_replay_and_retained_reads() 
         config(),
     )
     .unwrap();
-    let runtime = crate::support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().storage(&storage).register(catalog());
     })
     .await
@@ -171,5 +171,5 @@ async fn native_object_exchange_preserves_conflicts_replay_and_retained_reads() 
     assert_eq!(retained.value, old.value);
     assert_eq!(retained.revision, old.revision);
     assert_eq!(runtime.operations.call_native::<GetObject>(get).await.unwrap().value, Some(second));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

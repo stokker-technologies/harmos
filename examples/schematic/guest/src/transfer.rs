@@ -15,19 +15,18 @@
 
 /* === Imports === */
 
-use harmos::plugin::{Context, Operation, Plugin};
-use harmos::{Error, Visibility};
-use schematic_protocol::{Batch, FileHash, FilesHashRequest, Hash, Put, Receipt, Record, Sample, Take};
+// Standard Library Imports
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
-// Standard Library Imports
-
 // Third Party Imports
 
 // Local Imports
+use harmos::plugin::{Context, Dependency, Operation, Registrar, Registration};
+use harmos::{Error, Visibility};
+use schematic_protocol::{Batch, FileHash, FilesHashRequest, Hash, Put, Receipt, Record, Sample, Take};
 
 /* === Constants === */
 
@@ -45,7 +44,7 @@ use std::{
 
 /* === Public Functions === */
 
-pub fn plugin() -> Plugin {
+pub fn catalog() -> impl Registration {
     let store = Arc::new(Mutex::new(BTreeMap::<u64, VecDeque<Batch>>::new()));
     let writes = Arc::clone(&store);
     let put = Operation::new("benchmark.put", async move |_: &Context, request: Put| {
@@ -91,7 +90,14 @@ pub fn plugin() -> Plugin {
     })
     .visibility(Visibility::Public)
     .policy(super::POLICY);
-    super::operations::plugin().operation(put).operation(take).operation(hash).requires::<FilesHashRequest>()
+    move |ctx: &mut Registrar<'_>| {
+        ctx.register(super::operations::catalog())?;
+        ctx.register(put)?;
+        ctx.register(take)?;
+        ctx.register(hash)?;
+        ctx.register(Dependency::<FilesHashRequest>::new())?;
+        Ok(())
+    }
 }
 
 /* === Private Functions === */

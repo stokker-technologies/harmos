@@ -81,7 +81,7 @@ async fn compound_mutation_through_operations() {
     let mut settings = crate::storage::config();
     settings.response.batch_bytes = NonZeroUsize::new(1536).unwrap();
     let storage = StorageManager::in_memory(catalog, settings).unwrap();
-    let runtime = support::app::launch::<Bank>(Ledger::default(), (), |setup| {
+    let runtime = support::app::start::<Bank>(Ledger::default(), (), |setup| {
         setup.settings().clock(clock.source()).storage(&storage).register(support::catalog());
     })
     .await
@@ -193,5 +193,5 @@ async fn compound_mutation_through_operations() {
         .unwrap();
     assert!(matches!(deleted.outcome, CompoundOutcome::Applied { .. }));
     storage.close().await.unwrap();
-    support::app::shutdown(&runtime).await.unwrap();
+    support::app::stop(&runtime).await.unwrap();
 }

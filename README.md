@@ -98,6 +98,9 @@ The [served plugin example](sdk/rust/examples/plugin.rs) declares a typed settin
 and reads its calling entry through `Context::settings`.
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
+Assemble with `Builder::new(origin)`, register catalogs, then call `start()` and
+end with `Runtime::stop()`. `builder.run(stop_request)` starts, waits for the
+product's stop-request future and stops.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
 Native calls bind `runtime.for_call(&ctx)`, then select `storage()`, `streams()`,
 `plugins()`, `time()`, `settings()`, `status()` or `invocations()`. Each call uses its registered

@@ -51,5 +51,5 @@ async fn child_calls_reach_host_and_public_peer_without_start_order() {
     assert_eq!(failure.classification(), Classification::Refused);
     assert!(failure.to_string().contains("fixture.missing"));
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

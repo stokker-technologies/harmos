@@ -121,7 +121,7 @@ impl ProtobufOperation for Stop {
 async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_boundary() {
     let work = Arc::new(Work::default());
     work.queued.store(true, Ordering::SeqCst);
-    let runtime = harmos_runtime::Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = harmos_runtime::Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<Work>(work.clone());
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: NonZeroUsize::new(4096),
@@ -183,5 +183,5 @@ async fn client_preserves_queued_cancel_refusal_and_stop_waits_for_the_product_b
     assert_eq!(Reply::decode(stopped.await.unwrap().payload.as_slice()).unwrap().offset, 42);
     assert_eq!(work.cancellations.load(Ordering::SeqCst), 0);
     drop(listener);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

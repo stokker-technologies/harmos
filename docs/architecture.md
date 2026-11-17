@@ -19,6 +19,26 @@ Library-history references keep their saved-storage path; no application bytes o
 metadata enter library persistence. Diagnostics and bundle installation use the
 same content boundary. See [Application-Owned Content](storage.md#application-owned-content).
 
+## Lifecycle Vocabulary
+
+Host construction and activity use `Builder::new(origin)` → register → start →
+stop. Application preparation uses `Runtime::start(origin, config)` or
+`start_with`; `run` starts, awaits the product's stop-request future and stops.
+Runtime construction needs the initial state; Harmos does not select process
+signal policy. Resource acquisition/release hooks use initialize/finalize.
+Application prepare and application/service stop retain their existing semantics.
+
+The remaining plugin lifecycle cutover is locked direction under
+[Plugin Lifecycle](../openspec/changes/plugin-lifecycle/design.md): local inert
+register → admission → initialize → finalize. Registration declares typed module
+`catalog()` values and opaque product sections; `declarations()` remains the one
+frozen host-facing payload name. Generic carrier helpers accumulate registrations;
+products own public registrars. C++ uses `add` because `register` is reserved.
+Finalize must run once after every attempted initialize, including failure,
+timeout, cancellation and carrier loss. Cancel and settle work before finalize;
+there are no plugin start/stop hooks. Products hide Harmos types without aliases
+or path overrides; clashing names use qualified module paths.
+
 ## Plugin Boundary
 
 **Locked owner decision, 2026-11-16; policy transfer pending:** several products embed

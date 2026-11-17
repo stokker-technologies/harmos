@@ -723,7 +723,7 @@ async fn failures<F: Future<Output = ()>>(
     behavior: Behavior, register: impl FnOnce(harmos_runtime::operations::OperationManager) -> F,
 ) -> [tonic::Status; 4] {
     use harmos_runtime::grpc::{InputEnvelope, OutputEnvelope};
-    let runtime = crate::support::app::launch::<App>((), (), |setup| {
+    let runtime = crate::support::app::start::<App>((), (), |setup| {
         setup.resource(behavior);
     })
     .await
@@ -799,6 +799,6 @@ async fn failures<F: Future<Output = ()>>(
         Err(status) => status,
     };
     drop(attached);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     [unary, streaming, upload, exchange]
 }

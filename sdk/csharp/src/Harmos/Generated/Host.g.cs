@@ -34,16 +34,16 @@ internal static class HostContracts
 }
 public static class HostRequirements
 {
-  public static Plugin Requires(this Plugin plugin, HostOperation operation) => operation switch
+  public static Registrar Register(this Registrar ctx, HostOperation operation) => operation switch
   {
-    HostOperation.InvocationsGet => plugin.Requires(HostContracts.InvocationsGet),
-    HostOperation.InvocationsCancel => plugin.Requires(HostContracts.InvocationsCancel),
-    HostOperation.InvocationsWatch => plugin.Requires(HostContracts.InvocationsWatch),
-    HostOperation.OperationsList => plugin.Requires(HostContracts.OperationsList),
-    HostOperation.OperationsGet => plugin.Requires(HostContracts.OperationsGet),
-    HostOperation.PluginsSettingsList => plugin.Requires(HostContracts.PluginsSettingsList),
-    HostOperation.TimeGet => plugin.Requires(HostContracts.TimeGet),
-    HostOperation.TimeSleep => plugin.Requires(HostContracts.TimeSleep),
+    HostOperation.InvocationsGet => ctx.Register(HostContracts.InvocationsGet),
+    HostOperation.InvocationsCancel => ctx.Register(HostContracts.InvocationsCancel),
+    HostOperation.InvocationsWatch => ctx.Register(HostContracts.InvocationsWatch),
+    HostOperation.OperationsList => ctx.Register(HostContracts.OperationsList),
+    HostOperation.OperationsGet => ctx.Register(HostContracts.OperationsGet),
+    HostOperation.PluginsSettingsList => ctx.Register(HostContracts.PluginsSettingsList),
+    HostOperation.TimeGet => ctx.Register(HostContracts.TimeGet),
+    HostOperation.TimeSleep => ctx.Register(HostContracts.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")
   };
 }

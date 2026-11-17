@@ -22,7 +22,6 @@
 // Local Imports
 #include "harmos/harmos.hpp"
 
-using google::protobuf::Descriptor;
 using google::protobuf::DescriptorProto;
 using google::protobuf::FileDescriptorProto;
 using google::protobuf::FileDescriptorSet;
@@ -125,7 +124,7 @@ void normalize(DescriptorProto &message) {
 }
 } // namespace
 
-FileDescriptorSet types(const Descriptor *descriptor) {
+FileDescriptorSet types(const google::protobuf::Descriptor *descriptor) {
   set<string> seen;
   map<string, FileDescriptorProto> files;
   map<string, set<string>> selected;
@@ -135,8 +134,8 @@ FileDescriptorSet types(const Descriptor *descriptor) {
       node->file()->CopyTo(&files[name]);
     selected[name].insert(string(node->name()));
   };
-  std::function<void(const Descriptor *)> visit;
-  std::function<void(const Descriptor *)> fields;
+  std::function<void(const google::protobuf::Descriptor *)> visit;
+  std::function<void(const google::protobuf::Descriptor *)> fields;
   fields = [&](const auto *message) {
     for (int index = 0; index < message->field_count() + message->extension_count(); ++index) {
       const auto *field = index < message->field_count() ? message->field(index) : message->extension(index - message->field_count());
@@ -203,7 +202,6 @@ FileDescriptorSet types(const Descriptor *descriptor) {
 } // namespace harmos::plugin::detail
 
 namespace harmos::plugin {
-namespace wire = ::harmos::model::v1;
 Plugin::Plugin(string id, string version) : id_(std::move(id)), version_(std::move(version)) {}
 
 Plugin &Plugin::on_stop(std::function<void()> cleanup) {
@@ -211,18 +209,19 @@ Plugin &Plugin::on_stop(std::function<void()> cleanup) {
   return *this;
 }
 
-Plugin &Plugin::setting(wire::SettingDeclaration declaration) {
-  if (declaration.name().empty() || !declaration.has_default_() || declaration.default_().value_case() == wire::SettingValue::VALUE_NOT_SET)
+Registrar &Registrar::add(model::v1::SettingDeclaration declaration) {
+  if (declaration.name().empty() || !declaration.has_default_() ||
+      declaration.default_().value_case() == model::v1::SettingValue::VALUE_NOT_SET)
     throw invalid_argument("Declare Setting " + declaration.name() + ": Name and Typed Default Are Required");
-  for (const auto &existing : settings_.values())
+  for (const auto &existing : plugin_.settings_.values())
     if (existing.name() == declaration.name())
       throw invalid_argument("Declare Setting " + declaration.name() + ": Duplicate Name");
-  *settings_.add_values() = std::move(declaration);
+  *plugin_.settings_.add_values() = std::move(declaration);
   return *this;
 }
 
-wire::Declarations Plugin::declarations() const {
-  wire::Declarations declarations;
+model::v1::Declarations Plugin::declarations() const {
+  model::v1::Declarations declarations;
   *declarations.mutable_types() = messages_;
   set<string> operations;
   set<string> requirements;
@@ -235,9 +234,10 @@ wire::Declarations Plugin::declarations() const {
       throw invalid_argument("Duplicate or Unhandled Operation");
     }
     const auto visibility = operation.contract.visibility();
-    if (visibility != wire::VISIBILITY_PRIVATE && visibility != wire::VISIBILITY_PROTECTED && visibility != wire::VISIBILITY_PUBLIC)
+    if (visibility != model::v1::VISIBILITY_PRIVATE && visibility != model::v1::VISIBILITY_PROTECTED &&
+        visibility != model::v1::VISIBILITY_PUBLIC)
       throw invalid_argument("Register " + operation.contract.id() + ": Explicit Visibility Is Required");
-    if (visibility == wire::VISIBILITY_PRIVATE)
+    if (visibility == model::v1::VISIBILITY_PRIVATE)
       continue;
     *declarations.add_operations() = operation.contract;
     detail::merge(*declarations.mutable_types(), operation.types);
@@ -274,13 +274,13 @@ wire::Declarations Plugin::declarations() const {
     detail::merge(*declarations.mutable_types(), types);
   }
   if (!settings_.values().empty()) {
-    const string type(wire::SettingsDeclarations::descriptor()->full_name());
+    const string type(model::v1::SettingsDeclarations::descriptor()->full_name());
     if (!sections.insert(type).second)
       throw invalid_argument("Declare Settings: Duplicate Section");
     auto *section = declarations.add_sections();
     section->set_type(type);
     section->set_payload(detail::encode(settings_));
-    detail::merge(*declarations.mutable_types(), detail::types(wire::SettingsDeclarations::descriptor()));
+    detail::merge(*declarations.mutable_types(), detail::types(model::v1::SettingsDeclarations::descriptor()));
   }
   declarations.set_digest(detail::sha256(detail::encode(declarations)));
   return declarations;

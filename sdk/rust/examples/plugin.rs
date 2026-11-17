@@ -61,10 +61,14 @@ fn main() -> Result<()> {
         }],
     };
     Plugin::new("echo", "1.0.0")
-        .settings(settings)
-        .requires_host(HostOperation::PluginsSettingsList)
-        .operation(Operation::new("example.echo", echo).visibility(Visibility::Public))
-        .serve()
+        .register(|ctx| {
+            ctx.register(settings)?;
+            ctx.register(HostOperation::PluginsSettingsList)?;
+            ctx.register(Operation::new("example.echo", echo).visibility(Visibility::Public))?;
+            Ok(())
+        })
+        .expect("Register Plugin Declarations")
+        .run()
 }
 
 /* === Private Functions === */

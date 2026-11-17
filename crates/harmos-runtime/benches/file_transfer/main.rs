@@ -63,7 +63,7 @@ async fn main() {
         let settings = backend::storage_settings();
         let chunk_bytes = settings.transfer_chunk_bytes();
         let storage = StorageManager::new(StorageBackends { primary: data, state: recovery }, settings).unwrap();
-        let host = Runtime::<model::Model>::launch_with((), (), |setup| {
+        let host = Runtime::<model::Model>::start_with((), (), |setup| {
             setup.settings().storage(&storage).operation_settings(Settings {
                 preparation_bytes: Some(default_message_bytes().checked_mul(NonZeroUsize::new(6).unwrap()).unwrap()),
                 ..Default::default()
@@ -85,7 +85,7 @@ async fn main() {
 
         // Settle Owned Work and Release the Isolated Dataset.
         drop(carrier);
-        host.shutdown().await.unwrap();
+        host.stop().await.unwrap();
     }
 }
 

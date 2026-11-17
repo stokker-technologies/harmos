@@ -43,7 +43,14 @@ int main() {
     SettingDeclaration setting;
     setting.set_name("enabled");
     setting.mutable_default_()->set_flag(false);
-    Plugin("example", "1.0.0").setting(setting).requires_operation(HostOperation::PluginsSettingsList).serve();
+    Plugin("example", "1.0.0")
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(setting);
+        })
+        .add([&](harmos::plugin::Registrar &ctx) {
+          ctx.add(HostOperation::PluginsSettingsList);
+        })
+        .run();
     return 0;
   } catch (const exception &error) {
     std::cerr << error.what() << '\n';

@@ -15,6 +15,8 @@
 
 /* === Imports === */
 
+use harmos::plugin::{Registrar, Registration};
+
 use harmos::plugin::HostOperation;
 
 // Standard Library Imports
@@ -51,6 +53,12 @@ use schematic_protocol::plugin::{
 /* === Public Functions === */
 
 pub fn plugin(directory: PathBuf) -> Plugin {
+    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
+        .register(|ctx| ctx.register(catalog(directory)))
+        .expect("Register Plugin Declarations")
+}
+
+pub fn catalog(directory: PathBuf) -> impl Registration {
     let validate = Operation::new(SchematicValidateRequest::ID, validate).visibility(Visibility::Public);
     let route = Operation::new(SchematicProposeRouteRequest::ID, route).visibility(Visibility::Public);
     let directories = Operation::new(SchematicListDirectoriesRequest::ID, async move |_: &Context, _: SchematicListDirectoriesRequest| {
@@ -70,12 +78,14 @@ pub fn plugin(directory: PathBuf) -> Plugin {
         Ok(SchematicListDirectoriesResponse { directories })
     })
     .visibility(Visibility::Public);
-    Plugin::new("schematic_tools", env!("CARGO_PKG_VERSION"))
-        .settings(schematic_protocol::settings_declarations())
-        .requires_host(HostOperation::PluginsSettingsList)
-        .operation(validate)
-        .operation(route)
-        .operation(directories)
+    move |ctx: &mut Registrar<'_>| {
+        ctx.register(schematic_protocol::settings_declarations())?;
+        ctx.register(HostOperation::PluginsSettingsList)?;
+        ctx.register(validate)?;
+        ctx.register(route)?;
+        ctx.register(directories)?;
+        Ok(())
+    }
 }
 
 /* === Private Functions === */

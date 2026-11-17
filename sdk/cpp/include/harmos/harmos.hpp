@@ -46,6 +46,7 @@ namespace harmos::plugin {
 enum class HostOperation;
 struct HostRoot;
 class Context;
+class Registrar;
 template <class Q, class R> class Operation;
 template <class R> class Call;
 template <class R> class Watching;
@@ -144,49 +145,28 @@ private:
                                                        std::optional<OperationPolicy> policy, std::function<void()> *cancel);
 };
 
+template <class T> struct Dependency {
+  T operation;
+};
+template <class T> struct Contribution {
+  T value;
+};
+template <class T> struct Descriptor {};
+
 class Plugin {
 public:
   Plugin(std::string id, std::string version);
-  Plugin &requires_operation(HostOperation operation);
-  template <class Q, class R> Plugin &operation(const Operation<Q, R> &operation) {
-    if (operation.definition.watch)
-      throw std::invalid_argument("Register " + operation.definition.contract.id() + ": Plugin Operations Are Unary");
-    operations_.push_back(operation.definition);
-    return *this;
-  }
-  template <class Q, class R> Plugin &requires_operation(const Operation<Q, R> &operation) {
-    if (operation.definition.contract.visibility() == VISIBILITY_PRIVATE)
-      throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
-    Requirement requirement;
-    requirement.set_id(operation.definition.contract.id());
-    requirement.set_fingerprint(operation.definition.contract.fingerprint());
-    requirements_.emplace_back(std::move(requirement), operation.definition.types);
-    return *this;
-  }
-  template <class R> Plugin &stream(const Stream<R> &stream);
-  template <class R> Plugin &observer(const Observer<R> &observer);
-  template <class T> Plugin &message() {
-    detail::merge(messages_, detail::types(T::descriptor()));
-    return *this;
-  }
-  template <class T> Plugin &section(const T &value) {
-    Section section;
-    section.set_type(T::descriptor()->full_name());
-    section.set_payload(detail::encode(value));
-    sections_.emplace_back(std::move(section), detail::types(T::descriptor()));
-    return *this;
-  }
+  Plugin &add(std::function<void(Registrar &)> catalog);
   Plugin &transfer(const ::harmos::StorageTransferSettings &settings) {
     transfer_ = settings;
     return *this;
   }
-  Plugin &setting(SettingDeclaration declaration);
   Plugin &on_stop(std::function<void()> cleanup);
   Declarations declarations() const;
-  // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
-  void serve(std::string address = {}) const;
+  void run(std::string address = {}) const;
 
 private:
+  friend class Registrar;
   google::protobuf::FileDescriptorSet messages_;
   ::harmos::StorageTransferSettings transfer_;
   SettingsDeclarations settings_;
@@ -198,6 +178,57 @@ private:
   std::vector<std::pair<Section, google::protobuf::FileDescriptorSet>> sections_;
   std::vector<std::function<void()>> cleanup_;
 };
+
+// Declaration-Only Accumulation; No Runtime Facilities Are Available.
+class Registrar {
+public:
+  Registrar &add(std::function<void(Registrar &)> catalog) {
+    catalog(*this);
+    return *this;
+  }
+  Registrar &add(HostOperation operation);
+  template <class Q, class R> Registrar &add(const Operation<Q, R> &operation) {
+    if (operation.definition.watch)
+      throw std::invalid_argument("Register " + operation.definition.contract.id() + ": Plugin Operations Are Unary");
+    plugin_.operations_.push_back(operation.definition);
+    return *this;
+  }
+  template <class Q, class R> Registrar &add(const Dependency<Operation<Q, R>> &dependency) {
+    const auto &operation = dependency.operation;
+    if (operation.definition.contract.visibility() == VISIBILITY_PRIVATE)
+      throw std::invalid_argument("Require " + operation.definition.contract.id() + ": Private Calls Are Local");
+    Requirement requirement;
+    requirement.set_id(operation.definition.contract.id());
+    requirement.set_fingerprint(operation.definition.contract.fingerprint());
+    plugin_.requirements_.emplace_back(std::move(requirement), operation.definition.types);
+    return *this;
+  }
+  template <class R> Registrar &add(const Stream<R> &stream);
+  template <class R> Registrar &add(const Observer<R> &observer);
+  template <class T> Registrar &add(Descriptor<T>) {
+    detail::merge(plugin_.messages_, detail::types(T::descriptor()));
+    return *this;
+  }
+  template <class T> Registrar &add(const Contribution<T> &contribution) {
+    Section section;
+    section.set_type(T::descriptor()->full_name());
+    section.set_payload(detail::encode(contribution.value));
+    plugin_.sections_.emplace_back(std::move(section), detail::types(T::descriptor()));
+    return *this;
+  }
+  Registrar &add(SettingDeclaration declaration);
+
+private:
+  friend class Plugin;
+  explicit Registrar(Plugin &plugin) : plugin_(plugin) {}
+  Plugin &plugin_;
+};
+
+inline Plugin &Plugin::add(std::function<void(Registrar &)> catalog) {
+  Registrar ctx(*this);
+  ctx.add(std::move(catalog));
+  return *this;
+}
 
 /* === Templates === */
 
@@ -229,6 +260,7 @@ private:
 template <class Q, class R> class Operation {
 private:
   friend class Plugin;
+  friend class Registrar;
   friend class Context;
   detail::OperationDefinition definition;
 
@@ -328,6 +360,7 @@ private:
 template <class R> class Stream {
 private:
   friend class Plugin;
+  friend class Registrar;
   friend class Observer<R>;
   detail::StreamDefinition definition;
 
@@ -353,6 +386,7 @@ public:
 template <class R> class Observer {
 private:
   friend class Plugin;
+  friend class Registrar;
   detail::StreamDefinition definition;
   google::protobuf::FileDescriptorSet columns_;
 
@@ -393,12 +427,12 @@ public:
   }
 };
 
-template <class R> Plugin &Plugin::stream(const Stream<R> &stream) {
-  streams_.push_back(stream.definition);
+template <class R> Registrar &Registrar::add(const Stream<R> &stream) {
+  plugin_.streams_.push_back(stream.definition);
   return *this;
 }
-template <class R> Plugin &Plugin::observer(const Observer<R> &observer) {
-  for (auto &stream : streams_) {
+template <class R> Registrar &Registrar::add(const Observer<R> &observer) {
+  for (auto &stream : plugin_.streams_) {
     if (stream.declaration.id() != observer.definition.declaration.id())
       continue;
     if (stream.sample || stream.window || stream.producer || observer.definition.producer)

@@ -10,8 +10,8 @@
 /* === Modules === */
 
 mod boot;
-mod launch;
 mod lifecycle;
+mod start;
 mod storage;
 
 /* === Re-Exports === */
@@ -79,7 +79,7 @@ pub struct Runtime<A: Application> {
     #[cfg(feature = "simulation")]
     pub(crate) simulation: crate::simulation::Configuration<A>,
 
-    application: Option<launch::ApplicationCleanup<A>>,
+    application: Option<start::ApplicationCleanup<A>>,
     pub state: StateManager<A>,
     pub records: crate::records::RecordManager<A>,
     pub streams: StreamManager<A>,
@@ -193,7 +193,7 @@ pub struct StopParticipant {
 enum Stopping<A: Application> {
     Running(Option<JoinHandle<Position>>),
     Closing {
-        cleanup: Arc<crate::supervision::cleanup::Cleanup<lifecycle::Shutdown<A>>>,
+        cleanup: Arc<crate::supervision::cleanup::Cleanup<lifecycle::Stop<A>>>,
         outcome: Arc<OnceLock<lifecycle::Outcome>>,
         progress: watch::Sender<&'static str>,
     },
@@ -387,42 +387,6 @@ impl<A: Application> Runtime<A> {
         &self.grpc
     }
 
-    pub fn builder(origin: impl Into<Origin<A::State>>) -> Builder<A> {
-        Builder {
-            clock: crate::clock::current(),
-            application: None,
-            cleanup: BootstrapCleanup::new(),
-            origin: origin.into(),
-            resources: harmos_operations::execution::__private::ResourceSet::new(),
-            configuration_errors: Vec::new(),
-            operation_catalogs: HashSet::new(),
-            inverses: Arc::new(none::<A>),
-            catalog: Dispatch::default(),
-            definitions: Vec::new(),
-            attachments: Attachments::new(),
-            managed_storage: None,
-            startup_storage: None,
-            storage_cleanup: None,
-            record_projection: None,
-            reconciliation: None,
-            initializers: Vec::new(),
-            snapshots: None,
-            lanes: LaneSet::default(),
-            operations: Vec::new(),
-            operation_settings: crate::operations::Settings::default(),
-            grpc_plugins: Default::default(),
-            schema_settings: Arc::new(crate::config::SchemaSettings::default()),
-            operation_middleware: Vec::new(),
-            services: Vec::new(),
-            #[cfg(feature = "simulation")]
-            simulation: crate::simulation::Configuration::new(),
-            #[cfg(feature = "simulation")]
-            live_only: Vec::new(),
-            #[cfg(feature = "simulation")]
-            simulation_mode: false,
-        }
-    }
-
     pub async fn inspect(origin: impl Into<Origin<A::State>>, source: impl Source<A>) -> Result<Inspector<A>, Incompatible> {
         let mut attachments = Attachments::new();
         attachments.recover(source);
@@ -480,6 +444,42 @@ impl<A: Application, const N: usize> Registration<A> for [Definition; N] {
 }
 
 impl<A: Application> Builder<A> {
+    pub fn new(origin: impl Into<Origin<A::State>>) -> Self {
+        Self {
+            clock: crate::clock::current(),
+            application: None,
+            cleanup: BootstrapCleanup::new(),
+            origin: origin.into(),
+            resources: harmos_operations::execution::__private::ResourceSet::new(),
+            configuration_errors: Vec::new(),
+            operation_catalogs: HashSet::new(),
+            inverses: Arc::new(none::<A>),
+            catalog: Dispatch::default(),
+            definitions: Vec::new(),
+            attachments: Attachments::new(),
+            managed_storage: None,
+            startup_storage: None,
+            storage_cleanup: None,
+            record_projection: None,
+            reconciliation: None,
+            initializers: Vec::new(),
+            snapshots: None,
+            lanes: LaneSet::default(),
+            operations: Vec::new(),
+            operation_settings: crate::operations::Settings::default(),
+            grpc_plugins: Default::default(),
+            schema_settings: Arc::new(crate::config::SchemaSettings::default()),
+            operation_middleware: Vec::new(),
+            services: Vec::new(),
+            #[cfg(feature = "simulation")]
+            simulation: crate::simulation::Configuration::new(),
+            #[cfg(feature = "simulation")]
+            live_only: Vec::new(),
+            #[cfg(feature = "simulation")]
+            simulation_mode: false,
+        }
+    }
+
     pub fn startup_cleanup(&self) -> BootstrapCleanup {
         self.cleanup.clone()
     }
@@ -682,6 +682,13 @@ impl<A: Application> Builder<A> {
         boot::Startup::new(self, storage).await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
     }
 
+    /// Start, Wait for the Product's Stop Request, Then Settle All Runtime Owners.
+    pub async fn run(self, stop: impl Future<Output = ()>) -> Result<Position, StartupError> {
+        let runtime = self.start().await?;
+        stop.await;
+        runtime.stop().await.map_err(|source| StartupError::Runtime { source: Box::new(source) })
+    }
+
     pub fn clock(&mut self, clock: crate::clock::Clock) -> &mut Self {
         self.clock = clock;
         self
@@ -811,7 +818,7 @@ impl<A: Application> Builder<A> {
     ) -> Result<Runtime<A>, Incompatible> {
         let application = {
             let _clock = crate::clock::enter(self.clock.clone());
-            self.application.take().map(|application| launch::ApplicationCleanup::new(application, None))
+            self.application.take().map(|application| start::ApplicationCleanup::new(application, None))
         };
         let opened = boot::Boot::new(storage, cleanup.clone());
         let mut boot = match opened {
@@ -1365,7 +1372,7 @@ mod tests {
         let source = Arc::new(Error::Closing { domain: "managed process" });
         participant.fail(source);
 
-        // Shutdown Refuses the Failure Even While That Owner Remains Alive
+        // Stop Refuses the Failure Even While That Owner Remains Alive
         let Error::TaskFailed { source, .. } = participants.stop().await.unwrap_err() else { panic!("participant failure was lost") };
         assert!(matches!(source.downcast_ref::<Error>(), Some(Error::Closing { domain: "managed process" })));
         assert!(participant.is_stopping());

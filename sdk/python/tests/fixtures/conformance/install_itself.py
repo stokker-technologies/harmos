@@ -13,8 +13,8 @@
 
 from harmos import VISIBILITY_PUBLIC, StorageTransferSettings
 from harmos.client import PLUGIN_STATE_READY, PluginPlacement, PluginRemote, PluginValue
-from harmos.plugin import Context, Plugin, operation
 from tests.fixtures.client import Client
+from harmos.plugin import Catalog, Context, Plugin, operation
 
 from . import Value
 
@@ -38,7 +38,7 @@ class Echo:
 
 async def run(arguments: list[str]) -> None:
     if arguments == ["serve"]:
-        endpoint = await Plugin(Echo(), id="example", version="1.0.0").start("127.0.0.1:0")
+        endpoint = await Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Echo()))).start("127.0.0.1:0")
         print(f"harmos listening {endpoint.address}", flush=True)
         await endpoint.server.wait_for_termination()
         return

@@ -14,10 +14,10 @@ mod store_fixture;
 
 /* === Imports === */
 
+use super::backend;
 use super::backend::Backend;
 use super::backend::RecoveryBackend;
 use super::backend::history;
-use super::backend::storage_settings as config;
 use super::support::{Bank, Change, Fact, Ledger, Noted, catalog, deposit};
 use harmos_runtime::state::{Focus, Position, PrincipalId, RequestKey, SnapshotPolicy};
 use harmos_runtime::storage::{PayloadEncoding, ReadLimits, SchemaKey};
@@ -48,11 +48,11 @@ fn policy(every: u64) -> SnapshotPolicy {
 
 pub(super) async fn segmented_recovery() {
     let store = Store::new();
-    let storage = store.manager(config());
+    let storage = store.manager(backend::storage_settings());
     let mut policy = policy(10000);
     policy.max_bytes = NonZeroUsize::new(64 * 1024).unwrap();
     let initial = Ledger::bulky(100_000);
-    let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
+    let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -72,14 +72,14 @@ pub(super) async fn segmented_recovery() {
     for _ in 0..64 {
         harmos_runtime::records::RecordManager::new(journal.clone()).publish(Noted("x".repeat(16 * 1024))).await.unwrap();
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let snapshot = store.snapshot();
     assert_eq!(snapshot.payload.manifest().position, Position(730));
     assert!(snapshot.payload.manifest().count > 3);
     assert!(snapshot.payload.manifest().segments.iter().all(|segment| segment.bytes <= policy.max_bytes.get()));
     // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.
-    let storage = store.manager(config());
-    let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
+    let storage = store.manager(backend::storage_settings());
+    let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
         setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
             replay: limits(),
             capture: limits(),
@@ -90,7 +90,7 @@ pub(super) async fn segmented_recovery() {
     .await
     .unwrap();
     runtime.state.as_principal(who.clone()).commit(deposit(7)).await.unwrap();
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let full = Store::new();
     *full.recovery.entries.lock().unwrap() = store.recovery.entries.lock().unwrap().clone();
     // The Fixture's Durable Frontier Is Reconstructed By Its Open Method.
@@ -98,8 +98,8 @@ pub(super) async fn segmented_recovery() {
 
     let mut results = Vec::new();
     for (store, snapshots) in [(&store, Some(policy.clone())), (&full, None)] {
-        let storage = store.manager(config());
-        let runtime = crate::support::app::launch::<Bank>(initial.clone(), (), |setup| {
+        let storage = store.manager(backend::storage_settings());
+        let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
             setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
                 replay: limits(),
                 capture: limits(),
@@ -121,7 +121,7 @@ pub(super) async fn segmented_recovery() {
         journal.redo(who.clone(), Focus::all()).await.unwrap();
         let redone = runtime.state.state().read(Clone::clone).await.unwrap().value;
         results.push((restored, undone, redone));
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
     assert_eq!(results[0], results[1]);
 }

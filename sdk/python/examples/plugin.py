@@ -16,7 +16,7 @@ from argparse import ArgumentParser
 from google.protobuf.wrappers_pb2 import BytesValue
 
 from harmos import VISIBILITY_PUBLIC, SettingDeclaration, SettingValue
-from harmos.plugin import Context, HostOperation, Plugin, operation
+from harmos.plugin import Catalog, Context, HostOperation, Plugin, operation
 
 # === Public Exports === #
 
@@ -42,18 +42,22 @@ class Echo:
 
 async def run(address: str) -> None:
     plugin = Plugin(
-        Echo(),
         id="example",
         version="1.0.0",
-        requires=[HostOperation.PLUGINS_SETTINGS_LIST],
-        settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
+        register=lambda ctx: ctx.register(
+            Catalog(
+                Echo(),
+                requires=[HostOperation.PLUGINS_SETTINGS_LIST],
+                settings=[SettingDeclaration(name="prefix", title="Echo Prefix", default=SettingValue(text=""))],
+            )
+        ),
     )
     endpoint = await plugin.start(address)
     print(endpoint.address, flush=True)
     try:
         await endpoint.server.wait_for_termination()
     finally:
-        await endpoint.close()
+        await endpoint.stop()
 
 
 def main() -> None:

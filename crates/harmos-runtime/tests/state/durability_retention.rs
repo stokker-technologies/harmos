@@ -33,7 +33,7 @@ async fn pruned_copy_recovers() {
     for amount in [2, 3] {
         runtime.state.commit(deposit(amount)).await.expect("accepted");
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let mut source = Journal::<Bank>::open(&copy);
     Source::prune(&mut source, first.position).await;
@@ -47,5 +47,5 @@ async fn pruned_copy_recovers() {
     assert_eq!(ledger(&recovered).await.balance, 6);
     assert!(matches!(recovered.state.query::<Change>(Position::ORIGIN).await.next(), Some(Err(Error::BeneathHorizon))));
     assert!(matches!(recovered.state.state().at(Origin::initial(Ledger::default()), first.position).await, Err(Error::BeneathHorizon)));
-    crate::support::app::shutdown(&recovered).await.unwrap();
+    crate::support::app::stop(&recovered).await.unwrap();
 }

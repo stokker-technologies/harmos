@@ -21,17 +21,24 @@ using Microsoft.Extensions.Logging;
 
 namespace Harmos.Plugins;
 
-/// <summary>A plugin assembled from typed async methods, including instance methods with shared state.</summary>
-public sealed class Plugin(string id, string version, StorageTransferSettings? transfer = null)
-{
-  private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
-  private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
-  private readonly Declarations declarations = new() { Types_ = new() };
-  private readonly Dictionary<string, Handler> operations = [];
-  private readonly Dictionary<string, Publication> streams = [];
-  private readonly List<Func<Task>> cleanup = [];
+public delegate void Registration(Registrar ctx);
 
-  public Plugin Operation<TRequest, TResponse>(Operation<TRequest, TResponse> operation, Func<Context, TRequest, Task<TResponse>> handler)
+public readonly record struct Descriptor<T>();
+
+/// <summary>Accumulate declarations without acquiring runtime resources.</summary>
+public sealed class Registrar
+{
+  internal readonly Declarations declarations = new() { Types_ = new() };
+  internal readonly Dictionary<string, Handler> operations = [];
+  internal readonly Dictionary<string, Publication> streams = [];
+
+  public Registrar Register(Registration catalog)
+  {
+    catalog(this);
+    return this;
+  }
+
+  public Registrar Register<TRequest, TResponse>(Operation<TRequest, TResponse> operation, Func<Context, TRequest, Task<TResponse>> handler)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
   {
@@ -53,13 +60,13 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   }
 
   /// <summary>Register a payload descriptor independently of executable declarations.</summary>
-  public Plugin Message<T>() where T : IMessage<T>, new()
+  public Registrar Register<T>(Descriptor<T> descriptor) where T : IMessage<T>, new()
   {
     Descriptors.Merge(declarations.Types_, Descriptors.Types(new T().Descriptor));
     return this;
   }
 
-  public Plugin Requires<TRequest, TResponse>(Operation<TRequest, TResponse> operation)
+  public Registrar Register<TRequest, TResponse>(Operation<TRequest, TResponse> operation)
       where TRequest : IMessage<TRequest>, new()
       where TResponse : IMessage<TResponse>, new()
   {
@@ -73,7 +80,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   }
 
   /// <summary>Declare an interval stream answered one sample at a time, in order, for every sample of each host window.</summary>
-  public Plugin Observer<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
+  public Registrar Register<TRow>(string stream, Duration? interval, Func<Context, Task<TRow>> observer,
       string description = "", string intervalSetting = "", string windowSetting = "") where TRow : IMessage<TRow>, new()
   {
     var row = new TRow().Descriptor;
@@ -94,7 +101,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
 
   /// <summary>Declare an interval stream whose observer answers each host window with its columns message.</summary>
   /// <remarks>TColumns repeats every TRow field with the same number and type and holds one value per sample.</remarks>
-  public Plugin WindowObserver<TRow, TColumns>(string stream, Duration? interval, Func<Context, Window, Task<TColumns>> observer,
+  public Registrar Register<TRow, TColumns>(string stream, Duration? interval, Func<Context, Window, Task<TColumns>> observer,
       string description = "", string intervalSetting = "", string windowSetting = "")
       where TRow : IMessage<TRow>, new()
       where TColumns : IMessage<TColumns>, new()
@@ -106,14 +113,14 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
             ?? throw Columns.Failed($"Observe {stream}: Return the Window's Columns"), window, stream));
   }
 
-  public Plugin Stream<TRow>(string stream, Func<Context, Publisher<TRow>, Task> producer, string description = "")
+  public Registrar Register<TRow>(string stream, Func<Context, Publisher<TRow>, Task> producer, string description = "")
       where TRow : IMessage<TRow>, new()
   {
     return AddStream<TRow>(new StreamDeclaration { Id = stream, Description = description },
         new Publication(null, (context, rows) => producer(context, new Publisher<TRow>(rows, context.CancellationToken))));
   }
 
-  public Plugin Section<T>(T value) where T : IMessage<T>
+  public Registrar Register<T>(T value) where T : IMessage<T>
   {
     var name = value.Descriptor.FullName;
     if (declarations.Sections.Any(item => item.Type == name))
@@ -124,7 +131,7 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   }
 
   /// <summary>Declare a library-stored setting with an explicit typed default.</summary>
-  public Plugin Setting(string name, SettingValue defaultValue, string title = "", string description = "")
+  public Registrar Register(string name, SettingValue defaultValue, string title = "", string description = "")
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(name);
     ArgumentNullException.ThrowIfNull(defaultValue);
@@ -142,8 +149,52 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
       Default = defaultValue.Clone()
     });
     if (section is null)
-      return Section(settings);
+      return Register(settings);
     section.Payload = settings.ToByteString();
+    return this;
+  }
+
+  private Registrar AddInterval<TRow>(string stream, Duration? interval, string description, string intervalSetting, string windowSetting,
+      Func<Context, Window, Task<Columns>> observer) where TRow : IMessage<TRow>, new()
+  {
+    if (interval is null && string.IsNullOrEmpty(intervalSetting))
+      throw new ArgumentException($"Declare {stream}: Give an Interval or Interval Setting");
+    if (interval is not null && (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
+        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0)))
+      throw new ArgumentException($"Declare {stream}: Give a Positive Protobuf Duration Interval", nameof(interval));
+    return AddStream<TRow>(new StreamDeclaration
+    {
+      Id = stream,
+      Interval = interval?.Clone(),
+      Description = description,
+      IntervalSetting = intervalSetting,
+      WindowSetting = windowSetting
+    }, new Publication(observer, null));
+  }
+
+  private Registrar AddStream<TRow>(StreamDeclaration declaration, Publication publication) where TRow : IMessage<TRow>, new()
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(declaration.Id);
+    if (!streams.TryAdd(declaration.Id, publication))
+      throw new ArgumentException($"Duplicate Stream: {declaration.Id}");
+    declaration.Row = new TRow().Descriptor.FullName;
+    declarations.Streams.Add(declaration);
+    Descriptors.Merge(declarations.Types_, Descriptors.Types(new TRow().Descriptor));
+    return this;
+  }
+}
+
+/// <summary>A plugin assembled from typed async methods, including instance methods with shared state.</summary>
+public sealed class Plugin(string id, string version, StorageTransferSettings? transfer = null)
+{
+  private readonly StorageTransferSettings transferSettings = transfer?.Clone() ?? new();
+  private static readonly Timestamp StartedAt = Timestamp.FromDateTime(DateTime.UtcNow);
+  private readonly Registrar registrar = new();
+  private readonly List<Func<Task>> cleanup = [];
+
+  public Plugin Register(Registration catalog)
+  {
+    registrar.Register(catalog);
     return this;
   }
 
@@ -157,13 +208,13 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(id);
     ArgumentException.ThrowIfNullOrWhiteSpace(version);
-    var result = declarations.Clone();
+    var result = registrar.declarations.Clone();
     result.Digest = ByteString.CopyFrom(SHA256.HashData(result.ToByteArray()));
     return result;
   }
 
   /// <summary>Serve plain gRPC. HARMOS_ADDRESS overrides address; remote mode remains alive after Stop.</summary>
-  public async Task ServeAsync(string? address = null, bool remote = false, CancellationToken cancellationToken = default)
+  public async Task RunAsync(string? address = null, bool remote = false, CancellationToken cancellationToken = default)
   {
     var snapshot = Declarations();
     var endpoint = IPEndPoint.Parse(Environment.GetEnvironmentVariable("HARMOS_ADDRESS") ?? address ?? "127.0.0.1:0");
@@ -198,36 +249,9 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     Sdk = "harmos_csharp",
     SdkVersion = "0.1.0",
     MessageBytes = messageBytes
-  }, new(operations), new(streams), cleanup.ToArray(), remote, lifetime);
+  }, new(registrar.operations), new(registrar.streams), cleanup.ToArray(), remote, lifetime);
 
-  private Plugin AddInterval<TRow>(string stream, Duration? interval, string description, string intervalSetting, string windowSetting,
-      Func<Context, Window, Task<Columns>> observer) where TRow : IMessage<TRow>, new()
-  {
-    if (interval is null && string.IsNullOrEmpty(intervalSetting))
-      throw new ArgumentException($"Declare {stream}: Give an Interval or Interval Setting");
-    if (interval is not null && (interval.Seconds < 0 || interval.Nanos < 0 || interval.Nanos >= 1_000_000_000 ||
-        interval.Seconds > 315_576_000_000 || (interval.Seconds == 0 && interval.Nanos == 0)))
-      throw new ArgumentException($"Declare {stream}: Give a Positive Protobuf Duration Interval", nameof(interval));
-    return AddStream<TRow>(new StreamDeclaration
-    {
-      Id = stream,
-      Interval = interval?.Clone(),
-      Description = description,
-      IntervalSetting = intervalSetting,
-      WindowSetting = windowSetting
-    }, new Publication(observer, null));
-  }
 
-  private Plugin AddStream<TRow>(StreamDeclaration declaration, Publication publication) where TRow : IMessage<TRow>, new()
-  {
-    ArgumentException.ThrowIfNullOrWhiteSpace(declaration.Id);
-    if (!streams.TryAdd(declaration.Id, publication))
-      throw new ArgumentException($"Duplicate Stream: {declaration.Id}");
-    declaration.Row = new TRow().Descriptor.FullName;
-    declarations.Streams.Add(declaration);
-    Descriptors.Merge(declarations.Types_, Descriptors.Types(new TRow().Descriptor));
-    return this;
-  }
 }
 
 internal sealed record Handler(Func<ByteString, IMessage> Decode, Func<Context, IMessage, Task<ByteString>> Execute, OperationContract Contract);

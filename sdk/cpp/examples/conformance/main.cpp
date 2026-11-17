@@ -3,7 +3,6 @@
 #include <grpc/event_engine/event_engine.h>
 #include <iostream>
 
-namespace fixture_types = harmos::conformance;
 using grpc_event_engine::experimental::ShutdownDefaultEventEngine;
 using std::exception;
 using std::invalid_argument;
@@ -17,11 +16,11 @@ int main(int argc, char **argv) {
     if (argc > 1 && string(argv[1]) == "--install-itself") {
       result = install_itself(argc, argv);
     } else {
-      auto plugin = fixture_types::plugin();
+      auto plugin = harmos::conformance::plugin();
       if (argc == 3 && string(argv[1]) == "--address")
-        plugin.serve(argv[2]);
+        plugin.run(argv[2]);
       else if (argc == 1)
-        plugin.serve();
+        plugin.run();
       else
         throw invalid_argument("Usage: harmos-cpp-conformance [--address ADDRESS]");
     }

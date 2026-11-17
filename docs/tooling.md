@@ -415,7 +415,7 @@ those message classes, without an intermediate JSON representation:
 ```python
 from google.protobuf.duration_pb2 import Duration
 from harmos import VISIBILITY_PUBLIC
-from harmos.plugin import Context, Operation, Plugin, observer, on_stop, operation
+from harmos.plugin import Catalog, Context, Operation, Plugin, Registrar, observer, on_stop, operation
 from application import Reading, SetTemperature
 
 READ_SENSOR = Operation("sensor.read", SetTemperature, Reading, visibility=VISIBILITY_PUBLIC)
@@ -437,16 +437,24 @@ class Chamber:
     async def cleanup(self) -> None:
         self.target = 0.0
 
-plugin = Plugin(Chamber(), id="thermal", version="1.0.0", requires=[READ_SENSOR])
+def catalog() -> Catalog:
+    return Catalog(Chamber(), requires=[READ_SENSOR])
+
+
+def register(ctx: Registrar) -> None:
+    ctx.register(catalog())
+
+
+plugin = Plugin(id="thermal", version="1.0.0", register=register)
 # In the application's async entry point:
-await plugin.serve("127.0.0.1:53124")
+await plugin.run("127.0.0.1:53124")
 ```
 
 Python plugins are remote endpoints. The author supplies the bind address;
 the host never starts their process. Serving uses plain gRPC without TLS or
 credentials. Stop awaits cleanup hooks in declaration order, replies, and keeps
 the endpoint serving. `start(address)` returns an endpoint with its bound
-`address` and an async `close()` for applications that own the server lifecycle.
+`address` and an async `stop()` for applications that own the server lifecycle.
 
 `ctx.call(contract, request, policy=...)` dispatches Private operations inside the
 plugin. Other calls use typed unary children on the parent invocation; declare
@@ -478,7 +486,7 @@ observer runs once per sample of each window; `@window_observer` answers the who
 window with its columns. An observer may declare `interval_setting` instead of a
 default `interval`, and `window_setting` to choose its window length; the host
 resolves both settings. Product settings
-and contributions travel as typed protobuf values in `Plugin(..., sections=[...])`.
+and contributions travel as typed protobuf values in `Catalog(..., sections=[...])`.
 
 For device-driven streams, decorate an async method with
 `@publisher("thermal.device", row=Reading)` and accept `(self, ctx, publisher)`.

@@ -15,7 +15,7 @@
 
 pub use crate::operations::CallContext;
 pub use crate::state::{Invertible, Record, RecordEntry, Transaction};
-pub use crate::{Application, Error, Identifier, Lifecycle, Message, Result, Runtime, Setup, Startup};
+pub use crate::{Application, Builder, Error, Identifier, Lifecycle, Message, Result, Runtime, Setup, Startup};
 pub use crate::{
     Backoff, Context, EndpointSet, ExecutionContext, Invocation, InvocationExt, Jitter, Lane, Operation, OperationDefinition,
     OperationHost, OperationPolicy, Portable, QualifiedId, RequestShape, Response, RestartPolicy, RetryPolicy, Running, Service,

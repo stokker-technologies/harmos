@@ -30,11 +30,15 @@ plugin handler may omit the selector to read its own entry.
 ## Plugin Context
 
 ```rust
-use harmos::plugin::{Context, HostOperation, Plugin};
+use harmos::plugin::{Context, HostOperation, Plugin, Registrar};
 
-let plugin = Plugin::new("example", "1.0.0")
-    .requires_host(HostOperation::PluginsSettingsList)
-    .requires_host(HostOperation::TimeGet);
+fn register(ctx: &mut Registrar<'_>) -> harmos::Result<()> {
+    ctx.register(HostOperation::PluginsSettingsList)?;
+    ctx.register(HostOperation::TimeGet)?;
+    Ok(())
+}
+
+let plugin = Plugin::new("example", "1.0.0").register(register)?;
 
 async fn observe(context: &Context) -> harmos::Result<()> {
     let settings = context.settings().list().await?;

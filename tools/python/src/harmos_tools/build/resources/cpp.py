@@ -372,7 +372,7 @@ def host(
         "HostRoot Context::host() {",
         "  return {" + ", ".join("{*this}" for node in nodes if len(node) == 1) + "};",
         "}",
-        "Plugin& Plugin::requires_operation(HostOperation operation) {",
+        "Registrar& Registrar::add(HostOperation operation) {",
         "  switch (operation) {",
     ]
     for method in methods:
@@ -381,7 +381,7 @@ def host(
         expression = f'Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)' + (
             ".watch()" if method["server_streaming"] else ""
         )
-        source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
+        source += [f"    case HostOperation::{name}: return add(Dependency{{{expression}}});"]
     source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
     boundary = source.index(f"namespace {configuration.namespace}::plugin {{")
     body = "\n".join(source[boundary:])
@@ -577,7 +577,7 @@ def client(
         lines += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
         members = {"channel", *(_identifier(child[-1]) for child in children)}
         members.update(_identifier(method["path"][-1]) for method in operations)
-        parameter = _parameter("channel", members)
+        parameter = _parameter("connection", members)
         initializers = ([f"channel({parameter})"] if operations else []) + [f"{_identifier(child[-1])}({parameter})" for child in children]
         lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> {parameter}) : {', '.join(initializers)} {{}}"]
         if not node:

@@ -110,7 +110,7 @@ async fn close_retains_writes() {
     assert_eq!(f.data.records.lock().unwrap().len(), 1);
     assert!(f.data.control.writes.lock().unwrap().iter().all(|at| *at == 1));
     assert_eq!(f.storage.status().saved.sequence, 1);
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -144,7 +144,7 @@ async fn backend_close_failure() {
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.closes.load(Ordering::SeqCst), 1);
     assert_eq!(f.recovery.control.closes.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn cancelled_close_retains() {
     f.data.control.flush_release.notify_one();
     f.storage.close().await.unwrap();
     assert_eq!(f.data.control.flushes.lock().unwrap().as_slice(), &[1]);
-    crate::support::app::shutdown(&f.runtime).await.unwrap();
+    crate::support::app::stop(&f.runtime).await.unwrap();
 }
 
 #[tokio::test]

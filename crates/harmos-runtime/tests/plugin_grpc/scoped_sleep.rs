@@ -285,7 +285,7 @@ async fn retain_rows(requested: usize) {
     assert_eq!(host.samples().into_iter().map(|(_, row)| row).collect::<Vec<_>>(), values, "Retain Consecutive Scoped Samples");
     assert_eq!(source.pending(), 0, "Remove Scoped Timers on Close");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 /// One Sleep Spanning `requested` Samples, in Several Windows, Observes Every One of Them.
@@ -315,7 +315,7 @@ async fn count_after_sleep(requested: u64) {
     assert_eq!(result.unwrap(), payload(&requested.to_le_bytes()), "Settle the Sleep After Every Sample It Spans");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 /* === Tests === */
@@ -351,7 +351,7 @@ async fn native_and_encoded_calls_own_registration_before_middleware() {
     assert_eq!(source.pending(), 0, "Cancel Encoded Scoped Sleep");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -382,7 +382,7 @@ async fn closing_a_unit_during_timer_registration_removes_the_timer() {
     assert_eq!(source.pending(), 0, "Remove the Timer After Cancelling Registration");
     assert!(host.rows().is_empty(), "Cancel the Sample Being Prepared");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -481,7 +481,7 @@ async fn concurrent_units_register_and_cancel_only_their_own_sleepers() {
     }
     assert_eq!(right_source.pending(), 0, "Remove Right's Timers on Close");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -509,7 +509,7 @@ async fn native_operations_register_their_declared_wait_at_admission() {
     assert_eq!(source.pending(), 0, "Settle the Native Wait");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -536,7 +536,7 @@ async fn closing_during_an_in_flight_window_settles_without_failure() {
     assert_eq!(source.pending(), 0, "Remove the In-Flight Sleep Timer");
     assert!(host.rows().is_empty(), "Publish No Sample From the Cancelled Window");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -578,7 +578,7 @@ async fn stopping_samples_during_an_in_flight_window_keeps_calls_and_restarts_de
     unit.close().await.unwrap();
     assert_eq!(host.rows().len(), 1, "Publish the Restarted Demand's Sample");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -606,5 +606,5 @@ async fn typed_child_sleeps_register_at_admission() {
     assert_eq!(source.pending(), 0, "Settle the Typed Child Sleep");
     unit.close().await.unwrap();
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

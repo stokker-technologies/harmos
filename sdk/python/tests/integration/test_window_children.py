@@ -41,7 +41,7 @@ from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamp
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
+from harmos.plugin import Catalog, Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Values
 
 # Type Checking Imports
@@ -108,14 +108,18 @@ class WindowChildren(IsolatedAsyncioTestCase):
         reader = Reader()
         declaration = SettingDeclaration(name="interval", default=SettingValue(duration=Duration(seconds=2)))
         plugin = Plugin(
-            reader,
             id="example",
             version="1.0.0",
-            requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.PLUGINS_SETTINGS_LIST],
-            settings=[declaration],
+            register=lambda ctx: ctx.register(
+                Catalog(
+                    reader,
+                    requires=[ECHO, WATCH, HostOperation.TIME_GET, HostOperation.TIME_SLEEP, HostOperation.PLUGINS_SETTINGS_LIST],
+                    settings=[declaration],
+                )
+            ),
         )
         endpoint = await plugin.start("127.0.0.1:0")
-        self.addAsyncCleanup(endpoint.close)
+        self.addAsyncCleanup(endpoint.stop)
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         host = InstanceStub(channel)
@@ -268,7 +272,11 @@ class WindowChildren(IsolatedAsyncioTestCase):
         # Reject Incomplete or Duplicate Settings at Declarations Construction.
         for declarations in ([SettingDeclaration(name="missing")], [declaration, declaration]):
             with self.assertRaises(ValueError):
-                Plugin(reader, id="example", version="1.0.0", settings=declarations).declarations()
+                Plugin(
+                    id="example",
+                    version="1.0.0",
+                    register=lambda ctx, declarations=declarations: ctx.register(Catalog(reader, settings=declarations)),
+                ).declarations()
 
 
 # === Public Functions === #

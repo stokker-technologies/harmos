@@ -342,7 +342,7 @@ fn add(amount: i64, count: usize, mode: u8) -> Add {
 }
 
 async fn boot(copy: &Store, tail: usize) -> Runtime<Model> {
-    crate::support::app::launch::<Model>(State::default(), (), |setup| {
+    crate::support::app::start::<Model>(State::default(), (), |setup| {
         setup.settings().register(changes_state_catalog());
         setup.settings().register(facts_registry());
         setup.settings().recover(Journal::<Model>::open(copy));
@@ -366,7 +366,7 @@ async fn preparation_failure_inert() {
         runtime.state.commit(add(1, Records::MAX_RECORDS + 1, 0)).await,
         Err(Error::Preparation(harmos_runtime::state::PreparationError::Limit))
     ));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(copy.lines().is_empty());
 }
 
@@ -387,11 +387,11 @@ async fn restart_preserves_members() {
     assert_eq!(facts[0].position, Position(2));
     assert_eq!(facts[0].value, Facts::Observed(Observed { before: 0, amount: 7, ordinal: 0 }));
     assert!(matches!(runtime.state.state().at(Origin::initial(State::default()), Position(1)).await, Err(Error::IncompleteCommit)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (7, 1));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 2);
-    crate::support::app::shutdown(&restarted).await.unwrap();
+    crate::support::app::stop(&restarted).await.unwrap();
     assert_eq!(copy.lines().len(), 1);
 }
 
@@ -410,11 +410,11 @@ async fn reversals_emit_records() {
     assert_eq!(changes[1].metadata.link, Some(harmos_runtime::state::Link::UndoOf(initial.position)));
     assert_eq!(journal.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     drop(journal);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let restarted = boot(&copy, 1).await;
     assert_eq!(restarted.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (9, 3));
     assert_eq!(restarted.state.query::<Facts>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap().len(), 3);
-    crate::support::app::shutdown(&restarted).await.unwrap();
+    crate::support::app::stop(&restarted).await.unwrap();
 }
 
 #[tokio::test]
@@ -424,7 +424,7 @@ async fn facts_share_group() {
     let receipt = runtime.state.commit(add(5, 1, 10)).await.unwrap();
     assert_eq!((receipt.position, receipt.frontier), (Position(1), Position(3)));
     runtime.state.wait_until_stored(receipt.frontier).await;
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let runtime = boot(&copy, 1).await;
     let facts = runtime.state.query::<harmos_runtime::state::SystemFact>(Position::ORIGIN).await.collect::<Result<Vec<_>, _>>().unwrap();
     assert_eq!(facts.len(), 1);
@@ -442,7 +442,7 @@ async fn facts_share_group() {
     assert_eq!(typed.len(), 1);
     assert_eq!(typed[0].position, Position(3));
     assert_eq!(runtime.state.state().read(|s| (s.balance, s.applications)).await.unwrap().value, (5, 1));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -459,7 +459,7 @@ async fn mixed_frontier_recovers() {
     assert!(matches!(entries[0].value, Recorded::Transaction(_)));
     assert!(matches!(entries[1].value, Recorded::System(_)));
     assert!(matches!(entries[2].value, Recorded::Record(_)));
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     let inspector = Runtime::<Model>::inspect(State::default(), Journal::<Model>::open(&copy)).await.unwrap();
     let read =
         inspector.state.query_through::<Recorded<Model>>(Position::ORIGIN, first.frontier).await.collect::<Result<Vec<_>, _>>().unwrap();
@@ -482,7 +482,7 @@ async fn contract_refuses_apply() {
         }
     }
     let captures = Arc::new(AtomicUsize::new(0));
-    let runtime = crate::support::app::launch::<Model>(State::default(), (), |setup| {
+    let runtime = crate::support::app::start::<Model>(State::default(), (), |setup| {
         setup.settings().register(changes_state_catalog());
         setup.settings().require_capture(
             harmos_runtime::state::CaptureLimits {
@@ -500,6 +500,6 @@ async fn contract_refuses_apply() {
     let state = runtime.state.state().read(|state| (state.balance, state.applications)).await.unwrap();
     assert_eq!(state.value, (0, 0));
     assert_eq!(state.position, Position::ORIGIN);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(captures.load(Ordering::SeqCst), 0);
 }

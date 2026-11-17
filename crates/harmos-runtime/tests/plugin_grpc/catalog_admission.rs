@@ -109,5 +109,5 @@ async fn host_refuses_tampered_catalogs_before_activation() {
     let attached = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.unwrap();
     assert_eq!(attached.activation().unwrap().description.declarations, Some(catalog));
     attached.stop("Catalog Verified").await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

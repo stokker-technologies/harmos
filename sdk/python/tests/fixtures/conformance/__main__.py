@@ -16,7 +16,7 @@ import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
-from harmos.plugin import HostOperation, Plugin
+from harmos.plugin import Catalog, HostOperation, Plugin
 
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -50,7 +50,11 @@ async def _main() -> None:
     parser.add_argument("--shutdown-on-stdin", action="store_true", help="Close When the Process Owner Closes Standard Input")
     options = parser.parse_args()
     selected = (
-        Plugin(ClockFixture(), id="conformance", version="1.0.0", requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_GET])
+        Plugin(
+            id="conformance",
+            version="1.0.0",
+            register=lambda ctx: ctx.register(Catalog(ClockFixture(), requires=[HostOperation.TIME_SLEEP, HostOperation.TIME_GET])),
+        )
         if options.clock_only
         else conformance_plugin()
     )
@@ -62,7 +66,7 @@ async def _main() -> None:
         else:
             await endpoint.server.wait_for_termination()
     finally:
-        await endpoint.close()
+        await endpoint.stop()
 
 
 # === Entry Point === #

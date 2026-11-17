@@ -30,7 +30,7 @@ use harmos_runtime::facade::storage::{CapabilitiesRequest, InfoRequest, MutateRe
 use harmos_runtime::operations::{CallContext, Lane, Registration};
 use harmos_runtime::runtime::{BootstrapStatus, StorageFailure};
 use harmos_runtime::state::Never;
-use harmos_runtime::{Application, Identifier, Lifecycle, Runtime, Setup, Startup, StartupError};
+use harmos_runtime::{Application, Identifier, Builder, Lifecycle, Setup, Startup, StartupError};
 
 /* === Constants === */
 
@@ -83,7 +83,7 @@ async fn storage_only_runtime_admits_operations() {
         config(),
     )
     .unwrap();
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
     let registration = Registration::catalog(catalog::storage_catalog(), Lane::default()).unwrap();
     builder.with_registration(registration);
@@ -114,7 +114,7 @@ async fn storage_only_runtime_admits_operations() {
     let call = runtime.for_call(&CallContext::default());
     assert_eq!(call.storage().info(InfoRequest {}).await.unwrap().saved.unwrap().sequence, 1);
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 1);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 2);
     assert_eq!(recovery.control.closes.load(Ordering::SeqCst), 2);
 
@@ -127,7 +127,7 @@ async fn storage_only_runtime_admits_operations() {
         config(),
     )
     .unwrap();
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
     let session = builder.storage_only().await.unwrap();
     primary.control.fail_close.store(true, Ordering::SeqCst);
@@ -145,7 +145,7 @@ async fn storage_only_runtime_admits_operations() {
     primary.control.fail_close.store(false, Ordering::SeqCst);
     failure.cleanup.retry().await.unwrap();
     assert!(!primary.control.open.load(Ordering::SeqCst));
-    let mut builder = Runtime::<Minimal>::builder(());
+    let mut builder = Builder::<Minimal>::new(());
     builder.storage(&manager);
 
     // Cancel Opening at an Explicit Backend Boundary

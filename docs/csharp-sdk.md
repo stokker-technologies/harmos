@@ -35,9 +35,15 @@ requirements when building the plugin:
 using Harmos;
 using Harmos.Plugins;
 
-var plugin = new Plugin("example", "1.0.0")
-    .Setting("prefix", new SettingValue { Text = "" })
-    .Requires(HostOperation.PluginsSettingsList);
+Registration Catalog() => ctx =>
+{
+    ctx.Register("prefix", new SettingValue { Text = "" });
+    ctx.Register(HostOperation.PluginsSettingsList);
+};
+void Register(Registrar ctx) { ctx.Register(Catalog()); }
+
+var plugin = new Plugin("example", "1.0.0").Register(Register);
+await plugin.RunAsync();
 ```
 
 Inside a handler, `await context.Host.Plugins.Settings.List()` reads the caller's
@@ -63,15 +69,15 @@ The host keeps the clock and grants an interval stream one window at a time:
 using Harmos.Plugins;
 
 var interval = new Duration { Nanos = 1_000_000 };
-plugin.Observer<Reading>("bench.reading", interval, async context => Read(), windowSetting: "window");
-plugin.WindowObserver<Reading, ReadingColumns>("bench.readings", interval,
+ctx.Register<Reading>("bench.reading", interval, async context => Read(), windowSetting: "window");
+ctx.Register<Reading, ReadingColumns>("bench.readings", interval,
     async (context, window) => ReadMany(window.Count));
 // public sealed record Window(Timestamp Start, Duration Period, ulong Count, ulong Sequence)
 ```
 
-The one-sample `Observer` keeps its form: the SDK calls it once per sample of the
+The one-sample registration keeps its form: the SDK calls it once per sample of the
 window, in order, with `context.Sequence` and `context.At` set to that sample's
-sequence and time, then transposes the rows into columns. A `WindowObserver`
+sequence and time, then transposes the rows into columns. The window registration
 receives the whole grant and returns its columns message itself. That message
 repeats every row field with the same number and type and holds exactly `Count`
 values per field. Mismatched columns are refused when the stream is declared.

@@ -16,7 +16,7 @@ use std::time::Duration;
 
 // Third Party Imports
 use tracing::{Instrument, Subscriber, instrument::WithSubscriber};
-use tracing_subscriber::{Layer, layer::Context as TraceContext, prelude::*, registry::LookupSpan};
+use {tracing_subscriber::Layer, tracing_subscriber::layer, tracing_subscriber::prelude::*, tracing_subscriber::registry::LookupSpan};
 
 // Local Imports
 use super::support::{self, Bank, Fact, Noted};
@@ -107,7 +107,7 @@ impl<S> Layer<S> for TraceCapture
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    fn on_new_span(&self, attributes: &tracing::span::Attributes<'_>, id: &tracing::Id, context: TraceContext<'_, S>) {
+    fn on_new_span(&self, attributes: &tracing::span::Attributes<'_>, id: &tracing::Id, context: layer::Context<'_, S>) {
         let parent = attributes
             .parent()
             .cloned()
@@ -124,7 +124,7 @@ where
         });
     }
 
-    fn on_record(&self, id: &tracing::Id, values: &tracing::span::Record<'_>, _: TraceContext<'_, S>) {
+    fn on_record(&self, id: &tracing::Id, values: &tracing::span::Record<'_>, _: layer::Context<'_, S>) {
         let mut fields = TraceFields(BTreeMap::new());
         values.record(&mut fields);
         let mut records = self.0.lock().unwrap();
@@ -132,12 +132,12 @@ where
         record.fields.extend(fields.0);
     }
 
-    fn on_close(&self, id: tracing::Id, _: TraceContext<'_, S>) {
+    fn on_close(&self, id: tracing::Id, _: layer::Context<'_, S>) {
         let mut records = self.0.lock().unwrap();
         records.iter_mut().find(|record| record.id == id.into_u64()).unwrap().closed = true;
     }
 
-    fn on_follows_from(&self, id: &tracing::Id, predecessor: &tracing::Id, _: TraceContext<'_, S>) {
+    fn on_follows_from(&self, id: &tracing::Id, predecessor: &tracing::Id, _: layer::Context<'_, S>) {
         let mut records = self.0.lock().unwrap();
         records.iter_mut().find(|record| record.id == id.into_u64()).unwrap().follows.push(predecessor.into_u64());
     }
@@ -270,7 +270,7 @@ async fn scoped_trace_handoffs() {
     }
     .with_subscriber(subscriber)
     .await;
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let records = capture.0.lock().unwrap();
     let root = records.iter().find(|record| record.name == "request").unwrap().id;
@@ -312,7 +312,7 @@ async fn filtered_trace_behaves() {
     .await;
     let records: Vec<_> = runtime.state.query::<Fact>(Position::ORIGIN).await.collect();
     assert_eq!(records.len(), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert!(capture.0.lock().unwrap().is_empty());
 }
 
@@ -334,7 +334,7 @@ async fn dropped_trace_handoff() {
     .await;
 
     // The Dispatcher Drains The Queued Cancellation Outside The Caller's Scope.
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     let records = capture.0.lock().unwrap();
     let instance = records.iter().find(|record| record.name == "operations.instance").unwrap();
     assert_eq!(instance.fields.get("outcome").map(String::as_str), Some("Cancelled"));
@@ -372,7 +372,7 @@ async fn children_inherit_cause() {
     assert_eq!(noted.get("inherited-child"), Some(&root), "inheritance chains: a default-lane grandchild is in the same family");
     assert_eq!(noted.get("rerooted"), Some(&other), "a child that named its own cause re-roots itself");
     assert_eq!(noted.get("rerooted-child"), Some(&other), "and everything beneath it inherits the cause it re-rooted onto");
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -401,5 +401,5 @@ async fn caused_submit_records() {
         "the recorded fact answers the position the submission named"
     );
     assert_eq!(noted[0].metadata.correlation.0, receipt.position);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

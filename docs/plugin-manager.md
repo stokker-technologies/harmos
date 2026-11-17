@@ -135,7 +135,7 @@ unsettled process failures. A remote process remains owned by its external launc
 On host restart, persisted placement and enabled intent are restored. Enabled
 managed entries start from their installation, remote entries reconnect, and
 disabled entries remain stopped with no process. Startup and connection failures
-are reported per entry. Shut down through `runtime.shutdown().await` so the
+are reported per entry. Shut down through `runtime.stop().await` so the
 manager and attachments settle before storage closes.
 
 ## Product Responsibilities

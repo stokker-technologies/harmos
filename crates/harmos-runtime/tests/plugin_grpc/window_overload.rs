@@ -125,7 +125,7 @@ async fn a_window_past_the_lag_limit_fails_its_demand_and_a_backlog_within_it_ke
     assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -150,7 +150,7 @@ async fn a_full_publication_pool_fails_the_demand_with_its_stream_and_limits() {
     assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -173,7 +173,7 @@ async fn a_window_the_empty_pool_cannot_hold_is_refused_before_sampling() {
     assert!(host.batches_of("fixture.dense").is_empty(), "Sample Nothing for a Refused Window");
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -199,7 +199,7 @@ async fn a_window_the_plugin_fails_names_its_stream_and_the_plugins_status() {
     assert!(attached.activation().is_some(), "Keep the Plugin Attached While One Stream Fails");
     drop(watching);
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -238,7 +238,7 @@ async fn a_scope_reads_the_plugins_failed_window_from_stop_samples_and_close() {
     let closed = unit.close().await.unwrap_err();
     assert!(failed(&closed), "Return the Failed Window From close(): {closed:?}");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -265,5 +265,5 @@ async fn the_unscoped_demand_samples_only_while_its_stream_is_watched() {
     controller.advance_by(Duration::from_secs(20)).await;
     assert_eq!(starts(&host).len(), 2, "Stop Granting Windows When the Last Watcher Leaves");
     attached.stop("Story Complete").await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -150,7 +150,7 @@ struct CarrierOperation<O: Carrier> {
 pub trait ServiceInstance: Send {
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
+    fn finalize(&mut self) -> ServiceFuture<'_, ()>;
 }
 
 pub trait NativeInstance: Send {
@@ -160,7 +160,7 @@ pub trait NativeInstance: Send {
     fn initialize(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ()>;
     fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, super::response::ErasedResponse>;
     fn stop(&mut self) -> ServiceFuture<'_, ()>;
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()>;
+    fn finalize(&mut self) -> ServiceFuture<'_, ()>;
     #[cfg(feature = "streaming")]
     fn run_stream(&mut self, context: ExecutionContext, epoch: u64) -> ServiceFuture<'_, super::response::ErasedResponse> {
         let _ = (context, epoch);
@@ -641,10 +641,10 @@ impl<O: Carrier> NativeInstance for CarrierOperation<O> {
         })
     }
 
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async move {
             if let Some(operation) = self.operation.as_mut() {
-                operation.cleanup().await.map_err(operation_error::<O>)?;
+                operation.finalize().await.map_err(operation_error::<O>)?;
             }
             self.operation = None;
             Ok(())
@@ -675,8 +675,8 @@ impl<S: Service> ServiceInstance for InitializedService<S> {
     fn stop(&mut self) -> ServiceFuture<'_, ()> {
         Box::pin(async move { self.service.stop().await.map_err(service_error) })
     }
-    fn cleanup(&mut self) -> ServiceFuture<'_, ()> {
-        Box::pin(async move { self.service.cleanup().await.map_err(service_error) })
+    fn finalize(&mut self) -> ServiceFuture<'_, ()> {
+        Box::pin(async move { self.service.finalize().await.map_err(service_error) })
     }
 }
 

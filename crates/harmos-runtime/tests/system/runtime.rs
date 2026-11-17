@@ -24,11 +24,11 @@ use harmos_query::QueryArrow;
 use harmos_runtime::Message;
 use harmos_runtime::config::SchemaSettings;
 use harmos_runtime::operations::NativeOperation;
-use harmos_runtime::schema::{Described, graph::Schema as Graph};
 use harmos_runtime::storage::query::RecordSelection;
 use harmos_runtime::storage::query::RowSlice;
 use harmos_runtime::storage::query::Source;
 use std::sync::Arc;
+use {harmos_runtime::schema::Described, harmos_runtime::schema::graph};
 
 /* === Structs === */
 
@@ -95,7 +95,7 @@ async fn runtime_baseline_walks() {
         state: recovery.clone(),
     };
     let storage: StorageManager = StorageManager::new(backends, config()).unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = Runtime::<Bank>::start_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().storage(&storage);
         setup.resource::<StorageManager>(storage.clone());
@@ -119,7 +119,7 @@ async fn runtime_baseline_walks() {
     // Declare a Schema, Write Records of It and Read Them Back Once Saved
     let schema = schema();
     let declaration = <Reading as Described>::DEFINITION;
-    let graph = Graph::from_declaration(declaration, &SchemaSettings::default()).unwrap();
+    let graph = graph::Schema::from_declaration(declaration, &SchemaSettings::default()).unwrap();
     storage.write_schema(schema.clone(), graph.clone()).await.unwrap();
     let first = Identifier::new("first").unwrap();
     let second = Identifier::new("second").unwrap();
@@ -133,20 +133,20 @@ async fn runtime_baseline_walks() {
     assert_eq!(expected, [("first".to_owned(), -3), ("second".to_owned(), 8)]);
 
     // Shut Down; The Runtime Closes The Storage It Owns
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert!(!storage.status().running);
     assert!(storage.status().closed);
 
     // Reopening The Backends Proves Shutdown Released Their Ownership.
     let backends = StorageBackends { primary: data, state: recovery.clone() };
     let reopened: StorageManager = StorageManager::new(backends, config()).unwrap();
-    let runtime = Runtime::<Bank>::launch_with(Ledger::default(), (), |setup| {
+    let runtime = Runtime::<Bank>::start_with(Ledger::default(), (), |setup| {
         setup.settings().register(catalog());
         setup.settings().storage(&reopened);
     })
     .await
     .unwrap();
     assert_eq!(saved(&reopened, &schema).await, expected);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert!(reopened.status().closed);
 }

@@ -88,5 +88,5 @@ async fn bound_scope_reaches_handlers_and_children_and_missing_scope_is_refused(
     attached.stop("Story Complete").await.unwrap();
     provider.stop("Story Complete").await.unwrap();
     drop((first, second));
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

@@ -104,7 +104,7 @@ fn nanos(duration: Duration) -> u64 {
 
 #[tokio::test(start_paused = true)]
 async fn clock_measures_script() {
-    let runtime = Runtime::<App>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<App>::start((), ()).await.unwrap();
     crate::support::app::register(&runtime, operations_catalog(), harmos_runtime::operations::Lane::default()).await.unwrap();
     let scripted = Duration::from_secs(300);
 
@@ -129,5 +129,5 @@ async fn clock_measures_script() {
         .await
         .expect("the second attempt measures its own wait");
     assert_eq!(Duration::from_nanos(again.scoped_nanos), scoped);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }

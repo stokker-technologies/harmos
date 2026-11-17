@@ -21,7 +21,7 @@
 
 // Local Imports
 use super::support::Model;
-use harmos_runtime::Runtime;
+use harmos_runtime::Builder;
 use harmos_runtime::catalog;
 use harmos_runtime::facade::storage::InfoRequest;
 use harmos_runtime::operations::{CallContext, Lane, Registration};
@@ -49,7 +49,7 @@ use harmos_runtime::operations::{CallContext, Lane, Registration};
 #[tokio::test(start_paused = true)]
 async fn storage_only_facade_uses_the_owned_storage_session() {
     // Read Storage Before Full Startup
-    let mut builder = Runtime::<Model>::builder(());
+    let mut builder = Builder::<Model>::new(());
     builder.with_registration(Registration::catalog(catalog::storage_catalog(), Lane::default()).unwrap());
     let storage = builder.storage_only().await.unwrap();
     let call = storage.for_call(&CallContext::default());
@@ -65,5 +65,5 @@ async fn storage_only_facade_uses_the_owned_storage_session() {
     let runtime = builder.start().await.unwrap();
     let reopened = runtime.for_call(&CallContext::default()).storage().info(InfoRequest {}).await.unwrap();
     assert_eq!(info.saved, reopened.saved);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

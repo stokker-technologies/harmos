@@ -246,7 +246,7 @@ impl Store {
         .unwrap()
     }
     async fn boot(&self, storage: &StorageManager, capture: ReadLimits, duplicate: bool) -> Runtime<Model> {
-        crate::support::app::launch::<Model>(0, (), |setup| {
+        crate::support::app::start::<Model>(0, (), |setup| {
             setup
                 .settings()
                 .storage(storage)
@@ -316,7 +316,7 @@ async fn capture_never_replays() {
     assert_eq!(entry.position, Position(2));
     assert_eq!(entry.metadata.commit, Some((Position(1), Position(2))));
     assert_eq!(entry.payload["before"], 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 
     let storage = store.manager(config());
     let runtime = store.boot(&storage, limits(4, 16 * 1024), false).await;
@@ -327,7 +327,7 @@ async fn capture_never_replays() {
     assert_eq!(read(&store).await.len(), 5);
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 6);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -343,7 +343,7 @@ async fn capture_overflow_refuses() {
         assert_eq!(storage.status().recovery_accepted.sequence, 0);
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -370,7 +370,7 @@ async fn capture_awaits_capacity() {
     store.data.control.write_release.notify_one();
     next.await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 2);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -386,7 +386,7 @@ async fn panic_releases_reservation() {
     assert_eq!(storage.status().pending_bytes, 0);
     assert_eq!(storage.status().pending_batches, 0);
     assert!(store.data.records.lock().unwrap().is_empty());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -397,8 +397,8 @@ async fn primary_stop_retries() {
     store.ready(&storage).await;
     runtime.state.commit(Advance { panic: false }).await.unwrap();
     store.data.control.flush_failures.store(1, Ordering::SeqCst);
-    assert!(crate::support::app::shutdown(&runtime).await.is_err());
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    assert!(crate::support::app::stop(&runtime).await.is_err());
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
@@ -409,7 +409,7 @@ async fn primary_stop_retries() {
 #[tokio::test]
 async fn capture_requires_managed() {
     assert!(
-        crate::support::app::launch::<Model>(0, (), |setup| {
+        crate::support::app::start::<Model>(0, (), |setup| {
             setup.settings().store_records(Projection {
                 calls: Arc::new(AtomicUsize::new(0)),
                 duplicate: false,
@@ -433,7 +433,7 @@ async fn undersized_queue_refuses() {
     assert_eq!(runtime.state.applied(), Position::ORIGIN);
     assert_eq!(storage.status().accepted.sequence, 1);
     assert_eq!(storage.status().recovery_accepted.sequence, 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -449,7 +449,7 @@ async fn primary_failure_halts() {
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
     assert_eq!(storage.status().recovery_saved.sequence, 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
     assert_eq!(store.data.records.lock().unwrap().len(), 1);
     assert_eq!(store.recovery.entries.lock().unwrap().len(), 1);
 }
@@ -461,7 +461,7 @@ async fn reconciliation_saves_capture() {
     let observed = Arc::new(tokio::sync::Notify::new());
     let notify = observed.clone();
     let check = storage.clone();
-    let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+    let runtime = crate::support::app::start::<Model>(0, (), |setup| {
         setup
             .settings()
             .storage(&storage)
@@ -508,7 +508,7 @@ async fn reconciliation_saves_capture() {
     storage.flush().await.unwrap();
     assert_eq!(read(&store).await.len(), 1);
     assert_eq!(store.calls.load(Ordering::SeqCst), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -540,7 +540,7 @@ async fn capture_coalesces_writes() {
         assert!(sizes.iter().all(|size| *size <= 64));
         assert!(control.writes.lock().unwrap().windows(2).all(|pair| pair[0] < pair[1]));
     }
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -577,7 +577,7 @@ async fn recovery_failure_retries() {
     assert_eq!(storage.status().pending_bytes, 0);
     let writes = store.data.control.write_sizes.lock().unwrap().clone();
     assert_eq!(writes.iter().filter(|size| **size == 20).count(), 1);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -604,7 +604,7 @@ async fn flush_skips_recovery() {
     storage.flush_recovery().await.unwrap();
     assert_eq!(runtime.state.stored(), Position(40));
     assert_eq!(storage.status().pending_bytes, 0);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -624,7 +624,7 @@ async fn capture_reserves_actual() {
     assert_eq!(storage.get_saved_position().sequence, 1);
     assert!(storage.status().pending_bytes < 32 * 1024);
     assert_eq!(runtime.state.state().read(|value| *value).await.unwrap().value, 4);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
 
 #[tokio::test]
@@ -635,7 +635,7 @@ async fn partial_projection_refused() {
         let mut policy = config();
         policy.request.max_pending_write_bytes = NonZeroUsize::new(256 * 1024).unwrap();
         let storage = store.manager(policy);
-        let runtime = crate::support::app::launch::<Model>(0, (), |setup| {
+        let runtime = crate::support::app::start::<Model>(0, (), |setup| {
             setup
                 .settings()
                 .storage(&storage)
@@ -674,7 +674,7 @@ async fn partial_projection_refused() {
         storage.flush().await.unwrap();
         assert_eq!(storage.status().pending_bytes, 0);
         assert_eq!(storage.status().pending_batches, 0);
-        crate::support::app::shutdown(&runtime).await.unwrap();
+        crate::support::app::stop(&runtime).await.unwrap();
     }
 }
 
@@ -747,5 +747,5 @@ async fn registration_stores_schema() {
     drop(definition);
     Validator::from_schema(&stored[0], &harmos_runtime::config::SchemaSettings::default()).unwrap().validate(&payload).unwrap();
     drop(reader);
-    crate::support::app::shutdown(&runtime).await.unwrap();
+    crate::support::app::stop(&runtime).await.unwrap();
 }
