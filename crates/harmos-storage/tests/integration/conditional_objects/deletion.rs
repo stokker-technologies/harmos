@@ -30,10 +30,10 @@ use crate::manager::{backend, events, fixture};
 use harmos_storage::conformance::{self, ScopeFixture};
 use harmos_storage::execution::Execution;
 use harmos_storage::query::projection::{self, ProjectionDefinition, ProjectionRead, ProjectionTransform};
-use harmos_storage::query::{FileSelection, RecordSelection, StreamSelection};
+use harmos_storage::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, StreamSelection};
 use harmos_storage::{
-    CompoundOutcome, FileMetadata, Identifier, MutationId, MutationItem, ObjectPoint, ObjectVersion, ObjectVersionToken, ReadLimits,
-    ScanPage, StorageBackend, StorageBackends, StorageManager, StreamInput,
+    CompoundOutcome, FileMetadata, Identifier, MutationId, MutationItem, ObjectEntry, ObjectPoint, ObjectVersion, ObjectVersionToken,
+    ReadLimits, ScanPage, StorageBackend, StorageBackends, StorageManager, StoredRecord, StreamInput,
 };
 
 /* === Constants === */
@@ -238,6 +238,13 @@ async fn scoped_delete_reclaims_after_cut_release() {
     storage.set_projection_definition(&definition, None, false).await.unwrap();
     let work = ReadLimits { rows: page().rows, bytes: page().bytes };
     let cancel = Cancellation::default();
+    let image = storage.snapshot(&before.at).await.unwrap();
+    let retained = image.retain(Some(&scope)).await.unwrap();
+    let scoped = storage.open_retained_snapshot(&retained).await.unwrap();
+    assert!(scoped.advance_projection(&definition.name, None, work, &cancel).await.is_err());
+    storage.release_retained_snapshot(&retained).await.unwrap();
+    drop(scoped);
+    drop(image);
     let revision = projection::advance_projection(primary.as_ref(), &before, &definition.name, None, work, &cancel).await.unwrap();
     let prior_projection = ProjectionRead {
         name: definition.name.clone(),
@@ -367,6 +374,20 @@ async fn scoped_delete_does_not_resurrect_prior_ownership() {
         .await
         .unwrap();
 
+    // A Scope Cut Cannot Resurrect an Identity Whose Current Owner Moved.
+    let image = storage.snapshot(&storage.get_saved_position()).await.unwrap();
+    let retained = image.retain(Some(&earlier)).await.unwrap();
+    let reader = storage.open_retained_snapshot(&retained).await.unwrap();
+    let moved = ObjectPoint {
+        schema: updated.schema.id.clone(),
+        item: updated.item.clone(),
+        version: ObjectVersion::Latest,
+    };
+    assert!(reader.get_object(&moved).await.unwrap().is_none());
+    storage.release_retained_snapshot(&retained).await.unwrap();
+    drop(reader);
+    drop(image);
+
     // Deleting Historical Ownership Keeps the Current Revision.
     storage.mutate_once(&mutation(&storage, "delete-earlier"), vec![MutationItem::DeleteScope(earlier)]).await.unwrap();
     let point = ObjectPoint {
@@ -447,5 +468,191 @@ async fn memory_backend_passes_scope_contract() {
         bytes: b"scoped-file-bytes".to_vec(),
     };
     conformance::scoped_deletion(&storage, fixture).await.unwrap();
+    storage.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn retained_scope_survives_restart_without_pinning_unrelated_deletion() {
+    // Seed an Unrelated File Before Capturing the Retained Scope.
+    let (storage, primary) = start().await;
+    let other = Identifier::new("unrelated").unwrap();
+    let mut writer = storage
+        .produce_file(FileMetadata {
+            id: Identifier::new("unrelated-file").unwrap(),
+            scope: Some(other.clone()),
+            media_type: "application/octet-stream".into(),
+            expected_length: None,
+            expected_sha256: None,
+        })
+        .await
+        .unwrap();
+    writer.write_all(b"unrelated-content".to_vec()).await.unwrap();
+    writer.finish().await.unwrap();
+    let scope = Identifier::new("retained-scope").unwrap();
+    let mut object = compound_value(1, 42);
+    object.scope = Some(scope.clone());
+    let mut record = fixture::record(&object.schema, &Identifier::new("record").unwrap(), &object.payload);
+    record.scope = Some(scope.clone());
+    let proof = conformance::retain_scope(
+        &storage,
+        ScopeFixture {
+            scope: scope.clone(),
+            object,
+            record: record.clone(),
+            sample: StreamInput {
+                record,
+                stream: Identifier::new("samples").unwrap(),
+                sequence: 1,
+            },
+            file: FileMetadata {
+                id: Identifier::new("retained-file").unwrap(),
+                scope: Some(scope.clone()),
+                media_type: "application/octet-stream".into(),
+                expected_length: None,
+                expected_sha256: None,
+            },
+            bytes: b"retained".to_vec(),
+        },
+    )
+    .await
+    .unwrap();
+    storage.close().await.unwrap();
+    drop(storage);
+
+    // Restart Both Sessions Without Keeping a Manager or Reader Registry.
+    let storage = StorageManager::with_catalog(
+        catalog(),
+        StorageBackends {
+            primary: primary.clone(),
+            state: Arc::new(backend::RecoveryBackend::new(primary.history.clone())),
+        },
+        backend::storage_settings(),
+    )
+    .unwrap();
+    fixture::start(&storage).await;
+    conformance::check_retained_scope(&storage, &proof).await.unwrap();
+    primary.snapshots_released().await;
+    storage.mutate_once(&mutation(&storage, "delete-unrelated"), vec![MutationItem::DeleteScope(other)]).await.unwrap();
+    assert_eq!(primary.retained_file_bytes(), 2 * proof.fixture.bytes.len());
+    conformance::check_retained_scope(&storage, &proof).await.unwrap();
+    primary.snapshots_released().await;
+
+    // Scope Deletion Releases Durable Ownership but an Independent Reader Survives.
+    let reader = storage.open_retained_snapshot(&proof.snapshot).await.unwrap();
+    storage.mutate_once(&mutation(&storage, "delete-retained"), vec![MutationItem::DeleteScope(scope)]).await.unwrap();
+    assert!(storage.open_retained_snapshot(&proof.snapshot).await.is_err());
+    assert_eq!(primary.retained_file_bytes(), proof.fixture.bytes.len());
+    let point = ObjectPoint {
+        schema: proof.fixture.object.schema.id.clone(),
+        item: proof.fixture.object.item.clone(),
+        version: ObjectVersion::Latest,
+    };
+    assert_eq!(reader.get_object(&point).await.unwrap().unwrap().value, proof.fixture.object);
+    assert!(storage.snapshot(reader.at()).await.is_err());
+    storage.release_retained_snapshot(&proof.snapshot).await.unwrap();
+    drop(reader);
+    primary.snapshots_released().await;
+    assert_eq!(primary.retained_file_bytes(), 0);
+    storage.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn durable_compound_watch_pages_only_complete_frontiers_and_resyncs_deletions() {
+    // Open Both Durable and Accepted Followers Before the Compound Admission.
+    let (storage, primary) = start().await;
+    let opening = storage.get_saved_position();
+    let value = compound_value(1, 10);
+    let selection = RecordSelection {
+        schema: value.schema.clone(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let mut records = storage.follow::<StoredRecord>(Some(&opening), selection.clone()).await.unwrap();
+    let mut accepted = storage.follow::<StoredRecord>(Some(&opening), selection.clone()).await.unwrap();
+    let objects = ObjectSelection {
+        schema: Some(value.schema.clone()),
+        key: None,
+        versions: ObjectVersions::Revisions,
+    };
+    let mut objects = storage.follow::<ObjectEntry>(Some(&opening), objects).await.unwrap();
+    let record = fixture::record(&value.schema, &Identifier::new("large-record").unwrap(), &vec![0; 40_000]);
+    let committed = storage
+        .mutate_once(
+            &mutation(&storage, "compound-watch"),
+            vec![
+                MutationItem::Create(value),
+                MutationItem::Append(record.clone()),
+                MutationItem::Append(record.clone()),
+                MutationItem::Append(record),
+            ],
+        )
+        .await
+        .unwrap();
+    let CompoundOutcome::Applied { positions } = &committed.outcome else { panic!("compound must apply") };
+    assert_eq!(accepted.next().await.unwrap().entries().len(), 3);
+    drop(accepted);
+
+    // Each Bounded Page Inside the Mutation Keeps the Opening Resume Cursor.
+    let (page, through) = records.next_durable().await.unwrap();
+    assert_eq!(page.entries().len(), 1);
+    assert_eq!(through, opening);
+    assert!(storage.snapshot(&page.entries()[0].position).await.is_err());
+    let (page, through) = records.next_durable().await.unwrap();
+    assert_eq!(page.entries().len(), 1);
+    assert_eq!(through, opening);
+    let (page, through) = records.next_durable().await.unwrap();
+    assert_eq!(page.entries().len(), 1);
+    assert_eq!(through, committed.position);
+    let (page, through) = objects.next_durable().await.unwrap();
+    assert_eq!(page.entries().len(), 1);
+    assert_eq!(through, opening);
+    assert_eq!(objects.next_durable().await.unwrap().1, committed.position);
+
+    // Applied Conditional Revisions Are Observable; Refused Ones Only Advance Progress.
+    let changed =
+        storage.compare_exchange(Some(ObjectVersionToken::new(positions[0].clone())), &Counter { id: 1, value: 20 }).await.unwrap();
+    assert!(matches!(changed, harmos_storage::CompareExchange::Applied(_)));
+    let boundary = storage.get_saved_position();
+    let (page, through) = objects.next_durable().await.unwrap();
+    assert_eq!(page.entries().len(), 1);
+    assert_eq!(through, boundary);
+    let (page, through) = records.next_durable().await.unwrap();
+    assert!(page.entries().is_empty());
+    assert_eq!(through, boundary);
+    let refused = storage.compare_exchange(None, &Counter { id: 1, value: 30 }).await.unwrap();
+    assert!(matches!(refused, harmos_storage::CompareExchange::Conflict { .. }));
+    let (page, through) = objects.next_durable().await.unwrap();
+    assert!(page.entries().is_empty());
+    assert_eq!(through, storage.get_saved_position());
+    let (page, through) = records.next_durable().await.unwrap();
+    assert!(page.entries().is_empty());
+    assert_eq!(through, storage.get_saved_position());
+
+    // Historical Replay Uses the Same Complete-Frontier Rule.
+    let mut replay = storage.follow::<StoredRecord>(Some(&opening), selection).await.unwrap();
+    assert_eq!(replay.next_durable().await.unwrap().1, opening);
+    assert_eq!(replay.next_durable().await.unwrap().1, opening);
+    assert_eq!(replay.next_durable().await.unwrap().1, committed.position);
+    drop(replay);
+
+    // Deletion Has No Row Payload; Both Observers Must Resync Instead of Missing It.
+    storage
+        .mutate_once(
+            &mutation(&storage, "delete-watched"),
+            vec![MutationItem::Delete {
+                schema: compound_value(1, 20).schema.id,
+                item: compound_value(1, 20).item,
+                expected: None,
+            }],
+        )
+        .await
+        .unwrap();
+    assert!(matches!(objects.next_durable().await, Err(harmos_storage::Error::Gap { .. })));
+    assert!(matches!(records.next_durable().await, Err(harmos_storage::Error::Gap { .. })));
+    drop(objects);
+    drop(records);
+    primary.snapshots_released().await;
     storage.close().await.unwrap();
 }

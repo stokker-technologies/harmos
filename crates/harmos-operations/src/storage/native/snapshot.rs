@@ -14,20 +14,23 @@
 use super::requests::SavedSnapshot;
 
 use harmos_protocol::model;
-use harmos_storage::{Snapshot, StorageCursor, StorageManager};
+use harmos_storage::{BackendSnapshot, Identifier, Snapshot, StorageCursor, StorageManager};
 use ring::{digest, hmac};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     num::NonZeroUsize,
+    ops::Deref,
+    str,
     sync::{Arc, Mutex},
 };
+use tokio::sync;
 
 /* === Structs === */
 
 pub struct SavedSnapshots {
-    capacity: Arc<tokio::sync::Semaphore>,
+    capacity: Arc<sync::Semaphore>,
     registry: Mutex<Registry>,
-    issuance: tokio::sync::Mutex<()>,
+    issuance: sync::Mutex<()>,
     signing: Mutex<Option<hmac::Key>>,
     pub(super) queries: super::pages::Queries,
 }
@@ -49,12 +52,12 @@ struct HeldSnapshot {
     cut: model::ReadCut,
     explicit: bool,
     observation: Option<Arc<super::file_access::Observation>>,
-    _permit: tokio::sync::OwnedSemaphorePermit,
+    _permit: sync::OwnedSemaphorePermit,
 }
 
 /* === Implementations === */
 
-impl std::ops::Deref for SnapshotRead {
+impl Deref for SnapshotRead {
     type Target = Snapshot;
     fn deref(&self) -> &Self::Target {
         &self.snapshot.snapshot
@@ -78,17 +81,17 @@ impl SnapshotRead {
 impl SavedSnapshots {
     pub fn new(capacity: NonZeroUsize) -> Self {
         Self {
-            capacity: Arc::new(tokio::sync::Semaphore::new(capacity.get())),
+            capacity: Arc::new(sync::Semaphore::new(capacity.get())),
             registry: Mutex::new(Registry::default()),
-            issuance: tokio::sync::Mutex::new(()),
+            issuance: sync::Mutex::new(()),
             signing: Mutex::new(None),
             queries: super::pages::Queries::new(capacity),
         }
     }
-    pub(crate) fn reserve(&self) -> harmos_storage::Result<tokio::sync::OwnedSemaphorePermit> {
+    pub(crate) fn reserve(&self) -> harmos_storage::Result<sync::OwnedSemaphorePermit> {
         let mut registry = self.registry.lock().unwrap();
         registry.entries.retain(|_, held| held.snapshot.is_available());
-        let tokens = registry.entries.keys().cloned().collect::<std::collections::BTreeSet<_>>();
+        let tokens = registry.entries.keys().cloned().collect::<BTreeSet<_>>();
         registry.order.retain(|token| tokens.contains(token));
         while self.capacity.available_permits() == 0 {
             let index = registry.order.iter().position(|token| {
@@ -111,17 +114,16 @@ impl SavedSnapshots {
         }
         self.capacity.clone().try_acquire_owned().map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "saved snapshots" })
     }
-    pub(crate) fn insert(&self, snapshot: Snapshot, permit: tokio::sync::OwnedSemaphorePermit) -> harmos_storage::Result<SavedSnapshot> {
-        let cut = super::transfers::cut(snapshot.at().clone());
-        self.insert_cut(Arc::new(snapshot), cut, true, permit, None, None)
-    }
     fn insert_cut(
-        &self, snapshot: Arc<Snapshot>, cut: model::ReadCut, explicit: bool, permit: tokio::sync::OwnedSemaphorePermit,
+        &self, snapshot: Arc<Snapshot>, cut: model::ReadCut, explicit: bool, permit: sync::OwnedSemaphorePermit,
         observation: Option<Arc<super::file_access::Observation>>, identity: Option<Vec<u8>>,
     ) -> harmos_storage::Result<SavedSnapshot> {
         let mut token = vec![0; 32];
         getrandom::fill(&mut token).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "snapshot entropy" })?;
         let identity = identity.unwrap_or_else(|| token.clone());
+        if explicit {
+            token = identity.clone();
+        }
         let at = Some(snapshot.at().clone());
         let mut registry = self.registry.lock().unwrap();
         registry.order.push_back(token.clone());
@@ -142,7 +144,7 @@ impl SavedSnapshots {
         let at: StorageCursor = super::requests::required(handle.at.clone())?;
         let registry = self.registry.lock().unwrap();
         let snapshot = registry.entries.get(&handle.token).ok_or_else(expired)?;
-        if snapshot.snapshot.at() != &at {
+        if snapshot.snapshot.at() != &at || !snapshot.snapshot.is_available() {
             return Err(expired());
         }
         Ok(snapshot.clone())
@@ -151,39 +153,66 @@ impl SavedSnapshots {
         let snapshot = self.get(&handle)?;
         Ok(SnapshotRead { handle, snapshot })
     }
-    pub(crate) fn release(&self, handle: &SavedSnapshot) -> harmos_storage::Result<()> {
-        let at: StorageCursor = super::requests::required(handle.at.clone())?;
+    pub(crate) async fn release(&self, storage: &StorageManager, handle: &SavedSnapshot) -> harmos_storage::Result<()> {
+        let retained = BackendSnapshot {
+            at: super::requests::required(handle.at.clone())?,
+            token: handle.token.clone(),
+        };
+        storage.release_retained_snapshot(&retained).await?;
         let mut registry = self.registry.lock().unwrap();
-        if registry.entries.get(&handle.token).is_some_and(|snapshot| snapshot.snapshot.at() != &at) {
-            return Err(expired());
-        }
-        registry.entries.remove(&handle.token);
-        registry.order.retain(|token| token != &handle.token);
+        registry.entries.retain(|_, held| held.identity != handle.token);
+        let tokens = registry.entries.keys().cloned().collect::<BTreeSet<_>>();
+        registry.order.retain(|token| tokens.contains(token));
         Ok(())
     }
+    pub(crate) async fn read_saved(&self, storage: &StorageManager, handle: SavedSnapshot) -> crate::Result<SnapshotRead> {
+        if let Ok(read) = self.read(handle.clone()) {
+            return Ok(read);
+        }
+        let at = super::requests::required(handle.at)?;
+        let mut cut = super::transfers::cut(at);
+        cut.revisions.push(model::ResourceRevision {
+            name: "storage.snapshot".into(),
+            revision: handle.token,
+        });
+        self.resolve(storage, Some(cut)).await
+    }
     pub(crate) async fn create(
-        &self, storage: &StorageManager, at: Option<model::ReadCut>,
+        &self, storage: &StorageManager, at: Option<model::ReadCut>, scope: Option<&Identifier>,
     ) -> crate::Result<(SavedSnapshot, model::ReadCut)> {
-        if let Some(at) = at {
+        let permit = if scope.is_none() { Some(self.reserve()?) } else { None };
+        let (retained, mut cut, observation) = if let Some(at) = at {
             let read = self.resolve(storage, Some(at)).await?;
-            let permit = self.reserve()?;
-            let cut = read.cut().clone();
-            let handle = self.insert_cut(
-                read.snapshot(),
-                cut.clone(),
-                true,
-                permit,
-                read.snapshot.observation.clone(),
-                Some(read.identity().to_vec()),
-            )?;
-            Ok((handle, cut))
+            if scope.is_some() && read.cut().revisions.iter().any(|revision| revision.name != "storage.snapshot") {
+                return Err(harmos_storage::Error::InvalidInput {
+                    field: "retained scope",
+                    reason: "select a native data cut without provider observations or global projection revisions",
+                }
+                .into());
+            }
+            let mut cut = read.cut().clone();
+            cut.revisions.retain(|revision| revision.name != "storage.snapshot");
+            (read.retain(scope).await?, cut, read.snapshot.observation.clone())
         } else {
-            let permit = self.reserve()?;
             let snapshot = storage.snapshot(&storage.get_saved_position()).await?;
             let cut = super::transfers::cut(snapshot.at().clone());
-            let handle = self.insert(snapshot, permit)?;
-            Ok((handle, cut))
+            (snapshot.retain(scope).await?, cut, None)
+        };
+        cut.revisions.push(model::ResourceRevision {
+            name: "storage.snapshot".into(),
+            revision: retained.token.clone(),
+        });
+        if let Some(permit) = permit {
+            let snapshot = Arc::new(storage.open_retained_snapshot(&retained).await?);
+            self.insert_cut(snapshot, cut.clone(), true, permit, observation, Some(retained.token.clone()))?;
         }
+        Ok((
+            SavedSnapshot {
+                token: retained.token,
+                at: Some(retained.at),
+            },
+            cut,
+        ))
     }
     /// Resolve Only A Cut Previously Returned By This Owner, Or Select Its Current Durable Cut.
     pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<model::ReadCut>) -> crate::Result<SnapshotRead> {
@@ -200,16 +229,27 @@ impl SavedSnapshots {
         let handle = if let Some(handle) = found {
             handle
         } else {
-            if explicit && !cut.revisions.is_empty() {
+            let retained = cut.revisions.iter().find(|revision| revision.name == "storage.snapshot");
+            if explicit && (cut.revisions.iter().any(|revision| revision.name != "storage.snapshot") || cut.revisions.len() > 1) {
                 return Err(expired().into());
             }
-            let position = super::transfers::at(Some(cut.clone()))?.expect("one storage position");
-            if explicit && !storage.check_receipt_position(&position)? {
-                return Err(expired().into());
-            }
+            let mut base = cut.clone();
+            base.revisions.clear();
+            let position = super::transfers::at(Some(base))?.expect("one storage position");
             let permit = self.reserve()?;
-            let snapshot = Arc::new(storage.snapshot(&position).await?);
-            self.insert_cut(snapshot, cut, false, permit, None, None)?
+            let (snapshot, identity) = if let Some(retained) = retained {
+                let handle = BackendSnapshot {
+                    at: position,
+                    token: retained.revision.clone(),
+                };
+                (storage.open_retained_snapshot(&handle).await?, Some(handle.token))
+            } else {
+                if explicit && !storage.check_receipt_position(&position)? {
+                    return Err(expired().into());
+                }
+                (storage.snapshot(&position).await?, None)
+            };
+            self.insert_cut(Arc::new(snapshot), cut, false, permit, None, identity)?
         };
         let read = self.read(handle)?;
         Ok(read)
@@ -237,8 +277,18 @@ impl SavedSnapshots {
             })
             .and_then(|held| held.observation.clone());
         let permit = self.reserve()?;
-        let snapshot = Arc::new(storage.snapshot(&position).await?);
-        self.insert_cut(snapshot, cut.clone(), false, permit, observation, None)?;
+        let retained = cut.revisions.iter().find(|revision| revision.name == "storage.snapshot");
+        let snapshot = if let Some(retained) = retained {
+            storage
+                .open_retained_snapshot(&BackendSnapshot {
+                    at: position,
+                    token: retained.revision.clone(),
+                })
+                .await?
+        } else {
+            storage.snapshot(&position).await?
+        };
+        self.insert_cut(Arc::new(snapshot), cut.clone(), false, permit, observation, retained.map(|retained| retained.revision.clone()))?;
         Ok(cut)
     }
     /// Attach Only Observed Metadata; No Accepted Storage Bytes Are Copied.
@@ -343,7 +393,7 @@ impl SavedSnapshots {
                 .as_chunks::<2>()
                 .0
                 .iter()
-                .map(|pair| std::str::from_utf8(pair).ok().and_then(|pair| u8::from_str_radix(pair, 16).ok()).ok_or_else(expired))
+                .map(|pair| str::from_utf8(pair).ok().and_then(|pair| u8::from_str_radix(pair, 16).ok()).ok_or_else(expired))
                 .collect::<Result<Vec<_>, _>>()?
         } else {
             return Err(expired().into());
@@ -364,5 +414,262 @@ fn expired() -> harmos_storage::Error {
     harmos_storage::Error::InvalidInput {
         field: "storage continuation",
         reason: "issued cut or page token expired, changed, or belongs to another owner; restart the read",
+    }
+}
+
+/* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    /* === Imports === */
+
+    use std::num::{NonZeroU32, NonZeroUsize};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use tokio::sync;
+    use tokio::task::JoinHandle;
+
+    use super::super::watch_rows::{self, Event};
+    use super::SavedSnapshots;
+    use crate::execution::operations::{ExecutionContext, ResourceSet};
+    use harmos_protocol::model;
+    use harmos_storage::memory::{Backend, RecoveryBackend};
+    use harmos_storage::query::{RecordSelection, Source};
+    use harmos_storage::{
+        FileMetadata, Identifier, MutationId, MutationItem, PayloadEncoding, RecordInput, SchemaKey, StorageBackend, StorageBackends,
+        StorageFilesystemSettings, StorageFuture, StorageManager, StorageRequestSettings, StorageResponseSettings, StorageSettings,
+        StoreHistory, WorkerOwner,
+    };
+
+    /* === Structs === */
+
+    struct Task(sync::Mutex<Option<JoinHandle<harmos_storage::Result<()>>>>);
+
+    /* === Implementations === */
+
+    impl WorkerOwner for Task {
+        fn stop(&self) -> StorageFuture<'_, ()> {
+            Box::pin(async move { self.0.lock().await.take().unwrap().await.unwrap() })
+        }
+    }
+
+    /* === Private Functions === */
+
+    async fn start(primary: Arc<Backend>) -> StorageManager {
+        let count = NonZeroUsize::new(64).unwrap();
+        let storage = StorageManager::new(
+            StorageBackends {
+                primary: primary.clone(),
+                state: Arc::new(RecoveryBackend::new(primary.history.clone())),
+            },
+            StorageSettings {
+                transfer: Default::default(),
+                policy: Default::default(),
+                filesystem: StorageFilesystemSettings {
+                    poll_interval: Duration::from_millis(100),
+                    max_entries: count,
+                    event_capacity: count,
+                },
+                request: StorageRequestSettings {
+                    max_file_productions: count,
+                    max_mutation_receipts: count,
+                    max_pending_queries: count,
+                    max_active_queries: count,
+                    max_pending_write_batches: count,
+                    max_active_file_operations: count,
+                    max_pending_write_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
+                },
+                response: StorageResponseSettings {
+                    batch_rows: count,
+                    batch_bytes: NonZeroUsize::new(64 * 1024).unwrap(),
+                },
+            },
+        )
+        .unwrap();
+        storage
+            .start_with(Arc::new(()), |mut worker| {
+                let task = tokio::spawn(async move {
+                    worker.run().await?;
+                    worker.cleanup().await
+                });
+                Ok(Box::new(Task(sync::Mutex::new(Some(task)))))
+            })
+            .await
+            .unwrap();
+        storage
+    }
+
+    fn primary() -> Arc<Backend> {
+        Arc::new(Backend::new(StoreHistory {
+            store: Identifier::new("native-retention").unwrap(),
+            epoch: Identifier::new("epoch").unwrap(),
+        }))
+    }
+
+    fn mutation(storage: &StorageManager, key: &str) -> MutationId {
+        MutationId {
+            window: storage.mutation_window().unwrap().id,
+            key: Identifier::new(key).unwrap(),
+        }
+    }
+
+    /* === Tests === */
+
+    #[tokio::test]
+    async fn native_retained_handles_reopen_after_owner_and_storage_restart() {
+        // Persist Both a Scoped Owner and an Independent Snapshot Handle.
+        let primary = primary();
+        let storage = start(primary.clone()).await;
+        let snapshots = SavedSnapshots::new(NonZeroUsize::new(8).unwrap());
+        let scope = Identifier::new("execution").unwrap();
+        let mut writer = storage
+            .produce_file(FileMetadata {
+                id: Identifier::new("file").unwrap(),
+                scope: Some(scope.clone()),
+                media_type: "application/octet-stream".into(),
+                expected_length: None,
+                expected_sha256: None,
+            })
+            .await
+            .unwrap();
+        writer.write_all(b"evidence".to_vec()).await.unwrap();
+        writer.finish().await.unwrap();
+        storage.flush().await.unwrap();
+        let (owner, cut) = snapshots.create(&storage, None, Some(&scope)).await.unwrap();
+        let (independent, independent_cut) = snapshots.create(&storage, Some(cut.clone()), None).await.unwrap();
+        drop(snapshots);
+        storage.close().await.unwrap();
+        drop(storage);
+
+        // Recreate the Entire Native Registry and Both Storage Sessions.
+        let storage = start(primary.clone()).await;
+        let snapshots = SavedSnapshots::new(NonZeroUsize::new(8).unwrap());
+        assert_eq!(snapshots.resolve(&storage, Some(cut.clone())).await.unwrap().cut(), &cut);
+        assert_eq!(snapshots.read_saved(&storage, independent.clone()).await.unwrap().cut(), &independent_cut);
+        let reader = snapshots.read_saved(&storage, owner.clone()).await.unwrap();
+        let copy = Arc::new(Backend::new(primary.history.clone()));
+        let source = storage.snapshot(&storage.get_saved_position()).await.unwrap();
+        source.copy_to(copy.clone()).await.unwrap();
+        drop(source);
+        storage.mutate_once(&mutation(&storage, "delete-scope"), vec![MutationItem::DeleteScope(scope.clone())]).await.unwrap();
+        assert!(reader.is_available());
+        assert!(snapshots.create(&storage, Some(independent_cut.clone()), Some(&scope)).await.is_err());
+        snapshots.release(&storage, &owner).await.unwrap();
+        assert!(snapshots.resolve(&storage, Some(cut.clone())).await.is_err());
+        assert!(snapshots.read_saved(&storage, independent.clone()).await.unwrap().is_available());
+        snapshots.release(&storage, &independent).await.unwrap();
+        snapshots.release(&storage, &independent).await.unwrap();
+        drop(reader);
+        drop(snapshots);
+        primary.snapshots_released().await;
+        assert_eq!(primary.retained_file_bytes(), 0);
+        storage.close().await.unwrap();
+
+        // A Backend Copy Keeps Its Own Durable Snapshot Ownership.
+        let restored = start(copy.clone()).await;
+        let snapshots = SavedSnapshots::new(NonZeroUsize::new(8).unwrap());
+        assert_eq!(snapshots.resolve(&restored, Some(cut)).await.unwrap().at(), owner.at.as_ref().unwrap());
+        drop(snapshots);
+        restored.close().await.unwrap();
+        copy.dispose().await.unwrap();
+        assert_eq!(copy.retained_file_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn native_watch_never_issues_partial_compound_cuts_and_resyncs_scope_deletion() {
+        // Register the Native Watch Before Admitting a Compound Mutation.
+        let primary = primary();
+        let storage = start(primary.clone()).await;
+        let snapshots = Arc::new(SavedSnapshots::new(NonZeroUsize::new(8).unwrap()));
+        let mut resources = ResourceSet::new();
+        resources.insert(Arc::new(storage.clone())).unwrap();
+        resources.insert(snapshots.clone()).unwrap();
+        let context = ExecutionContext::new(resources, Default::default());
+        let schema = SchemaKey {
+            id: Identifier::new("rows").unwrap(),
+            version: NonZeroU32::new(1).unwrap(),
+            payload_encoding: PayloadEncoding::PostcardV1,
+        };
+        let scope = Identifier::new("watched-scope").unwrap();
+        let record = RecordInput {
+            schema: schema.clone(),
+            scope: Some(scope.clone()),
+            item: Identifier::new("selected").unwrap(),
+            source: None,
+            source_time: None,
+            payload: vec![0; 40_000],
+        };
+        let selection = Source::Records(RecordSelection {
+            schema,
+            scope: Some(scope.clone()),
+            item: Some(record.item.clone()),
+            source_start: None,
+            source_end: None,
+        });
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        let captured = frames.clone();
+        let final_frame = watch_rows::run(&context, Some(selection.clone()), None, |frame| {
+            let storage = storage.clone();
+            let scope = scope.clone();
+            let record = record.clone();
+            let captured = captured.clone();
+            async move {
+                match &frame.event {
+                    Event::Boundary => {
+                        let mut unmatched = record.clone();
+                        unmatched.item = Identifier::new("unmatched").unwrap();
+                        storage
+                            .mutate_once(
+                                &mutation(&storage, "compound"),
+                                vec![
+                                    MutationItem::Append(record.clone()),
+                                    MutationItem::Append(record.clone()),
+                                    MutationItem::Append(record),
+                                    MutationItem::Append(unmatched),
+                                ],
+                            )
+                            .await
+                            .unwrap();
+                    }
+                    Event::Progress => {
+                        storage.mutate_once(&mutation(&storage, "delete"), vec![MutationItem::DeleteScope(scope)]).await.unwrap();
+                    }
+                    _ => {}
+                }
+                captured.lock().unwrap().push(frame);
+                Ok(())
+            }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(final_frame.event, Event::Resync(_)));
+        {
+            let frames = frames.lock().unwrap();
+            assert_eq!(frames.len(), 6);
+            for frame in &frames[1..4] {
+                assert!(matches!(frame.event, Event::Record(_)));
+                assert_eq!(frame.at.positions[0].sequence, 0);
+            }
+            assert_eq!(frames[4].at.positions[0].sequence, 4);
+        }
+        let mut expired = final_frame.at.clone();
+        expired.positions[0].sequence = 1;
+        expired.revisions.push(model::ResourceRevision {
+            name: "storage.snapshot".into(),
+            revision: b"released".to_vec(),
+        });
+        let terminal = watch_rows::run(&context, Some(selection), Some(expired), |frame| async move {
+            assert!(matches!(frame.event, Event::Resync(_)));
+            Ok(())
+        })
+        .await
+        .unwrap();
+        assert!(matches!(terminal.event, Event::Resync(_)));
+        assert_eq!(terminal.at.positions[0].sequence, storage.get_saved_position().sequence);
+        drop(context);
+        drop(snapshots);
+        primary.snapshots_released().await;
+        storage.close().await.unwrap();
     }
 }

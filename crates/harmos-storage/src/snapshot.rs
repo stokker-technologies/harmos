@@ -17,6 +17,7 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
+use std::result;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -29,7 +30,10 @@ use super::config::SNAPSHOT_BYTES;
 use super::manager::{Inner, State, encoded_size};
 use super::selection::Entry;
 use super::{FileReference, ObjectEntry, ObjectPoint, StorageBackend, StorageCursor, StorageManager};
-use crate::{Error, Result};
+use crate::execution::Context;
+use crate::{Error, Identifier, Result};
+use harmos_query::columnar::{ArrowPage, ArrowScan, Cancellation};
+use harmos_query::index::{IndexPage, IndexRead};
 
 /* === Constants === */
 
@@ -48,10 +52,11 @@ pub struct Snapshot {
 }
 
 pub(super) struct SnapshotState {
-    pub(super) context: crate::execution::Context,
+    pub(super) context: Context,
     pub(super) queued: Option<tracing::Span>,
     at: StorageCursor,
-    opened: Option<std::result::Result<BackendSnapshot, Arc<Error>>>,
+    retained: Option<BackendSnapshot>,
+    opened: Option<result::Result<BackendSnapshot, Arc<Error>>>,
     opening: bool,
     released: bool,
 }
@@ -59,7 +64,7 @@ pub(super) struct SnapshotState {
 /* === Enums === */
 
 pub(super) enum SnapshotAction {
-    Open(u64, StorageCursor),
+    Open(u64, StorageCursor, Option<BackendSnapshot>),
     Release(u64, Option<BackendSnapshot>),
 }
 
@@ -76,6 +81,24 @@ impl Drop for SnapshotState {
 impl StorageManager {
     #[tracing::instrument(name = "storage.snapshot.snapshot", level = "trace", skip_all, fields(outcome = "cancelled"))]
     pub async fn snapshot(&self, at: &StorageCursor) -> Result<Snapshot> {
+        self.open_snapshot(at, None).await
+    }
+
+    pub async fn open_retained_snapshot(&self, retained: &BackendSnapshot) -> Result<Snapshot> {
+        self.open_snapshot(&retained.at, Some(retained.clone())).await
+    }
+
+    pub async fn release_retained_snapshot(&self, retained: &BackendSnapshot) -> Result<()> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        super::capacity::admitting(&self.inner.state.lock().unwrap(), false)?;
+        self.inner.bounded("primary.release_retained_snapshot", self.inner.primary.release_retained_snapshot(retained)).await
+    }
+
+    pub async fn watch_frontier(&self, after: &StorageCursor, through: &StorageCursor) -> Result<StorageCursor> {
+        self.inner.bounded("primary.watch_frontier", self.inner.primary.watch_frontier(after, through)).await
+    }
+
+    async fn open_snapshot(&self, at: &StorageCursor, retained: Option<BackendSnapshot>) -> Result<Snapshot> {
         let result = async {
             self.inner.primary.get_history().check(&at.history)?;
             let id = NEXT_SNAPSHOT.fetch_add(1, Ordering::Relaxed);
@@ -91,9 +114,10 @@ impl StorageManager {
                 state.snapshots.insert(
                     id,
                     SnapshotState {
-                        context: crate::execution::Context::current(),
+                        context: Context::current(),
                         queued: Some(tracing::debug_span!("storage.snapshot.queue", snapshot = id)),
                         at: at.clone(),
+                        retained,
                         opened: None,
                         opening: false,
                         released: false,
@@ -154,6 +178,16 @@ impl StorageManager {
 }
 
 impl Snapshot {
+    pub async fn retain(&self, scope: Option<&Identifier>) -> Result<BackendSnapshot> {
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let retained = self.inner.bounded("primary.retain_snapshot", self.inner.primary.retain_snapshot(&self.backend, scope)).await?;
+        if retained.at != self.backend.at || retained.token.is_empty() || retained.token.len() > SNAPSHOT_BYTES {
+            return Err(invalid("backend retained handle differs from its image; repair the backend"));
+        }
+        Ok(retained)
+    }
+
     /// Copy the Retained Data Cut Through Its Backend's Native Maintenance Hook.
     pub async fn copy_to(&self, target: Arc<dyn StorageBackend>) -> Result<()> {
         let _lifecycle = self.inner.lifecycle.read().await;
@@ -171,9 +205,7 @@ impl Snapshot {
         &self.backend.at
     }
 
-    pub async fn list_column_rows(
-        &self, read: &harmos_query::columnar::ArrowScan, cancel: &harmos_query::columnar::Cancellation,
-    ) -> Result<harmos_query::columnar::ArrowPage> {
+    pub async fn list_column_rows(&self, read: &ArrowScan, cancel: &Cancellation) -> Result<ArrowPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let future = crate::query::columnar::list_column_rows(self.inner.primary.as_ref(), &self.backend, read, cancel);
@@ -182,9 +214,7 @@ impl Snapshot {
         Ok(page)
     }
 
-    pub async fn list_index_entries(
-        &self, read: &harmos_query::index::IndexRead, cancel: &harmos_query::columnar::Cancellation,
-    ) -> Result<harmos_query::index::IndexPage> {
+    pub async fn list_index_entries(&self, read: &IndexRead, cancel: &Cancellation) -> Result<IndexPage> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
         let future = crate::query::index::list_index_entries(self.inner.primary.as_ref(), &self.backend, read, cancel);
@@ -194,8 +224,7 @@ impl Snapshot {
     }
 
     pub async fn advance_projection(
-        &self, name: &crate::Identifier, expected_revision: Option<u64>, work: super::ReadLimits,
-        cancel: &harmos_query::columnar::Cancellation,
+        &self, name: &Identifier, expected_revision: Option<u64>, work: super::ReadLimits, cancel: &Cancellation,
     ) -> Result<u64> {
         let _lifecycle = self.inner.lifecycle.read().await;
         self.check()?;
@@ -360,7 +389,7 @@ impl State {
             }
             if held.opened.is_none() {
                 held.opening = true;
-                return Some(SnapshotAction::Open(id, held.at.clone()));
+                return Some(SnapshotAction::Open(id, held.at.clone(), held.retained.clone()));
             }
         }
         None

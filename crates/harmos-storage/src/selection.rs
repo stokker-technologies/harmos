@@ -53,7 +53,7 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
         0
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self];
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self>;
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>>;
@@ -93,11 +93,20 @@ impl Entry for ObjectEntry {
             && selection.key.as_ref().is_none_or(|key| key == &self.value.item)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self> {
+        let values: &[Self] = match queued.0 {
             Operation::ObjectGroup { objects, .. } => objects.as_slice(),
+            Operation::Conditional(exchange) => std::slice::from_ref(&exchange.value),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        values.iter().chain(compound.iter().filter_map(|item| match item {
+            crate::CompoundWrite::Object { value, .. } => Some(value),
+            _ => None,
+        }))
     }
 
     fn scan<'a>(
@@ -123,11 +132,19 @@ impl Entry for StoredRecord {
             && within(selection.source_start, selection.source_end, self.source_time)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self> {
+        let values: &[Self] = match queued.0 {
             Operation::Records(values) => values.as_slice(),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        values.iter().chain(compound.iter().filter_map(|item| match item {
+            crate::CompoundWrite::Record(record) => Some(record),
+            _ => None,
+        }))
     }
 
     fn scan<'a>(
@@ -160,11 +177,12 @@ impl Entry for StoredRow {
         selection.after
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self> {
+        let values: &[Self] = match queued.0 {
             Operation::Stream(values) => values.as_slice(),
             _ => &[],
-        }
+        };
+        values.iter()
     }
 
     fn scan<'a>(
@@ -187,12 +205,21 @@ impl Entry for StorageSchema {
         selection.schema.as_ref().is_none_or(|key| key == &self.key)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self> {
+        let values: &[Self] = match queued.0 {
             Operation::Schema(value) => value.as_slice(),
             Operation::ObjectGroup { schemas, .. } => schemas.as_slice(),
+            Operation::Conditional(exchange) => std::slice::from_ref(&exchange.schema),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        values.iter().chain(compound.iter().filter_map(|item| match item {
+            crate::CompoundWrite::Object { schema, .. } => Some(schema),
+            _ => None,
+        }))
     }
 
     fn scan<'a>(
@@ -215,11 +242,12 @@ impl Entry for FileReference {
         optional(&selection.scope, self.metadata.scope.as_ref()) && optional(&selection.item, Some(&self.metadata.id))
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> impl Iterator<Item = &Self> {
+        let values: &[Self] = match queued.0 {
             Operation::File(value) => value.as_slice(),
             _ => &[],
-        }
+        };
+        values.iter()
     }
 
     fn scan<'a>(
@@ -243,8 +271,8 @@ impl Entry for StoredIdentity {
         selection.matches(self)
     }
 
-    fn pending(_: Queued<'_>) -> &[Self] {
-        &[]
+    fn pending(_: Queued<'_>) -> impl Iterator<Item = &Self> {
+        std::iter::empty()
     }
 
     fn scan<'a>(

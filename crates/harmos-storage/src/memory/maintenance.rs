@@ -52,6 +52,12 @@ impl Backend {
                 )
             })?;
             let image = self.image(snapshot)?;
+            if image.scope.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "copy source",
+                    reason: "select a global snapshot to copy a complete backend",
+                });
+            }
             self.history.check(&target.history)?;
             let mut target_receipts = target.mutation_receipts.lock().unwrap();
             let mut target_conditional = target.conditional.lock().unwrap();
@@ -70,7 +76,8 @@ impl Backend {
                 && objects_empty
                 && files_empty
                 && definitions_empty
-                && target_receipts.is_empty();
+                && target_receipts.is_empty()
+                && target.retained_snapshots.lock().unwrap().is_empty();
             if !target_empty {
                 return Err(Error::InvalidInput {
                     field: "copy target",
@@ -118,7 +125,17 @@ impl Backend {
             conditional.floor = conditional.floor.min(through);
             conditional.compound_ranges.retain(|_, end| *end <= through);
             conditional.receipts.retain(|sequence, _| *sequence <= through);
+            conditional.invalidations.retain(|sequence| *sequence <= through);
+            conditional.deleted_scopes.retain(|_, sequence| *sequence <= through);
             *target_conditional = conditional;
+            *target.retained_snapshots.lock().unwrap() = self
+                .retained_snapshots
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, retained)| retained.image.at.sequence <= through)
+                .map(|(token, retained)| (token.clone(), retained.clone()))
+                .collect();
             target.scoped_floor.store(image.lost_objects_through as usize, Ordering::SeqCst);
             target.saved.store(through as usize, Ordering::SeqCst);
             Ok(())
@@ -150,6 +167,7 @@ impl Backend {
             *self.projections.lock().unwrap() = Default::default();
             *self.indexes.lock().unwrap() = Default::default();
             receipts.clear();
+            self.retained_snapshots.lock().unwrap().clear();
             *conditional = Conditional::default();
             self.scoped_floor.store(0, Ordering::SeqCst);
             self.lost_files_through.store(0, Ordering::SeqCst);
@@ -173,7 +191,7 @@ impl Backend {
         if self.control.open.load(Ordering::SeqCst) || !self.snapshots.lock().unwrap().is_empty() {
             return Err(Error::InvalidInput {
                 field: "backend maintenance",
-                reason: "close all sessions and release all snapshots first",
+                reason: "close all sessions and release all reader leases first",
             });
         }
         Ok(())

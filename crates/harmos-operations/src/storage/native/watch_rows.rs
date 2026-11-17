@@ -52,19 +52,19 @@ enum Rows {
 /* === Implementations === */
 
 impl Rows {
-    async fn next(&mut self) -> harmos_storage::Result<(Vec<(Event, StorageCursor)>, StorageCursor)> {
+    async fn next(&mut self) -> harmos_storage::Result<(Vec<Event>, StorageCursor)> {
         match self {
             Self::Records(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Record(row.clone()), row.position.clone())).collect(), through))
+                Ok((page.entries().iter().cloned().map(Event::Record).collect(), through))
             }
             Self::Samples(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Sample(row.clone()), row.record.position.clone())).collect(), through))
+                Ok((page.entries().iter().cloned().map(Event::Sample).collect(), through))
             }
             Self::Objects(rows) => {
                 let (page, through) = rows.next_durable().await?;
-                Ok((page.entries().iter().map(|row| (Event::Object(row.clone()), row.position.clone())).collect(), through))
+                Ok((page.entries().iter().cloned().map(Event::Object).collect(), through))
             }
         }
     }
@@ -81,6 +81,7 @@ where
 {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
+    let opening = super::transfers::cut(storage.get_saved_position());
 
     let selected: Result<_, crate::Error> = async {
         let source: Source = required(source)?;
@@ -104,7 +105,18 @@ where
         Ok((read, rows))
     }
     .await;
-    let (read, mut rows) = selected.map_err(super::admission::failure)?;
+    let (read, mut rows) = match selected {
+        Ok(selected) => selected,
+        Err(crate::Error::Storage(error)) if requires_resync(&error) => {
+            let frame = Frame {
+                at: opening,
+                event: Event::Resync(format!("WatchRows: {error}; list a fresh image and reopen from its issued cut")),
+            };
+            emit(frame.clone()).await?;
+            return Ok(frame);
+        }
+        Err(error) => return Err(super::admission::failure(error)),
+    };
     let mut last = read.cut().clone();
     emit(Frame { at: last.clone(), event: Event::Boundary }).await?;
     // The Follower Has Registered Its Own Pinned History And Queue Retention.
@@ -117,7 +129,7 @@ where
         };
         let (entries, through) = match next {
             Ok(next) => next,
-            Err(error @ harmos_storage::Error::Gap { .. }) => {
+            Err(error) if requires_resync(&error) => {
                 let frame = Frame {
                     at: last,
                     event: Event::Resync(format!("WatchRows: {error}; list a fresh image and reopen from its issued cut")),
@@ -128,14 +140,40 @@ where
             Err(error) => return Err(super::admission::failure(error.into())),
         };
 
-        for (event, position) in entries {
-            last = snapshots.composite(&storage, super::transfers::cut(position)).await.map_err(super::admission::failure)?;
+        let progress = super::transfers::cut(through);
+        let progress = match snapshots.composite(&storage, progress).await {
+            Ok(progress) => progress,
+            Err(crate::Error::Storage(error)) if requires_resync(&error) => {
+                let frame = Frame {
+                    at: last,
+                    event: Event::Resync(format!("WatchRows: {error}; list a fresh image and reopen from its issued cut")),
+                };
+                emit(frame.clone()).await?;
+                return Ok(frame);
+            }
+            Err(error) => return Err(super::admission::failure(error)),
+        };
+        // Data Frames Keep the Prior Resume Cut Until the Complete Page Is Projected.
+        for event in entries {
             emit(Frame { at: last.clone(), event }).await?;
         }
-        let progress = super::transfers::cut(through);
         if progress != last {
-            last = snapshots.composite(&storage, progress).await.map_err(super::admission::failure)?;
+            last = progress;
             emit(Frame { at: last.clone(), event: Event::Progress }).await?;
         }
+    }
+}
+
+/* === Private Functions === */
+
+fn requires_resync(error: &harmos_storage::Error) -> bool {
+    match error {
+        harmos_storage::Error::Gap { .. } => true,
+        harmos_storage::Error::InvalidInput {
+            field: "storage continuation" | "retained snapshot",
+            ..
+        } => true,
+        harmos_storage::Error::Persistence { source } => requires_resync(source),
+        _ => false,
     }
 }

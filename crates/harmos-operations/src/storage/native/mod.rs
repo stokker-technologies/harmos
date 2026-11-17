@@ -52,8 +52,8 @@ pub use handlers::{
     AdvanceProjection, AppendFileBytes, AppendObjectRevisions, AppendRecords, AppendSamples, Capabilities, CaptureFile,
     CreateFileProduction, CreateFileWriter, CreateSnapshot, DeleteFileProduction, DeleteSnapshot, GetFileBytes, GetFileHash,
     GetFileProduction, GetIndexDefinition, GetObject, GetProjectionDefinition, GetProjectionStatus, ListColumnRows, ListDirectoryEntries,
-    ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, SetIndexDefinition, SetObject, SetProjectionDefinition,
-    WatchDirectoryEntries, WatchFileBytes, WatchFileProduction, WatchRows,
+    ListIndexEntries, ListProjectionRows, ListRows, PublishFileProduction, RetainSnapshot, SetIndexDefinition, SetObject,
+    SetProjectionDefinition, WatchDirectoryEntries, WatchFileBytes, WatchFileProduction, WatchRows,
 };
 
 pub use snapshot::SavedSnapshots;

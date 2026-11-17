@@ -139,6 +139,8 @@ impl Backend {
                         });
                     }
                     drop(staged);
+                    self.retained_snapshots.lock().unwrap().retain(|_, retained| retained.owner.as_ref() != Some(scope));
+                    conditional.deleted_scopes.insert(scope.clone(), exchange.position.sequence);
                     // Remove Every Revision of Identities Currently Owned by the Scope.
                     let mut seen = BTreeSet::new();
                     let identities = objects
@@ -164,6 +166,9 @@ impl Backend {
                 }
                 objects.extend(staged_objects);
                 deleted.extend(staged_deleted);
+                if exchange.items.iter().any(|item| matches!(item, CompoundWrite::Delete { .. } | CompoundWrite::Scope { .. })) {
+                    conditional.invalidations.insert(exchange.position.sequence);
+                }
                 schemas.extend(staged_schemas);
                 for view in staged_records {
                     records.insert_view(view);

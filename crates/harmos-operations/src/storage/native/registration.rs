@@ -62,6 +62,7 @@ pub fn storage_catalog_batch() -> __private::Catalog {
         operations::OperationFactory::native::<super::ListRows>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::Capabilities>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::CreateSnapshot>().expect("native storage declaration"),
+        operations::OperationFactory::native::<super::RetainSnapshot>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::DeleteSnapshot>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::ListColumnRows>().expect("native storage declaration"),
         operations::OperationFactory::native::<super::ListIndexEntries>().expect("native storage declaration"),

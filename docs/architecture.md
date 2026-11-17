@@ -81,8 +81,22 @@ appends in one backend commit, publishing a cut and replayable receipt together.
 `harmos-storage/src/compound.rs` owns admission; `memory/compound.rs` stages bounded
 changes and publishes through the backend hook; `storage.mutate` is the native declaration.
 Unsupported backends refuse; sequential compensation is not an implementation.
-Object/scoped deletion preserves retained cuts and delays file reclamation until
-those cuts release. All statistics kernels consolidate under the crate-internal
+The invariant “Object/scoped deletion preserves retained cuts and delays file
+reclamation until those cuts release” preserves evidence while readers use it.
+`backend.rs` now separates durable snapshot ownership from session reader leases.
+Native `RetainSnapshot` owns exactly one opaque scope; backend scope deletion
+releases its owners atomically, while independent readers keep their original
+images until release. A retained scope never pins another scope's deleted data.
+Native handles reopen through the backend after manager/registry restart; durable
+products persist their handles and ownership across process restart. The reference
+memory backend retains them across sessions within its process lifetime.
+
+Durable followers scan committed backend data, including compound and conditional
+writes. Backend observation metadata rounds resume positions down to complete
+mutation frontiers and rejects crossed deletions with a resync gap. Bounded row
+pages carry the previous complete cursor until progress publishes the complete
+frontier; a resume can replay positions but cannot skip a compound suffix. Global
+projection publication requires a complete global snapshot. All statistics kernels consolidate under the crate-internal
 `harmos-query::statistics` module and products use `storage.list_rows` transforms,
 including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries and
 bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their

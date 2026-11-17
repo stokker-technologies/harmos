@@ -235,8 +235,36 @@ pub trait StorageBackend: Any + Send + Sync + 'static {
     fn append_file_references(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor>;
 
     // Historical Reads
+
+    /// Open a Session Reader at a Complete Durable Frontier; Refuse Partial Compound or Conditional Ranges.
     fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot>;
+
+    /// Release Only This Reader Lease, Independently of Durable Ownership.
     fn delete_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()>;
+
+    /// Persist Ownership of an Image, Independently of Sessions and Reader Leases.
+    /// A Scope Retains Only Its Own Rows and Files; Scope Deletion Atomically Releases That Ownership.
+    /// None Creates Independent Ownership Without Widening the Input Image's Data Scope.
+    fn retain_snapshot<'a>(&'a self, _snapshot: &'a BackendSnapshot, _scope: Option<&'a Identifier>) -> StorageFuture<'a, BackendSnapshot> {
+        unsupported("retain snapshot; implement durable, scope-qualified snapshot ownership")
+    }
+
+    /// Reopen a Durable Handle as an Independent Reader Lease, Including After Restart.
+    fn open_retained_snapshot<'a>(&'a self, _retained: &'a BackendSnapshot) -> StorageFuture<'a, BackendSnapshot> {
+        unsupported("open retained snapshot; implement durable snapshot ownership")
+    }
+
+    /// Release Durable Ownership Idempotently; Existing Reader Leases Remain Readable.
+    fn release_retained_snapshot<'a>(&'a self, _retained: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+        unsupported("release retained snapshot; implement durable snapshot ownership")
+    }
+
+    /// Validate Observation of (After, Through] and Round Through Down to a Complete Frontier.
+    /// Deletion or Lost History Must Return a Gap, Never Silently Advance an Observer.
+    fn watch_frontier<'a>(&'a self, _after: &'a StorageCursor, _through: &'a StorageCursor) -> StorageFuture<'a, StorageCursor> {
+        unsupported("watch rows; implement committed observation and complete mutation frontiers")
+    }
+
     fn list_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<StorageSchema>>;

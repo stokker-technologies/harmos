@@ -103,8 +103,7 @@ breaking group so products can adopt them on an otherwise unchanged surface.
   in-memory backends implement it. Alternative rejected: sequential operations with
   compensation, which cannot preserve atomic publication.
 - **Deletion:** typed object deletion (tombstone revision, CAS-guarded) and scoped deletion
-  that removes every object, record, sample, projection row and file under one opaque scope
-  prefix, reclaiming files after retained cuts release them. Retained cuts keep reading their
+  that removes every object, record, sample, projection row and file under one exact opaque scope, reclaiming files after retained cuts release them. Retained cuts keep reading their
   data until released. Alternative rejected: history pruning, which is retention, not logical
   deletion.
 - **Bootstrap/offline:** the builder can produce a storage-only runtime that admits storage
@@ -113,6 +112,22 @@ breaking group so products can adopt them on an otherwise unchanged surface.
   backend snapshot to a target and dispose of backend data through backend hooks, refusing
   with a capability error when the backend lacks them. Alternative rejected: products calling
   backends directly before start, which is the bypass this change removes.
+
+G1/G3 amendments (2026-11-17): backend-owned retained handles survive session and
+native-registry restart; durable backends persist them across process restart.
+`RetainSnapshot` qualifies ownership by one exact scope and retains only that
+scope's source data. Scope deletion releases those owners atomically, without
+revoking independent reader leases. `CreateSnapshot` persists independent
+ownership without broadening the captured image; `DeleteSnapshot` releases either handle. Backend conformance includes
+a proof that starts before backend close and completes after reopening.
+
+Durable followers scan committed backend images so compound and conditional writes
+cannot disappear from the tail. Bounded pages keep their previous complete cursor
+until progress reaches a complete mutation frontier; resume can replay positions.
+Applied conditional writes emit revisions; conflicts only advance progress.
+Object/scope deletion conservatively terminates crossing watches with resync,
+as do expired cuts or lost history. Scoped snapshots cannot publish global
+projection outputs. The product seal and deletion policy remain product-owned.
 
 ### D2. One Statistics Home (Proposed)
 

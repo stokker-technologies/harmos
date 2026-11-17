@@ -41,6 +41,34 @@ Storage SHALL delete every object, record, sample, projection row and file under
 - **WHEN** a caller deletes a scope that owns objects, records, samples and files
 - **THEN** new cuts contain none of them and their bytes are reclaimed once older cuts release
 
+### Requirement: Durable Scoped Cut Ownership
+
+Storage SHALL persist retained-cut ownership in its backend, independently of native registries and reader leases. Scope-qualified ownership SHALL retain only that exact scope's rows and files and SHALL survive backend restart. Scope deletion SHALL atomically release its owners. Independent reader leases SHALL survive deletion until released, after which unreferenced rows and files SHALL be reclaimed.
+
+#### Scenario: Restart with a Sealed Scope
+
+- **WHEN** a product retains a scope cut, closes all managers and readers, and reopens its backend
+- **THEN** its persisted handle reopens the same scope image even after deletion of an unrelated scope, without pinning that unrelated scope's data
+
+#### Scenario: Delete an Owner with an Independent Reader
+
+- **WHEN** scope deletion releases a retained owner while an independent reader holds its image
+- **THEN** new opens of that owner refuse, the reader remains readable until released, and unreferenced rows and files are then reclaimed
+
+### Requirement: Complete Durable Watch Frontiers
+
+Storage SHALL observe committed compound entries and applied conditional revisions. Conflicts SHALL produce progress without row events. Every issued watch cursor and projection frontier SHALL identify a complete mutation frontier. Bounded row pages MAY retain an earlier complete cursor and replay rows on resume; they SHALL NOT skip a compound suffix.
+
+#### Scenario: Bounded Pages Split a Compound Mutation
+
+- **WHEN** one compound mutation spans several bounded watch pages
+- **THEN** row frames retain the preceding complete cut and progress advances only after its selected rows are delivered
+
+#### Scenario: Deletion or Expired History
+
+- **WHEN** a watch crosses object or scope deletion, loses retained history, or opens an expired cut
+- **THEN** it emits resync-required and terminates so the product lists a fresh image and reopens from that issued cut
+
 ### Requirement: Storage Before Full Startup
 
 The builder SHALL produce a storage-only runtime that admits storage operations without starting listeners, plugins or services, so products create startup prerequisites through operations.
