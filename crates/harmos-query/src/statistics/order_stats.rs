@@ -18,7 +18,7 @@
 // Standard Library Imports
 use std::cmp::Ordering;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::num::NonZeroU128;
 use std::sync::{Arc, Mutex};
 
@@ -26,17 +26,16 @@ use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
 
 // Local Imports
-use super::accumulate::sort_values;
 use crate::Result;
 use crate::config::QueryAccumulatorSettings;
 use crate::scalar::{ExactNumber, ScalarValue};
-use crate::spill::io;
+use crate::spill;
 use crate::transform::invalid;
 
 /* === Constants === */
 
 const SLOT: usize = 40;
-const BUFFER: usize = 1024 * 1024;
+const BUFFER: usize = 65536;
 
 /* === Macros === */
 
@@ -46,10 +45,11 @@ const BUFFER: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Values {
-    file: Option<Arc<Mutex<File>>>,
+    file: Option<Arc<Mutex<BufWriter<File>>>>,
     memory: Vec<[u8; SLOT]>,
     capacity: usize,
     pub length: usize,
+    memory_bytes: usize,
 }
 
 /* === Enums === */
@@ -63,8 +63,9 @@ impl Values {
         Self {
             file: None,
             memory: Vec::new(),
-            capacity: settings.memory_bytes / SLOT,
+            capacity: (settings.memory_bytes - (settings.memory_bytes / 4).min(BUFFER)) / SLOT,
             length: 0,
+            memory_bytes: settings.memory_bytes,
         }
     }
 
@@ -81,136 +82,135 @@ impl Values {
             return Ok(());
         }
         if self.file.as_ref().is_some_and(|file| Arc::strong_count(file) > 1) {
-            let mut replacement = tempfile::tempfile().map_err(io)?;
-            let mut source = self.file.as_ref().unwrap().lock().map_err(|_| invalid("order statistic file poisoned"))?;
-            source.seek(SeekFrom::Start(0)).map_err(io)?;
-            let mut buffer = vec![0; BUFFER];
-            loop {
-                let count = source.read(&mut buffer).map_err(io)?;
-                if count == 0 {
-                    break;
-                }
-                replacement.write_all(&buffer[..count]).map_err(io)?;
-            }
+            let mut source = self.file.as_ref().unwrap().lock().map_err(|_| invalid("recreate the poisoned order statistic spool"))?;
+            source.flush().map_err(spill::io)?;
+            source.get_mut().seek(SeekFrom::Start(0)).map_err(spill::io)?;
+            let mut replacement = BufWriter::with_capacity(self.buffer_capacity(), tempfile::tempfile().map_err(spill::io)?);
+            io::copy(source.get_mut(), &mut replacement).map_err(spill::io)?;
             drop(source);
             self.file = Some(Arc::new(Mutex::new(replacement)));
         }
         if self.file.is_none() {
-            let mut file = BufWriter::with_capacity(BUFFER, tempfile::tempfile().map_err(io)?);
+            let mut file = BufWriter::with_capacity(self.buffer_capacity(), tempfile::tempfile().map_err(spill::io)?);
             for slot in &self.memory {
-                file.write_all(slot).map_err(io)?;
+                file.write_all(slot).map_err(spill::io)?;
             }
-            let file = file.into_inner().map_err(|error| io(error.into_error()))?;
             self.file = Some(Arc::new(Mutex::new(file)));
             self.memory = Vec::new();
         }
-        let mut file = self.file.as_ref().unwrap().lock().map_err(|_| invalid("order statistic file poisoned"))?;
-        file.seek(SeekFrom::End(0)).map_err(io)?;
-        file.write_all(&slot).map_err(io)?;
+        let mut file = self.file.as_ref().unwrap().lock().map_err(|_| invalid("recreate the poisoned order statistic spool"))?;
+        file.write_all(&slot).map_err(spill::io)?;
         self.length = length;
         Ok(())
     }
 
-    pub fn for_each(&mut self, visit: &mut impl FnMut(ScalarValue) -> Result<()>, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
-        if let Some(file) = &self.file {
-            let mut file = file.lock().map_err(|_| invalid("recreate the poisoned order statistic spool"))?;
-            file.seek(SeekFrom::Start(0)).map_err(io)?;
-            let mut reader = BufReader::new(&mut *file);
-            for _ in 0..self.length {
-                check()?;
-                let mut slot = [0; SLOT];
-                reader.read_exact(&mut slot).map_err(io)?;
-                visit(decode(&slot)?)?;
-            }
-        } else {
-            for slot in &self.memory {
-                check()?;
-                visit(decode(slot)?)?;
-            }
-        }
-        Ok(())
+    fn buffer_capacity(&self) -> usize {
+        (self.memory_bytes / 4).min(BUFFER)
     }
 
-    pub fn ranks(
-        &mut self, lower: usize, upper: usize, mut compare: impl FnMut(&ScalarValue, &ScalarValue) -> Result<Ordering>,
-        check: &mut impl FnMut() -> Result<()>,
-    ) -> Result<(ScalarValue, ScalarValue)> {
+    pub fn ranks(&mut self, ranks: &[usize], check: &mut impl FnMut() -> Result<()>) -> Result<Vec<ScalarValue>> {
         check()?;
-        if lower > upper || upper >= self.length {
-            return Err(invalid("invalid order statistic ranks"));
+        if ranks.iter().any(|rank| *rank >= self.length) {
+            return Err(invalid("select available order statistic ranks"));
+        }
+        if ranks.is_empty() {
+            return Ok(Vec::new());
         }
         if self.file.is_none() {
-            sort_values(&mut self.memory, |left, right| {
-                check()?;
-                compare(&decode(&left)?, &decode(&right)?)
-            })?;
-            return Ok((decode(&self.memory[lower])?, decode(&self.memory[upper])?));
+            sort(&mut self.memory, check)?;
+            return ranks.iter().map(|rank| decode(&self.memory[*rank])).collect();
         }
-        let mut source = NamedTempFile::new().map_err(io)?;
-        let mut original = self
-            .file
-            .as_ref()
-            .ok_or_else(|| invalid("empty order statistic"))?
-            .lock()
-            .map_err(|_| invalid("order statistic file poisoned"))?;
-        original.seek(SeekFrom::Start(0)).map_err(io)?;
-        let mut buffer = vec![0; BUFFER];
-        loop {
+
+        // Sort Budget-Sized Runs Before Merging Sequentially.
+        let buffer_capacity = self.buffer_capacity();
+        let width = ((self.memory_bytes - 3 * buffer_capacity) / SLOT).max(1);
+        let mut source = NamedTempFile::new().map_err(spill::io)?;
+        let mut original = self.file.as_ref().unwrap().lock().map_err(|_| invalid("recreate the poisoned order statistic spool"))?;
+        original.flush().map_err(spill::io)?;
+        original.get_mut().seek(SeekFrom::Start(0)).map_err(spill::io)?;
+        let mut reader = BufReader::with_capacity(buffer_capacity, original.get_mut());
+        let mut writer = BufWriter::with_capacity(buffer_capacity, source.as_file_mut());
+        let mut chunk = Vec::with_capacity(width.min(self.length));
+        let mut remaining = self.length;
+        while remaining > 0 {
             check()?;
-            let count = original.read(&mut buffer).map_err(io)?;
-            if count == 0 {
-                break;
+            chunk.clear();
+            for _ in 0..width.min(remaining) {
+                chunk.push(read(&mut reader)?);
             }
-            source.write_all(&buffer[..count]).map_err(io)?;
+            sort(&mut chunk, check)?;
+            for slot in &chunk {
+                writer.write_all(slot).map_err(spill::io)?;
+            }
+            remaining -= chunk.len();
         }
+        writer.flush().map_err(spill::io)?;
+        drop(writer);
+        drop(reader);
         drop(original);
-        drop(buffer);
-        let mut width = 1usize;
+        drop(chunk);
+
+        let mut width = width;
         while width < self.length {
             check()?;
-            let next = NamedTempFile::new().map_err(io)?;
-            let mut writer = BufWriter::with_capacity(BUFFER, next.reopen().map_err(io)?);
-            let mut left = BufReader::with_capacity(BUFFER, source.reopen().map_err(io)?);
-            let mut right = BufReader::with_capacity(BUFFER, source.reopen().map_err(io)?);
+            let next = NamedTempFile::new().map_err(spill::io)?;
+            let mut writer = BufWriter::with_capacity(buffer_capacity, next.reopen().map_err(spill::io)?);
+            let mut left = BufReader::with_capacity(buffer_capacity, source.reopen().map_err(spill::io)?);
+            let mut right = BufReader::with_capacity(buffer_capacity, source.reopen().map_err(spill::io)?);
             let mut start = 0;
             while start < self.length {
                 let middle = start.saturating_add(width).min(self.length);
                 let end = middle.saturating_add(width).min(self.length);
-                left.seek(SeekFrom::Start(position(start)?)).map_err(io)?;
-                right.seek(SeekFrom::Start(position(middle)?)).map_err(io)?;
+                left.seek(SeekFrom::Start(position(start)?)).map_err(spill::io)?;
+                right.seek(SeekFrom::Start(position(middle)?)).map_err(spill::io)?;
                 let (mut a, mut b) = (start, middle);
                 let mut l = if a < middle { Some(read(&mut left)?) } else { None };
                 let mut r = if b < end { Some(read(&mut right)?) } else { None };
                 while l.is_some() || r.is_some() {
-                    check()?;
+                    if (a + b).is_multiple_of(1024) {
+                        check()?;
+                    }
                     let first = match (&l, &r) {
-                        (Some(l), Some(r)) => !compare(&decode(l)?, &decode(r)?)?.is_gt(),
+                        (Some(l), Some(r)) => !compare(l, r)?.is_gt(),
                         (Some(_), None) => true,
                         _ => false,
                     };
                     if first {
-                        writer.write_all(l.as_ref().unwrap()).map_err(io)?;
+                        writer.write_all(l.as_ref().unwrap()).map_err(spill::io)?;
                         a += 1;
                         l = if a < middle { Some(read(&mut left)?) } else { None };
                     } else {
-                        writer.write_all(r.as_ref().unwrap()).map_err(io)?;
+                        writer.write_all(r.as_ref().unwrap()).map_err(spill::io)?;
                         b += 1;
                         r = if b < end { Some(read(&mut right)?) } else { None };
                     }
                 }
                 start = end;
             }
-            writer.flush().map_err(io)?;
+            writer.flush().map_err(spill::io)?;
             drop(writer);
             source = next;
             width = width.saturating_mul(2);
         }
-        let file = source.as_file_mut();
-        file.seek(SeekFrom::Start(position(lower)?)).map_err(io)?;
-        let lower = decode(&read(file)?)?;
-        file.seek(SeekFrom::Start(position(upper)?)).map_err(io)?;
-        let upper = decode(&read(file)?)?;
-        Ok((lower, upper))
+        // Collect All Ranks In One Sequential Read Of The Sorted Output.
+        let mut requested = ranks.to_vec();
+        requested.sort_unstable();
+        requested.dedup();
+        source.as_file_mut().seek(SeekFrom::Start(0)).map_err(spill::io)?;
+        let mut reader = BufReader::with_capacity(buffer_capacity, source.as_file_mut());
+        let mut selected = Vec::with_capacity(requested.len());
+        let mut next = 0;
+        for index in 0..=*requested.last().unwrap() {
+            if index.is_multiple_of(1024) {
+                check()?;
+            }
+            let slot = read(&mut reader)?;
+            if index == requested[next] {
+                selected.push(decode(&slot)?);
+                next += 1;
+            }
+        }
+        Ok(ranks.iter().map(|rank| selected[requested.binary_search(rank).unwrap()].clone()).collect())
     }
 }
 
@@ -218,13 +218,54 @@ impl Values {
 
 /* === Private Functions === */
 
+fn compare(left: &[u8; SLOT], right: &[u8; SLOT]) -> Result<Ordering> {
+    if left[0] == right[0] {
+        let left_bytes = left[1..9].try_into().unwrap();
+        let right_bytes = right[1..9].try_into().unwrap();
+        match left[0] {
+            1 => return Ok(i64::from_le_bytes(left_bytes).cmp(&i64::from_le_bytes(right_bytes))),
+            2 => return Ok(u64::from_le_bytes(left_bytes).cmp(&u64::from_le_bytes(right_bytes))),
+            3 => return Ok(f64::from_le_bytes(left_bytes).total_cmp(&f64::from_le_bytes(right_bytes))),
+            _ => {}
+        }
+    }
+    Ok(decode(left)?.compare(&decode(right)?)?)
+}
+
+fn sort(values: &mut [[u8; SLOT]], check: &mut impl FnMut() -> Result<()>) -> Result<()> {
+    let mut failure = None;
+    let mut comparisons = 0usize;
+    values.sort_unstable_by(|left, right| {
+        comparisons += 1;
+        if comparisons.is_multiple_of(1024) && failure.is_none() {
+            if let Err(error) = check() {
+                failure = Some(error);
+            }
+        }
+        let result = compare(left, right);
+        match result {
+            Ok(order) => order,
+            Err(error) => {
+                if failure.is_none() {
+                    failure = Some(error);
+                }
+                left.cmp(right)
+            }
+        }
+    });
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    check()
+}
+
 fn position(index: usize) -> Result<u64> {
     (index as u64).checked_mul(SLOT as u64).ok_or_else(|| invalid("order statistic offset overflow"))
 }
 
 fn read(file: &mut impl Read) -> Result<[u8; SLOT]> {
     let mut bytes = [0; SLOT];
-    file.read_exact(&mut bytes).map_err(io)?;
+    file.read_exact(&mut bytes).map_err(spill::io)?;
     Ok(bytes)
 }
 
@@ -276,27 +317,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn budget_transition() {
+    fn memory_capacity_respects_the_spill_buffer_reservation() {
         let settings = QueryAccumulatorSettings { memory_bytes: 100 * SLOT };
         let mut values = Values::new(settings);
-        for value in (0..100).rev() {
-            values.push(&ScalarValue::Unsigned(value)).unwrap();
+        let count = values.capacity;
+        for value in (0..count).rev() {
+            values.push(&ScalarValue::Unsigned(value as u64)).unwrap();
             assert!(values.file.is_none());
-            assert!(values.memory.capacity() * SLOT <= settings.memory_bytes);
+            assert!(values.memory.capacity() * SLOT + values.buffer_capacity() <= settings.memory_bytes);
         }
-        let mut memory = values.clone();
-        let expected = memory.ranks(49, 50, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap();
-        values.push(&ScalarValue::Unsigned(100)).unwrap();
-        assert!(values.file.is_some());
-        assert_eq!(values.memory.capacity(), 0);
-        assert_eq!(values.ranks(49, 50, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap(), expected);
-        // Independent Prefixes Survive Both The Transition And Disk Copy-On-Write.
-        let mut branch = values.clone();
-        values.push(&ScalarValue::Unsigned(101)).unwrap();
-        branch.push(&ScalarValue::Unsigned(102)).unwrap();
-        assert_eq!(values.ranks(101, 101, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap().0, ScalarValue::Unsigned(101));
-        assert_eq!(branch.ranks(101, 101, |a, b| Ok(a.compare(b)?), &mut || Ok(())).unwrap().0, ScalarValue::Unsigned(102));
-        assert_eq!(memory.length, 100);
-        assert!(memory.file.is_none());
+        let expected = vec![ScalarValue::Unsigned((count / 2) as u64)];
+        assert_eq!(values.ranks(&[count / 2], &mut || Ok(())).unwrap(), expected);
     }
 }

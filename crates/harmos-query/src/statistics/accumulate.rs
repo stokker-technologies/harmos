@@ -22,7 +22,7 @@ use std::{cmp::Ordering, num::NonZeroU128};
 use super::order_stats::Values;
 use crate::config::QueryAccumulatorSettings;
 use crate::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
-use crate::statistics::{Quantiles, Summary};
+use crate::statistics::Summary;
 use crate::{Aggregate, Error, Result};
 
 /* === Constants === */
@@ -140,16 +140,56 @@ impl Accumulator {
         Ok(())
     }
 
-    // Both In-Memory Sorting And Disk Merge Passes Poll Cancellation.
-    fn ordered(&mut self, statistic: Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
-        let rank = if let Aggregate::Percentile(rank) = statistic { rank } else { 50 };
-        let mut quantiles = Quantiles::new(0);
-        self.scratch.for_each(&mut |value| quantiles.push(approximate(&value).unwrap()), check)?;
-        let values = quantiles.values(&[rank], 1024 * 1024, check)?;
-        Ok(ScalarValue::Float(finite(values.get(&rank).copied())?))
+    /// Finish Several Order Statistics From One Accumulation.
+    /// Integer Medians Retain Exact Arithmetic; Percentiles Use Floating Interpolation.
+    pub fn finish_ranks(mut self, statistics: &[Aggregate], check: &mut impl FnMut() -> Result<()>) -> Result<Vec<ScalarValue>> {
+        check()?;
+        if !matches!(self.agg, Agg::Of(Aggregate::Median | Aggregate::Percentile(_)))
+            || statistics.iter().any(|statistic| !matches!(statistic, Aggregate::Median | Aggregate::Percentile(0..=100)))
+        {
+            return Err(invalid("select median or percentile ranks in 0..=100"));
+        }
+        if self.count == 0 {
+            return Ok(vec![ScalarValue::Missing; statistics.len()]);
+        }
+        let mut ranks = Vec::with_capacity(statistics.len() * 2);
+        for statistic in statistics {
+            let rank = if let Aggregate::Percentile(rank) = statistic { *rank } else { 50 };
+            let numerator = (self.scratch.length - 1) as u128 * u128::from(rank);
+            let lower = (numerator / 100) as usize;
+            ranks.push(lower);
+            ranks.push(lower + usize::from(!numerator.is_multiple_of(100)));
+        }
+        let values = self.scratch.ranks(&ranks, check)?;
+        statistics
+            .iter()
+            .zip(values.chunks_exact(2))
+            .map(|(statistic, values)| {
+                if *statistic == Aggregate::Median && self.kind != Some(ScalarKind::Float) {
+                    let midpoint = scalar::exact(&values[0])
+                        .expect("numeric median")
+                        .checked_add(scalar::exact(&values[1]).expect("numeric median"))?
+                        .divide(2)?;
+                    return Ok(integral(midpoint, self.kind));
+                }
+                let rank = if let Aggregate::Percentile(rank) = statistic { *rank } else { 50 };
+                let numerator = (self.scratch.length - 1) as u128 * u128::from(rank);
+                let fraction = (numerator % 100) as f64 / 100.0;
+                let low = approximate(&values[0]).expect("numeric rank");
+                let high = approximate(&values[1]).expect("numeric rank");
+                let answer = if low == high {
+                    low
+                } else if low.signum() == high.signum() {
+                    low + (high - low) * fraction
+                } else {
+                    low * (1.0 - fraction) + high * fraction
+                };
+                Ok(ScalarValue::Float(finite(Some(answer))?))
+            })
+            .collect()
     }
 
-    pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
+    pub fn finish(self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
         let statistic = match self.agg {
             Agg::Len => return Ok(ScalarValue::Unsigned(self.rows)),
             Agg::Last => {
@@ -172,17 +212,7 @@ impl Accumulator {
             Aggregate::Rms | Aggregate::Std if self.count == 0 => ScalarValue::Missing,
             Aggregate::Rms | Aggregate::Std => ScalarValue::Float(finite(self.running.value(statistic))?),
             Aggregate::Median | Aggregate::Percentile(_) if self.count == 0 => ScalarValue::Missing,
-            Aggregate::Percentile(_) => self.ordered(statistic, check)?,
-            Aggregate::Median if floating => self.ordered(statistic, check)?,
-            Aggregate::Median => {
-                let (lower, upper) =
-                    self.scratch.ranks((self.scratch.length - 1) / 2, self.scratch.length / 2, |a, b| Ok(a.compare(b)?), check)?;
-                let midpoint = scalar::exact(&lower)
-                    .expect("median values are numeric")
-                    .checked_add(scalar::exact(&upper).expect("median values are numeric"))?
-                    .divide(2)?;
-                integral(midpoint, self.kind)
-            }
+            Aggregate::Median | Aggregate::Percentile(_) => self.finish_ranks(&[statistic], check)?.remove(0),
         })
     }
 }

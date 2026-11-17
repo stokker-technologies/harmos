@@ -31,8 +31,7 @@ use arrow_schema::{DataType, Field, Schema};
 use super::FieldPath;
 use super::{exact_type, invalid, numeric_type, scalar_type, values_array};
 use crate::Result;
-use crate::statistics::accumulate::approximate;
-use crate::statistics::{Accumulator, Quantiles};
+use crate::statistics::Accumulator;
 use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::{Agg, ScalarValue};
 
@@ -53,8 +52,8 @@ pub struct Groups {
 
 struct Group {
     keys: Vec<ScalarValue>,
-    accumulators: Vec<Accumulator>,
-    quantiles: Vec<(FieldPath, Vec<u8>, Quantiles)>,
+    accumulators: Vec<Option<Accumulator>>,
+    ranks: Vec<(FieldPath, Vec<crate::Aggregate>, Accumulator)>,
 }
 
 /* === Enums === */
@@ -139,7 +138,7 @@ impl AggregateExecution for Aggregate {
         };
         // An ungrouped reduction always yields its identity row, even for no input.
         if self.groups.is_empty() {
-            groups.groups.push(new_group(self, Vec::new(), &groups.schema));
+            groups.groups.push(new_group(self, Vec::new()));
         }
         Ok(groups)
     }
@@ -162,19 +161,17 @@ impl Groups {
             let index = match self.find(&keys)? {
                 Ok(index) => index,
                 Err(index) => {
-                    self.groups.insert(index, new_group(&self.plan, keys, &self.schema));
+                    self.groups.insert(index, new_group(&self.plan, keys));
                     index
                 }
             };
             let group = &mut self.groups[index];
-            for (field, _, quantiles) in &mut group.quantiles {
+            for (field, _, accumulator) in &mut group.ranks {
                 let column = self.plan.measures.iter().position(|measure| &measure.field == field).unwrap();
-                if let Some(value) = approximate(&values[column]) {
-                    quantiles.push(value)?;
-                }
+                accumulator.push(self.capture, &values[column])?;
             }
-            for (column, (accumulator, value)) in group.accumulators.iter_mut().zip(values).enumerate() {
-                if !shared(&self.plan, &self.schema, column) {
+            for (accumulator, value) in group.accumulators.iter_mut().zip(values) {
+                if let Some(accumulator) = accumulator {
                     accumulator.push(self.capture, &value)?;
                 }
             }
@@ -192,23 +189,22 @@ impl Groups {
             for (column, key) in group.keys.into_iter().enumerate() {
                 values[column].push(key);
             }
-            let quantiles = group
-                .quantiles
+            let ranks = group
+                .ranks
                 .into_iter()
-                .map(|(field, ranks, quantiles)| Ok((field, quantiles.values(&ranks, 1024 * 1024, check)?)))
+                .map(|(field, statistics, accumulator)| {
+                    let values = accumulator.finish_ranks(&statistics, check)?;
+                    Ok((field, statistics, values))
+                })
                 .collect::<Result<Vec<_>>>()?;
             for (column, accumulator) in group.accumulators.into_iter().enumerate() {
                 let measure = &self.plan.measures[column];
-                let value = if shared(&self.plan, &self.schema, column) {
-                    let rank = if let crate::Aggregate::Percentile(rank) = measure.statistic { rank } else { 50 };
-                    quantiles
-                        .iter()
-                        .find(|(field, _)| field == &measure.field)
-                        .and_then(|(_, values)| values.get(&rank))
-                        .copied()
-                        .map_or(ScalarValue::Missing, ScalarValue::Float)
-                } else {
+                let value = if let Some(accumulator) = accumulator {
                     accumulator.finish(check)?
+                } else {
+                    let (_, statistics, values) = ranks.iter().find(|(field, _, _)| field == &measure.field).unwrap();
+                    let rank = statistics.iter().position(|statistic| *statistic == measure.statistic).unwrap();
+                    values[rank].clone()
                 };
                 // Preserve The Empty Sum In Its Floating Output Type.
                 let value = match value {
@@ -252,29 +248,30 @@ impl Groups {
 
 /* === Private Functions === */
 
-fn shared(plan: &Aggregate, schema: &Schema, column: usize) -> bool {
-    let statistic = plan.measures[column].statistic;
-    matches!(statistic, crate::Aggregate::Percentile(_))
-        || statistic == crate::Aggregate::Median && schema.field(plan.groups.len() + column).data_type() == &DataType::Float64
+fn shared(statistic: crate::Aggregate) -> bool {
+    matches!(statistic, crate::Aggregate::Median | crate::Aggregate::Percentile(_))
 }
 
-fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>, schema: &Schema) -> Group {
-    let mut quantiles: Vec<(FieldPath, Vec<u8>, Quantiles)> = Vec::new();
-    for (column, measure) in plan.measures.iter().enumerate() {
-        if !shared(plan, schema, column) {
+fn new_group(plan: &Aggregate, keys: Vec<ScalarValue>) -> Group {
+    let mut ranks: Vec<(FieldPath, Vec<crate::Aggregate>, Accumulator)> = Vec::new();
+    for measure in &plan.measures {
+        if !shared(measure.statistic) {
             continue;
         }
-        let rank = if let crate::Aggregate::Percentile(rank) = measure.statistic { rank } else { 50 };
-        if let Some((_, ranks, _)) = quantiles.iter_mut().find(|(field, _, _)| field == &measure.field) {
-            ranks.push(rank);
+        if let Some((_, statistics, _)) = ranks.iter_mut().find(|(field, _, _)| field == &measure.field) {
+            statistics.push(measure.statistic);
         } else {
-            quantiles.push((measure.field.clone(), vec![rank], Quantiles::new(64 * 1024)));
+            ranks.push((measure.field.clone(), vec![measure.statistic], Accumulator::new(Agg::Of(measure.statistic))));
         }
     }
     Group {
         keys,
-        accumulators: plan.measures.iter().map(|measure| Accumulator::new(Agg::Of(measure.statistic))).collect(),
-        quantiles,
+        accumulators: plan
+            .measures
+            .iter()
+            .map(|measure| if shared(measure.statistic) { None } else { Some(Accumulator::new(Agg::Of(measure.statistic))) })
+            .collect(),
+        ranks,
     }
 }
 
@@ -331,7 +328,7 @@ mod tests {
             };
             let mut groups = plan.start(&schema).unwrap();
             groups.push(&batch, &mut || Ok(())).unwrap();
-            assert_eq!(groups.groups[0].quantiles.len(), 1);
+            assert_eq!(groups.groups[0].ranks.len(), 1);
             let mut passes = 0;
             let batch = groups
                 .finish(&mut || {
@@ -348,6 +345,40 @@ mod tests {
             assert_eq!(shared.column(column), single.column(0));
             assert_eq!(passes, single_passes);
         }
+    }
+
+    #[test]
+    fn integer_median_and_percentiles_share_one_typed_spool() {
+        let schema = Arc::new(Schema::new(vec![Field::new("v", DataType::UInt64, true)]));
+        let input = RecordBatch::try_new(
+            schema.clone(),
+            vec![Arc::new(UInt64Array::from(vec![Some(9_007_199_254_740_993), None, Some(9_007_199_254_740_995)]))],
+        )
+        .unwrap();
+        let plan = aggregate::Aggregate {
+            groups: vec![],
+            measures: [Aggregate::Median, Aggregate::Percentile(95)]
+                .into_iter()
+                .enumerate()
+                .map(|(index, statistic)| Measure {
+                    field: "v".into(),
+                    statistic,
+                    name: format!("m{index}"),
+                })
+                .collect(),
+        };
+        let mut groups = plan.start(&schema).unwrap();
+        groups.push(&input, &mut || Ok(())).unwrap();
+        assert_eq!(groups.groups[0].ranks.len(), 1);
+        assert!(groups.groups[0].accumulators.iter().all(Option::is_none));
+        let output = groups.finish(&mut || Ok(())).unwrap();
+        let median = transform::scalar(output.column(0).as_ref(), 0).unwrap();
+        let ScalarValue::Exact(median) = median else {
+            panic!("integer aggregate median must use exact output");
+        };
+        assert_eq!(median.numerator, 9_007_199_254_740_994);
+        assert_eq!(median.denominator.get(), 1);
+        assert_eq!(output.column(1).as_any().downcast_ref::<Float64Array>().unwrap().value(0), 9_007_199_254_740_996.0);
     }
 
     #[test]
