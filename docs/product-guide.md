@@ -2,7 +2,8 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
-Native storage and stream publication use the typed in-process facade. Bind one
+Native storage, stream publication, plugin activation and inspection, time, settings,
+status and invocations use the typed in-process facade. Bind one
 call context; the registered native operation owns admission, retries and cancellation:
 
 ```rust
@@ -21,11 +22,33 @@ the same calls during storage-only assembly, with cleanup receipts instead of an
 operation-manager getter. Backend implementations import their traits and contract
 values from `harmos_runtime::backend`; operation callers keep using the facade DTOs.
 
-The remaining locked `operation-boundary` direction moves plugin activation and
-the other host families to this facade, gives the builder sole manager ownership,
+The remaining locked `operation-boundary` direction gives the builder sole manager ownership,
 and removes host-client roots and wire exposure. Products declare their own remote
 wrappers. Those remaining changes are pending; their tasks and product pins live
 in `openspec/changes/operation-boundary/tasks.md`.
+
+The `plugins()` family supplies `load`, `bind`, `start_samples`, `stop_samples`,
+`settle` and `inspect` for managed or remote gRPC placement. Import its request types from `facade::plugins`. `load`
+returns an opaque activation handle; `bind` returns an opaque binding for one scope
+and clock. Use `binding.for_call()` for native calls under that clock, or
+`binding.for_call_with(CallOptions { policy: Some(policy) })` for one caller override. A sample start returns its own opaque handle, supplied to `StopSamplesRequest`;
+an old sample handle cannot stop a later run. Settlement closes every binding clone. Handles reject another runtime and a retired activation rather
+than following reconnects. A product settles a retired handle before loading again to acquire the next generation.
+
+`inspect(InspectRequest { placement, settings, metadata_bytes })` reads and validates
+frozen metadata without operation admission, sample demand or installed-state writes.
+The explicit positive `metadata_bytes` bounds the transport response; the registered
+inspection policy bounds the call. Managed inspection kills and reaps its candidate
+under `settings.stop_grace`; remote inspection detaches without sending Stop.
+Cancellation retains the process owner until cleanup, and runtime shutdown waits
+for that owner. Inspection invokes no acquisition or initialization hook.
+
+`time()` offers `get` and `sleep`; `invocations()` offers `create`, `get`, `cancel`
+and typed `watch`; `settings()` offers `list` and `set`; `status()` offers health,
+logs, trace events and diagnostics calls. Native watches accept `native_stream`
+outputs. `NativeInvocation::id()` supplies the identity used by invocation controls.
+Settings currently address registered persisted entries; their policy transfer to
+products remains part of the separate plugin-boundary change.
 
 Storage operation results now use operation-owned IPC frames and page DTOs.
 `ListRows` returns `RowOutput`, and column/projection batches contain schema and
@@ -60,8 +83,8 @@ Built-in host operations use generated `harmos_protocol::{model, host, plugin}` 
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
 `harmos_protocol::model::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
-`operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
-native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+`runtime.for_call(&ctx).invocations().get(request)` for a native unary call.
+`invocations().watch(request, output)` supplies typed bounded stream endpoints.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
 its timeout and cancellation policy. Status and cancellation expose only instances
 owned by the caller. Guest child controls use the SDK protobuf adapter and retain
@@ -75,17 +98,19 @@ An absent scope produces a refused failure with code `scope_required` and messag
 "Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
 meaning to the scope and does not require it for operations that do not ask for it.
 
-For a scoped unit of work that owns its time and sample ingestion, use
-`runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
-binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
-demand: call `start_samples(streams)` with exactly the streams the unit samples once the
-plugin has registered the unit and `stop_samples()` before its cleanup ends it, so no
-window reaches the plugin outside that interval; the plugin's other streams stay under
-its unscoped demand, which samples only while watched. `close()` returns
-within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
-not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
-share the admitted connection and retain independent clocks and Samples selections;
-see [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
+For a scoped unit that owns its time and sample ingestion, bind the loaded
+plugin through `caller.plugins().bind(BindRequest { plugin, scope, clock })`.
+`binding.for_call()` retains that unit for native calls. Binding opens no sample
+demand: `start_samples(StartSamplesRequest { binding, streams })` selects exactly
+the streams the unit samples and returns an opaque samples handle. Supply that
+handle to `stop_samples(StopSamplesRequest { samples })` before ending the unit,
+then settle the binding through `settle(SettleRequest::Binding(binding))`.
+The other streams stay under unscoped demand and sample only while watched.
+
+Scoped settlement retains the placement's `stop_grace`; a plugin that does not
+end its sample demand reports that failure and its remaining work is cancelled.
+Concurrent bindings share the admitted connection while retaining independent
+clocks and sample selections. See [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
 
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context

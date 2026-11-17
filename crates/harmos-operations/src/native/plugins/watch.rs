@@ -22,7 +22,9 @@
 // Local Imports
 use super::{Access, admit};
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
+
+use crate::host::declarations::Events;
 
 /* === Constants === */
 
@@ -41,8 +43,8 @@ pub struct Watch;
 /* === Implementations === */
 
 impl ProtobufOperation for Watch {
-    type Request = wire::PluginsWatchRequest;
-    type Response = wire::PluginsWatchResponse;
+    type Request = host::PluginsWatchRequest;
+    type Response = host::PluginsWatchResponse;
     type Endpoints = ProtobufOutput<Self::Response>;
     const ID: &'static str = "harmos.host.v1.Plugins/Watch";
     const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Watch"));
@@ -53,10 +55,18 @@ impl ProtobufOperation for Watch {
         Ok(Some(crate::plugin::Grant::of(Self::ID, "plugins")))
     }
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        Self::run_with(context, request, output).await
+    }
+}
+
+impl Watch {
+    pub(crate) async fn run_with(
+        context: ExecutionContext, request: host::PluginsWatchRequest, output: &impl Events<host::PluginsWatchResponse>,
+    ) -> Result<host::PluginsWatchResponse, ServingError> {
         admit(&context, Self::ID)?;
         let access = context.resource::<Access>().map_err(|_| ServingError::Catalog)?;
         let mut changes = access.0.watch(request).await.map_err(super::failure)?;
-        let mut last = Self::Response::default();
+        let mut last = host::PluginsWatchResponse::default();
         loop {
             tokio::select! {
                 biased;

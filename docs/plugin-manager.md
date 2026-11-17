@@ -4,6 +4,20 @@
 Its client plugin-management resource is separate from the instance service that
 each plugin executable implements.
 
+## Native Activation and Inspection
+
+Products call `runtime.for_call(&ctx).plugins()` to load, bind a scope and clock,
+start or stop its samples, settle handles and inspect a candidate. Requests and
+opaque generation-fenced handles live in `harmos_runtime::facade::plugins`.
+A binding's `for_call()` calls native operations under its scoped clock. See the
+[Product Guide](product-guide.md) for policies and settlement.
+
+Inspection returns generic-validated frozen metadata within `metadata_bytes` and
+the registered operation deadline. It performs no installation, initialization,
+operation execution or sample demand. The existing process owner terminates and
+reaps managed candidates under the supplied placement teardown policy; remote
+inspection detaches its connection and leaves the remote process running.
+
 ## Host Composition
 
 Register the manager's object catalog with the storage backend and storage

@@ -14,12 +14,14 @@
 mod catalog;
 mod config;
 mod connection;
+pub(crate) mod facade;
 pub(crate) mod invoke;
 mod load;
 mod managed;
 mod publish;
 pub(crate) mod samples;
 mod scoped;
+
 /* === Re-Exports === */
 
 pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings};
@@ -31,20 +33,19 @@ pub use scoped::ScopedBinding;
 
 /* === Imports === */
 
-use harmos_protocol::plugin::InstanceGetRequest;
-use harmos_protocol::plugin::InstanceGetResponse;
-use harmos_protocol::plugin::InstanceStopRequest;
-
 // Standard Library Imports
 use std::{future::Future, sync::Arc};
 
 // Third Party Imports
 use tokio::sync::{oneshot, watch};
+use tonic::transport::Channel;
 
 // Local Imports
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
 use harmos_protocol::model::SettingValues;
+use harmos_protocol::plugin::instance_client::InstanceClient;
+use harmos_protocol::plugin::{InstanceGetRequest, InstanceGetResponse, InstanceStopRequest};
 use managed::Process;
 use publish::{PreparedPublications, Publications};
 
@@ -107,7 +108,7 @@ struct Startup {
     process_participant: Option<crate::runtime::StopParticipant>,
     entry: Option<EntrySettings>,
     cancelled: Option<oneshot::Receiver<()>>,
-    options: LoadOptions,
+    options: Option<LoadOptions>,
 }
 
 struct EntrySettings {
@@ -152,6 +153,9 @@ enum Ending {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Inspect Plugin: {0}; correct the candidate or its placement settings before inspecting again")]
+    Inspection(#[source] Box<Error>),
+
     #[error("{0}")]
     Invalid(String),
 
@@ -356,7 +360,7 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: Some(EntrySettings { name, values }),
                 cancelled: Some(cancelled),
-                options: LoadOptions::default(),
+                options: Some(LoadOptions::default()),
             },
         )
         .await
@@ -383,7 +387,7 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: None,
                 cancelled: None,
-                options,
+                options: Some(options),
             },
         )
         .await
@@ -397,7 +401,7 @@ impl Activation {
 
     /// Inspect This Connection Only; An Old Handle Never Follows Reconnection.
     pub async fn get(&self) -> Result<InstanceGetResponse, Error> {
-        self.connected(describe(&self.connection)).await
+        self.connected(describe(self.connection.client())).await
     }
 
     async fn connected<T>(&self, future: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
@@ -502,12 +506,18 @@ impl Attached {
                 None => std::future::pending().await,
             }
         };
+        let setup = async {
+            match options {
+                Some(options) => load::load(&operations, &plugin, options, setup).await,
+                None => setup.await,
+            }
+        };
         let result = tokio::select! {
             biased;
             _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
             () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
             () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
-            result = load::load(&operations, &plugin, options, setup) => result,
+            result = setup => result,
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
         let mut process = spawned.lock().await.take();
@@ -608,8 +618,7 @@ impl Attached {
 
 /* === Private Functions === */
 
-async fn describe(connection: &Connection) -> Result<InstanceGetResponse, Error> {
-    let mut client = connection.client();
+async fn describe(mut client: InstanceClient<Channel>) -> Result<InstanceGetResponse, Error> {
     client
         .get(InstanceGetRequest {
             revision: 1,
@@ -626,25 +635,13 @@ async fn connect(
     message_bytes: usize,
 ) -> Result<Activation, Error> {
     let connection = Arc::new(Connection::open(address, harmos_protocol::transfer::default_message_bytes().get()).await?);
-    let description = describe(&connection).await?;
+    let description = describe(connection.client()).await?;
     if description.message_bytes < message_bytes as u64 {
         return Err(Error::Invalid(
             "Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into(),
         ));
     }
-    let valid_time = description
-        .started_at
-        .is_some_and(|time| (-62_135_596_800..=253_402_300_799).contains(&time.seconds) && (0..1_000_000_000).contains(&time.nanos));
-    if description.revision == 0
-        || description.id.is_empty()
-        || description.sdk.is_empty()
-        || description.sdk_version.is_empty()
-        || semver::Version::parse(&description.version).is_err()
-        || !valid_time
-        || description.declarations.is_none()
-    {
-        return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
-    }
+    validate_description(&description)?;
     catalog::verify(description.declarations.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
         number,
@@ -661,6 +658,23 @@ async fn connect(
         publications: Arc::new(std::sync::OnceLock::new()),
         clock: clock.clone(),
     })
+}
+
+fn validate_description(description: &InstanceGetResponse) -> Result<(), Error> {
+    let valid_time = description
+        .started_at
+        .is_some_and(|time| (-62_135_596_800..=253_402_300_799).contains(&time.seconds) && (0..1_000_000_000).contains(&time.nanos));
+    if description.revision == 0
+        || description.id.is_empty()
+        || description.sdk.is_empty()
+        || description.sdk_version.is_empty()
+        || semver::Version::parse(&description.version).is_err()
+        || !valid_time
+        || description.declarations.is_none()
+    {
+        return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
+    }
+    Ok(())
 }
 
 async fn disconnected(mut closed: watch::Receiver<bool>) {

@@ -13,6 +13,7 @@
 
 mod client;
 mod conformance;
+mod memory;
 mod reflection;
 
 /* === Re-Exports === */
@@ -198,6 +199,8 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
         .collect::<Result<BTreeMap<_, _>, Box<dyn Error>>>()?;
     let reflection = reflection::generate(&descriptors, &modules, "descriptors.bin")?;
     fs::write(output.join("reflection.rs"), reflection)?;
+    let memory = memory::generate(output, &modules)?;
+    fs::write(output.join("memory.rs"), memory)?;
     Ok(())
 }
 

@@ -12,8 +12,13 @@
 /* === Modules === */
 
 mod context;
+pub mod invocations;
+pub mod plugins;
+pub mod settings;
+pub mod status;
 pub mod storage;
 pub mod streams;
+pub mod time;
 
 /* === Re-Exports === */
 
@@ -28,6 +33,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::operations::{HostContext, Manager, NativeInvocation, NativeOperation, OperationPolicy};
+use crate::plugin::grpc::facade::Host;
 use crate::{Application, Error, Result, Runtime, runtime::Handle};
 
 /* === Constants === */
@@ -63,6 +69,10 @@ impl Call {
         let parent = context.parent();
         let mut context = context.call_context().clone();
         let options = context.remove::<CallOptions>().map(|options| *options).unwrap_or_default();
+        context.remove::<Host>();
+        if let Some(host) = operations.registry.plugin_calls.get() {
+            context.insert(host.clone()).expect("one plugin call owner");
+        }
         Self {
             operations: operations.with_context(context),
             parent,
@@ -76,6 +86,26 @@ impl Call {
 
     pub fn streams(&self) -> streams::Streams<'_> {
         streams::Streams { call: self }
+    }
+
+    pub fn time(&self) -> time::Time<'_> {
+        time::Time { call: self }
+    }
+
+    pub fn invocations(&self) -> invocations::Invocations<'_> {
+        invocations::Invocations { call: self }
+    }
+
+    pub fn settings(&self) -> settings::Settings<'_> {
+        settings::Settings { call: self }
+    }
+
+    pub fn status(&self) -> status::Status<'_> {
+        status::Status { call: self }
+    }
+
+    pub fn plugins(&self) -> plugins::Plugins<'_> {
+        plugins::Plugins { call: self }
     }
 
     /// Start Typed Work Without Encoding; Dropping Its Unsettled Handle Cancels It.

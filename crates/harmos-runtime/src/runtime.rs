@@ -40,6 +40,7 @@ use tokio::task::JoinHandle;
 use tracing::Instrument;
 
 // Local Imports
+use crate::plugin::grpc::facade;
 use crate::services::{Once, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
@@ -1009,6 +1010,9 @@ impl<A: Application> Builder<A> {
         boot.state.take();
         booted.await.map_err(Incompatible::work)?;
         let runtime = boot.runtime.as_ref().expect("boot owns runtime during application initialization");
+        let participants = runtime.participants.clone();
+        let host = facade::Host::new(runtime.streams.clone(), Arc::new(move || participants.register()));
+        assert!(runtime.operations.execution().registry.plugin_calls.set(host).is_ok(), "one plugin facade owner");
         if let Some(application) = &runtime.application {
             let context = crate::Startup { runtime: runtime.handle() };
             application.initialize(context).await.map_err(Incompatible::initialization)?;

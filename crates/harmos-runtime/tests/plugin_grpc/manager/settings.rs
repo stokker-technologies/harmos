@@ -24,6 +24,7 @@ use harmos_protocol::host;
 use harmos_protocol::host::plugins;
 use harmos_protocol::model;
 use harmos_protocol::model::setting_value::Value;
+use harmos_runtime::operations::CallContext;
 use prost::Message;
 use prost_reflect::ReflectMessage;
 
@@ -222,8 +223,8 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     use futures_util::stream;
     use harmos_protocol::host::plugins::SettingsListRequest;
     use harmos_protocol::plugin;
-    use harmos_protocol::plugin::instance_samples_request as request;
-    use harmos_protocol::plugin::instance_samples_response as response;
+    use harmos_protocol::plugin::instance_samples_request;
+    use harmos_protocol::plugin::instance_samples_response;
     use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
     use std::{
         sync::{
@@ -288,13 +289,13 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let completion = completion.clone();
         let fingerprint = managed_fingerprint.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             for (index, name) in [None, Some("caller"), Some("remote")].into_iter().enumerate() {
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
                         samples: vec![],
-                        frame: Some(response::Frame::Child(harmos_protocol::plugin::ChildRequest {
+                        frame: Some(instance_samples_response::Frame::Child(harmos_protocol::plugin::ChildRequest {
                             call: index as u64 + 1,
                             operation: id.into(),
                             fingerprint: fingerprint.clone(),
@@ -304,7 +305,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                     }))
                     .await
                     .unwrap();
-                let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                     panic!("Expected Child Reply");
                 };
                 results.send(reply).unwrap();
@@ -352,12 +353,12 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let fingerprint = fingerprint.clone();
         let observed = observed.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             output
                 .send(Ok(plugin::InstanceSamplesResponse {
                     samples: vec![],
-                    frame: Some(response::Frame::Child(ChildRequest {
+                    frame: Some(instance_samples_response::Frame::Child(ChildRequest {
                         call: 1,
                         operation: id.into(),
                         fingerprint,
@@ -367,7 +368,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                 }))
                 .await
                 .unwrap();
-            let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Child Reply");
             };
             let Some(Result::Failure(failure)) = reply.result else {
@@ -384,5 +385,41 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     let _watching = host.runtime.streams.current_publication("unmanaged_probe").unwrap().watch();
     controller.advance_until(Duration::from_secs(2), || refused.load(Ordering::SeqCst)).await.unwrap();
     attached.stop("Story Complete").await.unwrap();
+    host.close().await;
+}
+
+#[tokio::test]
+async fn settings_facade_dispatches_native_list_and_set() {
+    // Create the Product's Persisted Entry
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let remote = Remote::start().await;
+    remote.declarations(catalog());
+    let host = Host::start(root.path(), &backends).await;
+    let mut client = host.client.clone();
+    let mut watch = client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
+    client.create(support::remote("native", &remote.address)).await.unwrap();
+    support::state(&mut watch, "native", host::PluginState::Ready, 1).await;
+
+    // Read and Replace Its Typed Settings Through Native Admission
+    let caller = host.runtime.for_call(&CallContext::default());
+    let initial = caller.settings().list(plugins::SettingsListRequest { name: Some("native".into()), at: None }).await.unwrap();
+    let mut value = initial.value.unwrap();
+    value.values.get_mut("limit").unwrap().value = Some(Value::Integer(23));
+    let applied = caller
+        .settings()
+        .set(plugins::SettingsSetRequest {
+            name: "native".into(),
+            value: Some(value),
+            expected_revision: initial.revision,
+            request_id: "native-settings".into(),
+        })
+        .await
+        .unwrap();
+    let current = caller.settings().list(plugins::SettingsListRequest { name: Some("native".into()), at: None }).await.unwrap();
+    assert_eq!(current.revision, applied.revision);
+    assert_eq!(current.value.unwrap().values["limit"].value, Some(Value::Integer(23)));
+    drop(watch);
+    drop(client);
     host.close().await;
 }

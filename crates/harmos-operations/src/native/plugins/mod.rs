@@ -41,7 +41,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 // Local Imports
 use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use harmos_protocol::model;
 
 /* === Constants === */
@@ -78,16 +78,16 @@ pub struct Error(pub Box<model::Failure>);
 /* === Traits === */
 
 pub trait Management: Send + Sync + 'static {
-    fn replace(&self, request: wire::PluginsReplaceRequest) -> Pending<'_, wire::PluginsReplaceResponse>;
-    fn settings_list(&self, request: wire::plugins::SettingsListRequest) -> Pending<'_, wire::plugins::SettingsListResponse>;
-    fn settings_set(&self, request: wire::plugins::SettingsSetRequest) -> Pending<'_, wire::plugins::SettingsSetResponse>;
-    fn get(&self, request: wire::PluginsGetRequest) -> Pending<'_, wire::PluginsGetResponse>;
-    fn list(&self, request: wire::PluginsListRequest) -> Pending<'_, wire::PluginsListResponse>;
-    fn create(&self, request: wire::PluginsCreateRequest) -> Pending<'_, wire::PluginsCreateResponse>;
-    fn set(&self, request: wire::PluginsSetRequest) -> Pending<'_, wire::PluginsSetResponse>;
-    fn delete(&self, request: wire::PluginsDeleteRequest) -> Pending<'_, wire::PluginsDeleteResponse>;
-    fn restart(&self, request: wire::PluginsRestartRequest) -> Pending<'_, wire::PluginsRestartResponse>;
-    fn watch(&self, request: wire::PluginsWatchRequest) -> Pending<'_, tokio::sync::mpsc::Receiver<wire::PluginsWatchResponse>>;
+    fn replace(&self, request: host::PluginsReplaceRequest) -> Pending<'_, host::PluginsReplaceResponse>;
+    fn settings_list(&self, request: host::plugins::SettingsListRequest) -> Pending<'_, host::plugins::SettingsListResponse>;
+    fn settings_set(&self, request: host::plugins::SettingsSetRequest) -> Pending<'_, host::plugins::SettingsSetResponse>;
+    fn get(&self, request: host::PluginsGetRequest) -> Pending<'_, host::PluginsGetResponse>;
+    fn list(&self, request: host::PluginsListRequest) -> Pending<'_, host::PluginsListResponse>;
+    fn create(&self, request: host::PluginsCreateRequest) -> Pending<'_, host::PluginsCreateResponse>;
+    fn set(&self, request: host::PluginsSetRequest) -> Pending<'_, host::PluginsSetResponse>;
+    fn delete(&self, request: host::PluginsDeleteRequest) -> Pending<'_, host::PluginsDeleteResponse>;
+    fn restart(&self, request: host::PluginsRestartRequest) -> Pending<'_, host::PluginsRestartResponse>;
+    fn watch(&self, request: host::PluginsWatchRequest) -> Pending<'_, tokio::sync::mpsc::Receiver<host::PluginsWatchResponse>>;
 }
 
 /* === Implementations === */
@@ -109,16 +109,36 @@ pub fn catalog() -> crate::execution::operations::Catalog {
     crate::execution::__private::Catalog {
         name: "harmos.plugins",
         operations: vec![
-            OperationFactory::protobuf::<Get>().expect("plugin get declaration"),
-            OperationFactory::protobuf::<List>().expect("plugin list declaration"),
-            OperationFactory::protobuf::<Create>().expect("plugin create declaration"),
-            OperationFactory::protobuf::<Set>().expect("plugin set declaration"),
-            OperationFactory::protobuf::<Delete>().expect("plugin delete declaration"),
-            OperationFactory::protobuf::<Restart>().expect("plugin restart declaration"),
-            OperationFactory::protobuf::<Watch>().expect("plugin watch declaration"),
-            OperationFactory::protobuf::<Replace>().expect("plugin replace declaration"),
-            OperationFactory::protobuf::<settings::List>().expect("plugin settings list declaration"),
-            OperationFactory::protobuf::<settings::Set>().expect("plugin settings set declaration"),
+            OperationFactory::protobuf::<Get>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Get>)
+                .expect("plugin get declaration"),
+            OperationFactory::protobuf::<List>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::List>)
+                .expect("plugin list declaration"),
+            OperationFactory::protobuf::<Create>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Create>)
+                .expect("plugin create declaration"),
+            OperationFactory::protobuf::<Set>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Set>)
+                .expect("plugin set declaration"),
+            OperationFactory::protobuf::<Delete>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Delete>)
+                .expect("plugin delete declaration"),
+            OperationFactory::protobuf::<Restart>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Restart>)
+                .expect("plugin restart declaration"),
+            OperationFactory::protobuf::<Watch>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Watch>)
+                .expect("plugin watch declaration"),
+            OperationFactory::protobuf::<Replace>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::plugins::Replace>)
+                .expect("plugin replace declaration"),
+            OperationFactory::protobuf::<settings::List>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::settings::List>)
+                .expect("plugin settings list declaration"),
+            OperationFactory::protobuf::<settings::Set>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::settings::Set>)
+                .expect("plugin settings set declaration"),
         ],
         services: vec![],
     }

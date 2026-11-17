@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+mod protobuf;
+
 /* === Re-Exports === */
 
 /* === Imports === */

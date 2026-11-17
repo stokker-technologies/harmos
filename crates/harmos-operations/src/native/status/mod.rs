@@ -94,13 +94,34 @@ pub trait Status: Send + Sync {
 pub fn catalog() -> Result<crate::execution::__private::Catalog, ServingError> {
     use crate::execution::operations::OperationFactory;
     let catalog = crate::execution::__private::Catalog::new();
-    let catalog = catalog.entry(OperationFactory::protobuf::<Get>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<Watch>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<LogsList>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<LogsWatch>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<TraceEventsList>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<TraceEventsWatch>()?);
-    let catalog = catalog.entry(OperationFactory::protobuf::<DiagnosticsGet>()?);
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<Get>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::Get>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<Watch>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::Watch>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<LogsList>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::LogsList>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<LogsWatch>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::LogsWatch>)?,
+    );
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<TraceEventsList>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::TraceEventsList>)?,
+    );
+    let catalog = catalog
+        .entry(OperationFactory::protobuf::<TraceEventsWatch>().and_then(
+            crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::TraceEventsWatch>,
+        )?);
+    let catalog = catalog.entry(
+        OperationFactory::protobuf::<DiagnosticsGet>()
+            .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::status::DiagnosticsGet>)?,
+    );
     Ok(catalog)
 }
 

@@ -68,10 +68,18 @@ pub fn lifecycle_catalog_batch() -> crate::execution::__private::Catalog {
     crate::execution::__private::Catalog {
         name: "",
         operations: vec![
-            OperationFactory::protobuf::<Create>().expect("invoke declaration"),
-            OperationFactory::protobuf::<Get>().expect("status declaration"),
-            OperationFactory::protobuf::<Cancel>().expect("cancel declaration"),
-            OperationFactory::protobuf::<Watch>().expect("watch declaration"),
+            OperationFactory::protobuf::<Create>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::lifecycle::Create>)
+                .expect("invoke declaration"),
+            OperationFactory::protobuf::<Get>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::lifecycle::Get>)
+                .expect("status declaration"),
+            OperationFactory::protobuf::<Cancel>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::lifecycle::Cancel>)
+                .expect("cancel declaration"),
+            OperationFactory::protobuf::<Watch>()
+                .and_then(crate::execution::operations::OperationFactory::with_native::<crate::host::declarations::lifecycle::Watch>)
+                .expect("watch declaration"),
         ],
         services: vec![],
     }

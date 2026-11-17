@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::OnceLock;
 
 // Third Party Imports
 
@@ -48,6 +49,7 @@ impl Manager {
             preparation: settings.preparation_bytes.map(|bytes| Arc::new(Semaphore::new(bytes.get()))),
             lanes: Arc::new(Lanes::default()),
             registry: Arc::new(Registry {
+                plugin_calls: OnceLock::new(),
                 plugin_load: plugins.policy.load,
                 access: Arc::new(harmos_operations::access::AccessAccess::default()),
                 status: Arc::new(harmos_operations::status::StatusAccess::default()),

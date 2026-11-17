@@ -24,6 +24,7 @@ mod deadline;
 mod device_stream;
 mod duplicate_operation;
 mod external_authorization;
+mod facade;
 mod failure;
 mod host_clock;
 mod host_consumption;

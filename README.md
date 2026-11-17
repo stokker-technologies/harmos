@@ -102,8 +102,8 @@ and reads its calling entry through `Context::settings`. Discover contracts thro
 Host applications depend explicitly on `harmos-runtime` for state, storage,
 managed or remote gRPC placement and optional guest hosting.
 See the [product guide](docs/product-guide.md#cargo-features) for crate boundaries.
-Native storage calls use `runtime.for_call(&ctx).storage()`; stream publication uses
-`runtime.for_call(&ctx).streams().publish(request)`. Each call uses its registered
+Native calls bind `runtime.for_call(&ctx)`, then select `storage()`, `streams()`,
+`plugins()`, `time()`, `settings()`, `status()` or `invocations()`. Each call uses its registered
 operation policy and retains typed payloads without encoding. See the
 [product guide](docs/product-guide.md) for call contexts and storage-only assembly.
 
