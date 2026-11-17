@@ -26,6 +26,8 @@ from harmos_tools.build.cpp import environment
 from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags
 
+from tests.support import host
+
 # Type Checking Imports
 
 
@@ -116,19 +118,8 @@ class PackagedConformance(unittest.TestCase):
         )
         # Serve the Public Fixture and Run the Language-Neutral Host Through Every Rule.
         suffix = ".exe" if os.name == "nt" else ""
-        exported = output(root, "build", profile) / f"bin/harmos-conformance{suffix}"
-        local = root / f"target/debug/harmos-conformance{suffix}"
-        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
         plugin = build / f"harmos-cpp-conformance{suffix}"
-        result = subprocess.run(
-            [str(host), "--plugin", str(plugin)],
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=120,
-            creationflags=spawn_flags(),
-        )
+        result = host.run_managed(plugin=plugin, timeout_s=120)
         self.assertEqual(result.returncode, 0, result.stdout)
         rows = [line for line in result.stdout.splitlines() if line.endswith("| PASS |")]
         summary = re.search(r"(\d+)/(\d+) Cases Passed", result.stdout)
