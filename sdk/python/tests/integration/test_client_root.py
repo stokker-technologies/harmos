@@ -6,7 +6,7 @@
 #
 # ***
 
-"""Composed Library and Product Client Roots"""
+"""Product Client Resources"""
 
 # === Imports === #
 
@@ -49,7 +49,7 @@ class ApplicationClient(Client):
 
 
 class ClientRoot(IsolatedAsyncioTestCase):
-    async def test_library_and_product_services_share_parents_and_keep_watch_cardinality(self) -> None:
+    async def test_product_services_share_parents_and_keep_watch_cardinality(self) -> None:
         server = grpc.aio.server()
         # The Native Service Names Are the Dispatch Authority for the Generated Root.
         methods = [
@@ -100,8 +100,8 @@ class ClientRoot(IsolatedAsyncioTestCase):
             return DiagnosticsGetResponse(name=request.name)
 
         for service, request, response, handler in [
-            ("harmos.host.v1.Status", StatusGetRequest, StatusGetResponse, get_status),
-            ("harmos.host.v1.status.Diagnostics", DiagnosticsGetRequest, DiagnosticsGetResponse, get_diagnostics),
+            ("application.host.v1.Status", StatusGetRequest, StatusGetResponse, get_status),
+            ("application.host.v1.status.Diagnostics", DiagnosticsGetRequest, DiagnosticsGetResponse, get_diagnostics),
         ]:
             server.add_generic_rpc_handlers(
                 (
@@ -141,7 +141,7 @@ class ClientRoot(IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "harmos.host.v1.plugins.Settings",
+                    "application.host.v1.plugins.Settings",
                     {
                         "Set": grpc.unary_unary_rpc_method_handler(
                             set_settings,

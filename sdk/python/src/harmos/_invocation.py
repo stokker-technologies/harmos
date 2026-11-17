@@ -22,13 +22,13 @@ from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
 from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse
+from harmos._wire.model.v1 import failure_pb2
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_REFUSED,
     CLASSIFICATION_TIMED_OUT,
     CLASSIFICATION_TRANSIENT,
 )
-from harmos._wire.model.v1.failure_pb2 import Failure as WireFailure
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.position_pb2 import ReadCut
@@ -53,8 +53,8 @@ from ._generated.host import HostRoot
 
 # === Constants === #
 
-SLEEP = Operation("harmos.host.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
-GET_TIME = Operation("harmos.host.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
+SLEEP = Operation("harmos.plugin.v1.Time/Sleep", TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC)
+GET_TIME = Operation("harmos.plugin.v1.Time/Get", TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC)
 
 
 # === Types === #
@@ -65,11 +65,11 @@ type Handler = Callable[[Context, Message], Coroutine[object, object, Message]]
 
 
 class FailureError(Exception):
-    """An Application Failure, Preserved Without Reclassification."""
+    """An Application FailureError, Preserved Without Reclassification."""
 
-    def __init__(self, value: WireFailure) -> None:
+    def __init__(self, value: failure_pb2.Failure) -> None:
         super().__init__(value.message)
-        self.value = WireFailure()
+        self.value = failure_pb2.Failure()
         self.value.CopyFrom(value)
 
 
@@ -114,7 +114,7 @@ class Context:
         """Require a Caller-Bound Scope for This Invocation."""
         if not self._scope:
             raise FailureError(
-                WireFailure(
+                failure_pb2.Failure(
                     classification=CLASSIFICATION_REFUSED,
                     code="scope_required",
                     message="Invocation Scope Is Required: the caller must bind a scope",
@@ -273,7 +273,7 @@ class Context:
                 bound = min(bounds) if bounds else None
                 if bound is not None and bound <= 0:
                     raise FailureError(
-                        WireFailure(
+                        failure_pb2.Failure(
                             classification=CLASSIFICATION_TIMED_OUT,
                             code="deadline",
                             message=f"Invoke {operation.id}: Deadline Reached",
@@ -309,7 +309,7 @@ class Context:
                         if not grace or deadline_reached or not running.done():
                             kind = CLASSIFICATION_CANCELLED if cancelled in done else CLASSIFICATION_TIMED_OUT
                             raise FailureError(
-                                WireFailure(
+                                failure_pb2.Failure(
                                     classification=kind,
                                     code="interrupted",
                                     message=f"Invoke {operation.id}: {reason}",
@@ -424,7 +424,7 @@ class Context:
 
     def _cancel_failure(self) -> FailureError:
         return FailureError(
-            WireFailure(
+            failure_pb2.Failure(
                 classification=CLASSIFICATION_CANCELLED,
                 code="cancelled",
                 message=self._reason,

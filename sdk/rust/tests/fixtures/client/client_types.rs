@@ -1,4 +1,4 @@
 // @generated from protocol descriptors; do not edit.
-pub use crate::wire::JobsStartResponse;
-pub use crate::wire::jobs::ProgressWatchResponse;
-pub use crate::wire::plugins::AnnotationsGetResponse;
+pub use application_protocol::host::JobsStartResponse;
+pub use application_protocol::host::jobs::ProgressWatchResponse;
+pub use application_protocol::host::plugins::AnnotationsGetResponse;

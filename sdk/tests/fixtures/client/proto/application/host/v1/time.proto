@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Time
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/time.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Time {
+  // Read the authoritative host clock used by operation deadlines, retries and plugin waits.
+  rpc Get(harmos.host.v1.TimeGetRequest) returns (harmos.host.v1.TimeGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
+  rpc Sleep(harmos.host.v1.TimeSleepRequest) returns (harmos.host.v1.TimeSleepResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

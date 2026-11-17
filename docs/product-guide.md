@@ -21,7 +21,7 @@ the same calls during storage-only assembly.
 
 The remaining locked `operation-boundary` direction moves plugin activation and
 the other host families to this facade, gives the builder sole manager ownership,
-and removes host-client roots and wire exposure. Products declare their own remote
+and completes the other host facade families. Host-client roots and wire services are removed. Products declare their own remote
 wrappers. Those remaining changes are pending; their tasks and product pins live
 in `openspec/changes/operation-boundary/tasks.md`.
 
@@ -1059,15 +1059,16 @@ revisions are unchanged.
 
 Protocol roots follow their executor: `harmos_protocol::host` contains host operations,
 `harmos_protocol::plugin` contains plugin operations and connection carriers, and
-`harmos_protocol::model` contains shared values. Each host operation declares its
-callers. Public SDK code imports values from `harmos`, responses and client options
+`harmos_protocol::model` contains shared values. Each product wrapper declares its
+callers; Harmos host operations are private and have no wire services. Public SDK code imports values from `harmos`, responses and client options
 from `harmos::client`, and plugin authoring types from `harmos::plugin`.
 Managed bundle replacement
 uses `client.plugins.replace`; library-stored settings use
 `client.plugins.settings.list` and `.set`. Product operations expose any required
 storage access; the SDK has no library storage wire root.
 
-`harmos::Client` uses a caller-supplied Tonic channel and `ClientSettings`.
+`harmos::Client` is reusable connection plumbing with no resource root. A product
+client uses its transport handle and supplies `ClientSettings`.
 The caller supplies shared transfer settings and the required
 `retained_bytes: NonZeroUsize` from application configuration. Wire and outgoing-byte
 limits use the generated 8 MiB message default; explicit ceilings must carry the
@@ -1076,7 +1077,8 @@ configured transfer chunk plus framing. The default chunk remains 4 MiB. For exa
 ```rust
 let retained_bytes = std::env::var("HARMOS_CLIENT_RETAINED_BYTES")?.parse::<std::num::NonZeroUsize>()?;
 let settings = harmos::ClientSettings::for_storage(transfer_settings, retained_bytes)?;
-let client = harmos::Client::new(channel, settings)?;
+let connection = harmos::Client::new(channel, settings)?;
+let client = ProductClient::new(connection.transport_handle());
 ```
 
 `retained_bytes` bounds descriptor-checked decoded allocations and SDK-owned queued values
@@ -1084,11 +1086,10 @@ across client clones and calls. Repeated, map and nested values are accounted be
 decoding. A claim ends when its bare value reaches the caller; the caller owns its memory
 thereafter. Admission refuses before decoding when capacity is unavailable; raise the configured
 budget or request smaller pages.
-Discover contracts with `client.operations.list()` or `client.operations.get(id)`.
+A product client can expose discovery through its own `client.operations.list/get` wrappers.
 Typed `client.schemas.list()` and `client.streams.list()` expose their registries.
 Each List returns its payload directly. Calls take request content as arguments
-and own the transport context. A library-only dynamic call can bind a discovered
-operation to its library payloads:
+and own the transport context. A product wrapper can expose a typed call:
 
 ```rust
 let now = client.time.get().await?;
@@ -1098,7 +1099,7 @@ println!("{now:?}");
 For dynamic dispatch, obtain the contract and supply its encoded request content:
 
 ```rust
-let operation = client.operations.get("harmos.host.v1.Time/Get").await?;
+let operation = client.operations.get("application.host.v1.Time/Get").await?;
 let contract = operation.contract.ok_or("Time.Get has no contract")?;
 let payload = client.invocations.create(contract.id, contract.fingerprint, Vec::new()).await?;
 ```
@@ -1116,7 +1117,7 @@ including binary status details. Caller request metadata, extensions and timeout
 travel with the opening request. The server continues to own operation deadlines and retries.
 Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
 
-The [library client example](../sdk/rust/examples/client.rs) uses library contracts.
+The [library client example](../tools/conformance/examples/client.rs) uses library contracts.
 The [Schematic application client](../examples/schematic/protocol/examples/client.rs)
 calls `schematic.validate` through the application's generated `client.schematic.validate`
 resource. Build it with

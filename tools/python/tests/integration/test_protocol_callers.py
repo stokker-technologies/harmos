@@ -42,18 +42,15 @@ class ProtocolCallers(unittest.TestCase):
         root = Path(__file__).resolve().parents[4]
         self.descriptors = FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
 
-    def test_missing_callers_refuses_host_operations(self) -> None:
+    def test_missing_callers_refuses_product_wrappers_and_plugin_facilities(self) -> None:
         descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
         declared = caller_options(descriptors)
-        plugin = next(file for file in descriptors.file if "/plugin/" in file.name and file.service)
-        for service in plugin.service:
-            for method in service.method:
-                method.ClearField("options")
-        self.assertEqual(caller_options(descriptors), declared)
-        host = next(file for file in descriptors.file if "/host/" in file.name and file.service)
-        host.service[0].method[0].ClearField("options")
+        self.assertFalse(any(file.service for file in descriptors.file if "/host/" in file.name))
+        context = next(file for file in descriptors.file if file.name == "harmos/plugin/v1/time.proto")
+        context.service[0].method[0].ClearField("options")
         with self.assertRaises(ValueError):
             caller_options(descriptors)
+        self.assertTrue(declared)
 
     def test_shared_settings_has_nested_paths_and_optional_selector(self) -> None:
         methods = [
@@ -61,7 +58,7 @@ class ProtocolCallers(unittest.TestCase):
             for method in harmos_tools.build.resources.descriptor.table(self.descriptors)
             if method["path"] == ["plugins", "settings", "list"]
         ]
-        self.assertEqual({method["face"] for method in methods}, {"client", "context"})
+        self.assertEqual({method["face"] for method in methods}, {"context"})
         self.assertEqual(len({method["request"] for method in methods}), 1)
         self.assertEqual(len({method["response"] for method in methods}), 1)
         self.assertTrue(all(next(field for field in method["fields"] if field["name"] == "name")["optional"] for method in methods))
@@ -71,6 +68,16 @@ class ProtocolCallers(unittest.TestCase):
                 for method in harmos_tools.build.resources.descriptor.table(self.descriptors)
             )
         )
+
+    def test_product_wrappers_preserve_the_library_payload_public_home(self) -> None:
+        root = Path(__file__).resolve().parents[4]
+        fixture = FileDescriptorSet.FromString((root / "sdk/rust/tests/fixtures/client/client-descriptors.bin").read_bytes())
+        files = {file.name: file for schema in (self.descriptors, fixture) for file in schema.file}
+        combined = FileDescriptorSet(file=list(files.values()))
+        library = harmos_tools.build.resources.descriptor.payload_audiences(self.descriptors)
+        wrapped = harmos_tools.build.resources.descriptor.payload_audiences(combined, library=self.descriptors)
+        for name in ("harmos.host.v1.TimeGetResponse", "harmos.host.v1.plugins.SettingsListResponse"):
+            self.assertEqual(wrapped[name], library[name])
 
     def test_public_surface_check_rejects_wire_imports_and_allows_internal_generation(self) -> None:
         scratch_directory = tempfile.TemporaryDirectory()

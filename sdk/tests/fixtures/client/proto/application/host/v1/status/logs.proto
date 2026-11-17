@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Logs
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1.status;
+
+// === Imports === //
+
+import "harmos/host/v1/status/logs.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Logs {
+  // Read bounded retained redacted log events at an issued boundary; expired tokens/positions and responses too small for one event refuse.
+  rpc List(harmos.host.v1.status.LogsListRequest) returns (harmos.host.v1.status.LogsListResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Emit an opening boundary then bounded log batches after it; positive bounds are required and a history gap refuses with resynchronization guidance.
+  rpc Watch(harmos.host.v1.status.LogsWatchRequest) returns (stream harmos.host.v1.status.LogsWatchResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

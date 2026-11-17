@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Invocations
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/invocations.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Invocations {
+  // Create an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
+  rpc Create(harmos.host.v1.InvocationsCreateRequest) returns (harmos.host.v1.InvocationsCreateResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
+  rpc Get(harmos.host.v1.InvocationsGetRequest) returns (harmos.host.v1.InvocationsGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
+  rpc Cancel(harmos.host.v1.InvocationsCancelRequest) returns (harmos.host.v1.InvocationsCancelResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
+  rpc Watch(harmos.host.v1.InvocationsWatchRequest) returns (stream harmos.host.v1.InvocationsWatchResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

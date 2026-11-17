@@ -28,21 +28,20 @@ from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
     Failure,
+    FailureValue,
     Position,
     ReadCut,
     SettingDeclaration,
     SettingsDeclarations,
-    SettingsListResponse,
     SettingValue,
     SettingValues,
 )
-from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
 from harmos._wire.plugin.v1.instance_pb2_grpc import InstanceStub
 from harmos._wire.plugin.v1.invocation_pb2 import ChildResponse
 from harmos._wire.plugin.v1.stream_pb2 import SampleBatch, SamplesSelection, Window
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, observer, publisher
+from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, SettingsListResponse, observer, publisher
 from tests.fixtures.conformance import Values
 
 # Type Checking Imports
@@ -199,17 +198,17 @@ class WindowChildren(IsolatedAsyncioTestCase):
         child = (await stream.read()).child
         self.assertGreater(child.call, pending.call)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=pending.call, payload=b"")))
-        failure = WireFailure(
+        failure = FailureValue(
             classification=CLASSIFICATION_REFUSED,
             code="denied",
             operation=ECHO.id,
             plugin="example",
             details={"key": "value"},
-            cause=WireFailure(code="source"),
+            cause=FailureValue(code="source"),
             diagnostics="details",
         )
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
-        self.assertEqual(WireFailure.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
+        self.assertEqual(FailureValue.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
         await stream.done_writing()
         self.assertIs(await stream.read(), EOF)
 

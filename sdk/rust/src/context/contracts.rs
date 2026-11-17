@@ -183,41 +183,41 @@ impl Message for SettingsDeclarations {
 }
 impl OperationRequest for InvocationsGetRequest {
     type Response = InvocationsGetResponse;
-    const ID: &'static str = "harmos.host.v1.Invocations/Get";
+    const ID: &'static str = "harmos.plugin.v1.Invocations/Get";
     const WATCH: bool = false;
 }
 impl OperationRequest for InvocationsCancelRequest {
     type Response = InvocationsCancelResponse;
-    const ID: &'static str = "harmos.host.v1.Invocations/Cancel";
+    const ID: &'static str = "harmos.plugin.v1.Invocations/Cancel";
     const WATCH: bool = false;
 }
 impl OperationRequest for InvocationsWatchRequest {
     type Response = InvocationsWatchResponse;
-    const ID: &'static str = "harmos.host.v1.Invocations/Watch";
+    const ID: &'static str = "harmos.plugin.v1.Invocations/Watch";
     const WATCH: bool = true;
 }
 impl OperationRequest for OperationsListRequest {
     type Response = OperationsListResponse;
-    const ID: &'static str = "harmos.host.v1.Operations/List";
+    const ID: &'static str = "harmos.plugin.v1.Operations/List";
     const WATCH: bool = false;
 }
 impl OperationRequest for OperationsGetRequest {
     type Response = OperationsGetResponse;
-    const ID: &'static str = "harmos.host.v1.Operations/Get";
+    const ID: &'static str = "harmos.plugin.v1.Operations/Get";
     const WATCH: bool = false;
 }
 impl OperationRequest for SettingsListRequest {
     type Response = SettingsListResponse;
-    const ID: &'static str = "harmos.host.v1.plugins.Settings/List";
+    const ID: &'static str = "harmos.plugin.v1.plugins.Settings/List";
     const WATCH: bool = false;
 }
 impl OperationRequest for TimeGetRequest {
     type Response = TimeGetResponse;
-    const ID: &'static str = "harmos.host.v1.Time/Get";
+    const ID: &'static str = "harmos.plugin.v1.Time/Get";
     const WATCH: bool = false;
 }
 impl OperationRequest for TimeSleepRequest {
     type Response = TimeSleepResponse;
-    const ID: &'static str = "harmos.host.v1.Time/Sleep";
+    const ID: &'static str = "harmos.plugin.v1.Time/Sleep";
     const WATCH: bool = false;
 }

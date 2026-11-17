@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::access::PairingsListRequest;
-use harmos_protocol::host::access::PairingsListResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +20,8 @@ use harmos_protocol::host::access::PairingsListResponse;
 // Local Imports
 use super::AccessAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host::access::PairingsListRequest;
+use harmos_protocol::host::access::PairingsListResponse;
 
 /* === Constants === */
 
@@ -45,9 +44,9 @@ impl ProtobufOperation for PairingsList {
     type Response = PairingsListResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.access.Pairings/List";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.access", "Pairings", "List"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<AccessAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let access = context.resource::<AccessAccess>().map_err(|_| ServingError::Catalog)?;

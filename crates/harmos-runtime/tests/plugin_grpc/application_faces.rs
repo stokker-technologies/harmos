@@ -11,19 +11,7 @@
 
 /* === Imports === */
 
-use super::{
-    invoke_support::HostFixture,
-    support::{self, Remote},
-};
-use futures_util::stream;
-use harmos_operations::execution::operations::{
-    ExecutionContext, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
-};
-use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, TimeGetResponse};
-use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
-use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
-use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
-use prost::Message;
+// Standard Library Imports
 use std::{
     sync::{
         Arc,
@@ -31,7 +19,24 @@ use std::{
     },
     time::{Duration, SystemTime},
 };
+
+// Third Party Imports
+use futures_util::stream;
+use prost::Message;
 use tokio::sync::mpsc;
+
+// Local Imports
+use super::{
+    invoke_support::HostFixture,
+    support::{self, Remote},
+};
+use harmos_operations::execution::operations::{
+    ExecutionContext, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
+};
+use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, TimeGetResponse};
+use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
+use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
+use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
 
 /* === Structs === */
 
@@ -69,7 +74,7 @@ impl ProtobufOperation for DiscoveryGet {
 /* === Tests === */
 
 #[tokio::test]
-async fn scoped_discovery_wrappers_match_dispatch() {
+async fn harmos_host_operations_are_unreachable_on_the_wire() {
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let host = HostFixture::configured(Some(clock), std::num::NonZeroUsize::new(1024 * 1024).unwrap(), None).await;
     host.runtime.operations.register_catalog(harmos_operations::host_catalog(), Default::default()).await.unwrap();
@@ -83,7 +88,7 @@ async fn scoped_discovery_wrappers_match_dispatch() {
         .await
         .unwrap();
     let factories = [
-        OperationFactory::protobuf::<harmos_operations::clock::Get>().unwrap(),
+        OperationFactory::protobuf::<harmos_operations::facilities::TimeGet>().unwrap(),
         OperationFactory::protobuf::<harmos_operations::lifecycle::Create>().unwrap(),
         OperationFactory::protobuf::<DiscoveryList>().unwrap(),
         OperationFactory::protobuf::<DiscoveryGet>().unwrap(),
@@ -127,7 +132,7 @@ async fn scoped_discovery_wrappers_match_dispatch() {
             for (index, contract) in contracts.iter().enumerate().chain(std::iter::once((contracts.len(), &contracts[3]))) {
                 let payload = if index >= 3 {
                     OperationsGetRequest {
-                        id: if index == 3 { "harmos.host.v1.Time/Sleep" } else { "harmos.host.v1.Time/Get" }.into(),
+                        id: if index == 3 { "harmos.plugin.v1.Time/Sleep" } else { "harmos.plugin.v1.Time/Get" }.into(),
                     }
                     .encode_to_vec()
                 } else {
@@ -174,14 +179,14 @@ async fn scoped_discovery_wrappers_match_dispatch() {
         .operations
         .iter()
         .filter_map(|operation| operation.contract.as_ref())
-        .find(|contract| contract.id == "harmos.host.v1.Time/Get")
+        .find(|contract| contract.id == "harmos.plugin.v1.Time/Get")
         .unwrap();
-    assert_eq!(declared.callers(), Callers::All);
+    assert_eq!(declared.callers(), Callers::Plugins);
     assert!(
         listed
             .operations
             .iter()
-            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Time/Get"))
+            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.plugin.v1.Time/Get"))
     );
     assert!(
         !listed
@@ -193,14 +198,14 @@ async fn scoped_discovery_wrappers_match_dispatch() {
         !listed
             .operations
             .iter()
-            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Time/Sleep"))
+            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.plugin.v1.Time/Sleep"))
     );
     let fourth = observed.recv().await.unwrap();
     assert!(matches!(fourth.result, Some(child_response::Result::Failure(_))));
     let fifth = observed.recv().await.unwrap();
     let Some(child_response::Result::Payload(payload)) = fifth.result else { panic!("Expected Declared Operation") };
     let found = OperationsGetResponse::decode(payload.as_slice()).unwrap();
-    assert_eq!(found.operation.unwrap().contract.unwrap().id, "harmos.host.v1.Time/Get");
+    assert_eq!(found.operation.unwrap().contract.unwrap().id, "harmos.plugin.v1.Time/Get");
     attached.stop("Story Complete").await.unwrap();
     host.runtime.shutdown().await.unwrap();
 }

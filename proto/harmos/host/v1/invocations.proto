@@ -2,7 +2,7 @@
 
 // Host Invocations
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
@@ -10,7 +10,6 @@ package harmos.host.v1;
 
 // === Imports === //
 
-import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/invocation.proto";
 
 // === Options === //
@@ -18,24 +17,6 @@ import "harmos/model/v1/invocation.proto";
 // === Services === //
 
 // Exposes lifecycle controls only for invocation instances owned by the caller.
-service Invocations {
-  // Create an admitted operation using its expected fingerprint and encoded request; returns its encoded unary result under normal admission and execution policy.
-  rpc Create(InvocationsCreateRequest) returns (InvocationsCreateResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Inspect an invocation owned by the caller; unknown or foreign instance handles refuse.
-  rpc Get(InvocationsGetRequest) returns (InvocationsGetResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-  // Request cooperative cancellation of a caller-owned invocation and report its state; cancellation need not discard a handler's typed final result.
-  rpc Cancel(InvocationsCancelRequest) returns (InvocationsCancelResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-  // Observe state changes of a caller-owned invocation through settlement; foreign or unknown handles refuse.
-  rpc Watch(InvocationsWatchRequest) returns (stream InvocationsWatchResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-}
 
 // === Create === //
 

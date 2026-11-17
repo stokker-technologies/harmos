@@ -2,7 +2,7 @@
 
 // Host Time
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
@@ -12,23 +12,12 @@ package harmos.host.v1;
 
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
-import "harmos/model/v1/callers.proto";
 
 // === Options === //
 
 // === Services === //
 
 // Exposes the authoritative host clock, including virtual time, to operation callers.
-service Time {
-  // Read the authoritative host clock used by operation deadlines, retries and plugin waits.
-  rpc Get(TimeGetRequest) returns (TimeGetResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-  // Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
-  rpc Sleep(TimeSleepRequest) returns (TimeSleepResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-}
 
 // === Get === //
 

@@ -40,7 +40,7 @@ existing placement policy and bundle limits. No resource budget is inferred
 from machine capacity. Namespace ownership is exclusive: a competing conditional
 write fails rather than overwriting another manager's registry.
 
-## Client Operations
+## In-Process Operations
 
 | Method | Request and Result |
 | --- | --- |
@@ -55,7 +55,8 @@ write fails rather than overwriting another manager's registry.
 | `Settings.List` | Name and optional issued cut; typed declarations, complete values, settings revision and resolved cut. |
 | `Settings.Set` | Name, complete typed value, expected settings revision and request identity; applied value, revision and durable receipt. |
 
-Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
+These host operations are private and have no gRPC service or Harmos client root.
+Products own any remote management wrappers. Messages follow `Plugins<Method>Request` and `Plugins<Method>Response`.
 Replace changes a managed bundle while retaining the entry name, settings and product attachments. It validates the replacement description, contracts and sample channels before activating it. Failed staging leaves the previous bundle serving. Remote entries cannot be replaced by this operation. Set carries all writable
 fields and refuses stale revisions with the action to get again and retry.
 The entry also reports its runtime state, last connected description, declarations

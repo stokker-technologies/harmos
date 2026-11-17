@@ -90,48 +90,6 @@ use prost_types::Duration;
 use prost_types::Timestamp;
 use tonic::codegen::http::uri::PathAndQuery;
 #[derive(Default)]
-pub struct JobsStartOptions {
-    pub context: CallOptions,
-}
-impl Clone for JobsStartOptions {
-    fn clone(&self) -> Self {
-        Self {
-            context: CallOptions {
-                metadata: self.context.metadata.clone(),
-                timeout: self.context.timeout,
-            },
-        }
-    }
-}
-#[derive(Default)]
-pub struct JobsProgressWatchOptions {
-    pub context: CallOptions,
-}
-impl Clone for JobsProgressWatchOptions {
-    fn clone(&self) -> Self {
-        Self {
-            context: CallOptions {
-                metadata: self.context.metadata.clone(),
-                timeout: self.context.timeout,
-            },
-        }
-    }
-}
-#[derive(Default)]
-pub struct PluginsAnnotationsGetOptions {
-    pub context: CallOptions,
-}
-impl Clone for PluginsAnnotationsGetOptions {
-    fn clone(&self) -> Self {
-        Self {
-            context: CallOptions {
-                metadata: self.context.metadata.clone(),
-                timeout: self.context.timeout,
-            },
-        }
-    }
-}
-#[derive(Default)]
 pub struct AccessCertificatesCreateOptions {
     pub context: CallOptions,
 }
@@ -264,6 +222,34 @@ pub struct InvocationsWatchOptions {
     pub context: CallOptions,
 }
 impl Clone for InvocationsWatchOptions {
+    fn clone(&self) -> Self {
+        Self {
+            context: CallOptions {
+                metadata: self.context.metadata.clone(),
+                timeout: self.context.timeout,
+            },
+        }
+    }
+}
+#[derive(Default)]
+pub struct JobsStartOptions {
+    pub context: CallOptions,
+}
+impl Clone for JobsStartOptions {
+    fn clone(&self) -> Self {
+        Self {
+            context: CallOptions {
+                metadata: self.context.metadata.clone(),
+                timeout: self.context.timeout,
+            },
+        }
+    }
+}
+#[derive(Default)]
+pub struct JobsProgressWatchOptions {
+    pub context: CallOptions,
+}
+impl Clone for JobsProgressWatchOptions {
     fn clone(&self) -> Self {
         Self {
             context: CallOptions {
@@ -418,6 +404,20 @@ impl Clone for PluginsReplaceOptions {
     fn clone(&self) -> Self {
         Self {
             request_id: self.request_id.clone(),
+            context: CallOptions {
+                metadata: self.context.metadata.clone(),
+                timeout: self.context.timeout,
+            },
+        }
+    }
+}
+#[derive(Default)]
+pub struct PluginsAnnotationsGetOptions {
+    pub context: CallOptions,
+}
+impl Clone for PluginsAnnotationsGetOptions {
+    fn clone(&self) -> Self {
+        Self {
             context: CallOptions {
                 metadata: self.context.metadata.clone(),
                 timeout: self.context.timeout,
@@ -688,7 +688,7 @@ impl AccessCertificates {
         let response = self
             .client
             .unary::<CertificatesCreateRequest, CertificatesCreateResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Certificates/Create"),
+                PathAndQuery::from_static("/application.host.v1.access.Certificates/Create"),
                 request,
                 CertificatesCreateResponse::default().descriptor(),
             )
@@ -715,7 +715,7 @@ impl AccessListener {
         let response = self
             .client
             .unary::<ListenerGetRequest, ListenerGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Listener/Get"),
+                PathAndQuery::from_static("/application.host.v1.access.Listener/Get"),
                 request,
                 ListenerGetResponse::default().descriptor(),
             )
@@ -735,7 +735,7 @@ impl AccessListener {
         let response = self
             .client
             .unary::<ListenerSetRequest, ListenerSetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Listener/Set"),
+                PathAndQuery::from_static("/application.host.v1.access.Listener/Set"),
                 request,
                 ListenerSetResponse::default().descriptor(),
             )
@@ -764,7 +764,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsCreateRequest, PairingsCreateResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/Create"),
+                PathAndQuery::from_static("/application.host.v1.access.Pairings/Create"),
                 request,
                 PairingsCreateResponse::default().descriptor(),
             )
@@ -782,7 +782,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsListRequest, PairingsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/List"),
+                PathAndQuery::from_static("/application.host.v1.access.Pairings/List"),
                 request,
                 PairingsListResponse::default().descriptor(),
             )
@@ -802,7 +802,7 @@ impl AccessPairings {
         let response = self
             .client
             .unary::<PairingsDeleteRequest, PairingsDeleteResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.access.Pairings/Delete"),
+                PathAndQuery::from_static("/application.host.v1.access.Pairings/Delete"),
                 request,
                 PairingsDeleteResponse::default().descriptor(),
             )
@@ -835,7 +835,7 @@ impl Invocations {
         let response = self
             .client
             .unary::<InvocationsCreateRequest, InvocationsCreateResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Invocations/Create"),
+                PathAndQuery::from_static("/application.host.v1.Invocations/Create"),
                 request,
                 InvocationsCreateResponse::default().descriptor(),
             )
@@ -853,7 +853,7 @@ impl Invocations {
         let response = self
             .client
             .unary::<InvocationsGetRequest, InvocationsGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Invocations/Get"),
+                PathAndQuery::from_static("/application.host.v1.Invocations/Get"),
                 request,
                 InvocationsGetResponse::default().descriptor(),
             )
@@ -873,7 +873,7 @@ impl Invocations {
         let response = self
             .client
             .unary::<InvocationsCancelRequest, InvocationsCancelResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Invocations/Cancel"),
+                PathAndQuery::from_static("/application.host.v1.Invocations/Cancel"),
                 request,
                 InvocationsCancelResponse::default().descriptor(),
             )
@@ -891,7 +891,7 @@ impl Invocations {
         let response = self
             .client
             .watch_known::<InvocationsWatchRequest, InvocationsWatchResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Invocations/Watch"),
+                PathAndQuery::from_static("/application.host.v1.Invocations/Watch"),
                 request,
                 InvocationsWatchResponse::default().descriptor(),
             )
@@ -976,7 +976,7 @@ impl Operations {
         let response = self
             .client
             .unary::<OperationsListRequest, OperationsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Operations/List"),
+                PathAndQuery::from_static("/application.host.v1.Operations/List"),
                 request,
                 OperationsListResponse::default().descriptor(),
             )
@@ -994,7 +994,7 @@ impl Operations {
         let response = self
             .client
             .unary::<OperationsGetRequest, OperationsGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Operations/Get"),
+                PathAndQuery::from_static("/application.host.v1.Operations/Get"),
                 request,
                 OperationsGetResponse::default().descriptor(),
             )
@@ -1027,7 +1027,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsGetRequest, PluginsGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Get"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Get"),
                 request,
                 PluginsGetResponse::default().descriptor(),
             )
@@ -1045,7 +1045,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsListRequest, PluginsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/List"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/List"),
                 request,
                 PluginsListResponse::default().descriptor(),
             )
@@ -1063,7 +1063,7 @@ impl Plugins {
         let response = self
             .client
             .watch_known::<PluginsWatchRequest, PluginsWatchResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Watch"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Watch"),
                 request,
                 PluginsWatchResponse::default().descriptor(),
             )
@@ -1093,7 +1093,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsCreateRequest, PluginsCreateResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Create"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Create"),
                 request,
                 PluginsCreateResponse::default().descriptor(),
             )
@@ -1119,7 +1119,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsSetRequest, PluginsSetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Set"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Set"),
                 request,
                 PluginsSetResponse::default().descriptor(),
             )
@@ -1139,7 +1139,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsDeleteRequest, PluginsDeleteResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Delete"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Delete"),
                 request,
                 PluginsDeleteResponse::default().descriptor(),
             )
@@ -1159,7 +1159,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsRestartRequest, PluginsRestartResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Restart"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Restart"),
                 request,
                 PluginsRestartResponse::default().descriptor(),
             )
@@ -1189,7 +1189,7 @@ impl Plugins {
         let response = self
             .client
             .unary::<PluginsReplaceRequest, PluginsReplaceResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Plugins/Replace"),
+                PathAndQuery::from_static("/application.host.v1.Plugins/Replace"),
                 request,
                 PluginsReplaceResponse::default().descriptor(),
             )
@@ -1245,7 +1245,7 @@ impl PluginsSettings {
         let response = self
             .client
             .unary::<SettingsListRequest, SettingsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.plugins.Settings/List"),
+                PathAndQuery::from_static("/application.host.v1.plugins.Settings/List"),
                 request,
                 SettingsListResponse::default().descriptor(),
             )
@@ -1275,7 +1275,7 @@ impl PluginsSettings {
         let response = self
             .client
             .unary::<SettingsSetRequest, SettingsSetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.plugins.Settings/Set"),
+                PathAndQuery::from_static("/application.host.v1.plugins.Settings/Set"),
                 request,
                 SettingsSetResponse::default().descriptor(),
             )
@@ -1302,7 +1302,7 @@ impl Schemas {
         let response = self
             .client
             .unary::<SchemasListRequest, SchemasListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Schemas/List"),
+                PathAndQuery::from_static("/application.host.v1.Schemas/List"),
                 request,
                 SchemasListResponse::default().descriptor(),
             )
@@ -1337,7 +1337,7 @@ impl Status {
         let response = self
             .client
             .unary::<StatusGetRequest, StatusGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Status/Get"),
+                PathAndQuery::from_static("/application.host.v1.Status/Get"),
                 request,
                 StatusGetResponse::default().descriptor(),
             )
@@ -1355,7 +1355,7 @@ impl Status {
         let response = self
             .client
             .watch_known::<StatusWatchRequest, StatusWatchResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Status/Watch"),
+                PathAndQuery::from_static("/application.host.v1.Status/Watch"),
                 request,
                 StatusWatchResponse::default().descriptor(),
             )
@@ -1384,7 +1384,7 @@ impl StatusDiagnostics {
         let response = self
             .client
             .unary::<DiagnosticsGetRequest, DiagnosticsGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.status.Diagnostics/Get"),
+                PathAndQuery::from_static("/application.host.v1.status.Diagnostics/Get"),
                 request,
                 DiagnosticsGetResponse::default().descriptor(),
             )
@@ -1411,7 +1411,7 @@ impl StatusLogs {
         let response = self
             .client
             .unary::<LogsListRequest, LogsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.status.Logs/List"),
+                PathAndQuery::from_static("/application.host.v1.status.Logs/List"),
                 request,
                 LogsListResponse::default().descriptor(),
             )
@@ -1431,7 +1431,7 @@ impl StatusLogs {
         let response = self
             .client
             .watch_known::<LogsWatchRequest, LogsWatchResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.status.Logs/Watch"),
+                PathAndQuery::from_static("/application.host.v1.status.Logs/Watch"),
                 request,
                 LogsWatchResponse::default().descriptor(),
             )
@@ -1458,7 +1458,7 @@ impl StatusTraceEvents {
         let response = self
             .client
             .unary::<TraceEventsListRequest, TraceEventsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.status.TraceEvents/List"),
+                PathAndQuery::from_static("/application.host.v1.status.TraceEvents/List"),
                 request,
                 TraceEventsListResponse::default().descriptor(),
             )
@@ -1478,7 +1478,7 @@ impl StatusTraceEvents {
         let response = self
             .client
             .watch_known::<TraceEventsWatchRequest, TraceEventsWatchResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.status.TraceEvents/Watch"),
+                PathAndQuery::from_static("/application.host.v1.status.TraceEvents/Watch"),
                 request,
                 TraceEventsWatchResponse::default().descriptor(),
             )
@@ -1505,7 +1505,7 @@ impl Streams {
         let response = self
             .client
             .unary::<StreamsListRequest, StreamsListResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Streams/List"),
+                PathAndQuery::from_static("/application.host.v1.Streams/List"),
                 request,
                 StreamsListResponse::default().descriptor(),
             )
@@ -1532,7 +1532,7 @@ impl Time {
         let response = self
             .client
             .unary::<TimeGetRequest, TimeGetResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Time/Get"),
+                PathAndQuery::from_static("/application.host.v1.Time/Get"),
                 request,
                 TimeGetResponse::default().descriptor(),
             )
@@ -1550,7 +1550,7 @@ impl Time {
         let response = self
             .client
             .unary::<TimeSleepRequest, TimeSleepResponse>(
-                PathAndQuery::from_static("/harmos.host.v1.Time/Sleep"),
+                PathAndQuery::from_static("/application.host.v1.Time/Sleep"),
                 request,
                 TimeSleepResponse::default().descriptor(),
             )

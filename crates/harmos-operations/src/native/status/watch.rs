@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::StatusWatchRequest;
-use harmos_protocol::host::StatusWatchResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +21,8 @@ use futures_util::StreamExt;
 // Local Imports
 use super::StatusAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_protocol::host::StatusWatchRequest;
+use harmos_protocol::host::StatusWatchResponse;
 
 /* === Constants === */
 
@@ -46,9 +45,9 @@ impl ProtobufOperation for Watch {
     type Response = StatusWatchResponse;
     type Endpoints = ProtobufOutput<StatusWatchResponse>;
     const ID: &'static str = "harmos.host.v1.Status/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Status", "Watch"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;

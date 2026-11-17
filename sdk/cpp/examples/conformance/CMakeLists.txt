@@ -12,7 +12,7 @@ harmos_conformance_protocol(harmos_conformance_protocol "${CMAKE_CURRENT_SOURCE_
     "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_link_libraries(harmos_conformance_protocol PUBLIC Harmos::Cpp)
 add_executable(harmos-cpp-conformance main.cpp install_itself.cpp conformance.cpp)
-target_link_libraries(harmos-cpp-conformance PRIVATE Harmos::Cpp harmos_conformance_protocol)
+target_link_libraries(harmos-cpp-conformance PRIVATE Harmos::Cpp harmos_conformance_protocol harmos_client_fixture)
 if(MSVC)
     target_compile_options(harmos-cpp-conformance PRIVATE /W4 /WX /EHsc /Zc:preprocessor /permissive-)
 else()

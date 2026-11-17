@@ -11,6 +11,16 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::num::NonZeroUsize;
+
+// Third Party Imports
+
+// Local Imports
+use super::support::{self, Backends, Host, Peer};
+use crate::plugin_grpc::invoke_support::payload;
+use harmos::{Client, ClientSettings, StorageTransferSettings};
+use harmos_conformance::product::client::{PluginsGetOptions, Root};
 use harmos_protocol::host::PluginState;
 use harmos_protocol::host::PluginValue;
 use harmos_protocol::host::PluginsDeleteRequest;
@@ -20,13 +30,7 @@ use harmos_protocol::host::PluginsRestartRequest;
 use harmos_protocol::host::PluginsSetRequest;
 use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::plugins_watch_response::Event;
-
-use super::support::{self, Backends, Host, Peer};
-use crate::plugin_grpc::invoke_support::payload;
-use harmos::client::PluginsGetOptions;
-use harmos::{Client, ClientSettings, StorageTransferSettings};
 use harmos_runtime::plugin::manager::Management;
-use std::num::NonZeroUsize;
 
 /* === Tests === */
 
@@ -69,7 +73,7 @@ async fn client_manages_remote_plugins() {
 
     // Call the Same Contract Through the Rust SDK Client
     let capacity = NonZeroUsize::new(1024 * 1024).unwrap();
-    let sdk = Client::new(
+    let connection = Client::new(
         host.channel.clone(),
         ClientSettings {
             transfer: StorageTransferSettings { chunk_bytes: Some(512 * 1024) },
@@ -81,6 +85,7 @@ async fn client_manages_remote_plugins() {
         },
     )
     .unwrap();
+    let sdk = Root::new(connection.transport_handle());
     let sdk_response = sdk
         .plugins
         .get_with(

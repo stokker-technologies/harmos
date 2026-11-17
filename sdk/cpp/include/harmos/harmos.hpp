@@ -32,7 +32,8 @@
 #include <google/protobuf/timestamp.pb.h>
 
 // Local Imports
-#include "harmos/_generated/client.hpp"
+#include "harmos/client_transport.hpp"
+#include "harmos/messages.hpp"
 #include "harmos/transfer.hpp"
 
 /* === Macros === */
@@ -315,14 +316,13 @@ Call<R> Context::call(const Operation<Q, R> &operation, const Q &request, std::o
 
 template <class R> class Publisher {
 public:
-  using Send = std::function<void(std::string, std::optional<google::protobuf::Timestamp>)>;
-  explicit Publisher(Send send) : send_(std::move(send)) {}
+  explicit Publisher(std::function<void(std::string, std::optional<google::protobuf::Timestamp>)> send) : send_(std::move(send)) {}
   void publish(const R &row, std::optional<google::protobuf::Timestamp> at = {}) const {
     send_(detail::encode(row), std::move(at));
   }
 
 private:
-  Send send_;
+  std::function<void(std::string, std::optional<google::protobuf::Timestamp>)> send_;
 };
 
 template <class R> class Stream {
@@ -339,7 +339,7 @@ public:
     definition.row = R::descriptor();
   }
   Stream &publish_on(std::function<void(Context &, Publisher<R>)> producer) {
-    definition.producer = [producer](Context &ctx, typename Publisher<R>::Send send) {
+    definition.producer = [producer](Context &ctx, std::function<void(std::string, std::optional<google::protobuf::Timestamp>)> send) {
       producer(ctx, Publisher<R>(std::move(send)));
     };
     return *this;

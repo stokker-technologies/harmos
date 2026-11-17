@@ -10,7 +10,6 @@ package harmos.host.v1;
 
 // === Imports === //
 
-import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/operation.proto";
 
 // === Options === //
@@ -18,16 +17,6 @@ import "harmos/model/v1/operation.proto";
 // === Services === //
 
 // Discovers admitted operation contracts under the calling party's visibility and grants.
-service Operations {
-  // Return the complete admitted operation inventory; Private and unavailable operations are excluded.
-  rpc List(OperationsListRequest) returns (OperationsListResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-  // Read one admitted operation contract; an unavailable or unauthorized identity refuses.
-  rpc Get(OperationsGetRequest) returns (OperationsGetResponse) {
-    option (harmos.model.v1.callers) = ALL;
-  }
-}
 
 // === List === //
 

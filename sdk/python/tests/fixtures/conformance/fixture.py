@@ -25,15 +25,26 @@ from harmos import (
     VISIBILITY_PROTECTED,
     VISIBILITY_PUBLIC,
     Failure,
+    FailureValue,
     OperationPolicy,
     RetryPolicy,
     SettingDeclaration,
     SettingValue,
-    TimeGetResponse,
 )
-from harmos import FailureValue as WireFailure
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
-from harmos.plugin import Context, HostOperation, Operation, Plugin, Publisher, Window, observer, operation, publisher, window_observer
+from harmos.plugin import (
+    Context,
+    HostOperation,
+    Operation,
+    Plugin,
+    Publisher,
+    TimeGetResponse,
+    Window,
+    observer,
+    operation,
+    publisher,
+    window_observer,
+)
 
 from . import Graph, PayloadOnly, Value, Values
 from ._caller import REQUEST
@@ -55,7 +66,7 @@ PEER_LOCAL = Operation("conformance.peer.local", Value, Value, visibility=VISIBI
 OWN_PROTECTED = Operation("example.plugin.v1.Lifecycle/Initialize", Value, Value, visibility=VISIBILITY_PROTECTED)
 HOST_SCHEMA = Operation("conformance.host.schema", Graph, Value, visibility=VISIBILITY_PUBLIC)
 CREATE_INVOCATION = Operation(
-    "harmos.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
+    "application.host.v1.Invocations/Create", InvocationsCreateRequest, InvocationsCreateResponse, visibility=VISIBILITY_PUBLIC
 )
 
 # === Types === #
@@ -77,7 +88,7 @@ class Fixture:
             return Value(value=(await context.cancelled()).encode())
         if request.value in (b"retry", b"retry-bound"):
             if context.attempt == 1:
-                raise Failure(WireFailure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
+                raise Failure(FailureValue(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
             return Value(value=str(context.attempt).encode())
         return request
 
@@ -115,14 +126,14 @@ class Fixture:
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
         raise Failure(
-            WireFailure(
+            FailureValue(
                 classification=CLASSIFICATION_PERMANENT,
                 code="fixture_failure",
                 message="Fixture Failed",
                 action="Use Another Input",
                 operation="conformance.failure",
                 plugin="conformance",
-                cause=WireFailure(
+                cause=FailureValue(
                     classification=CLASSIFICATION_TRANSIENT,
                     code="fixture_cause",
                     message="Fixture Cause",

@@ -72,6 +72,9 @@ def client(
     target: Path | None = None,
     check: bool = False,
 ) -> None:
+    if target is None and not methods:
+        (root / "sdk/csharp/src/Harmos/Generated/Client.g.cs").unlink(missing_ok=True)
+        return
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))

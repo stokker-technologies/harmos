@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Plugins
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/plugins.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Plugins {
+  // Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
+  rpc Get(harmos.host.v1.PluginsGetRequest) returns (harmos.host.v1.PluginsGetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
+  rpc List(harmos.host.v1.PluginsListRequest) returns (harmos.host.v1.PluginsListResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
+  rpc Watch(harmos.host.v1.PluginsWatchRequest) returns (stream harmos.host.v1.PluginsWatchResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
+  rpc Create(harmos.host.v1.PluginsCreateRequest) returns (harmos.host.v1.PluginsCreateResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
+  rpc Set(harmos.host.v1.PluginsSetRequest) returns (harmos.host.v1.PluginsSetResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
+  rpc Delete(harmos.host.v1.PluginsDeleteRequest) returns (harmos.host.v1.PluginsDeleteResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
+  rpc Restart(harmos.host.v1.PluginsRestartRequest) returns (harmos.host.v1.PluginsRestartResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Replace a managed bundle in place at its expected revision; failure leaves the previous bundle serving and preserves the name, settings and product data.
+  rpc Replace(harmos.host.v1.PluginsReplaceRequest) returns (harmos.host.v1.PluginsReplaceResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

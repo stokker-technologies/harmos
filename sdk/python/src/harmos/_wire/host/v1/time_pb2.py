@@ -24,28 +24,21 @@ _sym_db = _symbol_database.Default()
 
 from google.protobuf import duration_pb2 as google_dot_protobuf_dot_duration__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
-from harmos._wire.model.v1 import callers_pb2 as harmos_dot_model_dot_v1_dot_callers__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19harmos/host/v1/time.proto\x12\x0eharmos.host.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dharmos/model/v1/callers.proto\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponse2\xa8\x01\n\x04Time\x12L\n\x03Get\x12\x1e.harmos.host.v1.TimeGetRequest\x1a\x1f.harmos.host.v1.TimeGetResponse\"\x04\xc8\xf3\x18\x03\x12R\n\x05Sleep\x12 .harmos.host.v1.TimeSleepRequest\x1a!.harmos.host.v1.TimeSleepResponse\"\x04\xc8\xf3\x18\x03\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x19harmos/host/v1/time.proto\x12\x0eharmos.host.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x10\n\x0eTimeGetRequest\":\n\x0fTimeGetResponse\x12\'\n\x03now\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\"?\n\x10TimeSleepRequest\x12+\n\x08\x64uration\x18\x01 \x01(\x0b\x32\x19.google.protobuf.Duration\"\x13\n\x11TimeSleepResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'harmos._wire.host.v1.time_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_TIME'].methods_by_name['Get']._loaded_options = None
-  _globals['_TIME'].methods_by_name['Get']._serialized_options = b'\310\363\030\003'
-  _globals['_TIME'].methods_by_name['Sleep']._loaded_options = None
-  _globals['_TIME'].methods_by_name['Sleep']._serialized_options = b'\310\363\030\003'
-  _globals['_TIMEGETREQUEST']._serialized_start=141
-  _globals['_TIMEGETREQUEST']._serialized_end=157
-  _globals['_TIMEGETRESPONSE']._serialized_start=159
-  _globals['_TIMEGETRESPONSE']._serialized_end=217
-  _globals['_TIMESLEEPREQUEST']._serialized_start=219
-  _globals['_TIMESLEEPREQUEST']._serialized_end=282
-  _globals['_TIMESLEEPRESPONSE']._serialized_start=284
-  _globals['_TIMESLEEPRESPONSE']._serialized_end=303
-  _globals['_TIME']._serialized_start=306
-  _globals['_TIME']._serialized_end=474
+  _globals['_TIMEGETREQUEST']._serialized_start=110
+  _globals['_TIMEGETREQUEST']._serialized_end=126
+  _globals['_TIMEGETRESPONSE']._serialized_start=128
+  _globals['_TIMEGETRESPONSE']._serialized_end=186
+  _globals['_TIMESLEEPREQUEST']._serialized_start=188
+  _globals['_TIMESLEEPREQUEST']._serialized_end=251
+  _globals['_TIMESLEEPRESPONSE']._serialized_start=253
+  _globals['_TIMESLEEPRESPONSE']._serialized_end=272
 # @@protoc_insertion_point(module_scope)

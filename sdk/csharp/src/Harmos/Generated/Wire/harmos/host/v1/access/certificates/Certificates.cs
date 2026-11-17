@@ -25,16 +25,12 @@ namespace Harmos.Clients;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "CihoYXJtb3MvaG9zdC92MS9hY2Nlc3MvY2VydGlmaWNhdGVzLnByb3RvEhVo",
-            "YXJtb3MuaG9zdC52MS5hY2Nlc3MaHWhhcm1vcy9tb2RlbC92MS9jYWxsZXJz",
-            "LnByb3RvIhsKGUNlcnRpZmljYXRlc0NyZWF0ZVJlcXVlc3QiRQoaQ2VydGlm",
-            "aWNhdGVzQ3JlYXRlUmVzcG9uc2USJwoPY2VydGlmaWNhdGVfcGVtGAEgASgJ",
-            "Ug5jZXJ0aWZpY2F0ZVBlbTKDAQoMQ2VydGlmaWNhdGVzEnMKBkNyZWF0ZRIw",
-            "Lmhhcm1vcy5ob3N0LnYxLmFjY2Vzcy5DZXJ0aWZpY2F0ZXNDcmVhdGVSZXF1",
-            "ZXN0GjEuaGFybW9zLmhvc3QudjEuYWNjZXNzLkNlcnRpZmljYXRlc0NyZWF0",
-            "ZVJlc3BvbnNlIgTI8xgBQiGqAh5IYXJtb3MuSG9zdC5WMS5BY2Nlc3NSZXNv",
-            "dXJjZXNiBnByb3RvMw=="));
+            "YXJtb3MuaG9zdC52MS5hY2Nlc3MiGwoZQ2VydGlmaWNhdGVzQ3JlYXRlUmVx",
+            "dWVzdCJFChpDZXJ0aWZpY2F0ZXNDcmVhdGVSZXNwb25zZRInCg9jZXJ0aWZp",
+            "Y2F0ZV9wZW0YASABKAlSDmNlcnRpZmljYXRlUGVtQiGqAh5IYXJtb3MuSG9z",
+            "dC5WMS5BY2Nlc3NSZXNvdXJjZXNiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.CallersReflection.Descriptor, },
+          new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.CertificatesCreateRequest), global::Harmos.Clients.CertificatesCreateRequest.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.CertificatesCreateResponse), global::Harmos.Clients.CertificatesCreateResponse.Parser, new[]{ "CertificatePem" }, null, null, null, null)

@@ -49,12 +49,12 @@ struct HostTimeResource {
   Context context;
   HostTimeResource(Context value) : context(value) {}
   ::google::protobuf::Timestamp get(HostTimeGetOptions options = {});
-  ::harmos::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, HostTimeSleepOptions options = {});
+  ::harmos::plugin::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, HostTimeSleepOptions options = {});
 };
 struct HostPluginsSettingsResource {
   Context context;
   HostPluginsSettingsResource(Context value) : context(value) {}
-  ::harmos::SettingsListResponse list(HostPluginsSettingsListOptions options = {});
+  ::harmos::plugin::SettingsListResponse list(HostPluginsSettingsListOptions options = {});
 };
 struct HostPluginsResource {
   Context context;

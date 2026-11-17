@@ -4,6 +4,8 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Harmos.Tests" />
+    <InternalsVisibleTo Include="harmos-csharp-conformance-plugin" />
+    <InternalsVisibleTo Include="Harmos.Example.Client" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Grpc.AspNetCore" />
     <PackageReference Include="Google.Protobuf" />

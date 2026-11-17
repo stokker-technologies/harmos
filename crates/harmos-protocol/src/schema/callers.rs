@@ -81,7 +81,18 @@ pub fn with_method_callers(mut types: FileDescriptorSet, callers: &BTreeMap<Stri
     }
     for file in &mut types.file {
         let host = file.package.as_deref().is_some_and(|package| package.split('.').any(|segment| segment == "host"));
-        if host && !file.service.is_empty() && !file.dependency.iter().any(|name| name == "harmos/model/v1/callers.proto") {
+        let projected = file.service.iter().any(|service| {
+            service.method.iter().any(|method| {
+                let id = format!(
+                    "{}.{}/{}",
+                    file.package.as_deref().unwrap_or_default(),
+                    service.name.as_deref().unwrap_or_default(),
+                    method.name.as_deref().unwrap_or_default()
+                );
+                callers.contains_key(&id)
+            })
+        });
+        if (host || projected) && !file.service.is_empty() && !file.dependency.iter().any(|name| name == "harmos/model/v1/callers.proto") {
             file.dependency.push("harmos/model/v1/callers.proto".into());
         }
     }
@@ -113,7 +124,7 @@ fn project_service(
         let method = method.as_message_mut().expect("method descriptor");
         let name = method.get_field_by_name("name").expect("method name").as_str().unwrap_or_default().to_owned();
         let id = format!("{package}.{service_name}/{name}");
-        if operation_identity(&id)? == Executor::Plugin {
+        if operation_identity(&id)? == Executor::Plugin && !callers.contains_key(&id) {
             continue;
         }
 

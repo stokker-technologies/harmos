@@ -92,17 +92,18 @@ Unit journeys use Catch2 v3 with `TEST_CASE` and `SECTION`; CTest discovers case
 
 ## Boundary Types
 
-Import `Client`, connection options, errors and shared messages from `harmos`.
+Import carrier and connection helpers, errors and shared messages from `harmos`.
+Products generate their own client roots; Harmos provides no `harmos::Client`.
 Client response and options types have their single public path in `harmos::client`;
 authoring types live in `harmos::plugin`. Include `harmos/harmos.hpp`.
 Wire requests and transport adapters stay in private generated headers.
-Protocol definitions are grouped by model, host and plugin executor. Each host
+Protocol definitions are grouped by model, host and plugin executor. Each product wrapper
 operation's callers option selects its client and plugin-context surfaces: `CLIENTS`,
 `PLUGINS` or `ALL`. The descriptor owns that audience; runtime assembly has no
 caller overrides.
 
 ```cpp
-using harmos::Client;
+using product::Client;
 
 auto client = Client::connect("127.0.0.1:53124");
 const auto inventory = client.operations.list();
@@ -113,7 +114,7 @@ std::cout << response.status().identity().application_name() << '\n';
 Typed calls take required request content in declaration order, followed by a defaulted
 per-call options value. For example, `client.plugins.get("example")` and
 `client.plugins.list(PluginsListOptions{.at = cut})` own their requests and contexts.
-Import `PluginsListOptions` from `harmos::client` when naming it. Mutations generate
+Import `PluginsListOptions` from the product client boundary when naming it. Mutations generate
 retry identity when `request_id` is absent. Options can retain a shared ClientContext
 for metadata, cancellation or deadline overrides. Operation policy owns the default
 deadline. Streaming calls return an owned `ClientStream`; `next()` pulls one item,
@@ -135,7 +136,7 @@ const auto response = client.invocations.create(
 
 Typed schema and stream inventories are `client.schemas.list` and `client.streams.list`.
 Application-generated clients can compose their own resources beneath
-`client.plugins` alongside the library's `client.plugins.settings` node.
+`client.plugins` with their own product settings operations.
 `client.plugins.replace` takes a managed placement and the entry's expected
 revision to replace a bundle in place.
 

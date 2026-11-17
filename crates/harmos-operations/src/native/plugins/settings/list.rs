@@ -15,15 +15,14 @@
 
 /* === Imports === */
 
-use super::super::{Access, POLICY, admit, failure};
-use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility, access::GrantAccess};
-use harmos_protocol::host::plugins as wire;
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
+use super::super::{Access, POLICY, failure};
+use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host;
 
 /* === Constants === */
 
@@ -41,14 +40,14 @@ use harmos_protocol::host::plugins as wire;
 
 pub struct List;
 impl ProtobufOperation for List {
-    type Request = wire::SettingsListRequest;
-    type Response = wire::SettingsListResponse;
+    type Request = host::plugins::SettingsListRequest;
+    type Response = host::plugins::SettingsListResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.plugins.Settings/List";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.plugins", "Settings", "List"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<Access>(), Resource::of::<GrantAccess>()];
+    const VISIBILITY: Visibility = Visibility::Private;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<Access>()];
     const REPLAY: crate::operations::ReplaySafety = crate::operations::ReplaySafety::Idempotent;
     fn grant(_: &Self::Request) -> Result<Option<crate::plugin::Grant>, crate::MessageError> {
         Ok(None)
@@ -69,14 +68,11 @@ impl ProtobufOperation for List {
                 )));
             }
             request.name = Some(name.clone());
-        } else {
-            admit(&context, Self::ID)?;
-            if request.name.as_ref().is_none_or(|name| name.is_empty()) {
-                return Err(ServingError::Handler(crate::Failure::new(
-                    crate::operations::FailureKind::Permanent,
-                    "List Plugin Settings: select a plugin entry",
-                )));
-            }
+        } else if request.name.as_ref().is_none_or(|name| name.is_empty()) {
+            return Err(ServingError::Handler(crate::Failure::new(
+                crate::operations::FailureKind::Permanent,
+                "List Plugin Settings: select a plugin entry",
+            )));
         }
         let access = context.resource::<Access>().map_err(|_| ServingError::Catalog)?;
         access.0.settings_list(request).await.map_err(failure)

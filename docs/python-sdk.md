@@ -8,7 +8,7 @@ preserve the public message types.
 ## Typed Client Calls
 
 ```python
-from harmos import Client
+from product import Client
 
 client = Client.connect("127.0.0.1:53124")
 try:
@@ -50,20 +50,21 @@ budgets use `transfer` and `message_ceiling`; invalid limits refuse before diali
 
 ## Public Types
 
-Import Client, connection options, errors and shared vocabulary such as
+Import connection plumbing, errors and shared vocabulary such as
 `SettingValue`, `Declarations`, `File`, `PageRequest` and `Position` from `harmos`.
 Client response types live in `harmos.client`; Context, Plugin, Operation, decorators,
 HostOperation and plugin response types live in `harmos.plugin`. Shared host replies
 are available from both audience barrels. Generated wire requests, version packages
 and transport carriers stay private.
 
-Host operations declare their callers. CLIENTS and ALL operations appear on Client;
-PLUGINS and ALL operations appear on Context.host. Plugin connection services never
-appear as host resources. SDK projection does not replace host authorization.
+Harmos host operations have no wire services or client root. Products declare their
+own wrapper operations and CLIENTS, PLUGINS or ALL audiences. Generators project
+those product descriptors into one product-owned client over `Connection`; resource
+attributes are composed directly, without inheriting a Harmos client tree.
 
-Storage remains in-process. Applications supply their own operations for data,
-uploads and queries. Plugin observers answer host-granted interval windows;
-publishers send device rows while demand is open.
+Plugin contexts retain time, own settings, own invocation controls and admitted
+discovery as PLUGINS-only facilities on the invocation and Samples carriers.
+Products own remote storage, administration, uploads and queries.
 
 ## Plugin Settings and Host Calls
 
@@ -85,8 +86,7 @@ prefix = settings.value.values["prefix"].text
 ```
 
 Plugins.Settings.List selects the admitted calling entry when a plugin omits `name`.
-A plugin may name itself; the host refuses another entry. Clients supply the entry
-name. Both audiences receive declarations, complete values, revision and resolved
+A plugin may name itself; the host refuses another entry. The facility returns declarations, complete values, revision and resolved
 read cut; pass `at=cut` to reuse a cut. Client Plugins.Settings.Set replaces the complete map and requires its expected
 revision. Preserve each declared key and value variant. Plugin replacement preserves
 the entry name and settings; failed replacement preserves the serving bundle.

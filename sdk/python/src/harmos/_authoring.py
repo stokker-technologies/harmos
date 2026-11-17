@@ -33,6 +33,7 @@ from grpc.aio import Server, ServicerContext
 from harmos._wire.model.v1.description_pb2 import Declarations
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC
 from harmos._wire.model.v1.setting_pb2 import SettingDeclaration, SettingsDeclarations
+from harmos._wire.plugin.v1 import stream_pb2
 from harmos._wire.plugin.v1.instance_pb2 import (
     InstanceGetRequest,
     InstanceGetResponse,
@@ -45,7 +46,6 @@ from harmos._wire.plugin.v1.instance_pb2 import (
 )
 from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
-from harmos._wire.plugin.v1.stream_pb2 import Window as WireWindow
 
 from ._columns import OversizedSampleError, append, batches, extract
 from ._contracts import Operation, Stream, Window, message_types
@@ -535,7 +535,7 @@ async def _read_publish(
         await output.put(_FaultError(StatusCode.INVALID_ARGUMENT, str(error)))
 
 
-def _window(window: WireWindow) -> Window:
+def _window(window: stream_pb2.Window) -> Window:
     if not window.HasField("start"):
         raise ProtocolError("Read Samples: Window Start Time Required")
     validate_timestamp(window.start)

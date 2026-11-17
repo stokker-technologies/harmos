@@ -23,8 +23,8 @@ from google.protobuf.wrappers_pb2 import BytesValue
 from grpc.aio import EOF, ServicerContext
 from harmos_tools.process import spawn_flags
 
+from examples import invocation
 from examples.client import run
-from examples.invocation import run as invoke
 from harmos import DiscoveredContract, DiscoveredOperation, Position, SettingsDeclarations, SettingValue, SettingValues
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
 from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
@@ -94,7 +94,7 @@ class Examples(IsolatedAsyncioTestCase):
         await server.start()
         self.addAsyncCleanup(server.stop, None)
         payload = BytesValue(value=b"dynamic")
-        response = await invoke(f"127.0.0.1:{port}", contract.id, payload.SerializeToString())
+        response = await invocation.run(f"127.0.0.1:{port}", contract.id, payload.SerializeToString())
         self.assertEqual(BytesValue.FromString(response).value, b"accepted:" + payload.value)
 
     async def test_client_example_discovers_calls_and_streams_from_host(self) -> None:
@@ -190,7 +190,7 @@ class Examples(IsolatedAsyncioTestCase):
             request = BytesValue(value=b"example")
             call = await calls.invoke(host, "example.echo", request)
             child = (await call.read()).child
-            self.assertEqual(child.operation, "harmos.host.v1.plugins.Settings/List")
+            self.assertEqual(child.operation, "harmos.plugin.v1.plugins.Settings/List")
             self.assertEqual(SettingsListRequest.FromString(child.payload), SettingsListRequest())
             await calls.reply(call, child, SettingsListResponse(value=SettingValues(values={"prefix": SettingValue(text="typed:")})))
             response = await call.read()

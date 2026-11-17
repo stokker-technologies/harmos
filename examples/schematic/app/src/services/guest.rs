@@ -14,6 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
 
 // Third Party Imports
 
@@ -22,7 +23,6 @@ use crate::app::{Runtime, SchematicEditor};
 use harmos_runtime::Identifier;
 use harmos_runtime::config::PluginSettings;
 use harmos_runtime::guest::{Host, Loaded};
-use std::sync::Arc;
 
 /* === Constants === */
 
@@ -69,7 +69,7 @@ pub async fn start(runtime: &Runtime, loaded: Loaded<SchematicEditor>) -> harmos
             loaded,
             PluginSettings {
                 configuration: b"null".to_vec(),
-                host_operations: [Identifier::new("harmos.host.v1.plugins.Settings/List").unwrap()].into_iter().collect(),
+                host_operations: [Identifier::new("harmos.plugin.v1.plugins.Settings/List").unwrap()].into_iter().collect(),
                 ..PluginSettings::default()
             },
             harmos_runtime::operations::Lane::default(),

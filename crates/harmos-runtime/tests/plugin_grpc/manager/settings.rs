@@ -15,23 +15,21 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::ChildRequest;
-use harmos_protocol::plugin::child_response::Result;
+// Standard Library Imports
 
+// Third Party Imports
+use prost::Message;
+use prost_reflect::ReflectMessage;
+
+// Local Imports
 use super::support::{self, Backends, Host};
 use crate::plugin_grpc::support::Remote;
 use harmos_protocol::host;
 use harmos_protocol::host::plugins;
 use harmos_protocol::model;
 use harmos_protocol::model::setting_value::Value;
-use prost::Message;
-use prost_reflect::ReflectMessage;
-
-// Standard Library Imports
-
-// Third Party Imports
-
-// Local Imports
+use harmos_protocol::plugin::ChildRequest;
+use harmos_protocol::plugin::child_response::Result;
 
 /* === Constants === */
 
@@ -99,7 +97,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     support::state(&mut watch, "first", host::PluginState::Ready, 1).await;
     host.client.create(support::remote("second", &remote.address)).await.unwrap();
     support::state(&mut watch, "second", host::PluginState::Ready, 1).await;
-    let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
+    let mut settings = harmos_conformance::host::plugins::settings_client::SettingsClient::new(host.channel.clone());
     assert!(settings.list(plugins::SettingsListRequest { name: None, at: None }).await.is_err());
     let initial = settings.list(plugins::SettingsListRequest { name: Some("first".into()), at: None }).await.unwrap().into_inner();
     let defaults = initial.value.clone().unwrap();
@@ -168,7 +166,7 @@ async fn settings_replay_survive_restart_and_delete_with_their_entry() {
     let mut host = Host::start(root.path(), &backends).await;
     let mut watch = host.client.watch(host::PluginsWatchRequest::default()).await.unwrap().into_inner();
     let ready = support::state(&mut watch, "first", host::PluginState::Ready, 2).await;
-    let mut settings = plugins::settings_client::SettingsClient::new(host.channel.clone());
+    let mut settings = harmos_conformance::host::plugins::settings_client::SettingsClient::new(host.channel.clone());
     assert_eq!(settings.set(request).await.unwrap().into_inner(), applied);
     let current = settings.list(plugins::SettingsListRequest { name: Some("first".into()), at: None }).await.unwrap().into_inner();
     assert_eq!(current.value, Some(changed));
@@ -222,8 +220,8 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     use futures_util::stream;
     use harmos_protocol::host::plugins::SettingsListRequest;
     use harmos_protocol::plugin;
-    use harmos_protocol::plugin::instance_samples_request as request;
-    use harmos_protocol::plugin::instance_samples_response as response;
+    use harmos_protocol::plugin::instance_samples_request;
+    use harmos_protocol::plugin::instance_samples_response;
     use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
     use std::{
         sync::{
@@ -248,7 +246,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
     let types = prost_types::FileDescriptorSet {
         file: descriptor.parent_pool().files().map(|file| file.file_descriptor_proto().clone()).collect(),
     };
-    let id = "harmos.host.v1.plugins.Settings/List";
+    let id = "harmos.plugin.v1.plugins.Settings/List";
     let fingerprint = harmos_protocol::schema::fingerprint(
         id,
         &types,
@@ -288,13 +286,13 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let completion = completion.clone();
         let fingerprint = managed_fingerprint.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             for (index, name) in [None, Some("caller"), Some("remote")].into_iter().enumerate() {
                 output
                     .send(Ok(plugin::InstanceSamplesResponse {
                         samples: vec![],
-                        frame: Some(response::Frame::Child(harmos_protocol::plugin::ChildRequest {
+                        frame: Some(instance_samples_response::Frame::Child(harmos_protocol::plugin::ChildRequest {
                             call: index as u64 + 1,
                             operation: id.into(),
                             fingerprint: fingerprint.clone(),
@@ -304,7 +302,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                     }))
                     .await
                     .unwrap();
-                let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+                let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                     panic!("Expected Child Reply");
                 };
                 results.send(reply).unwrap();
@@ -352,12 +350,12 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
         let fingerprint = fingerprint.clone();
         let observed = observed.clone();
         tokio::spawn(async move {
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Open(_))));
-            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(request::Frame::Window(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Open(_))));
+            assert!(matches!(input.message().await.unwrap().unwrap().frame, Some(instance_samples_request::Frame::Window(_))));
             output
                 .send(Ok(plugin::InstanceSamplesResponse {
                     samples: vec![],
-                    frame: Some(response::Frame::Child(ChildRequest {
+                    frame: Some(instance_samples_response::Frame::Child(ChildRequest {
                         call: 1,
                         operation: id.into(),
                         fingerprint,
@@ -367,7 +365,7 @@ async fn plugin_settings_selection_uses_only_the_trusted_entry() {
                 }))
                 .await
                 .unwrap();
-            let Some(request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
+            let Some(instance_samples_request::Frame::Child(reply)) = input.message().await.unwrap().unwrap().frame else {
                 panic!("Expected Child Reply");
             };
             let Some(Result::Failure(failure)) = reply.result else {

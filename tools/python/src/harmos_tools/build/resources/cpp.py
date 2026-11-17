@@ -75,9 +75,8 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
     configuration = configuration or Configuration()
     public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
     type_names: dict[str, str] = {}
-    methods = descriptor.table(descriptors)
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
-    requests = {method["request"] for method in methods}
+    requests = descriptor.request_names(descriptors)
     carriers = {
         "Request",
         "Response",
@@ -451,6 +450,10 @@ def client(
     target: Path | None = None,
     configuration: Configuration | None = None,
 ) -> None:
+    if target is None and not methods:
+        (root / "sdk/cpp/include/harmos/_generated/client.hpp").unlink(missing_ok=True)
+        (root / "sdk/cpp/include/harmos/_generated/detail/client.hpp").unlink(missing_ok=True)
+        return
     configuration = configuration or Configuration()
     type_names = dict(type_names or {})
     library = configuration.library_descriptors()

@@ -2,7 +2,7 @@
 
 // Host Plugins
 //
-// Operations executed by the host; each method declares its permitted callers.
+// In-process host operation payloads. Products declare their own remote operations.
 
 syntax = "proto3";
 
@@ -11,7 +11,6 @@ package harmos.host.v1;
 // === Imports === //
 
 import "google/protobuf/timestamp.proto";
-import "harmos/model/v1/callers.proto";
 import "harmos/model/v1/description.proto";
 import "harmos/model/v1/failure.proto";
 import "harmos/model/v1/file.proto";
@@ -23,40 +22,6 @@ import "harmos/model/v1/receipt.proto";
 // === Services === //
 
 // Client-facing management of hosted entries, distinct from Instance.
-service Plugins {
-  // Read one management entry at an issued cut or the latest manager snapshot; unavailable cuts and missing entries refuse.
-  rpc Get(PluginsGetRequest) returns (PluginsGetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Read the manager snapshot at an issued cut or its latest boundary; unissued, foreign and expired cuts refuse.
-  rpc List(PluginsListRequest) returns (PluginsListResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Send an opening snapshot, retained changes and live updates; capacity/continuity failures signal resynchronization.
-  rpc Watch(PluginsWatchRequest) returns (stream PluginsWatchResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Persist a named placement and writable value. The same request ID and identical payload replay the original response; changed input refuses.
-  rpc Create(PluginsCreateRequest) returns (PluginsCreateResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Replace the complete writable value at its expected revision; conflicts require a fresh read before retrying.
-  rpc Set(PluginsSetRequest) returns (PluginsSetResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Remove an entry at its expected revision, stop its activation and retire managed installation content; a missing entry refuses.
-  rpc Delete(PluginsDeleteRequest) returns (PluginsDeleteResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Stop and start an enabled entry at its expected revision with a new activation generation; disabled entries and revision conflicts refuse.
-  rpc Restart(PluginsRestartRequest) returns (PluginsRestartResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-  // Replace a managed bundle in place at its expected revision; failure leaves the previous bundle serving and preserves the name, settings and product data.
-  rpc Replace(PluginsReplaceRequest) returns (PluginsReplaceResponse) {
-    option (harmos.model.v1.callers) = CLIENTS;
-  }
-}
 
 // === Get === //
 

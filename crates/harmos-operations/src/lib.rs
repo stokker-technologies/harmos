@@ -33,8 +33,8 @@ pub mod streams;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "grpc", feature = "streaming"))]
 pub use native::{
-    Error, Result, access, builtins_catalog, builtins_catalog_batch, clock, host_catalog, lifecycle, lifecycle_catalog, plugins, status,
-    storage_catalog, streams_catalog,
+    Error, Result, access, builtins_catalog, builtins_catalog_batch, clock, facilities, host_catalog, lifecycle, lifecycle_catalog,
+    plugins, status, storage_catalog, streams_catalog,
 };
 
 pub use config::{ConfigError, decode_config, encode_config, validate_config};

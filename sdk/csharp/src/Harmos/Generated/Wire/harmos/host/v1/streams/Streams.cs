@@ -25,21 +25,18 @@ namespace Harmos.Clients;
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChxoYXJtb3MvaG9zdC92MS9zdHJlYW1zLnByb3RvEg5oYXJtb3MuaG9zdC52",
-            "MRobaGFybW9zL2hvc3QvdjEvc2NoZW1hLnByb3RvGh1oYXJtb3MvbW9kZWwv",
-            "djEvY2FsbGVycy5wcm90bxoeaGFybW9zL21vZGVsL3YxL3Bvc2l0aW9uLnBy",
-            "b3RvIjwKElN0cmVhbXNMaXN0UmVxdWVzdBIbCgZzY2hlbWEYASABKAlIAFIG",
-            "c2NoZW1hiAEBQgkKB19zY2hlbWEiTwoTU3RyZWFtc0xpc3RSZXNwb25zZRI4",
-            "CgdzdHJlYW1zGAEgAygLMh4uaGFybW9zLmhvc3QudjEuU3RyZWFtSWRlbnRp",
-            "dHlSB3N0cmVhbXMixQEKDlN0cmVhbUlkZW50aXR5EjEKBnNjaGVtYRgBIAEo",
-            "CzIZLmhhcm1vcy5ob3N0LnYxLlNjaGVtYUtleVIGc2NoZW1hEhkKBXNjb3Bl",
-            "GAIgASgJSABSBXNjb3BliAEBEhIKBGl0ZW0YAyABKAlSBGl0ZW0SFgoGc3Ry",
-            "ZWFtGAQgASgJUgZzdHJlYW0SLwoFZmlyc3QYBSABKAsyGS5oYXJtb3MubW9k",
-            "ZWwudjEuUG9zaXRpb25SBWZpcnN0QggKBl9zY29wZTJgCgdTdHJlYW1zElUK",
-            "BExpc3QSIi5oYXJtb3MuaG9zdC52MS5TdHJlYW1zTGlzdFJlcXVlc3QaIy5o",
-            "YXJtb3MuaG9zdC52MS5TdHJlYW1zTGlzdFJlc3BvbnNlIgTI8xgBYgZwcm90",
-            "bzM="));
+            "MRobaGFybW9zL2hvc3QvdjEvc2NoZW1hLnByb3RvGh5oYXJtb3MvbW9kZWwv",
+            "djEvcG9zaXRpb24ucHJvdG8iPAoSU3RyZWFtc0xpc3RSZXF1ZXN0EhsKBnNj",
+            "aGVtYRgBIAEoCUgAUgZzY2hlbWGIAQFCCQoHX3NjaGVtYSJPChNTdHJlYW1z",
+            "TGlzdFJlc3BvbnNlEjgKB3N0cmVhbXMYASADKAsyHi5oYXJtb3MuaG9zdC52",
+            "MS5TdHJlYW1JZGVudGl0eVIHc3RyZWFtcyLFAQoOU3RyZWFtSWRlbnRpdHkS",
+            "MQoGc2NoZW1hGAEgASgLMhkuaGFybW9zLmhvc3QudjEuU2NoZW1hS2V5UgZz",
+            "Y2hlbWESGQoFc2NvcGUYAiABKAlIAFIFc2NvcGWIAQESEgoEaXRlbRgDIAEo",
+            "CVIEaXRlbRIWCgZzdHJlYW0YBCABKAlSBnN0cmVhbRIvCgVmaXJzdBgFIAEo",
+            "CzIZLmhhcm1vcy5tb2RlbC52MS5Qb3NpdGlvblIFZmlyc3RCCAoGX3Njb3Bl",
+            "YgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Harmos.Clients.SchemaReflection.Descriptor, global::Harmos.CallersReflection.Descriptor, global::Harmos.PositionReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Harmos.Clients.SchemaReflection.Descriptor, global::Harmos.PositionReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.StreamsListRequest), global::Harmos.Clients.StreamsListRequest.Parser, new[]{ "Schema" }, new[]{ "Schema" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.StreamsListResponse), global::Harmos.Clients.StreamsListResponse.Parser, new[]{ "Streams" }, null, null, null, null),

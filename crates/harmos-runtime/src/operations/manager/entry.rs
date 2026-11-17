@@ -13,8 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::{Callers, Requirement};
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +21,7 @@ use harmos_protocol::model::{Callers, Requirement};
 use super::*;
 use crate::operations::Visibility;
 use crate::plugin::grpc::{CallingPlugin, invoke::Binding};
+use harmos_protocol::model::{Callers, Requirement};
 
 /* === Constants === */
 
@@ -61,7 +60,10 @@ impl Entry {
 
     fn connection_operation(&self) -> bool {
         use harmos_protocol::schema::{Executor, operation_identity};
-        matches!(operation_identity(self.id()), Ok(Executor::Plugin)) && self.id().contains('/') && self.host_provided()
+        matches!(operation_identity(self.id()), Ok(Executor::Plugin))
+            && self.id().contains('/')
+            && self.host_provided()
+            && !self.id().starts_with("harmos.plugin.v1.")
     }
 
     // Move a resident control onto the unbounded resident lane.

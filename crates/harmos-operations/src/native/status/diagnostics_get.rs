@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::status::DiagnosticsGetRequest;
-use harmos_protocol::host::status::DiagnosticsGetResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -23,6 +20,8 @@ use harmos_protocol::host::status::DiagnosticsGetResponse;
 // Local Imports
 use super::StatusAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
+use harmos_protocol::host::status::DiagnosticsGetRequest;
+use harmos_protocol::host::status::DiagnosticsGetResponse;
 
 /* === Constants === */
 
@@ -45,9 +44,9 @@ impl ProtobufOperation for DiagnosticsGet {
     type Response = DiagnosticsGetResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.status.Diagnostics/Get";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.status", "Diagnostics", "Get"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, _: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;

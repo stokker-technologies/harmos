@@ -1,17 +1,18 @@
 # Rust SDK
 
-The `harmos` crate supplies library clients and native or WebAssembly plugin authoring.
+The `harmos` crate supplies reusable connection plumbing and native or WebAssembly plugin carrier helpers. Products own their authoring SDKs and generated client roots.
 Import shared values from `harmos`, client facilities from `harmos::client`, and plugin
 facilities from `harmos::plugin`. Wire modules remain private implementation details.
 
 ## Client Calls
 
-[The library client example](../sdk/rust/examples/client.rs) discovers operations and
+[The reference product client example](../tools/conformance/examples/client.rs) discovers operations and
 reads host time. Pass the host URL as its first argument and provide the consumer-owned
 retention budget in `HARMOS_CLIENT_RETAINED_BYTES`.
 
 ```rust
-let client = Client::connect(address, settings).await?;
+let connection = Client::connect(address, settings).await?;
+let client = ProductClient::new(connection.transport_handle());
 let operations = client.operations.list().await?;
 let now = client.time.get().await?;
 ```
@@ -43,11 +44,11 @@ async fn observe(context: &Context) -> harmos::Result<()> {
 ```
 
 `context.settings().list()` and `context.host().plugins.settings.list()` invoke the
-same settings operation as the client. Its result includes effective values,
+plugin carrier's own-settings facility. Its result includes effective values,
 revision, declarations and cut. The host defaults a missing selector to the trusted
 calling plugin and refuses another plugin's name. Settings Set is absent from the
-plugin surface. Time and invocation lookup, cancellation and watching are shared
-host operations; invocation creation belongs to clients.
+plugin surface. Time, discovery and own invocation lookup, cancellation and watching use plugin
+facilities. Host operations have no wire services; product wrappers own client actions.
 
 Client generation selects operations callable by clients; context generation selects
 operations callable by plugins. Descriptor generation also emits `plugin.rs` with
@@ -58,10 +59,10 @@ of generated methods; runtime assembly has no audience overrides.
 ## Application and Dynamic Calls
 
 Application typed calls belong to the application's generated SDK; see the
-[Schematic walkthrough](../examples/schematic/cli/src/walkthrough.rs). The library
-client example has no application protocol dependency.
+[Schematic walkthrough](../examples/schematic/cli/src/walkthrough.rs). The reference
+client example uses the fixture product's generated wrapper root.
 
-[The separate dynamic example](../sdk/rust/examples/dynamic.rs) discovers
+[The separate dynamic example](../tools/conformance/examples/dynamic.rs) discovers
 `conformance.step.0`, an echo operation using `Value` from the
 [shared conformance fixture](../sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto).
 It passes an encoded payload and the discovered fingerprint to

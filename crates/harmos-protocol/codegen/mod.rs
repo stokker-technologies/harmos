@@ -24,7 +24,7 @@ pub use conformance::generate_conformance;
 
 // Standard Library Imports
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     error::Error,
     fs,
     path::{Path, PathBuf},
@@ -175,19 +175,22 @@ pub fn generate(compiler: &Path, includes: &Path, output: &Path) -> Result<(), B
     // SDK Metadata Loads Only Its Reachable Graph Inside a Fuel-Bounded Guest.
     let sdk_types = output.join("context-types");
     fs::create_dir_all(&sdk_types)?;
-    for file in &descriptors.file {
-        let package = file.package.as_deref().unwrap_or_default();
-        for message in &file.message_type {
-            let name = message.name.as_deref().ok_or("missing message name")?;
-            if !package.starts_with("harmos.host.v1")
-                && !(package == "harmos.model.v1" && matches!(name, "SettingDeclaration" | "SettingsDeclarations"))
-            {
+    let pool = DescriptorPool::decode(fs::read(output.join("descriptors.bin"))?.as_slice())?;
+    let mut roots = BTreeSet::from(["harmos.model.v1.SettingDeclaration".to_owned(), "harmos.model.v1.SettingsDeclarations".to_owned()]);
+    let callers = pool.get_extension_by_name("harmos.model.v1.callers").ok_or("Generate Context Types: Declare the Caller Option")?;
+    for service in pool.services().filter(|service| service.package_name().starts_with("harmos.plugin.v1")) {
+        for method in service.methods() {
+            if !method.options().has_extension(&callers) {
                 continue;
             }
-            let qualified = format!("{package}.{name}");
-            let types = schema::message_types(&descriptors, &qualified)?;
-            fs::write(sdk_types.join(format!("{qualified}.bin")), types.encode_to_vec())?;
+            schema::method_callers(&method)?;
+            roots.insert(method.input().full_name().to_owned());
+            roots.insert(method.output().full_name().to_owned());
         }
+    }
+    for root in roots {
+        let types = schema::message_types(&descriptors, &root)?;
+        fs::write(sdk_types.join(format!("{root}.bin")), types.encode_to_vec())?;
     }
     let modules = packages
         .keys()

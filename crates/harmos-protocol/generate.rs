@@ -103,6 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         "application.host.v1.rs",
         "application.host.v1.jobs.rs",
         "application.host.v1.plugins.rs",
+        "application.host.v1.access.rs",
+        "application.host.v1.status.rs",
         "client-descriptors.bin",
         "client-reflection.rs",
     ] {

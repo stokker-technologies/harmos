@@ -20,9 +20,8 @@
 // Third Party Imports
 
 // Local Imports
-use super::{Access, admit};
+use super::Access;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility};
-use harmos_protocol::host as wire;
 
 /* === Constants === */
 
@@ -41,20 +40,19 @@ pub struct Delete;
 /* === Implementations === */
 
 impl ProtobufOperation for Delete {
-    type Request = wire::PluginsDeleteRequest;
-    type Response = wire::PluginsDeleteResponse;
+    type Request = harmos_protocol::host::PluginsDeleteRequest;
+    type Response = harmos_protocol::host::PluginsDeleteResponse;
     type Endpoints = ();
     const ID: &'static str = "harmos.host.v1.Plugins/Delete";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1", "Plugins", "Delete"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const REPLAY: crate::operations::ReplaySafety = crate::operations::ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<Access>(), Resource::of::<crate::execution::operations::access::GrantAccess>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<Access>()];
     fn grant(_request: &Self::Request) -> Result<Option<crate::plugin::Grant>, harmos_domain::MessageError> {
         Ok(Some(crate::plugin::Grant::of(Self::ID, "plugins")))
     }
     async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
-        admit(&context, Self::ID)?;
         let access = context.resource::<Access>().map_err(|_| ServingError::Catalog)?;
         access.0.delete(request).await.map_err(super::failure)
     }

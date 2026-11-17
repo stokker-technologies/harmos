@@ -40,8 +40,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 // Third Party Imports
 
 // Local Imports
-use crate::execution::operations::{ExecutionContext, ServingError};
-use harmos_protocol::host as wire;
+use crate::execution::operations::ServingError;
+use harmos_protocol::host;
 use harmos_protocol::model;
 
 /* === Constants === */
@@ -78,16 +78,16 @@ pub struct Error(pub Box<model::Failure>);
 /* === Traits === */
 
 pub trait Management: Send + Sync + 'static {
-    fn replace(&self, request: wire::PluginsReplaceRequest) -> Pending<'_, wire::PluginsReplaceResponse>;
-    fn settings_list(&self, request: wire::plugins::SettingsListRequest) -> Pending<'_, wire::plugins::SettingsListResponse>;
-    fn settings_set(&self, request: wire::plugins::SettingsSetRequest) -> Pending<'_, wire::plugins::SettingsSetResponse>;
-    fn get(&self, request: wire::PluginsGetRequest) -> Pending<'_, wire::PluginsGetResponse>;
-    fn list(&self, request: wire::PluginsListRequest) -> Pending<'_, wire::PluginsListResponse>;
-    fn create(&self, request: wire::PluginsCreateRequest) -> Pending<'_, wire::PluginsCreateResponse>;
-    fn set(&self, request: wire::PluginsSetRequest) -> Pending<'_, wire::PluginsSetResponse>;
-    fn delete(&self, request: wire::PluginsDeleteRequest) -> Pending<'_, wire::PluginsDeleteResponse>;
-    fn restart(&self, request: wire::PluginsRestartRequest) -> Pending<'_, wire::PluginsRestartResponse>;
-    fn watch(&self, request: wire::PluginsWatchRequest) -> Pending<'_, tokio::sync::mpsc::Receiver<wire::PluginsWatchResponse>>;
+    fn replace(&self, request: host::PluginsReplaceRequest) -> Pending<'_, host::PluginsReplaceResponse>;
+    fn settings_list(&self, request: host::plugins::SettingsListRequest) -> Pending<'_, host::plugins::SettingsListResponse>;
+    fn settings_set(&self, request: host::plugins::SettingsSetRequest) -> Pending<'_, host::plugins::SettingsSetResponse>;
+    fn get(&self, request: host::PluginsGetRequest) -> Pending<'_, host::PluginsGetResponse>;
+    fn list(&self, request: host::PluginsListRequest) -> Pending<'_, host::PluginsListResponse>;
+    fn create(&self, request: host::PluginsCreateRequest) -> Pending<'_, host::PluginsCreateResponse>;
+    fn set(&self, request: host::PluginsSetRequest) -> Pending<'_, host::PluginsSetResponse>;
+    fn delete(&self, request: host::PluginsDeleteRequest) -> Pending<'_, host::PluginsDeleteResponse>;
+    fn restart(&self, request: host::PluginsRestartRequest) -> Pending<'_, host::PluginsRestartResponse>;
+    fn watch(&self, request: host::PluginsWatchRequest) -> Pending<'_, tokio::sync::mpsc::Receiver<host::PluginsWatchResponse>>;
 }
 
 /* === Implementations === */
@@ -122,14 +122,6 @@ pub fn catalog() -> crate::execution::operations::Catalog {
         ],
         services: vec![],
     }
-}
-
-fn admit(context: &ExecutionContext, id: &'static str) -> Result<(), ServingError> {
-    let grants = context.resource::<crate::execution::operations::access::GrantAccess>().map_err(|_| ServingError::Catalog)?;
-    grants
-        .0
-        .admit(&crate::plugin::Grant::of(id, "plugins"))
-        .map_err(|error| ServingError::Handler(crate::Failure::new(crate::operations::FailureKind::Permanent, error.to_string())))
 }
 
 fn failure(error: Error) -> ServingError {

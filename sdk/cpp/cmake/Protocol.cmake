@@ -31,6 +31,10 @@ set(HARMOS_PROTOCOLS
     harmos/plugin/v1/guest.proto
     harmos/plugin/v1/instance.proto
     harmos/plugin/v1/invocation.proto
+    harmos/plugin/v1/time.proto
+    harmos/plugin/v1/operations.proto
+    harmos/plugin/v1/invocations.proto
+    harmos/plugin/v1/plugins/settings.proto
     harmos/plugin/v1/operation.proto
     harmos/plugin/v1/stream.proto)
 

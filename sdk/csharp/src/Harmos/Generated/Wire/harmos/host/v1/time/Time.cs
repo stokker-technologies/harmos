@@ -26,18 +26,13 @@ namespace Harmos.Clients;
           string.Concat(
             "ChloYXJtb3MvaG9zdC92MS90aW1lLnByb3RvEg5oYXJtb3MuaG9zdC52MRoe",
             "Z29vZ2xlL3Byb3RvYnVmL2R1cmF0aW9uLnByb3RvGh9nb29nbGUvcHJvdG9i",
-            "dWYvdGltZXN0YW1wLnByb3RvGh1oYXJtb3MvbW9kZWwvdjEvY2FsbGVycy5w",
-            "cm90byIQCg5UaW1lR2V0UmVxdWVzdCI/Cg9UaW1lR2V0UmVzcG9uc2USLAoD",
-            "bm93GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIDbm93IkkK",
-            "EFRpbWVTbGVlcFJlcXVlc3QSNQoIZHVyYXRpb24YASABKAsyGS5nb29nbGUu",
-            "cHJvdG9idWYuRHVyYXRpb25SCGR1cmF0aW9uIhMKEVRpbWVTbGVlcFJlc3Bv",
-            "bnNlMqgBCgRUaW1lEkwKA0dldBIeLmhhcm1vcy5ob3N0LnYxLlRpbWVHZXRS",
-            "ZXF1ZXN0Gh8uaGFybW9zLmhvc3QudjEuVGltZUdldFJlc3BvbnNlIgTI8xgD",
-            "ElIKBVNsZWVwEiAuaGFybW9zLmhvc3QudjEuVGltZVNsZWVwUmVxdWVzdBoh",
-            "Lmhhcm1vcy5ob3N0LnYxLlRpbWVTbGVlcFJlc3BvbnNlIgTI8xgDYgZwcm90",
-            "bzM="));
+            "dWYvdGltZXN0YW1wLnByb3RvIhAKDlRpbWVHZXRSZXF1ZXN0Ij8KD1RpbWVH",
+            "ZXRSZXNwb25zZRIsCgNub3cYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGlt",
+            "ZXN0YW1wUgNub3ciSQoQVGltZVNsZWVwUmVxdWVzdBI1CghkdXJhdGlvbhgB",
+            "IAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvblIIZHVyYXRpb24iEwoR",
+            "VGltZVNsZWVwUmVzcG9uc2ViBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
-          new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.CallersReflection.Descriptor, },
+          new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.DurationReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.TimeGetRequest), global::Harmos.Clients.TimeGetRequest.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.TimeGetResponse), global::Harmos.Clients.TimeGetResponse.Parser, new[]{ "Now" }, null, null, null, null),

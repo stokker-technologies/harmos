@@ -5,6 +5,8 @@
     <AssemblyName>harmos-csharp-conformance-plugin</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="$(RepoRoot)sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs" Link="Product/Client.g.cs" />
+    <Compile Include="$(RepoRoot)sdk/csharp/tests/Harmos.Tests/Generated/Wire/**/*.cs" Link="Product/Wire/%(RecursiveDir)%(Filename)%(Extension)" />
     <ProjectReference Include="$(RepoRoot)sdk/csharp/src/Harmos/Harmos.csproj" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="All" />
     <Protobuf Include="$(RepoRoot)sdk/tests/fixtures/conformance/proto/conformance/model/v1/fixture.proto" ProtoRoot="$(RepoRoot)sdk/tests/fixtures/conformance/proto" GrpcServices="None" />

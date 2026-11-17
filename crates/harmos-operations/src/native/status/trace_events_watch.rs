@@ -13,9 +13,6 @@
 
 /* === Imports === */
 
-use harmos_protocol::host::status::TraceEventsWatchRequest;
-use harmos_protocol::host::status::TraceEventsWatchResponse;
-
 // Standard Library Imports
 
 // Third Party Imports
@@ -24,6 +21,8 @@ use futures_util::StreamExt;
 // Local Imports
 use super::StatusAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
+use harmos_protocol::host::status::TraceEventsWatchRequest;
+use harmos_protocol::host::status::TraceEventsWatchResponse;
 
 /* === Constants === */
 
@@ -46,9 +45,9 @@ impl ProtobufOperation for TraceEventsWatch {
     type Response = TraceEventsWatchResponse;
     type Endpoints = ProtobufOutput<TraceEventsWatchResponse>;
     const ID: &'static str = "harmos.host.v1.status.TraceEvents/Watch";
-    const GRPC: Option<Grpc> = Some(Grpc::new("harmos.host.v1.status", "TraceEvents", "Watch"));
+    const GRPC: Option<Grpc> = None;
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const VISIBILITY: Visibility = Visibility::Public;
+    const VISIBILITY: Visibility = Visibility::Private;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StatusAccess>()];
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;

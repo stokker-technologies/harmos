@@ -29,14 +29,14 @@ if TYPE_CHECKING:
 
 
 class HostOperation(Enum):
-    INVOCATIONS_GET = "harmos.host.v1.Invocations/Get"
-    INVOCATIONS_CANCEL = "harmos.host.v1.Invocations/Cancel"
-    INVOCATIONS_WATCH = "harmos.host.v1.Invocations/Watch"
-    OPERATIONS_LIST = "harmos.host.v1.Operations/List"
-    OPERATIONS_GET = "harmos.host.v1.Operations/Get"
-    PLUGINS_SETTINGS_LIST = "harmos.host.v1.plugins.Settings/List"
-    TIME_GET = "harmos.host.v1.Time/Get"
-    TIME_SLEEP = "harmos.host.v1.Time/Sleep"
+    INVOCATIONS_GET = "harmos.plugin.v1.Invocations/Get"
+    INVOCATIONS_CANCEL = "harmos.plugin.v1.Invocations/Cancel"
+    INVOCATIONS_WATCH = "harmos.plugin.v1.Invocations/Watch"
+    OPERATIONS_LIST = "harmos.plugin.v1.Operations/List"
+    OPERATIONS_GET = "harmos.plugin.v1.Operations/Get"
+    PLUGINS_SETTINGS_LIST = "harmos.plugin.v1.plugins.Settings/List"
+    TIME_GET = "harmos.plugin.v1.Time/Get"
+    TIME_SLEEP = "harmos.plugin.v1.Time/Sleep"
 
 
 _INVOCATIONS_GET = Operation(

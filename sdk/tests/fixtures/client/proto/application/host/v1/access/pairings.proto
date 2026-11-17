@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Pairings
+//
+// Reference Product Wrapper
+
+syntax = "proto3";
+
+package application.host.v1.access;
+
+// === Imports === //
+
+import "harmos/host/v1/access/pairings.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+option csharp_namespace = "Application.Clients";
+
+// === Services === //
+
+// Reference product authorization boundary over native host operations.
+service Pairings {
+  // Persist a new client credential and return its bearer secret once; requires an enabled listener, nonempty bounded label and available capacity. A retry creates another pairing.
+  rpc Create(harmos.host.v1.access.PairingsCreateRequest) returns (harmos.host.v1.access.PairingsCreateResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Read pairing metadata at the current or explicitly issued current position; foreign, changed or unissued positions refuse.
+  rpc List(harmos.host.v1.access.PairingsListRequest) returns (harmos.host.v1.access.PairingsListResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+  // Revoke an existing pairing immediately after persistence; deleting an absent pairing refuses.
+  rpc Delete(harmos.host.v1.access.PairingsDeleteRequest) returns (harmos.host.v1.access.PairingsDeleteResponse) {
+    option (harmos.model.v1.callers) = CLIENTS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

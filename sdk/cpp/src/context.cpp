@@ -19,7 +19,6 @@
 #include <absl/numeric/int128.h>
 #include <google/protobuf/util/time_util.h>
 
-namespace chrono = std::chrono;
 using google::protobuf::Duration;
 using google::protobuf::Timestamp;
 using std::int32_t;
@@ -49,10 +48,9 @@ using std::vector;
 /* === Public Functions === */
 
 namespace harmos::plugin {
-namespace wire = ::harmos::model::v1;
-namespace host_wire = ::harmos::host::v1;
 namespace {
-const Operation<host_wire::TimeSleepRequest, host_wire::TimeSleepResponse> SLEEP("harmos.host.v1.Time/Sleep", VISIBILITY_PUBLIC);
+const Operation<::harmos::host::v1::TimeSleepRequest, ::harmos::host::v1::TimeSleepResponse> SLEEP("harmos.plugin.v1.Time/Sleep",
+                                                                                                   VISIBILITY_PUBLIC);
 }
 namespace {
 class ChildWatch final : public detail::Watch {
@@ -154,8 +152,8 @@ Context::Context(shared_ptr<detail::Invocation> state) : state_(std::move(state)
 
 const string &Context::scope() const {
   if (scope_.empty()) {
-    wire::Failure failure;
-    failure.set_classification(wire::CLASSIFICATION_REFUSED);
+    ::harmos::model::v1::Failure failure;
+    failure.set_classification(::harmos::model::v1::CLASSIFICATION_REFUSED);
     failure.set_code("scope_required");
     failure.set_message("Invocation Scope Is Required: the caller must bind a scope");
     throw Failure(std::move(failure));
@@ -180,8 +178,9 @@ optional<string> cancellation(shared_ptr<detail::Invocation> state) {
   }
   return {};
 }
-wire::Failure interrupted(const shared_ptr<detail::Invocation> &state, wire::Classification kind, const string &reason) {
-  wire::Failure failure;
+::harmos::model::v1::Failure interrupted(const shared_ptr<detail::Invocation> &state, ::harmos::model::v1::Classification kind,
+                                         const string &reason) {
+  ::harmos::model::v1::Failure failure;
   failure.set_classification(kind);
   failure.set_code("interrupted");
   failure.set_message("Invoke " + state->request.operation() + ": " + reason);
@@ -190,7 +189,7 @@ wire::Failure interrupted(const shared_ptr<detail::Invocation> &state, wire::Cla
   failure.set_action("Invoke Again If Safe");
   return failure;
 }
-void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &reason, wire::Classification kind) {
+void cancel_owned(const shared_ptr<detail::Invocation> &state, const string &reason, ::harmos::model::v1::Classification kind) {
   auto root = transport(state);
   vector<uint64_t> cancelled;
   {
@@ -235,7 +234,7 @@ void validate_duration(const Duration &value, const string &operation, bool zero
       (!zero && !value.seconds() && !value.nanos()))
     throw invalid_argument("Invoke " + operation + ": Invalid Policy Duration");
 }
-Duration retry_delay(const wire::RetryPolicy &retry, uint64_t failed_attempt) {
+Duration retry_delay(const ::harmos::model::v1::RetryPolicy &retry, uint64_t failed_attempt) {
   auto delay = retry.initial();
   if (retry.has_maximum()) {
     for (uint64_t step = 0; step < failed_attempt && delay < retry.maximum(); ++step) {
@@ -259,7 +258,8 @@ Duration retry_delay(const wire::RetryPolicy &retry, uint64_t failed_attempt) {
 } // namespace
 
 optional<shared_future<string>> Context::local(const detail::OperationDefinition &requested, const string &payload,
-                                               optional<wire::OperationPolicy> override_policy, std::function<void()> *cancel) {
+                                               optional<::harmos::model::v1::OperationPolicy> override_policy,
+                                               std::function<void()> *cancel) {
   auto root = transport(state_);
   if (!root->emit || (root->window_scoped && (!root->window_active || !root->accepting_children)))
     throw TransportError(3, "Invoke " + requested.contract.id() + ": Child Scope Is Closed");
@@ -298,7 +298,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
   caller->local = state_->local;
   caller->plugin = state_->plugin;
   *cancel = [caller] {
-    cancel_owned(caller, "Local Call Cancelled", wire::CLASSIFICATION_CANCELLED);
+    cancel_owned(caller, "Local Call Cancelled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
   };
   root->start_worker([root, caller, completion, operation, policy, attempts, payload] {
     try {
@@ -324,7 +324,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
         guard->background = true;
         Context timer(guard);
         auto alarm = [&](const Duration &duration) {
-          host_wire::TimeSleepRequest sleep;
+          ::harmos::host::v1::TimeSleepRequest sleep;
           *sleep.mutable_duration() = duration;
           return timer.send(SLEEP.definition, detail::encode(sleep), {});
         };
@@ -332,7 +332,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
           {
             lock_guard lock(root->mutex);
             if (auto reason = cancellation(caller))
-              throw Failure(interrupted(local, wire::CLASSIFICATION_CANCELLED, *reason));
+              throw Failure(interrupted(local, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
           }
           optional<Duration> bound;
           if (policy.has_timeout())
@@ -340,7 +340,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
           if (policy.has_attempt_timeout() && (!bound || policy.attempt_timeout() < *bound))
             bound = policy.attempt_timeout();
           if (bound && *bound <= Duration{})
-            throw Failure(interrupted(local, wire::CLASSIFICATION_TIMED_OUT, "Deadline Reached"));
+            throw Failure(interrupted(local, ::harmos::model::v1::CLASSIFICATION_TIMED_OUT, "Deadline Reached"));
           optional<shared_future<string>> deadline;
           if (bound)
             deadline = alarm(*bound);
@@ -360,7 +360,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
             }
           });
           auto ready = [](const shared_future<string> &future) {
-            return future.wait_for(chrono::seconds(0)) == std::future_status::ready;
+            return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
           };
           optional<string> reason;
           bool timed_out = false;
@@ -376,7 +376,7 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
             if (timed_out)
               deadline->get();
             const auto message = reason.value_or("Deadline Reached");
-            const auto kind = timed_out ? wire::CLASSIFICATION_TIMED_OUT : wire::CLASSIFICATION_CANCELLED;
+            const auto kind = timed_out ? ::harmos::model::v1::CLASSIFICATION_TIMED_OUT : ::harmos::model::v1::CLASSIFICATION_CANCELLED;
             cancel_owned(local, message, kind);
             if (!timed_out && policy.has_cancellation_timeout() && policy.cancellation_timeout() > Duration{}) {
               auto settling = alarm(policy.cancellation_timeout());
@@ -390,14 +390,14 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
               throw Failure(interrupted(local, kind, message));
           }
           auto value = executing.get();
-          cancel_owned(local, "Local Attempt Settled", wire::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", wire::CLASSIFICATION_CANCELLED);
+          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
+          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
           completion->set_value(std::move(value));
           return;
         } catch (const Failure &failure) {
-          cancel_owned(local, "Local Attempt Settled", wire::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", wire::CLASSIFICATION_CANCELLED);
-          if (failure.value.classification() != wire::CLASSIFICATION_TRANSIENT || attempt_index + 1 == attempts)
+          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
+          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
+          if (failure.value.classification() != ::harmos::model::v1::CLASSIFICATION_TRANSIENT || attempt_index + 1 == attempts)
             throw;
           auto delay = retry_delay(policy.retries(), attempt_index);
           if (policy.has_timeout()) {
@@ -410,8 +410,8 @@ optional<shared_future<string>> Context::local(const detail::OperationDefinition
           if (delay > Duration{})
             parent.sleep(delay);
         } catch (...) {
-          cancel_owned(local, "Local Attempt Settled", wire::CLASSIFICATION_CANCELLED);
-          cancel_owned(guard, "Policy Guard Settled", wire::CLASSIFICATION_CANCELLED);
+          cancel_owned(local, "Local Attempt Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
+          cancel_owned(guard, "Policy Guard Settled", ::harmos::model::v1::CLASSIFICATION_CANCELLED);
           throw;
         }
       }
@@ -440,7 +440,7 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
       throw TransportError(14, "Invoke: Invocation Closed");
     if (!state_->background)
       if (auto reason = cancellation(state_))
-        throw Failure(interrupted(state_, wire::CLASSIFICATION_CANCELLED, *reason));
+        throw Failure(interrupted(state_, ::harmos::model::v1::CLASSIFICATION_CANCELLED, *reason));
     auto requirement = state_->requirements.find(request.operation());
     if (requirement == state_->requirements.end() || requirement->second != request.fingerprint())
       throw invalid_argument("Invoke " + request.operation() + ": Undeclared Requirement");
@@ -461,7 +461,7 @@ shared_future<string> Context::send(const detail::OperationDefinition &operation
           if (found == root->pending.end())
             return;
           found->second.set_exception(
-              std::make_exception_ptr(Failure(interrupted(owner, wire::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
+              std::make_exception_ptr(Failure(interrupted(owner, ::harmos::model::v1::CLASSIFICATION_CANCELLED, "Child Call Cancelled"))));
           root->pending.erase(found);
           root->guards.erase(id);
           root->retired.insert(id);
@@ -504,13 +504,13 @@ SettingsListResponse Context::settings() {
 
 namespace harmos::plugin::detail {
 void cancel_children(const shared_ptr<Invocation> &state, const string &reason) {
-  cancel_owned(state, reason, wire::CLASSIFICATION_CANCELLED);
+  cancel_owned(state, reason, ::harmos::model::v1::CLASSIFICATION_CANCELLED);
   auto root = transport(state);
   vector<uint64_t> cancelled;
   {
     lock_guard lock(root->mutex);
     for (auto &[id, promise] : root->pending) {
-      promise.set_exception(std::make_exception_ptr(Failure(interrupted(state, wire::CLASSIFICATION_CANCELLED, reason))));
+      promise.set_exception(std::make_exception_ptr(Failure(interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason))));
       root->retired.insert(id);
       cancelled.push_back(id);
     }
@@ -519,7 +519,7 @@ void cancel_children(const shared_ptr<Invocation> &state, const string &reason) 
     for (auto &[id, watch] : root->watches) {
       plugin::v1::ChildResponse terminal;
       terminal.set_call(id);
-      *terminal.mutable_failure() = interrupted(state, wire::CLASSIFICATION_CANCELLED, reason);
+      *terminal.mutable_failure() = interrupted(state, ::harmos::model::v1::CLASSIFICATION_CANCELLED, reason);
       watch->terminal = std::move(terminal);
       root->retired.insert(id);
       cancelled.push_back(id);

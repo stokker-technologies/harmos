@@ -133,6 +133,10 @@ def _read_callers(descriptors: FileDescriptorSet, pool: DescriptorPool) -> dict[
         (f"{file.package}.{service.name}/{method.name}", method)
         for file in descriptors.file
         if "host" in Path(file.name).parts[:-1]
+        or (
+            file.package.startswith("harmos.plugin.v1")
+            and file.name.endswith(("/time.proto", "/operations.proto", "/invocations.proto", "/settings.proto"))
+        )
         for service in file.service
         for method in service.method
     ]

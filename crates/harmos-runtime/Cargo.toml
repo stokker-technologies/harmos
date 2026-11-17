@@ -119,6 +119,7 @@ tower = { workspace = true }
 prost-build = { workspace = true }
 protoc-bin-vendored = { workspace = true }
 # Local
+harmos-conformance = { workspace = true }
 harmos = { workspace = true, features = ["wasm"] }
 harmos-packaging = { path = "../../tools/packaging", default-features = false, features = ["generate-proto", "guest"] }
 harmos-operations = { path = "../harmos-operations", default-features = false, features = ["grpc"] }

@@ -12,14 +12,6 @@ using Google.Protobuf;
 using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
-using Graph = Harmos.Conformance.Graph;
-using SdkContext = global::Harmos.Plugins.Context;
-using SdkPlugin = global::Harmos.Plugins.Plugin;
-using Value = Harmos.Conformance.Value;
-using Values = Harmos.Conformance.Values;
-using Window = global::Harmos.Plugins.Window;
-using InvocationsCreateRequest = Harmos.Conformance.Wire.InvocationsCreateRequest;
-using InvocationsCreateResponse = Harmos.Conformance.Wire.InvocationsCreateResponse;
 
 namespace Harmos.Conformance;
 
@@ -34,10 +26,9 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostEcho = new("conformance.host.echo", Visibility.Public);
   private readonly Operation<Value, Value> hostPending = new("conformance.host.pending", Visibility.Public);
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
-  private readonly Operation<InvocationsCreateRequest, InvocationsCreateResponse> createInvocation = new("harmos.host.v1.Invocations/Create", Visibility.Public);
+  private readonly Operation<Harmos.Conformance.Wire.InvocationsCreateRequest, Harmos.Conformance.Wire.InvocationsCreateResponse> createInvocation = new("application.host.v1.Invocations/Create", Visibility.Public);
 
-  public SdkPlugin Build() => new SdkPlugin("conformance", "1.0.0")
-      .Message<PayloadOnly>()
+  public global::Harmos.Plugins.Plugin Build() => new global::Harmos.Plugins.Plugin("conformance", "1.0.0")
       .Message<PayloadOnly>()
       .Operation(local, Local)
       .Operation(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall)
@@ -92,11 +83,11 @@ public sealed class Fixture
       .Setting("interval", new SettingValue { Duration = new Duration { Seconds = 2 } }, "interval", "Conformance interval")
       .Setting("label", new SettingValue { Text = "default" }, "label", "Conformance label");
 
-  private async Task<Value> CallerRefusal(SdkContext context, Value request)
+  private async Task<Value> CallerRefusal(global::Harmos.Plugins.Context context, Value request)
   {
     try
     {
-      var invocation = InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
+      var invocation = Harmos.Conformance.Wire.InvocationsCreateRequest.Parser.ParseFrom(CallerRequest.Bytes);
       await context.CallAsync(createInvocation, invocation);
     }
     catch (PluginFailureException error)
@@ -108,13 +99,13 @@ public sealed class Fixture
     throw new InvalidOperationException("Create Invocation: Client-Only Operation Was Admitted");
   }
 
-  private static async Task<Value> ReadSettings(SdkContext context, Value request)
+  private static async Task<Value> ReadSettings(global::Harmos.Plugins.Context context, Value request)
   {
     var settings = await context.Host.Plugins.Settings.List();
     return new Value { Value_ = settings.Value.ToByteString() };
   }
 
-  private async Task<Value> Discover(SdkContext context, Value request)
+  private async Task<Value> Discover(global::Harmos.Plugins.Context context, Value request)
   {
     var operations = await context.Host.Operations.List();
     var id = operations[0].Contract.Id;
@@ -122,7 +113,7 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFromUtf8(operation.Contract.Id) };
   }
 
-  private async Task<Value> SampleContext(SdkContext context)
+  private async Task<Value> SampleContext(global::Harmos.Plugins.Context context)
   {
     var echo = await context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFromUtf8("fixture") });
     var clock = new TimeGetResponse { Now = await context.Host.Time.Get() };
@@ -139,7 +130,7 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
   }
 
-  private async Task<Value> SampleFailure(SdkContext context)
+  private async Task<Value> SampleFailure(global::Harmos.Plugins.Context context)
   {
     try
     {
@@ -148,7 +139,7 @@ public sealed class Fixture
     catch (PluginFailureException error) { return new Value { Value_ = error.Failure.ToByteString() }; }
   }
 
-  private async Task<Value> SampleCancel(SdkContext context)
+  private async Task<Value> SampleCancel(global::Harmos.Plugins.Context context)
   {
     using var cancelled = new CancellationTokenSource();
     var pending = context.CallAsync(hostPending, new Value(), cancellationToken: cancelled.Token);
@@ -165,7 +156,7 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFromUtf8("cancelled") };
   }
 
-  private Task<Value> PeerCall(SdkContext context, Value request) => request.Value_.ToStringUtf8() switch
+  private Task<Value> PeerCall(global::Harmos.Plugins.Context context, Value request) => request.Value_.ToStringUtf8() switch
   {
     "public" => context.CallAsync(peerPublic, new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }),
     "protected" => context.CallAsync(peerProtected, request),
@@ -173,7 +164,7 @@ public sealed class Fixture
     _ => context.CallAsync(peerLocal, request),
   };
 
-  private async Task<Value> Local(SdkContext context, Value request)
+  private async Task<Value> Local(global::Harmos.Plugins.Context context, Value request)
   {
     if (request.Value_.ToStringUtf8() is "deadline" or "overall")
     {
@@ -191,7 +182,7 @@ public sealed class Fixture
       throw new PluginFailureException(new Failure { Classification = Classification.Transient, Code = "retry", Message = "Retry" });
     return new Value { Value_ = ByteString.CopyFromUtf8(context.Attempt.ToString()) };
   }
-  private Task<Value> LocalCall(SdkContext context, Value request)
+  private Task<Value> LocalCall(global::Harmos.Plugins.Context context, Value request)
   {
     var policy = request.Value_.ToStringUtf8() switch
     {
@@ -205,7 +196,7 @@ public sealed class Fixture
     return context.CallAsync(local, request, policy);
   }
 
-  private async Task<Value> Watch(SdkContext context, Value request)
+  private async Task<Value> Watch(global::Harmos.Plugins.Context context, Value request)
   {
     var value = new List<byte>();
     await foreach (var item in context.WatchAsync(hostWatch, request, 4096))
@@ -217,20 +208,20 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFrom(value.ToArray()) };
   }
 
-  private async Task<Value> Resources(SdkContext context, Value request)
+  private async Task<Value> Resources(global::Harmos.Plugins.Context context, Value request)
   {
     context.Set(request.Clone());
     await context.CallAsync(hostEcho, request);
     return context.Get<Value>();
   }
 
-  private async Task<Value> CancelReason(SdkContext context, Value request)
+  private async Task<Value> CancelReason(global::Harmos.Plugins.Context context, Value request)
   {
     await context.CallAsync(hostEcho, request);
     return new Value { Value_ = ByteString.CopyFromUtf8(await context.CancelledAsync()) };
   }
 
-  private async Task<Value> ClockCall(SdkContext context, Value request)
+  private async Task<Value> ClockCall(global::Harmos.Plugins.Context context, Value request)
   {
     var before = await context.Host.Time.Get();
     await context.Host.Time.Sleep(new Duration { Seconds = 3600 });
@@ -240,12 +231,12 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
   }
 
-  private Task<Value> Echo(SdkContext context, Value request) => Task.FromResult(
+  private Task<Value> Echo(global::Harmos.Plugins.Context context, Value request) => Task.FromResult(
       request.Value_ == ByteString.CopyFromUtf8("scope")
           ? new Value { Value_ = ByteString.CopyFromUtf8(context.Scope()) }
           : request);
 
-  private async Task<Value> Children(SdkContext context, Value request)
+  private async Task<Value> Children(global::Harmos.Plugins.Context context, Value request)
   {
     var first = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([1]) });
     var second = context.CallAsync(hostEcho, new Value { Value_ = ByteString.CopyFrom([2]) });
@@ -254,17 +245,17 @@ public sealed class Fixture
     return new Value { Value_ = ByteString.CopyFrom(bytes) };
   }
 
-  private async Task<Value> Policy(SdkContext context, Value request)
+  private async Task<Value> Policy(global::Harmos.Plugins.Context context, Value request)
   {
     var first = await context.CallAsync(hostEcho, request, new OperationPolicy { Retries = new RetryPolicy { TotalAttempts = 3, Initial = new Duration { Seconds = 1 }, Maximum = new Duration { Seconds = 4 }, DeterministicJitter = true } });
     return await context.CallAsync(hostEcho, first);
   }
 
-  private Task<Value> Cancel(SdkContext context, Value request) => context.CallAsync(hostPending, request);
+  private Task<Value> Cancel(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostPending, request);
 
-  private Task<Value> ChildFailure(SdkContext context, Value request) => context.CallAsync(hostFail, request);
+  private Task<Value> ChildFailure(global::Harmos.Plugins.Context context, Value request) => context.CallAsync(hostFail, request);
 
-  private Task<Value> Failure(SdkContext context, Value request) => throw new PluginFailureException(new Failure
+  private Task<Value> Failure(global::Harmos.Plugins.Context context, Value request) => throw new PluginFailureException(new Failure
   {
     Classification = Classification.Permanent,
     Code = "fixture_failure",
@@ -285,7 +276,7 @@ public sealed class Fixture
     }
   });
 
-  private Task<Value> Sequence(SdkContext context)
+  private Task<Value> Sequence(global::Harmos.Plugins.Context context)
   {
     var bytes = new byte[sizeof(ulong)];
     BinaryPrimitives.WriteUInt64LittleEndian(bytes, context.Sequence);
@@ -293,10 +284,10 @@ public sealed class Fixture
   }
 
   /// <summary>Each sample holds as many bytes as its sequence, so a grant can exceed the message size.</summary>
-  private Task<Value> Oversized(SdkContext context) =>
+  private Task<Value> Oversized(global::Harmos.Plugins.Context context) =>
     Task.FromResult(new Value { Value_ = ByteString.CopyFrom(new byte[checked((int)context.Sequence)]) });
 
-  private Task<Values> Sequences(SdkContext context, Window window)
+  private Task<Values> Sequences(global::Harmos.Plugins.Context context, Window window)
   {
     var columns = new Values();
     var bytes = new byte[sizeof(ulong)];
@@ -308,7 +299,7 @@ public sealed class Fixture
     return Task.FromResult(columns);
   }
 
-  private async Task Device(SdkContext context, Publisher<Value> publisher)
+  private async Task Device(global::Harmos.Plugins.Context context, Publisher<Value> publisher)
   {
     await publisher.PublishAsync(new Value { Value_ = ByteString.CopyFromUtf8("device") });
     await context.CancelledAsync();

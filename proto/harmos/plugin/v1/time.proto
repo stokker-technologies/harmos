@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Time
+//
+// Plugin Clock Facilities
+
+syntax = "proto3";
+
+package harmos.plugin.v1;
+
+// === Imports === //
+
+import "harmos/host/v1/time.proto";
+import "harmos/model/v1/callers.proto";
+
+// === Options === //
+
+// === Services === //
+
+// Context facilities carried only by admitted plugin child calls.
+service Time {
+  // Read the authoritative host clock used by operation deadlines, retries and plugin waits.
+  rpc Get(harmos.host.v1.TimeGetRequest) returns (harmos.host.v1.TimeGetResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+  // Wait on the host clock for the supplied duration; virtual-time hosts advance this wait under their work/demand policy.
+  rpc Sleep(harmos.host.v1.TimeSleepRequest) returns (harmos.host.v1.TimeSleepResponse) {
+    option (harmos.model.v1.callers) = PLUGINS;
+  }
+}
+
+// === Requests and Responses === //
+
+// === Resources === //
+
+// === Enums === //

@@ -16,11 +16,8 @@
 /* === Imports === */
 
 // Standard Library Imports
-use prost_types::{Duration as ProtoDuration, Timestamp};
-use std::{
-    collections::{BTreeSet, HashMap},
-    result::Result as StdResult,
-};
+use std::collections::{BTreeSet, HashMap};
+use std::result;
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
@@ -29,16 +26,12 @@ use std::{
 // Third Party Imports
 use futures_util::stream;
 use prost::Message;
+use prost_types::Timestamp;
 use tokio::sync::mpsc;
 use tonic::{Code, Streaming, transport::Channel};
 
 // Local Imports
 use crate::{Error, Result, fixture};
-use harmos_protocol::plugin::{child_response, response};
-use harmos_protocol::plugin::{
-    instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
-};
-
 use harmos_protocol::host::plugins::SettingsListResponse;
 use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListResponse, TimeGetResponse, TimeSleepRequest};
 use harmos_protocol::model::{
@@ -51,6 +44,10 @@ use harmos_protocol::plugin::{
 use harmos_protocol::plugin::{
     InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
     InstanceSamplesResponse, InstanceStopRequest,
+};
+use harmos_protocol::plugin::{child_response, response};
+use harmos_protocol::plugin::{
+    instance_client::InstanceClient, instance_invoke_request, instance_invoke_response, instance_samples_request, instance_samples_response,
 };
 
 /* === Constants === */
@@ -88,8 +85,8 @@ pub const CASES: &[&str] = &[
     "Samples Child Calls and Correlation",
     "Samples Child Routing and Failures",
     "Samples Child Lifetime and Refusal",
-    "Client Caller Refusal",
-    "Plugin Caller Refusal",
+    "Private Host Wire Isolation",
+    "Product Wrapper Audiences",
     "Window Observers and Splitting",
     "Wire Operation Identities",
     "Message Ceiling Independent of Transfer Chunks",
@@ -102,7 +99,7 @@ pub const CASES: &[&str] = &[
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
 
 /// The Fixture Streams' Resolved Interval, Granted as Every Window's Period.
-const PERIOD: ProtoDuration = ProtoDuration { seconds: 1, nanos: 0 };
+const PERIOD: prost_types::Duration = prost_types::Duration { seconds: 1, nanos: 0 };
 
 /* === Macros === */
 
@@ -335,7 +332,9 @@ async fn samples_control(input: &mut Streaming<InstanceSamplesResponse>, expecte
     require(frame.samples.is_empty() && frame.frame == Some(expected), "Read Samples Control: Demand or Cancellation Differs")
 }
 
-async fn invoke_status(result: StdResult<tonic::Response<Streaming<InstanceInvokeResponse>>, tonic::Status>, expected: Code) -> Result<()> {
+async fn invoke_status(
+    result: result::Result<tonic::Response<Streaming<InstanceInvokeResponse>>, tonic::Status>, expected: Code,
+) -> Result<()> {
     let status = match result {
         Err(status) => status,
         Ok(response) => response.into_inner().message().await.err().ok_or_else(|| Error::Invalid("Expected gRPC Error".into()))?,
@@ -344,7 +343,7 @@ async fn invoke_status(result: StdResult<tonic::Response<Streaming<InstanceInvok
 }
 
 async fn publish_status(
-    result: StdResult<tonic::Response<Streaming<InstanceSamplesResponse>>, tonic::Status>, expected: Code,
+    result: result::Result<tonic::Response<Streaming<InstanceSamplesResponse>>, tonic::Status>, expected: Code,
 ) -> Result<()> {
     let status = match result {
         Err(status) => status,
@@ -413,10 +412,10 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
             let echo = samples_child(&mut input, "conformance.host.echo", &fixture::payload(b"fixture")).await?;
             let echo_reply = fixture::payload(b"scoped");
             samples_reply(&send, echo.call, child_response::Result::Payload(echo_reply.clone())).await?;
-            let clock = samples_child(&mut input, "harmos.host.v1.Time/Get", &[]).await?;
+            let clock = samples_child(&mut input, "harmos.plugin.v1.Time/Get", &[]).await?;
             let clock_reply = TimeGetResponse { now: Some(fixture::timestamp(400)) }.encode_to_vec();
             samples_reply(&send, clock.call, child_response::Result::Payload(clock_reply.clone())).await?;
-            let settings = samples_child(&mut input, "harmos.host.v1.plugins.Settings/List", &[]).await?;
+            let settings = samples_child(&mut input, "harmos.plugin.v1.plugins.Settings/List", &[]).await?;
             let settings_reply = SettingsListResponse {
                 value: Some(fixture::settings_values(true)),
                 revision: vec![2],
@@ -544,7 +543,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             require(declared == expected, "List Settings: Typed Defaults Differ")?;
             for stored in [false, true] {
                 let (send, mut input) = invoke(&mut client, "conformance.settings_read", fixture::payload(&[])).await?;
-                child(&mut input, 1, "harmos.host.v1.plugins.Settings/List", &[]).await?;
+                child(&mut input, 1, "harmos.plugin.v1.plugins.Settings/List", &[]).await?;
                 let values = fixture::settings_values(stored);
                 let reply = SettingsListResponse {
                     value: Some(values.clone()),
@@ -580,7 +579,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         }
         39 => {
             let (send, mut input) = invoke(&mut client, "conformance.discover", fixture::payload(&[])).await?;
-            child(&mut input, 1, "harmos.host.v1.Operations/List", &[]).await?;
+            child(&mut input, 1, "harmos.plugin.v1.Operations/List", &[]).await?;
             let operation = DiscoveredOperation {
                 owner: "host".into(),
                 generation: 7,
@@ -600,7 +599,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             )
             .await?;
             let request = OperationsGetRequest { id: "conformance.host.echo".into() };
-            child(&mut input, 2, "harmos.host.v1.Operations/Get", &request.encode_to_vec()).await?;
+            child(&mut input, 2, "harmos.plugin.v1.Operations/Get", &request.encode_to_vec()).await?;
             send_child(&send, 2, child_response::Result::Payload(OperationsGetResponse { operation: Some(operation) }.encode_to_vec()))
                 .await?;
             require(
@@ -776,8 +775,8 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                         == Some(OperationPolicy {
                             retries: Some(RetryPolicy {
                                 total_attempts: 3,
-                                initial: Some(ProtoDuration { seconds: 1, nanos: 0 }),
-                                maximum: Some(ProtoDuration { seconds: 4, nanos: 0 }),
+                                initial: Some(prost_types::Duration { seconds: 1, nanos: 0 }),
+                                maximum: Some(prost_types::Duration { seconds: 4, nanos: 0 }),
                                 deterministic_jitter: true,
                             }),
                             ..Default::default()
@@ -1053,9 +1052,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             // Answer Host Clock Calls Without Any Local Timer.
             let (send, mut input) = invoke(&mut client, "conformance.clock", fixture::payload(&[])).await?;
             for (id, operation, payload, reply) in [
-                (1, "harmos.host.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
-                (2, "harmos.host.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
-                (3, "harmos.host.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
+                (1, "harmos.plugin.v1.Time/Get", vec![], vec![0x0a, 2, 8, 100]),
+                (2, "harmos.plugin.v1.Time/Sleep", vec![0x0a, 3, 8, 0x90, 0x1c], vec![]),
+                (3, "harmos.plugin.v1.Time/Get", vec![], vec![0x0a, 3, 8, 0xf4, 0x1c]),
             ] {
                 child(&mut input, id, operation, &payload).await?;
                 send_child(&send, id, child_response::Result::Payload(reply)).await?;
@@ -1200,7 +1199,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
             for mode in [b"deadline".as_slice(), b"overall"] {
                 let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(mode)).await?;
                 for call in 1..=2 {
-                    child(&mut input, call, "harmos.host.v1.Time/Get", &[]).await?;
+                    child(&mut input, call, "harmos.plugin.v1.Time/Get", &[]).await?;
                     send_child(
                         &send,
                         call,
@@ -1220,13 +1219,13 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                     let Some(instance_invoke_response::Frame::Child(child)) = frame else {
                         return Err(Error::Invalid("Private Deadline: Expected Clock Child".into()));
                     };
-                    require(child.operation == "harmos.host.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
+                    require(child.operation == "harmos.plugin.v1.Time/Sleep", "Private Operation Leaked Onto Carrier")?;
                     let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
                     if child.background {
-                        require(duration == ProtoDuration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
+                        require(duration == prost_types::Duration { seconds: 2, nanos: 0 }, "Private Attempt Budget Differs")?;
                         deadline = Some(child.call);
                     } else {
-                        require(duration == ProtoDuration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
+                        require(duration == prost_types::Duration { seconds: 3600, nanos: 0 }, "Private Handler Sleep Differs")?;
                         sleeping = Some(child.call);
                     }
                 }
@@ -1276,7 +1275,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(
-                            child.background && child.operation == "harmos.host.v1.Time/Sleep",
+                            child.background && child.operation == "harmos.plugin.v1.Time/Sleep",
                             "Private Cancellation Leaked a Local Call",
                         )?;
                         guards.insert(child.call);
@@ -1301,10 +1300,10 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
         26 => {
             let (send, mut input) = invoke(&mut client, "conformance.local_call", fixture::payload(b"retry")).await?;
             let delay = TimeSleepRequest {
-                duration: Some(ProtoDuration { seconds: 1, nanos: 11 }),
+                duration: Some(prost_types::Duration { seconds: 1, nanos: 11 }),
             }
             .encode_to_vec();
-            child(&mut input, 1, "harmos.host.v1.Time/Sleep", &delay).await?;
+            child(&mut input, 1, "harmos.plugin.v1.Time/Sleep", &delay).await?;
             send_child(&send, 1, child_response::Result::Payload(Vec::new())).await?;
             require(
                 terminal(&mut input).await? == response::Result::Payload(fixture::payload(b"2")),
@@ -1320,7 +1319,7 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                 match frame {
                     Some(instance_invoke_response::Frame::Child(child)) => {
                         require(child.fingerprint == fixture::fingerprint(&child.operation), "Private Retry: Clock Fingerprint Differs")?;
-                        if child.operation == "harmos.host.v1.Time/Get" {
+                        if child.operation == "harmos.plugin.v1.Time/Get" {
                             send_child(
                                 &send,
                                 child.call,
@@ -1333,9 +1332,9 @@ async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
                             )
                             .await?;
                         } else {
-                            require(child.operation == "harmos.host.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
+                            require(child.operation == "harmos.plugin.v1.Time/Sleep", "Private Retry Leaked Onto the Carrier")?;
                             let duration = TimeSleepRequest::decode(child.payload.as_slice())?.duration.unwrap();
-                            require(duration == ProtoDuration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
+                            require(duration == prost_types::Duration { seconds: 1, nanos: 0 }, "Retry Outlived the Overall Deadline")?;
                             if child.background {
                                 guards.insert(child.call);
                             } else {

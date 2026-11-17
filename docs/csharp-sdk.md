@@ -1,8 +1,8 @@
 # C# SDK
 
-The `Harmos` NuGet package targets .NET 10. Import `Client`, shared values and
-errors from `Harmos`, client responses from `Harmos.Clients`, and plugin authoring
-types from `Harmos.Plugins`. Wire requests, stubs and plugin carriers are internal.
+The `Harmos` NuGet package targets .NET 10. Import shared carrier values and errors from `Harmos`, reused payloads from
+`Harmos.Clients`, and carrier authoring helpers from `Harmos.Plugins`. Products
+generate their own client roots; there is no `Harmos.Client`. Wire requests, stubs and plugin carriers are internal.
 
 ## Client Calls
 
@@ -15,13 +15,12 @@ and cancel when their enumerator is disposed.
 ```csharp
 using Harmos;
 
-using var client = Client.Connect("http://127.0.0.1:50051");
+using var client = Product.Client.Connect("http://127.0.0.1:50051");
 var operations = await client.Operations.List();
 var settings = await client.Plugins.Settings.List(name: "example");
 ```
 
-The [client example](../sdk/csharp/examples/Client/Program.cs) lists library
-operation contracts. Its separate `--invoke <operation> <base64-payload>` branch
+The [client example](../sdk/csharp/examples/Client/Program.cs) uses the reference product's generated wrapper operations. Its separate `--invoke <operation> <base64-payload>` branch
 discovers a contract, then calls `client.Invocations.Create` with its identity,
 fingerprint and encoded payload. Typed application operations belong in an
 application's generated client.
@@ -49,8 +48,8 @@ value map and is available only to clients.
 
 The generator reads each operation's callers option: shared operations appear on
 both the client and plugin context; client administration stays on the client.
-`Time`, `Operations` and invocation Get/Cancel/Watch are shared. Invocation Create
-is client-only. Product descriptors own these audiences; runtime assembly has no
+`Time`, discovery and own invocation Get/Cancel/Watch are plugin carrier facilities.
+Product wrappers own client operations. Product descriptors own these audiences; runtime assembly has no
 caller overrides. See [Product Wrappers and the Native Facade](architecture.md#product-wrappers-and-the-native-facade).
 The host remains responsible for caller authorization.
 
