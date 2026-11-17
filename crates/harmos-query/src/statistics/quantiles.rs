@@ -11,12 +11,15 @@
 
 /* === Modules === */
 
+#[cfg(feature = "testing")]
+mod testing;
+
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::Error as IoError;
+use std::io;
 use std::{
     collections::BTreeMap,
     fs::File,
@@ -74,9 +77,9 @@ impl Quantiles {
 
     pub fn push(&mut self, value: f64) -> Result<()> {
         if !value.is_finite() {
-            return Err(invalid("numeric spool requires finite values"));
+            return Err(invalid("supply finite values to the numeric spool"));
         }
-        let count = self.count.checked_add(1).ok_or_else(|| invalid("numeric spool count overflow"))?;
+        let count = self.count.checked_add(1).ok_or_else(|| invalid("reduce the numeric spool input to avoid count overflow"))?;
         let bits = ordered(value);
         if self.file.is_none() && self.memory.len() < self.capacity {
             if self.memory.len() == self.memory.capacity() {
@@ -86,25 +89,17 @@ impl Quantiles {
             self.memory.push(bits);
         } else {
             if self.file.is_none() {
-                let mut file = BufWriter::with_capacity(self.buffer_capacity, tempfile::tempfile().map_err(io)?);
+                let mut file = BufWriter::with_capacity(self.buffer_capacity, tempfile::tempfile().map_err(failure)?);
                 for bits in &self.memory {
-                    file.write_all(&bits.to_le_bytes()).map_err(io)?;
+                    file.write_all(&bits.to_le_bytes()).map_err(failure)?;
                 }
                 self.memory = Vec::new();
                 self.file = Some(file);
             }
-            self.file.as_mut().expect("opened spool").write_all(&bits.to_le_bytes()).map_err(io)?;
+            self.file.as_mut().expect("opened spool").write_all(&bits.to_le_bytes()).map_err(failure)?;
         }
         self.count = count;
         Ok(())
-    }
-
-    pub fn size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.memory.capacity() * 8 + self.file.as_ref().map_or(0, |file| file.capacity())
-    }
-
-    pub fn spilled(&self) -> bool {
-        self.file.is_some()
     }
 
     // Consumes The Spool, Bounding Rank/Result Maps And Read Buffers By `scratch_bytes`.
@@ -112,7 +107,7 @@ impl Quantiles {
     pub fn values(mut self, percentiles: &[u8], scratch_bytes: usize, check: &mut impl FnMut() -> Result<()>) -> Result<BTreeMap<u8, f64>> {
         check()?;
         if percentiles.iter().any(|percentile| *percentile > 100) {
-            return Err(invalid("percentile must be in 0..=100"));
+            return Err(invalid("select percentile ranks in 0..=100"));
         }
         if self.count == 0 || percentiles.is_empty() {
             return Ok(BTreeMap::new());
@@ -126,7 +121,7 @@ impl Quantiles {
         let mut scratch = (results + 10).saturating_mul(std::mem::size_of::<(u8, f64)>() + 128);
         scratch = scratch.saturating_add(results * 2 * std::mem::size_of::<u64>());
         if scratch > scratch_bytes {
-            return Err(invalid("numeric rank scratch exceeds memory budget"));
+            return Err(invalid("increase the numeric rank scratch budget or request fewer percentiles"));
         }
         let mut ordinals = Vec::with_capacity(results * 2);
         for (percentile, requested) in requested.into_iter().enumerate() {
@@ -144,7 +139,7 @@ impl Quantiles {
         ordinals.dedup();
         scratch = scratch.saturating_add(ordinals.len().saturating_mul(std::mem::size_of::<Rank>()));
         if scratch > scratch_bytes {
-            return Err(invalid("numeric rank scratch exceeds memory budget"));
+            return Err(invalid("increase the numeric rank scratch budget or request fewer percentiles"));
         }
         let mut ranks = Vec::with_capacity(ordinals.len());
         for ordinal in &ordinals {
@@ -156,7 +151,7 @@ impl Quantiles {
             });
         }
         if let Some(file) = &mut self.file {
-            file.flush().map_err(io)?;
+            file.flush().map_err(failure)?;
         }
         for depth in 0..8 {
             check()?;
@@ -168,14 +163,14 @@ impl Quantiles {
                 }
             };
             if let Some(file) = &mut self.file {
-                file.get_mut().seek(SeekFrom::Start(0)).map_err(io)?;
+                file.get_mut().seek(SeekFrom::Start(0)).map_err(failure)?;
                 let mut reader = BufReader::with_capacity(scratch_bytes.saturating_sub(scratch).min(65536), file.get_mut());
                 for index in 0..self.count {
                     if index.is_multiple_of(1024) {
                         check()?;
                     }
                     let mut bytes = [0; 8];
-                    reader.read_exact(&mut bytes).map_err(io)?;
+                    reader.read_exact(&mut bytes).map_err(failure)?;
                     push(u64::from_le_bytes(bytes));
                 }
             } else {
@@ -201,7 +196,7 @@ impl Quantiles {
                     })
                     .ok_or_else(|| Error::InvalidInput {
                         field: "percentile",
-                        reason: "unavailable exact rank",
+                        reason: "recreate the numeric spool to select an available exact rank",
                     })?;
                 rank.prefix = (rank.prefix << 8) | child as u64;
                 rank.bins.fill(0);
@@ -233,7 +228,7 @@ impl Quantiles {
 
 /* === Private Functions === */
 
-fn io(error: IoError) -> Error {
+fn failure(error: io::Error) -> Error {
     Error::backend("numeric spool", BackendFailure::Transient, error)
 }
 

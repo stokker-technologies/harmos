@@ -27,9 +27,9 @@ use harmos_protocol::model;
 use harmos_query::QueryStep;
 use harmos_query::columnar::Cancellation;
 use harmos_storage::QueryReader;
-use harmos_storage::StorageManager;
 use harmos_storage::query::RowSlice;
 use harmos_storage::query::Source;
+use harmos_storage::{StorageCursor, StorageManager};
 use prost::Message;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -167,6 +167,7 @@ pub(super) async fn list(
                 snapshots.queries.prepare()?;
                 let read = snapshots.resolve(&storage, at.clone()).await?;
 
+                validate_statistics_cut(&transforms, read.at())?;
                 let query = Query {
                     merge,
                     at: read.at().clone(),
@@ -249,6 +250,20 @@ pub(super) async fn list(
 
 /* === Private Functions === */
 
+fn validate_statistics_cut(transforms: &[Transform], cut: &StorageCursor) -> harmos_storage::Result<()> {
+    for transform in transforms {
+        if let Transform::BucketSummary(plan) = transform
+            && &plan.source_cut != cut
+        {
+            return Err(harmos_storage::Error::InvalidInput {
+                field: "bucket summary source cut",
+                reason: "retain a snapshot and set the bucket summary source_cut to the ListRows resolved cut",
+            });
+        }
+    }
+    Ok(())
+}
+
 fn field(bytes: usize) -> usize {
     1 + prost::length_delimiter_len(bytes) + bytes
 }
@@ -261,5 +276,42 @@ fn expired() -> harmos_storage::Error {
     harmos_storage::Error::InvalidInput {
         field: "storage continuation",
         reason: "ListRows cut, token or query expired, changed or was interrupted; restart the read",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_statistics_cut;
+    use harmos_domain::Identifier;
+    use harmos_domain::model::storage::query::transform::{Transform, statistics::BucketSummary};
+    use harmos_domain::model::storage::{StorageCursor, StoreHistory};
+    use std::num::{NonZeroU64, NonZeroUsize};
+    #[test]
+    fn list_rows_bucket_summary_requires_the_resolved_source_cut() {
+        let cut = StorageCursor {
+            history: StoreHistory {
+                store: Identifier::new("statistics").unwrap(),
+                epoch: Identifier::new("test").unwrap(),
+            },
+            sequence: 42,
+        };
+        let plan = BucketSummary {
+            time: "time".into(),
+            position: "position".into(),
+            value: "value".into(),
+            width_ns: NonZeroU64::new(1).unwrap(),
+            max_buckets: NonZeroUsize::new(16).unwrap(),
+            source_cut: cut.clone(),
+            prior: None,
+        };
+        let transforms = [Transform::BucketSummary(plan)];
+        assert!(validate_statistics_cut(&transforms, &cut).is_ok());
+        let mut changed = cut.clone();
+        changed.sequence += 1;
+        assert!(validate_statistics_cut(&transforms, &changed).is_err());
+        changed = cut.clone();
+        changed.history.epoch = Identifier::new("replacement").unwrap();
+        assert!(validate_statistics_cut(&transforms, &changed).is_err());
+        assert!(validate_statistics_cut(&[], &changed).is_ok());
     }
 }

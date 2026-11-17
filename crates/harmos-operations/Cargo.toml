@@ -105,6 +105,7 @@ getrandom = { workspace = true, features = ["std", "wasm_js"] }
 # Networking
 
 # Storage
+arrow-array = { workspace = true }
 
 # UI
 
@@ -113,6 +114,10 @@ getrandom = { workspace = true, features = ["std", "wasm_js"] }
 # === Target Dependencies === #
 
 # === Test Targets === #
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
 
 # === Bench Targets === #
 

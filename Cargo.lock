@@ -1186,6 +1186,7 @@ dependencies = [
 name = "harmos-operations"
 version = "0.1.14"
 dependencies = [
+ "arrow-array",
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
@@ -1267,6 +1268,7 @@ dependencies = [
  "criterion",
  "flatbuffers",
  "harmos-domain",
+ "postcard",
  "serde",
  "serde_json",
  "sha2 0.11.1",

@@ -7,7 +7,11 @@
  * ***
  */
 
-// Exact Numeric Spool Parity Across Its Memory Boundary
+// Deterministic Statistics Integration
+
+/* === Modules === */
+
+/* === Re-Exports === */
 
 /* === Imports === */
 
@@ -16,7 +20,25 @@
 // Third Party Imports
 
 // Local Imports
-use harmos_query::quantiles::Quantiles;
+use harmos_query::Quantiles;
+
+/* === Constants === */
+
+/* === Macros === */
+
+/* === Type Aliases === */
+
+/* === Structs === */
+
+/* === Enums === */
+
+/* === Traits === */
+
+/* === Implementations === */
+
+/* === Public Functions === */
+
+/* === Private Functions === */
 
 /* === Tests === */
 
@@ -27,6 +49,7 @@ fn exact_quantile_spill() {
         for value in [3.0, 10.0, 0.0, f64::from_bits(1), -10.0, -0.0, 3.0] {
             values.push(value).unwrap();
         }
+
         assert_eq!(values.spilled(), bytes == 0);
         let result = values.values(&[0, 25, 50, 75, 100], 65536, &mut || Ok(())).unwrap();
         for (percentile, expected) in [(0, -10.0f64), (25, -0.0), (50, f64::from_bits(1)), (75, 3.0), (100, 10.0)] {
@@ -73,6 +96,7 @@ fn exact_quantile_spill() {
         for value in &sorted {
             spool.push(*value).unwrap();
         }
+
         assert_eq!(spool.spilled(), memory == 0);
         let percentiles = vec![0, 25, 50, 75, 100];
         let result = spool.values(&percentiles, 1024 * 1024, &mut || Ok(())).unwrap();

@@ -15,6 +15,7 @@
 
 // Standard Library Imports
 use std::borrow::Cow;
+use std::mem;
 
 // Third Party Imports
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ use serde::{Deserialize, Serialize};
 // Local Imports
 use crate::message::{PostcardReader, PostcardValue};
 use crate::schema::declaration::{Field, Kind};
-use crate::schema::{Cardinality, Described, declaration};
+use crate::schema::{self, Cardinality, Described, declaration};
 use crate::{MemorySize, MessageError, RowMetadata};
 
 /* === Constants === */
@@ -39,6 +40,8 @@ const MAX: u32 = 480_766_859;
 const RMS: u32 = 43_272_471;
 const STD: u32 = 450_256_219;
 const PERCENTILE: u32 = 455_936_439;
+const FIRST: u32 = schema::field_tag("First");
+const LAST: u32 = schema::field_tag("Last");
 const RANK: u32 = 211_531_165;
 
 /* === Macros === */
@@ -85,6 +88,8 @@ pub enum Aggregate {
     Rms,
     Std,
     Percentile(#[serde(with = "rank")] u8),
+    First,
+    Last,
 }
 
 /* === Traits === */
@@ -103,6 +108,8 @@ impl Aggregate {
             Self::Max => "max".to_owned(),
             Self::Rms => "rms".to_owned(),
             Self::Std => "std".to_owned(),
+            Self::First => "first".to_owned(),
+            Self::Last => "last".to_owned(),
             Self::Percentile(rank) => format!("p{rank}"),
         }
     }
@@ -117,6 +124,8 @@ impl Aggregate {
             "max" => Self::Max,
             "rms" => Self::Rms,
             "std" => Self::Std,
+            "first" => Self::First,
+            "last" => Self::Last,
             _ => {
                 let rank = name.strip_prefix('p')?;
                 if rank.is_empty() || !rank.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -155,6 +164,8 @@ impl Aggregate {
             Self::Rms => 6,
             Self::Std => 7,
             Self::Percentile(_) => 8,
+            Self::First => 9,
+            Self::Last => 10,
         }
     }
 
@@ -168,6 +179,8 @@ impl Aggregate {
             5 => Self::Max,
             6 => Self::Rms,
             7 => Self::Std,
+            9 => Self::First,
+            10 => Self::Last,
             _ => return None,
         })
     }
@@ -194,6 +207,8 @@ impl Described for Aggregate {
         variant("Rms", RMS, <()>::DEFINITION),
         variant("Std", STD, <()>::DEFINITION),
         variant("Percentile", PERCENTILE, Rank::DEFINITION),
+        variant("First", FIRST, <()>::DEFINITION),
+        variant("Last", LAST, <()>::DEFINITION),
     ];
     const MARKER: &'static [u8] = &declaration::encode::<{ declaration::encoded_len(Self::NAME, Self::FIELDS) }>(Self::NAME, Self::FIELDS);
 }
@@ -228,7 +243,7 @@ impl PostcardValue for Aggregate {
     fn memory(input: &mut PostcardReader<'_>) -> Result<usize, MessageError> {
         input.nested(|input| {
             Self::read_postcard(input)?;
-            Ok(std::mem::size_of::<Self>())
+            Ok(mem::size_of::<Self>())
         })
     }
 
@@ -239,7 +254,7 @@ impl PostcardValue for Aggregate {
 
 impl MemorySize for Aggregate {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 
@@ -269,6 +284,8 @@ mod rank {
     // Standard Library Imports
 
     // Third Party Imports
+    use serde::de::Error;
+    use serde::{Deserialize, Deserializer, Serializer};
 
     // Local Imports
 
@@ -288,13 +305,13 @@ mod rank {
 
     /* === Public Functions === */
 
-    pub(super) fn serialize<S: serde::Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(super) fn serialize<S: Serializer>(rank: &u8, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_u32(u32::from(*rank))
     }
 
-    pub(super) fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
-        let rank = <u32 as serde::Deserialize>::deserialize(deserializer)?;
-        u8::try_from(rank).map_err(|_| serde::de::Error::custom("percentile rank exceeds 255"))
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+        let rank = <u32 as Deserialize>::deserialize(deserializer)?;
+        u8::try_from(rank).map_err(|_| D::Error::custom("percentile rank exceeds 255"))
     }
 
     /* === Private Functions === */
@@ -308,7 +325,7 @@ mod rank {
 mod tests {
     use super::Aggregate;
 
-    const EVERY: [Aggregate; 11] = [
+    const EVERY: [Aggregate; 13] = [
         Aggregate::Count,
         Aggregate::Sum,
         Aggregate::Mean,
@@ -317,6 +334,8 @@ mod tests {
         Aggregate::Max,
         Aggregate::Rms,
         Aggregate::Std,
+        Aggregate::First,
+        Aggregate::Last,
         Aggregate::Percentile(0),
         Aggregate::Percentile(25),
         Aggregate::Percentile(100),

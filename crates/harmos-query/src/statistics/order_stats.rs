@@ -27,11 +27,11 @@ use tempfile::NamedTempFile;
 
 // Local Imports
 use super::accumulate::sort_values;
-use super::scalar::{ExactNumber, ScalarValue};
-use super::spill::io;
-use super::transform::invalid;
 use crate::Result;
 use crate::config::QueryAccumulatorSettings;
+use crate::scalar::{ExactNumber, ScalarValue};
+use crate::spill::io;
+use crate::transform::invalid;
 
 /* === Constants === */
 
@@ -45,7 +45,7 @@ const BUFFER: usize = 1024 * 1024;
 /* === Structs === */
 
 #[derive(Clone, Debug)]
-pub(super) struct Values {
+pub(crate) struct Values {
     file: Option<Arc<Mutex<File>>>,
     memory: Vec<[u8; SLOT]>,
     capacity: usize,
@@ -108,6 +108,26 @@ impl Values {
         file.seek(SeekFrom::End(0)).map_err(io)?;
         file.write_all(&slot).map_err(io)?;
         self.length = length;
+        Ok(())
+    }
+
+    pub fn for_each(&mut self, visit: &mut impl FnMut(ScalarValue) -> Result<()>, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
+        if let Some(file) = &self.file {
+            let mut file = file.lock().map_err(|_| invalid("recreate the poisoned order statistic spool"))?;
+            file.seek(SeekFrom::Start(0)).map_err(io)?;
+            let mut reader = BufReader::new(&mut *file);
+            for _ in 0..self.length {
+                check()?;
+                let mut slot = [0; SLOT];
+                reader.read_exact(&mut slot).map_err(io)?;
+                visit(decode(&slot)?)?;
+            }
+        } else {
+            for slot in &self.memory {
+                check()?;
+                visit(decode(slot)?)?;
+            }
+        }
         Ok(())
     }
 

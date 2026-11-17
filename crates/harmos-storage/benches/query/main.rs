@@ -122,24 +122,6 @@ fn main() {
     }
     group.finish();
 
-    let mut group = criterion.benchmark_group("integration/quantile_spill");
-    for memory in [0, 4101 * 16] {
-        group.bench_with_input(BenchmarkId::from_parameter(memory), &memory, |b, &memory| {
-            b.iter(|| {
-                let mut values = harmos_query::quantiles::Quantiles::new(memory);
-                for index in 0..4096 {
-                    values.push(black_box(((index * 7919) % 4093) as f64 - 2046.0)).unwrap();
-                }
-                for value in [-0.0, 0.0, f64::from_bits(1), -f64::MAX, f64::MAX] {
-                    values.push(value).unwrap();
-                }
-                let percentiles: Vec<_> = (0..=100).collect();
-                black_box(values.values(&percentiles, 1024 * 1024, &mut || Ok(())).unwrap());
-            });
-        });
-    }
-    group.finish();
-
     let mut group = criterion.benchmark_group("integration/journal_recovery");
     group.bench_function("seven_days", |b| b.iter(|| runtime.block_on(journal_recovery())));
     group.finish();

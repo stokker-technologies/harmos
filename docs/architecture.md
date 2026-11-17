@@ -82,11 +82,18 @@ appends in one backend commit, publishing a cut and replayable receipt together.
 changes and publishes through the backend hook; `storage.mutate` is the native declaration.
 Unsupported backends refuse; sequential compensation is not an implementation.
 Object/scoped deletion preserves retained cuts and delays file reclamation until
-those cuts release. All statistics kernels consolidate under the crate-internal
-`harmos-query::statistics` module and products use `storage.list_rows` transforms,
-including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries and
-bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their
-task group closes. Floating-point population RMS/standard deviation are accepted.
+those cuts release. Statistics kernels live in the crate-internal
+`harmos-query::statistics` module: exact reductions and rank spools, scaled population
+moments, histograms, Tukey box summaries, ordered mergeable summaries and adaptive
+bucket summaries. Arrow transform modules own schema validation and row plumbing;
+the grouped time-bucket projection and durable-lag benchmark delegate to the same
+kernels. Products request these through `storage.list_rows` transforms and persist
+bucket continuation bytes themselves. Continuation retains the source history/cut,
+requires strictly increasing new source positions and doubles aligned bucket widths
+until the consumer's bucket cap holds. Floating-point RMS and population standard
+deviation use scaled moments; no approximate percentile replaces exact rank selection.
+Several percentiles and a floating median of one field share one numeric spool and
+one multi-rank selection; an exact rational median retains exact scalar ordering.
 
 ### Inventory Before the Split
 
