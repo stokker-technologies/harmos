@@ -7,7 +7,7 @@
  * ***
  */
 
-// Compose The Same Schematic Commands Across Real Carrier Boundaries.
+// Compose the Same Schematic Commands Across Real Carrier Boundaries.
 
 /* === Modules === */
 
