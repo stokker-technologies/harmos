@@ -46,7 +46,8 @@ use it as a replacement or backup, never as an independent concurrent writer of 
 history. Recovery journals are separate backend data and are not part of this primary
 backend copy. Backends own target formats and supported target kinds; unsupported hooks
 or target kinds return `STORAGE_FAILURE_UNSUPPORTED` with an action for the caller.
-Copy does not retry an uncertain target write automatically.
+Copy follows the snapshot lifecycle guard and the configured backend I/O policy.
+It does not retry an uncertain target write automatically.
 
 `storage.dispose_backend` invokes the supplied offline target's disposal hook. It
 permanently removes its data; close its sessions and release its retained snapshots first.

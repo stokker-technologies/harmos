@@ -1149,8 +1149,9 @@ sessions. Full startup constructs a fresh manager over those same backend handle
 reopens them. There is no worker ownership handoff or retained live-session upgrade. The builder
 retains a retryable cleanup receipt after cancellation or failure and refuses another
 opening or full startup until it settles.
-Primary-backend copy uses a retained source cut and a backend-owned empty offline target;
-disposal is an explicit destructive operation on an offline target. Recovery copy remains
+Primary-backend copy uses a retained source cut and a backend-owned empty offline target.
+Snapshot copy holds the storage lifecycle read guard and uses the backend I/O policy.
+Disposal is an explicit destructive operation on an offline target. Recovery copy remains
 with the recovery-backend owner.
 
 ### Native Type Ownership

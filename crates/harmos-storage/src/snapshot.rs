@@ -156,7 +156,11 @@ impl StorageManager {
 impl Snapshot {
     /// Copy the Retained Data Cut Through Its Backend's Native Maintenance Hook.
     pub async fn copy_to(&self, target: Arc<dyn StorageBackend>) -> Result<()> {
-        self.inner.primary.copy_to(&self.backend, target.as_ref()).await
+        let _lifecycle = self.inner.lifecycle.read().await;
+        self.check()?;
+        let copy = self.inner.primary.copy_to(&self.backend, target.as_ref());
+        self.inner.bounded("primary.copy_to", copy).await?;
+        self.check()
     }
 
     pub fn is_available(&self) -> bool {
