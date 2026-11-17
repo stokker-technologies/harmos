@@ -11,10 +11,6 @@
 
 /* === Modules === */
 
-#[path = "../support/report.rs"]
-#[allow(dead_code, reason = "qualification uses isolated collectors instead of the system runner environment")]
-mod capture;
-
 /* === Imports === */
 
 // Standard Library Imports
@@ -31,6 +27,7 @@ use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
+use crate::support::report;
 
 /* === Structs === */
 
@@ -139,7 +136,7 @@ impl Write for Unwritable {
 fn codec_stage_lifetimes() {
     let output = Output::default();
     let (layer, guard) = PerfettoLayer::builder(output.clone()).with_debug_annotations().build();
-    let layer = layer.with_filter(filter_fn(capture::instrumented));
+    let layer = layer.with_filter(filter_fn(report::instrumented));
     let dispatch = tracing::Dispatch::new(tracing_subscriber::registry().with(layer));
     let secret = b"codec-payload-sentinel";
     tracing::dispatcher::with_default(&dispatch, || {
@@ -170,13 +167,13 @@ fn codec_stage_lifetimes() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_causal_lifetimes() {
-    let disabled = capture::capture(None);
+    let disabled = report::capture(None);
     drop(disabled);
     let output = Output::default();
     let (layer, guard) =
         PerfettoLayer::builder(output.clone()).with_debug_annotations().with_source_locations().with_poll_slices().with_counters().build();
     let guard = Arc::new(guard);
-    let layer = layer.with_filter(filter_fn(capture::instrumented));
+    let layer = layer.with_filter(filter_fn(report::instrumented));
     let dispatch = tracing::Dispatch::new(tracing_subscriber::registry().with(layer));
     let (root, source, child) = tracing::dispatcher::with_default(&dispatch, || {
         let root = tracing::debug_span!("system.story");
@@ -187,7 +184,7 @@ async fn native_causal_lifetimes() {
         child.follows_from(&source);
         (root, source, child)
     });
-    let report = capture::Report {
+    let report = report::Report {
         guard: Some(Arc::clone(&guard)),
         story: Some(root),
         dispatch: Some(dispatch.clone()),
@@ -279,7 +276,7 @@ fn flush_preserves_failure() {
     });
     assert!(guard.flush().is_err());
     assert!(guard.flush().is_err());
-    let report = capture::Report {
+    let report = report::Report {
         guard: Some(Arc::new(guard)),
         story: None,
         dispatch: None,
@@ -295,7 +292,7 @@ fn unwind_flushes_artifact() {
     let (layer, guard) = PerfettoLayer::builder(output.clone()).build();
     let subscriber = tracing_subscriber::registry().with(layer);
     let unwind = std::panic::AssertUnwindSafe(|| {
-        let _report = capture::Report {
+        let _report = report::Report {
             guard: Some(Arc::new(guard)),
             story: None,
             dispatch: None,

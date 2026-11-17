@@ -86,7 +86,7 @@ fn served(runtime: &Runtime<Bank>) -> Vec<String> {
 
 #[tokio::test]
 async fn runtime_baseline_walks() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Boot the Host over Shared In-Memory Owners
     let data = Arc::new(Backend::new(history()));
     let recovery = Arc::new(RecoveryBackend::new(history()));

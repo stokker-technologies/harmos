@@ -51,7 +51,7 @@ use std::{
 
 #[tokio::test]
 async fn guest_cancellation_keeps_the_cooperative_final_response() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Compare Cooperative Settlement With Each Noncooperative Handler
     for mode in 0..3 {
         let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);

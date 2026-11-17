@@ -52,7 +52,7 @@ use std::{
 
 #[tokio::test]
 async fn guest_shutdown_retains_the_original_cleanup_after_a_deadline() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // Start a Guest Whose Authored Shutdown Does Not Cooperate
     let (clock, controller) = harmos_runtime::clock::Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let lane = harmos_runtime::operations::Lane::default();

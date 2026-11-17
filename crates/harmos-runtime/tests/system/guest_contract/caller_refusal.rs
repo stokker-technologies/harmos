@@ -48,7 +48,7 @@ use harmos_runtime::{Runtime, clock::Clock, operations::Lane};
 
 #[tokio::test]
 async fn guest_import_preserves_the_wrong_caller_failure() {
-    let _report = crate::report::system();
+    let _report = crate::support::report::system();
     // A Client-Only Operation Refuses the Guest Caller.
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let lane = Lane::default();

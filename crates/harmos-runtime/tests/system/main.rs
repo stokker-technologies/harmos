@@ -23,8 +23,6 @@ mod guest;
 #[cfg(feature = "plugin-guest")]
 mod guest_contract;
 
-#[path = "../support/report.rs"]
-mod report;
 mod runtime;
 mod schematic;
 
