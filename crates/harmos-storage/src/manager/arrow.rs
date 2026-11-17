@@ -21,8 +21,8 @@ use arrow_array::{Array, StructArray};
 
 // Local Imports
 use super::*;
-use crate::MutationId;
 use crate::writes::{DecodedBatch, SampleAppend, convert};
+use crate::{MemorySize, MutationId};
 use harmos_domain::config::SchemaSettings;
 
 /* === Constants === */
@@ -86,7 +86,7 @@ impl StorageManager {
             schema,
             header: OnceLock::new(),
         };
-        let bytes = prototype.retained_bytes();
+        let bytes = prototype.retained_bytes().saturating_add(mutation.memory_size());
         let sequence = self
             .admit_mutation(Domain::Data, bytes, count, Some(Mutation { id: mutation, fingerprint }), true, |first| {
                 Ok(Operation::SampleColumns(Arc::new(SampleAppend {

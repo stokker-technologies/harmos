@@ -801,7 +801,7 @@ after both are durable, covering `append.through`; replay of the same mutation a
 unchanged IPC batch returns the original receipt. A pending native response has
 `completed=false` and no `durable_at`. A completed response sets both; consumers
 retain outstanding batches until that durable acknowledgement. Queue admission
-charges the retained Arrow buffers and IPC allocation against
+charges retained Arrow buffers, IPC allocation and mutation/cursor metadata against
 `request.max_pending_write_bytes`, and one batch against
 `request.max_pending_write_batches`. Waiting admission uses the operation's existing
 policy; an allocation larger than the whole budget refuses before acceptance.

@@ -82,8 +82,11 @@ impl SampleAppend {
         self.batch
             .data
             .memory_size()
-            .saturating_add(self.scope.as_ref().map_or(0, |scope| scope.as_str().len()))
-            .saturating_add(self.batch.destination.as_str().len())
+            .saturating_add(self.scope.memory_size())
+            .saturating_add(self.batch.destination.memory_size())
+            .saturating_add(self.batch.schema.memory_size())
+            .saturating_add(self.first.memory_size())
+            .saturating_add(self.through.memory_size())
             .saturating_add(self.schema.memory_size())
             .saturating_add(size_of::<Self>())
     }
