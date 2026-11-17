@@ -17,6 +17,7 @@ pub mod facade;
 pub mod filesystem;
 
 mod application;
+pub mod backend;
 #[cfg(feature = "grpc")]
 pub mod grpc;
 pub mod prelude;
@@ -72,6 +73,8 @@ pub use harmos_sdk_derive::{Described, Request, Row};
 /* === Imports === */
 
 // Standard Library Imports
+use std::convert::Infallible;
+use std::result;
 
 // Third Party Imports
 extern crate self as harmos;
@@ -85,7 +88,7 @@ extern crate self as harmos_runtime;
 
 /* === Type Aliases === */
 
-pub type Result<T, E = std::convert::Infallible> = std::result::Result<T, Error<E>>;
+pub type Result<T, E = Infallible> = result::Result<T, Error<E>>;
 
 /* === Structs === */
 

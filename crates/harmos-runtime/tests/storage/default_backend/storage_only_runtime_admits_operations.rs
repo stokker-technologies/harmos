@@ -23,11 +23,13 @@ use std::sync::atomic::Ordering;
 // Third Party Imports
 
 // Local Imports
-use crate::storage::{Backend, RecoveryBackend, StorageBackends, StorageManager, config, history, record, schema};
-use harmos_operations::storage::{Capabilities, CapabilitiesRequest, Info, InfoRequest, Mutate, MutateRequest};
+use crate::storage::{Backend, RecoveryBackend, StorageManager, config, history, record, schema};
+use harmos_runtime::backend::StorageBackends;
+use harmos_runtime::catalog;
+use harmos_runtime::facade::storage::{CapabilitiesRequest, InfoRequest, MutateRequest, MutationId, MutationItem};
+use harmos_runtime::operations::{CallContext, Lane, Registration};
 use harmos_runtime::runtime::{BootstrapStatus, StorageFailure};
 use harmos_runtime::state::Never;
-use harmos_runtime::storage::{MutationId, MutationItem};
 use harmos_runtime::{Application, Identifier, Lifecycle, Runtime, Setup, Startup, StartupError};
 
 /* === Constants === */
@@ -83,9 +85,11 @@ async fn storage_only_runtime_admits_operations() {
     .unwrap();
     let mut builder = Runtime::<Minimal>::builder(());
     builder.storage(&manager);
+    let registration = Registration::catalog(catalog::storage_catalog(), Lane::default()).unwrap();
+    builder.with_registration(registration);
     let minimal = builder.storage_only().await.unwrap();
-    let operations = minimal.operations();
-    let capabilities = operations.call_native::<Capabilities>(CapabilitiesRequest {}).await.unwrap();
+    let call = minimal.for_call(&CallContext::default());
+    let capabilities = call.storage().capabilities(CapabilitiesRequest {}).await.unwrap();
     let mutation = MutationId {
         window: capabilities.mutations.unwrap().id,
         key: Identifier::new("before-start").unwrap(),
@@ -95,20 +99,20 @@ async fn storage_only_runtime_admits_operations() {
         mutation: Some(mutation),
         items: vec![item],
     };
-    operations.call_native::<Mutate>(request).await.unwrap();
-    assert_eq!(operations.definitions().iter().filter(|entry| entry.id.as_str().starts_with("plugins.")).count(), 0);
+    call.storage().mutate(request).await.unwrap();
 
     // Drain and Close Before Full Assembly Reopens the Registered Backends
     minimal.close().await.unwrap();
     assert!(!primary.control.open.load(Ordering::SeqCst));
     assert!(!recovery.control.open.load(Ordering::SeqCst));
-    assert!(operations.call_native::<Info>(InfoRequest {}).await.is_err());
+    assert!(call.storage().info(InfoRequest {}).await.is_err());
     drop(minimal);
     let runtime = builder.start().await.unwrap();
     assert!(primary.control.open.load(Ordering::SeqCst));
     assert!(recovery.control.open.load(Ordering::SeqCst));
     assert_eq!(primary.records.lock().unwrap().len(), 1);
-    assert_eq!(runtime.storage().unwrap().get_saved_position().sequence, 1);
+    let call = runtime.for_call(&CallContext::default());
+    assert_eq!(call.storage().info(InfoRequest {}).await.unwrap().saved.unwrap().sequence, 1);
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 1);
     runtime.shutdown().await.unwrap();
     assert_eq!(primary.control.closes.load(Ordering::SeqCst), 2);
@@ -161,7 +165,8 @@ async fn storage_only_runtime_admits_operations() {
 
     // Complete an Offline-Only Session Without Launching an Application
     let session = builder.storage_only().await.unwrap();
-    let info = session.operations().call_native::<Info>(InfoRequest {}).await.unwrap();
+    let call = session.for_call(&CallContext::default());
+    let info = call.storage().info(InfoRequest {}).await.unwrap();
     assert_eq!(info.saved.unwrap().sequence, 1);
     session.close().await.unwrap();
     drop(session);

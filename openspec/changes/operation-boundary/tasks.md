@@ -95,7 +95,8 @@ G2 Proof: Windows `mise run build -- --package harmos-storage --lib`, `mise run 
   - [x] Native storage/publication foundation: root and scoped `for_call`, all 41 storage methods and typed watch endpoints, registered-policy admission, consumed call-context overrides, parent cancellation and runtime fencing. Five paused-clock facade integration stories pass; plugin activation and the other host families remain open.
 - [ ] 9.5 Give every built-in that dispatches through `call_protobuf` today (`crates/harmos-runtime/src/operations/{surface,handler}.rs`, `src/services/mod.rs` and their callers) a native declaration, so facade calls pass typed values without encoding; keep `call_protobuf` only for genuinely encoded wire paths. Prove with a story `facade_calls_do_not_encode` that counts encode calls through a test codec and the existing protected built-in and scoped sleep stories.
 - [ ] 9.6 Remove both manager `Deref` implementations, manager getters on `Runtime`, `Handle` and service contexts, and whole-crate re-exports; export only builder, the typed facade (task 9.4) and the backend authoring module. Do not change operation visibility. Prove with a compile-fail test that manager access is absent and `mise run build -- --package harmos-runtime --check`.
-  - [x] Remove whole-crate `domain`/`builtins` reexports, unused renamed private exports and the catalog glob from the entry library; migrate affected storage consumers to explicit facade DTOs and builder catalogs. Manager privacy, backend authoring and both `Deref` removals remain open.
+  - [x] Remove whole-crate `domain`/`builtins` reexports, unused renamed private exports and the catalog glob from the entry library; migrate affected storage consumers to explicit facade DTOs and builder catalogs. Manager privacy and both `Deref` removals remain open.
+  - [x] Expose the backend-authoring contracts and value/error closure through `harmos_runtime::backend`, remove the storage-only session's operation-manager getter and wrapper, migrate its drain/reopen/cancellation story to typed calls, retain catalog-separation coverage internally, and prove the absent exports with compile-fail doctests. Builder ownership, the other manager getters and both manager `Deref` implementations remain open.
 - [ ] 9.7 Migrate Harmos's own consumers: Schematic example, runtime and storage stories, SDK fixtures and benchmarks, to the facade and operations; add the repository check rejecting direct internal-crate dependencies outside implementation crates. Prove with `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app` and `mise run check -- --repository`.
   - [x] Migrate the affected Schematic storage journeys and native expression row-listing story to the storage facade and explicit DTO exports; the Schematic app build and three existing journeys pass. The remaining consumer inventory and dependency fence stay open.
 - [ ] 9.8 Update `docs/architecture.md`, `docs/product-guide.md` and `docs/storage.md` to the builder and facade contract and remove direct manager examples; prove with `mise run check -- --repository`.
@@ -114,6 +115,15 @@ and both Schematic storage journeys. Format, repository/dependency checks and st
 validation and the complete required lint task passed. The remaining facade families, native built-ins,
 builder ownership, manager privacy, dependency fence and host/SDK cutover stay open; this is
 not source closure for groups 9–10. Native Linux and hosted proof remain pending.
+
+Backend Authoring and Storage Session Pin: `402961139c395aed7af4f2135e63c32f3eb0c6d5` (partial 9.6; local checkpoint, not pushed).
+
+Windows runtime and Schematic app builds, both focused storage-session stories,
+both compile-fail doctests, Rust format/dependency checks, repository contracts
+and `mise run lint` passed. Builder ownership, the remaining
+manager privacy and getters, both manager `Deref` removals, the product dependency
+fence and the remaining consumer migration stay open; this is not source closure
+for the runtime ownership group. Native Linux and hosted proof remain pending.
 
 ## 10. Private Host Operations
 

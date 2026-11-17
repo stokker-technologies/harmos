@@ -78,8 +78,11 @@ payloads retain their allocation and are never encoded for dispatch.
 
 The runtime's whole-crate `domain` and `builtins` reexports are removed. Builder
 catalogs have explicit exports under `harmos_runtime::catalog`. Backend-authoring
-exports, manager privacy, the remaining facade groups and private host transport
-are still governed by the pending Operation Boundary inventory below.
+contracts and their value closure have explicit exports under
+`harmos_runtime::backend`, without managers or readers. Storage-only sessions expose
+`for_call` and cleanup, with no operation-manager getter. Builder ownership, the
+remaining manager privacy, facade groups and private host transport are still
+governed by the pending Operation Boundary inventory below.
 
 ## Storage and Query Ownership
 

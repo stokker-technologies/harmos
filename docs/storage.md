@@ -205,8 +205,15 @@ let storage = StorageManager::in_memory(catalog, settings)?;
 setup.settings().storage(&storage);
 ```
 
-To register a product backend, implement all required methods in
-`harmos_storage::StorageBackend` and `harmos_storage::state::StateBackend` and
+Backend implementations import `StorageBackend`, `StateBackend` and their contract
+values from `harmos_runtime::backend`. This explicit barrel includes snapshot,
+mutation, schema, columnar, index, projection and recovery values, storage settings,
+and the process-lifetime reference backends. It exposes no manager or query reader.
+Backend query values and errors live in `backend::query`; object and schema
+validation errors live in `backend::validation`.
+Operation callers use the distinct DTOs in `harmos_runtime::facade::storage`.
+
+To register a product backend, implement all required methods in those traits and
 compose their shared instances:
 
 ```rust,ignore
