@@ -21,6 +21,7 @@ mod managed;
 mod publish;
 pub(crate) mod samples;
 mod scoped;
+
 /* === Re-Exports === */
 
 pub use config::{GrpcPluginPolicy, GrpcPluginSettings, IntervalLag, PlacementSettings};
@@ -32,20 +33,19 @@ pub use scoped::ScopedBinding;
 
 /* === Imports === */
 
-use harmos_protocol::plugin::InstanceGetRequest;
-use harmos_protocol::plugin::InstanceGetResponse;
-use harmos_protocol::plugin::InstanceStopRequest;
-
 // Standard Library Imports
 use std::{future::Future, sync::Arc};
 
 // Third Party Imports
 use tokio::sync::{oneshot, watch};
+use tonic::transport::Channel;
 
 // Local Imports
 use crate::{Application, Runtime, clock::Clock};
 use connection::Connection;
 use harmos_protocol::model::SettingValues;
+use harmos_protocol::plugin::instance_client::InstanceClient;
+use harmos_protocol::plugin::{InstanceGetRequest, InstanceGetResponse, InstanceStopRequest};
 use managed::Process;
 use publish::{PreparedPublications, Publications};
 
@@ -401,7 +401,7 @@ impl Activation {
 
     /// Inspect This Connection Only; An Old Handle Never Follows Reconnection.
     pub async fn get(&self) -> Result<InstanceGetResponse, Error> {
-        self.connected(describe(&self.connection)).await
+        self.connected(describe(self.connection.client())).await
     }
 
     async fn connected<T>(&self, future: impl Future<Output = Result<T, Error>>) -> Result<T, Error> {
@@ -618,8 +618,7 @@ impl Attached {
 
 /* === Private Functions === */
 
-async fn describe(connection: &Connection) -> Result<InstanceGetResponse, Error> {
-    let mut client = connection.client();
+async fn describe(mut client: InstanceClient<Channel>) -> Result<InstanceGetResponse, Error> {
     client
         .get(InstanceGetRequest {
             revision: 1,
@@ -636,7 +635,7 @@ async fn connect(
     message_bytes: usize,
 ) -> Result<Activation, Error> {
     let connection = Arc::new(Connection::open(address, harmos_protocol::transfer::default_message_bytes().get()).await?);
-    let description = describe(&connection).await?;
+    let description = describe(connection.client()).await?;
     if description.message_bytes < message_bytes as u64 {
         return Err(Error::Invalid(
             "Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into(),

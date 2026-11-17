@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::model::{SettingDeclaration, SettingValue, SettingValues, setting_value};
+
 pub use harmos_protocol::host::plugins::{SettingsListRequest, SettingsListResponse, SettingsSetRequest, SettingsSetResponse};
 
 /* === Imports === */

@@ -33,6 +33,7 @@ use std::sync::Arc;
 
 // Local Imports
 use crate::operations::{HostContext, Manager, NativeInvocation, NativeOperation, OperationPolicy};
+use crate::plugin::grpc::facade::Host;
 use crate::{Application, Error, Result, Runtime, runtime::Handle};
 
 /* === Constants === */
@@ -68,6 +69,10 @@ impl Call {
         let parent = context.parent();
         let mut context = context.call_context().clone();
         let options = context.remove::<CallOptions>().map(|options| *options).unwrap_or_default();
+        context.remove::<Host>();
+        if let Some(host) = operations.registry.plugin_calls.get() {
+            context.insert(host.clone()).expect("one plugin call owner");
+        }
         Self {
             operations: operations.with_context(context),
             parent,
@@ -103,14 +108,6 @@ impl Call {
         plugins::Plugins { call: self }
     }
 
-    fn with_plugins(mut self, host: crate::plugin::grpc::facade::Host) -> Self {
-        let mut context = self.operations.call_context().clone();
-        context.remove::<crate::plugin::grpc::facade::Host>();
-        context.insert(host).expect("one plugin call owner");
-        self.operations = self.operations.with_context(context);
-        self
-    }
-
     /// Start Typed Work Without Encoding; Dropping Its Unsettled Handle Cancels It.
     pub fn submit<O: NativeOperation>(&self, request: O::Request, endpoints: O::Endpoints) -> Result<NativeInvocation<O>> {
         let policy = self.options.policy.map(|policy| (policy, "CallOptions.policy"));
@@ -136,13 +133,13 @@ impl Call {
 
 impl<A: Application> Runtime<A> {
     pub fn for_call(&self, context: &(impl CallContextSource + ?Sized)) -> Call {
-        self.handle().for_call(context)
+        Call::new(self.operations.execution(), context)
     }
 }
 
 impl<A: Application> Handle<A> {
     pub fn for_call(&self, context: &(impl CallContextSource + ?Sized)) -> Call {
-        Call::new(self.operations.execution(), context).with_plugins(self.plugin_calls())
+        Call::new(self.operations.execution(), context)
     }
 }
 

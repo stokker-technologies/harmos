@@ -139,6 +139,27 @@ Object/scope deletion conservatively terminates crossing watches with resync,
 as do expired cuts or lost history. Scoped snapshots cannot publish global
 projection outputs. The product seal and deletion policy remain product-owned.
 
+### Native Facade Allocation Closure
+
+Built-in host declarations retain one registration and authorization owner, with a
+native typed execution binding separate from the encoded carrier. The host-native
+declarations live in `crates/harmos-operations/src/host/native/declarations.rs`;
+the runtime facade families and activation handles live in `src/facade/` and
+`src/plugin/grpc/facade.rs`. The existing process, transport and scoped sample
+owners retain lifecycle authority. Opaque handle clones share their allocation;
+sample-run identities belong to the existing scoped actor.
+
+Native admission also requires the allocation closure of protobuf-backed request
+DTOs and watch items. Protocol generation owns the emitted implementations at
+`crates/harmos-domain/src/message/allocation/protobuf.rs`, alongside allocation
+accounting. It reads the locked Rust descriptor layout because protoc's descriptor
+schema may be newer than the pinned descriptor structs. Admission traverses fields
+and capacities without serializing the typed value. Deprecated descriptor fields
+remain accounted for under a generated, narrowly scoped deprecation allowance.
+Native target description does not register a declaration: direct native registration
+still validates and rejects reserved facility IDs, while a typed call resolves the
+already validated registered carrier and checks its request and endpoint types.
+
 ### D2. One Statistics Home (Implemented in Groups 6–7)
 
 Keep `harmos-domain` `Aggregate` and query plan types; kernels live under the private

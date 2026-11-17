@@ -62,7 +62,7 @@ impl Watch {
 
 impl Watch {
     pub(crate) async fn run_with(
-        context: ExecutionContext, request: InvocationsWatchRequest, output: &(impl Events<InvocationsWatchResponse> + Sync),
+        context: ExecutionContext, request: InvocationsWatchRequest, output: &impl Events<InvocationsWatchResponse>,
     ) -> Result<InvocationsWatchResponse, ServingError> {
         let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;
         let instance = access

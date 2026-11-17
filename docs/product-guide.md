@@ -96,17 +96,19 @@ An absent scope produces a refused failure with code `scope_required` and messag
 "Invocation Scope Is Required: the caller must bind a scope". Harmos assigns no
 meaning to the scope and does not require it for operations that do not ask for it.
 
-For a scoped unit of work that owns its time and sample ingestion, use
-`runtime.bind_grpc(&activation, scope, clock).await?`, invoke through the returned
-binding's `operations()` and await `close()` when the unit ends. Binding opens no sample
-demand: call `start_samples(streams)` with exactly the streams the unit samples once the
-plugin has registered the unit and `stop_samples()` before its cleanup ends it, so no
-window reaches the plugin outside that interval; the plugin's other streams stay under
-its unscoped demand, which samples only while watched. `close()` returns
-within the placement's `stop_grace`; handle `Error::Deadline` as a plugin that did
-not end its Samples demand, whose remaining work was cancelled. Concurrent bindings
-share the admitted connection and retain independent clocks and Samples selections;
-see [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
+For a scoped unit that owns its time and sample ingestion, bind the loaded
+plugin through `caller.plugins().bind(BindRequest { plugin, scope, clock })`.
+`binding.for_call()` retains that unit for native calls. Binding opens no sample
+demand: `start_samples(StartSamplesRequest { binding, streams })` selects exactly
+the streams the unit samples and returns an opaque samples handle. Supply that
+handle to `stop_samples(StopSamplesRequest { samples })` before ending the unit,
+then settle the binding through `settle(SettleRequest::Binding(binding))`.
+The other streams stay under unscoped demand and sample only while watched.
+
+Scoped settlement retains the placement's `stop_grace`; a plugin that does not
+end its sample demand reports that failure and its remaining work is cancelled.
+Concurrent bindings share the admitted connection while retaining independent
+clocks and sample selections. See [Scoped Plugin Bindings](architecture.md#scoped-plugin-bindings).
 
 Operation failures retain their classification, application refusal code and source
 diagnostics across carriers. Applications can attach named, non-secret context

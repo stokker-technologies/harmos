@@ -13,6 +13,9 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::host::status::Event;
+pub use harmos_protocol::host::{ComponentState, HealthComponent, HostIdentity, HostStatus};
+
 pub use harmos_protocol::host::status::{
     DiagnosticsGetRequest, DiagnosticsGetResponse, LogsListRequest, LogsListResponse, LogsWatchRequest, LogsWatchResponse,
     TraceEventsListRequest, TraceEventsListResponse, TraceEventsWatchRequest, TraceEventsWatchResponse,

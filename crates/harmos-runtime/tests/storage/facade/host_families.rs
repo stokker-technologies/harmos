@@ -36,6 +36,7 @@ use prost_reflect::{MessageDescriptor, ReflectMessage};
 
 // Local Imports
 use super::support::{ChildRequest, Gate, Model, Waiting};
+use harmos_operations::host::declarations::clock;
 use harmos_runtime::facade::storage::PageRequest;
 use harmos_runtime::operations::{
     ExecutionContext, NativeOperation, OperationFactory, ProtobufOperation, Registration, ReplaySafety, ServingError,
@@ -47,7 +48,7 @@ use harmos_runtime::{
     clock::Clock,
     facade::{
         invocations::{InvocationsCancelRequest, InvocationsGetRequest, InvocationsWatchRequest, InvocationsWatchResponse},
-        status::{LogsListRequest, StatusGetRequest},
+        status::{LogsListRequest, StatusGetRequest, StatusWatchRequest, StatusWatchResponse},
         time::TimeGetRequest,
     },
     operations::{CallContext, StreamSettings, native_stream},
@@ -193,6 +194,13 @@ async fn native_status_reads_the_registered_owner() {
     let caller = runtime.for_call(&CallContext::default());
     let status = caller.status().get(StatusGetRequest {}).await.unwrap();
     assert_eq!(status.status.unwrap().identity.unwrap().host_id, "fixture");
+    let (output, input) = native_stream::<StatusWatchResponse>(StreamSettings { items: nz(8), bytes: nz(65536) }).unwrap();
+    let watching = caller.status().watch(StatusWatchRequest { at: None }, output).unwrap();
+    let event = input.recv().await.unwrap();
+    assert_eq!(event.status.as_ref().unwrap().identity.as_ref().unwrap().host_id, "fixture");
+    drop(event);
+    watching.request_cancel();
+    assert!(watching.await.is_err());
     let logs = caller
         .status()
         .logs_list(LogsListRequest {
@@ -213,6 +221,7 @@ async fn native_status_reads_the_registered_owner() {
 #[tokio::test(start_paused = true)]
 async fn attached_native_declaration_never_calls_the_wire_codec() {
     let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    assert!(OperationFactory::native::<clock::Get>().is_err());
     let factory = OperationFactory::protobuf::<Encoded>().unwrap().with_native::<Typed>().unwrap();
     runtime.register_batch(Registration::new(Default::default()).entry(factory)).await.unwrap();
     let encoded = Arc::new(AtomicUsize::new(0));

@@ -13,6 +13,8 @@
 
 /* === Re-Exports === */
 
+pub use harmos_protocol::model::InstanceState;
+
 pub use harmos_protocol::host::{
     InvocationsCancelRequest, InvocationsCancelResponse, InvocationsCreateRequest, InvocationsCreateResponse, InvocationsGetRequest,
     InvocationsGetResponse, InvocationsWatchRequest, InvocationsWatchResponse,

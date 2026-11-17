@@ -57,7 +57,11 @@ struct Owner<A: Application> {
 /// One Activation Generation; Cloning Never Follows a Reconnection.
 #[derive(Clone)]
 pub struct Plugin {
-    attached: Arc<Attached>,
+    state: Arc<Loaded>,
+}
+
+struct Loaded {
+    attached: Attached,
     activation: Activation,
     runtime: Arc<()>,
 }
@@ -65,8 +69,12 @@ pub struct Plugin {
 /// One Scope on One Activation; Settlement Closes Every Clone.
 #[derive(Clone)]
 pub struct Binding {
+    state: Arc<Bound>,
+}
+
+struct Bound {
     plugin: Plugin,
-    scoped: Arc<ScopedBinding>,
+    scoped: ScopedBinding,
     context: CallContext,
 }
 
@@ -162,7 +170,7 @@ impl<A: Application> Hosting for Owner<A> {
     }
 
     fn bind(&self, operations: &Manager, request: BindRequest) -> Result<ScopedBinding, Error> {
-        ScopedBinding::bind(self.streams.clone(), operations, &request.plugin.activation, request.scope, request.clock)
+        ScopedBinding::bind(self.streams.clone(), operations, &request.plugin.state.activation, request.scope, request.clock)
     }
 
     fn participant(&self) -> StopParticipant {
@@ -172,7 +180,7 @@ impl<A: Application> Hosting for Owner<A> {
 
 impl Plugin {
     fn check_runtime(&self, operations: &Manager) -> Result<(), ServingError> {
-        if !Arc::ptr_eq(&self.runtime, &operations.resident_identity()) {
+        if !Arc::ptr_eq(&self.state.runtime, &operations.resident_identity()) {
             return Err(failure("Use Plugin Handle: select the runtime that loaded this plugin"));
         }
         Ok(())
@@ -180,9 +188,11 @@ impl Plugin {
 
     fn check(&self, operations: &Manager) -> Result<(), ServingError> {
         self.check_runtime(operations)?;
-        let current = self.attached.activation();
-        let same_generation = current.as_ref().is_some_and(|current| Arc::ptr_eq(&current.connection, &self.activation.connection));
-        if !same_generation || !self.activation.is_connected() || self.attached.stop.borrow().is_some() {
+        let same_generation = {
+            let current = self.state.attached.status.borrow();
+            current.activation.as_ref().is_some_and(|current| Arc::ptr_eq(&current.connection, &self.state.activation.connection))
+        };
+        if !same_generation || !self.state.activation.is_connected() || self.state.attached.stop.borrow().is_some() {
             return Err(failure("Use Plugin Handle: the activation retired; settle this handle and load the plugin again"));
         }
         Ok(())
@@ -192,14 +202,17 @@ impl Plugin {
 impl Binding {
     /// Bind Native Calls to This Scope's Clock and Cancellation Unit.
     pub fn for_call(&self) -> Call {
-        Call::new(self.plugin.activation.publications.get().expect("admitted activation").operations.clone(), &self.context)
+        Call::new(
+            self.state.plugin.state.activation.publications.get().expect("admitted activation").operations.clone(),
+            &self.state.context,
+        )
     }
 
     pub fn for_call_with(&self, options: CallOptions) -> Call {
-        let mut context = self.context.clone();
+        let mut context = self.state.context.clone();
         context.remove::<CallOptions>();
         context.insert(options).expect("one scoped call override");
-        Call::new(self.plugin.activation.publications.get().expect("admitted activation").operations.clone(), &context)
+        Call::new(self.state.plugin.state.activation.publications.get().expect("admitted activation").operations.clone(), &context)
     }
 }
 
@@ -251,9 +264,11 @@ impl NativeOperation for Load {
         let attached = host.0.load(operations.clone(), request).await.map_err(native_failure)?;
         let activation = attached.activation().ok_or_else(|| failure("Load Plugin: activation ended; load the plugin again"))?;
         Ok(Plugin {
-            attached: Arc::new(attached),
-            activation,
-            runtime: operations.resident_identity(),
+            state: Arc::new(Loaded {
+                attached,
+                activation,
+                runtime: operations.resident_identity(),
+            }),
         })
     }
 }
@@ -271,9 +286,7 @@ impl NativeOperation for Bind {
         let scoped = host(&context)?.0.bind(&operations, request).map_err(native_failure)?;
         let context = scoped.operations().call_context().clone();
         Ok(Binding {
-            plugin,
-            scoped: Arc::new(scoped),
-            context,
+            state: Arc::new(Bound { plugin, scoped, context }),
         })
     }
 }
@@ -285,8 +298,8 @@ impl NativeOperation for StartSamples {
     const ID: &'static str = "plugins.start_samples";
     const POLICY: OperationPolicy = super::Load::POLICY;
     async fn run(context: ExecutionContext, request: StartSamplesRequest, _: &()) -> Result<Samples, ServingError> {
-        request.binding.plugin.check(&operations(&context)?)?;
-        let generation = request.binding.scoped.start_generation(request.streams).await.map_err(native_failure)?;
+        request.binding.state.plugin.check(&operations(&context)?)?;
+        let generation = request.binding.state.scoped.start_generation(request.streams).await.map_err(native_failure)?;
         Ok(Samples { binding: request.binding, generation })
     }
 }
@@ -298,8 +311,8 @@ impl NativeOperation for StopSamples {
     const ID: &'static str = "plugins.stop_samples";
     const POLICY: OperationPolicy = Settle::POLICY;
     async fn run(context: ExecutionContext, request: StopSamplesRequest, _: &()) -> Result<(), ServingError> {
-        request.samples.binding.plugin.check(&operations(&context)?)?;
-        request.samples.binding.scoped.stop_generation(request.samples.generation).await.map_err(native_failure)
+        request.samples.binding.state.plugin.check(&operations(&context)?)?;
+        request.samples.binding.state.scoped.stop_generation(request.samples.generation).await.map_err(native_failure)
     }
 }
 
@@ -319,11 +332,11 @@ impl NativeOperation for Settle {
         match request {
             SettleRequest::Plugin(plugin) => {
                 plugin.check_runtime(&operations)?;
-                plugin.attached.stop("Settle Plugin").await.map_err(|error| ServingError::Native(error))
+                plugin.state.attached.stop("Settle Plugin").await.map_err(|error| ServingError::Native(error))
             }
             SettleRequest::Binding(binding) => {
-                binding.plugin.check_runtime(&operations)?;
-                binding.scoped.settle().await.map_err(|error| ServingError::Native(error))
+                binding.state.plugin.check_runtime(&operations)?;
+                binding.state.scoped.settle().await.map_err(|error| ServingError::Native(error))
             }
         }
     }
@@ -344,7 +357,9 @@ impl NativeOperation for Inspect {
         let participant = host.0.participant();
         let process_participant = host.0.participant();
         let (retained, dropped) = oneshot::channel();
-        let mut task = tokio::spawn(inspect_owned(operations.clock().clone(), request, participant, process_participant, dropped));
+        let message_bytes = operations.transfer_message_bytes().get();
+        let mut task =
+            tokio::spawn(inspect_owned(operations.clock().clone(), request, message_bytes, participant, process_participant, dropped));
         let result = tokio::select! {
             biased;
             () = context.cancellation.cancelled() => {
@@ -368,7 +383,7 @@ fn operations(context: &ExecutionContext) -> Result<Manager, ServingError> {
 }
 
 fn host(context: &ExecutionContext) -> Result<Host, ServingError> {
-    context.call.get::<Host>().cloned().ok_or_else(|| failure("Call Plugin Operation: bind the runtime with for_call"))
+    context.call.get::<Host>().cloned().ok_or_else(|| failure("Call Plugin Operation: start the full runtime before calling plugins"))
 }
 
 fn failure(message: &str) -> ServingError {
@@ -399,7 +414,7 @@ fn placement_memory(placement: &Placement) -> usize {
 }
 
 async fn inspect_owned(
-    clock: Clock, request: InspectRequest, mut participant: StopParticipant, process_participant: StopParticipant,
+    clock: Clock, request: InspectRequest, message_bytes: usize, mut participant: StopParticipant, process_participant: StopParticipant,
     dropped: oneshot::Receiver<()>,
 ) -> Result<Inspection, Error> {
     let mut process = None;
@@ -413,7 +428,8 @@ async fn inspect_owned(
             Placement::Remote(address) => address.clone(),
         };
         let connected = connection.insert(Connection::open(&address, request.metadata_bytes.get()).await?);
-        let metadata = describe(connected).await.map_err(|error| {
+        let client = connected.client().max_encoding_message_size(message_bytes);
+        let metadata = describe(client).await.map_err(|error| {
             Error::Invalid(format!("Inspect Plugin Metadata: {error}; supply metadata within metadata_bytes and a reachable endpoint"))
         })?;
         super::validate_description(&metadata)?;

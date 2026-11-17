@@ -61,7 +61,7 @@ impl ProtobufOperation for Watch {
 
 impl Watch {
     pub(crate) async fn run_with(
-        context: ExecutionContext, request: host::PluginsWatchRequest, output: &(impl Events<host::PluginsWatchResponse> + Sync),
+        context: ExecutionContext, request: host::PluginsWatchRequest, output: &impl Events<host::PluginsWatchResponse>,
     ) -> Result<host::PluginsWatchResponse, ServingError> {
         admit(&context, Self::ID)?;
         let access = context.resource::<Access>().map_err(|_| ServingError::Catalog)?;

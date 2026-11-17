@@ -59,7 +59,7 @@ impl ProtobufOperation for LogsWatch {
 
 impl LogsWatch {
     pub(crate) async fn run_with(
-        context: ExecutionContext, request: LogsWatchRequest, output: &(impl Events<LogsWatchResponse> + Sync),
+        context: ExecutionContext, request: LogsWatchRequest, output: &impl Events<LogsWatchResponse>,
     ) -> Result<LogsWatchResponse, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;
         let access = access.0.get().ok_or(ServingError::Uninitialized)?;

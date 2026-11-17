@@ -59,7 +59,7 @@ impl ProtobufOperation for TraceEventsWatch {
 
 impl TraceEventsWatch {
     pub(crate) async fn run_with(
-        context: ExecutionContext, request: TraceEventsWatchRequest, output: &(impl Events<TraceEventsWatchResponse> + Sync),
+        context: ExecutionContext, request: TraceEventsWatchRequest, output: &impl Events<TraceEventsWatchResponse>,
     ) -> Result<TraceEventsWatchResponse, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;
         let access = access.0.get().ok_or(ServingError::Uninitialized)?;

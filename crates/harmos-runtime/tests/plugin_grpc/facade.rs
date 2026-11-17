@@ -18,10 +18,12 @@
 // Standard Library Imports
 use std::{
     num::NonZeroUsize,
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 
 // Third Party Imports
+use tokio::net::TcpListener;
 
 // Local Imports
 use super::{
@@ -30,9 +32,15 @@ use super::{
 };
 use harmos_runtime::{
     clock::Clock,
-    facade::plugins::{BindRequest, InspectRequest, LoadRequest, Placement, SettleRequest, StartSamplesRequest, StopSamplesRequest},
+    facade::plugins::{
+        BindRequest, InspectRequest, Inspection, LoadRequest, Placement, SettleRequest, StartSamplesRequest, StopSamplesRequest,
+    },
     facade::time::TimeGetRequest,
-    operations::CallContext,
+    operations::{
+        CallContext, ExecutionContext, HostContext, NativeOperation, OperationFactory, OperationPolicy, Registration, Resource,
+        ServingError,
+    },
+    plugin::grpc,
 };
 
 /* === Constants === */
@@ -43,11 +51,27 @@ use harmos_runtime::{
 
 /* === Structs === */
 
+struct InspectCallback;
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl NativeOperation for InspectCallback {
+    type Request = InspectRequest;
+    type Response = Inspection;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.inspect_callback";
+    const POLICY: OperationPolicy = <grpc::Load as NativeOperation>::POLICY;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
+
+    async fn run(context: ExecutionContext, request: InspectRequest, _: &()) -> Result<Inspection, ServingError> {
+        let host = context.resource::<HostContext>().map_err(|_| ServingError::Catalog)?;
+        host.for_call().plugins().inspect(request).await.map_err(|error| ServingError::Native(Arc::new(error)))
+    }
+}
 
 /* === Public Functions === */
 
@@ -112,10 +136,11 @@ async fn plugin_activation_through_operations() {
 async fn plugin_inspection_is_metadata_only_and_detaches() {
     let runtime = support::runtime(None).await;
     let remote = Remote::start().await;
+    let factory = OperationFactory::native::<InspectCallback>().unwrap();
+    runtime.register_batch(Registration::new(Default::default()).entry(factory)).await.unwrap();
     let metadata = runtime
-        .for_call(&CallContext::default())
-        .plugins()
-        .inspect(InspectRequest {
+        .operations
+        .call_native::<InspectCallback>(InspectRequest {
             placement: Placement::Remote(remote.address.clone()),
             settings: support::settings(),
             metadata_bytes: NonZeroUsize::new(1024 * 1024).unwrap(),
@@ -134,17 +159,22 @@ async fn plugin_inspection_refuses_oversized_and_invalid_metadata() {
     let runtime = support::runtime(None).await;
     let remote = Remote::start().await;
     let caller = runtime.for_call(&CallContext::default());
-    assert!(
-        caller
+    let (entered, release) = remote.delay_description();
+    let inspect_caller = caller.clone();
+    let placement = Placement::Remote(remote.address.clone());
+    let inspecting = tokio::spawn(async move {
+        inspect_caller
             .plugins()
             .inspect(InspectRequest {
-                placement: Placement::Remote(remote.address.clone()),
+                placement,
                 settings: support::settings(),
-                metadata_bytes: NonZeroUsize::new(1).unwrap()
+                metadata_bytes: NonZeroUsize::new(1).unwrap(),
             })
             .await
-            .is_err()
-    );
+    });
+    entered.await.unwrap();
+    release.send(()).unwrap();
+    assert!(inspecting.await.unwrap().is_err());
     remote.declarations(Default::default());
     assert!(
         caller
@@ -190,7 +220,7 @@ async fn plugin_inspection_cancellation_settles_the_connection() {
 #[tokio::test]
 async fn plugin_inspection_failed_connect_settles_the_owner() {
     let runtime = support::runtime(None).await;
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = Placement::Remote(listener.local_addr().unwrap().to_string());
     let peer = tokio::spawn(async move {
         let (socket, _) = listener.accept().await.unwrap();

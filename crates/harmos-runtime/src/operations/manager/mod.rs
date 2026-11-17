@@ -39,7 +39,7 @@ use std::collections::BTreeMap;
 #[cfg(feature = "grpc")]
 use std::sync::Weak;
 use std::sync::{
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
 // Third Party Imports
@@ -54,6 +54,7 @@ use super::instances::Instances;
 #[cfg(feature = "plugin-guest")]
 use crate::guest::host::plugin::PluginScope;
 use crate::operations::{OperationDefinition, RequestShape};
+use crate::plugin::grpc::facade;
 use crate::supervision::instance::Instance;
 use crate::{Error, Identifier, Result, operations::Lane, operations::Scope, state::Position};
 
@@ -94,6 +95,7 @@ pub(crate) struct WeakOperationManager {
 }
 
 pub(crate) struct Registry {
+    pub(crate) plugin_calls: OnceLock<facade::Host>,
     /// The Configured `plugins.load` Policy (`GrpcPluginSettings::policy`).
     pub(crate) plugin_load: super::OperationPolicy,
     pub(crate) access: Arc<harmos_operations::access::AccessAccess>,

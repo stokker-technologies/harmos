@@ -84,6 +84,8 @@ exports, manager privacy and private host transport are still governed by the pe
 Plugin calls reuse the process, connection and scoped-publication owners in
 `crates/harmos-runtime/src/plugin/grpc`. Opaque facade handles retain their original
 connection and runtime identity; they cannot retarget after reconnect or settlement.
+Handle clones share one allocation, including frozen metadata and bound context;
+sample tokens retain a distinct run identity owned by the scoped sample actor.
 A binding's `for_call()` retains its unit clock and cancellation fence. Scoped
 settlement shares the existing completion signal, so concurrent callers observe one
 outcome without a second lifecycle lock or registry.
@@ -1281,7 +1283,7 @@ Host wire and SDK root removal remain pending in the breaking group.
 
 ```rust,ignore
 let reply = runtime.for_call(&ctx).storage().append_samples(request).await?;
-let plugin = runtime.for_call(&ctx).plugins().load(PluginSource::Process(process)).await?;
+let plugin = runtime.for_call(&ctx).plugins().load(LoadRequest { placement, settings }).await?;
 ```
 
 Every typed facade method dispatches its registered native operation under that

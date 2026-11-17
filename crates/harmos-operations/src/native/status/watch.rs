@@ -59,7 +59,7 @@ impl ProtobufOperation for Watch {
 
 impl Watch {
     pub(crate) async fn run_with(
-        context: ExecutionContext, request: StatusWatchRequest, output: &(impl Events<StatusWatchResponse> + Sync),
+        context: ExecutionContext, request: StatusWatchRequest, output: &impl Events<StatusWatchResponse>,
     ) -> Result<StatusWatchResponse, ServingError> {
         let access = context.resource::<StatusAccess>().map_err(|_| ServingError::Catalog)?;
         let access = access.0.get().ok_or(ServingError::Uninitialized)?;
