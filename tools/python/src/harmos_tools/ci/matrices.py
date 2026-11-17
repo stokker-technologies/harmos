@@ -36,7 +36,7 @@ CHECKS = [
     },
     {
         "language": "rust",
-        "label": "Rust (unix)",
+        "label": "SDK / Rust (unix)",
         "platform": "unix",
         "runner": "ubuntu-24.04",
         "arguments": "--language rust",
@@ -45,7 +45,7 @@ CHECKS = [
     },
     {
         "language": "csharp",
-        "label": "C# (unix)",
+        "label": "SDK / C# (unix)",
         "platform": "unix",
         "runner": "ubuntu-24.04",
         "arguments": "--language csharp",
@@ -54,7 +54,7 @@ CHECKS = [
     },
     {
         "language": "rust",
-        "label": "Rust (windows)",
+        "label": "SDK / Rust (windows)",
         "platform": "windows",
         "runner": "windows-2022",
         "arguments": "--language rust",
@@ -63,7 +63,7 @@ CHECKS = [
     },
     {
         "language": "csharp",
-        "label": "C# (windows)",
+        "label": "SDK / C# (windows)",
         "platform": "windows",
         "runner": "windows-2022",
         "arguments": "--language csharp",
@@ -97,7 +97,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "integration",
-        "label": "Integration",
+        "label": "Runtime / Integration",
         "arguments": "--layer integration",
     },
     {
@@ -106,7 +106,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "acceptance",
-        "label": "Acceptance",
+        "label": "Runtime / Acceptance",
         "arguments": "--layer acceptance",
     },
     {
@@ -115,7 +115,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "system",
-        "label": "System",
+        "label": "Runtime / System",
         "arguments": "--layer system",
     },
     {
@@ -124,7 +124,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "integration",
-        "label": "Integration",
+        "label": "Runtime / Integration",
         "arguments": "--layer integration",
     },
     {
@@ -133,7 +133,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "acceptance",
-        "label": "Acceptance",
+        "label": "Runtime / Acceptance",
         "arguments": "--layer acceptance",
     },
     {
@@ -142,7 +142,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "system",
-        "label": "System",
+        "label": "Runtime / System",
         "arguments": "--layer system",
     },
 ]

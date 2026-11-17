@@ -27,7 +27,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    name: Plan / Freshness
+    name: Check / Nightly / Freshness
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -67,7 +67,7 @@ jobs:
   impact:
     needs: [freshness]
     if: needs.freshness.outputs.build == 'true'
-    name: Plan / Impact
+    name: Check / CI / Impact
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -84,7 +84,7 @@ jobs:
     env:
       MISE_ENABLE_TOOLS: python,uv
   docs:
-    name: Build / Documentation
+    name: Build / Docs
     needs: [freshness]
     if: needs.freshness.outputs.build == 'true'
     uses: ./.github/workflows/validate-build-docs.yml
@@ -183,7 +183,7 @@ jobs:
   bench_storage:
     needs: [freshness]
     if: needs.freshness.outputs.build == 'true'
-    name: Bench / Storage / ${{ matrix.platform }}
+    name: Bench / Storage (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:

@@ -100,7 +100,7 @@ jobs:
       matrix: ${{ fromJSON(inputs.check-matrix) }}
   test_csharp:
     if: inputs.selection == 'test'
-    name: Test / C# (${{ matrix.platform }})
+    name: Test / SDK / C# (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
@@ -517,7 +517,7 @@ jobs:
           container: ''
   prepare_test_fixtures:
     if: inputs.selection == 'prepare_test_fixtures'
-    name: Prepare / Test Fixtures (${{ matrix.platform }})
+    name: Build / Test Fixtures (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
     steps:
@@ -604,7 +604,7 @@ jobs:
           container: ''
   check_product:
     if: inputs.selection == 'check_product'
-    name: Check / Python${{ matrix.suffix }}
+    name: Check / ${{ matrix.suffix == '' && 'SDK / Python' || 'Generated' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -659,7 +659,7 @@ jobs:
           tools: python,uv
   test_unit:
     if: inputs.selection == 'test_unit'
-    name: Test / ${{ matrix.language }} / ${{ matrix.label }} (${{ matrix.platform }})
+    name: Test / Runtime / ${{ matrix.label }} (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
     steps:
@@ -730,7 +730,7 @@ jobs:
         - rust
   test:
     if: inputs.selection == 'test'
-    name: Test / ${{ matrix.language == 'python' && matrix.label || format('{0} / {1}', matrix.language, matrix.label) }} (${{ matrix.platform }})
+    name: Test / ${{ matrix.label }} (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
     steps:
@@ -844,7 +844,7 @@ jobs:
       CI_CACHE_PROFILE: bench
   coverage:
     if: inputs.selection == 'coverage'
-    name: Test / Rust / Coverage
+    name: Test / Runtime / Coverage (unix)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -892,7 +892,7 @@ jobs:
       MISE_ENABLE_TOOLS: dotnet,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov
   bench:
     if: inputs.selection == 'bench'
-    name: Bench / Rust / ${{ matrix.layer }}
+    name: Bench / Runtime / ${{ matrix.layer == 'unit' && 'Unit' || matrix.layer == 'integration' && 'Integration' || 'System' }} (unix)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

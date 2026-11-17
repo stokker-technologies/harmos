@@ -37,7 +37,7 @@ env:
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
   publish:
-    name: ${{ inputs.report && 'Nightly / Report' || 'Release / Publish' }}
+    name: ${{ inputs.report && 'Release / Report / Nightly' || 'Release / Publish / GitHub' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
