@@ -12,11 +12,14 @@ use harmos_protocol::host::OperationsListRequest;
 use harmos_protocol::host::OperationsListResponse;
 use harmos_protocol::host::TimeGetRequest;
 use harmos_protocol::host::TimeGetResponse;
+use harmos_protocol::host::TimeSleepRequest;
+use harmos_protocol::host::TimeSleepResponse;
 use harmos_protocol::host::plugins::SettingsListRequest;
 use harmos_protocol::host::plugins::SettingsListResponse;
 use harmos_protocol::model::DiscoveredOperation;
 use harmos_protocol::model::InstanceState;
 use harmos_protocol::model::ReadCut;
+use prost_types::Duration;
 use prost_types::Timestamp;
 use std::num::NonZeroUsize;
 pub enum HostOperation {
@@ -27,6 +30,7 @@ pub enum HostOperation {
     OperationsGet,
     PluginsSettingsList,
     TimeGet,
+    TimeSleep,
 }
 #[derive(Clone)]
 pub struct HostRoot {
@@ -82,6 +86,10 @@ pub struct HostPluginsSettingsListOptions {
 }
 #[derive(Default)]
 pub struct HostTimeGetOptions {
+    pub policy: Option<OperationPolicy>,
+}
+#[derive(Default)]
+pub struct HostTimeSleepOptions {
     pub policy: Option<OperationPolicy>,
 }
 #[derive(Clone)]
@@ -189,6 +197,14 @@ impl HostTimeResource {
         let request = TimeGetRequest {};
         let response: TimeGetResponse = self.context.call_with(request, options.policy).await?;
         response.now.ok_or_else(|| Error::Invalid("Read TimeGet: Missing Payload".into()))
+    }
+    pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse> {
+        self.sleep_with(duration, HostTimeSleepOptions::default()).await
+    }
+    pub async fn sleep_with(&self, duration: Duration, options: HostTimeSleepOptions) -> Result<TimeSleepResponse> {
+        let request = TimeSleepRequest { duration: Some(duration) };
+        let response: TimeSleepResponse = self.context.call_with(request, options.policy).await?;
+        Ok(response)
     }
 }
 #[derive(Clone)]

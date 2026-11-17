@@ -22,7 +22,6 @@ from google.protobuf.descriptor_pb2 import FileDescriptorSet
 # Local Imports
 import harmos_tools.build.resources.descriptor
 import harmos_tools.build.resources.rust
-from harmos_tools.source.protocol import narrow_callers
 
 # Type Checking Imports
 
@@ -63,23 +62,6 @@ class RustSdkCallers(unittest.TestCase):
         self.assertNotIn("use harmos_protocol::host::StatusGetRequest;", context)
         self.assertIn("use harmos_protocol::host::StatusGetRequest;", client)
         self.assertIn("pub async fn create(", client)
-
-    def test_narrowing_removes_only_the_disallowed_rust_surface(self) -> None:
-        for callers, absent, present in [("PLUGINS", "client", "context"), ("CLIENTS", "context", "client")]:
-            descriptors = FileDescriptorSet.FromString(self.descriptors.SerializeToString())
-            narrow_callers(descriptors, {"harmos.host.v1.Time/Get": callers})
-            methods = harmos_tools.build.resources.descriptor.table(descriptors)
-            matching = [method["face"] for method in methods if method["request"] == "harmos.host.v1.TimeGetRequest"]
-            self.assertNotIn(absent, matching)
-            self.assertIn(present, matching)
-            harmos_tools.build.resources.rust.client(self.output, [method for method in methods if method["face"] == "client"])
-            harmos_tools.build.resources.rust.host(self.output, [method for method in methods if method["face"] == "context"])
-            client = (self.output / "sdk/rust/src/connection/resources.rs").read_text()
-            context = (self.output / "sdk/rust/src/plugin/host.rs").read_text()
-            self.assertEqual("use harmos_protocol::host::TimeGetRequest;" in client, callers == "CLIENTS")
-            self.assertEqual("use harmos_protocol::host::TimeGetRequest;" in context, callers == "PLUGINS")
-            self.assertIn("use harmos_protocol::host::TimeSleepRequest;", client)
-            self.assertIn("use harmos_protocol::host::TimeSleepRequest;", context)
 
 
 # === Public Functions === #

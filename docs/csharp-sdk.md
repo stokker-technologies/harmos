@@ -50,8 +50,8 @@ value map and is available only to clients.
 The generator reads each operation's callers option: shared operations appear on
 both the client and plugin context; client administration stays on the client.
 `Time`, `Operations` and invocation Get/Cancel/Watch are shared. Invocation Create
-is client-only. A product's declarative composition may narrow these audiences;
-see [Product Composition and Narrowing](architecture.md#product-wrappers-and-the-native-facade).
+is client-only. Product descriptors own these audiences; runtime assembly has no
+caller overrides. See [Product Wrappers and the Native Facade](architecture.md#product-wrappers-and-the-native-facade).
 The host remains responsible for caller authorization.
 
 ## Interval Observers
@@ -113,7 +113,7 @@ exercise settings, clock, correlation, failures, watch demand, cancellation,
 window columns and part splitting without a Rust host. Native Linux and Windows validation remain separate proofs.
 
 `mise -C sdk/csharp run test:tooling -- --exact tools.python.tests.integration.test_csharp_tooling`
-checks C# generation, caller narrowing and fixture staging. Generated roots and
+checks C# generation, declared audiences and fixture staging. Generated roots and
 wire bindings are committed; `mise -C sdk/csharp run generate` regenerates them,
 and `check` compares output without rewriting sources.
 

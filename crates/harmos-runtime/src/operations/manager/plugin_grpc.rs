@@ -42,7 +42,7 @@ pub(crate) struct ChildInvocation {
     pub streams: Option<harmos_operations::execution::operations::WireStreams>,
 }
 
-pub(crate) struct Admission {
+pub(crate) struct GrpcAdmission {
     registry: Weak<Registry>,
     entries: Vec<Arc<Entry>>,
     manager: Manager,
@@ -58,7 +58,7 @@ pub(crate) struct Admission {
 
 /* === Implementations === */
 
-impl Admission {
+impl GrpcAdmission {
     pub(crate) fn commit(&mut self) -> Result<()> {
         if self.staged {
             self.previous = self.manager.reserve_inner(&self.entries, self.replacing.as_deref(), true)?;
@@ -88,7 +88,7 @@ impl Admission {
     }
 }
 
-impl Drop for Admission {
+impl Drop for GrpcAdmission {
     fn drop(&mut self) {
         if !self.sealed
             && !self.staged
@@ -168,12 +168,12 @@ impl Manager {
         self.reserve(&entries)
     }
 
-    pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<Admission, grpc::Error> {
+    pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<GrpcAdmission, grpc::Error> {
         self.prepare_grpc_admission(activation, lane, false)
     }
     pub(crate) fn prepare_grpc_admission(
         &self, activation: &Activation, lane: &'static str, replace: bool,
-    ) -> std::result::Result<Admission, grpc::Error> {
+    ) -> std::result::Result<GrpcAdmission, grpc::Error> {
         let catalog = activation.description.declarations.as_ref().unwrap();
         let mut entries = Vec::new();
         for contract in &catalog.operations {
@@ -219,7 +219,7 @@ impl Manager {
         }
         self.reserve_inner(&entries, replace.then_some(activation.owner()), !replace)
             .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
-        Ok(Admission {
+        Ok(GrpcAdmission {
             registry: Arc::downgrade(&self.registry),
             entries,
             manager: self.clone(),

@@ -13,7 +13,7 @@
 
 /* === Re-Exports === */
 
-pub use crate::execution::setup::{ApplicationConfiguration, AssemblyError, SetupConfiguration};
+pub use crate::execution::setup::{ApplicationConfiguration, SetupConfiguration};
 
 /* === Imports === */
 

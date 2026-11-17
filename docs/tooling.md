@@ -300,27 +300,27 @@ configuration = Configuration(
 generate(
     root=root,
     descriptors=root / "protocol/descriptors.bin",
-    composition=root / "protocol/composition.toml",
     configuration=configuration,
 )
 ```
 
-Inputs are a dependency-complete `FileDescriptorSet`, a composition TOML containing
-`libraries` (descriptor paths and package lists) and optional `callers` restrictions,
-the output repository root, its top-level namespace and the restored `Grpc.Tools`
-compiler directory. `rustfmt` and `python_style` select the product formatter inputs;
+Inputs are a dependency-complete `FileDescriptorSet`, the output repository root,
+its top-level namespace and the restored `Grpc.Tools` compiler directory.
+Each operation declares its audience in its descriptor; no composition file or
+runtime override changes it. `rustfmt` and `python_style` select the product formatter inputs;
 their defaults are `rustfmt.toml` and `sdk/python/ruff.toml` below the supplied root.
 Compiler versions remain product pins. `rust_selectors` selects
 positional fields per request; other fields become defaultable call options.
 `client_required_fields` supplies explicit required selectors for all client languages.
 Neither setting changes the wire descriptor's presence. `library` can supply the
-unmodified library descriptor inventory for stable public payload ownership after
-caller narrowing; full-SDK generation otherwise snapshots its supplied descriptors
-before narrowing. Each language renderer also accepts `configuration` and explicit
+library descriptor inventory for stable public payload ownership; full-SDK
+generation otherwise uses its supplied descriptors. Each language renderer also accepts `configuration` and explicit
 target paths for focused composition. No product package is imported by the tool. Complete-SDK generation targets the
 existing SDK adapter layout: Rust's `crate::message::Wire`, Python's `_context` and
 `_plugin`, C#'s `Context`/`Plugin`, and the namespace's C++ umbrella header. Products
 supply these adapters; the shared tool owns their descriptor-derived projections.
+Generated barrels retain the original `Wire`, `ClientRoot` and `Window` type names.
+Callers qualify clashing names instead of renaming imports.
 
 `check=True` renders into a temporary directory and compares the complete output
 inventory, reporting missing, changed and obsolete files without rewriting sources.
@@ -328,7 +328,7 @@ Normal generation retires obsolete output and writes tracked files under `sdk/`.
 Focused descriptor fixtures run with
 `mise run test -- --language python --exact tests.integration.test_shared_generator_preserves_contracts`.
 They cover nested values/enums, presence, repeated values, language keywords,
-audience narrowing and per-call metadata/deadlines.
+declared audiences and per-call metadata/deadlines.
 
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
@@ -342,11 +342,11 @@ drives all four languages; no per-operation client layer is maintained. Compose
 library and product descriptors with:
 
 ```sh
-mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --composition path/to/composition.toml --output path/to/generated/client.rs --namespace application
+mise run generate -- --sdk rust --descriptors path/to/product-descriptors.bin --output path/to/generated/client.rs --namespace application
 ```
 
 The selected language receives both client and plugin context roots from one
-descriptor table after caller narrowing. Other languages use the same command
+descriptor table using each declared audience. Other languages use the same command
 with their SDK selector and output filename; C++ also emits the plugin implementation.
 Product protobuf bindings retain their qualified message identity. Rust product
 roots take the existing client's `transport_handle()`. Python generates explicit
@@ -596,7 +596,7 @@ build prerequisites; `bench --extended` consumes `build --artifact bench --exten
 ### C# Plugin SDK
 
 The [C# SDK Guide](csharp-sdk.md) covers public imports, client calls, plugin
-settings, callers, composition and the .NET 10 build/test/check/package tasks.
+settings, declared callers and the .NET 10 build/test/check/package tasks.
 Use `sdk/csharp/Harmos.slnx` for the SDK, examples and conformance fixture.
 Root task selections with `--language csharp` delegate to the SDK's mise verbs.
 `mise -C sdk/csharp run build:rust-fixture` stages the C# fixture for Rust consumers.

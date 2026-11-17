@@ -20,6 +20,7 @@ public enum HostOperation
   OperationsGet,
   PluginsSettingsList,
   TimeGet,
+  TimeSleep,
 }
 internal static class HostContracts
 {
@@ -35,6 +36,7 @@ public static class HostRequirements
     HostOperation.OperationsGet => plugin.Requires(Harmos.Plugins.HostOperation.OperationsGet),
     HostOperation.PluginsSettingsList => plugin.Requires(Harmos.Plugins.HostOperation.PluginsSettingsList),
     HostOperation.TimeGet => plugin.Requires(Harmos.Plugins.HostOperation.TimeGet),
+    HostOperation.TimeSleep => plugin.Requires(Harmos.Plugins.HostOperation.TimeSleep),
     _ => throw new ArgumentOutOfRangeException(nameof(operation), "Declare Host Requirement: Unknown Operation")
   };
 }
@@ -90,6 +92,10 @@ public sealed class HostTimeResource(Context context)
   public async Task<Timestamp> Get(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
     return await context.Host.Time.Get(policy, cancellationToken);
+  }
+  public async Task<TimeSleepResponse> Sleep(Duration duration, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  {
+    return await context.Host.Time.Sleep(duration, policy, cancellationToken);
   }
 }
 public sealed class PluginContext(Harmos.Plugins.Context context)

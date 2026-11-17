@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from enum import Enum
 from typing import TYPE_CHECKING, cast
 
+from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -17,7 +18,7 @@ from harmos._wire.host.v1.invocations_pb2 import (
 )
 from harmos._wire.host.v1.operations_pb2 import OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse
 from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListRequest, SettingsListResponse
-from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse
+from harmos._wire.host.v1.time_pb2 import TimeGetRequest, TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.model.v1.invocation_pb2 import InstanceState
 from harmos._wire.model.v1.operation_pb2 import VISIBILITY_PUBLIC, DiscoveredOperation
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
@@ -35,6 +36,7 @@ class HostOperation(Enum):
     OPERATIONS_GET = "harmos.host.v1.Operations/Get"
     PLUGINS_SETTINGS_LIST = "harmos.host.v1.plugins.Settings/List"
     TIME_GET = "harmos.host.v1.Time/Get"
+    TIME_SLEEP = "harmos.host.v1.Time/Sleep"
 
 
 _INVOCATIONS_GET = Operation(
@@ -56,6 +58,7 @@ _PLUGINS_SETTINGS_LIST = Operation(
     HostOperation.PLUGINS_SETTINGS_LIST.value, SettingsListRequest, SettingsListResponse, visibility=VISIBILITY_PUBLIC, watch=False
 )
 _TIME_GET = Operation(HostOperation.TIME_GET.value, TimeGetRequest, TimeGetResponse, visibility=VISIBILITY_PUBLIC, watch=False)
+_TIME_SLEEP = Operation(HostOperation.TIME_SLEEP.value, TimeSleepRequest, TimeSleepResponse, visibility=VISIBILITY_PUBLIC, watch=False)
 
 
 def host_requirement(operation: HostOperation) -> Operation[Message, Message]:
@@ -74,6 +77,8 @@ def host_requirement(operation: HostOperation) -> Operation[Message, Message]:
             return cast(Operation[Message, Message], _PLUGINS_SETTINGS_LIST)
         case HostOperation.TIME_GET:
             return cast(Operation[Message, Message], _TIME_GET)
+        case HostOperation.TIME_SLEEP:
+            return cast(Operation[Message, Message], _TIME_SLEEP)
     raise ValueError("Declare Host Requirement: Unknown Operation")
 
 
@@ -160,6 +165,11 @@ class HostTimeResource:
         if not response.HasField("now"):
             raise ValueError("Read TIME_GET: Missing Payload")
         return response.now
+
+    async def sleep(self, duration: Duration, *, policy: OperationPolicy | None = None) -> TimeSleepResponse:
+        request = TimeSleepRequest(duration=duration)
+        response = await self._context.call(_TIME_SLEEP, request, policy=policy)
+        return response
 
 
 class PluginContext:

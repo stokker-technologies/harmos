@@ -29,7 +29,7 @@ from google.protobuf.message_factory import GetMessageClass
 # Local Imports
 from harmos_tools.build.resources import cpp, csharp, descriptor, python, rust, sdk
 from harmos_tools.build.resources.configuration import Configuration
-from harmos_tools.source.protocol import caller_options, narrow_callers
+from harmos_tools.source.protocol import caller_options
 
 # Type Checking Imports
 
@@ -48,19 +48,21 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
     def test_nested_values_presence_audiences_and_call_options(self) -> None:
         # Assemble a Product Contract With the Real Caller Extension.
         library = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        declarations = caller_options(library)
+        pool = DescriptorPool()
+        pending = {file.name: file for file in library.file}
+        while pending:
+            ready = [file for file in pending.values() if all(name not in pending for name in file.dependency)]
+            for file in ready:
+                pool.AddSerializedFile(file.SerializeToString())
+                del pending[file.name]
+        extension = pool.FindExtensionByName("harmos.model.v1.callers")
+        assert extension.enum_type is not None
+        options_type = GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
         options = {}
-        identity = next(identity for identity, audience in declarations.items() if audience == "ALL")
         for audience in ("CLIENTS", "PLUGINS", "ALL"):
-            selected = FileDescriptorSet.FromString(library.SerializeToString())
-            narrow_callers(selected, {identity: audience})
-            options[audience] = next(
-                method.options
-                for file in selected.file
-                for service in file.service
-                for method in service.method
-                if f"{file.package}.{service.name}/{method.name}" == identity
-            )
+            declared = options_type()
+            cast(Any, declared).Extensions[extension] = extension.enum_type.values_by_name[audience].number
+            options[audience] = declared.SerializeToString()
         schema = FileDescriptorSet.FromString(library.SerializeToString())
         file = schema.file.add(name="example/host/v1/nested/jobs.proto", package="example.host.v1.nested", syntax="proto3")
         file.dependency.append("harmos/model/v1/callers.proto")
@@ -88,7 +90,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
             method = service.method.add(
                 name=name, input_type=".example.host.v1.nested.Envelope.Input", output_type=".example.host.v1.nested.Envelope.Output"
             )
-            method.options.CopyFrom(options[audience])
+            method.options.ParseFromString(options[audience])
 
         # Preserve Presence, Nested Enum Names and Independent Audiences.
         methods = [method for method in descriptor.table(schema) if method["owner"] == "example"]
@@ -103,10 +105,6 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         self.assertEqual(modes["csharp"], "Example.Clients.Envelope.Types.Mode")
         self.assertIn("example.host.v1.nested.Envelope.Input", descriptor.payload_audiences(schema))
         self.assertEqual(descriptor.payload_audiences(schema)["example.host.v1.nested.Envelope"], {"client", "plugin"})
-        narrowed = FileDescriptorSet.FromString(schema.SerializeToString())
-        narrow_callers(narrowed, {"example.host.v1.nested.Jobs/Delete": "CLIENTS"})
-        selected = [method for method in descriptor.table(narrowed) if method["owner"] == "example" and method["method"] == "Delete"]
-        self.assertEqual([method["face"] for method in selected], ["client"])
         self.assertEqual(caller_options(schema)["example.host.v1.nested.Jobs/Delete"], "ALL")
 
         # Render All Four Languages Without Reading a Product Checkout.
@@ -136,8 +134,6 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         source.mkdir()
         descriptor_path = source / "descriptors.bin"
         descriptor_path.write_bytes(schema.SerializeToString())
-        composition = source / "composition.toml"
-        composition.write_text('[[libraries]]\ndescriptors = "descriptors.bin"\npackages = ["harmos.model.v1"]\n', encoding="utf-8")
         full = Configuration(
             namespace="example",
             library=library,
@@ -148,7 +144,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         projection = patch("harmos_tools.build.resources.sdk.csharp_protocol.protocols")
         compiler = projection.start()
         self.addCleanup(projection.stop)
-        sdk.generate(root=source, descriptors=descriptor_path, composition=composition, configuration=full)
+        sdk.generate(root=source, descriptors=descriptor_path, configuration=full)
         self.assertEqual(compiler.call_args.kwargs["descriptors"], descriptor_path)
         self.assertEqual(compiler.call_args.kwargs["tools"], full.csharp_tools)
         host_source = (source / "sdk/cpp/src/generated/host.cpp").read_text()
@@ -161,15 +157,13 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         self.assertIn("request.Count = count.Value", host_source)
         self.assertIn("context.CallAsync(HostContracts.NestedJobsDelete", host_source)
         inventory = {path: (source / path).read_bytes() for path in sdk.inventory(source, full)}
-        sdk.generate(True, root=source, descriptors=descriptor_path, composition=composition, configuration=full)
+        sdk.generate(True, root=source, descriptors=descriptor_path, configuration=full)
         self.assertEqual(inventory, {path: (source / path).read_bytes() for path in sdk.inventory(source, full)})
         obsolete = source / "sdk/cpp/include/example/_generated/obsolete.hpp"
         obsolete.write_bytes(b"obsolete")
-        self.assertRaises(
-            ValueError, sdk.generate, True, root=source, descriptors=descriptor_path, composition=composition, configuration=full
-        )
+        self.assertRaises(ValueError, sdk.generate, True, root=source, descriptors=descriptor_path, configuration=full)
         self.assertTrue(obsolete.exists())
-        sdk.generate(root=source, descriptors=descriptor_path, composition=composition, configuration=full)
+        sdk.generate(root=source, descriptors=descriptor_path, configuration=full)
         self.assertFalse(obsolete.exists())
 
         # Execute the Generated Python Call Against Real Protobuf Values.

@@ -18,7 +18,6 @@ import subprocess
 import sys
 import tarfile
 import time
-import tomllib
 from argparse import ArgumentParser
 from pathlib import Path
 from subprocess import PIPE, STDOUT
@@ -140,7 +139,6 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--fixture-client", type=Path)
     parser.add_argument("--fixture-descriptors", type=Path)
-    parser.add_argument("--fixture-composition", type=Path)
     options = parser.parse_args()
     if options.fixture_client:
         from google.protobuf.descriptor_pb2 import FileDescriptorSet
@@ -148,17 +146,10 @@ def main() -> None:
         import harmos_tools.build.resources.cpp
         import harmos_tools.build.resources.descriptor
 
-        from ..source.protocol import narrow_callers
-
         if options.fixture_descriptors is None:
             parser.error("C++ fixture client requires --fixture-descriptors")
         library = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
         fixture = FileDescriptorSet.FromString(options.fixture_descriptors.read_bytes())
-        if options.fixture_composition:
-            # Read Structured Input
-            text = options.fixture_composition.read_text(encoding="utf-8")
-            composition = tomllib.loads(text)
-            narrow_callers(library, composition.get("callers", {}))
         methods = harmos_tools.build.resources.descriptor.table(library) + harmos_tools.build.resources.descriptor.table(fixture)
         harmos_tools.build.resources.cpp.client(
             ROOT, [method for method in methods if method["face"] == "client"], namespace="fixture", target=options.fixture_client

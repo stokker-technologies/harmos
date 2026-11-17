@@ -29,7 +29,7 @@ operations and carriers. Caller options determine the generated client and conte
 resources. The [Schematic client](../examples/schematic/protocol/examples/client.rs)
 uses the application's generated resource root.
 
-The shared client-composition fixture is
+The shared descriptor fixture is
 [annotations.proto](../sdk/tests/fixtures/client/proto/application/host/v1/plugins/annotations.proto).
 It adds application-owned `Annotations.Get` under the library `Plugins` parent,
 alongside the sibling application `Jobs` root:

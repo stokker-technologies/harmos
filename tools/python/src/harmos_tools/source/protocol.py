@@ -46,37 +46,6 @@ def caller_options(descriptors: FileDescriptorSet) -> dict[str, str]:
     return _read_callers(descriptors, pool)
 
 
-def narrow_callers(descriptors: FileDescriptorSet, overrides: dict[str, str]) -> None:
-    """Apply Product Assembly Restrictions to the Generator's Descriptor Copy."""
-    pool = _descriptor_inventory(descriptors)
-    declared = _read_callers(descriptors, pool)
-    audiences = {"CLIENTS": {"CLIENTS"}, "PLUGINS": {"PLUGINS"}, "ALL": {"CLIENTS", "PLUGINS"}}
-    for identity, selected in overrides.items():
-        original = declared.get(identity)
-        if original is None or selected not in audiences or not audiences[selected] <= audiences[original]:
-            raise ValueError(
-                f"Narrow {identity}: Callers Must Be a Subset of the Declaration; "
-                "Correct the source protocol declarations or explicit public exports before regenerating"
-            )
-    # The Extension Number and Its Definition Are Owned by the Descriptor, Not This Tool.
-    extension = pool.FindExtensionByName("harmos.model.v1.callers")
-    if extension.enum_type is None:
-        raise ValueError(
-            "Protocol Callers: Option Must Be an Enum; "
-            "Correct the source protocol declarations or explicit public exports before regenerating"
-        )
-    options_type = GetMessageClass(pool.FindMessageTypeByName("google.protobuf.MethodOptions"))
-    for file in descriptors.file:
-        for service in file.service:
-            for method in service.method:
-                selected = overrides.get(f"{file.package}.{service.name}/{method.name}")
-                if selected is None:
-                    continue
-                options = cast(Any, options_type.FromString(method.options.SerializeToString()))
-                options.Extensions[extension] = extension.enum_type.values_by_name[selected].number
-                method.options.ParseFromString(options.SerializeToString())
-
-
 def main() -> None:
     check_public_surfaces(Path(__file__).resolve().parents[5])
     scratch_directory = tempfile.TemporaryDirectory()

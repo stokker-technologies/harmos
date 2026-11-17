@@ -48,7 +48,6 @@ def parse(arguments: list[str] | None = None) -> tuple[argparse.ArgumentParser, 
     generate.add_argument("--descriptors", type=Path, action="append", default=[])
     generate.add_argument("--output", type=Path)
     generate.add_argument("--namespace", default="harmos")
-    generate.add_argument("--composition", type=Path)
     generate.add_argument("--sdk", choices=("python", "rust", "csharp", "cpp"))
     for name in ("format", "lint", "check"):
         command = commands.add_parser(name)

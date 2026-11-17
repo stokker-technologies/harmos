@@ -111,7 +111,6 @@ def clients(root: Path, *, check: bool = False) -> None:
         root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs",
         "fixture",
         language="csharp",
-        composition=root / "sdk/tests/fixtures/client/composition.toml",
         check=check,
     )
 

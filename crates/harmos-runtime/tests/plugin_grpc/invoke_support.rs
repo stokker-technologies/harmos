@@ -15,7 +15,7 @@
 use std::{process::Stdio, sync::Arc, time::Duration};
 
 // Third Party Imports
-use prost::Message as _;
+use prost::Message;
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     net::{TcpListener, TcpStream},
@@ -152,21 +152,15 @@ impl HostFixture {
     }
 
     pub async fn with_clock(source: Option<harmos_runtime::clock::Clock>) -> Self {
-        Self::configured(source, None, std::num::NonZeroUsize::new(4096).unwrap(), None).await
+        Self::configured(source, std::num::NonZeroUsize::new(4096).unwrap(), None).await
     }
 
     pub async fn with_middleware(middleware: Arc<dyn harmos_runtime::operations::middleware::Middleware>) -> Self {
-        Self::configured(None, None, std::num::NonZeroUsize::new(4096).unwrap(), Some(middleware)).await
+        Self::configured(None, std::num::NonZeroUsize::new(4096).unwrap(), Some(middleware)).await
     }
 
-    pub async fn with_composition(
-        source: harmos_runtime::clock::Clock, composition: &str, preparation_bytes: std::num::NonZeroUsize,
-    ) -> Self {
-        Self::configured(Some(source), Some(composition), preparation_bytes, None).await
-    }
-
-    async fn configured(
-        source: Option<harmos_runtime::clock::Clock>, composition: Option<&str>, preparation_bytes: std::num::NonZeroUsize,
+    pub(super) async fn configured(
+        source: Option<harmos_runtime::clock::Clock>, preparation_bytes: std::num::NonZeroUsize,
         middleware: Option<Arc<dyn harmos_runtime::operations::middleware::Middleware>>,
     ) -> Self {
         let clock = support::Manual::new();
@@ -175,9 +169,6 @@ impl HostFixture {
         let runtime = crate::support::booted(Default::default(), |setup| {
             if let Some(middleware) = middleware {
                 setup.settings().operation_middleware(middleware);
-            }
-            if let Some(composition) = composition {
-                setup.composition(composition).unwrap();
             }
             setup.settings().clock(source.unwrap_or_else(|| harmos_runtime::clock::Clock::with_clock(clock.clone())));
             setup.resource::<Signals>(signals.clone());

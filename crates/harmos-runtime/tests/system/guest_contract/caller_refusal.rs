@@ -49,7 +49,7 @@ use std::{sync::Arc, time::SystemTime};
 #[tokio::test]
 async fn guest_import_preserves_the_wrong_caller_failure() {
     let _report = crate::report::system();
-    // Narrow the Host Operation Before Admitting the Guest's Matching Requirement.
+    // A Client-Only Operation Refuses the Guest Caller.
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let lane = Lane::default();
     let (storage, entries, root) = support::entries();
@@ -59,9 +59,9 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
         setup.settings().storage(&storage).plugins(entries.clone());
         setup.settings().clock(clock);
         setup.settings().register(crate::support::catalog());
+        setup.catalog(harmos_runtime::catalog::lifecycle_catalog(), lane);
         setup.operation(OperationFactory::protobuf::<support::Publisher>().unwrap(), lane);
         setup.operation(OperationFactory::protobuf::<support::Provider>().unwrap(), lane);
-        setup.composition("[callers]\n\"harmos.host.v1.Time/Get\" = \"CLIENTS\"\n").unwrap();
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(4096),
             ..Default::default()
@@ -80,7 +80,7 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
     let failure = Failure::from(error.failure().unwrap());
     assert_eq!(failure.classification(), Classification::Refused);
     assert_eq!(failure.code, harmos_operations::WRONG_CALLER.to_string());
-    assert_eq!(failure.operation, "harmos.host.v1.Time/Get");
+    assert_eq!(failure.operation, "harmos.host.v1.Invocations/Create");
     assert_eq!(failure.action, "Call");
     assert!(failure.message.contains(&failure.operation));
 

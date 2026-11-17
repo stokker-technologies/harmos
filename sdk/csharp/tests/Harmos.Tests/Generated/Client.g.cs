@@ -1045,6 +1045,26 @@ public sealed class TimeResource
   {
     this.invoker = invoker;
   }
+  public async Task<Timestamp> Get(CallOptions context = default)
+  {
+    var request = new TimeGetRequest
+    {
+    };
+    var method = new Method<TimeGetRequest, TimeGetResponse>(MethodType.Unary, "harmos.host.v1.Time", "Get",
+        Marshallers.Create<TimeGetRequest>(value => value.ToByteArray(), bytes => TimeGetRequest.Parser.ParseFrom(bytes)),
+        Marshallers.Create<TimeGetResponse>(value => value.ToByteArray(), bytes => TimeGetResponse.Parser.ParseFrom(bytes)));
+    using var call = invoker.AsyncUnaryCall(method, null, context, request);
+    TimeGetResponse response;
+    try
+    {
+      response = await call.ResponseAsync;
+    }
+    catch (RpcException error)
+    {
+      throw new RpcException(new Status(error.StatusCode, "Call time.get: " + error.Status.Detail), error.Trailers);
+    }
+    return response.Now ?? throw new InvalidOperationException("Read Time.Get: Missing Payload");
+  }
   public async Task<TimeSleepResponse> Sleep(Duration duration, CallOptions context = default)
   {
     var request = new TimeSleepRequest

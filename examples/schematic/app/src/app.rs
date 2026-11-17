@@ -14,7 +14,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::Error as IoError;
+use std::io;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::result::Result;
@@ -64,7 +64,7 @@ pub struct SchematicEditor;
 
 impl Lifecycle for SchematicEditor {
     type Config = Option<LaunchConfig>;
-    type Error = IoError;
+    type Error = io::Error;
     type Context = Startup<Self>;
 
     async fn prepare(config: Self::Config, setup: &mut Setup<Self>) -> Result<Self, Self::Error> {
@@ -73,14 +73,13 @@ impl Lifecycle for SchematicEditor {
         {
             std::fs::create_dir_all(config.settings.recordings())?;
             let root = std::fs::canonicalize(config.settings.recordings())?;
-            let storage = crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(IoError::other)?;
+            let storage =
+                crate::services::queries::attach(setup, manager::catalog(), config.settings.storage()).map_err(io::Error::other)?;
             let settings = config.settings.plugins(root.join("plugins"));
             setup.resource(settings.clone());
-            let manager = Manager::new(storage, settings).map_err(IoError::other)?;
+            let manager = Manager::new(storage, settings).map_err(io::Error::other)?;
             setup.settings().plugins(manager.clone());
         }
-
-        setup.composition(include_str!("../../protocol/composition.toml")).map_err(IoError::other)?;
 
         let settings = harmos_runtime::operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(64 * 1024).unwrap()),
@@ -89,7 +88,7 @@ impl Lifecycle for SchematicEditor {
         setup
             .settings()
             .operation_settings(settings)
-            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(IoError::other)?);
+            .lanes(harmos_runtime::operations::LaneSet::new([crate::lanes::ANALYSIS]).map_err(io::Error::other)?);
 
         setup.settings().register(transactions_state_catalog()).register(records_registry()).register(streams::stream_definitions());
         setup.resource::<schematic_operations::schematic::upload::AnalysisResources>(Arc::new(Default::default()));
@@ -115,10 +114,10 @@ pub async fn launch(document: Document, config: &Settings) -> Result<Arc<Runtime
         plugins: true,
     };
     let runtime = Arc::new(Runtime::launch(origin, Some(config)).await?);
-    let manager = runtime.operations.deref().context().resource::<Manager>().map_err(IoError::other)?;
+    let manager = runtime.operations.deref().context().resource::<Manager>().map_err(io::Error::other)?;
     if let Err(error) = Box::pin(manager.start(&runtime)).await {
-        runtime.shutdown().await.map_err(IoError::other)?;
-        return Err(IoError::other(error).into());
+        runtime.shutdown().await.map_err(io::Error::other)?;
+        return Err(io::Error::other(error).into());
     }
     Ok(runtime)
 }

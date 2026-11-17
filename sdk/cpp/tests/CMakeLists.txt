@@ -29,7 +29,6 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
     COMMAND "${Python3_EXECUTABLE}" -m harmos_tools.build.cpp
         --fixture-client "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
         --fixture-descriptors "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-        --fixture-composition "${fixture_root}/../composition.toml"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/../.."
     DEPENDS
         "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/build/resource_roots.py"
@@ -39,7 +38,6 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
         "${PROJECT_SOURCE_DIR}/../../tools/python/src/harmos_tools/source/protocol.py"
         "${PROJECT_SOURCE_DIR}/.clang-format"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-        "${fixture_root}/../composition.toml"
         "${PROJECT_SOURCE_DIR}/../../crates/harmos-protocol/src/descriptors.bin"
     VERBATIM)
 add_executable(harmos-cpp-tests unit/catalog.cpp unit/client_root.cpp unit/client_call_context.cpp unit/columns.cpp unit/samples.cpp

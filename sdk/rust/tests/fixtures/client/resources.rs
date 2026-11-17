@@ -47,6 +47,8 @@ use harmos_protocol::host::StatusWatchResponse;
 use harmos_protocol::host::StreamIdentity;
 use harmos_protocol::host::StreamsListRequest;
 use harmos_protocol::host::StreamsListResponse;
+use harmos_protocol::host::TimeGetRequest;
+use harmos_protocol::host::TimeGetResponse;
 use harmos_protocol::host::TimeSleepRequest;
 use harmos_protocol::host::TimeSleepResponse;
 use harmos_protocol::host::access::CertificatesCreateRequest;
@@ -85,6 +87,7 @@ use harmos_protocol::model::Receipt;
 use harmos_protocol::model::SettingValues;
 use prost_reflect::ReflectMessage;
 use prost_types::Duration;
+use prost_types::Timestamp;
 use tonic::codegen::http::uri::PathAndQuery;
 #[derive(Default)]
 pub struct JobsStartOptions {
@@ -591,6 +594,20 @@ impl Clone for StreamsListOptions {
     fn clone(&self) -> Self {
         Self {
             schema: self.schema.clone(),
+            context: CallOptions {
+                metadata: self.context.metadata.clone(),
+                timeout: self.context.timeout,
+            },
+        }
+    }
+}
+#[derive(Default)]
+pub struct TimeGetOptions {
+    pub context: CallOptions,
+}
+impl Clone for TimeGetOptions {
+    fn clone(&self) -> Self {
+        Self {
             context: CallOptions {
                 metadata: self.context.metadata.clone(),
                 timeout: self.context.timeout,
@@ -1505,6 +1522,24 @@ pub struct Time {
 impl Time {
     pub fn new(client: ClientTransport) -> Self {
         Self { client }
+    }
+    pub async fn get(&self) -> Result<Timestamp, tonic::Status> {
+        self.get_with(TimeGetOptions::default()).await
+    }
+    pub async fn get_with(&self, options: TimeGetOptions) -> Result<Timestamp, tonic::Status> {
+        let value = TimeGetRequest {};
+        let request = options.context.request(value);
+        let response = self
+            .client
+            .unary::<TimeGetRequest, TimeGetResponse>(
+                PathAndQuery::from_static("/harmos.host.v1.Time/Get"),
+                request,
+                TimeGetResponse::default().descriptor(),
+            )
+            .await
+            .map_err(|error| action_error("time.get", error))?;
+        let response = response.into_inner();
+        response.now.ok_or_else(|| tonic::Status::data_loss("Read Time.Get: Missing Payload"))
     }
     pub async fn sleep(&self, duration: Duration) -> Result<TimeSleepResponse, tonic::Status> {
         self.sleep_with(duration, TimeSleepOptions::default()).await

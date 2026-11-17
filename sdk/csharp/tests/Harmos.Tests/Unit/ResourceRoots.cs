@@ -10,8 +10,6 @@ using Harmos.Clients;
 using Harmos.Plugins;
 using Harmos;
 using Xunit;
-using FixtureClient = Fixture.Client;
-using Status = Grpc.Core.Status;
 
 namespace Harmos.Tests.Unit;
 
@@ -33,8 +31,8 @@ public sealed class ResourceRoots
     Assert.NotNull(typeof(HostTimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(TimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Get"));
-    Assert.Null(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Sleep"));
-    Assert.Null(typeof(Fixture.TimeResource).GetMethod("Get"));
+    Assert.NotNull(typeof(Fixture.Plugins.HostTimeResource).GetMethod("Sleep"));
+    Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Get"));
     Assert.NotNull(typeof(Fixture.TimeResource).GetMethod("Sleep"));
   }
 
@@ -52,7 +50,7 @@ public sealed class ResourceRoots
   public async Task LibraryAndProductServicesShareParentsAndRetainWatchCardinality()
   {
     var invoker = new Invoker();
-    var client = new FixtureClient(invoker);
+    var client = new Fixture.Client(invoker);
     var status = await client.Status.Get();
     Assert.Equal("harmos.host.v1.Status/Get:selection", status.Status.Identity.ApplicationName);
     var diagnostics = await client.Status.Diagnostics.Get("selection", 0, 512);
@@ -125,9 +123,9 @@ public sealed class ResourceRoots
       return (TResponse)response;
     }
     public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) =>
-        new(Task.FromResult(Reply(method, request)), Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => new Metadata(), () => { });
+        new(Task.FromResult(Reply(method, request)), Task.FromResult(new Metadata()), () => global::Grpc.Core.Status.DefaultSuccess, () => new Metadata(), () => { });
     public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) =>
-        new(new Reader<TResponse>([Reply(method, request, ":opened"), Reply(method, request, ":finished")]), Task.FromResult(new Metadata()), () => Status.DefaultSuccess, () => new Metadata(), () => { });
+        new(new Reader<TResponse>([Reply(method, request, ":opened"), Reply(method, request, ":finished")]), Task.FromResult(new Metadata()), () => global::Grpc.Core.Status.DefaultSuccess, () => new Metadata(), () => { });
     public override TResponse BlockingUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options, TRequest request) => throw new NotSupportedException();
     public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options) => throw new NotSupportedException();
     public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host, CallOptions options) => throw new NotSupportedException();

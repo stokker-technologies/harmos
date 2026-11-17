@@ -1122,8 +1122,9 @@ calls `schematic.validate` through the application's generated `client.schematic
 resource. Build it with
 `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-protocol --features sdk --example client`.
 Pass the application's gRPC URL and set `HARMOS_CLIENT_RETAINED_BYTES` to its
-decoded-memory budget in bytes. Application client generation and runtime assembly
-read the same [composition](../examples/schematic/protocol/composition.toml).
+decoded-memory budget in bytes. Application client generation reads the
+[product descriptors](../examples/schematic/proto/schematic/host/v1/schematic.proto)
+and their declared audiences directly.
 
 Each operation has one canonical gRPC method. Get and List are unary; Watch observes
 changes. A declaration that promises a cooperative final result opts in with

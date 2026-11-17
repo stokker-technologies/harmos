@@ -46,10 +46,7 @@ impl Entry {
     }
 
     pub(super) fn callers(&self) -> Callers {
-        self.callers
-            .get(self.id())
-            .copied()
-            .unwrap_or_else(|| self.contract.as_ref().map_or(Callers::All, crate::operations::Contract::callers))
+        self.contract.as_ref().map_or(Callers::All, crate::operations::Contract::callers)
     }
 
     pub(super) fn client_visible(&self) -> bool {
