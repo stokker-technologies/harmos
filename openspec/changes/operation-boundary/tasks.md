@@ -33,6 +33,7 @@ Group 2 Pin: `502121ff` (product backend conformance kit; focused compound stori
 - [x] 3.4 G1: Persist scope-qualified retained-cut ownership in the backend, reopen native handles after restart, release scope ownership atomically on deletion, preserve independent readers, and reclaim unreferenced rows/files without pinning unrelated deleted scopes. Extend the backend conformance kit with a two-stage restart proof. Prove with the retained-scope restart/reclamation and native-registry restart tests, focused storage/operations build and lint.
 - [x] 3.5 G3: Include compound entries in followers, observe applied conditional revisions, suppress conflicts, and issue watch/projection cursors only at complete mutation frontiers. Define deletion/expired-cut resync and prove bounded compound pages, conditional/conflict/delete sequences, historical replay and the backend conformance kit with deterministic tests.
 - [x] 3.6 Integrate G1/G3 with the landed columnar append and operation-owned DTO changes: project columnar samples in accepted followers, keep durable sample cursors at complete append frontiers, preserve retained scope ownership while invalidating session tokens, and extend deterministic columnar watch/restart and backend conformance proof. Prove with focused storage/native snapshot tests, storage/operations build, format and lint.
+- [x] 3.7 Disable automatic retries for native CreateSnapshot and RetainSnapshot while retention has no stable request identity; add a regression test checking every registered built-in operation's policy against its replay declaration.
 
 G1/G3 Proof (Windows): `mise run test -- --paths crates/harmos-storage/tests/integration/conditional_objects/deletion.rs crates/harmos-storage/tests/integration/manager/durable_watch.rs` passed all 136 tests in the affected storage target, including compound/scoped backend conformance and the two-stage restart kit. `mise run test -- --package harmos-operations --target lib --story storage::native::snapshot::tests` passed both native restart/copy/disposal and compound/expired-cut resync tests. `mise run build -- --package harmos-operations --lib`, `mise run lint` (Rust and Python), `mise run format -- --language rust`, `mise run check:rust` and strict OpenSpec validation passed. Full lanes, native Linux and hosted proof remain integration work; no benchmark measurements ran.
 
@@ -59,6 +60,7 @@ Group 5 Pin: `b3b37c6e115dddfdbd8dff72dbccfda969be08d4` (streaming Float64 scale
 - [x] 6.2 Make several percentiles of one field share one spool and rank selection in aggregate execution. Prove with a deterministic test that counts spool passes and compares results with single-percentile requests.
 - [x] 6.3 Add mergeable summaries with first/last carrying time and position, and expose ordered first/last as aggregate measures. Prove merge equivalence over adjacent ranges with deterministic data.
 - [x] 6.4 Add the box-summary transform (quartiles, Tukey whiskers, bounded deterministic outliers with total count). Prove constant, extreme-range and over-bound outlier cases; document the transform in `docs/storage.md`.
+- [x] 6.5 Bound the query benchmark's percentile comparison by floating-point precision and replace its test-support path overrides with benchmark-owned storage and projection fixtures.
 
 ## 7. Bounded Bucket Summaries
 
@@ -126,6 +128,7 @@ Composition Removal Pin: `5ecd6a96326c1a3adc0c47e78da4002bf4461a64` (10.3; local
   - [ ] Retire the standalone/inherited Python client rendering branches in `tools/python/src/harmos_tools/build/resources/python.py` with the host-client roots instead of preserving two client composition mechanisms.
 - [ ] 10.6 Move conformance to a fixture product that declares wrappers, replace wrong-caller rules with unreachable-host-operation and wrapper-audience rules, keep plugin protocol rules; make Schematic declare wrappers for what its client uses. Prove with `mise run build -- --package harmos-conformance` and the Schematic client example build.
 - [ ] 10.7 Update `docs/architecture.md` (Caller Options and SDK Projection, Application Operations in Discovery, Next Pin), SDK guides and the README for private host operations, product wrappers and plugin protocol facilities; prove with `mise run check -- --repository`.
+- [x] 10.8 Allocate C++ constructor and call parameter names against resource members and call locals, cover nested naming collisions in a generator regression test, and regenerate the tracked C++ output.
 
 Plugin Discovery Checkpoint Pin: `aec532eb34965b8b177d13526267ddd3ac1988e0` (10.4;
 includes the native result DTO checkpoint). Shared child admission enforces declared

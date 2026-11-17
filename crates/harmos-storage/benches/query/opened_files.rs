@@ -10,21 +10,23 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::fs::{File, OpenOptions};
 use std::hint::black_box;
 use std::io::Write;
 
 // Third Party Imports
 use criterion::Criterion;
+use tokio::runtime::Runtime;
 
 // Local Imports
 use harmos_storage::{ByteRange, StorageManager};
 
 /* === Public Functions === */
 
-pub fn benchmarks(criterion: &mut Criterion, runtime: &tokio::runtime::Runtime) {
+pub fn benchmarks(criterion: &mut Criterion, runtime: &Runtime) {
     let fixture = runtime.block_on(super::fixture::Fixture::new(super::fixture::config()));
     let owner = tempfile::tempdir().unwrap();
-    let mut source = std::fs::OpenOptions::new().read(true).write(true).create_new(true).open(owner.path().join("source")).unwrap();
+    let mut source = OpenOptions::new().read(true).write(true).create_new(true).open(owner.path().join("source")).unwrap();
     let bytes = (0..256_000).map(|index| (index % 251) as u8).collect::<Vec<_>>();
     source.write_all(&bytes).unwrap();
     let mut group = criterion.benchmark_group("integration/opened_files");
@@ -35,7 +37,7 @@ pub fn benchmarks(criterion: &mut Criterion, runtime: &tokio::runtime::Runtime) 
 
 /* === Private Functions === */
 
-async fn read_offsets(storage: &StorageManager, source: &std::fs::File) {
+async fn read_offsets(storage: &StorageManager, source: &File) {
     let mut left = storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 0, limit: Some(100_000) }).await.unwrap();
     let mut right =
         storage.read_opened_file(source.try_clone().unwrap(), ByteRange { offset: 128_000, limit: Some(100_000) }).await.unwrap();

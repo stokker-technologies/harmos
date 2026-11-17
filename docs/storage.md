@@ -288,6 +288,11 @@ down to the preceding complete mutation frontier. Persist compound/conditional
 ranges and deletion observation metadata independently of expiring mutation
 receipts. Backends without these hooks refuse retention or watches explicitly.
 
+The native `CreateSnapshot` and `RetainSnapshot` operations never retry: each
+creation issues a new retained token without a stable request identity. Their
+replay safety remains unknown, so an uncertain creation requires the caller to
+reconcile its retained ownership before requesting another snapshot.
+
 `ArrowScan` selects a `ColumnSource` (objects, records or stream plus `SchemaKey`),
 unique dotted leaf column names, optional numeric predicate and exact nanosecond
 `TimeBounds`. Bounds are lower-inclusive and upper-exclusive. Its initial `start`
