@@ -13,7 +13,7 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::Callers;
+use harmos_protocol::model::{Callers, Requirement};
 
 // Standard Library Imports
 
@@ -237,7 +237,7 @@ impl Entry {
         Ok(())
     }
 
-    pub(super) fn authorize_grpc_plugin(&self, caller: &CallingPlugin) -> Result<()> {
+    pub(super) fn authorize_grpc_plugin<'a>(&self, caller: &'a CallingPlugin) -> Result<&'a Requirement> {
         let denied = || Error::OperationUnauthorized {
             caller: caller.owner().to_owned(),
             owner: self.owner.to_string(),
@@ -249,10 +249,13 @@ impl Entry {
         }
         let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
         let required = requires.iter().find(|required| required.id == self.id()).ok_or_else(denied)?;
-        if super::plugin_grpc::fingerprint(self).is_ok_and(|fingerprint| fingerprint == required.fingerprint) {
-            return Ok(());
+        if super::plugin_grpc::fingerprint(self)? != required.fingerprint {
+            return Err(Error::InvalidInput {
+                field: "child fingerprint",
+                reason: "callee differs from the declared requirement; refresh the plugin declarations",
+            });
         }
-        Err(denied())
+        Ok(required)
     }
 
     pub(in crate::operations) fn settled(&self) -> bool {

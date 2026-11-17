@@ -251,7 +251,6 @@ impl crate::operations::Context<'_> {
     }
 
     pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
-        let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
         if child.background && child.operation != "harmos.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
                 field: "child policy timer",
@@ -260,13 +259,12 @@ impl crate::operations::Context<'_> {
         }
         let entry = self.operations.capture_entry(&child.operation)?;
         entry.available()?;
-        entry.authorize_grpc_plugin(caller)?;
+        let required = entry.authorize_grpc_plugin(caller)?;
         let plugin = entry.binding.downcast_ref::<Binding>();
-        let required = requires.iter().find(|required| required.id == child.operation).expect("authorized requirement");
-        if required.fingerprint != child.fingerprint || fingerprint(&entry)? != child.fingerprint {
+        if required.fingerprint != child.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
-                reason: "callee differs from the declared requirement",
+                reason: "callee differs from the declared requirement; refresh the plugin declarations",
             });
         }
         let output = entry.contract.as_ref().is_some_and(|contract| contract.output().is_some());

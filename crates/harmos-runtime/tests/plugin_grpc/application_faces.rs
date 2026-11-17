@@ -165,6 +165,12 @@ async fn composition_narrows_host_callers_without_widening_or_bypassing_admissio
     let mut discovery = OperationsClient::new(channel.clone());
     let listed = discovery.list(OperationsListRequest {}).await.unwrap().into_inner();
     assert!(
+        listed
+            .operations
+            .iter()
+            .any(|operation| operation.contract.as_ref().is_some_and(|contract| contract.id == "harmos.host.v1.Time/Sleep"))
+    );
+    assert!(
         !listed
             .operations
             .iter()
