@@ -453,6 +453,13 @@ impl Contract {
         self
     }
 
+    /// Replace the Policy While Preserving the Contract's Identity and Bindings.
+    pub fn with_policy(mut self, policy: super::OperationPolicy) -> Result<Self, ContractError> {
+        policy.validate().map_err(crate::operations::Error::from)?;
+        self.operation.policy = policy;
+        Ok(self)
+    }
+
     pub fn protobuf(&self) -> Option<&super::Protobuf> {
         self.protobuf.as_ref()
     }
@@ -751,6 +758,31 @@ mod tests {
     use crate::model::operations::lifecycle::{self, Action, Descriptor};
     use crate::operations::{Backoff, Jitter, RetryPolicy};
     use serde_json::json;
+    use std::time::Duration;
+
+    #[test]
+    fn with_policy_preserves_callers_and_fingerprint() {
+        let template = Contract::clock(false, lifecycle::POLICY, &SchemaSettings::default()).unwrap();
+        for callers in [Callers::Clients, Callers::Plugins, Callers::All] {
+            let original = template.clone().with_callers(callers);
+            let policy = super::super::OperationPolicy {
+                timeout: Duration::from_secs(17),
+                attempt_timeout: Duration::from_secs(11),
+                ..original.operation().policy
+            };
+            let updated = original.clone().with_policy(policy).unwrap();
+
+            assert_eq!(updated.operation().policy, policy);
+            assert_eq!(updated.callers(), original.callers());
+            assert_eq!(updated.fingerprint(), original.fingerprint());
+
+            let invalid = super::super::OperationPolicy {
+                attempt_timeout: Duration::ZERO,
+                ..policy
+            };
+            assert!(original.with_policy(invalid).is_err());
+        }
+    }
 
     #[test]
     fn application_wire_contracts_keep_native_identity_and_fingerprint_checks() {
