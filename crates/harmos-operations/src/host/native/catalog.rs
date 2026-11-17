@@ -23,7 +23,7 @@ use crate::execution::operations::{
     ExecutionContext, Grpc, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
 };
 use crate::plugin::Grant;
-use crate::{Error, Identifier, MessageError};
+use crate::{Error, Identifier, MessageError, OperationPolicy};
 use harmos_protocol::host::OperationsGetRequest;
 use harmos_protocol::host::OperationsGetResponse;
 use harmos_protocol::host::OperationsListRequest;
@@ -34,6 +34,7 @@ use harmos_protocol::host::SchemasListResponse;
 use harmos_protocol::host::StreamIdentity;
 use harmos_protocol::host::StreamsListRequest;
 use harmos_protocol::host::StreamsListResponse;
+use harmos_protocol::schema;
 use harmos_storage::follow::Entry;
 use harmos_storage::{IdentityKind, IdentitySelection, ReadLimits, StorageManager, StorageSchema, StoredIdentity, query::SchemaSelection};
 
@@ -49,7 +50,7 @@ macro_rules! operation {
             type Endpoints = ();
             const ID: &'static str = concat!("harmos.host.v1.", $service, "/", $method);
             const GRPC: Option<Grpc> = None;
-            const POLICY: crate::OperationPolicy = super::POLICY;
+            const POLICY: OperationPolicy = super::POLICY;
             const VISIBILITY: Visibility = Visibility::Private;
             const RESOURCES: &'static [Resource] = $resources;
             fn grant(request: &Self::Request) -> Result<Option<Grant>, MessageError> {
@@ -94,19 +95,17 @@ impl List {
 }
 impl Get {
     fn authorize(request: &OperationsGetRequest) -> Result<Option<Grant>, MessageError> {
-        harmos_protocol::schema::operation_identity(&request.id).map_err(|error| MessageError::new(error.to_string()))?;
+        schema::operation_identity(&request.id).map_err(|error| MessageError::new(error.to_string()))?;
         Ok(None)
     }
     async fn serve(context: ExecutionContext, request: OperationsGetRequest) -> Result<OperationsGetResponse, Error> {
         Self::authorize(&request)?;
         let entries = List::serve(context, OperationsListRequest {}).await?;
-        let operation =
-            entries.operations.into_iter().find(|entry| entry.contract.as_ref().is_some_and(|contract| contract.id == request.id)).ok_or(
-                Error::InvalidInput {
-                    field: "Get Operation",
-                    reason: "operation is unavailable or unauthorized",
-                },
-            )?;
+        let operation = entries
+            .operations
+            .into_iter()
+            .find(|entry| entry.contract.as_ref().is_some_and(|contract| contract.id == request.id))
+            .ok_or(Error::NotFound { entity: "operation" })?;
         Ok(OperationsGetResponse { operation: Some(operation) })
     }
 }

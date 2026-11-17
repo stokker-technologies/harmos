@@ -49,6 +49,9 @@ pub enum Error {
     #[error("{domain} is not ready")]
     NotReady { domain: &'static str },
 
+    #[error("{entity} was not found; select it from discovery")]
+    NotFound { entity: &'static str },
+
     #[error("{resource} capacity exhausted")]
     ResourceExhausted { resource: &'static str },
 
