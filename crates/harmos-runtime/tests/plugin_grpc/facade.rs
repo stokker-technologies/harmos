@@ -122,14 +122,14 @@ async fn plugin_activation_through_operations() {
             .await
             .is_err()
     );
-    other.shutdown().await.unwrap();
+    other.stop().await.unwrap();
 
     // Settle Every Clone and Fence the Retired Generation
     caller.plugins().settle(SettleRequest::Binding(binding.clone())).await.unwrap();
     assert!(binding.for_call().time().get(TimeGetRequest {}).await.is_err());
     caller.plugins().settle(SettleRequest::Plugin(plugin.clone())).await.unwrap();
     assert!(caller.plugins().bind(BindRequest { plugin, scope: "retired".into(), clock }).await.is_err());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -151,7 +151,7 @@ async fn plugin_inspection_is_metadata_only_and_detaches() {
     assert!(runtime.operations.definition("fixture.echo").is_err());
     assert_eq!(remote.stops(), 0);
     assert_eq!(remote.get().await.id, "remote");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -188,7 +188,7 @@ async fn plugin_inspection_refuses_oversized_and_invalid_metadata() {
             .is_err()
     );
     assert_eq!(remote.stops(), 0);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -212,7 +212,7 @@ async fn plugin_inspection_cancellation_settles_the_connection() {
     inspecting.abort();
     assert!(inspecting.await.err().unwrap().is_cancelled());
     release.send(()).unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     assert_eq!(remote.get().await.id, "remote");
     assert_eq!(remote.stops(), 0);
 }
@@ -239,7 +239,7 @@ async fn plugin_inspection_failed_connect_settles_the_owner() {
             .is_err()
     );
     peer.await.unwrap();
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -257,7 +257,7 @@ async fn managed_plugin_inspection_settles_without_admission() {
         .await
         .unwrap();
     assert!(host.runtime.operations.definition("fixture.echo").is_err());
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }
 
 #[tokio::test]
@@ -306,5 +306,5 @@ async fn sampling_through_operations() {
     caller.plugins().stop_samples(StopSamplesRequest { samples: next }).await.unwrap();
     caller.plugins().settle(SettleRequest::Binding(binding)).await.unwrap();
     caller.plugins().settle(SettleRequest::Plugin(plugin)).await.unwrap();
-    host.runtime.shutdown().await.unwrap();
+    host.runtime.stop().await.unwrap();
 }

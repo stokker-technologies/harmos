@@ -139,7 +139,7 @@ impl NativeOperation for Typed {
 #[tokio::test(start_paused = true)]
 async fn native_time_and_invocations_keep_typed_endpoints() {
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let runtime = Runtime::<Model>::launch_with((), (), |setup| {
+    let runtime = Runtime::<Model>::start_with((), (), |setup| {
         setup.settings().clock(clock);
     })
     .await
@@ -168,12 +168,12 @@ async fn native_time_and_invocations_keep_typed_endpoints() {
     assert!(waiting.await.is_err());
     let final_state = watch.await.unwrap();
     assert_eq!(final_state.invocation.as_ref().unwrap().phase, "settled");
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
 async fn native_status_reads_the_registered_owner() {
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     let nz = |value| NonZeroUsize::new(value).unwrap();
     let _status = runtime
         .services()
@@ -215,12 +215,12 @@ async fn native_status_reads_the_registered_owner() {
         .unwrap();
     assert!(logs.events.len() <= 8);
     assert!(logs.resolved_at.is_some());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 #[tokio::test(start_paused = true)]
 async fn attached_native_declaration_never_calls_the_wire_codec() {
-    let runtime = Runtime::<Model>::launch((), ()).await.unwrap();
+    let runtime = Runtime::<Model>::start((), ()).await.unwrap();
     assert!(OperationFactory::native::<clock::Get>().is_err());
     let factory = OperationFactory::protobuf::<Encoded>().unwrap().with_native::<Typed>().unwrap();
     runtime.register_batch(Registration::new(Default::default()).entry(factory)).await.unwrap();
@@ -228,5 +228,5 @@ async fn attached_native_declaration_never_calls_the_wire_codec() {
     let response = runtime.for_call(&CallContext::default()).call::<Typed>(Counted { encoded: encoded.clone(), value: 37 }).await.unwrap();
     assert_eq!(response.value, 37);
     assert_eq!(encoded.load(Ordering::SeqCst), 0);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

@@ -203,7 +203,7 @@ impl fmt::Debug for StorageFailure {
 impl Resource for Session {
     fn finalize(&mut self) -> Finalize<'_> {
         Box::pin(async move {
-            self.operations.shutdown().await.map_err(Arc::new)?;
+            self.operations.stop().await.map_err(Arc::new)?;
             self.storage.close().await.map_err(|source| Arc::new(Error::from(source)))
         })
     }
@@ -256,7 +256,7 @@ mod tests {
     #[tokio::test]
     async fn storage_only_excludes_plugin_activation_until_full_startup() {
         // Admit Storage Without Plugin Activation
-        let mut builder = Runtime::<Minimal>::builder(());
+        let mut builder = crate::Builder::<Minimal>::new(());
         let session = builder.storage_only().await.unwrap();
         assert!(session.operations.definition(Load::ID).is_err());
         assert!(session.operations.definitions().iter().all(|entry| !entry.id.as_str().starts_with("plugins.")));
@@ -266,6 +266,6 @@ mod tests {
         drop(session);
         let runtime = builder.start().await.unwrap();
         assert!(runtime.operations.definition(Load::ID).is_ok());
-        runtime.shutdown().await.unwrap();
+        runtime.stop().await.unwrap();
     }
 }
