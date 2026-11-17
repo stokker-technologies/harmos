@@ -10,8 +10,8 @@ deadline override and cancellation SHALL retain native typed gRPC controls.
 
 #### Scenario: Product and Library Composition
 
-- **WHEN** a product generates roots from its descriptors and composes them with the library
-- **THEN** a checker SHALL resolve both resource hierarchies, message types and nested resources without dynamic attributes or runtime binding tables
+- **WHEN** a product generates its roots from product descriptors using the shared generator
+- **THEN** a checker SHALL resolve the product resource hierarchy, message types and nested resources without dynamic attributes or runtime binding tables
 
 #### Scenario: Caller Control
 
@@ -39,5 +39,5 @@ shipped, written by generation or consumed at runtime.
 
 #### Scenario: Generated Drift
 
-- **WHEN** the Python generator check regenerates library and shared-fixture roots
+- **WHEN** the Python generator check regenerates product and shared-fixture roots
 - **THEN** it SHALL compare them with committed generated classes and leave the maintained tree unchanged

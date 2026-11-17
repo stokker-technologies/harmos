@@ -8,7 +8,7 @@ Native query production SHALL preserve validated storage values, ordering, null 
 
 #### Scenario: Durable Consumer Report
 
-- **WHEN** Dokime consumes raw, sorted and downsampled telemetry while completing its existing Stop journey
+- **WHEN** a product consumes raw, sorted and downsampled telemetry while completing its existing Stop journey
 - **THEN** query production supplies complete validated results without introducing a new deadline, cache or skipped validation
 
 #### Scenario: Invalid Stored Payload

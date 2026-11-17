@@ -2,9 +2,9 @@
 
 ## Why
 
-The guides under `docs/` are plain Markdown read on the repository host. There is no website, no
-API reference for the SDKs or the operations, and nothing shows a reader which release a page
-describes. With four SDK languages the reference has to be generated from source, per release.
+The guides under `docs/` are plain Markdown read on the repository host. The Starlight site, operations reference, release selector, documentation archives and
+image assembly are landed. Four language reference generators, comment coverage,
+deployment and live publication proof remain open; references must match each release.
 
 ## What Changes
 
@@ -33,6 +33,14 @@ SDK restructures; deployment remains open.
 - Phase one archives contain guides and the operations reference. Task 2.2 adds the four SDK references.
 - The documentation archive is a required asset of a stable release. In Nightly it is built by a
   parallel job that may fail; Nightly publication does not depend on it.
+
+## Release Readiness
+
+The remaining tasks are release-blocking for the complete documentation deliverable:
+four language references and comment coverage after the active boundary/lifecycle
+cutover, deployment and live stable/dev/latest publication proof. Reference pages
+cover Harmos's retained APIs and carrier helpers; product-owned author SDK references
+belong to the product. Keep final publication proof unchecked.
 
 ## Open
 

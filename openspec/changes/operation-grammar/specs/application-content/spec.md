@@ -8,11 +8,11 @@ StorageManager SHALL accept one registered ContentSource for immutable reference
 outside its own history. Resolution SHALL pass the inherited caller authorization scope
 unchanged and obtain authoritative length, SHA-256 and a bounded lease with explicit
 expiry. The application SHALL retain bytes and metadata; the library SHALL retain
-ordering, bounds, digest checking, range framing and the separate faces.
+ordering, bounds, digest checking and native range framing.
 
 #### Scenario: Client and Plugin Complete a Read
 
-- **WHEN** an authorized client and plugin read application-owned content through their GetFileBytes faces
+- **WHEN** an authorized client and plugin read application-owned content through product-owned wrappers over native GetFileBytes
 - **THEN** each follows bounded ranges of the same retained lease to completion and verifies the advertised total length and digest without copying content into library persistence
 
 #### Scenario: Expired Lease
@@ -32,10 +32,10 @@ ordering, bounds, digest checking, range framing and the separate faces.
 
 ### Requirement: Shared Library Content Boundary
 
-Diagnostics and bundle installation SHALL use the same library content boundary, with no
+Native diagnostics and product-owned bundle installation SHALL use the same content boundary, with no
 second content-source trait or persistence owner.
 
 #### Scenario: Diagnostics and Bundle Content
 
-- **WHEN** diagnostics or bundle installation accesses application-owned content
+- **WHEN** native diagnostics or product-owned bundle installation accesses application-owned content
 - **THEN** it uses the same library content boundary, with no second content-source trait or persistence owner

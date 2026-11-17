@@ -1,8 +1,15 @@
 # Authoring Without Macros
 
+## Release Readiness
+
+The declaration replacements, derive consolidation and macro-crate removal are
+landed. Only combined native Linux/Windows operation/state/storage/example proof
+remains task 5.1. Product adoption stays product-owned; remaining public naming
+and registration changes belong to `plugin-lifecycle` and `plugin-boundary`.
+
 ## Why
 
-`harmos-macros` still generates host, data and guest declarations. No declaration it serves
+`harmos-macros` previously generated host, data and guest declarations. No declaration it serves
 needs an attribute macro. Only reading a type's fields justifies generated code, and a derive does that.
 Everything else is data an application can build as ordinary values, composed and passed by
 value, and checked when it starts.
@@ -49,8 +56,8 @@ After step 11, consolidate surviving field-reading derives in `sdk/rust/derive`
 Keep stored-data `Described`, protobuf Message and row field access semantically distinct;
 the SDK must gain no host dependencies. The `grpc-plugins` order is authoritative host
 protobuf, this change's ordered replacements and derive consolidation, domain reduction,
-then guests with 7.1. Guest builder registration and deletion of `harmos-guest-macros`
-belong to that deferred guest lifecycle/SDK adapter migration.
+then guests with 7.1. Guest builder/SDK consolidation and guest macro removal are landed under `grpc-plugins`;
+its remaining registration/verb changes belong to `plugin-lifecycle`.
 
 ## What Is Given Up
 

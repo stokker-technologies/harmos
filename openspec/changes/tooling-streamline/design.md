@@ -45,6 +45,16 @@ Conformance implementations move with their generated messages out of shipped SD
 
 The Python SDK test task sets its selected profile inside the Python invocation: mise renders usage values in commands, while task environment templates are evaluated before usage is available. Exact selection and project-local execution are unchanged.
 
+## Current Boundary Ownership
+
+`operation-boundary` and `plugin-boundary` own removal of host-client roots and
+product authoring surfaces; shared descriptor generation and carrier helpers remain.
+`plugin-lifecycle` owns naming. Earlier library-root examples below are historical
+migration evidence and do not require retaining a second client composition system.
+The standalone/inherited Python rendering branches are already explicitly owned
+by operation-boundary task 10.5; no duplicate tooling task is added here.
+Generated protocol output remains tracked and must be regenerated, never hand-edited.
+
 ## Locked Typed Python SDK
 
 The 2026-11-13 owner locks `sdk/python/**`, the maintained Python tooling and Python SDK generators under `tools/python/**`, Python mise delegation and CI steps, maintained guides and this change. Other language generators may change only their descriptor inputs. Wire behavior, protocol inputs, Rust crates and other SDK implementations remain unchanged. This session is the only writer; commits stay local and the implementing marker remains untouched.
@@ -79,16 +89,14 @@ Catalog composition uses public `Catalog::new().named(...).entry(...)` values an
 order, membership and the three catalog names are preserved. No private use remains.
 
 Root Cargo resolution revealed a native runtime dev-dependency still selecting the removed
-feature in `crates/harmos-runtime/Cargo.toml`; removing that selector requires the owner
-to extend the locked file inventory. It does not establish a Wasm or feature-less use.
+feature in `crates/harmos-runtime/Cargo.toml`; removing that selector was removed with the source migration. Its independent native/Wasm proof remains
+in task 4.1; source inspection alone does not establish that proof.
 
 The SDK example's default Tokio entry point requires `rt-multi-thread` in its
-existing Tokio dev-dependency. This manifest-only ownership extension is also
-requested; production SDK features remain unchanged.
+existing Tokio dev-dependency. The manifest-only change is landed; production SDK features remain unchanged.
 
-The native-plugin story still called the removed `sidecar::call`. Migrate those
-five calls to the existing `services::call`, preserving every assertion and the
-same routed protobuf requests; import the named types in that touched story.
+The native-plugin story migrated the removed `sidecar::call` uses to `services::call`,
+preserving assertions and routed protobuf requests; final proof remains task 4.1.
 
 ## Windows Build Measurements
 

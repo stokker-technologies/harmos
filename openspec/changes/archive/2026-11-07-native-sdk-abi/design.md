@@ -12,7 +12,7 @@ Existing typed Rust registrations and transport bytes remain compatible.
 Add encoded registration to the SDK wire table using its existing prepared work
 and cancellation lifecycle. Sidecar dynamic registration composes that table and
 the existing lifecycle actions. Shared JSON/Postcard conversion belongs to
-harmos-domain; Dokime may adopt it later without changes in this prototype.
+harmos-domain; a product may adopt it later without changes in this prototype.
 
 Runtime stream descriptors feed the existing publication builder. Arrow batches
 move through the C Data Interface without copying buffers at the ABI boundary;

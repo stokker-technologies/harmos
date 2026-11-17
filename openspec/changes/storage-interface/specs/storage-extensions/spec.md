@@ -36,15 +36,15 @@ Storage SHALL expose expected-version conditional object replacement with an ato
 - **THEN** exactly one replacement succeeds and the other reports a conflict without overwriting it
 
 ### Requirement: Backend Capability Proof
-A durable reference backend SHALL implement all five extensions. Every backend SHALL declare support or a specified bounded fallback and preserve existing recovery/file contracts. Native Windows and Linux proof SHALL cover snapshots, replay, invalidation and atomicity.
+Harmos SHALL supply the backend contract, memory reference and importable conformance kit for all five extensions. A product SHALL own its durable backend, including SQLite, and prove durable restart there. Every backend SHALL declare support or a specified bounded fallback and preserve recovery/file contracts. Native Windows and Linux proof SHALL cover snapshots, replay, invalidation and atomicity.
 
 #### Scenario: Unsupported Facility
 - **WHEN** a backend cannot perform a requested extension and has no specified equivalent fallback
 - **THEN** it returns an explicit capability error rather than an empty or weaker result
 
 ### Requirement: Separate Adoption and Measurement
-The extensions SHALL follow the owner-authorized combined delivery sequence: the landed Harmos host surfaces precede storage implementation, which may run beside guest migration; consumer extraction follows its last gRPC wave in its own storage-interface change. Both changes SHALL supply reproducible before/after benchmarks including multi-day data, restart and late samples against agreed regression budgets.
+The landed extensions SHALL be adopted through the typed native operation boundary. Product extraction and durable-backend proof SHALL remain in the product change. Library measurements SHALL use backend-neutral/in-memory workloads; product measurements SHALL cover durable restart, multi-day data and late samples. Proposed numerical budgets SHALL NOT become release gates without owner acceptance.
 
 #### Scenario: Consumer Extraction
-- **WHEN** Dokime adopts the published extension revision and extracts application persistence
+- **WHEN** a product adopts the published extension revision and extracts application persistence
 - **THEN** it retains product semantics and named non-persistence owners and compares identical multi-day workloads before and after

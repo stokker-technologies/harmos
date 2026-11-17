@@ -15,4 +15,4 @@
 
 ## Workflow Follow-Up
 
-- After archive and push, run the default all-platform local CI once, start PR checks, squash immediately into dev, and report actual proof. Dokime adoption and cleanup remain obligations of the native goal.
+- After archive and push, run the default all-platform local CI once, start PR checks, squash immediately into dev, and report actual proof. a product adoption and cleanup remain obligations of the native goal.

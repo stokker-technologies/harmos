@@ -24,5 +24,5 @@
 
 ## Workflow Follow-Up
 
-- First-class secret storage is explicitly deferred by the user. Assess a reusable credential-store boundary, secure persistence and key ownership in a separate future change; do not add a secret backend or encryption policy to this CI migration. Dokime's current deterministic test provider does not establish a production file fallback.
+- First-class secret storage is explicitly deferred by the user. Assess a reusable credential-store boundary, secure persistence and key ownership in a separate future change; do not add a secret backend or encryption policy to this CI migration. a product's current deterministic test provider does not establish a production file fallback.
 

@@ -13,19 +13,19 @@ Applications need these generic facilities without exposing concrete backend API
 - Add durable materialized projections with readable frontiers and revision invalidation.
 - Add `Transform::TimeBuckets` with late-sample replacement and changed-key visibility.
 - Add atomic conditional object updates.
-- Define backend obligations and a durable reference backend, retaining existing row, file,
+- Define backend obligations, a memory reference backend and conformance kit, retaining existing row, file,
   recovery and durability contracts. Prove correctness and measure before/after performance,
   including multi-day data; no performance improvement is assumed.
 
 ## Scope and Order
 
-Design and implement the generic Harmos interfaces first. Dokime consumes the published Harmos
-revision in its own change named `storage-interface`, then extracts `dokime-storage` from
-`crates/dokime-runtime/src/storage/` and `src/runtime/storage/`. Its persisted shapes live there;
-no Dokime domain crate or reverse dependency on runtime is introduced.
+The generic interfaces and memory implementation are landed. A product owns SQLite,
+persistence extraction and durable backend proof. It reaches storage only through
+Harmos operations; `operation-boundary` owns the remaining public facade migration.
+Harmos retains backend authoring and the importable conformance kit.
 
 Execution/step-range statistics, history filters and tokens, finalization/seals, report capture,
-artifact inventory and fresh-root refusal remain Dokime behaviour. Logs, support bundles,
+artifact inventory and fresh-root refusal remain a product behaviour. Logs, support bundles,
 exports/report spools, plugin installation, desktop root lease/backup, client pairing/download
 files, command-line and build tooling remain with their owners. This change adds no general
 all-disk ownership API, storage migration policy or cross-method transaction assumption.

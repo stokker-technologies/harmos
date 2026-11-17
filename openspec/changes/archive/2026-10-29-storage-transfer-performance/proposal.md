@@ -31,4 +31,4 @@ None.
 
 ## Impact
 
-Harmos domain, storage, runtime, SDK, sidecar, guest integration and benchmark fixtures, their tests, manifests, authored build/fixture tasks and maintained examples. Dokime implementation remains owned by its separate chat. No release or remote delivery is authorized by this implementation request.
+Harmos domain, storage, runtime, SDK, sidecar, guest integration and benchmark fixtures, their tests, manifests, authored build/fixture tasks and maintained examples. a product implementation remains owned by its separate chat. No release or remote delivery is authorized by this implementation request.

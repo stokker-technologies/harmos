@@ -18,4 +18,4 @@ The journal writer retains its startup tracing dispatcher through final capture,
 
 ## Ownership
 
-This change owns Harmos runtime and storage snapshot producers and consumers, their focused tests, and current documentation. Dokime migration is scheduled separately by the owner and is not part of this checkout.
+This change owns Harmos runtime and storage snapshot producers and consumers, their focused tests, and current documentation. a product migration is scheduled separately by the owner and is not part of this checkout.

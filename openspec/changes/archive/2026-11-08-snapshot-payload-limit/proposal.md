@@ -18,4 +18,4 @@ A consumer-owned total snapshot bound prevents recovery checkpoints as state and
 
 ## Impact
 
-Owned scope: harmos-storage snapshot types, admission, readers and file backend; harmos-runtime snapshot codec, capture and recovery; affected storage/runtime fixtures and focused tests; README and product guide. Journal records and durability are unchanged. Dokime migration is explicitly separate and not edited here.
+Owned scope: harmos-storage snapshot types, admission, readers and file backend; harmos-runtime snapshot codec, capture and recovery; affected storage/runtime fixtures and focused tests; README and product guide. Journal records and durability are unchanged. a product migration is explicitly separate and not edited here.
