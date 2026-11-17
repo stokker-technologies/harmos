@@ -7,7 +7,7 @@
 # ***
 
 
-"""Generate C++ Resources and Public Payload Exports."""
+"""Generate Cpp Resource Surfaces."""
 
 # === Imports === #
 
@@ -15,21 +15,44 @@
 import re
 import subprocess
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 
+# isort: split
+
 # Third Party Imports
-from google.protobuf.descriptor_pb2 import FileDescriptorSet
+from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
+
+# isort: split
 
 # Local Imports
-from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, snake, table
 from harmos_tools.process import spawn_flags
+
+from . import descriptor
+from .configuration import Configuration
 
 # Type Checking Imports
 
 # === Public Exports === #
 
 # === Constants === #
+
+SCALARS = {
+    1: "double",
+    2: "float",
+    3: "std::int64_t",
+    4: "std::uint64_t",
+    5: "std::int32_t",
+    6: "std::uint64_t",
+    7: "std::uint32_t",
+    8: "bool",
+    9: "std::string",
+    12: "std::string",
+    13: "std::uint32_t",
+    15: "std::int32_t",
+    16: "std::int64_t",
+    17: "std::int32_t",
+    18: "std::int64_t",
+}
 
 
 # === Types === #
@@ -48,9 +71,12 @@ class PayloadExport:
 # === Public Functions === #
 
 
-def exports(root: Path, descriptors: FileDescriptorSet) -> None:
-    methods = table(descriptors)
-    audiences = payload_audiences(descriptors)
+def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> dict[str, str]:
+    configuration = configuration or Configuration()
+    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    type_names: dict[str, str] = {}
+    methods = descriptor.table(descriptors)
+    audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     requests = {method["request"] for method in methods}
     carriers = {
         "Request",
@@ -66,7 +92,7 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
     public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "detail/messages.hpp"']
     entries: list[PayloadExport] = []
     for file in descriptors.file:
-        if file.name.endswith("guest.proto") or not file.package.startswith("harmos.") or ".plugin." in file.package:
+        if file.name.endswith("guest.proto") or not file.package.startswith(configuration.namespace + ".") or ".plugin." in file.package:
             continue
         private += [f'#include "{file.name.removesuffix(".proto")}.pb.h"']
         for definition in [*file.message_type, *file.enum_type]:
@@ -74,11 +100,29 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
             boundary = "" if ".model." in file.package or len(groups_for_type) > 1 else next(iter(groups_for_type))
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
-            name = "FailureValue" if definition.name == "Failure" else definition.name
+            name = (
+                "FailureValue"
+                if definition.name == "Failure"
+                else definition.name
+                if configuration.namespace == "harmos"
+                else descriptor.public_name(f"{file.package}.{definition.name}", public_names)
+            )
+            type_names[f"{file.package}.{definition.name}"] = (
+                f"::{configuration.namespace}::" + (boundary + "::" if boundary else "") + name
+            )
             entries.append(PayloadExport(boundary, name, f"::{file.package.replace('.', '::')}::{definition.name}"))
+            if isinstance(definition, DescriptorProto):
+                pending = [(f"{file.package}.{definition.name}", type_names[f"{file.package}.{definition.name}"], definition)]
+                while pending:
+                    full, parent, message = pending.pop()
+                    for nested in [*message.nested_type, *message.enum_type]:
+                        type_names[f"{full}.{nested.name}"] = f"{parent}::{nested.name}"
+                        if isinstance(nested, DescriptorProto):
+                            pending.append((f"{full}.{nested.name}", f"{parent}::{nested.name}", nested))
+
         for definition in file.enum_type:
             for value in definition.value:
-                prefix = snake(definition.name).upper() + "_"
+                prefix = descriptor.snake(definition.name).upper() + "_"
                 name = value.name if value.name.startswith(prefix) else prefix + value.name
                 entries.append(
                     PayloadExport(
@@ -89,7 +133,7 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
                     )
                 )
     private += [
-        "namespace harmos::detail {",
+        f"namespace {configuration.namespace}::detail {{",
         'inline constexpr char stream_fingerprint_prefix[] = "harmos.protobuf.stream.v1\\0";',
         "namespace payloads {",
     ]
@@ -111,113 +155,155 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
             private.append("}")
     private += ["}", "}"]
     for boundary in ("", "client", "plugin"):
-        public += ["namespace harmos" + (f"::{boundary}" if boundary else "") + " {"]
+        public += [f"namespace {configuration.namespace}" + (f"::{boundary}" if boundary else "") + " {"]
         for entry in entries:
             if entry.boundary != boundary:
                 continue
             qualified = (boundary + "::" if boundary else "") + entry.name
             public.append(f"using ::harmos::detail::payloads::{qualified};")
         public += ["}"]
-    destination = root / "sdk/cpp/include/harmos"
+    destination = root / f"sdk/cpp/include/{configuration.namespace}"
     (destination / "detail").mkdir(parents=True, exist_ok=True)
     (destination / "detail/messages.hpp").write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
     (destination / "messages.hpp").write_text("\n".join(public) + "\n", encoding="utf-8", newline="\n")
     format_code([destination / "messages.hpp", destination / "detail/messages.hpp"])
+    return type_names
 
 
-def host(root: Path, methods: list[Method], *, target: Path | None = None, namespace: str = "harmos") -> None:
+def host(
+    root: Path,
+    methods: list[descriptor.Method],
+    type_names: dict[str, str] | None = None,
+    *,
+    target: Path | None = None,
+    namespace: str = "harmos",
+    configuration: Configuration | None = None,
+) -> None:
+    configuration = configuration or Configuration()
+    type_names = dict(type_names or {})
+
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
-    def field_type(field: Field) -> str:
-        value = (
-            message(field["type"])
-            if field["type"]
-            else {8: "bool", 9: "std::string", 12: "std::string", 4: "std::uint64_t", 13: "std::uint32_t"}.get(
-                field["kind"], "std::int64_t"
-            )
-        )
-        return f"std::vector<{value}>" if field["repeated"] else value
+    def field_type(field: descriptor.Field) -> str:
+        value = message(field["type"], type_names) if field["type"] else SCALARS.get(field["kind"], "std::int64_t")
+        return f"std::map<std::string, {value}>" if field["map"] else f"std::vector<{value}>" if field["repeated"] else value
 
     nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
     header = [
         "// @generated from protocol descriptors; do not edit.",
         "#pragma once",
-        "namespace harmos::plugin {",
+        f"namespace {configuration.namespace}::plugin {{",
         "enum class HostOperation {",
     ]
     header += ["  " + "".join(title(part) for part in method["path"]) + "," for method in methods]
     header += ["};"]
-    source = ["// @generated from protocol descriptors; do not edit.", '#include "harmos/harmos.hpp"']
-    source += [f'#include "{file.removesuffix(".proto")}.pb.h"' for file in sorted({method["file"] for method in methods})]
+    source = [
+        "// @generated from protocol descriptors; do not edit.",
+        f'#include "{configuration.namespace}/{configuration.namespace}.hpp"',
+    ]
+    source_items = []
+    for source_file in sorted({method["file"] for method in methods}):
+        source_items.append(f'''#include "{source_file.removesuffix(".proto")}.pb.h"''')
+    source += source_items
     used = sorted({method[key] for method in methods for key in ("request", "response")})
     # Source Files Import Named Wire Types Once; Headers Mention Only Public Types.
-    source += [f"using ::{full.replace('.', '::')};" for full in used]
-    source += ["namespace harmos::plugin {"]
+    source += sorted({f"using {_type_import('::' + full.replace('.', '::'))[1]};" for full in used})
+    source += [f"namespace {configuration.namespace}::plugin {{"]
+    if configuration.namespace != "harmos":
+        source += ["using ::harmos::plugin::Operation;", "using ::harmos::plugin::Watching;", "using ::harmos::VISIBILITY_PUBLIC;"]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
         header += [f"struct Host{name}Options {{"]
-        header += [f"  std::optional<{field_type(field)}> {field['name']};" for field in method["fields"] if field["optional"]]
+        header_items = []
+        for header_field in method["fields"]:
+            if not (header_field["optional"]):
+                continue
+            header_items.append(f"  std::optional<{field_type(header_field)}> {header_field['name']};")
+        header += header_items
         if not method["server_streaming"]:
-            header += ["  std::optional<OperationPolicy> policy;"]
+            header += [
+                "  std::optional<"
+                + ("OperationPolicy" if configuration.namespace == "harmos" else "::harmos::OperationPolicy")
+                + "> policy;"
+            ]
         header += ["};"]
         if method["server_streaming"]:
             payload = method["payload_field"]
-            value = field_type(payload) if payload else message(method["response"])
+            value = field_type(payload) if payload else message(method["response"], type_names)
             header += [
                 f"class Host{name} {{",
                 "public:",
                 f"  explicit Host{name}(std::function<std::optional<{value}>()> next) : next_(std::move(next)) {{}}",
-                f"  std::optional<{value}> next() {{",
-                "    return next_();",
-                "  }",
+                f"  std::optional<{value}> next() {{ return next_(); }}",
                 "private:",
                 f"  std::function<std::optional<{value}>()> next_;",
                 "};",
             ]
     for node in reversed(nodes):
-        children = [child for child in nodes if child[:-1] == node]
+        children = []
+        for children_child in nodes:
+            if children_child[:-1] != node:
+                continue
+            children.append(children_child)
+
         header += [f"struct {names[node]} {{", "  Context context;"]
-        header += [f"  {names[child]} {child[-1]};" for child in children]
-        initializers = ["context(value)", *[f"{child[-1]}(value)" for child in children]]
+        header += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
+        initializers = ["context(value)", *[f"{_identifier(child[-1])}(value)" for child in children]]
         header += [f"  {names[node]}(Context value) : {', '.join(initializers)} {{}}"]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
-            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            q, r = (_type_import("::" + method[key].replace(".", "::"))[0] for key in ("request", "response"))
             payload = method["payload_field"]
-            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else message(method["response"])
-            parameters = [f"const {field_type(field)}& {field['name']}" for field in method["fields"] if not field["optional"]]
+            result = (
+                f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else message(method["response"], type_names)
+            )
+            parameters = []
+            for parameters_field in method["fields"]:
+                if parameters_field["optional"]:
+                    continue
+                parameters.append(f"const {field_type(parameters_field)}& {_identifier(parameters_field['name'])}")
+
             if method["server_streaming"]:
                 parameters += ["std::size_t max_item_bytes"]
-            header += [f"  {result} {method['path'][-1]}({', '.join([*parameters, 'Host' + name + 'Options options = {}'])});"]
+            header += [
+                f"  {result} {method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options options = {}'])});"
+            ]
             source += [
-                f"{result} {names[node]}::{method['path'][-1]}({', '.join([*parameters, 'Host' + name + 'Options options'])}) {{",
-                f"  {request_type} request;",
+                f"{result} {names[node]}::{method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options options'])}) {{",
+                f"  {q} request;",
             ]
             for field in method["fields"]:
+                if field["name"] == "request_id":
+                    source += ["  request.set_request_id(options.request_id ? *options.request_id : ::harmos::detail::request_id());"]
+                    continue
                 value = "*options." + field["name"] if field["optional"] else field["name"]
                 if field["optional"]:
-                    source += [f"  if (options.{field['name']}) {{"]
+                    source += [f"  if (options.{_identifier(field['name'])}) {{"]
                 assignment = (
-                    f"*request.mutable_{field['name']}() = {value};" if field["kind"] == 11 else f"request.set_{field['name']}({value});"
+                    f"for (const auto& [key, item] : {value}) {{ (*request.mutable_{_identifier(field['name'])}())[key] = item; }}"
+                    if field["map"]
+                    else f"request.mutable_{_identifier(field['name'])}()->Assign({value}.begin(), {value}.end());"
+                    if field["repeated"]
+                    else f"*request.mutable_{_identifier(field['name'])}() = {value};"
+                    if field["kind"] == 11
+                    else f"request.set_{_identifier(field['name'])}({value});"
                 )
                 source += ["    " + assignment]
                 if field["optional"]:
                     source += ["  }"]
             source += [
-                f'  auto operation = Operation<{request_type}, {response_type}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC);'
+                f'  auto operation = Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC);'
             ]
             if method["server_streaming"]:
                 source += [
                     "  (void)options;",
                     "  operation.watch();",
-                    f"  auto incoming = std::make_shared<Watching<{response_type}>>(context.watch(operation, request, max_item_bytes));",
-                    f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else message(method['response'])}> {{",
+                    f"  auto incoming = std::make_shared<Watching<{r}>>(context.watch(operation, request, max_item_bytes));",
+                    f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else message(method['response'], type_names)}> {{",
                     "    auto response = incoming->next();",
-                    "    if (!response) {",
-                    "      return {};",
-                    "    }",
+                    "    if (!response) { return {}; }",
                 ]
                 value = (
                     f"std::move(*response->mutable_{payload['name']}())"
@@ -226,23 +312,17 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None, names
                     if payload
                     else "*response"
                 )
-                if payload and payload["kind"] == 11:
+                if payload and payload["kind"] == 11 and not payload["repeated"]:
                     source += [
-                        f"    if (!response->has_{payload['name']}()) {{",
-                        f'      throw std::runtime_error("Read {name}: Missing Payload");',
-                        "    }",
+                        f'    if (!response->has_{payload["name"]}()) {{ throw std::runtime_error("Read {name}: Missing Payload"); }}'
                     ]
                 source += [f"    return {value};", "  });"]
             else:
                 source += ["  auto response = context.call(operation, request, options.policy).get();"]
                 if payload and payload["repeated"]:
                     value = f"{field_type(payload)}(response.{payload['name']}().begin(), response.{payload['name']}().end())"
-                elif payload and payload["kind"] == 11:
-                    source += [
-                        f"  if (!response.has_{payload['name']}()) {{",
-                        f'    throw std::runtime_error("Read {name}: Missing Payload");',
-                        "  }",
-                    ]
+                elif payload and payload["kind"] == 11 and not payload["repeated"]:
+                    source += [f'  if (!response.has_{payload["name"]}()) {{ throw std::runtime_error("Read {name}: Missing Payload"); }}']
                     value = f"std::move(*response.mutable_{payload['name']}())"
                 else:
                     value = f"response.{payload['name']}()" if payload else "response"
@@ -250,11 +330,16 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None, names
             source += ["}"]
         header += ["};"]
     header += ["struct HostRoot {"]
-    header += [f"  {names[node]} {node[-1]};" for node in nodes if len(node) == 1]
+    header_items = []
+    for header_node in nodes:
+        if len(header_node) != 1:
+            continue
+        header_items.append(f"  {names[header_node]} {header_node[-1]};")
+    header += header_items
     header += ["};", "}"]
     source += [
         "}",
-        "namespace harmos::plugin {",
+        f"namespace {configuration.namespace}::plugin {{",
         "HostRoot Context::host() {",
         "  return {" + ", ".join("{*this}" for node in nodes if len(node) == 1) + "};",
         "}",
@@ -263,24 +348,22 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None, names
     ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
-        expression = (
-            f'Operation<{request_type}, {response_type}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)'
-            + (".watch()" if method["server_streaming"] else "")
+        q, r = (_type_import("::" + method[key].replace(".", "::"))[0] for key in ("request", "response"))
+        expression = f'Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)' + (
+            ".watch()" if method["server_streaming"] else ""
         )
-        source += [f"    case HostOperation::{name}:", f"      return requires_operation({expression});"]
-    source += [
-        "    default:",
-        '      throw std::invalid_argument("Declare Host Requirement: Unknown Operation");',
-        "  }",
-        "}",
-        "}",
-    ]
-    boundary = source.index("namespace harmos::plugin {")
+        source += [f"    case HostOperation::{name}: return requires_operation({expression});"]
+    source += ['    default: throw std::invalid_argument("Declare Host Requirement: Unknown Operation");', "  }", "}", "}"]
+    boundary = source.index(f"namespace {configuration.namespace}::plugin {{")
     body = "\n".join(source[boundary:])
-    named = {message(method["response"]) for method in methods if method["payload_field"] is None}
+    named = set()
+    for named_method in methods:
+        if named_method["payload_field"] is not None:
+            continue
+        named.add(message(named_method["response"], type_names))
+
     named.update(
-        message(field["type"])
+        message(field["type"], type_names)
         for method in methods
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
@@ -300,15 +383,19 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None, names
             "invalid_argument",
         )
     )
-    imported = {method[key].rsplit(".", 1)[-1] for method in methods for key in ("request", "response")}
-    declarations = []
+    imported = set()
+    for imported_method in methods:
+        for imported_key in ("request", "response"):
+            imported.add(imported_method[imported_key].rsplit(".", 1)[-1])
+
+    declarations: set[str] = set()
     for qualified in sorted(named, key=len, reverse=True):
         if qualified not in body:
             continue
-        name = qualified.rsplit("::", 1)[-1]
+        name, imported_type = _type_import(qualified)
         body = re.sub(re.escape(qualified) + r"\b", name, body)
         if name not in imported:
-            declarations.append(f"using {qualified};")
+            declarations.add(f"using {imported_type};")
             imported.add(name)
     source = [*source[:boundary], *sorted(declarations), body]
     if target is not None:
@@ -334,28 +421,46 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None, names
         target.with_suffix(".cpp").write_text(implementation, encoding="utf-8", newline="\n")
         format_code([target, target.with_suffix(".cpp")])
         return
-    folder = root / "sdk/cpp/include/harmos/_generated"
+    folder = root / f"sdk/cpp/include/{configuration.namespace}/_generated"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "host.hpp").write_text("\n".join(header) + "\n", encoding="utf-8", newline="\n")
     folder = root / "sdk/cpp/src/generated"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "host.cpp").write_text("\n".join(source) + "\n", encoding="utf-8", newline="\n")
-    format_code([root / "sdk/cpp/include/harmos/_generated/host.hpp", folder / "host.cpp"])
+    format_code([root / f"sdk/cpp/include/{configuration.namespace}/_generated/host.hpp", folder / "host.cpp"])
 
 
-def message(full: str) -> str:
+def message(full: str, type_names: dict[str, str]) -> str:
     parts = full.split(".")
     if full.startswith("google.protobuf."):
         return "::google::protobuf::" + parts[-1]
-    if full.startswith("harmos.host."):
+    if ".host." in full:
         # Shared Host Replies Belong to the Root; Audience-Exclusive Replies to Their Barrel.
-        return _host_payload_names().get(full, "::harmos::client::" + parts[-1])
-    if full.startswith("harmos.model."):
-        return "::harmos::" + parts[-1]
-    return "::" + parts[0] + "::client::" + parts[-1]
+        return type_names.get(full, "::" + full.replace(".", "::"))
+    if ".model." in full:
+        return type_names.get(full, "::" + parts[0] + "::" + parts[-1])
+    return type_names.get(full, "::" + parts[0] + "::plugin::" + parts[-1])
 
 
-def client(root: Path, methods: list[Method], *, namespace: str = "harmos", target: Path | None = None) -> None:
+def client(
+    root: Path,
+    methods: list[descriptor.Method],
+    *,
+    type_names: dict[str, str] | None = None,
+    namespace: str = "harmos",
+    target: Path | None = None,
+    configuration: Configuration | None = None,
+) -> None:
+    configuration = configuration or Configuration()
+    type_names = dict(type_names or {})
+    library = configuration.library_descriptors()
+    if library.file:
+        descriptors = library
+        for full, groups in descriptor.payload_audiences(descriptors, library=configuration.library).items():
+            if not full.startswith("harmos.host."):
+                continue
+            boundary = "" if len(groups) > 1 else next(iter(groups)) + "::"
+            type_names[full] = "::harmos::" + boundary + full.rsplit(".", 1)[-1]
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
@@ -363,34 +468,22 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
     def title(part: str) -> str:
         return "".join(word.title() for word in part.split("_"))
 
-    def field_type(field: Field) -> str:
-        value = (
-            message(field["type"])
-            if field["type"]
-            else {
-                1: "double",
-                2: "float",
-                8: "bool",
-                9: "std::string",
-                12: "std::string",
-                4: "std::uint64_t",
-                13: "std::uint32_t",
-                6: "std::uint64_t",
-                7: "std::uint32_t",
-                5: "std::int32_t",
-                15: "std::int32_t",
-                17: "std::int32_t",
-            }.get(field["kind"], "std::int64_t")
-        )
-        return f"std::vector<{value}>" if field["repeated"] else value
+    def field_type(field: descriptor.Field) -> str:
+        value = message(field["type"], type_names) if field["type"] else SCALARS.get(field["kind"], "std::int64_t")
+        return f"std::map<std::string, {value}>" if field["map"] else f"std::vector<{value}>" if field["repeated"] else value
 
-    names = {node: "Client" if not node else "".join(title(part) for part in node) + "Resource" for node in nodes}
+    names = {}
+    for names_node in nodes:
+        names[names_node] = "Client" if not names_node else "".join(title(part) for part in names_node) + "Resource"
+
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#pragma once",
         '#include "harmos/client_transport.hpp"',
         '#include "harmos/messages.hpp"',
     ]
+    if configuration.namespace != "harmos":
+        lines += [f'#include "{configuration.namespace}/messages.hpp"']
     # Wire Stubs and Request Types Stay in a Private Generated Header.
     private = ["// @generated from protocol descriptors; do not edit.", "#pragma once"]
     includes = sorted({method["file"].removesuffix(".proto") + ".grpc.pb.h" for method in methods})
@@ -411,13 +504,15 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
     wire.parent.mkdir(parents=True, exist_ok=True)
     wire.write_text("\n".join(private) + "\n", encoding="utf-8", newline="\n")
     lines += ['#include "detail/client.hpp"']
-    if namespace != "harmos":
+    if namespace != configuration.namespace:
         public = ["// @generated from protocol descriptors; do not edit.", "#pragma once", '#include "detail/client.hpp"']
         for method in methods:
             if method["owner"] == "harmos":
                 continue
+            _, container = _type_import("::" + method["response"].replace(".", "::"))
+            imported_type = _private_name(container.removeprefix("::").replace("::", "."))
             public += [
-                f"namespace {method['owner'].replace('.', '::')}::client {{ using ::{namespace.replace('.', '::')}::detail::packages::{_private_name(method['response'])}; }}"
+                f"namespace {method['owner'].replace('.', '::')}::client {{ using ::{namespace.replace('.', '::')}::detail::packages::{imported_type}; }}"
             ]
         (destination.parent / "client_messages.hpp").write_text("\n".join(public) + "\n", encoding="utf-8", newline="\n")
         lines += ['#include "client_messages.hpp"']
@@ -426,18 +521,29 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
     for method in methods:
         options = "".join(title(part) for part in method["path"]) + "Options"
         lines += [f"struct {options} {{"]
-        lines += [f"  std::optional<{field_type(field)}> {field['name']};" for field in method["fields"] if field["optional"]]
+        lines_items = []
+        for lines_field in method["fields"]:
+            if not (lines_field["optional"]):
+                continue
+            lines_items.append(f"  std::optional<{field_type(lines_field)}> {_identifier(lines_field['name'])};")
+        lines += lines_items
         lines += ["  std::shared_ptr<grpc::ClientContext> context;", "};"]
     lines += ["}"]
+
     for node in sorted(nodes, key=lambda node: (-len(node), node)):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
-        operations = [method for method in methods if tuple(method["path"][:-1]) == node]
+        operations = []
+        for operations_method in methods:
+            if tuple(operations_method["path"][:-1]) != node:
+                continue
+            operations.append(operations_method)
+
         lines += [f"struct {names[node]} {{"]
         if operations:
             lines += ["  std::shared_ptr<grpc::Channel> channel;"]
-        lines += [f"  {names[child]} {child[-1]};" for child in children]
-        initializers = (["channel(transport)"] if operations else []) + [f"{child[-1]}(transport)" for child in children]
-        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> transport) : {', '.join(initializers)} {{}}"]
+        lines += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
+        initializers = (["channel(channel)"] if operations else []) + [f"{_identifier(child[-1])}(channel)" for child in children]
+        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
         if not node:
             lines += [
                 "  static Client connect(std::string address, const ::harmos::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",
@@ -454,33 +560,46 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         for method in operations:
             if method["client_streaming"]:
                 raise ValueError(
-                    f"Generate C++ Client {method['method']}: Managed Contract Required; Correct the source protocol declarations or explicit public exports before regenerating"
+                    f"Generate C++ Client {method['method']}: Declare a Managed Contract for Client Streaming Before Regenerating"
                 )
             prefix = "".join(title(part) for part in method["path"])
             request = f"detail::packages::{_private_name(method['request'])}"
             response = f"detail::packages::{_private_name(method['response'])}"
             service = f"detail::packages::{_private_name(method['package'])}::{method['service']}"
-            parameters = [f"const {field_type(field)}& {field['name']}" for field in method["fields"] if not field["optional"]]
+            parameters = []
+            for parameters_field in method["fields"]:
+                if parameters_field["optional"]:
+                    continue
+                parameters.append(f"const {field_type(parameters_field)}& {_identifier(parameters_field['name'])}")
+
             parameters += [f"client::{prefix}Options options = {{}}"]
             payload = method["payload_field"]
-            result = field_type(payload) if payload else message(method["response"])
+            result = field_type(payload) if payload else message(method["response"], type_names)
             stream = method["server_streaming"]
             returns = f"::harmos::ClientStream<{result}>" if stream else result
-            name = method["path"][-1]
-            if name == "delete":
-                name = "delete_"
+            name = _identifier(method["path"][-1])
+            if name in {"delete", "export", "import", "new", "class", "default"}:
+                name += "_"
             lines += [f"  {returns} {name}({', '.join(parameters)}) {{", f"    {request} request;"]
             for field in method["fields"]:
-                name = field["name"]
+                name = _identifier(field["name"])
                 optional = field["optional"]
                 if name == "request_id":
                     lines += ["    request.set_request_id(options.request_id ? *options.request_id : ::harmos::detail::request_id());"]
                     continue
                 if optional:
                     lines += [f"    if (options.{name}) {{"]
-                value = f"*options.{name}" if optional else name
+                value = (
+                    f"(*options.{name})" if optional and (field["repeated"] or field["map"]) else f"*options.{name}" if optional else name
+                )
                 indent = "      " if optional else "    "
-                if field["repeated"]:
+                if field["map"]:
+                    lines += [
+                        f"{indent}for (const auto& [key, item] : {value}) {{",
+                        f"{indent}  (*request.mutable_{name}())[key] = item;",
+                        f"{indent}}}",
+                    ]
+                elif field["repeated"]:
                     lines += [f"{indent}request.mutable_{name}()->Assign({value}.begin(), {value}.end());"]
                 elif field["kind"] == 11:
                     lines += [f"{indent}*request.mutable_{name}() = {value};"]
@@ -497,9 +616,7 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
                     f"      {response} response;",
                     "      if (!reader->Read(&response)) {",
                     "        const auto status = reader->Finish();",
-                    "        if (!status.ok()) {",
-                    f'          throw std::runtime_error("Read {action}: " + status.error_message());',
-                    "        }",
+                    f'        if (!status.ok()) {{ throw std::runtime_error("Read {action}: " + status.error_message()); }}',
                     "        return {};",
                     "      }",
                 ]
@@ -534,15 +651,21 @@ def client(root: Path, methods: list[Method], *, namespace: str = "harmos", targ
         lines += ["};"]
     lines += ["}"]
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    format_code([destination, wire, *([destination.parent / "client_messages.hpp"] if namespace != "harmos" else [])])
+    format_code([destination, wire, *([destination.parent / "client_messages.hpp"] if namespace != configuration.namespace else [])])
 
 
 def format_code(paths: list[Path]) -> None:
-    policy = Path(__file__).resolve().parents[6] / "sdk/cpp/.clang-format"
-    subprocess.run(["clang-format", f"--style=file:{policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
+    policy = "{BasedOnStyle: LLVM, ColumnLimit: 140, AllowShortFunctionsOnASingleLine: Empty, AllowShortLambdasOnASingleLine: None}"
+    subprocess.run(["clang-format", f"--style={policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
 
 
 # === Private Functions === #
+
+
+def _type_import(qualified: str) -> tuple[str, str]:
+    parts = qualified.removeprefix("::").split("::")
+    boundary = next((index for index, part in enumerate(parts) if part[0].isupper()), len(parts) - 1)
+    return "::".join(parts[boundary:]), ("::" if qualified.startswith("::") else "") + "::".join(parts[: boundary + 1])
 
 
 def _private_name(full: str) -> str:
@@ -550,17 +673,113 @@ def _private_name(full: str) -> str:
     return "::".join(part for part in full.split(".") if not re.fullmatch(r"v[0-9]+", part))
 
 
-@cache
-def _host_payload_names() -> dict[str, str]:
-    library = Path(__file__).resolve().parents[6] / "crates/harmos-protocol/src/descriptors.bin"
-    schema = FileDescriptorSet.FromString(library.read_bytes())
-    names = {}
-    for full, groups in payload_audiences(schema).items():
-        if not full.startswith("harmos.host."):
-            continue
-        boundary = "" if len(groups) > 1 else next(iter(groups)) + "::"
-        names[full] = "::harmos::" + boundary + full.rsplit(".", 1)[-1]
-    return names
+def _identifier(name: str) -> str:
+    return (
+        name + "_"
+        if name
+        in {
+            "case",
+            "default",
+            "bitand",
+            "catch",
+            "struct",
+            "char",
+            "static_cast",
+            "class",
+            "constexpr",
+            "import",
+            "alignas",
+            "long",
+            "xor_eq",
+            "virtual",
+            "new",
+            "continue",
+            "private",
+            "static",
+            "do",
+            "synchronized",
+            "mutable",
+            "reinterpret_cast",
+            "false",
+            "for",
+            "co_yield",
+            "volatile",
+            "friend",
+            "typename",
+            "public",
+            "bitor",
+            "concept",
+            "delete",
+            "consteval",
+            "asm",
+            "inline",
+            "noexcept",
+            "alignof",
+            "bool",
+            "export",
+            "unsigned",
+            "atomic_commit",
+            "void",
+            "template",
+            "atomic_cancel",
+            "explicit",
+            "xor",
+            "char32_t",
+            "reflexpr",
+            "protected",
+            "extern",
+            "while",
+            "true",
+            "switch",
+            "const_cast",
+            "goto",
+            "constinit",
+            "if",
+            "auto",
+            "not_eq",
+            "and_eq",
+            "int",
+            "requires",
+            "or_eq",
+            "break",
+            "or",
+            "const",
+            "union",
+            "nullptr",
+            "throw",
+            "short",
+            "return",
+            "thread_local",
+            "not",
+            "char8_t",
+            "namespace",
+            "co_await",
+            "this",
+            "dynamic_cast",
+            "try",
+            "wchar_t",
+            "decltype",
+            "atomic_noexcept",
+            "operator",
+            "typeid",
+            "static_assert",
+            "co_return",
+            "char16_t",
+            "and",
+            "compl",
+            "register",
+            "using",
+            "signed",
+            "module",
+            "float",
+            "typedef",
+            "double",
+            "else",
+            "enum",
+            "sizeof",
+        }
+        else name
+    )
 
 
 # === Entry Point === #

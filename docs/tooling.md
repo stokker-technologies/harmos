@@ -233,6 +233,59 @@ modules own the descriptor inventory and each language's renderer. Composition
 entry points and arguments stay stable. Regenerate tracked output through the
 tasks above; edit its owning generator rather than the output.
 
+The shared Python tooling package also renders a complete product SDK through
+`harmos_tools.build.resources.sdk.generate`. Install `harmos-tools` from the same
+immutable Harmos revision as the carrier, using the repository's `tools/python`
+package. Product tasks supply configuration and invoke this implementation; they
+keep no copies of the descriptor analysis, four renderers or C# wire projector.
+
+```python
+from pathlib import Path
+
+from harmos_tools.build.resources.configuration import Configuration
+from harmos_tools.build.resources.sdk import generate
+
+root = Path.cwd()
+configuration = Configuration(
+    namespace="application",
+    csharp_tools=root / "target/cs/packages/grpc.tools/2.76.0/tools",
+    rustfmt=root / "rustfmt.toml",
+    python_style=root / "sdk/python/ruff.toml",
+    rust_selectors={"application.host.v1.DocumentsGetRequest": {"scope", "document_id"}},
+)
+generate(
+    root=root,
+    descriptors=root / "protocol/descriptors.bin",
+    composition=root / "protocol/composition.toml",
+    configuration=configuration,
+)
+```
+
+Inputs are a dependency-complete `FileDescriptorSet`, a composition TOML containing
+`libraries` (descriptor paths and package lists) and optional `callers` restrictions,
+the output repository root, its top-level namespace and the restored `Grpc.Tools`
+compiler directory. `rustfmt` and `python_style` select the product formatter inputs;
+their defaults are `rustfmt.toml` and `sdk/python/ruff.toml` below the supplied root.
+Compiler versions remain product pins. `rust_selectors` selects
+positional fields per request; other fields become defaultable call options.
+`client_required_fields` supplies explicit required selectors for all client languages.
+Neither setting changes the wire descriptor's presence. `library` can supply the
+unmodified library descriptor inventory for stable public payload ownership after
+caller narrowing; full-SDK generation otherwise snapshots its supplied descriptors
+before narrowing. Each language renderer also accepts `configuration` and explicit
+target paths for focused composition. No product package is imported by the tool. Complete-SDK generation targets the
+existing SDK adapter layout: Rust's `crate::message::Wire`, Python's `_context` and
+`_plugin`, C#'s `Context`/`Plugin`, and the namespace's C++ umbrella header. Products
+supply these adapters; the shared tool owns their descriptor-derived projections.
+
+`check=True` renders into a temporary directory and compares the complete output
+inventory, reporting missing, changed and obsolete files without rewriting sources.
+Normal generation retires obsolete output and writes tracked files under `sdk/`.
+Focused descriptor fixtures run with
+`mise run test -- --language python --exact tests.integration.test_shared_generator_preserves_contracts`.
+They cover nested values/enums, presence, repeated values, language keywords,
+audience narrowing and per-call metadata/deadlines.
+
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
 C# generation reads its compiler version from `sdk/csharp/Directory.Packages.props`.

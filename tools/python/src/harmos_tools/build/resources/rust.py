@@ -7,7 +7,7 @@
 # ***
 
 
-"""Generate Rust Resources, Operation Contracts and Payload Exports."""
+"""Generate Rust Resource Surfaces."""
 
 # === Imports === #
 
@@ -15,11 +15,16 @@
 import re
 from pathlib import Path
 
+# isort: split
+
 # Third Party Imports
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorSet
 
+# isort: split
+
 # Local Imports
-from harmos_tools.build.resources.descriptor import Field, Method, payload_audiences, snake, table
+from . import descriptor
+from .configuration import Configuration
 
 # Type Checking Imports
 
@@ -27,36 +32,84 @@ from harmos_tools.build.resources.descriptor import Field, Method, payload_audie
 
 # === Constants === #
 
+SCALARS = {
+    1: "f64",
+    2: "f32",
+    3: "i64",
+    4: "u64",
+    5: "i32",
+    6: "u64",
+    7: "u32",
+    8: "bool",
+    9: "String",
+    12: "Vec<u8>",
+    13: "u32",
+    15: "i32",
+    16: "i64",
+    17: "i32",
+    18: "i64",
+}
+
 
 # === Types === #
 
 # === Classes === #
 
-
 # === Public Functions === #
 
 
-def exports(root: Path, descriptors: FileDescriptorSet) -> None:
-    requests = {method["request"] for method in table(descriptors)}
-    audiences = payload_audiences(descriptors)
+def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
+    configuration = configuration or Configuration()
+    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    requests = set()
+    for requests_method in descriptor.table(descriptors):
+        if requests_method["face"] == "plugin":
+            continue
+        requests.add(requests_method["request"])
+
+    audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
     for file in descriptors.file:
-        if not file.package.startswith("harmos.") or file.name.endswith("guest.proto") or ".plugin." in file.package:
+        if not file.package.startswith((f"{configuration.namespace}.", "harmos.")):
+            continue
+        if file.name.endswith("guest.proto"):
+            continue
+        if file.package.startswith("harmos.plugin."):
             continue
         for definition in [*file.message_type, *file.enum_type]:
             full = f"{file.package}.{definition.name}"
-            if full in requests or definition.name in {"Request", "Response"} or definition.name.startswith("Child"):
+            if full in requests:
+                continue
+            if definition.name in {"Request", "Response"}:
+                continue
+            if definition.name.startswith("Child"):
                 continue
             source = (
-                message_type(full)
-                .replace("harmos_protocol::model", "crate::wire::shared")
-                .replace("harmos_protocol::host", "crate::wire::host")
+                message(full)
+                .replace(f"{configuration.namespace}_protocol::model", "crate::wire::model")
+                .replace(f"{configuration.namespace}_protocol::host", "crate::wire::host")
+                .replace(f"{configuration.namespace}_protocol::plugin", "crate::wire::plugin")
             )
+            if configuration.namespace == "harmos":
+                source = (
+                    message(full)
+                    .replace("harmos_protocol::model", "crate::wire::shared")
+                    .replace("harmos_protocol::host", "crate::wire::host")
+                )
             groups_for_type = (
-                {"shared"} if ".model." in file.package or len(audiences.get(full, set())) > 1 else audiences.get(full, {"client"})
+                {"plugin"}
+                if ".plugin." in file.package
+                else {"shared"}
+                if ".model." in file.package or len(audiences.get(full, set())) > 1
+                else audiences.get(full, {"client"})
             )
             for group in groups_for_type:
-                groups[group].append(f"pub use {source};")
+                alias = definition.name if configuration.namespace == "harmos" else descriptor.public_name(full, public_names)
+                exported = source
+                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
+                    boundary = "" if group == "shared" else group + "::"
+                    exported = "harmos::" + boundary + definition.name
+                groups[group].append(f"pub use {exported}" + (f" as {alias}" if alias != definition.name else "") + ";")
             if isinstance(definition, DescriptorProto) and (
                 any(not nested.options.map_entry for nested in definition.nested_type)
                 or definition.enum_type
@@ -64,7 +117,10 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
             ):
                 parent = source.rsplit("::", 1)[0]
                 for group in groups_for_type:
-                    groups[group].append(f"pub use {parent}::{snake(definition.name)};")
+                    module = parent + "::" + descriptor.snake(definition.name)
+                    if configuration.namespace != "harmos" and file.package.startswith("harmos."):
+                        module = "harmos::" + ("" if group == "shared" else group + "::") + descriptor.snake(definition.name)
+                    groups[group].append(f"pub use {module};")
     for group, lines in groups.items():
         target = root / "sdk/rust/src" / ("exports.rs" if group == "shared" else f"{group}/types.rs")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -73,63 +129,82 @@ def exports(root: Path, descriptors: FileDescriptorSet) -> None:
         )
 
 
-def message_type(full: str) -> str:
+def message(full: str) -> str:
     for package, module in [("harmos.host.v1.", "host"), ("harmos.plugin.v1.", "plugin"), ("harmos.model.v1.", "model")]:
         if full.startswith(package):
-            return f"harmos_protocol::{module}::" + "::".join(full.removeprefix(package).split("."))
+            return f"harmos_protocol::{module}::" + "::".join(
+                [*(descriptor.snake(part) for part in full.removeprefix(package).split(".")[:-1]), full.rsplit(".", 1)[-1]]
+            )
     if full.startswith("google.protobuf."):
         return "prost_types::" + full.rsplit(".", 1)[-1]
     parts = full.split(".")
     version = next(index for index, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part))
-    return snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parts[version + 1 :]])
+    parents = [_identifier(descriptor.snake(part)) for part in parts[version + 1 : -1]]
+    return descriptor.snake(parts[0]) + "_protocol::" + "::".join([parts[version - 1], *parents, parts[-1]])
 
 
-def client(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
-    selected: list[Method] = []
+def call_fields(methods: list[descriptor.Method], *, configuration: Configuration | None = None) -> list[descriptor.Method]:
+    """Keep Selectors Positional and Defaultable Read Filters in Call Options."""
+    configuration = configuration or Configuration()
+    required = configuration.rust_selectors
+    selected: list[descriptor.Method] = []
+    for method in methods:
+        selectors = required.get(method["request"])
+        if selectors is not None:
+            method = method.copy()
+            method["fields"] = [
+                descriptor.Field(**{**field, "optional": field["optional"] or field["name"] not in selectors}) for field in method["fields"]
+            ]
+        selected.append(method)
+    return selected
+
+
+def client(
+    root: Path,
+    methods: list[descriptor.Method],
+    *,
+    target: Path | None = None,
+    configuration: Configuration | None = None,
+) -> None:
+    configuration = configuration or Configuration()
+    methods = call_fields(methods, configuration=configuration)
+    selected: list[descriptor.Method] = []
     for method in methods:
         method = method.copy()
         if method["face"] == "client" and method["request"] == "harmos.host.v1.plugins.SettingsListRequest":
-            method["fields"] = [Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]]
+            method["fields"] = [
+                descriptor.Field(**{**field, "optional": False}) if field["name"] == "name" else field for field in method["fields"]
+            ]
         selected.append(method)
     methods = selected
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))
-    names = {node: "Root" if not node else "".join(part.title().replace("_", "") for part in node) for node in nodes}
-    used = {method[key] for method in methods for key in ("request", "response")}
+    names = {}
+    for names_node in nodes:
+        names[names_node] = "Root" if not names_node else "".join(part.title().replace("_", "") for part in names_node)
+
+    used = set()
+    for used_method in methods:
+        for used_key in ("request", "response"):
+            used.add(used_method[used_key])
+
     used.update(
         field["type"]
         for method in methods
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    message_names = {full: full.rsplit(".", 1)[-1] for full in used}
+    aliases = {full: full.rsplit(".", 1)[-1] for full in used}
     reserved = set(names.values()) | {"CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"}
-    duplicates = reserved | {name for name in message_names.values() if list(message_names.values()).count(name) > 1}
+    duplicates = reserved | {name for name in aliases.values() if list(aliases.values()).count(name) > 1}
     for full in used:
-        if message_names[full] in duplicates:
-            message_names[full] = message_type(full)
+        if aliases[full] in duplicates:
+            aliases[full] = message(full)
 
-    def field_type(field: Field) -> str:
-        value = (
-            message_names[field["type"]]
-            if field["type"]
-            else {
-                1: "f64",
-                2: "f32",
-                8: "bool",
-                9: "String",
-                12: "Vec<u8>",
-                4: "u64",
-                13: "u32",
-                6: "u64",
-                7: "u32",
-                5: "i32",
-                15: "i32",
-                17: "i32",
-            }.get(field["kind"], "i64")
-        )
-        return f"Vec<{value}>" if field["repeated"] else value
+    def field_type(field: descriptor.Field) -> str:
+        value = aliases[field["type"]] if field["type"] else SCALARS.get(field["kind"], "i64")
+        return f"std::collections::HashMap<String, {value}>" if field["map"] else f"Vec<{value}>" if field["repeated"] else value
 
     lines = [
         "// @generated from protocol descriptors; do not edit.",
@@ -137,67 +212,137 @@ def client(root: Path, methods: list[Method], *, target: Path | None = None) -> 
         "use prost_reflect::ReflectMessage;",
         "use tonic::codegen::http::uri::PathAndQuery;",
     ]
-    lines += [
-        f"use {message_type(full)};" for full in sorted(used) if message_names[full] not in duplicates and "::" not in message_names[full]
-    ]
-
+    lines += [f"use {message(full)};" for full in sorted(used) if "::" not in aliases[full]]
     for method in methods:
         name = "".join(part.title().replace("_", "") for part in method["path"]) + "Options"
         lines += ["#[derive(Default)]", f"pub struct {name} {{"]
-        lines += [f"    pub {field['name']}: Option<{field_type(field)}>," for field in method["fields"] if field["optional"]]
+        lines_items = []
+        for lines_field in method["fields"]:
+            if not (lines_field["optional"]):
+                continue
+            lines_items.append(f"    pub {_identifier(lines_field['name'])}: Option<{field_type(lines_field)}>,")
+        lines += lines_items
         lines += ["    pub context: CallOptions,", "}"]
+        lines += [f"impl Clone for {name} {{", "    fn clone(&self) -> Self {", "        Self {"]
+        for field in method["fields"]:
+            if field["optional"]:
+                expression = f"self.{_identifier(field['name'])}" + ("" if field["copy"] else ".clone()")
+                lines += [f"            {_identifier(field['name'])}: {expression},"]
+        lines += [
+            "            context: CallOptions { metadata: self.context.metadata.clone(), timeout: self.context.timeout },",
+            "        }",
+            "    }",
+            "}",
+        ]
     for node in sorted(nodes):
         children = sorted(child for child in nodes if len(child) == len(node) + 1 and child[:-1] == node)
-        operations = [method for method in methods if tuple(method["path"][:-1]) == node]
+        operations = []
+        for operations_method in methods:
+            if tuple(operations_method["path"][:-1]) != node:
+                continue
+            operations.append(operations_method)
+
         lines += ["#[derive(Clone)]", f"pub struct {names[node]} {{"]
         if operations:
             lines += ["    client: ClientTransport,"]
-        lines += [f"    pub {child[-1]}: {names[child]}," for child in children]
+        lines += [f"    pub {_identifier(child[-1])}: {names[child]}," for child in children]
         lines += ["}", f"impl {names[node]} {{", "    pub fn new(client: ClientTransport) -> Self {", "        Self {"]
-        lines += [f"            {child[-1]}: {names[child]}::new(client.clone())," for child in children]
+        lines += [f"            {_identifier(child[-1])}: {names[child]}::new(client.clone())," for child in children]
         if operations:
             lines += ["            client,"]
         lines += ["        }", "    }"]
         for method in operations:
             if method["client_streaming"]:
                 raise ValueError(
-                    f"Generate Rust Client {method['method']}: Managed Contract Required; Correct the source protocol declarations or explicit public exports before regenerating"
+                    f"Generate Rust Client {method['method']}: Declare a Managed Contract for Client Streaming Before Regenerating"
                 )
-            request, response = (message_names[method[key]] for key in ("request", "response"))
-            required = [field for field in method["fields"] if not field["optional"]]
-            parameters = [
-                f"{field['name']}: " + ("impl Into<String>" if field_type(field) == "String" else field_type(field)) for field in required
-            ]
-            args = [field["name"] for field in required]
+            request, response = (aliases[method[key]] for key in ("request", "response"))
+            required = []
+            for required_field in method["fields"]:
+                if required_field["optional"]:
+                    continue
+                required.append(required_field)
+
+            parameters = []
+            for parameters_field in required:
+                parameters.append(
+                    f"{_identifier(parameters_field['name'])}: "
+                    + ("impl Into<String>" if field_type(parameters_field) == "String" else field_type(parameters_field))
+                )
+
+            args = [_identifier(field["name"]) for field in required]
             options = "".join(part.title().replace("_", "") for part in method["path"]) + "Options"
             payload = method["payload_field"]
             result = field_type(payload) if payload else response
             if method["server_streaming"]:
                 result = f"Watching<{result}>"
-            name = method["path"][-1]
+            name = _identifier(method["path"][-1])
             lines += [
-                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result}, tonic::Status> {{",
+                f"    pub async fn {name}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result} , tonic::Status> {{",
                 f"        self.{name}_with({', '.join([*args, options + '::default()'])}).await",
                 "    }",
             ]
             lines += [
-                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result}, tonic::Status> {{",
+                f"    pub async fn {name}_with(&self, {', '.join([*parameters, 'options: ' + options])}) -> Result<{result} , tonic::Status> {{",
                 f"        let value = {request} {{",
             ]
+            for group in sorted({field["oneof"] for field in method["fields"] if field["oneof"]}):
+                members = []
+                for members_field in method["fields"]:
+                    if members_field["oneof"] != group:
+                        continue
+                    members.append(members_field)
+
+                variant = (
+                    message(method["request"]).rsplit("::", 1)[0]
+                    + "::"
+                    + descriptor.snake(method["request"].rsplit(".", 1)[-1])
+                    + "::"
+                    + "".join(part.title() for part in group.split("_"))
+                )
+                variants = ", ".join("options." + field["name"] for field in members) + ","
+                lines += [f"            {group}: match ({variants}) {{"]
+                for index, member in enumerate(members):
+                    pattern = ", ".join("Some(value)" if index == other else "None" for other in range(len(members))) + ","
+                    lines += [f"                ({pattern}) => Some({variant}::{member['name'].title()}(value)),"]
+                empty = ", ".join("None" for _ in members) + ","
+                lines += [
+                    f"                ({empty}) => None,",
+                    f'                _ => return Err(tonic::Status::invalid_argument("Choose At Most One {group} Variant")),',
+                    "            },",
+                ]
             for field in method["fields"]:
-                name = field["name"]
+                if field["oneof"]:
+                    continue
+                name = _identifier(field["name"])
                 if name == "request_id":
                     expression = "match options.request_id { Some(value) => value, None => request_id()?, }"
                 elif method["request"] == "harmos.host.v1.plugins.SettingsListRequest" and name == "name":
                     expression = "Some(name.into())"
                 elif field["optional"]:
                     expression = f"options.{name}"
-                elif field["kind"] == 11 and not field["repeated"]:
+                    if not field["wire_optional"] and (field["kind"] != 11 or field["repeated"] or field["map"]):
+                        expression += ".unwrap_or_default()"
+                elif field["kind"] == 11 and not field["repeated"] and not field["map"]:
                     expression = f"Some({name})"
-                elif field["kind"] == 9:
+                elif field_type(field) == "String":
                     expression = f"{name}.into()"
                 else:
                     expression = name
+                if field["kind"] == 14:
+                    if field["repeated"]:
+                        expression = f"{expression}.into_iter().map(|value| value as i32).collect()"
+                    elif field["wire_optional"] and field["optional"]:
+                        expression = f"{expression}.map(|value| value as i32)"
+                    else:
+                        expression = f"{expression} as i32"
+                if (
+                    field["wire_optional"]
+                    and not field["optional"]
+                    and field["kind"] != 11
+                    and not (method["request"] == "harmos.host.v1.plugins.SettingsListRequest" and name == "name")
+                ):
+                    expression = f"Some({expression})"
                 lines += [f"            {name}," if expression == name else f"            {name}: {expression},"]
             lines += ["        };", "        let request = options.context.request(value);"]
             path = f"/{method['package']}.{method['service']}/{method['method']}"
@@ -235,11 +380,6 @@ def client(root: Path, methods: list[Method], *, target: Path | None = None) -> 
         lines += ["}"]
     destination = target or root / "sdk/rust/src/connection/resources.rs"
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    if target is not None:
-        exports = sorted({method["response"] for method in methods if method["owner"] != "harmos"})
-        facade = ["// @generated from protocol descriptors; do not edit."]
-        facade += [f"pub use {re.sub(r'^\w+_protocol::(?:host|plugin|model)', 'crate::wire', message_type(name))};" for name in exports]
-        (target.parent / "client_types.rs").write_text("\n".join(facade) + "\n", encoding="utf-8", newline="\n")
     if target is None:
         exports = [*names.values(), *("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)]
         (root / "sdk/rust/src/client/resources.rs").write_text(
@@ -251,7 +391,7 @@ def client(root: Path, methods: list[Method], *, target: Path | None = None) -> 
         )
 
 
-def context(root: Path, methods: list[Method]) -> None:
+def context(root: Path, methods: list[descriptor.Method]) -> None:
     lines = ["// @generated from the protocol descriptor table; do not edit.", "use crate::{Message, OperationRequest};"]
     messages = sorted(
         {method[field] for method in methods for field in ("request", "response")}
@@ -259,14 +399,14 @@ def context(root: Path, methods: list[Method]) -> None:
     )
 
     lines += ["use prost_types::FileDescriptorSet;"]
-    lines += [f"use {message_type(message)};" for message in messages]
+    lines += [f"use {message(full)};" for full in messages]
 
-    for message in messages:
+    for full in messages:
         lines += [
-            f"impl Message for {message.rsplit('.', 1)[-1]} {{",
-            f'    fn name() -> String {{ "{message}".into() }}',
+            f"impl Message for {full.rsplit('.', 1)[-1]} {{",
+            f'    fn name() -> String {{ "{full}".into() }}',
             "    fn types() -> FileDescriptorSet {",
-            f'        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/{message}.bin")[..]).expect("generated context wrapper")',
+            f'        <FileDescriptorSet as prost::Message>::decode(&include_bytes!("types/{full}.bin")[..]).expect("generated context wrapper")',
             "    }",
             "}",
         ]
@@ -282,21 +422,24 @@ def context(root: Path, methods: list[Method]) -> None:
     (root / "sdk/rust/src/context/contracts.rs").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def host(root: Path, methods: list[Method], *, target: Path | None = None) -> None:
+def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = None, configuration: Configuration | None = None) -> None:
+    configuration = configuration or Configuration()
+    methods = call_fields(methods, configuration=configuration)
+
     def title(value: str) -> str:
         return "".join(word.title() for word in value.split("_"))
 
-    def field_type(field: Field) -> str:
-        value = (
-            field["type"].rsplit(".", 1)[-1]
-            if field["type"]
-            else {1: "f64", 2: "f32", 8: "bool", 9: "String", 12: "Vec<u8>", 4: "u64", 13: "u32"}.get(field["kind"], "i64")
-        )
-        return f"Vec<{value}>" if field["repeated"] else value
+    def field_type(field: descriptor.Field) -> str:
+        value = field["type"].rsplit(".", 1)[-1] if field["type"] else SCALARS.get(field["kind"], "i64")
+        return f"std::collections::HashMap<String, {value}>" if field["map"] else f"Vec<{value}>" if field["repeated"] else value
 
     nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
     names = {node: "Host" + "".join(title(part) for part in node) + "Resource" for node in nodes}
-    used = {method[key] for method in methods for key in ("request", "response")}
+    used = set()
+    for used_method in methods:
+        for used_key in ("request", "response"):
+            used.add(used_method[used_key])
+
     used.update(
         field["type"]
         for method in methods
@@ -308,7 +451,7 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         "use crate::{Context, Error, Result, Plugin, OperationPolicy};",
         "use std::num::NonZeroUsize;",
     ]
-    lines += [f"use {message_type(full)};" for full in sorted(used)]
+    lines += [f"use {message(full)};" for full in sorted(used)]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
     lines += ["}", "impl Plugin {", "    pub fn requires_host(self, operation: HostOperation) -> Self {", "        match operation {"]
@@ -327,22 +470,37 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None) -> No
         "#[derive(Clone)]",
         "pub struct HostRoot {",
     ]
-    lines += [f"    pub {node[-1]}: {names[node]}," for node in nodes if len(node) == 1]
+    lines_items = []
+    for lines_node in nodes:
+        if len(lines_node) != 1:
+            continue
+        lines_items.append(f"    pub {lines_node[-1]}: {names[lines_node]},")
+    lines += lines_items
     lines += ["}", "impl HostRoot {", "    fn new(context: Context) -> Self {", "        Self {"]
-    lines += [f"            {node[-1]}: {names[node]}::new(context.clone())," for node in nodes if len(node) == 1]
+    lines_items = []
+    for lines_node in nodes:
+        if len(lines_node) != 1:
+            continue
+        lines_items.append(f"            {lines_node[-1]}: {names[lines_node]}::new(context.clone()),")
+    lines += lines_items
     lines += ["        }", "    }", "}"]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
         lines += ["#[derive(Default)]", f"pub struct Host{name}Options {{"]
-        lines += [f"    pub {field['name']}: Option<{field_type(field)}>," for field in method["fields"] if field["optional"]]
+        lines_items = []
+        for lines_field in method["fields"]:
+            if not (lines_field["optional"]):
+                continue
+            lines_items.append(f"    pub {_identifier(lines_field['name'])}: Option<{field_type(lines_field)}>,")
+        lines += lines_items
         lines += (["    pub policy: Option<OperationPolicy>,"] if not method["server_streaming"] else []) + ["}"]
         if method["server_streaming"]:
-            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
             payload = method["payload_field"]
-            result = field_type(payload) if payload else response_type
+            result = field_type(payload) if payload else r
             lines += [
                 f"pub struct Host{name} {{",
-                f"    incoming: crate::context::Watching<{response_type}>,",
+                f"    incoming: crate::context::Watching<{r}>,",
                 "}",
                 f"impl Host{name} {{",
                 f"    pub async fn next(&mut self) -> Result<Option<{result}>> {{",
@@ -350,7 +508,7 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None) -> No
                 "            return Ok(None);",
                 "        };",
             ]
-            if payload and payload["kind"] == 11:
+            if payload and payload["kind"] == 11 and not payload["repeated"]:
                 lines += [
                     f'        response.{payload["name"]}.map(Some).ok_or_else(|| Error::Invalid("Read {name}: Missing Payload".into()))'
                 ]
@@ -362,46 +520,96 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None) -> No
             "#[derive(Clone)]",
             f"pub struct {names[node]} {{",
             *(["    context: Context,"] if any(tuple(method["path"][:-1]) == node for method in methods) else []),
-            *[f"    pub {child[-1]}: {names[child]}," for child in nodes if child[:-1] == node],
+            *[f"    pub {_identifier(child[-1])}: {names[child]}," for child in nodes if child[:-1] == node],
             "}",
             f"impl {names[node]} {{",
             "    fn new(context: Context) -> Self { Self {",
-            *[f"        {child[-1]}: {names[child]}::new(context.clone())," for child in nodes if child[:-1] == node],
+            *[f"        {_identifier(child[-1])}: {names[child]}::new(context.clone())," for child in nodes if child[:-1] == node],
             *(["        context,"] if any(tuple(method["path"][:-1]) == node for method in methods) else []),
             "    } }",
         ]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
-            request_type, response_type = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
-            required = [field for field in method["fields"] if not field["optional"]]
-            parameters = [f"{field['name']}: {field_type(field)}" for field in required]
-            args = [field["name"] for field in required]
+            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            required = []
+            for required_field in method["fields"]:
+                if required_field["optional"]:
+                    continue
+                required.append(required_field)
+
+            parameters = [f"{_identifier(field['name'])}: {field_type(field)}" for field in required]
+            args = [_identifier(field["name"]) for field in required]
             if method["server_streaming"]:
                 parameters += ["max_item_bytes: NonZeroUsize"]
                 args += ["max_item_bytes"]
             payload = method["payload_field"]
-            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else response_type
-            action = method["path"][-1]
+            result = f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else r
+            action = _identifier(method["path"][-1])
             lines += [
                 f"    pub async fn {action}(&self{', ' if parameters else ''}{', '.join(parameters)}) -> Result<{result}> {{",
                 f"        self.{action}_with({', '.join([*args, 'Host' + name + 'Options::default()'])}).await",
                 "    }",
                 f"    pub async fn {action}_with(&self, {', '.join([*parameters, 'options: Host' + name + 'Options'])}) -> Result<{result}> {{",
-                f"        let request = {request_type} {{",
+                f"        let request = {q} {{",
             ]
-            for field in method["fields"]:
-                value = (
-                    f"options.{field['name']}" if field["optional"] else f"Some({field['name']})" if field["kind"] == 11 else field["name"]
+            for group in sorted({field["oneof"] for field in method["fields"] if field["oneof"]}):
+                members = []
+                for members_field in method["fields"]:
+                    if members_field["oneof"] != group:
+                        continue
+                    members.append(members_field)
+
+                variant = (
+                    message(method["request"]).rsplit("::", 1)[0]
+                    + "::"
+                    + descriptor.snake(method["request"].rsplit(".", 1)[-1])
+                    + "::"
+                    + title(group)
                 )
-                lines += [f"            {field['name']}," if value == field["name"] else f"            {field['name']}: {value},"]
+                selected = ", ".join("options." + field["name"] for field in members)
+                lines += [f"            {group}: match ({selected}) {{"]
+                for index, member in enumerate(members):
+                    pattern = ", ".join("Some(value)" if index == other else "None" for other in range(len(members))) + ","
+                    lines += [f"                ({pattern}) => Some({variant}::{title(member['name'])}(value)),"]
+                lines += [
+                    f'                _ => return Err(Error::Invalid("Choose Exactly One {group} Variant".into())),',
+                    "            },",
+                ]
+            for field in method["fields"]:
+                if field["oneof"]:
+                    continue
+                value = (
+                    f"options.{_identifier(field['name'])}"
+                    if field["optional"]
+                    else f"Some({_identifier(field['name'])})"
+                    if field["kind"] == 11 and not field["map"] and not field["repeated"]
+                    else field["name"]
+                )
+                if field["name"] == "request_id":
+                    value = "match options.request_id { Some(value) => value, None => harmos::client::request_id()?, }"
+                elif field["optional"] and not field["wire_optional"] and (field["kind"] != 11 or field["repeated"] or field["map"]):
+                    value += ".unwrap_or_default()"
+                if field["kind"] == 14:
+                    if field["repeated"]:
+                        value = f"{value}.into_iter().map(|value| value as i32).collect()"
+                    elif field["wire_optional"] and field["optional"]:
+                        value = f"{value}.map(|value| value as i32)"
+                    else:
+                        value = f"{value} as i32"
+                lines += [
+                    f"            {_identifier(field['name'])},"
+                    if value == field["name"]
+                    else f"            {_identifier(field['name'])}: {value},"
+                ]
             lines += ["        };"]
             if method["server_streaming"]:
+                if not any(field["optional"] for field in method["fields"]):
+                    lines += [f"        let Host{name}Options {{}} = options;"]
                 lines += [
-                    f"        let Host{name}Options {{}} = options;",
                     f"        Ok(Host{name} {{ incoming: self.context.watch(request, max_item_bytes).await? }})",
                 ]
             else:
-                lines += [f"        let response: {response_type} = self.context.call_with(request, options.policy).await?;"]
+                lines += [f"        let response: {r} = self.context.call_with(request, options.policy).await?;"]
                 if payload and payload["kind"] == 11 and not payload["repeated"]:
                     lines += [f'        response.{payload["name"]}.ok_or_else(|| Error::Invalid("Read {name}: Missing Payload".into()))']
                 else:
@@ -439,5 +647,68 @@ def host(root: Path, methods: list[Method], *, target: Path | None = None) -> No
 
 
 # === Private Functions === #
+
+
+def _identifier(name: str) -> str:
+    if name in {"self", "Self", "super", "crate"}:
+        return name + "_"
+    return (
+        "r#" + name
+        if name
+        in {
+            "gen",
+            "type",
+            "while",
+            "const",
+            "crate",
+            "await",
+            "true",
+            "final",
+            "struct",
+            "impl",
+            "mut",
+            "override",
+            "match",
+            "return",
+            "use",
+            "as",
+            "box",
+            "if",
+            "priv",
+            "abstract",
+            "virtual",
+            "become",
+            "try",
+            "continue",
+            "unsafe",
+            "mod",
+            "yield",
+            "pub",
+            "static",
+            "loop",
+            "where",
+            "do",
+            "in",
+            "async",
+            "fn",
+            "typeof",
+            "macro",
+            "let",
+            "move",
+            "trait",
+            "dyn",
+            "unsized",
+            "false",
+            "for",
+            "else",
+            "ref",
+            "super",
+            "break",
+            "enum",
+            "extern",
+        }
+        else name
+    )
+
 
 # === Entry Point === #

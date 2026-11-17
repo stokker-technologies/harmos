@@ -196,12 +196,16 @@ def main() -> None:
         import harmos_tools.build.resources.descriptor
 
         descriptors = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
-        harmos_tools.build.resources.cpp.exports(ROOT, descriptors)
+        type_names = harmos_tools.build.resources.cpp.exports(ROOT, descriptors)
         harmos_tools.build.resources.cpp.client(
-            ROOT, [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"]
+            ROOT,
+            [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "client"],
+            type_names=type_names,
         )
         harmos_tools.build.resources.cpp.host(
-            ROOT, [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"]
+            ROOT,
+            [method for method in harmos_tools.build.resources.descriptor.table(descriptors) if method["face"] == "context"],
+            type_names=type_names,
         )
 
     # Tests Consume Existing Producer Outputs; a Selection That Runs No Test Fails.

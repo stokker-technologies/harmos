@@ -11,11 +11,7 @@
 # === Imports === #
 
 # Standard Library Imports
-import platform
-import re
-import shutil
 import subprocess
-import tempfile
 import xml.etree.ElementTree
 from argparse import ArgumentParser
 from pathlib import Path
@@ -56,17 +52,8 @@ def protocols(
     namespace_override: str | None = None,
 ) -> None:
     """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
-    from google.protobuf.descriptor_pb2 import FileDescriptorSet
-
-    import harmos_tools.build.resources.csharp
-    import harmos_tools.build.resources.descriptor
 
     descriptors = descriptors or root / "crates/harmos-protocol/src/descriptors.bin"
-    schema = FileDescriptorSet.FromString(descriptors.read_bytes())
-    requests = {method["request"].rsplit(".", 1)[-1] for method in harmos_tools.build.resources.descriptor.table(schema)}
-    requests.update(
-        {"Request", "Response", "ChildRequest", "ChildResponse", "ChildCancel", "ChildWatch", "ChildWatchResponse", "ChildWatchCancel"}
-    )
     # Select the SDK's Pinned Protocol Compiler
     properties = xml.etree.ElementTree.parse(root / "sdk/csharp/Directory.Packages.props")
     versions = [item.attrib.get("Version") for item in properties.iter("PackageVersion") if item.attrib.get("Include") == "Grpc.Tools"]
@@ -74,69 +61,19 @@ def protocols(
     if not version:
         raise ValueError("Generate C# Protocol: Pin one Grpc.Tools version in sdk/csharp/Directory.Packages.props")
     tools = Path.home() / ".nuget/packages/grpc.tools" / version / "tools"
-    systems = {"Windows": "windows", "Darwin": "macosx"}
-    system = systems.get(platform.system(), "linux")
-    architecture = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x64"
-    executable_suffix = ".exe" if system == "windows" else ""
-    protoc = tools / f"{system}_{architecture}" / ("protoc" + executable_suffix)
-    plugin = protoc.with_name("grpc_csharp_plugin" + executable_suffix)
-    if not protoc.is_file():
-        raise FileNotFoundError("Generate C# Protocol: Run mise -C sdk/csharp run restore")
-    scratch = Path(tempfile.mkdtemp())
-    destination = destination or root / "sdk/csharp/src/Harmos/Generated/Wire"
-    try:
-        for file in schema.file:
-            if file.name.startswith("google/") or file.name.endswith("guest.proto"):
-                continue
-            if package is not None and not (file.package == package or file.package.startswith(package + ".")):
-                continue
-            if files is not None and file.name not in files:
-                continue
-            output = scratch / Path(file.name).with_suffix("")
-            output.mkdir(parents=True, exist_ok=True)
-            command = [str(protoc), f"--descriptor_set_in={descriptors}", f"--csharp_out={output}"]
-            if file.service and namespace_override is None:
-                command += [f"--plugin=protoc-gen-grpc={plugin}", f"--grpc_out={output}", "--grpc_opt=internal_access"]
-            # Run the Native Command
-            command = [*command, file.name]
-            subprocess.run(command, check=True, creationflags=spawn_flags())
-            for path in output.glob("*.cs"):
-                source = path.read_text(encoding="utf-8")
-                source = harmos_tools.build.resources.csharp.message(source)
-                if namespace_override is not None:
-                    source = source.replace("namespace Harmos.Clients {", f"namespace {namespace_override} {{")
-                    source = source.replace("global::Harmos.Clients.", f"global::{namespace_override}.")
-                for name in requests:
-                    source = source.replace(f"public sealed partial class {name} :", f"internal sealed partial class {name} :")
-                if path.name.endswith("Grpc.cs"):
-                    source = source.replace("namespace Harmos.Plugins {", "namespace Harmos.Internal.Host {")
-                    source = source.replace("namespace Harmos.Clients {", "namespace Harmos.Internal.Client {")
-                    namespace = harmos_tools.build.resources.csharp.message(file.options.csharp_namespace)
-                    if namespace.endswith(".Clients"):
-                        source = source.replace(
-                            f"namespace {namespace} {{", f"namespace {namespace.removesuffix('.Clients')}.Internal.Client {{"
-                        )
-                # Carrier Messages Are Never an Authoring Surface.
-                if file.package == "harmos.plugin.v1":
-                    source = source.replace("public sealed partial class ", "internal sealed partial class ")
-                # Generated Namespaces Follow the Same File-Scoped Rule as Authored C#.
-                match = re.search(r"namespace ([\w.]+) \{", source)
-                if match:
-                    source = source[: match.start()] + f"namespace {match[1]};" + source[match.end() :]
-                    ending = source.rfind("}")
-                    source = source[:ending] + source[ending + 1 :]
-                path.write_text(source, encoding="utf-8", newline="\n")
-        if check:
-            expected = {path.relative_to(scratch) for path in scratch.rglob("*.cs")}
-            existing = {path.relative_to(destination) for path in destination.rglob("*.cs")}
-            if expected != existing or any((scratch / path).read_bytes() != (destination / path).read_bytes() for path in expected):
-                raise ValueError("Check C# Protocol: Generated Drift; Run mise run generate -- --sdk csharp")
-        else:
-            if destination.exists():
-                shutil.rmtree(destination)
-            shutil.copytree(scratch, destination)
-    finally:
-        shutil.rmtree(scratch)
+    from harmos_tools.build import csharp_protocol
+
+    csharp_protocol.protocols(
+        root,
+        descriptors=descriptors,
+        namespace=None,
+        tools=tools,
+        destination=destination,
+        check=check,
+        package=package,
+        files=files,
+        namespace_override=namespace_override,
+    )
 
 
 def clients(root: Path, *, check: bool = False) -> None:
