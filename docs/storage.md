@@ -89,6 +89,83 @@ match a nonnull needle. Empty lists produce false. Incompatible field/needle typ
 null needles refuse during schema validation. All three transforms preserve source row
 order, use the ordinary row-page bounds and observe query cancellation while scanning.
 
+## Statistics Transforms
+
+`storage.list_rows` accepts domain transforms from
+`harmos_domain::model::storage::query::transform`; the query engine's statistics
+kernels are private. `Aggregate` supports count, sum, mean, min, max, median,
+percentiles, floating-point RMS, population standard deviation, and ordered
+`First`/`Last`. Order is query input order: sort first when selecting by a particular
+field. Null, missing and non-finite numeric values do not participate. First/last
+retain the selected scalar's type. An ungrouped empty aggregate returns one row:
+count and sum are zero and all other measures are null; grouped empty input has
+no rows. Empty histograms retain all configured bins with zero counts; empty grouped
+time buckets have no rows. Exact integer/rational sum, mean and median preserve their existing
+exact output. Percentiles use linear interpolation at `(count - 1) * rank / 100`;
+all percentile measures and a floating median of the same field share a spool
+and rank-selection passes.
+
+```rust,ignore
+use harmos_domain::model::storage::query::transform::{Transform, statistics};
+
+let box_summary = Transform::BoxSummary(statistics::BoxSummary {
+    field: "payload.value".into(),
+    max_outliers: 64,
+    memory_bytes: 64 * 1024,
+    scratch_bytes: 1024 * 1024,
+});
+```
+
+A box summary returns one row with `q1`, `median`, `q3`, `lower_whisker`,
+`upper_whisker`, `outlier_count` and an `outliers` Float64 list. Quartiles use the
+same exact percentile selector. Whiskers are the extreme observed values inside
+`[q1 - 1.5 * IQR, q3 + 1.5 * IQR]`. Outliers retain source order, capped by
+`max_outliers`, while `outlier_count` counts all of them. A zero cap returns an
+empty list. Empty input returns null quartiles/whiskers, zero outliers and an empty
+list. Non-finite and null values are skipped. The caller supplies numeric spool
+and rank scratch budgets; insufficient rank scratch refuses with no partial result.
+
+```rust,ignore
+let envelope = Transform::BucketSummary(statistics::BucketSummary {
+    time: "payload.time_ns".into(),
+    position: "_storage.position".into(),
+    value: "payload.value".into(),
+    width_ns: initial_width,
+    max_buckets: bucket_cap,
+    source_cut: retained_cut,
+    prior: previous_continuation,
+});
+```
+
+A bucket summary bounds occupied buckets by `max_buckets`. Initial widths align
+at `i64::MIN` nanoseconds, covering the entire signed timestamp domain. When the
+cap is exceeded, width doubles and adjacent ordinal pairs merge. Rows contain
+`ordinal`, decimal-string `width_ns` (it can exceed UInt64), `count`, `sum`, `mean`,
+`sum_squares`, `rms`, `std`, and each of `first`, `last`, `min`, `max` as
+`<name>_time_ns`, `<name>_position`, `<name>_value`. First/last order by time then
+source position; equal extrema choose the earliest time/position. The kernel
+retains scaled population moments when merging, rather than averaging bucket
+means. Floating-point regrouping can change the final rounding.
+
+Only the first output row carries non-null Binary `continuation` bytes. Persist
+those bytes with the envelope through ordinary object or file operations. Supply
+them as `prior` with unchanged fields, initial width, bucket cap and history;
+`source_cut` must equal the retained ListRows source cut and may only advance.
+New rows must have strictly increasing, nonzero positions after the prior cut
+and at or before the new cut. Continue over append-only source ranges; updates,
+removals or a changed query selection require recomputation. The continuation is
+an opaque revision-specific payload: keep product and Harmos revisions aligned.
+Products own storage, admission, bucket and response budgets.
+
+Box and bucket values convert to Float64 before statistics and extrema selection.
+Times must be Int64 nanoseconds or Arrow nanosecond timestamps, and positions
+must be UInt64. Null times/positions refuse. Null/non-finite values contribute no
+moments. Empty input returns one identity row (zero count, null points/moments)
+with a continuation, including when advancing an empty source range. Moment
+outputs that exceed Float64 range refuse; standalone RMS/std remain scaled to
+avoid intermediate squaring overflow. Cancellation is polled during ingestion,
+rank selection, replay and bucket compaction.
+
 ## Operational Policy and Admission
 
 `StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the

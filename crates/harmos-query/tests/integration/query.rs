@@ -28,7 +28,7 @@ use harmos_query::{Error, config::QueryAccumulatorSettings};
 fn capture_statistics() {
     let settings = QueryAccumulatorSettings { memory_bytes: 4_000 };
     for n in [2, 3, 4, 11, 13, 45, 100, 101] {
-        for (statistic, fraction) in [(Aggregate::Median, 0.5), (Aggregate::Percentile(95), 0.95), (Aggregate::Percentile(99), 0.99)] {
+        for (statistic, rank) in [(Aggregate::Median, 50), (Aggregate::Percentile(95), 95), (Aggregate::Percentile(99), 99)] {
             let mut memory = Accumulator::new(Agg::Of(statistic));
             let mut bounded = Accumulator::with_settings(Agg::Of(statistic), settings);
             for (capture, value) in (0..n).rev().enumerate() {
@@ -38,7 +38,9 @@ fn capture_statistics() {
             }
             let answer = memory.finish(&mut || Ok(())).unwrap();
             assert_eq!(bounded.finish(&mut || Ok(())).unwrap(), answer);
-            assert_eq!(answer, ScalarValue::Float((n - 1) as f64 * fraction));
+            let numerator = (n - 1) * rank;
+            let interpolated = (numerator / 100) as f64 + (numerator % 100) as f64 / 100.0;
+            assert_eq!(answer, ScalarValue::Float(interpolated));
             if n == 100 {
                 let expected = match statistic {
                     Aggregate::Median => 49.5,

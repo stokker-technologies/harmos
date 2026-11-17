@@ -16,6 +16,7 @@ pub mod filter;
 pub mod histogram;
 pub mod project;
 pub mod sort;
+pub(crate) mod statistics;
 
 /* === Re-Exports === */
 
@@ -127,6 +128,8 @@ impl TransformExecution for Transform {
             Self::Downsample(value) => value.output_schema(input),
             Self::Sort(value) => value.output_schema(input),
             Self::TimeBuckets(value) => super::time_buckets::output_schema(value, input),
+            Self::BoxSummary(value) => statistics::box_schema(value, input),
+            Self::BucketSummary(value) => statistics::bucket_schema(value, input),
         }
     }
 
@@ -146,6 +149,7 @@ impl TransformExecution for Transform {
             Self::Downsample(value) => value.apply(input, check),
             Self::Sort(value) => value.apply(input, check),
             Self::TimeBuckets(value) => super::time_buckets::apply(value, input, check),
+            Self::BoxSummary(_) | Self::BucketSummary(_) => statistics::apply(self, input, check),
         }
     }
 }

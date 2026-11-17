@@ -28,7 +28,7 @@ use harmos_operations::execution::grpc::{self, DecodeInput, prost};
 
 /* === Constants === */
 
-const EVERY: [Aggregate; 11] = [
+const EVERY: [Aggregate; 13] = [
     Aggregate::Count,
     Aggregate::Sum,
     Aggregate::Mean,
@@ -37,6 +37,8 @@ const EVERY: [Aggregate; 11] = [
     Aggregate::Max,
     Aggregate::Rms,
     Aggregate::Std,
+    Aggregate::First,
+    Aggregate::Last,
     Aggregate::Percentile(95),
     Aggregate::Percentile(0),
     Aggregate::Percentile(255),
@@ -78,6 +80,8 @@ fn twin(value: Aggregate) -> twin::Aggregate {
         Aggregate::Max => twin::Aggregate::Max,
         Aggregate::Rms => twin::Aggregate::Rms,
         Aggregate::Std => twin::Aggregate::Std,
+        Aggregate::First => twin::Aggregate::First,
+        Aggregate::Last => twin::Aggregate::Last,
         Aggregate::Percentile(rank) => twin::Aggregate::Percentile { rank: u32::from(rank) },
     }
 }
@@ -123,6 +127,8 @@ mod twin {
         Percentile {
             rank: u32,
         },
+        First,
+        Last,
     }
 
     /* === Traits === */
@@ -180,7 +186,7 @@ fn postcard_matches_serde() {
         assert_eq!(<Aggregate as Message>::decode(&encoded).unwrap(), value);
         assert_eq!(<Aggregate as Message>::decoding_memory(&encoded).unwrap(), value.memory_size());
     }
-    assert!(<Aggregate as Message>::decode(&[9]).is_err());
+    assert!(<Aggregate as Message>::decode(&[11]).is_err());
     assert!(<Aggregate as Message>::decode(&[8]).is_err());
 }
 
