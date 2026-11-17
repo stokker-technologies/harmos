@@ -141,6 +141,9 @@ fn box_summary(input: Spool, plan: &BoxSummary, check: &mut impl FnMut() -> Resu
     columns.push(Arc::new(Float64Array::from(vec![summary.as_ref().and_then(|summary| summary.upper)])));
     columns.push(Arc::new(UInt64Array::from(vec![summary.as_ref().map_or(0, |summary| summary.outlier_count)])));
     let outliers = summary.map_or_else(Vec::new, |summary| summary.outliers);
+    if outliers.len() > i32::MAX as usize {
+        return Err(invalid("reduce the outlier bound to fit Arrow list offsets"));
+    }
     columns.push(Arc::new(ListArray::from_iter_primitive::<Float64Type, _, _>([Some(outliers.into_iter().map(Some))])));
     RecordBatch::try_new(schema, columns).map_err(|_| invalid("reduce box-summary output size"))
 }
@@ -167,6 +170,9 @@ fn bucket_summary(input: Spool, plan: &BucketSummary, check: &mut impl FnMut() -
         }
     }
     let continuation = buckets.continuation()?;
+    if continuation.len() > i32::MAX as usize {
+        return Err(invalid("reduce the bucket bound to fit Arrow binary offsets"));
+    }
     let rows: Vec<_> = if buckets.buckets.is_empty() {
         vec![(None, None)]
     } else {

@@ -210,6 +210,16 @@ impl Groups {
                 } else {
                     accumulator.finish(check)?
                 };
+                // Preserve The Empty Sum In Its Floating Output Type.
+                let value = match value {
+                    ScalarValue::Unsigned(0)
+                        if measure.statistic == crate::Aggregate::Sum
+                            && self.schema.field(self.plan.groups.len() + column).data_type() == &DataType::Float64 =>
+                    {
+                        ScalarValue::Float(0.0)
+                    }
+                    value => value,
+                };
                 values[self.plan.groups.len() + column].push(value);
             }
         }
@@ -292,7 +302,9 @@ mod tests {
     use super::super::aggregate;
     use super::{AggregateExecution, Measure};
     use crate::Aggregate;
-    use arrow_array::{Array, Float64Array, Int64Array, RecordBatch, StringArray};
+    use crate::scalar::ScalarValue;
+    use crate::transform::{self, project::Projection};
+    use arrow_array::{Array, Float64Array, Int64Array, RecordBatch, StringArray, UInt64Array};
     use arrow_schema::{DataType, Field, Schema};
     use std::sync::Arc;
 
@@ -368,5 +380,49 @@ mod tests {
         assert_eq!(output.column(3).as_any().downcast_ref::<StringArray>().unwrap().value(0), "a");
         let empty = plan.apply(&RecordBatch::new_empty(batch.schema()), &mut || Ok(())).unwrap();
         assert!(empty.columns().iter().all(|column| column.is_null(0)));
+    }
+    #[test]
+    fn aggregate_empty_input_has_typed_identities_and_null_statistics() {
+        let statistics = [
+            Aggregate::Count,
+            Aggregate::Sum,
+            Aggregate::Mean,
+            Aggregate::Median,
+            Aggregate::Percentile(95),
+            Aggregate::Min,
+            Aggregate::Max,
+            Aggregate::Rms,
+            Aggregate::Std,
+            Aggregate::First,
+            Aggregate::Last,
+        ];
+        for kind in [DataType::Float32, DataType::Float64, DataType::Int64, DataType::UInt64] {
+            let schema = Arc::new(Schema::new(vec![Field::new("v", kind, true)]));
+            let input = RecordBatch::new_empty(schema);
+            let mut plan = aggregate::Aggregate {
+                groups: vec![],
+                measures: statistics
+                    .into_iter()
+                    .enumerate()
+                    .map(|(column, statistic)| Measure {
+                        field: "v".into(),
+                        statistic,
+                        name: format!("m{column}"),
+                    })
+                    .collect(),
+            };
+            let result = plan.apply(&input, &mut || Ok(())).unwrap();
+            assert_eq!(result.num_rows(), 1);
+            assert_eq!(result.column(0).as_any().downcast_ref::<UInt64Array>().unwrap().value(0), 0);
+            let sum = transform::scalar(result.column(1).as_ref(), 0).unwrap();
+            match sum {
+                ScalarValue::Float(value) => assert_eq!(value, 0.0),
+                ScalarValue::Exact(value) => assert_eq!(value.numerator, 0),
+                _ => panic!("empty sum must retain a numeric identity"),
+            }
+            assert!(result.columns()[2..].iter().all(|column| column.is_null(0)));
+            plan.groups.push(Projection { field: "v".into(), name: "group".into() });
+            assert_eq!(plan.apply(&input, &mut || Ok(())).unwrap().num_rows(), 0);
+        }
     }
 }

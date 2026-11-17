@@ -26,6 +26,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 // Local Imports
+use harmos_domain::model::storage::query::transform::aggregate;
 use harmos_domain::model::storage::query::transform::{
     Transform,
     statistics::{BoxSummary, BucketSummary},
@@ -33,7 +34,7 @@ use harmos_domain::model::storage::query::transform::{
 use harmos_domain::model::storage::query::{Source, StreamSelection};
 use harmos_domain::schema::graph::{Field, Kind};
 use harmos_domain::schema::{self, Cardinality, graph};
-use harmos_domain::{Identifier, Message};
+use harmos_domain::{Aggregate, Identifier, Message};
 use harmos_operations::execution::operations::{ExecutionContext, NativeOperation};
 use harmos_operations::storage::SavedSnapshots;
 use harmos_operations::storage::{ListRows, ListRowsRequest};
@@ -217,7 +218,10 @@ async fn read(context: &ExecutionContext, key: &SchemaKey, after: u64, transform
 /* === Tests === */
 #[tokio::test]
 async fn list_rows_statistics_preserve_bucket_continuation_and_box_bounds() {
+    // Prepare Storage
     let (storage, context, key) = fixture().await;
+
+    // Capture The First Range
     append(&storage, &key, 0, 12).await;
     let cut = storage.get_saved_position();
     let plan = BucketSummary {
@@ -239,6 +243,7 @@ async fn list_rows_statistics_preserve_bucket_continuation_and_box_bounds() {
         .unwrap()
         .value(0)
         .to_vec();
+    // Continue The Envelope
     append(&storage, &key, 12, 24).await;
     let prior_sequence = plan.source_cut.sequence;
     let mut continued = plan;
@@ -258,6 +263,7 @@ async fn list_rows_statistics_preserve_bucket_continuation_and_box_bounds() {
     assert_eq!(counts(&actual), counts(&whole));
     assert_eq!(counts(&actual).iter().sum::<u64>(), 24);
     assert!(actual.iter().map(|batch| batch.as_record_batch().num_rows()).sum::<usize>() <= 4);
+    // Query A Box Summary
     let boxes = read(
         &context,
         &key,
@@ -273,6 +279,24 @@ async fn list_rows_statistics_preserve_bucket_continuation_and_box_bounds() {
     let batch = boxes[0].as_record_batch();
     assert_eq!(batch.column_by_name("outlier_count").unwrap().as_any().downcast_ref::<UInt64Array>().unwrap().value(0), 1);
     assert_eq!(batch.column_by_name("median").unwrap().as_any().downcast_ref::<Float64Array>().unwrap().value(0), 1.0);
+    // Query An Empty Range
+    let empty = read(
+        &context,
+        &key,
+        storage.get_saved_position().sequence,
+        Transform::Aggregate(aggregate::Aggregate {
+            groups: vec![],
+            measures: vec![aggregate::Measure {
+                field: "payload.value".into(),
+                statistic: Aggregate::Sum,
+                name: "sum".into(),
+            }],
+        }),
+    )
+    .await;
+    assert_eq!(empty[0].as_record_batch().column_by_name("sum").unwrap().as_any().downcast_ref::<Float64Array>().unwrap().value(0), 0.0);
+
+    // Cancel A Read
     context.cancellation.request();
     let request = ListRowsRequest {
         source: Some(source(&key, 0)),
@@ -282,5 +306,6 @@ async fn list_rows_statistics_preserve_bucket_continuation_and_box_bounds() {
         page: None,
     };
     assert!(ListRows::run(context, request, &()).await.is_err());
+    // Close Storage
     storage.close().await.unwrap();
 }
