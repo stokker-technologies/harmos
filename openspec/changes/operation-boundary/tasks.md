@@ -155,7 +155,7 @@ Composition Removal Pin: `5ecd6a96326c1a3adc0c47e78da4002bf4461a64` (10.3; local
 
 - [x] 10.4 Make in-process discovery apply the dispatch predicate for scoped plugin callers, closing the `scope: None` gap. Prove with a story where a wrapper forwards plugin discovery and omits entries dispatch refuses.
 - [ ] 10.5 Delete Harmos host-client roots and host RPC clients; retain internal Rust/Python/C#/C++ carrier helpers, shared generation, supported guest ABI, generic conformance and reusable connection plumbing under D7 and `plugin-boundary`. Move management messages to products and hide other reused payload types behind product author APIs. Coordinate one final regeneration with `plugin-boundary` and `plugin-lifecycle` through the generate tasks; prove focused generated consumers in every language.
-  - [x] Remove the four library host-client surfaces, preserve plugin carrier connection plumbing, generate reference product wrappers and regenerate tracked SDK output. Management-message ownership and combined regeneration with the other cutovers remain integration work.
+  - [x] Remove the four library host-client surfaces, preserve plugin carrier connection plumbing, generate reference product wrappers and regenerate tracked SDK output. Management-message ownership and regeneration after the remaining boundary/lifecycle source changes stay open.
   - [x] Retire the standalone/inherited Python client rendering branches in `tools/python/src/harmos_tools/build/resources/python.py` with the host-client roots instead of preserving two client composition mechanisms.
 - [x] 10.6 Move conformance to a fixture product that declares wrappers, replace wrong-caller rules with unreachable-host-operation and wrapper-audience rules, keep plugin protocol rules; make Schematic declare wrappers for what its client uses. Prove with `mise run build -- --package harmos-conformance` and the Schematic client example build.
 - [x] 10.7 Update `docs/architecture.md` (Caller Options and SDK Projection, Application Operations in Discovery, Next Pin), SDK guides and the README for private host operations, product wrappers and plugin protocol facilities; prove with `mise run check -- --repository`.
@@ -164,8 +164,8 @@ Composition Removal Pin: `5ecd6a96326c1a3adc0c47e78da4002bf4461a64` (10.3; local
 
 Host Wire Cutover Pin: `4c9eac07d91b128a7c65d2d13b91cf47aaf157d3` (10.1, 10.2,
 the host-client removal and Python renderer items in 10.5, 10.6 and 10.7;
-local worker revision, not pushed). Management-message ownership and the final
-combined regeneration remain open in 10.5. Native Linux and hosted proof remain
+local worker revision, not pushed). Management-message ownership and regeneration
+after the remaining boundary/lifecycle source changes stay open in 10.5. Native Linux and hosted proof remain
 with the integration owner.
 
 Plugin Discovery Checkpoint Pin: `aec532eb34965b8b177d13526267ddd3ac1988e0` (10.4;

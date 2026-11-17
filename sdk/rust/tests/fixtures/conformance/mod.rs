@@ -29,7 +29,7 @@ use prost_types::FileDescriptorSet;
 use graph::Nested;
 use harmos::plugin::HostOperation;
 use harmos::plugin::TimeGetResponse;
-use harmos::plugin::{Registrar, Registration, Context, Observer, Operation, Plugin, Publisher, Stream, Window};
+use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Registrar, Registration, Stream, Window};
 use harmos::{Classification, Failure, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 

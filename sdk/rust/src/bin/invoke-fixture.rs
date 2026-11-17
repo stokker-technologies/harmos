@@ -40,7 +40,7 @@ use prost_types::{FileDescriptorSet, Timestamp};
 // Local Imports
 use harmos::plugin::HostOperation;
 use harmos::plugin::TimeGetResponse;
-use harmos::plugin::{Contribution, Dependency, Descriptor, Context, Observer, Operation, Plugin, Publisher, Stream, Window};
+use harmos::plugin::{Context, Contribution, Dependency, Descriptor, Observer, Operation, Plugin, Publisher, Stream, Window};
 use harmos::{OperationRequest, Result, Visibility};
 use harmos_protocol::host::{StatusGetRequest, StatusGetResponse};
 use harmos_protocol::model::Classification;

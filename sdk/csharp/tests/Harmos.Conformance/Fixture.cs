@@ -39,7 +39,6 @@ public sealed class Fixture
   public Registration Catalog() => ctx =>
   {
     ctx.Register(new global::Harmos.Plugins.Descriptor<PayloadOnly>());
-    ctx.Register(new global::Harmos.Plugins.Descriptor<PayloadOnly>());
     ctx.Register(local, Local);
     ctx.Register(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall);
     ctx.Register(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo);

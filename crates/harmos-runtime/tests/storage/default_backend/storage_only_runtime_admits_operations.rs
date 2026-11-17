@@ -30,7 +30,7 @@ use harmos_runtime::facade::storage::{CapabilitiesRequest, InfoRequest, MutateRe
 use harmos_runtime::operations::{CallContext, Lane, Registration};
 use harmos_runtime::runtime::{BootstrapStatus, StorageFailure};
 use harmos_runtime::state::Never;
-use harmos_runtime::{Application, Identifier, Builder, Lifecycle, Setup, Startup, StartupError};
+use harmos_runtime::{Application, Builder, Identifier, Lifecycle, Setup, Startup, StartupError};
 
 /* === Constants === */
 

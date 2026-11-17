@@ -101,9 +101,8 @@ The runtime's whole-crate `domain` and `builtins` reexports are removed. Builder
 catalogs have explicit exports under `harmos_runtime::catalog`. Backend-authoring
 contracts and their value closure have explicit exports under
 `harmos_runtime::backend`, without managers or readers. Storage-only sessions expose
-`for_call` and cleanup, with no operation-manager getter. Builder ownership, the
-remaining manager privacy and private host transport are still
-governed by the pending Operation Boundary inventory below.
+`for_call` and cleanup, with no operation-manager getter. Builder ownership and
+the remaining manager privacy follow the pending Operation Boundary inventory below.
 
 Plugin calls reuse the process, connection and scoped-publication owners in
 `crates/harmos-runtime/src/plugin/grpc`. Opaque facade handles retain their original
@@ -128,8 +127,8 @@ uses the wire carrier. Both retain one registered policy and authorization owner
 Watch behavior has one implementation shared by its two endpoint writers. Protocol
 generation emits allocation accounting for the native request and watch-item closure
 into `crates/harmos-domain/src/message/allocation/protobuf.rs`, using the locked Rust descriptor
-layout, so memory admission does not serialize payloads. Host-wire removal remains
-owned by the transport cutover.
+layout, so memory admission does not serialize payloads. Host-wire services are
+removed; encoded admission remains for product and plugin carriers.
 
 ## Storage and Query Ownership
 
