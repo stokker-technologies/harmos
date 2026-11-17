@@ -2,11 +2,6 @@
 
 ## ADDED Requirements
 
-Host-family names below identify native in-process operations. A product owns any
-remote wrapper, plugin contract/SDK and registry policy; these requirements do not
-add Harmos host wire methods or revive the deleted composition file. The active
-boundary/lifecycle changes own their API migration.
-
 ### Requirement: Product Declarations Follow Audience Packages
 
 Product declarations SHALL use `<product>.plugin.v1`, `<product>.context.v1` or
@@ -178,6 +173,11 @@ change replay-safety admission, retention or expired-identifier refusal.
 - **THEN** the call conflicts without replacing the original outcome
 
 ### Requirement: Manager Ownership and Thin Service Methods
+
+Host-family names SHALL identify native in-process operations. A product SHALL own
+any remote wrapper, plugin contract/SDK and registry policy. These requirements
+SHALL NOT add Harmos host wire methods or revive the deleted composition file;
+the boundary/lifecycle changes own that API migration.
 
 Managers SHALL follow design.md's single live-ownership rule and library
 responsibility inventory. Each service method SHALL map to one operation file
