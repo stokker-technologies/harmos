@@ -20,7 +20,7 @@ struct HostInvocationsCancelOptions {
 struct HostInvocationsWatchOptions {};
 class HostInvocationsWatch {
 public:
-  explicit HostInvocationsWatch(std::function<std::optional<::harmos::InstanceState>()> next) : next_(std::move(next)) {}
+  explicit HostInvocationsWatch(std::function<std::optional<::harmos::InstanceState>()> next_value) : next_(std::move(next_value)) {}
   std::optional<::harmos::InstanceState> next() {
     return next_();
   }
@@ -47,29 +47,29 @@ struct HostTimeSleepOptions {
 };
 struct HostTimeResource {
   Context context;
-  HostTimeResource(Context value) : context(value) {}
+  HostTimeResource(Context context_) : context(context_) {}
   ::google::protobuf::Timestamp get(HostTimeGetOptions options = {});
   ::harmos::TimeSleepResponse sleep(const ::google::protobuf::Duration &duration, HostTimeSleepOptions options = {});
 };
 struct HostPluginsSettingsResource {
   Context context;
-  HostPluginsSettingsResource(Context value) : context(value) {}
+  HostPluginsSettingsResource(Context context_) : context(context_) {}
   ::harmos::SettingsListResponse list(HostPluginsSettingsListOptions options = {});
 };
 struct HostPluginsResource {
   Context context;
   HostPluginsSettingsResource settings;
-  HostPluginsResource(Context value) : context(value), settings(value) {}
+  HostPluginsResource(Context context_) : context(context_), settings(context_) {}
 };
 struct HostOperationsResource {
   Context context;
-  HostOperationsResource(Context value) : context(value) {}
+  HostOperationsResource(Context context_) : context(context_) {}
   std::vector<::harmos::DiscoveredOperation> list(HostOperationsListOptions options = {});
   ::harmos::DiscoveredOperation get(const std::string &id, HostOperationsGetOptions options = {});
 };
 struct HostInvocationsResource {
   Context context;
-  HostInvocationsResource(Context value) : context(value) {}
+  HostInvocationsResource(Context context_) : context(context_) {}
   ::harmos::InstanceState get(const std::uint64_t &instance, HostInvocationsGetOptions options = {});
   ::harmos::InstanceState cancel(const std::uint64_t &instance, const std::string &reason, HostInvocationsCancelOptions options = {});
   HostInvocationsWatch watch(const std::uint64_t &instance, std::size_t max_item_bytes, HostInvocationsWatchOptions options = {});

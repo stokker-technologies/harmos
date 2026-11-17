@@ -1701,6 +1701,10 @@ value. A missing request identity is generated once per call. Explicit identitie
 preserved for retry safety. Request messages belong only to private wire code; generic
 operation dispatch remains message-based for application operations.
 
+C++ resource constructors and call parameters avoid member names and local
+identifiers. The renderer adds underscores until each parameter is unambiguous,
+including nested resources whose names already end in underscores.
+
 Calls create their transport context. Options permit metadata, cancellation and deadline
 overrides. No SDK invents a default deadline; operation policy owns it. Plugin handlers
 use `Context.host` (`host()` in Rust/C++) for typed Time, Plugins.Settings, Operations and

@@ -235,7 +235,7 @@ def host(
             header += [
                 f"class Host{name} {{",
                 "public:",
-                f"  explicit Host{name}(std::function<std::optional<{value}>()> next) : next_(std::move(next)) {{}}",
+                f"  explicit Host{name}(std::function<std::optional<{value}>()> next_value) : next_(std::move(next_value)) {{}}",
                 f"  std::optional<{value}> next() {{ return next_(); }}",
                 "private:",
                 f"  std::function<std::optional<{value}>()> next_;",
@@ -250,8 +250,11 @@ def host(
 
         header += [f"struct {names[node]} {{", "  Context context;"]
         header += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
-        initializers = ["context(value)", *[f"{_identifier(child[-1])}(value)" for child in children]]
-        header += [f"  {names[node]}(Context value) : {', '.join(initializers)} {{}}"]
+        members = {"context", *(_identifier(child[-1]) for child in children)}
+        members.update(_identifier(method["path"][-1]) for method in methods if tuple(method["path"][:-1]) == node)
+        parameter = _parameter("context", members)
+        initializers = [f"context({parameter})", *[f"{_identifier(child[-1])}({parameter})" for child in children]]
+        header += [f"  {names[node]}(Context {parameter}) : {', '.join(initializers)} {{}}"]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
             q, r = (_type_import("::" + method[key].replace(".", "::"))[0] for key in ("request", "response"))
@@ -260,27 +263,54 @@ def host(
                 f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else message(method["response"], type_names)
             )
             parameters = []
+            arguments = {}
+            options_parameter = _parameter("options", members)
+            maximum_parameter = _parameter("max_item_bytes", members)
+            occupied = (
+                members
+                | {options_parameter, maximum_parameter}
+                | {
+                    "options",
+                    "max_item_bytes",
+                    "request",
+                    "response",
+                    "context",
+                    "operation",
+                    "incoming",
+                    "reader",
+                    "status",
+                    "key",
+                    "item",
+                }
+            )
+            for field in method["fields"]:
+                if field["optional"]:
+                    continue
+                arguments[field["name"]] = _parameter(field["name"], occupied)
+                occupied.add(arguments[field["name"]])
             for parameters_field in method["fields"]:
                 if parameters_field["optional"]:
                     continue
-                parameters.append(f"const {field_type(parameters_field)}& {_identifier(parameters_field['name'])}")
+                parameters.append(f"const {field_type(parameters_field)}& {arguments[parameters_field['name']]}")
 
             if method["server_streaming"]:
-                parameters += ["std::size_t max_item_bytes"]
+                parameters += [f"std::size_t {maximum_parameter}"]
             header += [
-                f"  {result} {method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options options = {}'])});"
+                f"  {result} {method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options ' + options_parameter + ' = {}'])});"
             ]
             source += [
-                f"{result} {names[node]}::{method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options options'])}) {{",
+                f"{result} {names[node]}::{method['path'][-1] + ('_' if method['path'][-1] in {'delete', 'export', 'import', 'new', 'class', 'default'} else '')}({', '.join([*parameters, 'Host' + name + 'Options ' + options_parameter])}) {{",
                 f"  {q} request;",
             ]
             for field in method["fields"]:
                 if field["name"] == "request_id":
-                    source += ["  request.set_request_id(options.request_id ? *options.request_id : ::harmos::detail::request_id());"]
+                    source += [
+                        f"  request.set_request_id({options_parameter}.request_id ? *{options_parameter}.request_id : ::harmos::detail::request_id());"
+                    ]
                     continue
-                value = "*options." + field["name"] if field["optional"] else field["name"]
+                value = f"*{options_parameter}." + _identifier(field["name"]) if field["optional"] else arguments[field["name"]]
                 if field["optional"]:
-                    source += [f"  if (options.{_identifier(field['name'])}) {{"]
+                    source += [f"  if ({options_parameter}.{_identifier(field['name'])}) {{"]
                 assignment = (
                     f"for (const auto& [key, item] : {value}) {{ (*request.mutable_{_identifier(field['name'])}())[key] = item; }}"
                     if field["map"]
@@ -298,9 +328,9 @@ def host(
             ]
             if method["server_streaming"]:
                 source += [
-                    "  (void)options;",
+                    f"  (void){options_parameter};",
                     "  operation.watch();",
-                    f"  auto incoming = std::make_shared<Watching<{r}>>(context.watch(operation, request, max_item_bytes));",
+                    f"  auto incoming = std::make_shared<Watching<{r}>>(context.watch(operation, request, {maximum_parameter}));",
                     f"  return Host{name}([incoming]() -> std::optional<{field_type(payload) if payload else message(method['response'], type_names)}> {{",
                     "    auto response = incoming->next();",
                     "    if (!response) { return {}; }",
@@ -318,7 +348,7 @@ def host(
                     ]
                 source += [f"    return {value};", "  });"]
             else:
-                source += ["  auto response = context.call(operation, request, options.policy).get();"]
+                source += [f"  auto response = context.call(operation, request, {options_parameter}.policy).get();"]
                 if payload and payload["repeated"]:
                     value = f"{field_type(payload)}(response.{payload['name']}().begin(), response.{payload['name']}().end())"
                 elif payload and payload["kind"] == 11 and not payload["repeated"]:
@@ -542,19 +572,25 @@ def client(
         if operations:
             lines += ["  std::shared_ptr<grpc::Channel> channel;"]
         lines += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
-        initializers = (["channel(channel)"] if operations else []) + [f"{_identifier(child[-1])}(channel)" for child in children]
-        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
+        members = {"channel", *(_identifier(child[-1]) for child in children)}
+        members.update(_identifier(method["path"][-1]) for method in operations)
+        parameter = _parameter("channel", members)
+        initializers = ([f"channel({parameter})"] if operations else []) + [f"{_identifier(child[-1])}({parameter})" for child in children]
+        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> {parameter}) : {', '.join(initializers)} {{}}"]
         if not node:
+            address = _parameter("address", members)
+            transfer = _parameter("transfer", members)
+            message_bytes = _parameter("message_bytes", members)
             lines += [
-                "  static Client connect(std::string address, const ::harmos::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",
-                "    const auto maximum = ::harmos::transfer_message_bytes(transfer, message_bytes);",
+                f"  static Client connect(std::string {address}, const ::harmos::StorageTransferSettings& {transfer} = {{}}, std::optional<int> {message_bytes} = {{}}) {{",
+                f"    const auto maximum = ::harmos::transfer_message_bytes({transfer}, {message_bytes});",
                 "    grpc::ChannelArguments arguments;",
                 "    arguments.SetMaxSendMessageSize(maximum);",
                 "    arguments.SetMaxReceiveMessageSize(maximum);",
-                '    if (address.starts_with("http://")) {',
-                "      address.erase(0, 7);",
+                f'    if ({address}.starts_with("http://")) {{',
+                f"      {address}.erase(0, 7);",
                 "    }",
-                "    return Client(grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), arguments));",
+                f"    return Client(grpc::CreateCustomChannel({address}, grpc::InsecureChannelCredentials(), arguments));",
                 "  }",
             ]
         for method in operations:
@@ -567,12 +603,37 @@ def client(
             response = f"detail::packages::{_private_name(method['response'])}"
             service = f"detail::packages::{_private_name(method['package'])}::{method['service']}"
             parameters = []
+            arguments = {}
+            options_parameter = _parameter("options", members)
+            maximum_parameter = _parameter("max_item_bytes", members)
+            occupied = (
+                members
+                | {options_parameter, maximum_parameter}
+                | {
+                    "options",
+                    "max_item_bytes",
+                    "request",
+                    "response",
+                    "context",
+                    "operation",
+                    "incoming",
+                    "reader",
+                    "status",
+                    "key",
+                    "item",
+                }
+            )
+            for field in method["fields"]:
+                if field["optional"]:
+                    continue
+                arguments[field["name"]] = _parameter(field["name"], occupied)
+                occupied.add(arguments[field["name"]])
             for parameters_field in method["fields"]:
                 if parameters_field["optional"]:
                     continue
-                parameters.append(f"const {field_type(parameters_field)}& {_identifier(parameters_field['name'])}")
+                parameters.append(f"const {field_type(parameters_field)}& {arguments[parameters_field['name']]}")
 
-            parameters += [f"client::{prefix}Options options = {{}}"]
+            parameters += [f"client::{prefix}Options {options_parameter} = {{}}"]
             payload = method["payload_field"]
             result = field_type(payload) if payload else message(method["response"], type_names)
             stream = method["server_streaming"]
@@ -585,12 +646,18 @@ def client(
                 name = _identifier(field["name"])
                 optional = field["optional"]
                 if name == "request_id":
-                    lines += ["    request.set_request_id(options.request_id ? *options.request_id : ::harmos::detail::request_id());"]
+                    lines += [
+                        f"    request.set_request_id({options_parameter}.request_id ? *{options_parameter}.request_id : ::harmos::detail::request_id());"
+                    ]
                     continue
                 if optional:
-                    lines += [f"    if (options.{name}) {{"]
+                    lines += [f"    if ({options_parameter}.{name}) {{"]
                 value = (
-                    f"(*options.{name})" if optional and (field["repeated"] or field["map"]) else f"*options.{name}" if optional else name
+                    f"(*{options_parameter}.{name})"
+                    if optional and (field["repeated"] or field["map"])
+                    else f"*{options_parameter}.{name}"
+                    if optional
+                    else arguments[field["name"]]
                 )
                 indent = "      " if optional else "    "
                 if field["map"]:
@@ -607,7 +674,9 @@ def client(
                     lines += [f"{indent}request.set_{name}({value});"]
                 if optional:
                     lines += ["    }"]
-            lines += ["    auto context = options.context ? options.context : std::make_shared<grpc::ClientContext>();"]
+            lines += [
+                f"    auto context = {options_parameter}.context ? {options_parameter}.context : std::make_shared<grpc::ClientContext>();"
+            ]
             action = ".".join(method["path"])
             if stream:
                 lines += [
@@ -660,6 +729,13 @@ def format_code(paths: list[Path]) -> None:
 
 
 # === Private Functions === #
+
+
+def _parameter(name: str, members: set[str]) -> str:
+    name = _identifier(name)
+    while name in members:
+        name += "_"
+    return name
 
 
 def _type_import(qualified: str) -> tuple[str, str]:
