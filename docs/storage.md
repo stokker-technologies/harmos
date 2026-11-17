@@ -40,7 +40,9 @@ cancellation or closing; await its receipt and, after fixing a backend failure, 
 
 `storage.copy_backend` accepts a saved source cursor and an empty offline target
 backend. Its backend hook copies a retained image at that cut, including committed
-objects, records, samples, published file bytes and their metadata. Control definitions
+objects, records, samples, published file bytes and their metadata. Durable snapshot
+owners present at copy time through that cut accompany the reference-backend copy.
+Control definitions
 are those captured when the image opens. The target retains the source history identity;
 use it as a replacement or backup, never as an independent concurrent writer of that
 history. Recovery journals are separate backend data and are not part of this primary
@@ -50,7 +52,8 @@ Copy follows the snapshot lifecycle guard and the configured backend I/O policy.
 It does not retry an uncertain target write automatically.
 
 `storage.dispose_backend` invokes the supplied offline target's disposal hook. It
-permanently removes its data; close its sessions and release its retained snapshots first.
+permanently removes its data and durable snapshot ownership; close its sessions and
+release its reader leases first.
 It cannot erase the minimal assembly's active backend. The memory reference implements
 both hooks, refuses nonempty or active copy targets and keeps the copied data independent
 of later source writes. Products implement physical copy and disposal in their backends.
@@ -275,6 +278,16 @@ primitive. Defaults for unavailable primitives return `Unsupported`, never prete
 an empty result or successful write. Independent read-then-write calls cannot
 implement compare/exchange safely.
 
+Backend authors implement `retain_snapshot`, `open_retained_snapshot` and
+`release_retained_snapshot` for durable ownership. Persist the opaque token, exact
+cut and scope image before acknowledging creation; release scoped owners in the
+same transaction as `DeleteScope`. `create_snapshot`/`delete_snapshot` remain
+independent session reader leases. `watch_frontier(after, through)` validates
+observation, refuses crossed deletion with a gap and rounds a partial position
+down to the preceding complete mutation frontier. Persist compound/conditional
+ranges and deletion observation metadata independently of expiring mutation
+receipts. Backends without these hooks refuse retention or watches explicitly.
+
 `ArrowScan` selects a `ColumnSource` (objects, records or stream plus `SchemaKey`),
 unique dotted leaf column names, optional numeric predicate and exact nanosecond
 `TimeBounds`. Bounds are lower-inclusive and upper-exclusive. Its initial `start`
@@ -362,12 +375,25 @@ of the opening cut and follows storage-position order. Samples retain their own
 sequence independently of the storage position. Accepted writes remain invisible
 until their synchronous commit has been acknowledged.
 
-Progress events advance through committed data rejected by the selector. Events
-include issued `resolved_at` cuts, so reconnection can resume exclusively while
-that cut remains available. Subscription retention starts before the boundary is
+Progress events advance through committed data rejected by the selector. Compound
+entries and applied conditional object revisions are included; conflicts produce
+progress without row events. Row frames carry the preceding complete resume cut.
+A bounded page can split a compound mutation, but its cursor stays before that
+mutation until every selected row has been delivered. The progress frame then
+advances to a complete frontier; no watch cut or projection frontier lies inside
+a compound or conditional mutation. Reconnection from a row frame can replay rows
+since that complete cut, so consumers deduplicate by storage position and apply
+changes only on progress. Samples keep their separate stream sequence. Subscription retention starts before the boundary is
 sent; a concurrent opening commit is included in the tail. If bounded retention
 retires a slow observer, the stream emits `resync_required` and ends. List a fresh
 image and reopen from its returned cut; never manufacture an earlier sequence.
+Object deletion and scope deletion have no row payload. Conservatively, either
+invalidates every watch crossing its commit, even if its selector would exclude
+the deleted data. The watch emits `resync_required` and terminates. The same rule
+applies to expired opening cuts and unavailable history. List a fresh image,
+replace the local projection, and reopen from its issued cut. Independent readers
+already holding older images remain valid.
+
 Native `follow`/`next` still observes accepted entries separately;
 `Follower::next_durable` observes committed entries and filtered progress with the
 same bounded retention and gap mechanism. Closing/restarting retires watchers.
@@ -524,11 +550,20 @@ bytes remain readable through those cuts and are freed when the last referencing
 releases. New cuts and newly advanced projections exclude deleted data. Earlier derived
 projection outputs remain available while earlier cuts are held; after their release,
 those disposable outputs are reclaimed and must be rebuilt at a current cut. Opening
-an unretained cut older than a scoped deletion returns a gap. Durable product backends
-must preserve the same visibility, replay and reclamation contract in their transaction.
+an unretained global cut older than a scoped deletion returns a gap. Scope-owned
+retention remains reopenable across unrelated scope deletions and session restarts;
+it retains no rows, file bytes or global projection outputs belonging to another
+scope. Scope deletion atomically releases that scope's durable owners. Independent
+reader leases keep their original rows and files until released, after which
+unreferenced storage is reclaimed. Durable product backends must preserve this
+visibility, replay, ownership and reclamation contract in their transaction.
 Run `harmos_storage::conformance::scoped_deletion(&storage, ScopeFixture { .. })`
 against the product backend for logical deletion, retained object/file reads and receipt
-replay; add its physical reclamation proof using backend-owned deterministic evidence.
+replay and release of durable scope ownership. For restart proof, run
+`conformance::retain_scope(&storage, fixture)`, close and reopen the backend without
+keeping any manager or reader, then run `conformance::check_retained_scope(&storage,
+&proof)`. Add physical row/file reclamation proof using backend-owned deterministic
+evidence, including a retained scope beside an unrelated deleted scope.
 
 ## Conditional Objects
 
@@ -637,9 +672,39 @@ changed, released or expired selections refuse. The current page remains replaya
 with the same bounds until its next continuation is consumed. An empty page with a
 continuation represents progress. Paused queries release execution slots.
 
-Snapshots pin durable images. Lease issuance and continuation signing keys are
-process-local and expire across restart. Durable mutation receipts can reissue a
-position once its saved frontier is available, without forcing a flush. Accepted
+`storage.create_snapshot` persists an independent snapshot owner and returns
+a `SavedSnapshot` handle and its `resolved_at`. Without `at` it captures a global
+image; from a scoped cut it preserves that restricted image independently of the
+scope owner's lifetime. `storage.retain_snapshot` persists
+ownership of exactly one opaque scope, suitable for an execution seal:
+
+```rust,ignore
+RetainSnapshotRequest { scope: Some(execution_scope), at: evidence_cut }
+```
+
+Its response has the same shape as `CreateSnapshotResponse`. Ownership creation
+has no mutation identity and does not automatically replay after an uncertain
+result. Scope deletion also releases scoped owners whose creation reply was lost.
+Persist the returned
+handle or cut in the product's seal metadata; the `storage.snapshot` resource
+revision carries the backend's opaque retained handle. Scope-qualified images
+expose only that scope's objects, records, samples and published files, plus
+unscoped schema definitions. Their source cut must name native data without
+provider observations or global projection revisions. They cannot publish global projection outputs or
+copy a complete backend; select a global snapshot for those operations.
+
+`storage.delete_snapshot` releases durable ownership idempotently. Deleting a scope
+also releases its scoped owners atomically. Reopening a retained handle creates
+an independent reader lease. Existing leases survive owner release and deletion;
+releasing the last lease permits reclamation. Durable handles survive manager and
+native-registry restart; durable product backends persist them across process
+restart. The reference backend models this across sessions within its documented
+process lifetime. Scope retention admission and storage budgets belong to the
+consumer backend; the native registry capacity bounds live read caches and global
+snapshot leases. Page tokens, provider observations and continuation signing keys
+remain process-local and expire across restart. Durable mutation receipts can
+reissue an unretained position only while its image is still reconstructable,
+without forcing a flush. Accepted
 work is never substituted for a durable image. Index and projection cuts retain the
 exact definition revision and frontier rather than silently selecting current data.
 
@@ -887,12 +952,17 @@ charges retained Arrow buffers, IPC allocation and mutation/cursor metadata agai
 `request.max_pending_write_batches`. Waiting admission uses the operation's existing
 policy; an allocation larger than the whole budget refuses before acceptance.
 
+Columnar appends are complete mutation frontiers for durable watches and resume
+cursors. Bounded sample pages keep the preceding complete cursor until the whole
+append has been observed; resuming may replay rows but cannot skip a batch suffix.
+Accepted followers project columnar rows without waiting for persistence.
+
 The memory reference retains columnar batches and builds row views only for reads
 and maintenance that require them. Existing typed row producers still use
 `append_samples`; the native Arrow ingestion path has no row fallback. Backend
 products can reuse `conformance::columnar_appends`, `columnar_pending` (with their
 commit gated), `columnar_admission_bounds` and `columnar_reopened` to prove order,
-scope, bounded admission and durable replay. Their own restart tests reopen the
+scope, complete watch frontiers, bounded admission and durable replay. Their own restart tests reopen the
 actual persistent owner; memory proves close/reopen of its shared instance.
 
 Run `mise run bench -- --storage --filter columnar_append` to measure IPC decode,

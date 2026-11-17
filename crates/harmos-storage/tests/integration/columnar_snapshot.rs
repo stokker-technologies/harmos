@@ -213,7 +213,7 @@ fn sample_columns(schema: &StorageSchema, scope: &Identifier, count: usize) -> w
                 scope: Some(scope.clone()),
                 item: Identifier::new("execution").unwrap(),
                 source: Some(Identifier::new("device").unwrap()),
-                source_time: Some(UNIX_EPOCH + Duration::from_nanos(index as u64)),
+                source_time: Some(UNIX_EPOCH + Duration::from_secs(index as u64)),
                 payload: Sample {
                     time_ns: index as i64,
                     value: index as f64,
@@ -252,10 +252,38 @@ async fn columnar_append_conformance_and_reopened_receipt() {
     let scope = Identifier::new("execution.columns").unwrap();
     let batch = sample_columns(&schema, &scope, 100);
     let (mutation, accepted) = conformance::columnar_appends(&fixture.storage, &scope, &batch).await.unwrap();
+    let transient = fixture.data.create_snapshot(&accepted).await.unwrap();
+    let snapshot = fixture.storage.snapshot(&accepted).await.unwrap();
+    let retained = snapshot.retain(Some(&scope)).await.unwrap();
+    drop(snapshot);
+    let primary = fixture.data.clone();
     let reopened = fixture.storage.new_session().unwrap();
     fixture.finish().await;
     fixture::start(&reopened).await;
     conformance::columnar_reopened(&reopened, &scope, &batch, &mutation, &accepted).await.unwrap();
+
+    // Session Tokens Expire While Scoped Columnar Ownership Survives.
+    let selection = StreamSelection {
+        schema: schema.key,
+        scope: Some(scope),
+        item: None,
+        stream: Some(batch.destination),
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: nz(100),
+        bytes: nz(64 * 1024),
+    };
+    assert!(primary.list_samples(&transient, &selection, page).await.is_err());
+    let snapshot = primary.open_retained_snapshot(&retained).await.unwrap();
+    let rows = primary.list_samples(&snapshot, &selection, page).await.unwrap();
+    assert_eq!(rows.len(), 100);
+    assert_eq!(rows.last().unwrap().record.position, accepted);
+    primary.delete_snapshot(&snapshot).await.unwrap();
+    reopened.release_retained_snapshot(&retained).await.unwrap();
     reopened.close().await.unwrap();
 }
 
@@ -421,5 +449,87 @@ async fn columnar_appends_preserve_multiple_registered_schemas() {
     let actual = fixture.data.list_samples(&cut, &selection, page).await.unwrap();
     assert_eq!(actual.len(), 4);
     fixture.data.delete_snapshot(&cut).await.unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn columnar_watch_pages_replay_complete_frontiers_and_resync_scope_deletion() {
+    // Register Accepted, Durable and Filtered Followers Before Admission.
+    let mut settings = backend::storage_settings();
+    settings.response.batch_bytes = NonZeroUsize::MIN;
+    let (fixture, schema) = columnar_fixture(settings).await;
+    let opening = fixture.storage.get_saved_position();
+    let scope = Identifier::new("watched.columns").unwrap();
+    let batch = sample_columns(&schema, &scope, 3);
+    let selection = StreamSelection {
+        schema: schema.key,
+        scope: Some(scope.clone()),
+        item: None,
+        stream: Some(batch.destination.clone()),
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let mut accepted = fixture.storage.follow::<StoredRow>(Some(&opening), selection.clone()).await.unwrap();
+    let mut durable = fixture.storage.follow::<StoredRow>(Some(&opening), selection.clone()).await.unwrap();
+    let prefix = StreamSelection {
+        source_start: Some(UNIX_EPOCH),
+        source_end: Some(UNIX_EPOCH + Duration::from_secs(2)),
+        ..selection.clone()
+    };
+    let mut filtered = fixture.storage.follow::<StoredRow>(Some(&opening), prefix).await.unwrap();
+    let mutation = MutationId {
+        window: fixture.storage.mutation_window().unwrap().id,
+        key: Identifier::new("watch.columns").unwrap(),
+    };
+    let through = fixture.storage.append_sample_batch(&mutation, Some(&scope), &batch).await.unwrap();
+
+    // Accepted Followers Project Columns Before the Backend Commits.
+    let page = accepted.next().await.unwrap();
+    assert_eq!(page.entries().len(), 3);
+    for (index, row) in page.entries().iter().enumerate() {
+        assert_eq!(row.record.position.sequence, opening.sequence + index as u64 + 1);
+        assert_eq!(row.sequence, index as u64 + 1);
+        let sample = Sample::decode(&row.record.payload).unwrap();
+        assert_eq!(sample.value, index as f64);
+    }
+    drop(accepted);
+    fixture.storage.flush().await.unwrap();
+
+    // Bounded Pages and Historical Resume Never Publish an Interior Cut.
+    let mut replay = fixture.storage.follow::<StoredRow>(Some(&opening), selection).await.unwrap();
+    for index in 0..3 {
+        let (page, cursor) = durable.next_durable().await.unwrap();
+        let (replayed, resumed) = replay.next_durable().await.unwrap();
+        assert_eq!(page.entries().len(), 1);
+        assert_eq!(page.entries()[0].record.position.sequence, opening.sequence + index + 1);
+        assert_eq!(cursor, if index == 2 { through.clone() } else { opening.clone() });
+        assert_eq!(resumed, cursor);
+        assert_eq!(replayed.entries(), page.entries());
+        if index < 2 {
+            assert!(fixture.storage.snapshot(&page.entries()[0].record.position).await.is_err());
+        }
+    }
+
+    // An Unmatched Suffix Advances Only After the Complete Batch Is Scanned.
+    for _ in 0..2 {
+        let (page, cursor) = filtered.next_durable().await.unwrap();
+        assert_eq!(page.entries().len(), 1);
+        assert_eq!(cursor, opening);
+    }
+    let (page, cursor) = filtered.next_durable().await.unwrap();
+    assert!(page.entries().is_empty());
+    assert_eq!(cursor, through);
+
+    // Deleting the Watched Scope Requires Resync for Every Durable Observer.
+    let deletion = MutationId {
+        key: Identifier::new("watch.delete").unwrap(),
+        ..mutation
+    };
+    fixture.storage.mutate_once(&deletion, vec![MutationItem::DeleteScope(scope)]).await.unwrap();
+    assert!(matches!(durable.next_durable().await, Err(Error::Gap { .. })));
+    assert!(matches!(replay.next_durable().await, Err(Error::Gap { .. })));
+    assert!(matches!(filtered.next_durable().await, Err(Error::Gap { .. })));
+    drop((durable, replay, filtered));
     fixture.finish().await;
 }

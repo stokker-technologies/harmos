@@ -43,6 +43,8 @@ Your application defines each change; Harmos manages its accepted history.
 - **Streams and Storage**: Capture bounded live measurements and supply adapters for history, snapshots and streams.
   Query rows with [scale, offset and containment transforms](docs/storage.md#expression-transforms),
   [shared percentiles, box summaries and bounded preview envelopes](docs/storage.md#statistics-transforms).
+  Retain [scope-qualified evidence cuts across restarts](docs/storage.md#object-and-scoped-deletion)
+  and observe compound writes and columnar sample appends at complete watch frontiers.
   Run [storage operations during preparation](docs/storage.md#storage-before-full-startup) or offline maintenance before full startup.
 - **Crash Recovery**: Reconstruct host state and undo history from bounded snapshot segments and journal replay; retain plugin history with its written definitions.
 - **WebAssembly Guests** [`plugin-guest`]: Extend an application with grants, fuel and memory limits enforced by the Wasmtime boundary.

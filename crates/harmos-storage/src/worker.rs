@@ -319,7 +319,7 @@ impl Worker {
                     let mut state = inner.state.lock().unwrap();
                     match &action {
                         Action::Write(entry, _) => (Some(entry.context.clone()), None),
-                        Action::Snapshot(SnapshotAction::Open(id, _) | SnapshotAction::Release(id, _)) => {
+                        Action::Snapshot(SnapshotAction::Open(id, _, _) | SnapshotAction::Release(id, _)) => {
                             state.snapshots.get_mut(id).map(|held| (Some(held.context.clone()), held.queued.take())).unwrap_or((None, None))
                         }
                         Action::File(file) => state
@@ -689,8 +689,12 @@ async fn perform(inner: &Arc<Inner>, action: &Action) -> Result<Completed> {
             .await
             .map(Completed::Pruned),
         Action::File(action) => super::staging::perform(inner, action).await.map(Completed::File),
-        Action::Snapshot(SnapshotAction::Open(id, at)) => {
-            let opened = inner.bounded("primary.create_snapshot", inner.primary.create_snapshot(at)).await;
+        Action::Snapshot(SnapshotAction::Open(id, at, retained)) => {
+            let opened = if let Some(retained) = retained {
+                inner.bounded("primary.open_retained_snapshot", inner.primary.open_retained_snapshot(retained)).await
+            } else {
+                inner.bounded("primary.create_snapshot", inner.primary.create_snapshot(at)).await
+            };
             Ok(Completed::Opened(*id, opened))
         }
         Action::Snapshot(SnapshotAction::Release(id, snapshot)) => {

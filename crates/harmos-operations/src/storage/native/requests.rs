@@ -309,6 +309,13 @@ pub struct CreateSnapshotRequest {
     pub at: Option<ReadCut>,
 }
 
+/// Durable Ownership of One Scope's Cut; Scope Deletion Releases It.
+#[derive(Clone, Debug)]
+pub struct RetainSnapshotRequest {
+    pub at: Option<ReadCut>,
+    pub scope: Option<Identifier>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct CreateSnapshotResponse {
     pub snapshot: Option<SavedSnapshot>,
@@ -1012,6 +1019,11 @@ impl MemorySize for CapabilitiesResponse {
             .saturating_add(self.capabilities.memory_size())
             .saturating_add(self.mutations.memory_size())
             .saturating_add(self.file_batch_bytes.memory_size())
+    }
+}
+impl MemorySize for RetainSnapshotRequest {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>().saturating_add(self.at.as_ref().map_or(0, Message::encoded_len)).saturating_add(self.scope.memory_size())
     }
 }
 impl MemorySize for CreateSnapshotRequest {

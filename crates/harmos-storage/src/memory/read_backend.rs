@@ -38,7 +38,112 @@ use super::*;
 /* === Implementations === */
 
 impl Backend {
-    fn retain_snapshot(&self, image: Arc<Snapshot>) -> BackendSnapshot {
+    pub(super) fn retain_image<'a>(
+        &'a self, snapshot: &'a BackendSnapshot, scope: Option<&'a Identifier>,
+    ) -> StorageFuture<'a, BackendSnapshot> {
+        Box::pin(async move {
+            let transaction = self.conditional.lock().unwrap();
+            if scope.is_some_and(|scope| transaction.deleted_scopes.get(scope).is_some_and(|deleted| *deleted > snapshot.at.sequence)) {
+                return Err(Error::InvalidInput {
+                    field: "retained scope",
+                    reason: "scope was deleted; select a fresh scope and cut",
+                });
+            }
+            let mut image = self.image(snapshot)?.as_ref().clone();
+            if scope.is_some_and(|scope| image.scope.as_ref().is_some_and(|selected| selected != scope)) {
+                return Err(Error::InvalidInput {
+                    field: "retained scope",
+                    reason: "retain the original scope or select a global image",
+                });
+            }
+            // Copy Only the Selected Cut and Scope into Durable Ownership.
+            let at = snapshot.at.sequence;
+            if let Some(scope) = scope {
+                image.scope = Some(scope.clone());
+            }
+            let mut owners = BTreeMap::new();
+            for object in image.objects.range(..=at).map(|(_, object)| object) {
+                owners.insert((object.value.schema.id.clone(), object.value.item.clone()), object.value.scope.clone());
+            }
+            image.objects.retain(|position, object| {
+                let identity = (object.value.schema.id.clone(), object.value.item.clone());
+                let selected = scope.is_none_or(|scope| {
+                    object.value.scope.as_ref() == Some(scope) && owners.get(&identity).is_some_and(|owner| owner.as_ref() == Some(scope))
+                });
+                *position <= at && selected
+            });
+            let identities =
+                image.objects.values().map(|object| (object.value.schema.id.clone(), object.value.item.clone())).collect::<BTreeSet<_>>();
+            image.deleted_objects.retain(|position, identity| *position <= at && (scope.is_none() || identities.contains(identity)));
+            image.pruned_objects.retain(|position, (schema, item)| {
+                *position <= at && (scope.is_none() || identities.contains(&(schema.id.clone(), item.clone())))
+            });
+            image.records = image
+                .records
+                .iter()
+                .filter(|(position, record)| **position <= at && scope.is_none_or(|scope| record.scope.as_ref() == Some(scope)))
+                .map(|(position, record)| (*position, record.clone()))
+                .collect();
+            image.rows.retain(|position, row| *position <= at && scope.is_none_or(|scope| row.record.scope.as_ref() == Some(scope)))?;
+            image.files.retain(|position, file| *position <= at && scope.is_none_or(|scope| file.metadata.scope.as_ref() == Some(scope)));
+            image.blobs.retain(|_, (file, _)| {
+                file.position.sequence <= at && scope.is_none_or(|scope| file.metadata.scope.as_ref() == Some(scope))
+            });
+            image.schemas.retain(|position, _| *position <= at);
+            // Global Projection Outputs Can Contain Rows from Unrelated Scopes.
+            if scope.is_some() {
+                image.projections = Default::default();
+            }
+            let token = format!("retained:{}:{}", self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst)).into_bytes();
+            let retained = BackendSnapshot { at: snapshot.at.clone(), token };
+            self.retained_snapshots.lock().unwrap().insert(
+                retained.token.clone(),
+                RetainedImage {
+                    owner: scope.cloned(),
+                    image: Arc::new(image),
+                },
+            );
+            Ok(retained)
+        })
+    }
+
+    pub(super) fn open_retained_image<'a>(&'a self, retained: &'a BackendSnapshot) -> StorageFuture<'a, BackendSnapshot> {
+        Box::pin(async move {
+            let _transaction = self.conditional.lock().unwrap();
+            let image = self
+                .retained_snapshots
+                .lock()
+                .unwrap()
+                .get(&retained.token)
+                .filter(|retained_image| retained_image.image.at == retained.at)
+                .map(|retained_image| retained_image.image.clone())
+                .ok_or(Error::InvalidInput {
+                    field: "retained snapshot",
+                    reason: "ownership was released; list a fresh image",
+                })?;
+            Ok(self.lease_image(image))
+        })
+    }
+
+    pub(super) fn release_retained_image<'a>(&'a self, retained: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+        Box::pin(async move {
+            self.history.check(&retained.at.history)?;
+            let _transaction = self.conditional.lock().unwrap();
+            let mut retained_snapshots = self.retained_snapshots.lock().unwrap();
+            if retained_snapshots.get(&retained.token).is_some_and(|retained_image| retained_image.image.at != retained.at) {
+                return Err(Error::InvalidInput {
+                    field: "retained snapshot",
+                    reason: "use the original retained handle",
+                });
+            }
+            retained_snapshots.remove(&retained.token);
+            drop(retained_snapshots);
+            self.reclaim_scoped_projections();
+            Ok(())
+        })
+    }
+
+    fn lease_image(&self, image: Arc<Snapshot>) -> BackendSnapshot {
         let token =
             format!("{}:{}:{}", type_name::<Self>(), self.snapshot_scope, self.next_snapshot.fetch_add(1, Ordering::SeqCst)).into_bytes();
         let snapshot = BackendSnapshot { at: image.at.clone(), token };
@@ -50,11 +155,11 @@ impl Backend {
         let _transaction = self.conditional.lock().unwrap();
         let current = self.blobs.lock().unwrap().values().map(|(_, bytes)| bytes.len()).sum::<usize>();
         let mut images = BTreeSet::new();
-        let retained = self
-            .snapshots
-            .lock()
-            .unwrap()
+        let snapshots = self.snapshots.lock().unwrap();
+        let retained_snapshots = self.retained_snapshots.lock().unwrap();
+        let retained = snapshots
             .values()
+            .chain(retained_snapshots.values().map(|retained| &retained.image))
             .filter(|snapshot| images.insert(Arc::as_ptr(snapshot)))
             .flat_map(|snapshot| snapshot.blobs.values())
             .map(|(_, bytes)| bytes.len())
@@ -64,7 +169,15 @@ impl Backend {
 
     pub(super) fn reclaim_scoped_projections(&self) {
         let floor = self.scoped_floor.load(Ordering::SeqCst) as u64;
-        if floor > 0 && self.snapshots.lock().unwrap().values().all(|snapshot| snapshot.at.sequence >= floor) {
+        if floor > 0
+            && self.snapshots.lock().unwrap().values().all(|snapshot| snapshot.scope.is_some() || snapshot.at.sequence >= floor)
+            && self
+                .retained_snapshots
+                .lock()
+                .unwrap()
+                .values()
+                .all(|retained| retained.image.scope.is_some() || retained.image.at.sequence >= floor)
+        {
             self.projections.lock().unwrap().reclaim_through(floor - 1);
         }
     }
@@ -96,9 +209,9 @@ impl Backend {
             let lost_objects_through =
                 (self.control.lost_objects_through.load(Ordering::SeqCst) as u64).max(self.scoped_floor.load(Ordering::SeqCst) as u64);
             if at.sequence < self.scoped_floor.load(Ordering::SeqCst) as u64 {
-                let retained = self.snapshots.lock().unwrap().values().find(|image| image.at == *at).cloned();
+                let retained = self.snapshots.lock().unwrap().values().find(|image| image.at == *at && image.scope.is_none()).cloned();
                 if let Some(image) = retained {
-                    return Ok(self.retain_snapshot(image));
+                    return Ok(self.lease_image(image));
                 }
             }
             // Pruned Revisions No Longer Reconstruct An Older Image.
@@ -108,10 +221,10 @@ impl Backend {
                     available: lost_objects_through,
                 });
             }
-            if conditional.compound_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
+            if conditional.mutation_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
                 return Err(Error::InvalidInput {
                     field: "storage cut",
-                    reason: "select a complete compound receipt frontier",
+                    reason: "select a complete mutation receipt frontier",
                 });
             }
             let records = self.records.lock().unwrap();
@@ -121,6 +234,7 @@ impl Backend {
             drop(records);
             let snapshot = Snapshot {
                 at: at.clone(),
+                scope: None,
                 pruned_objects: self.pruned_objects.lock().unwrap().clone(),
                 blobs: self.blobs.lock().unwrap().clone(),
                 lost_objects_through,
@@ -136,7 +250,7 @@ impl Backend {
                 receipts: receipts.clone(),
                 object_schemas: self.object_schemas.lock().unwrap().clone(),
             };
-            let snapshot = self.retain_snapshot(Arc::new(snapshot));
+            let snapshot = self.lease_image(Arc::new(snapshot));
             drop(conditional);
             Ok(snapshot)
         })

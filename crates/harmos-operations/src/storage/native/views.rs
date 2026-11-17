@@ -37,12 +37,21 @@ pub(super) async fn create(
 ) -> Result<(SavedSnapshot, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
-    snapshots.create(&storage, at).await.map_err(super::admission::failure)
+    snapshots.create(&storage, at, None).await.map_err(super::admission::failure)
+}
+pub(super) async fn retain(
+    context: &ExecutionContext, at: Option<model::ReadCut>, scope: Option<harmos_storage::Identifier>,
+) -> Result<(SavedSnapshot, model::ReadCut), ServingError> {
+    let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+    let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
+    let scope = required(scope).map_err(|error| super::admission::failure(error.into()))?;
+    snapshots.create(&storage, at, Some(&scope)).await.map_err(super::admission::failure)
 }
 pub(super) async fn delete(context: &ExecutionContext, snapshot: Option<SavedSnapshot>) -> Result<(), ServingError> {
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
+    let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let result: crate::Result<()> = async {
-        snapshots.release(&required(snapshot)?)?;
+        snapshots.release(&storage, &required(snapshot)?).await?;
         Ok(())
     }
     .await;
@@ -63,7 +72,7 @@ pub(super) async fn advance_projection(
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let (definition, expected) = storage.get_projection_definition(&name, None).await?;
             super::admission::source_matches(&source, &definition.source)?;
-            let snapshot = snapshots.read(required(snapshot)?)?;
+            let snapshot = snapshots.read_saved(&storage, required(snapshot)?).await?;
             let revision = snapshot.advance_projection(&name, Some(expected), required(work)?, &cancel).await?;
             let cut = projection_cut(snapshot.at().clone(), &name, revision);
             Ok((super::definitions::revision(revision), snapshots.composite(&storage, cut).await?))

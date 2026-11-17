@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::io;
 use std::num::NonZeroUsize;
-use std::ops::Bound::{Excluded, Included};
+use std::ops::Bound;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -200,8 +200,10 @@ pub struct Control {
     pub flushes: Mutex<Vec<u64>>,
 }
 
+#[derive(Clone)]
 struct Snapshot {
     at: StorageCursor,
+    scope: Option<Identifier>,
     pruned_objects: BTreeMap<u64, (SchemaKey, ObjectKey)>,
     blobs: BTreeMap<String, (FileReference, Vec<u8>)>,
     lost_objects_through: u64,
@@ -218,6 +220,12 @@ struct Snapshot {
     object_schemas: BTreeMap<(String, u32), Vec<Field>>,
 }
 
+#[derive(Clone)]
+struct RetainedImage {
+    owner: Option<Identifier>,
+    image: Arc<Snapshot>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Release {
     pub schema: SchemaKey,
@@ -228,8 +236,10 @@ pub struct Release {
 #[derive(Clone, Default)]
 struct Conditional {
     floor: u64,
-    compound_ranges: BTreeMap<u64, u64>,
+    mutation_ranges: BTreeMap<u64, u64>,
     receipts: BTreeMap<u64, ([u8; 32], CompareExchange)>,
+    invalidations: BTreeSet<u64>,
+    deleted_scopes: BTreeMap<Identifier, u64>,
 }
 
 pub struct Backend {
@@ -255,6 +265,7 @@ pub struct Backend {
     pub files: Mutex<BTreeMap<u64, FileReference>>,
     pub blobs: Mutex<BTreeMap<String, (FileReference, Vec<u8>)>>,
     snapshots: Mutex<BTreeMap<Vec<u8>, Arc<Snapshot>>>,
+    retained_snapshots: Mutex<BTreeMap<Vec<u8>, RetainedImage>>,
     next_snapshot: AtomicUsize,
     snapshot_scope: usize,
     pub history: StoreHistory,
@@ -374,6 +385,7 @@ impl Backend {
             files: Mutex::default(),
             blobs: Mutex::default(),
             snapshots: Mutex::default(),
+            retained_snapshots: Mutex::default(),
             next_snapshot: AtomicUsize::new(1),
             snapshot_scope: NEXT_SCOPE.fetch_add(1, Ordering::SeqCst),
             history,
@@ -464,6 +476,7 @@ impl StorageBackend for Backend {
                 CompareExchange::Conflict { current }
             };
             conditional.receipts.insert(position, (fingerprint, outcome.clone()));
+            conditional.mutation_ranges.insert(exchange.schema.position.sequence, position);
             self.saved.fetch_max(position as usize, Ordering::SeqCst);
             Ok(outcome)
         })
@@ -562,7 +575,12 @@ impl StorageBackend for Backend {
     fn set_projection_output(&self, publication: ProjectionPublication) -> StorageFuture<'_, ()> {
         Box::pin(async move {
             let _transaction = self.conditional.lock().unwrap();
-            self.image(publication.snapshot())?;
+            if self.image(publication.snapshot())?.scope.is_some() {
+                return Err(Error::InvalidInput {
+                    field: "projection snapshot",
+                    reason: "advance a global projection from a global snapshot",
+                });
+            }
             if self.control.fail_projection.load(Ordering::SeqCst) {
                 return Err(failure(BackendFailure::Transient));
             }
@@ -708,6 +726,8 @@ impl StorageBackend for Backend {
             // Backend Snapshot Tokens Belong to One Open Session.
             let _transaction = self.conditional.lock().unwrap();
             self.snapshots.lock().unwrap().clear();
+            self.reclaim_scoped_projections();
+            self.control.release_completed.notify_waiters();
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
@@ -858,7 +878,7 @@ impl StorageBackend for Backend {
                     }
                     let keep = retention.versions().get();
                     let newer = objects
-                        .range((Excluded(position), Included(through.sequence)))
+                        .range((Bound::Excluded(position), Bound::Included(through.sequence)))
                         .filter(|(_, other)| other.value.schema.id == object.value.schema.id && other.value.item == object.value.item)
                         .take(keep)
                         .count();
@@ -893,13 +913,61 @@ impl StorageBackend for Backend {
         })
     }
     fn delete_session(&self) -> StorageFuture<'_, ()> {
-        Box::pin(async move { self.control.close() })
+        Box::pin(async move {
+            let _transaction = self.conditional.lock().unwrap();
+            self.control.close()?;
+            self.snapshots.lock().unwrap().clear();
+            self.reclaim_scoped_projections();
+            self.control.release_completed.notify_waiters();
+            Ok(())
+        })
     }
     fn create_snapshot<'a>(&'a self, at: &'a StorageCursor) -> StorageFuture<'a, BackendSnapshot> {
         self.open_snapshot(at)
     }
     fn delete_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
         Box::pin(async move { self.release_snapshot(snapshot).await })
+    }
+
+    fn retain_snapshot<'a>(&'a self, snapshot: &'a BackendSnapshot, scope: Option<&'a Identifier>) -> StorageFuture<'a, BackendSnapshot> {
+        self.retain_image(snapshot, scope)
+    }
+
+    fn open_retained_snapshot<'a>(&'a self, retained: &'a BackendSnapshot) -> StorageFuture<'a, BackendSnapshot> {
+        self.open_retained_image(retained)
+    }
+
+    fn release_retained_snapshot<'a>(&'a self, retained: &'a BackendSnapshot) -> StorageFuture<'a, ()> {
+        self.release_retained_image(retained)
+    }
+
+    fn watch_frontier<'a>(&'a self, after: &'a StorageCursor, through: &'a StorageCursor) -> StorageFuture<'a, StorageCursor> {
+        Box::pin(async move {
+            self.history.check(&after.history)?;
+            self.history.check(&through.history)?;
+            let conditional = self.conditional.lock().unwrap();
+            if after.sequence > through.sequence || through.sequence > self.saved.load(Ordering::SeqCst) as u64 {
+                return Err(Error::InvalidInput {
+                    field: "watch frontier",
+                    reason: "select an ordered durable range",
+                });
+            }
+            if let Some(position) =
+                conditional.invalidations.range((Bound::Excluded(after.sequence), Bound::Included(through.sequence))).next()
+            {
+                return Err(Error::Gap {
+                    requested: after.sequence,
+                    available: *position,
+                });
+            }
+            let sequence = conditional
+                .mutation_ranges
+                .range(..=through.sequence)
+                .next_back()
+                .filter(|(_, end)| through.sequence < **end)
+                .map_or(through.sequence, |(first, _)| first - 1);
+            Ok(self.at(sequence))
+        })
     }
     fn list_schemas<'a>(
         &'a self, snapshot: &'a BackendSnapshot, selection: &'a SchemaSelection, page: ScanPage,

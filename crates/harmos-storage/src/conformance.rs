@@ -24,8 +24,9 @@ use arrow_array::{StructArray, UInt64Array};
 use crate::query::{FileSelection, RecordSelection, StreamSelection};
 use crate::writes::{DecodedBatch, convert};
 use crate::{
-    CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MemorySize, MutationId, MutationItem, ObjectPoint, ObjectValue,
-    ObjectVersion, ObjectVersionToken, RecordInput, Result, ScanPage, StorageCursor, StorageManager, StoredRecord, StoredRow, StreamInput,
+    BackendSnapshot, CompoundOutcome, Error, FileMetadata, FileReference, Identifier, MemorySize, MutationId, MutationItem, ObjectPoint,
+    ObjectValue, ObjectVersion, ObjectVersionToken, RecordInput, Result, ScanPage, StorageCursor, StorageManager, StoredRecord, StoredRow,
+    StreamInput,
 };
 use harmos_query::arrow::ArrowBatch;
 
@@ -46,6 +47,7 @@ pub struct CompoundFixture {
 }
 
 /// Fresh Scoped Data for the Backend's Logical Deletion Proof.
+#[derive(Clone)]
 pub struct ScopeFixture {
     pub scope: Identifier,
     pub object: ObjectValue,
@@ -53,6 +55,13 @@ pub struct ScopeFixture {
     pub sample: StreamInput,
     pub file: FileMetadata,
     pub bytes: Vec<u8>,
+}
+
+/// Persist This Proof Between Closing and Reopening the Product Backend.
+pub struct RetainedScope {
+    pub snapshot: BackendSnapshot,
+    pub fixture: ScopeFixture,
+    pub file: FileReference,
 }
 
 /* === Enums === */
@@ -74,6 +83,8 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
         source_end: None,
     };
     let window = storage.mutation_window()?.id;
+    let opening = storage.get_saved_position();
+    let mut follower = storage.follow::<StoredRecord>(Some(&opening), selection.clone()).await?;
     let mutation = MutationId {
         window: window.clone(),
         key: Identifier::new("conformance.compound.create").expect("valid conformance identity"),
@@ -98,6 +109,10 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
     }
     if storage.mutate_once(&mutation, items).await? != created {
         return Err(invalid("repair backend durable compound receipt replay"));
+    }
+    let (observed, frontier) = follower.next_durable().await?;
+    if observed.entries().len() != 1 || frontier != created.position {
+        return Err(invalid("include committed compound entries at their complete frontier"));
     }
     let before = storage.snapshot(&created.position).await?;
     let expected = ObjectVersionToken::new(positions[0].clone());
@@ -126,6 +141,10 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
         return Err(invalid("repair backend atomic late conflict and refusal replay"));
     }
     let cut = storage.snapshot(&refused.position).await?;
+    let (observed, frontier) = follower.next_durable().await?;
+    if !observed.entries().is_empty() || frontier != refused.position {
+        return Err(invalid("advance conflicts without observing refused compound entries"));
+    }
     let page = ScanPage {
         after: created.position.sequence,
         rows: storage.settings().response.batch_rows,
@@ -160,6 +179,9 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
         return Err(invalid("repair backend ordered replacement, deletion and replay"));
     }
     let after = storage.snapshot(&changed.position).await?;
+    if !matches!(follower.next_durable().await, Err(Error::Gap { .. })) {
+        return Err(invalid("terminate deletion observation with a resync gap"));
+    }
     let (records, _) = after.scan::<StoredRecord>(&selection, ScanPage { after: refused.position.sequence, ..page }).await?;
     let original = before.get_object(&point).await?.map(|entry| entry.value);
     let replacement = after.get_object(&point).await?.map(|entry| entry.value);
@@ -203,12 +225,19 @@ pub async fn scoped_deletion(storage: &StorageManager, fixture: ScopeFixture) ->
     let file = file.finish().await?;
     storage.flush().await?;
     let before = storage.snapshot(&storage.get_saved_position()).await?;
+    let retained = before.retain(Some(&fixture.scope)).await?;
+    let reader = storage.open_retained_snapshot(&retained).await?;
+    let independent = reader.retain(None).await?;
     let mutation = MutationId {
         window,
         key: Identifier::new("conformance.scope.delete").expect("valid conformance identity"),
     };
     let items = vec![MutationItem::DeleteScope(fixture.scope.clone())];
     let deleted = storage.mutate_once(&mutation, items.clone()).await?;
+    if storage.open_retained_snapshot(&retained).await.is_ok() {
+        return Err(invalid("release scope-owned retention atomically with scope deletion"));
+    }
+    let independent_reader = storage.open_retained_snapshot(&independent).await?;
     if storage.mutate_once(&mutation, items).await? != deleted {
         return Err(invalid("repair backend scoped deletion receipt replay"));
     }
@@ -243,8 +272,79 @@ pub async fn scoped_deletion(storage: &StorageManager, fixture: ScopeFixture) ->
     }
     if before.get_object(&point).await?.map(|entry| entry.value) != Some(fixture.object)
         || before.read_file(&file, 0, storage.settings().response.batch_bytes).await? != fixture.bytes
+        || reader.get_object(&point).await?.is_none()
+        || reader.read_file(&file, 0, storage.settings().response.batch_bytes).await? != fixture.bytes
+        || independent_reader.get_object(&point).await?.is_none()
+        || independent_reader.read_file(&file, 0, storage.settings().response.batch_bytes).await? != fixture.bytes
     {
         return Err(invalid("retain deleted objects and file bytes until their pinned cuts release"));
+    }
+    storage.release_retained_snapshot(&independent).await?;
+    Ok(())
+}
+
+/// Seed and Persist a Scope Cut. Close and Reopen the Backend Before Calling `check_retained_scope`.
+pub async fn retain_scope(storage: &StorageManager, fixture: ScopeFixture) -> Result<RetainedScope> {
+    let mutation = MutationId {
+        window: storage.mutation_window()?.id,
+        key: Identifier::new("conformance.retained.seed").expect("valid conformance identity"),
+    };
+    storage
+        .mutate_once(&mutation, vec![MutationItem::Create(fixture.object.clone()), MutationItem::Append(fixture.record.clone())])
+        .await?;
+    storage.append_samples(vec![fixture.sample.clone()]).await?;
+    let mut writer = storage.produce_file(fixture.file.clone()).await?;
+    writer.write_all(fixture.bytes.clone()).await?;
+    let file = writer.finish().await?;
+    storage.flush().await?;
+    let image = storage.snapshot(&storage.get_saved_position()).await?;
+    let snapshot = image.retain(Some(&fixture.scope)).await?;
+    Ok(RetainedScope { snapshot, fixture, file })
+}
+
+/// Prove Durable Ownership After Restart Without a Live Manager or Snapshot Registry.
+pub async fn check_retained_scope(storage: &StorageManager, proof: &RetainedScope) -> Result<()> {
+    let image = storage.open_retained_snapshot(&proof.snapshot).await?;
+    let point = ObjectPoint {
+        schema: proof.fixture.object.schema.id.clone(),
+        item: proof.fixture.object.item.clone(),
+        version: ObjectVersion::Latest,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: storage.settings().response.batch_rows,
+        bytes: storage.settings().response.batch_bytes,
+    };
+    let records = RecordSelection {
+        schema: proof.fixture.record.schema.clone(),
+        scope: None,
+        item: None,
+        source_start: None,
+        source_end: None,
+    };
+    let samples = StreamSelection {
+        schema: proof.fixture.sample.record.schema.clone(),
+        scope: None,
+        item: None,
+        stream: None,
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let (records, _) = image.scan::<StoredRecord>(&records, page).await?;
+    let (samples, _) = image.scan::<StoredRow>(&samples, page).await?;
+    let (files, _) = image.scan::<FileReference>(&FileSelection { scope: None, item: None }, page).await?;
+    let scope = Some(&proof.fixture.scope);
+    if image.get_object(&point).await?.map(|entry| entry.value) != Some(proof.fixture.object.clone())
+        || image.read_file(&proof.file, 0, page.bytes).await? != proof.fixture.bytes
+        || records.len() != 1
+        || records[0].scope.as_ref() != scope
+        || samples.len() != 1
+        || samples[0].record.scope.as_ref() != scope
+        || files.len() != 1
+        || files[0].metadata.scope.as_ref() != scope
+    {
+        return Err(invalid("persist the complete scoped image and reopen it after restart"));
     }
     Ok(())
 }
@@ -312,6 +412,11 @@ pub async fn columnar_appends(storage: &StorageManager, scope: &Identifier, batc
                 || row.sequence != sequence.value(index)
             {
                 return Err(invalid("preserve columnar sample order, payloads, metadata and exact authorized scope"));
+            }
+            let frontier = storage.watch_frontier(&before, &row.record.position).await?;
+            let expected_frontier = if row.record.position == accepted { &accepted } else { &before };
+            if &frontier != expected_frontier {
+                return Err(invalid("publish columnar sample cursors only at the complete append frontier"));
             }
             after = row.record.position.sequence;
             index += 1;

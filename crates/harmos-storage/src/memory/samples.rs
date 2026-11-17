@@ -140,7 +140,7 @@ impl Backend {
                 append.replay(receipt)?;
                 return Ok(receipt.clone());
             }
-            let _transaction = self.conditional.lock().unwrap();
+            let mut conditional = self.conditional.lock().unwrap();
             let saved = self.saved.load(Ordering::SeqCst) as u64;
             if saved.checked_add(1) != Some(append.first.sequence) {
                 return Err(failure(BackendFailure::Conflict));
@@ -151,6 +151,7 @@ impl Backend {
             }
             rows.materialized.take();
             rows.columns.insert(append.first.sequence, Arc::new(append.clone()));
+            conditional.mutation_ranges.insert(append.first.sequence, append.through.sequence);
             let receipt = append.receipt();
             receipts.insert(receipt.mutation.clone(), receipt.clone());
             self.saved.store(append.through.sequence as usize, Ordering::SeqCst);

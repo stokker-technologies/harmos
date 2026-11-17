@@ -26,13 +26,14 @@ use super::requests::{
     GetProjectionDefinitionResponse, GetProjectionStatusRequest, GetProjectionStatusResponse, ListColumnRowsRequest,
     ListColumnRowsResponse, ListDirectoryEntriesRequest, ListDirectoryEntriesResponse, ListIndexEntriesRequest, ListIndexEntriesResponse,
     ListProjectionRowsRequest, ListProjectionRowsResponse, ListRowsRequest, ListRowsResponse, PublishFileProductionRequest,
-    PublishFileProductionResponse, SetIndexDefinitionRequest, SetIndexDefinitionResponse, SetObjectRequest, SetObjectResponse,
-    SetProjectionDefinitionRequest, SetProjectionDefinitionResponse, WatchDirectoryEntriesRequest, WatchDirectoryEntriesResponse,
-    WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest, WatchFileProductionResponse, WatchRowsRequest,
-    WatchRowsResponse, set_object_response, watch_file_production_response, watch_rows_response,
+    PublishFileProductionResponse, RetainSnapshotRequest, SetIndexDefinitionRequest, SetIndexDefinitionResponse, SetObjectRequest,
+    SetObjectResponse, SetProjectionDefinitionRequest, SetProjectionDefinitionResponse, WatchDirectoryEntriesRequest,
+    WatchDirectoryEntriesResponse, WatchFileBytesRequest, WatchFileBytesResponse, WatchFileProductionRequest, WatchFileProductionResponse,
+    WatchRowsRequest, WatchRowsResponse, set_object_response, watch_file_production_response, watch_rows_response,
 };
 
 // Standard Library Imports
+use std::error;
 
 // Third Party Imports
 
@@ -93,7 +94,7 @@ impl NativeOperation for CreateFileProduction {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -121,7 +122,7 @@ impl NativeOperation for GetFileProduction {
         )
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -155,7 +156,7 @@ impl NativeOperation for AppendFileBytes {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -183,7 +184,7 @@ impl NativeOperation for CreateFileWriter {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -214,7 +215,7 @@ impl NativeOperation for PublishFileProduction {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -242,7 +243,7 @@ impl NativeOperation for DeleteFileProduction {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -289,7 +290,7 @@ impl NativeOperation for GetFileBytes {
         result.map_err(super::admission::failure)
     }
 
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -322,7 +323,7 @@ impl NativeOperation for GetIndexDefinition {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -360,7 +361,7 @@ impl NativeOperation for SetIndexDefinition {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -388,7 +389,7 @@ impl NativeOperation for GetProjectionDefinition {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -423,7 +424,7 @@ impl NativeOperation for SetProjectionDefinition {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -451,7 +452,7 @@ impl NativeOperation for ListRows {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -478,7 +479,7 @@ impl NativeOperation for Capabilities {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -491,7 +492,7 @@ impl NativeOperation for CreateSnapshot {
     const ID: &'static str = "storage.create_snapshot";
 
     const POLICY: crate::OperationPolicy = super::POLICY;
-    const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
     const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
@@ -504,7 +505,33 @@ impl NativeOperation for CreateSnapshot {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
+        super::transfers::classify(error)
+    }
+}
+
+pub struct RetainSnapshot;
+impl NativeOperation for RetainSnapshot {
+    type Request = RetainSnapshotRequest;
+    type Response = CreateSnapshotResponse;
+    type Endpoints = ();
+    const ID: &'static str = "storage.retain_snapshot";
+
+    const POLICY: crate::OperationPolicy = super::POLICY;
+    const REPLAY: ReplaySafety = ReplaySafety::Unknown;
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<super::snapshot::SavedSnapshots>()];
+
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let (snapshot, resolved_at) = super::views::retain(&context, request.at, request.scope).await?;
+        super::admission::read_response(
+            &context,
+            Self::Response {
+                snapshot: Some(snapshot),
+                resolved_at: Some(resolved_at),
+            },
+        )
+    }
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -524,7 +551,7 @@ impl NativeOperation for DeleteSnapshot {
         super::views::delete(&context, request.snapshot).await?;
         super::admission::read_response(&context, Self::Response {})
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -551,7 +578,7 @@ impl NativeOperation for ListColumnRows {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -579,7 +606,7 @@ impl NativeOperation for ListIndexEntries {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -600,7 +627,7 @@ impl NativeOperation for AdvanceProjection {
             super::views::advance_projection(&context, request.snapshot, request.name, request.work, request.source).await?;
         super::admission::read_response(&context, Self::Response { revision, resolved_at: Some(resolved_at) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -621,7 +648,7 @@ impl NativeOperation for GetProjectionStatus {
             super::views::projection_status(&context, request.name, request.revision, request.at, request.source).await?;
         super::admission::read_response(&context, Self::Response { status, resolved_at: Some(resolved_at) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -649,7 +676,7 @@ impl NativeOperation for ListProjectionRows {
             },
         )
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -733,7 +760,7 @@ impl NativeOperation for AppendRecords {
             super::append::append(&context, Self::ID, super::append::Kind::Records, request.mutation, request.scope, request.batch).await?;
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -752,7 +779,7 @@ impl NativeOperation for AppendSamples {
             super::append::append(&context, Self::ID, super::append::Kind::Samples, request.mutation, request.scope, request.batch).await?;
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -771,7 +798,7 @@ impl NativeOperation for AppendObjectRevisions {
             super::append::append(&context, Self::ID, super::append::Kind::Objects, request.mutation, request.scope, request.batch).await?;
         super::admission::read_response(&context, Self::Response { receipt: Some(receipt) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -904,7 +931,7 @@ impl NativeOperation for GetFileHash {
         let (hash, at) = super::file_access::hash(&context, request.source, request.range, request.at).await?;
         super::admission::read_response(&context, Self::Response { hash: Some(hash), resolved_at: Some(at) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -924,7 +951,7 @@ impl NativeOperation for CaptureFile {
             super::file_access::capture(&context, request.source, request.range, request.metadata, request.consistency).await?;
         super::admission::read_response(&context, Self::Response { file: Some(file), receipt: Some(receipt) })
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }
@@ -942,7 +969,7 @@ impl NativeOperation for ListDirectoryEntries {
     async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
         super::file_access::directory(&context, request.selection, request.at, request.page).await
     }
-    fn classify(error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         super::transfers::classify(error)
     }
 }

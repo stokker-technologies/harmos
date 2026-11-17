@@ -16,17 +16,20 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::borrow::Cow;
 use std::time::SystemTime;
+use std::{iter, slice};
 
 // Third Party Imports
 use serde::Serialize;
+use tracing::Instrument;
 
 // Local Imports
 use super::backend::{BackendSnapshot, ScanPage, StorageBackend};
 use super::manager::Operation;
 use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
-use super::{FileReference, ObjectEntry, StorageCursor, StorageFuture, StorageSchema, StoredRecord, StoredRow};
-use crate::Identifier;
+use super::{FileReference, ObjectEntry, Result, StorageCursor, StorageFuture, StorageSchema, StoredRecord, StoredRow};
+use crate::{CompoundWrite, Identifier};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 
 /* === Constants === */
@@ -53,7 +56,7 @@ pub trait Entry: Clone + Serialize + Send + Sync + 'static + sealed::Sealed {
         0
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self];
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>>;
     fn scan<'a>(
         backend: &'a dyn StorageBackend, snapshot: &'a BackendSnapshot, selection: &'a Self::Selection, page: ScanPage,
     ) -> StorageFuture<'a, Vec<Self>>;
@@ -93,11 +96,21 @@ impl Entry for ObjectEntry {
             && selection.key.as_ref().is_none_or(|key| key == &self.value.item)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        let values: &[Self] = match queued.0 {
             Operation::ObjectGroup { objects, .. } => objects.as_slice(),
+            Operation::Conditional(exchange) => slice::from_ref(&exchange.value),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        let entries = values.iter().chain(compound.iter().filter_map(|item| match item {
+            CompoundWrite::Object { value, .. } => Some(value),
+            _ => None,
+        }));
+        Ok(entries.map(Cow::Borrowed))
     }
 
     fn scan<'a>(
@@ -105,7 +118,7 @@ impl Entry for ObjectEntry {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_object_revisions(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_object_revisions");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 
@@ -123,11 +136,20 @@ impl Entry for StoredRecord {
             && within(selection.source_start, selection.source_end, self.source_time)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        let values: &[Self] = match queued.0 {
             Operation::Records(values) => values.as_slice(),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        let entries = values.iter().chain(compound.iter().filter_map(|item| match item {
+            CompoundWrite::Record(record) => Some(record),
+            _ => None,
+        }));
+        Ok(entries.map(Cow::Borrowed))
     }
 
     fn scan<'a>(
@@ -135,7 +157,7 @@ impl Entry for StoredRecord {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_records(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_records");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 
@@ -160,11 +182,16 @@ impl Entry for StoredRow {
         selection.after
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        let values: &[Self] = match queued.0 {
             Operation::Stream(values) => values.as_slice(),
             _ => &[],
-        }
+        };
+        let columns = match queued.0 {
+            Operation::SampleColumns(append) => append.rows()?,
+            _ => Vec::new(),
+        };
+        Ok(values.iter().map(Cow::Borrowed).chain(columns.into_iter().map(Cow::Owned)))
     }
 
     fn scan<'a>(
@@ -172,7 +199,7 @@ impl Entry for StoredRow {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_samples(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_samples");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 
@@ -187,12 +214,22 @@ impl Entry for StorageSchema {
         selection.schema.as_ref().is_none_or(|key| key == &self.key)
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        let values: &[Self] = match queued.0 {
             Operation::Schema(value) => value.as_slice(),
             Operation::ObjectGroup { schemas, .. } => schemas.as_slice(),
+            Operation::Conditional(exchange) => slice::from_ref(&exchange.schema),
             _ => &[],
-        }
+        };
+        let compound = match queued.0 {
+            Operation::Compound(exchange) => exchange.items.as_slice(),
+            _ => &[],
+        };
+        let entries = values.iter().chain(compound.iter().filter_map(|item| match item {
+            CompoundWrite::Object { schema, .. } => Some(schema),
+            _ => None,
+        }));
+        Ok(entries.map(Cow::Borrowed))
     }
 
     fn scan<'a>(
@@ -200,7 +237,7 @@ impl Entry for StorageSchema {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_schemas(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_schemas");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 
@@ -215,11 +252,12 @@ impl Entry for FileReference {
         optional(&selection.scope, self.metadata.scope.as_ref()) && optional(&selection.item, Some(&self.metadata.id))
     }
 
-    fn pending(queued: Queued<'_>) -> &[Self] {
-        match queued.0 {
+    fn pending(queued: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        let values: &[Self] = match queued.0 {
             Operation::File(value) => value.as_slice(),
             _ => &[],
-        }
+        };
+        Ok(values.iter().map(Cow::Borrowed))
     }
 
     fn scan<'a>(
@@ -227,7 +265,7 @@ impl Entry for FileReference {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_files(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_files");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 
@@ -243,8 +281,8 @@ impl Entry for StoredIdentity {
         selection.matches(self)
     }
 
-    fn pending(_: Queued<'_>) -> &[Self] {
-        &[]
+    fn pending(_: Queued<'_>) -> Result<impl Iterator<Item = Cow<'_, Self>>> {
+        Ok(iter::empty())
     }
 
     fn scan<'a>(
@@ -252,7 +290,7 @@ impl Entry for StoredIdentity {
     ) -> StorageFuture<'a, Vec<Self>> {
         let future = backend.list_identities(snapshot, selection, page);
         let span = tracing::trace_span!("storage.backend.scan", method = "primary.list_identities");
-        Box::pin(tracing::Instrument::instrument(future, span))
+        Box::pin(future.instrument(span))
     }
 }
 

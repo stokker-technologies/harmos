@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Third Party Imports
+use tracing::Instrument;
 
 // Local Imports
 use super::backend::{ReadLimits, ScanPage};
@@ -31,6 +32,7 @@ pub use super::selection::Entry;
 use super::selection::Queued;
 use super::snapshot::Snapshot;
 use super::{StorageCursor, StorageManager};
+use crate::execution::Context;
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -44,7 +46,7 @@ static NEXT_FOLLOWER: AtomicU64 = AtomicU64::new(1);
 /* === Structs === */
 
 pub struct Follower<T: Entry> {
-    context: crate::execution::Context,
+    context: Context,
     inner: Arc<Inner>,
     id: u64,
     selection: T::Selection,
@@ -107,7 +109,7 @@ impl StorageManager {
             (saved, accepted)
         };
         let mut follower = Follower {
-            context: crate::execution::Context::current(),
+            context: Context::current(),
             inner: Arc::clone(&self.inner),
             id,
             selection,
@@ -148,62 +150,70 @@ impl<T: Entry> Follower<T> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
-            loop {
-                if let Some(page) = self.next_history().await? {
-                    return Ok(page);
-                }
-                if let Some(page) = self.next_live().await? {
-                    return Ok(page);
-                }
+            if let Some(page) = self.next_history().await? {
+                return Ok(page);
             }
+            self.next_live().await
         };
-        context.scope(tracing::Instrument::instrument(future, span)).await
+        context.scope(future.instrument(span)).await
     }
 
-    /// Read Only Committed Entries, Including Progress Through An Unmatched Prefix.
-    /// Queue Retention And Its Gap Signal Are Shared With Accepted Followers.
+    /// Read Committed Backend Entries and Return Only Complete Resume Frontiers.
+    /// Bounded Pages May Split a Mutation; Its Cursor Advances After the Last Page.
     pub async fn next_durable(&mut self) -> Result<(FollowPage<T>, StorageCursor)> {
-        let context = self.context.clone();
-        let span = context.sync(|| tracing::trace_span!("storage.reader.durable_page"));
-        context
-            .scope(tracing::Instrument::instrument(
-                async {
-                    if self.history.is_some() {
-                        if let Some(page) = self.next_history().await? {
-                            let through = StorageCursor {
-                                history: self.saved.history.clone(),
-                                sequence: self.after,
-                            };
-                            return Ok((page, through));
-                        }
-                        return Ok((FollowPage { entries: Vec::new() }, self.saved.clone()));
+        let observed = self.after;
+        if self.history.is_none() {
+            let id = self.id;
+            self.saved = self
+                .inner
+                .wait(None, |state| {
+                    if let Err(error) = super::capacity::admitting(state, false) {
+                        return Attempt::Refuse(Refusal::Failed(error));
                     }
-                    let id = self.id;
-                    self.inner
-                        .wait(None, |state| {
-                            if let Err(error) = super::capacity::admitting(state, false) {
-                                return Attempt::Refuse(Refusal::Failed(error));
-                            }
-                            let Some(following) = state.followers.get(&id) else {
-                                return Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "WatchRows" }));
-                            };
-                            if let Err(error) = following.check() {
-                                return Attempt::Refuse(Refusal::Failed(error));
-                            }
-                            if state.status.saved.sequence > following.after { Attempt::Ready(()) } else { Attempt::Wait }
-                        })
-                        .await
-                        .map_err(Refusal::into_error)?;
-                    let (entries, through) = {
-                        let mut state = self.inner.state.lock().unwrap();
-                        copy_durable::<T>(&mut state, id, &self.selection, self.inner.settings.response.batch_bytes)?
+                    let Some(following) = state.followers.get(&id) else {
+                        return Attempt::Refuse(Refusal::Failed(Error::Closing { domain: "WatchRows" }));
                     };
-                    self.after = through.sequence;
-                    Ok((FollowPage { entries }, through))
-                },
-                span,
-            ))
-            .await
+                    if let Err(error) = following.check() {
+                        return Attempt::Refuse(Refusal::Failed(error));
+                    }
+                    if state.status.saved.sequence > observed { Attempt::Ready(state.status.saved.clone()) } else { Attempt::Wait }
+                })
+                .await
+                .map_err(Refusal::into_error)?;
+            let manager = StorageManager { inner: self.inner.clone() };
+            self.history = Some(manager.snapshot(&self.saved).await?);
+        }
+        let start = StorageCursor {
+            history: self.saved.history.clone(),
+            sequence: observed,
+        };
+        self.inner.bounded("primary.watch_frontier", self.inner.primary.watch_frontier(&start, &self.saved)).await?;
+        let snapshot = self.history.as_ref().expect("durable image selected");
+        let page = ScanPage {
+            after: observed,
+            rows: SCAN_ROWS,
+            bytes: self.inner.settings.response.batch_bytes,
+        };
+        let (entries, _) = snapshot.scan::<T>(&self.selection, page).await?;
+        let sequence = entries.last().map_or(self.saved.sequence, |entry| entry.position().sequence);
+        let position = StorageCursor {
+            history: self.saved.history.clone(),
+            sequence,
+        };
+        let through = self.inner.bounded("primary.watch_frontier", self.inner.primary.watch_frontier(&start, &position)).await?;
+        self.after = sequence;
+        if entries.is_empty() || sequence == self.saved.sequence {
+            self.history = None;
+        }
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            let following = state.followers.get_mut(&self.id).ok_or(Error::Closing { domain: "WatchRows" })?;
+            following.check()?;
+            following.after = following.after.max(sequence);
+            state.retire_data();
+            state.collect();
+        }
+        Ok((FollowPage { entries }, through))
     }
 
     // Saved History Through The Registration Frontier, From The Pinned Image.
@@ -229,32 +239,26 @@ impl<T: Entry> Follower<T> {
         Ok(Some(FollowPage { entries }))
     }
 
-    // Accepted Entries From The Queue; Waits Without Allocating While None Match.
+    // Wait for Accepted Queue Entries and Return a Bounded Page.
     #[tracing::instrument(name = "storage.follow.next_live", level = "debug", skip_all)]
-    async fn next_live(&mut self) -> Result<Option<FollowPage<T>>> {
+    async fn next_live(&mut self) -> Result<FollowPage<T>> {
         let id = self.id;
         let selection = &self.selection;
-        self.inner
-            .wait(None, |state| match find::<T>(state, id, selection) {
-                Ok(true) => Attempt::Ready(()),
-                Ok(false) => Attempt::Wait,
+        let bytes = self.inner.settings.scan_bytes();
+
+        // Project Each Accepted Page Once, Including Owned Columnar Row Views.
+        let entries = self
+            .inner
+            .wait(None, |state| match copy::<T>(state, id, selection, bytes) {
+                Ok(entries) if entries.is_empty() => Attempt::Wait,
+                Ok(entries) => Attempt::Ready(entries),
                 Err(error) => Attempt::Refuse(Refusal::Failed(error)),
             })
             .await
             .map_err(Refusal::into_error)?;
 
-        // Charge The Page Before Copying Entries Out Of The Queue.
-        let bytes = self.inner.settings.scan_bytes();
-
-        let (entries, _) = {
-            let mut state = self.inner.state.lock().unwrap();
-            copy::<T>(&mut state, self.id, &self.selection, bytes)?
-        };
-        let Some(last) = entries.last() else {
-            return Ok(None);
-        };
-        self.after = last.position().sequence;
-        Ok(Some(FollowPage { entries }))
+        self.after = entries.last().expect("accepted page is nonempty").position().sequence;
+        Ok(FollowPage { entries })
     }
 }
 
@@ -335,37 +339,9 @@ impl State {
 
 /* === Private Functions === */
 
-// Whether A Matching Queued Entry Follows The Subscription Cursor. Queue
-// Entries Without A Match Advance The Cursor So They Can Be Retired.
-fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Result<bool> {
-    super::capacity::admitting(state, false)?;
-    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
-    following.check()?;
-    let mut cursor = following.after;
-    let mut found = false;
-    for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
-        if pending.operation.sequence() <= cursor {
-            continue;
-        }
-        let entries = T::pending(Queued::new(&pending.operation));
-        let start = entries.partition_point(|entry| entry.position().sequence <= cursor);
-        if entries[start..].iter().any(|entry| entry.matches(selection)) {
-            found = true;
-            break;
-        }
-        cursor = pending.operation.sequence();
-    }
-    let following = state.followers.get_mut(&id).expect("registered follower");
-    if cursor > following.after {
-        following.after = cursor;
-        state.retire_data();
-        state.collect();
-    }
-    Ok(found)
-}
-
 // Copy Matching Queued Entries After The Cursor Within The Page Bounds.
-fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<(Vec<T>, usize)> {
+fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<Vec<T>> {
+    super::capacity::admitting(state, false)?;
     let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
     following.check()?;
     let mut cursor = following.after;
@@ -375,21 +351,22 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
         if pending.operation.sequence() <= cursor {
             continue;
         }
-        let values = T::pending(Queued::new(&pending.operation));
-        let start = values.partition_point(|entry| entry.position().sequence <= cursor);
-        for entry in &values[start..] {
+        let values = T::pending(Queued::new(&pending.operation))?;
+        let start = cursor;
+        for entry in values.filter(|entry| entry.position().sequence > start) {
             if entries.len() >= SCAN_ROWS.get() {
                 break 'queue;
             }
+            let sequence = entry.position().sequence;
             if entry.matches(selection) {
-                let size = encoded_size(entry)?;
+                let size = encoded_size(entry.as_ref())?;
                 if !entries.is_empty() && encoded.saturating_add(size) > bytes.get() {
                     break 'queue;
                 }
                 encoded = encoded.saturating_add(size);
-                entries.push(entry.clone());
+                entries.push(entry.into_owned());
             }
-            cursor = entry.position().sequence;
+            cursor = sequence;
         }
         cursor = cursor.max(pending.operation.sequence());
     }
@@ -397,48 +374,7 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
     following.after = following.after.max(cursor);
     state.retire_data();
     state.collect();
-    Ok((entries, encoded))
-}
-
-// Copy At Most The Durable Prefix, Even When A Pending Batch Is Partly Committed.
-fn copy_durable<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<(Vec<T>, StorageCursor)> {
-    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "WatchRows" })?;
-    following.check()?;
-    let mut cursor = following.after;
-    let saved = state.status.saved.clone();
-    let mut entries = Vec::new();
-    let mut encoded = 0usize;
-    'queue: for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
-        if pending.operation.sequence() <= cursor {
-            continue;
-        }
-        let values = T::pending(Queued::new(&pending.operation));
-        let start = values.partition_point(|entry| entry.position().sequence <= cursor);
-        for entry in &values[start..] {
-            if entry.position().sequence > saved.sequence || entries.len() >= SCAN_ROWS.get() {
-                break 'queue;
-            }
-            if entry.matches(selection) {
-                let size = encoded_size(entry)?;
-                if !entries.is_empty() && encoded.saturating_add(size) > bytes.get() {
-                    break 'queue;
-                }
-                encoded = encoded.saturating_add(size);
-                entries.push(entry.clone());
-            }
-            cursor = entry.position().sequence;
-        }
-        cursor = cursor.max(pending.operation.sequence().min(saved.sequence));
-        if cursor == saved.sequence {
-            break;
-        }
-    }
-    // Completed Unmatched Operations Still Advance The Durable Observation.
-    let following = state.followers.get_mut(&id).expect("registered durable follower");
-    following.after = following.after.max(cursor);
-    state.retire_data();
-    state.collect();
-    Ok((entries, StorageCursor { history: saved.history, sequence: cursor }))
+    Ok(entries)
 }
 
 /* === Tests === */
