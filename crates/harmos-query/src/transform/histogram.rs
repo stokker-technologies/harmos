@@ -28,6 +28,7 @@ use arrow_schema::{DataType, Field, Schema};
 use super::downsample::number;
 use super::{invalid, numeric_type};
 use crate::Result;
+use crate::statistics;
 use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
@@ -42,7 +43,7 @@ use harmos_domain::model::storage::query::scalar::ScalarValue;
 pub struct Bins {
     plan: Histogram,
     schema: Arc<Schema>,
-    counts: Vec<u64>,
+    kernel: statistics::Histogram,
 }
 
 /* === Enums === */
@@ -61,13 +62,7 @@ pub trait HistogramExecution {
 
 impl HistogramExecution for Histogram {
     fn output_schema(&self, input: &Schema) -> Result<Schema> {
-        if self.edges.len() < 2
-            || self.edges.len() > 65536
-            || self.edges.iter().any(|edge| !edge.is_finite())
-            || self.edges.windows(2).any(|pair| pair[0] >= pair[1])
-        {
-            return Err(invalid("histogram requires 2..65536 finite strictly increasing edges"));
-        }
+        statistics::Histogram::new(self.edges.clone())?;
         if !numeric_type(self.field.field(input)?.data_type()) {
             return Err(invalid("histogram requires numeric field"));
         }
@@ -82,7 +77,7 @@ impl HistogramExecution for Histogram {
         Ok(Bins {
             schema: Arc::new(self.output_schema(input)?),
             plan: self.clone(),
-            counts: vec![0; self.edges.len() + 1],
+            kernel: statistics::Histogram::new(self.edges.clone())?,
         })
     }
 
@@ -95,8 +90,6 @@ impl HistogramExecution for Histogram {
 
 impl Bins {
     pub fn push(&mut self, input: &RecordBatch, check: &mut impl FnMut() -> Result<()>) -> Result<()> {
-        let edges = &self.plan.edges;
-        let mut counts = self.counts.clone();
         for row in 0..input.num_rows() {
             check()?;
             let value = self.plan.field.value(input, row)?;
@@ -107,18 +100,8 @@ impl Bins {
             if !value.is_finite() {
                 continue;
             }
-            let bin = if value < edges[0] {
-                0
-            } else if value > edges[edges.len() - 1] {
-                edges.len()
-            } else if value == edges[edges.len() - 1] {
-                edges.len() - 1
-            } else {
-                edges.partition_point(|edge| *edge <= value)
-            };
-            counts[bin] = counts[bin].checked_add(1).ok_or_else(|| invalid("histogram count overflow"))?;
+            self.kernel.push(value)?;
         }
-        self.counts = counts;
         Ok(())
     }
 
@@ -127,7 +110,11 @@ impl Bins {
         let upper = self.plan.edges.iter().copied().map(Some).chain(std::iter::once(None)).collect::<Vec<_>>();
         RecordBatch::try_new(
             self.schema,
-            vec![Arc::new(Float64Array::from(lower)), Arc::new(Float64Array::from(upper)), Arc::new(UInt64Array::from(self.counts))],
+            vec![
+                Arc::new(Float64Array::from(lower)),
+                Arc::new(Float64Array::from(upper)),
+                Arc::new(UInt64Array::from(self.kernel.counts())),
+            ],
         )
         .map_err(|_| invalid("histogram output batch is invalid"))
     }

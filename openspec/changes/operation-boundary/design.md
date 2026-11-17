@@ -103,7 +103,8 @@ breaking group so products can adopt them on an otherwise unchanged surface.
   in-memory backends implement it. Alternative rejected: sequential operations with
   compensation, which cannot preserve atomic publication.
 - **Deletion:** typed object deletion (tombstone revision, CAS-guarded) and scoped deletion
-  that removes every object, record, sample, projection row and file under one exact opaque scope, reclaiming files after retained cuts release them. Retained cuts keep reading their
+  that removes every object, record, sample, projection row and file under one exact opaque
+  scope, reclaiming files after retained cuts release them. Retained cuts keep reading their
   data until released. Alternative rejected: history pruning, which is retention, not logical
   deletion.
 - **Bootstrap/offline:** the builder can produce a storage-only runtime that admits storage
@@ -121,20 +122,25 @@ revoking independent reader leases. `CreateSnapshot` persists independent
 ownership without broadening the captured image; `DeleteSnapshot` releases either handle. Backend conformance includes
 a proof that starts before backend close and completes after reopening.
 
-Durable followers scan committed backend images so compound and conditional writes
-cannot disappear from the tail. Bounded pages keep their previous complete cursor
-until progress reaches a complete mutation frontier; resume can replay positions.
+Durable followers scan committed backend images so compound, conditional and
+columnar sample writes cannot disappear from the tail. Bounded pages keep their previous complete cursor
+until progress reaches a complete mutation frontier, including a whole columnar
+append; resume can replay positions.
 Applied conditional writes emit revisions; conflicts only advance progress.
 Object/scope deletion conservatively terminates crossing watches with resync,
 as do expired cuts or lost history. Scoped snapshots cannot publish global
 projection outputs. The product seal and deletion policy remain product-owned.
 
-### D2. One Statistics Home (Proposed)
+### D2. One Statistics Home (Implemented in Groups 6–7)
 
-Keep `harmos-domain` `Aggregate` and query plan types; consolidate kernels under
-`harmos-query::statistics` around `Summary`, shared `Quantiles`, mergeable summaries,
+Keep `harmos-domain` `Aggregate` and query plan types; kernels live under the private
+`harmos-query::statistics` module around `Summary`, shared `Quantiles`, mergeable summaries,
 box summaries and bucket summaries. Transform modules delegate to these kernels; the
 benchmark helper uses them too. Exposure is only through `storage.list_rows` transforms.
+
+The normal library surface has no statistics namespace. The existing `testing`
+feature exports the numeric spool for integration and benchmark evidence; production
+consumers use transforms. Statistics checkpoint pins and proof belong in tasks.md.
 
 - Multi-percentile requests share one spool and rank selection per field
   (`Quantiles::values` already does this; aggregate execution adopts it).
@@ -179,8 +185,10 @@ host verbs of the `plugin-lifecycle` change.
 
 - Managers are crate-internal owners; plugin activation, clock binding and sample start/stop
   that products did through managers become in-process host operations.
-- Operation results use operation-owned DTOs (an Arrow IPC batch payload plus schema) instead
-  of `QueryOutput`.
+- Operation result ownership is implemented in task 9.3: `RowOutput` carries ordered IPC
+  frames, and `IpcBatch` carries column/projection schema and batch bytes. Selectors, index
+  and projection definitions, pages and statuses are operation-owned DTOs; engine seek
+  cursors stay behind continuation tokens. The remaining facade items are proposed.
 - Cross-crate internals stay `pub` only inside unexposed implementation crates; products may
   not depend on `harmos-domain`, `harmos-query`, `harmos-storage`, `harmos-operations` or
   `harmos-protocol` directly. A repository check rejects those dependencies in examples.

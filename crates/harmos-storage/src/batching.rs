@@ -14,13 +14,14 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{future::Future, sync::Arc, time::Instant};
 // Third Party Imports
 // Local Imports
 use super::manager::{Domain, Inner, Operation, Pending, State, Target};
 use super::{StorageBatch, StorageCursor};
+use crate::execution::Context;
 use crate::selection::Entry;
-use crate::{Error, Result};
-use std::sync::Arc;
+use crate::{Error, PersistenceWork, Result};
 
 /* === Constants === */
 
@@ -51,13 +52,13 @@ enum Kind {
 /* === Implementations === */
 
 impl Batch {
-    pub(super) fn measure_selection(&self, work: &mut crate::PersistenceWork, now: std::time::Instant) {
+    pub(super) fn measure_selection(&self, work: &mut PersistenceWork, now: Instant) {
         for entry in &self.entries {
             entry.measure_selection(work, now);
         }
     }
     #[tracing::instrument(name = "storage.batching.write", parent = None, level = "trace", skip_all, fields(entries = self.entries.len(), store = %inner.primary.get_history().store, epoch = %inner.primary.get_history().epoch, domain = if self.entries[0].operation.domain() == Domain::Data { "data" } else { "recovery" }, first_index = self.entries[0].index, last_index = self.entries[self.entries.len() - 1].index, through = self.target.sequence, outcome = "cancelled"))]
-    pub(super) async fn trace<T>(&self, inner: &Inner, future: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    pub(super) async fn trace<T>(&self, inner: &Inner, future: impl Future<Output = Result<T>>) -> Result<T> {
         let mut contributions = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
             contributions.push(entry.context.sync(|| {
@@ -71,7 +72,7 @@ impl Batch {
                 if let Some(queued) = entry.queued.lock().unwrap().take() {
                     span.follows_from(queued.id());
                 }
-                crate::execution::Context::with_span(span)
+                Context::with_span(span)
             }));
         }
         let result = future.await;
@@ -176,6 +177,24 @@ impl Batch {
 #[tracing::instrument(name = "storage.batching.write_data", level = "trace", skip_all, fields(through = tracing::field::Empty, saved = tracing::field::Empty))]
 pub(super) async fn write_data(inner: &Arc<Inner>, operation: &Operation, encoded_bound: usize) -> Result<StorageCursor> {
     match operation {
+        Operation::SampleColumns(append) => {
+            let through = &append.through;
+            inner.state.lock().unwrap().data_attempted = through.sequence;
+            let receipt = inner.bounded("primary.append_sample_columns", inner.primary.append_sample_columns(append)).await?;
+            append.replay(&receipt)?;
+            let saved = inner.bounded("primary.get_saved_position", inner.primary.get_saved_position()).await?;
+            let mut state = inner.state.lock().unwrap();
+            if !saved.covers(through)? || saved.sequence > state.data_attempted {
+                return Err(invalid("repair backend columnar completion to cover the entire admitted batch"));
+            }
+            state.receipts.saved(&[receipt]);
+            state.status.saved = saved.clone();
+            state.persistence.committed_pieces += 1;
+            state.persistence.committed_rows += append.batch.data.as_record_batch().num_rows() as u64;
+            state.persistence.committed_bytes += encoded_bound as u64;
+            state.persistence.maximum_commit_bytes = state.persistence.maximum_commit_bytes.max(encoded_bound);
+            Ok(saved)
+        }
         Operation::Compound(exchange) => {
             let through = &exchange.position;
             inner.state.lock().unwrap().data_attempted = through.sequence;
@@ -273,7 +292,7 @@ async fn persist<'a, T: Entry>(
     inner: &'a Arc<Inner>, values: &StorageBatch<T>, encoded_bound: usize,
     mut write: impl FnMut(StorageBatch<T>) -> super::StorageFuture<'a, StorageCursor>,
 ) -> Result<StorageCursor> {
-    let preparing = std::time::Instant::now();
+    let preparing = Instant::now();
     let first = values.as_slice().first().ok_or_else(|| invalid("typed batch is empty"))?.position();
     let through = values.as_slice().last().expect("nonempty batch").position();
     tracing::Span::current().record("through", through.sequence);
@@ -303,7 +322,7 @@ async fn persist<'a, T: Entry>(
     let mut saved = inner.state.lock().unwrap().status.saved.clone();
     while offset < values.len() {
         // Ordinary Admissions Reuse Their Checked Bound. Larger State Captures Split.
-        let preparing = std::time::Instant::now();
+        let preparing = Instant::now();
         let (end, bytes) = if offset == 0 && encoded_bound <= inner.settings.max_batch_bytes().get() {
             (values.len(), encoded_bound)
         } else {
@@ -328,10 +347,10 @@ async fn persist<'a, T: Entry>(
             state.data_attempted = state.data_attempted.max(through.sequence);
             state.persistence.batch_build.record(preparing.elapsed());
         }
-        let writing = std::time::Instant::now();
+        let writing = Instant::now();
         saved = inner.bounded("primary.write", write(values.slice(offset..end))).await?;
         let written = writing.elapsed();
-        let publishing = std::time::Instant::now();
+        let publishing = Instant::now();
         tracing::Span::current().record("saved", saved.sequence);
         {
             let mut state = inner.state.lock().unwrap();

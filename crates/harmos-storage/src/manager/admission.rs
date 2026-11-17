@@ -203,6 +203,12 @@ impl StorageManager {
                             field: "SetSchema",
                             reason: "mutation already published",
                         })?;
+                    } else if let Operation::SampleColumns(append) = &pending.operation {
+                        append.header.set(state.receipts.header(mutation.id)).map_err(|_| Error::InvalidInput {
+                            field: "sample columns",
+                            reason: "use a new identity for new sample work",
+                        })?;
+                        state.receipts.complete(mutation.id, outcome);
                     } else {
                         state.receipts.complete(mutation.id, outcome);
                     }

@@ -26,6 +26,7 @@ use arrow_schema::{DataType, Schema, TimeUnit};
 // Local Imports
 use super::{invalid, numeric_type};
 use crate::Result;
+use crate::statistics::accumulate;
 use crate::transform::FieldPathExecution;
 use harmos_domain::model::storage::query::scalar::ScalarValue;
 
@@ -102,15 +103,7 @@ impl DownsampleExecution for Downsample {
 /* === Private Functions === */
 
 pub(crate) fn number(value: &ScalarValue) -> Result<f64> {
-    match value {
-        ScalarValue::Float(value) => Ok(*value),
-        value => {
-            let exact = harmos_domain::model::storage::query::scalar::exact(value)
-                .ok_or_else(|| invalid("numeric field has a null or nonnumeric value"))?;
-            let value = exact.numerator as f64 / exact.denominator.get() as f64;
-            Ok(if exact.negative { -value } else { value })
-        }
-    }
+    accumulate::approximate(value).ok_or_else(|| invalid("select a finite non-null numeric value"))
 }
 
 /* === Tests === */

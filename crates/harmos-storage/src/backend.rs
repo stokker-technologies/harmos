@@ -52,6 +52,7 @@ use crate::query::projection::ProjectionPage;
 use crate::query::projection::ProjectionPublication;
 use crate::query::projection::ProjectionRead;
 use crate::query::projection::ProjectionStatus;
+use crate::writes::SampleAppend;
 use crate::{Error, Result};
 use harmos_domain::model::storage::{IdentitySelection, StoredIdentity};
 use harmos_query::columnar::ArrowPage;
@@ -233,6 +234,15 @@ pub trait StorageBackend: Any + Send + Sync + 'static {
     fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor>;
     fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor>;
     fn append_file_references(&self, batch: StorageBatch<FileReference>) -> StorageFuture<'_, StorageCursor>;
+
+    /// Commit One Arrow Sample Batch and Its Mutation Receipt Atomically.
+    /// Admission Is Only Acceptance. This Future Succeeds Only After the Entire Batch
+    /// and Replay Receipt Are Durable; Its Cursor Covers `through` Without Gaps.
+    /// Replay the Same Mutation and Unchanged Batch to Observe the Original Completion.
+    /// Never Publish a Partial Batch or Acknowledge Merely Buffered Data as Durable.
+    fn append_sample_columns<'a>(&'a self, _append: &'a SampleAppend) -> StorageFuture<'a, MutationReceipt> {
+        unsupported("append sample columns; register a backend implementing atomic columnar appends")
+    }
 
     // Historical Reads
 

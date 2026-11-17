@@ -106,7 +106,7 @@ impl Backend {
                 .map(|(sequence, record)| (*sequence, record.clone()))
                 .collect();
             *target.records.lock().unwrap() = records;
-            *target.rows.lock().unwrap() = image.rows.range(..=through).map(|(key, value)| (*key, value.clone())).collect();
+            *target.rows.lock().unwrap() = image.rows.range(..=through)?.map(|(key, value)| (*key, value.clone())).collect();
             *target.projections.lock().unwrap() = image.projections.clone();
             *target.indexes.lock().unwrap() = image.indexes.clone();
             *target_receipts = image
@@ -123,7 +123,7 @@ impl Backend {
                 .collect();
             let mut conditional = image.conditional.clone();
             conditional.floor = conditional.floor.min(through);
-            conditional.compound_ranges.retain(|_, end| *end <= through);
+            conditional.mutation_ranges.retain(|_, end| *end <= through);
             conditional.receipts.retain(|sequence, _| *sequence <= through);
             conditional.invalidations.retain(|sequence| *sequence <= through);
             conditional.deleted_scopes.retain(|_, sequence| *sequence <= through);

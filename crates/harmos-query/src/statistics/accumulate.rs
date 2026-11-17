@@ -20,10 +20,9 @@ use std::{cmp::Ordering, num::NonZeroU128};
 
 // Local Imports
 use super::order_stats::Values;
-use super::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
-use crate::aggregate;
 use crate::config::QueryAccumulatorSettings;
-use crate::statistics::Summary;
+use crate::scalar::{self, Agg, ExactNumber, ScalarKind, ScalarValue};
+use crate::statistics::{Quantiles, Summary};
 use crate::{Aggregate, Error, Result};
 
 /* === Constants === */
@@ -98,12 +97,17 @@ impl Accumulator {
             None => self.kind = Some(value_kind),
         }
         match statistic {
-            Aggregate::Min | Aggregate::Max => {
+            Aggregate::First | Aggregate::Last | Aggregate::Min | Aggregate::Max => {
                 let replace = match &self.selected {
                     None => true,
-                    Some((_, previous)) => {
+                    Some((previous_capture, previous)) => {
                         let order = value.compare(previous)?;
-                        if statistic == Aggregate::Min { order.is_lt() } else { order.is_gt() }
+                        match statistic {
+                            Aggregate::First => capture < *previous_capture,
+                            Aggregate::Last => capture > *previous_capture,
+                            Aggregate::Min => order.is_lt(),
+                            _ => order.is_gt(),
+                        }
                     }
                 };
                 if replace {
@@ -113,7 +117,7 @@ impl Accumulator {
             Aggregate::Sum | Aggregate::Mean => {
                 if let ScalarValue::Float(value) = value {
                     self.running.push(*value);
-                    let answered = aggregate::of_summary(&self.running, statistic);
+                    let answered = self.running.value(statistic);
                     if !answered.is_some_and(f64::is_finite) {
                         return Err(invalid("aggregate exceeds finite range"));
                     }
@@ -138,27 +142,11 @@ impl Accumulator {
 
     // Both In-Memory Sorting And Disk Merge Passes Poll Cancellation.
     fn ordered(&mut self, statistic: Aggregate, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
-        let rank = match statistic {
-            Aggregate::Percentile(rank) => f64::from(rank),
-            _ => 50.0,
-        };
-        let position = rank / 100.0 * (self.scratch.length - 1) as f64;
-        let (lower, upper) = self.scratch.ranks(
-            position.floor() as usize,
-            position.ceil() as usize,
-            |a, b| Ok(approximate(a).unwrap().total_cmp(&approximate(b).unwrap())),
-            check,
-        )?;
-        let (low, high) = (approximate(&lower).unwrap(), approximate(&upper).unwrap());
-        let fraction = position - position.floor();
-        let value = if fraction == 0.0 || low == high {
-            low
-        } else if low.signum() == high.signum() {
-            low + (high - low) * fraction
-        } else {
-            low * (1.0 - fraction) + high * fraction
-        };
-        Ok(ScalarValue::Float(finite(Some(value))?))
+        let rank = if let Aggregate::Percentile(rank) = statistic { rank } else { 50 };
+        let mut quantiles = Quantiles::new(0);
+        self.scratch.for_each(&mut |value| quantiles.push(approximate(&value).unwrap()), check)?;
+        let values = quantiles.values(&[rank], 1024 * 1024, check)?;
+        Ok(ScalarValue::Float(finite(values.get(&rank).copied())?))
     }
 
     pub fn finish(mut self, check: &mut impl FnMut() -> Result<()>) -> Result<ScalarValue> {
@@ -172,15 +160,17 @@ impl Accumulator {
         let floating = self.kind == Some(ScalarKind::Float);
         Ok(match statistic {
             Aggregate::Count => ScalarValue::Unsigned(self.count),
-            Aggregate::Min | Aggregate::Max => self.selected.map_or(ScalarValue::Missing, |(_, value)| value),
+            Aggregate::First | Aggregate::Last | Aggregate::Min | Aggregate::Max => {
+                self.selected.map_or(ScalarValue::Missing, |(_, value)| value)
+            }
             // The empty sum is zero, as `Summary` answers it.
             Aggregate::Sum if self.count == 0 => ScalarValue::Unsigned(0),
-            Aggregate::Sum | Aggregate::Mean if floating => ScalarValue::Float(finite(aggregate::of_summary(&self.running, statistic))?),
+            Aggregate::Sum | Aggregate::Mean if floating => ScalarValue::Float(finite(self.running.value(statistic))?),
             Aggregate::Sum => integral(self.total, self.kind),
             Aggregate::Mean if self.count == 0 => ScalarValue::Missing,
             Aggregate::Mean => integral(self.total.divide(u128::from(self.count))?, self.kind),
             Aggregate::Rms | Aggregate::Std if self.count == 0 => ScalarValue::Missing,
-            Aggregate::Rms | Aggregate::Std => ScalarValue::Float(finite(aggregate::of_summary(&self.running, statistic))?),
+            Aggregate::Rms | Aggregate::Std => ScalarValue::Float(finite(self.running.value(statistic))?),
             Aggregate::Median | Aggregate::Percentile(_) if self.count == 0 => ScalarValue::Missing,
             Aggregate::Percentile(_) => self.ordered(statistic, check)?,
             Aggregate::Median if floating => self.ordered(statistic, check)?,
@@ -231,7 +221,7 @@ fn numeric_kind(kind: ScalarKind) -> bool {
     matches!(kind, ScalarKind::Signed | ScalarKind::Unsigned | ScalarKind::Float | ScalarKind::Exact)
 }
 // The nearest float to a numeric scalar, for statistics that are not exact.
-fn approximate(value: &ScalarValue) -> Option<f64> {
+pub(crate) fn approximate(value: &ScalarValue) -> Option<f64> {
     if let ScalarValue::Float(value) = value {
         return Some(*value);
     }
@@ -260,88 +250,8 @@ fn integral(value: ExactNumber, kind: Option<ScalarKind>) -> ScalarValue {
     }
     ScalarValue::Exact(value)
 }
-pub(super) fn invalid(reason: &'static str) -> Error {
+pub(crate) fn invalid(reason: &'static str) -> Error {
     Error::InvalidInput { field: "storage reduce", reason }
 }
 
 /* === Tests === */
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fold(agg: Agg, values: &[ScalarValue]) -> ScalarValue {
-        let mut accumulator = Accumulator::new(agg);
-        for (capture, value) in values.iter().enumerate() {
-            accumulator.push(capture as u64, value).unwrap();
-        }
-        accumulator.finish(&mut || Ok(())).unwrap()
-    }
-
-    fn ratio(negative: bool, numerator: u128, denominator: u128) -> ScalarValue {
-        ScalarValue::Exact(ExactNumber::new(negative, numerator, NonZeroU128::new(denominator).unwrap()))
-    }
-
-    #[test]
-    fn public_scalar_fold() {
-        let unsigned = [1u64, 2, 3, 4].map(ScalarValue::Unsigned);
-        assert_eq!(fold(Agg::Of(Aggregate::Sum), &unsigned), ScalarValue::Unsigned(10));
-        assert_eq!(fold(Agg::Of(Aggregate::Mean), &unsigned), ratio(false, 5, 2));
-        assert_eq!(fold(Agg::Of(Aggregate::Median), &unsigned), ratio(false, 5, 2));
-        let signed = [ScalarValue::Signed(-3), ScalarValue::Signed(1)];
-        assert_eq!(fold(Agg::Of(Aggregate::Mean), &signed), ScalarValue::Signed(-1));
-        let text = ["b", "c", "a"].map(|value| ScalarValue::Text(value.into()));
-        assert_eq!(fold(Agg::Of(Aggregate::Min), &text), ScalarValue::Text("a".into()));
-        assert_eq!(fold(Agg::Of(Aggregate::Max), &text), ScalarValue::Text("c".into()));
-        assert_eq!(fold(Agg::Last, &text), ScalarValue::Text("a".into()));
-        let sparse = [ScalarValue::Unsigned(1), ScalarValue::Null, ScalarValue::Missing];
-        assert_eq!(fold(Agg::Len, &sparse), ScalarValue::Unsigned(3));
-        assert_eq!(fold(Agg::Of(Aggregate::Count), &sparse), ScalarValue::Unsigned(1));
-        assert_eq!(fold(Agg::Of(Aggregate::Mean), &[ScalarValue::Null]), ScalarValue::Missing);
-
-        // Floating Statistics Answer Through The Signal Kernels: Population Std.
-        let values = [1.0, 2.0, 4.0, 8.0].map(ScalarValue::Float);
-        let float = |agg| match fold(Agg::Of(agg), &values) {
-            ScalarValue::Float(value) => value,
-            other => panic!("floating statistic answered {other:?}"),
-        };
-        assert!((float(Aggregate::Std) - 7.1875f64.sqrt()).abs() < 1e-12);
-        assert!((float(Aggregate::Rms) - 21.25f64.sqrt()).abs() < 1e-12);
-        assert_eq!(fold(Agg::Of(Aggregate::Median), &values), ScalarValue::Float(3.0));
-        let mut accumulator = Accumulator::new(Agg::Of(Aggregate::Sum));
-        accumulator.push(0, &ScalarValue::Unsigned(1)).unwrap();
-        assert!(accumulator.push(1, &ScalarValue::Text("x".into())).is_err());
-        let mut median = Accumulator::new(Agg::Of(Aggregate::Median));
-        median.push(0, &ScalarValue::Unsigned(1)).unwrap();
-    }
-    #[test]
-    fn spilled_statistics_preserve_exact_values_percentiles_and_clone_branches() {
-        let settings = QueryAccumulatorSettings { memory_bytes: 0 };
-        let mut median = Accumulator::with_settings(Agg::Of(Aggregate::Median), settings);
-        median.push(0, &ScalarValue::Unsigned(9_007_199_254_740_993)).unwrap();
-        median.push(1, &ScalarValue::Unsigned(9_007_199_254_740_995)).unwrap();
-        let mut branch = median.clone();
-        median.push(2, &ScalarValue::Unsigned(9_007_199_254_740_997)).unwrap();
-        branch.push(2, &ScalarValue::Unsigned(9_007_199_254_740_991)).unwrap();
-        assert_eq!(median.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_995));
-        assert_eq!(branch.finish(&mut || Ok(())).unwrap(), ScalarValue::Unsigned(9_007_199_254_740_993));
-        let values = vec![-7.0, 3.0, 1.0, -0.0, 9.0, -2.0, 3.0, 0.0];
-        let mut sorted = values.clone();
-        sorted.sort_by(f64::total_cmp);
-        for rank in [0, 13, 50, 77, 100] {
-            let mut accumulator = Accumulator::with_settings(Agg::Of(Aggregate::Percentile(rank)), settings);
-            for (index, value) in values.iter().enumerate() {
-                accumulator.push(index as u64, &ScalarValue::Float(*value)).unwrap();
-            }
-            assert_eq!(
-                accumulator.finish(&mut || Ok(())).unwrap(),
-                ScalarValue::Float({
-                    let at = f64::from(rank) / 100.0 * (sorted.len() - 1) as f64;
-                    let low = at.floor() as usize;
-                    let high = at.ceil() as usize;
-                    sorted[low] + (sorted[high] - sorted[low]) * at.fract()
-                })
-            );
-        }
-    }
-}

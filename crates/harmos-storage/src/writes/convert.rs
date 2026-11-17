@@ -28,7 +28,7 @@ use crate::schema::{
     graph::{Field, Kind, Schema},
 };
 use crate::{Error, Identifier, Result};
-use crate::{ObjectKey, ObjectValue, RecordInput, StreamInput};
+use crate::{ObjectKey, ObjectValue, RecordInput};
 
 /* === Constants === */
 
@@ -102,29 +102,6 @@ pub fn records(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema
                 source: optional_id(metadata, "source", row)?,
                 source_time,
                 payload: bytes,
-            })
-        })
-        .collect()
-}
-
-pub fn streams(scope: Option<&Identifier>, batch: &DecodedBatch, schema: &Schema) -> Result<Vec<StreamInput>> {
-    let records = records(scope, batch, schema)?;
-    let metadata = struct_column(batch.data.as_record_batch().column_by_name("_storage").ok_or_else(invalid)?.as_ref())?;
-    let sequence = typed::<UInt64Array>(metadata.column_by_name("sequence").ok_or_else(invalid)?.as_ref())?;
-    records
-        .into_iter()
-        .enumerate()
-        .map(|(row, record)| {
-            if sequence.is_null(row) {
-                return Err(invalid());
-            }
-            if optional_id(metadata, "stream", row)?.is_some_and(|stream| stream != batch.destination) {
-                return Err(invalid());
-            }
-            Ok(StreamInput {
-                record,
-                stream: batch.destination.clone(),
-                sequence: sequence.value(row),
             })
         })
         .collect()
@@ -307,6 +284,7 @@ mod tests {
         builder::{ListBuilder, UInt64Builder},
     };
     use arrow_schema::{self, DataType};
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     fn field(name: &str, tag: u32, kind: Kind, cardinality: Cardinality) -> Field {
@@ -320,7 +298,7 @@ mod tests {
 
     fn schema() -> Schema {
         Schema {
-            representations: ::std::collections::BTreeMap::new(),
+            representations: BTreeMap::new(),
             root: 0,
             definitions: vec![
                 vec![
@@ -384,7 +362,7 @@ mod tests {
     #[test]
     fn payload_empty_and_malformed() {
         let empty = Schema {
-            representations: ::std::collections::BTreeMap::new(),
+            representations: BTreeMap::new(),
             root: 0,
             definitions: vec![vec![]],
         };

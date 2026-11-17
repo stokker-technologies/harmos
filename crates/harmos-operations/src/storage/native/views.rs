@@ -19,10 +19,10 @@ use super::requests::{MutationWindow, ProjectionStatus, ReadLimits, SavedSnapsho
 
 use super::requests::required;
 
+use super::requests::ColumnSource;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::model;
 use harmos_query::columnar::Cancellation;
-use harmos_query::columnar::ColumnSource;
 use harmos_storage::StorageManager;
 
 /* === Public Functions === */
@@ -67,7 +67,7 @@ pub(super) async fn advance_projection(
     super::admission::run(
         context,
         async {
-            let source: ColumnSource = required(source)?;
+            let source = required(source)?.into_engine();
 
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let (definition, expected) = storage.get_projection_definition(&name, None).await?;
@@ -91,7 +91,7 @@ pub(super) async fn projection_status(
     super::admission::run(
         context,
         async {
-            let source: ColumnSource = required(source)?;
+            let source = required(source)?.into_engine();
 
             let name = harmos_storage::Identifier::new(name).map_err(harmos_domain::Error::from)?;
             let resource = format!("storage.projection.{name}");
@@ -113,6 +113,12 @@ pub(super) async fn projection_status(
             drop(read);
             let cut = snapshots.composite(&storage, cut).await?;
 
+            let status = status.map(|status| ProjectionStatus {
+                frontier: status.frontier,
+                revision: status.revision,
+                rows: status.rows,
+                changed_keys: status.changed_keys,
+            });
             Ok((status, cut))
         },
         cancel.clone(),

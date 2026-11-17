@@ -25,6 +25,13 @@ use std::{
 
 // Local Imports
 use crate::{Identifier, Message, RecordInput, Result, SchemaKey, StorageCursor, StorageManager, StreamInput};
+use arrow_array::{Float64Array, RecordBatch};
+use arrow_schema::{DataType, Field, Schema};
+use harmos_query::transform::{
+    AggregateExecution,
+    aggregate::{Aggregate, Measure},
+};
+use std::sync::Arc;
 
 /* === Constants === */
 
@@ -170,18 +177,33 @@ pub async fn run(storage: &StorageManager, schema: &SchemaKey, load: Load) -> Re
             return Err(error);
         }
     };
-    let mut lags = observer.await.map_err(|source| crate::Error::OperationFailed {
+    let lags = observer.await.map_err(|source| crate::Error::OperationFailed {
         operation: "observe durable lag".into(),
-        source: std::sync::Arc::new(source),
+        source: Arc::new(source),
     })??;
-    lags.sort_by(f64::total_cmp);
+    let schema = Arc::new(Schema::new(vec![Field::new("lag", DataType::Float64, false)]));
+    let batch = RecordBatch::try_new(schema, vec![Arc::new(Float64Array::from(lags))]).expect("lag measurement batch");
+    let plan = Aggregate {
+        groups: Vec::new(),
+        measures: [50, 95, 100]
+            .into_iter()
+            .map(|rank| Measure {
+                field: "lag".into(),
+                statistic: crate::Aggregate::Percentile(rank),
+                name: format!("p{rank}"),
+            })
+            .collect(),
+    };
+    let summary = plan.apply(&batch, &mut || Ok(())).map_err(crate::Error::from)?;
+    let values =
+        summary.columns().iter().map(|column| column.as_any().downcast_ref::<Float64Array>().unwrap().value(0)).collect::<Vec<_>>();
     Ok(Measurement {
         load: load.name(),
         batches,
         bytes,
-        p50_ms: percentile(&lags, 50),
-        p95_ms: percentile(&lags, 95),
-        maximum_ms: lags.last().copied().unwrap_or(0.0),
+        p50_ms: values[0],
+        p95_ms: values[1],
+        maximum_ms: values[2],
         maximum_backlog_bytes,
         maximum_backlog_positions,
         admission_wait_ms: admission_wait.as_secs_f64() * 1000.0,
@@ -197,10 +219,6 @@ fn observe(pending: &mut VecDeque<(StorageCursor, Instant)>, lags: &mut Vec<f64>
         let (_, accepted) = pending.pop_front().expect("observed pending admission");
         lags.push(now.duration_since(accepted).as_secs_f64() * 1000.0);
     }
-}
-
-fn percentile(values: &[f64], rank: usize) -> f64 {
-    values[(values.len() * rank).div_ceil(100).saturating_sub(1)]
 }
 
 /* === Tests === */

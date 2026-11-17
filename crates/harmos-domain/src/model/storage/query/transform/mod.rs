@@ -16,6 +16,7 @@ pub mod filter;
 pub mod histogram;
 pub mod project;
 pub mod sort;
+pub mod statistics;
 
 /* === Re-Exports === */
 
@@ -69,6 +70,8 @@ pub enum Transform {
     Downsample(downsample::Downsample),
     Sort(sort::Sort),
     TimeBuckets(TimeBucketPlan),
+    BoxSummary(statistics::BoxSummary),
+    BucketSummary(statistics::BucketSummary),
 }
 
 /* === Traits === */
@@ -105,6 +108,8 @@ impl MemorySize for Transform {
                 Self::Histogram(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
                 Self::Downsample(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
                 Self::Sort(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::BoxSummary(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+                Self::BucketSummary(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
                 Self::TimeBuckets(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
             }
     }

@@ -31,6 +31,7 @@ use harmos_query::arrow::ArrowBatch;
 /* === Structs === */
 
 // A Write Batch Whose Arrow IPC Data Has Been Decoded For Admission.
+#[derive(Clone)]
 pub struct DecodedBatch {
     pub destination: crate::Identifier,
     pub schema: crate::SchemaKey,

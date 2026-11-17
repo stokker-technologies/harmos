@@ -22,12 +22,12 @@ use std::cmp::Ordering;
 use arrow_array::RecordBatch;
 
 // Local Imports
-use super::accumulate::sort_values;
 use super::scalar::ScalarValue;
 use super::spill::{Builder, Cursor, Rows, Spool};
 use super::transform::sort::Sort;
 use super::transform::{FieldPathExecution, invalid};
 use crate::Result;
+use crate::statistics::sort_values;
 
 /* === Constants === */
 

@@ -92,6 +92,83 @@ match a nonnull needle. Empty lists produce false. Incompatible field/needle typ
 null needles refuse during schema validation. All three transforms preserve source row
 order, use the ordinary row-page bounds and observe query cancellation while scanning.
 
+## Statistics Transforms
+
+`storage.list_rows` accepts domain transforms from
+`harmos_domain::model::storage::query::transform`; the query engine's statistics
+kernels are private. `Aggregate` supports count, sum, mean, min, max, median,
+percentiles, floating-point RMS, population standard deviation, and ordered
+`First`/`Last`. Order is query input order: sort first when selecting by a particular
+field. Null, missing and non-finite numeric values do not participate. First/last
+retain the selected scalar's type. An ungrouped empty aggregate returns one row:
+count and sum are zero and all other measures are null; grouped empty input has
+no rows. Empty histograms retain all configured bins with zero counts; empty grouped
+time buckets have no rows. Exact integer/rational sum, mean and median preserve their existing
+exact output. Percentiles use linear interpolation at `(count - 1) * rank / 100`;
+all percentile measures and a floating median of the same field share a spool
+and rank-selection passes.
+
+```rust,ignore
+use harmos_domain::model::storage::query::transform::{Transform, statistics};
+
+let box_summary = Transform::BoxSummary(statistics::BoxSummary {
+    field: "payload.value".into(),
+    max_outliers: 64,
+    memory_bytes: 64 * 1024,
+    scratch_bytes: 1024 * 1024,
+});
+```
+
+A box summary returns one row with `q1`, `median`, `q3`, `lower_whisker`,
+`upper_whisker`, `outlier_count` and an `outliers` Float64 list. Quartiles use the
+same exact percentile selector. Whiskers are the extreme observed values inside
+`[q1 - 1.5 * IQR, q3 + 1.5 * IQR]`. Outliers retain source order, capped by
+`max_outliers`, while `outlier_count` counts all of them. A zero cap returns an
+empty list. Empty input returns null quartiles/whiskers, zero outliers and an empty
+list. Non-finite and null values are skipped. The caller supplies numeric spool
+and rank scratch budgets; insufficient rank scratch refuses with no partial result.
+
+```rust,ignore
+let envelope = Transform::BucketSummary(statistics::BucketSummary {
+    time: "payload.time_ns".into(),
+    position: "_storage.position".into(),
+    value: "payload.value".into(),
+    width_ns: initial_width,
+    max_buckets: bucket_cap,
+    source_cut: retained_cut,
+    prior: previous_continuation,
+});
+```
+
+A bucket summary bounds occupied buckets by `max_buckets`. Initial widths align
+at `i64::MIN` nanoseconds, covering the entire signed timestamp domain. When the
+cap is exceeded, width doubles and adjacent ordinal pairs merge. Rows contain
+`ordinal`, decimal-string `width_ns` (it can exceed UInt64), `count`, `sum`, `mean`,
+`sum_squares`, `rms`, `std`, and each of `first`, `last`, `min`, `max` as
+`<name>_time_ns`, `<name>_position`, `<name>_value`. First/last order by time then
+source position; equal extrema choose the earliest time/position. The kernel
+retains scaled population moments when merging, rather than averaging bucket
+means. Floating-point regrouping can change the final rounding.
+
+Only the first output row carries non-null Binary `continuation` bytes. Persist
+those bytes with the envelope through ordinary object or file operations. Supply
+them as `prior` with unchanged fields, initial width, bucket cap and history;
+`source_cut` must equal the retained ListRows source cut and may only advance.
+New rows must have strictly increasing, nonzero positions after the prior cut
+and at or before the new cut. Continue over append-only source ranges; updates,
+removals or a changed query selection require recomputation. The continuation is
+an opaque revision-specific payload: keep product and Harmos revisions aligned.
+Products own storage, admission, bucket and response budgets.
+
+Box and bucket values convert to Float64 before statistics and extrema selection.
+Times must be Int64 nanoseconds or Arrow nanosecond timestamps, and positions
+must be UInt64. Null times/positions refuse. Null/non-finite values contribute no
+moments. Empty input returns one identity row (zero count, null points/moments)
+with a continuation, including when advancing an empty source range. Moment
+outputs that exceed Float64 range refuse; standalone RMS/std remain scaled to
+avoid intermediate squaring overflow. Cancellation is polled during ingestion,
+rank selection, replay and bucket compaction.
+
 ## Operational Policy and Admission
 
 `StorageSettings.policy: StoragePolicy` owns backend I/O/recovery deadlines, the
@@ -152,7 +229,7 @@ used by both the primary adapter and manager.
 
 `memory::Backend` implements all required primary methods and its supported optional
 methods. Its capabilities report conditional objects, projection publication,
-file sessions/deletion, compound mutations and mutation receipts. Native Arrow and native indexes
+file sessions/deletion, compound mutations, columnar append and mutation receipts. Native Arrow and native indexes
 report false; shared bounded execution provides those reads. Immutable record
 views and selected-record rank seeks are implemented. The four remaining optional
 methods retain their declared defaults: `get_work` returns zero counters,
@@ -578,9 +655,13 @@ let result = context.call_native::<GetFileBytes>(GetFileBytesRequest {
 }).await?;
 ```
 
-Requests and results are native Rust values; schema graphs, mutations, positions,
-file sessions, queries, conditional outcomes and Arrow pages retain their native
-owners. Shared `File`, `Upload`, `FileReference`, positions, cuts and
+Requests and results are native Rust values. Storage operations own their column
+selectors, index and projection definitions, status and page DTOs. `ListRows`
+returns ordered `RowOutput::Schema` and `RowOutput::Batch` IPC frames. Column and
+projection pages carry an `IpcBatch` with schema and batch bytes; they expose no
+Arrow arrays, engine readers or internal seek cursors. Continue with the opaque
+`next_page_token` rather than an engine cursor. Backend-authoring contracts remain
+available to backend implementations. Shared `File`, `Upload`, `FileReference`, positions, cuts and
 receipts are vocabulary a product can reuse at its serialization boundary.
 `Plugins.Create` and `Plugins.Replace` still accept an immutable bundle reference.
 
@@ -849,16 +930,56 @@ a later large admission. Checked admission sizes are reused when batching and
 persisting. Larger state captures still split at the existing atomic byte ceiling.
 Physical chunking and on-disk transaction costs belong to product measurements.
 
+## Columnar Sample Appends
+
+`AppendSamples` forwards one Arrow batch to
+`StorageBackend::append_sample_columns(&writes::SampleAppend)` without converting
+samples into row payloads or hashing them individually. Advertise
+`StorageCapabilities.columnar_append`; unsupported providers refuse explicitly.
+`SampleAppend` carries the authorized scope, schema, immutable Arrow data, first
+and final assigned positions, and the mutation header. The sequence column is
+nonnull and consecutive in Arrow row order. Authored scopes and stream identities
+must match the authorized scope and destination; missing scopes inherit admission's
+scope. Payload fields must match the registered schema.
+
+Commit the whole batch and `append.receipt()` atomically. Return that receipt only
+after both are durable, covering `append.through`; replay of the same mutation and
+unchanged IPC batch returns the original receipt. A pending native response has
+`completed=false` and no `durable_at`. A completed response sets both; consumers
+retain outstanding batches until that durable acknowledgement. Queue admission
+charges retained Arrow buffers, IPC allocation and mutation/cursor metadata against
+`request.max_pending_write_bytes`, and one batch against
+`request.max_pending_write_batches`. Waiting admission uses the operation's existing
+policy; an allocation larger than the whole budget refuses before acceptance.
+
+Columnar appends are complete mutation frontiers for durable watches and resume
+cursors. Bounded sample pages keep the preceding complete cursor until the whole
+append has been observed; resuming may replay rows but cannot skip a batch suffix.
+Accepted followers project columnar rows without waiting for persistence.
+
+The memory reference retains columnar batches and builds row views only for reads
+and maintenance that require them. Existing typed row producers still use
+`append_samples`; the native Arrow ingestion path has no row fallback. Backend
+products can reuse `conformance::columnar_appends`, `columnar_pending` (with their
+commit gated), `columnar_admission_bounds` and `columnar_reopened` to prove order,
+scope, complete watch frontiers, bounded admission and durable replay. Their own restart tests reopen the
+actual persistent owner; memory proves close/reopen of its shared instance.
+
+Run `mise run bench -- --storage --filter columnar_append` to measure IPC decode,
+admission and durable memory-backend completion for 128 streams at 1 kHz in 100 ms
+windows: 1,280 batches carrying 128,000 samples. It reports samples/s without a
+timing assertion. Persistent backend throughput requires the product's own run.
+
 ## Native Provider Hooks
 
-`StorageBackend` has 52 hooks and `StateBackend` has eight. Implement the names in
+Implement the primary and recovery hook names declared in
 `crates/harmos-storage/src/backend.rs` and `src/state/mod.rs`; there are no old-name
 aliases. Storage and recovery sessions have distinct Create/Delete hooks. Appends
 retain their assigned-position replay and durable-receipt contracts. Private flush
 remains an explicit recovery barrier.
 
 `capabilities()` owns `file_sessions`, `file_deletion` and
-`mutation_receipts` alongside query capabilities. Unsupported capabilities refuse
+`mutation_receipts` and `columnar_append` alongside query capabilities. Unsupported capabilities refuse
 explicitly. `get_projection_definition(name, revision)` returns a definition and
 revision, selecting current when revision is absent. `get_projection_status` accepts
 an optional exact frontier; absence returns the newest readable durable status for

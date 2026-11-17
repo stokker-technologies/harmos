@@ -18,6 +18,7 @@ pub use harmos_domain::model::storage::query::transform::TimeBucketPlan;
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
+    mem,
     sync::Arc,
 };
 
@@ -35,6 +36,7 @@ use super::{
     scalar::ScalarValue,
     transform::{FieldPath, FieldPathExecution},
 };
+use crate::statistics::buckets::{OrderedSummary, Point};
 use crate::{MemorySize, Result};
 
 /* === Constants === */
@@ -114,7 +116,7 @@ impl Accumulator {
     pub fn memory_bytes(&self) -> usize {
         self.plan
             .memory_size()
-            .saturating_add(self.samples.capacity().saturating_mul(std::mem::size_of::<Sample>()))
+            .saturating_add(self.samples.capacity().saturating_mul(mem::size_of::<Sample>()))
             .saturating_add(self.owned_bytes)
     }
 
@@ -129,10 +131,8 @@ impl Accumulator {
         }
         if needed > self.samples.capacity() {
             let capacity = needed.max(self.samples.capacity().saturating_mul(2)).min(self.plan.max_samples.get());
-            let bytes = capacity
-                .saturating_mul(std::mem::size_of::<Sample>())
-                .saturating_add(self.owned_bytes)
-                .saturating_add(self.plan.memory_size());
+            let bytes =
+                capacity.saturating_mul(mem::size_of::<Sample>()).saturating_add(self.owned_bytes).saturating_add(self.plan.memory_size());
             if bytes > self.plan.max_bytes.get() {
                 return Err(columnar::exhausted());
             }
@@ -219,10 +219,8 @@ impl Accumulator {
             .sort_unstable_by(|left, right| (&left.key, left.time_ns, left.position).cmp(&(&right.key, right.time_ns, right.position)));
         let count = self.samples.chunk_by(|left, right| left.key == right.key).count();
         let key_bytes = self.samples.chunk_by(|left, right| left.key == right.key).map(|group| group[0].key.len()).sum::<usize>();
-        let bucket_bytes = count
-            .saturating_mul(std::mem::size_of::<Bucket>())
-            .saturating_add(key_bytes)
-            .saturating_add(self.samples.len().saturating_mul(8));
+        let bucket_bytes =
+            count.saturating_mul(mem::size_of::<Bucket>()).saturating_add(key_bytes).saturating_add(self.samples.len().saturating_mul(8));
         if self.memory_bytes().saturating_add(bucket_bytes) > self.plan.max_bytes.get() {
             return Err(columnar::exhausted());
         }
@@ -251,30 +249,39 @@ impl Accumulator {
                 positions: Vec::new(),
             };
             bucket.positions.try_reserve_exact(group.len()).map_err(|_| columnar::exhausted())?;
+            let mut summary = OrderedSummary::new(Point {
+                time_ns: first.time_ns,
+                position: first.position,
+                value: first.value,
+            });
             for (index, sample) in group.iter().enumerate() {
                 if index % 256 == 0 {
                     check()?;
                 }
-                bucket.count += 1;
-                bucket.last = sample.value;
-                bucket.last_position = sample.position;
-                if sample.value < bucket.min {
-                    bucket.min = sample.value;
-                    bucket.min_position = sample.position;
-                }
-                if sample.value > bucket.max {
-                    bucket.max = sample.value;
-                    bucket.max_position = sample.position;
-                }
-                bucket.sum += sample.value;
-                bucket.sum_squares += sample.value * sample.value;
-                let delta = sample.value - bucket.mean;
-                bucket.mean += delta / bucket.count as f64;
-                bucket.m2 += delta * (sample.value - bucket.mean);
-                if [bucket.sum, bucket.sum_squares, bucket.mean, bucket.m2].iter().any(|value| !value.is_finite()) {
-                    return Err(columnar::invalid("time bucket moments overflowed"));
+                if index > 0 {
+                    summary.merge(&OrderedSummary::new(Point {
+                        time_ns: sample.time_ns,
+                        position: sample.position,
+                        value: sample.value,
+                    }));
                 }
                 bucket.positions.push(sample.position);
+            }
+            bucket.count = summary.moments.count();
+            bucket.first = summary.first.value;
+            bucket.last = summary.last.value;
+            bucket.min = summary.min.value;
+            bucket.max = summary.max.value;
+            bucket.first_position = summary.first.position;
+            bucket.last_position = summary.last.position;
+            bucket.min_position = summary.min.position;
+            bucket.max_position = summary.max.position;
+            bucket.sum = summary.moments.sum();
+            bucket.sum_squares = summary.moments.squares();
+            bucket.mean = summary.moments.mean().unwrap();
+            bucket.m2 = summary.moments.deviations();
+            if [bucket.sum, bucket.sum_squares, bucket.mean, bucket.m2].iter().any(|value| !value.is_finite()) {
+                return Err(columnar::invalid("reduce the time bucket range to keep moments finite"));
             }
             bucket.revision = revision(&bucket);
             buckets.push(bucket);

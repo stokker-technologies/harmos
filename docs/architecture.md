@@ -91,16 +91,40 @@ Native handles reopen through the backend after manager/registry restart; durabl
 products persist their handles and ownership across process restart. The reference
 memory backend retains them across sessions within its process lifetime.
 
-Durable followers scan committed backend data, including compound and conditional
-writes. Backend observation metadata rounds resume positions down to complete
+Durable followers scan committed backend data, including compound, conditional and
+columnar sample writes. Backend observation metadata rounds resume positions down to complete
 mutation frontiers and rejects crossed deletions with a resync gap. Bounded row
 pages carry the previous complete cursor until progress publishes the complete
-frontier; a resume can replay positions but cannot skip a compound suffix. Global
-projection publication requires a complete global snapshot. All statistics kernels consolidate under the crate-internal
-`harmos-query::statistics` module and products use `storage.list_rows` transforms,
-including Scale, Offset, Contains, multi-percentiles, box/mergeable summaries and
-bounded mergeable bucket summaries. The remaining storage and statistics additions stay proposed until their
-task group closes. Floating-point population RMS/standard deviation are accepted.
+frontier; a resume can replay positions but cannot skip a mutation suffix. Global
+projection publication requires a complete global snapshot. Session reopening
+invalidates transient reader tokens while retained owners remain reopenable.
+
+Statistics kernels live in the crate-internal
+`harmos-query::statistics` module: exact reductions and rank spools, scaled population
+moments, histograms, Tukey box summaries, ordered mergeable summaries and adaptive
+bucket summaries. Arrow transform modules own schema validation and row plumbing;
+the grouped time-bucket projection and durable-lag benchmark delegate to the same
+kernels. Products request these through `storage.list_rows` transforms and persist
+bucket continuation bytes themselves. Continuation retains the source history/cut,
+requires strictly increasing new source positions and doubles aligned bucket widths
+until the consumer's bucket cap holds. Floating-point RMS and population standard
+deviation use scaled moments; no approximate percentile replaces exact rank selection.
+Several percentiles and a floating median of one field share one numeric spool and
+one multi-rank selection; an exact rational median retains exact scalar ordering.
+
+`AppendSamples` admits one immutable Arrow batch through
+`StorageBackend::append_sample_columns(&writes::SampleAppend)`. Admission validates
+columns, reserves contiguous positions in Arrow row order, and fingerprints the
+whole IPC unit; it never constructs sample row payloads. One session-local cache
+entry reuses the last resolved immutable sample schema so repeated windows do not
+open read cuts over growing history. A different schema resolves normally. Providers advertise
+`columnar_append` and atomically commit the complete batch and mutation receipt.
+An accepted position alone is insufficient for acknowledgement: the native receipt
+has `completed=true` and `durable_at` only after that commit. Identical replay
+preserves the original accepted frontier, including after backend reopen.
+The memory reference retains Arrow batches and materializes row payloads on reads;
+its durability lasts only as long as its backend instance. Existing typed row
+callers retain their row API; Arrow ingestion has no row-conversion fallback.
 
 ### Inventory Before the Split
 
@@ -1221,6 +1245,12 @@ No manager, manager getter, `Deref`, engine, query or reader is reachable throug
 product facade or its operation results. Backend-authoring traits and their full DTO,
 catalog and codec closure remain public through one authoring module.
 
+The storage operation result boundary is implemented in
+`crates/harmos-operations/src/storage/native/requests.rs`: operation-owned selectors,
+definitions, pages, statuses and IPC payloads replace query-engine response types.
+Internal seek cursors remain behind opaque continuation tokens. The builder and
+typed facade migration remains tracked in the open tasks.
+
 A product exposes remote behavior with its own wrapper operations and declared
 CLIENTS, PLUGINS or ALL audience. SDK generators project those descriptors. The four
 plugin SDKs, protocol generation, Wasm guests and conformance remain; Harmos host-client
@@ -1288,6 +1318,11 @@ identity and effective callers. Discovery returns admitted contracts with their
 fingerprints and projections. Dynamic client calls use Invocations.Create with
 operation, fingerprint and payload; application typed clients come from the
 application's descriptors and the same composition file.
+
+Plugin discovery uses the same admission predicate as child dispatch, including
+declared requirements, matching fingerprints, provider visibility and audience.
+Forwarding List or Get through a product wrapper preserves that plugin identity;
+undeclared or unauthorized operations are absent from List and unavailable to Get.
 
 ### Consumer Work Lists
 

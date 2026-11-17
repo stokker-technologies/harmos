@@ -20,8 +20,8 @@ use std::num::NonZeroU32;
 
 // Local Imports
 use super::{Fixture, config};
-use harmos_operations::storage::{ListRows, SchemaInput, SetSchemaRequest};
-use harmos_query::QueryArrow;
+use harmos_operations::storage::{ListRows, RowOutput, SchemaInput, SetSchemaRequest};
+use harmos_query::arrow::{ArrowBatch, ArrowSchema};
 use harmos_runtime::schema::Cardinality;
 use harmos_runtime::schema::graph::{Field, Kind, Schema};
 use harmos_runtime::schema::wire::{Omission, Representation};
@@ -200,12 +200,14 @@ async fn schema_registry_roundtrip() {
         let response = f.runtime.operations.call_native::<ListRows>(listing.clone()).await.unwrap();
         assert_eq!(response.resolved_at.as_ref().unwrap().positions[0].sequence, at.sequence);
         for output in response.rows {
-            match &QueryArrow::try_from(output).unwrap() {
-                QueryArrow::Schema(_) => {
+            match output {
+                RowOutput::Schema(bytes) => {
+                    ArrowSchema::from_ipc(bytes).unwrap();
                     assert!(!announced);
                     announced = true;
                 }
-                QueryArrow::Batch(batch) => {
+                RowOutput::Batch(bytes) => {
+                    let batch = ArrowBatch::from_ipc(bytes).unwrap();
                     assert!(announced);
                     rows += batch.as_record_batch().num_rows();
                 }

@@ -14,6 +14,12 @@ removed in the breaking group. These are agreed contracts with implementation pe
 existing examples below migrate with their owning task groups. Completed groups and
 product pins are recorded in `openspec/changes/operation-boundary/tasks.md`.
 
+Storage operation results now use operation-owned IPC frames and page DTOs.
+`ListRows` returns `RowOutput`, and column/projection batches contain schema and
+batch bytes in `IpcBatch`. Index and projection definitions are operation DTOs;
+engine readers, Arrow arrays and backend seek cursors stay behind the boundary.
+See [Native Storage Operations](storage.md) for continuation and cut handling.
+
 Compound atomic mutation is available through the native `storage.mutate` operation:
 ordered conditional object writes, deletion and record appends share a backend commit
 and replayable durable receipt. See [Compound Atomic Mutation](storage.md#compound-atomic-mutation)

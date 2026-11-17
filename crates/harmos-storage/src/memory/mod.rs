@@ -12,6 +12,7 @@
 mod compound;
 mod maintenance;
 mod record_store;
+mod samples;
 
 mod file_backend;
 mod read_backend;
@@ -31,7 +32,7 @@ use std::time::SystemTime;
 
 // Third Party Imports
 use serde::Serialize;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, oneshot};
 use tracing::Instrument;
 use tracing::subscriber::NoSubscriber;
 
@@ -41,6 +42,7 @@ use crate::SchemaWriteReceipt;
 use crate::execution::Context;
 use crate::execution::Execution;
 use crate::query::columnar::StorageCapabilities;
+use crate::query::index::IndexCatalog;
 use crate::query::projection::ProjectionCatalog;
 use crate::query::projection::ProjectionDefinition;
 use crate::query::projection::ProjectionPage;
@@ -49,11 +51,15 @@ use crate::query::projection::ProjectionRead;
 use crate::query::projection::ProjectionStatus;
 use crate::query::{FileSelection, ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
 use crate::state::*;
+use crate::writes::SampleAppend;
 use crate::*;
 use crate::{BackendFailure, Error, Identifier, MemorySize, Result};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::schema::Field;
 use harmos_query::columnar::Cancellation;
 use harmos_query::index::IndexDefinition;
 use record_store::{RecordStore, RowStore};
+use samples::SampleStore;
 
 /* === Constants === */
 
@@ -61,7 +67,7 @@ use record_store::{RecordStore, RowStore};
 
 /* === Type Aliases === */
 
-type AcceptedRead = (tokio::sync::oneshot::Sender<()>, tokio::sync::oneshot::Receiver<()>);
+type AcceptedRead = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
 /* === Structs === */
 
@@ -206,12 +212,12 @@ struct Snapshot {
     files: BTreeMap<u64, FileReference>,
     schemas: BTreeMap<u64, StorageSchema>,
     records: RecordStore,
-    rows: BTreeMap<u64, StoredRow>,
+    rows: SampleStore,
     conditional: Conditional,
     projections: ProjectionCatalog,
-    indexes: crate::query::index::IndexCatalog,
+    indexes: IndexCatalog,
     receipts: BTreeMap<MutationId, MutationReceipt>,
-    object_schemas: BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>,
+    object_schemas: BTreeMap<(String, u32), Vec<Field>>,
 }
 
 #[derive(Clone)]
@@ -230,7 +236,7 @@ pub struct Release {
 #[derive(Clone, Default)]
 struct Conditional {
     floor: u64,
-    compound_ranges: BTreeMap<u64, u64>,
+    mutation_ranges: BTreeMap<u64, u64>,
     receipts: BTreeMap<u64, ([u8; 32], CompareExchange)>,
     invalidations: BTreeSet<u64>,
     deleted_scopes: BTreeMap<Identifier, u64>,
@@ -240,13 +246,13 @@ pub struct Backend {
     clock: Execution,
     conditional: Mutex<Conditional>,
     projections: Mutex<ProjectionCatalog>,
-    indexes: Mutex<crate::query::index::IndexCatalog>,
+    indexes: Mutex<IndexCatalog>,
     pruned_objects: Mutex<BTreeMap<u64, (SchemaKey, ObjectKey)>>,
     pub object_releases: Mutex<Vec<Release>>,
     catalog: ObjectCatalog,
     pub objects: Mutex<BTreeMap<u64, ObjectEntry>>,
     deleted_objects: Mutex<BTreeMap<u64, (Identifier, ObjectKey)>>,
-    pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<harmos_domain::schema::Field>>>,
+    pub object_schemas: Mutex<BTreeMap<(String, u32), Vec<Field>>>,
     pub staged: Mutex<BTreeMap<String, (FileMetadata, Vec<u8>)>>,
     pub abandoned_files: Mutex<BTreeSet<String>>,
     pub resumable_files: Mutex<BTreeSet<String>>,
@@ -265,7 +271,7 @@ pub struct Backend {
     pub history: StoreHistory,
     pub control: Control,
     pub records: Mutex<RecordStore>,
-    pub rows: Mutex<BTreeMap<u64, StoredRow>>,
+    pub rows: Mutex<SampleStore>,
     pub schemas: Mutex<BTreeMap<u64, StorageSchema>>,
     pub saved: AtomicUsize,
     scoped_floor: AtomicUsize,
@@ -385,7 +391,7 @@ impl Backend {
             history,
             control: Control::default(),
             records: Mutex::default(),
-            rows: Mutex::new(BTreeMap::new()),
+            rows: Mutex::new(SampleStore::default()),
             schemas: Mutex::new(BTreeMap::new()),
             saved: AtomicUsize::new(0),
             scoped_floor: AtomicUsize::new(0),
@@ -470,7 +476,7 @@ impl StorageBackend for Backend {
                 CompareExchange::Conflict { current }
             };
             conditional.receipts.insert(position, (fingerprint, outcome.clone()));
-            conditional.compound_ranges.insert(exchange.schema.position.sequence, position);
+            conditional.mutation_ranges.insert(exchange.schema.position.sequence, position);
             self.saved.fetch_max(position as usize, Ordering::SeqCst);
             Ok(outcome)
         })
@@ -493,6 +499,7 @@ impl StorageBackend for Backend {
             file_sessions: !self.control.unsupported_sessions.load(Ordering::Acquire),
             file_deletion: true,
             mutation_receipts: true,
+            columnar_append: true,
             durable_projections: true,
             conditional_objects: !self.control.unsupported_conditional.load(Ordering::Acquire),
             compound_mutations: !self.control.unsupported_conditional.load(Ordering::Acquire),
@@ -716,6 +723,11 @@ impl StorageBackend for Backend {
             if self.control.fail_open.load(Ordering::SeqCst) {
                 return Err(failure(BackendFailure::Permanent));
             }
+            // Backend Snapshot Tokens Belong to One Open Session.
+            let _transaction = self.conditional.lock().unwrap();
+            self.snapshots.lock().unwrap().clear();
+            self.reclaim_scoped_projections();
+            self.control.release_completed.notify_waiters();
             Ok(self.at(self.saved.load(Ordering::SeqCst) as u64))
         })
     }
@@ -749,11 +761,9 @@ impl StorageBackend for Backend {
                     let prior = schemas.values().rev().find(|value| value.key == exchange.value.key);
                     let unchanged = prior.is_none_or(|value| value.schema == exchange.value.schema);
                     let outcome = if prior.map(|value| &value.position) == exchange.expected.as_ref() && unchanged {
-                        exchange.value.schema.prepare(&harmos_domain::config::SchemaSettings::default()).map_err(|_| {
-                            Error::InvalidInput {
-                                field: "SetSchema",
-                                reason: "invalid finite schema graph",
-                            }
+                        exchange.value.schema.prepare(&SchemaSettings::default()).map_err(|_| Error::InvalidInput {
+                            field: "SetSchema",
+                            reason: "invalid finite schema graph",
                         })?;
                         schemas.insert(exchange.value.position.sequence, exchange.value.clone());
                         crate::DefinitionOutcome::Applied {
@@ -804,6 +814,9 @@ impl StorageBackend for Backend {
             self.control.committed_bytes.lock().unwrap().push(bytes);
             Ok(saved)
         })
+    }
+    fn append_sample_columns<'a>(&'a self, append: &'a SampleAppend) -> StorageFuture<'a, MutationReceipt> {
+        self.commit_sample_columns(append)
     }
     fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
         let bytes = batch.as_slice().iter().map(|value| crate::encoded_size(value).unwrap()).sum();
@@ -948,7 +961,7 @@ impl StorageBackend for Backend {
                 });
             }
             let sequence = conditional
-                .compound_ranges
+                .mutation_ranges
                 .range(..=through.sequence)
                 .next_back()
                 .filter(|(_, end)| through.sequence < **end)
@@ -983,7 +996,7 @@ impl StorageBackend for Backend {
             let image = self.image(snapshot)?;
             let mut seen = BTreeSet::new();
             let mut identities = Vec::new();
-            for row in image.rows.values().filter(|row| row.record.position.sequence <= snapshot.at.sequence) {
+            for row in image.rows.values()?.filter(|row| row.record.position.sequence <= snapshot.at.sequence) {
                 if seen.insert(serde_json::to_vec(&(&row.record.schema, &row.record.scope, &row.record.item, &row.stream)).unwrap()) {
                     identities.push(StoredIdentity::Stream {
                         schema: row.record.schema.clone(),

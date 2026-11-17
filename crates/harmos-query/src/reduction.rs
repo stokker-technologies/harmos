@@ -130,6 +130,12 @@ impl Selection {
 
 pub(super) fn transform(input: Spool, plan: &Transform, check: &mut impl FnMut() -> Result<()>) -> Result<Spool> {
     match plan {
+        Transform::BoxSummary(_) | Transform::BucketSummary(_) => {
+            let batch = super::transform::statistics::reduce(input, plan, check)?;
+            let mut output = Builder::new(batch.schema())?;
+            output.push(&batch, check)?;
+            output.finish()
+        }
         Transform::TimeBuckets(plan) => {
             let mut accumulator = super::time_buckets::Accumulator::new(plan, input.schema.clone())?;
             for batch in input.reader()? {

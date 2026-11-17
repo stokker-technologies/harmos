@@ -14,8 +14,9 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::Arc;
 #[cfg(feature = "plugin-guest")]
-use std::sync::{Arc, Weak};
+use std::sync::Weak;
 // Third Party Imports
 
 // Local Imports
@@ -53,6 +54,7 @@ pub struct Caller {
 #[derive(Clone)]
 pub(super) struct Origin {
     pub(super) identity: Identity,
+    pub(super) grpc: Option<Arc<crate::plugin::grpc::CallingPlugin>>,
 
     #[cfg(feature = "plugin-guest")]
     pub(super) scope: Option<PluginScope>,
@@ -81,7 +83,7 @@ pub(super) struct LifecycleLoan {
 pub(super) enum Source {
     Host,
 
-    GrpcPlugin(crate::plugin::grpc::CallingPlugin),
+    GrpcPlugin(Arc<crate::plugin::grpc::CallingPlugin>),
 
     #[cfg(feature = "grpc")]
     External {
@@ -255,6 +257,7 @@ impl Source {
 
         if let Self::GrpcPlugin(caller) = self {
             return Ok(Origin {
+                grpc: Some(caller.clone()),
                 identity: Identity::GrpcPlugin {
                     owner: caller.owner().to_owned(),
                     connection: caller.connection_identity(),
@@ -297,6 +300,7 @@ impl Source {
             }
         };
         Ok(Origin {
+            grpc: None,
             #[cfg(not(feature = "plugin-guest"))]
             identity: Identity::Host,
             #[cfg(feature = "plugin-guest")]
@@ -356,7 +360,7 @@ impl Source {
 
     pub(super) fn for_binding(_entry: &std::sync::Arc<super::manager::Entry>) -> Self {
         if let Some(binding) = _entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
-            return Self::GrpcPlugin(binding.caller.clone());
+            return Self::GrpcPlugin(Arc::new(binding.caller.clone()));
         }
         #[cfg(feature = "plugin-guest")]
         if _entry.plugin().is_some() {
@@ -386,11 +390,14 @@ impl LifecycleLoan {
 
 impl Origin {
     pub(super) fn is_plugin(&self) -> bool {
+        if self.grpc.is_some() {
+            return true;
+        }
         #[cfg(feature = "plugin-guest")]
         if self.scope.is_some() {
             return true;
         }
-        matches!(self.identity, Identity::GrpcPlugin { .. })
+        false
     }
 
     pub(super) fn has_lifecycle_loan(&self) -> bool {

@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 // Third Party Imports
+use tracing::Instrument;
 
 // Local Imports
 use super::backend::{ReadLimits, ScanPage};
@@ -149,16 +150,12 @@ impl<T: Entry> Follower<T> {
         let context = self.context.clone();
         let span = context.sync(|| tracing::trace_span!("storage.reader.page"));
         let future = async {
-            loop {
-                if let Some(page) = self.next_history().await? {
-                    return Ok(page);
-                }
-                if let Some(page) = self.next_live().await? {
-                    return Ok(page);
-                }
+            if let Some(page) = self.next_history().await? {
+                return Ok(page);
             }
+            self.next_live().await
         };
-        context.scope(tracing::Instrument::instrument(future, span)).await
+        context.scope(future.instrument(span)).await
     }
 
     /// Read Committed Backend Entries and Return Only Complete Resume Frontiers.
@@ -242,32 +239,26 @@ impl<T: Entry> Follower<T> {
         Ok(Some(FollowPage { entries }))
     }
 
-    // Accepted Entries From The Queue; Waits Without Allocating While None Match.
+    // Wait for Accepted Queue Entries and Return a Bounded Page.
     #[tracing::instrument(name = "storage.follow.next_live", level = "debug", skip_all)]
-    async fn next_live(&mut self) -> Result<Option<FollowPage<T>>> {
+    async fn next_live(&mut self) -> Result<FollowPage<T>> {
         let id = self.id;
         let selection = &self.selection;
-        self.inner
-            .wait(None, |state| match find::<T>(state, id, selection) {
-                Ok(true) => Attempt::Ready(()),
-                Ok(false) => Attempt::Wait,
+        let bytes = self.inner.settings.scan_bytes();
+
+        // Project Each Accepted Page Once, Including Owned Columnar Row Views.
+        let entries = self
+            .inner
+            .wait(None, |state| match copy::<T>(state, id, selection, bytes) {
+                Ok(entries) if entries.is_empty() => Attempt::Wait,
+                Ok(entries) => Attempt::Ready(entries),
                 Err(error) => Attempt::Refuse(Refusal::Failed(error)),
             })
             .await
             .map_err(Refusal::into_error)?;
 
-        // Charge The Page Before Copying Entries Out Of The Queue.
-        let bytes = self.inner.settings.scan_bytes();
-
-        let (entries, _) = {
-            let mut state = self.inner.state.lock().unwrap();
-            copy::<T>(&mut state, self.id, &self.selection, bytes)?
-        };
-        let Some(last) = entries.last() else {
-            return Ok(None);
-        };
-        self.after = last.position().sequence;
-        Ok(Some(FollowPage { entries }))
+        self.after = entries.last().expect("accepted page is nonempty").position().sequence;
+        Ok(FollowPage { entries })
     }
 }
 
@@ -348,36 +339,9 @@ impl State {
 
 /* === Private Functions === */
 
-// Whether A Matching Queued Entry Follows The Subscription Cursor. Queue
-// Entries Without A Match Advance The Cursor So They Can Be Retired.
-fn find<T: Entry>(state: &mut State, id: u64, selection: &T::Selection) -> Result<bool> {
-    super::capacity::admitting(state, false)?;
-    let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
-    following.check()?;
-    let mut cursor = following.after;
-    let mut found = false;
-    for pending in state.queue.iter().filter(|entry| entry.operation.domain() == Domain::Data) {
-        if pending.operation.sequence() <= cursor {
-            continue;
-        }
-        let mut entries = T::pending(Queued::new(&pending.operation));
-        if entries.any(|entry| entry.position().sequence > cursor && entry.matches(selection)) {
-            found = true;
-            break;
-        }
-        cursor = pending.operation.sequence();
-    }
-    let following = state.followers.get_mut(&id).expect("registered follower");
-    if cursor > following.after {
-        following.after = cursor;
-        state.retire_data();
-        state.collect();
-    }
-    Ok(found)
-}
-
 // Copy Matching Queued Entries After The Cursor Within The Page Bounds.
-fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<(Vec<T>, usize)> {
+fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: NonZeroUsize) -> Result<Vec<T>> {
+    super::capacity::admitting(state, false)?;
     let following = state.followers.get(&id).ok_or(Error::Closing { domain: "storage follow" })?;
     following.check()?;
     let mut cursor = following.after;
@@ -387,21 +351,22 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
         if pending.operation.sequence() <= cursor {
             continue;
         }
-        let values = T::pending(Queued::new(&pending.operation));
+        let values = T::pending(Queued::new(&pending.operation))?;
         let start = cursor;
         for entry in values.filter(|entry| entry.position().sequence > start) {
             if entries.len() >= SCAN_ROWS.get() {
                 break 'queue;
             }
+            let sequence = entry.position().sequence;
             if entry.matches(selection) {
-                let size = encoded_size(entry)?;
+                let size = encoded_size(entry.as_ref())?;
                 if !entries.is_empty() && encoded.saturating_add(size) > bytes.get() {
                     break 'queue;
                 }
                 encoded = encoded.saturating_add(size);
-                entries.push(entry.clone());
+                entries.push(entry.into_owned());
             }
-            cursor = entry.position().sequence;
+            cursor = sequence;
         }
         cursor = cursor.max(pending.operation.sequence());
     }
@@ -409,7 +374,7 @@ fn copy<T: Entry>(state: &mut State, id: u64, selection: &T::Selection, bytes: N
     following.after = following.after.max(cursor);
     state.retire_data();
     state.collect();
-    Ok((entries, encoded))
+    Ok(entries)
 }
 
 /* === Tests === */

@@ -84,7 +84,7 @@ impl Backend {
                 .filter(|(position, record)| **position <= at && scope.is_none_or(|scope| record.scope.as_ref() == Some(scope)))
                 .map(|(position, record)| (*position, record.clone()))
                 .collect();
-            image.rows.retain(|position, row| *position <= at && scope.is_none_or(|scope| row.record.scope.as_ref() == Some(scope)));
+            image.rows.retain(|position, row| *position <= at && scope.is_none_or(|scope| row.record.scope.as_ref() == Some(scope)))?;
             image.files.retain(|position, file| *position <= at && scope.is_none_or(|scope| file.metadata.scope.as_ref() == Some(scope)));
             image.blobs.retain(|_, (file, _)| {
                 file.position.sequence <= at && scope.is_none_or(|scope| file.metadata.scope.as_ref() == Some(scope))
@@ -221,10 +221,10 @@ impl Backend {
                     available: lost_objects_through,
                 });
             }
-            if conditional.compound_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
+            if conditional.mutation_ranges.range(..=at.sequence).next_back().is_some_and(|(_, end)| at.sequence < *end) {
                 return Err(Error::InvalidInput {
                     field: "storage cut",
-                    reason: "select a complete compound receipt frontier",
+                    reason: "select a complete mutation receipt frontier",
                 });
             }
             let records = self.records.lock().unwrap();
@@ -384,7 +384,7 @@ impl Backend {
             self.control.gate_read().await;
             let image = self.image(snapshot)?;
             scan(
-                image.rows.values(),
+                image.rows.values()?,
                 snapshot,
                 page,
                 |row| &row.record.position,
