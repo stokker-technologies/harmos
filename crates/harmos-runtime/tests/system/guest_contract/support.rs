@@ -19,7 +19,7 @@
 use std::{
     num::NonZeroUsize,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
 };
@@ -31,7 +31,7 @@ use prost_types::{MethodDescriptorProto, ServiceDescriptorProto};
 use tempfile::TempDir;
 
 // Local Imports
-use super::contract::{Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
+use super::contract::{ClientEchoOperation, Echoed, ProviderEchoOperation, PublishProgress, RetryChoice, Stage};
 use crate::backend::{Backend, RecoveryBackend};
 use crate::support::Bank;
 use harmos::OperationRequest;
@@ -71,6 +71,7 @@ pub struct ProviderOwner {
 }
 pub(super) struct Provider;
 pub struct Publisher;
+pub struct ClientEcho;
 struct Cancelled(Arc<tokio::sync::Notify>);
 
 /* === Enums === */
@@ -85,13 +86,14 @@ impl Drop for Cancelled {
     }
 }
 fn descriptors() -> &'static DescriptorPool {
-    static POOL: std::sync::OnceLock<prost_reflect::DescriptorPool> = std::sync::OnceLock::new();
+    static POOL: OnceLock<DescriptorPool> = OnceLock::new();
     POOL.get_or_init(|| {
         let mut types = <ProviderEchoOperation as harmos::Message>::types();
         harmos::encoding::merge_descriptor_types(&mut types, <Echoed as harmos::Message>::types());
         harmos::encoding::merge_descriptor_types(&mut types, <PublishProgress as harmos::Message>::types());
+        harmos::encoding::merge_descriptor_types(&mut types, <ClientEchoOperation as harmos::Message>::types());
         harmos::encoding::merge_descriptor_types(&mut types, <() as harmos::Message>::types());
-        let file = types.file.iter_mut().find(|file| file.package.as_deref() == Some("example.host.v1")).unwrap();
+        let file = types.file.iter_mut().find(|file| file.name.as_deref() == Some("example/host/v1/progress.proto")).unwrap();
         file.dependency.push("google/protobuf/empty.proto".into());
         file.service.push(ServiceDescriptorProto {
             name: Some("Progress".into()),
@@ -104,8 +106,41 @@ fn descriptors() -> &'static DescriptorPool {
             }],
             ..Default::default()
         });
-        with_method_callers(types, &[("example.host.v1.Progress/Publish".into(), Callers::Plugins)].into_iter().collect()).unwrap()
+        let file = types.file.iter_mut().find(|file| file.name.as_deref() == Some("example/host/v1/client.proto")).unwrap();
+        file.dependency.push("harmos/sandbox/v1/probes.proto".into());
+        file.service.push(ServiceDescriptorProto {
+            name: Some("Client".into()),
+            method: vec![MethodDescriptorProto {
+                name: Some("Echo".into()),
+                input_type: Some(".example.host.v1.ClientEchoOperation".into()),
+                output_type: Some(".harmos.sandbox.v1.Echoed".into()),
+                options: Some(Default::default()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        let callers =
+            [("example.host.v1.Progress/Publish".into(), Callers::Plugins), ("example.host.v1.Client/Echo".into(), Callers::Clients)]
+                .into_iter()
+                .collect();
+        with_method_callers(types, &callers).unwrap()
     })
+}
+impl prost_reflect::ReflectMessage for ClientEchoOperation {
+    fn descriptor(&self) -> MessageDescriptor {
+        descriptors().get_message_by_name(&<Self as harmos::Message>::name()).unwrap()
+    }
+}
+impl ProtobufOperation for ClientEcho {
+    type Request = ClientEchoOperation;
+    type Response = Echoed;
+    type Endpoints = ();
+    const ID: &'static str = ClientEchoOperation::ID;
+    const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
+    const VISIBILITY: Visibility = Visibility::Public;
+    async fn run(_: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        Ok(Echoed { said: request.say })
+    }
 }
 impl prost_reflect::ReflectMessage for ProviderEchoOperation {
     fn descriptor(&self) -> MessageDescriptor {
@@ -239,6 +274,7 @@ pub async fn runtime(owner: Arc<ProviderOwner>, lane: Lane, clock: Clock) -> Arc
         setup.settings().clock(clock);
         setup.settings().register(crate::support::catalog());
         setup.operation(harmos_runtime::operations::OperationFactory::protobuf::<Publisher>().unwrap(), lane);
+        setup.operation(harmos_runtime::operations::OperationFactory::protobuf::<ClientEcho>().unwrap(), lane);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: NonZeroUsize::new(4096),
             ..Default::default()
@@ -305,7 +341,7 @@ pub fn host(runtime: &Runtime<Bank>) -> Host<Bank> {
 pub fn settings(configuration: &str) -> PluginSettings {
     PluginSettings {
         configuration: serde_json::to_vec(configuration).unwrap(),
-        host_operations: ["example.host.v1.Progress/Publish", "provider.echo", "harmos.plugin.v1.Time/Get"]
+        host_operations: ["example.host.v1.Progress/Publish", "example.host.v1.Client/Echo", "provider.echo", "harmos.plugin.v1.Time/Get"]
             .into_iter()
             .map(|id| harmos_runtime::Identifier::new(id).unwrap())
             .collect(),

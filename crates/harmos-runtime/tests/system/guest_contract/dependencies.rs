@@ -15,19 +15,18 @@
 
 /* === Imports === */
 
-use super::{contract::*, support};
-use harmos::OperationRequest as _;
-use prost::Message as _;
+// Standard Library Imports
 use std::{
     sync::{Arc, atomic::Ordering},
     time::{Duration, SystemTime},
 };
 
-// Standard Library Imports
-
 // Third Party Imports
+use prost::Message;
 
 // Local Imports
+use super::{contract::*, support};
+use harmos::OperationRequest;
 
 /* === Constants === */
 
@@ -57,6 +56,10 @@ async fn guest_dependencies_keep_admission_and_retire_saved_authority() {
         setup.settings().register(crate::support::catalog());
         setup.operation(
             harmos_runtime::operations::OperationFactory::protobuf::<support::Publisher>().unwrap(),
+            harmos_runtime::operations::Lane::default(),
+        );
+        setup.operation(
+            harmos_runtime::operations::OperationFactory::protobuf::<support::ClientEcho>().unwrap(),
             harmos_runtime::operations::Lane::default(),
         );
     })

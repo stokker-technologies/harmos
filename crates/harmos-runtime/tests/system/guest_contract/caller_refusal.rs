@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::{sync::Arc, time::SystemTime};
 
 // Third Party Imports
 
@@ -24,7 +25,6 @@ use super::{contract::EchoOperation, support};
 use harmos_operations::execution::operations::OperationFactory;
 use harmos_protocol::model::{Classification, Failure};
 use harmos_runtime::{Runtime, clock::Clock, operations::Lane};
-use std::{sync::Arc, time::SystemTime};
 
 /* === Constants === */
 
@@ -61,6 +61,7 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
         setup.settings().register(crate::support::catalog());
         setup.catalog(harmos_runtime::catalog::lifecycle_catalog(), lane);
         setup.operation(OperationFactory::protobuf::<support::Publisher>().unwrap(), lane);
+        setup.operation(OperationFactory::protobuf::<support::ClientEcho>().unwrap(), lane);
         setup.operation(OperationFactory::protobuf::<support::Provider>().unwrap(), lane);
         setup.settings().operation_settings(harmos_runtime::operations::Settings {
             preparation_bytes: std::num::NonZeroUsize::new(4096),
@@ -80,7 +81,7 @@ async fn guest_import_preserves_the_wrong_caller_failure() {
     let failure = Failure::from(error.failure().unwrap());
     assert_eq!(failure.classification(), Classification::Refused);
     assert_eq!(failure.code, harmos_operations::WRONG_CALLER.to_string());
-    assert_eq!(failure.operation, "harmos.host.v1.Invocations/Create");
+    assert_eq!(failure.operation, "example.host.v1.Client/Echo");
     assert_eq!(failure.action, "Call");
     assert!(failure.message.contains(&failure.operation));
 
