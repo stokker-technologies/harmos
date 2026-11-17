@@ -53,7 +53,7 @@ def generate(check: bool = False, *, root: Path, descriptors: Path, configuratio
         if check:
             differences = compare(source, output, configuration)
             if differences:
-                raise ValueError("Check SDK Definitions: Run mise run generate -- --protocol\n" + "\n".join(differences))
+                raise ValueError("Check SDK Definitions: Run the Product's SDK Generation Task\n" + "\n".join(differences))
             return
         expected = inventory(output, configuration)
         existing = inventory(source, configuration)
@@ -188,7 +188,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         root,
         context,
         configuration=configuration,
-        namespace=configuration.namespace.title() + ".Plugins",
+        namespace=(configuration.csharp_namespace or configuration.namespace.title()) + ".Plugins",
         target=root / f"sdk/csharp/src/{configuration.namespace.title()}/Generated/Host.g.cs",
     )
     csharp_protocol.protocols(
@@ -197,6 +197,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         namespace=configuration.namespace,
         tools=csharp_tools,
         destination=root / f"sdk/csharp/src/{configuration.namespace.title()}/Generated/Wire",
+        namespace_mappings=configuration.csharp_namespaces,
     )
     type_names = cpp.exports(root, descriptors, configuration=configuration)
     cpp.client(
@@ -212,22 +213,22 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
     shared_names = []
     for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/shared.py").read_text().splitlines():
         if line.startswith("from "):
-            shared_names.append(line.rsplit(" import ", 1)[-1].rsplit(" as ", 1)[-1])
+            shared_names.append(line.rsplit(" import ", 1)[-1])
     client_names = []
     for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/client_types.py").read_text().splitlines():
         if line.startswith("from "):
-            client_names.append(line.rsplit(" import ", 1)[-1].rsplit(" as ", 1)[-1])
+            client_names.append(line.rsplit(" import ", 1)[-1])
     plugin_names = []
     for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/plugin_types.py").read_text().splitlines():
         if line.startswith("from "):
-            plugin_names.append(line.rsplit(" import ", 1)[-1].rsplit(" as ", 1)[-1])
+            plugin_names.append(line.rsplit(" import ", 1)[-1])
     root_barrel = [
         "# @generated from protocol descriptors; do not edit.",
-        "from harmos import Failure",
+        "from harmos import FailureError",
     ]
     for name in sorted(shared_names):
         root_barrel.append(f"from ._generated.shared import {name}")
-    root_barrel += ["", "__all__ = " + repr(["Failure", *sorted(shared_names)])]
+    root_barrel += ["", "__all__ = " + repr(["FailureError", *sorted(shared_names)])]
     (root / f"sdk/python/src/{configuration.namespace}/__init__.py").write_text(
         "\n".join(root_barrel) + "\n", encoding="utf-8", newline="\n"
     )
@@ -288,9 +289,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         "_generated/client.py",
     ):
         python_paths.append(root / f"sdk/python/src/{configuration.namespace}" / name)
-    for path in python_paths:
-        rendered = re.sub(r"\bimport (\w+) as \1\b", r"import \1", path.read_text(encoding="utf-8"))
-        path.write_text(rendered, encoding="utf-8", newline="\n")
+    python_paths = sorted(set(python_paths) | set((root / f"sdk/python/src/{configuration.namespace}/_generated").rglob("*.py")))
     subprocess.run(
         [
             sys.executable,

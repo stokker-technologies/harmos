@@ -98,6 +98,30 @@ class OperationsReference(TestCase):
         with self.assertRaises(ToolError):
             operations.page(file.package, [file], {}, 1)
 
+    def test_product_reference_renders_configured_descriptor_packages_and_output(self) -> None:
+        descriptors = FileDescriptorSet()
+        for package in ("example.model.v1", "example.plugin.v1", "other.model.v1"):
+            file = descriptors.file.add(name=package.replace(".", "/") + "/values.proto", package=package)
+            file.message_type.add(name="Value")
+        scratch = TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        directory = Path(scratch.name)
+        image = directory / "schema.bin"
+        image.write_bytes(descriptors.SerializeToString())
+        for source in (descriptors, image):
+            with self.subTest(source=type(source).__name__):
+                output = operations.generate(
+                    directory,
+                    descriptors=source,
+                    output=Path("reference"),
+                    namespaces=("example",),
+                    exclude=(),
+                    namespace="example",
+                    overview_paragraphs=(),
+                )
+                self.assertEqual({path.name for path in output.iterdir()}, {"overview.md", "example.model.v1.md", "example.plugin.v1.md"})
+                self.assertIn("### Value", (output / "example.model.v1.md").read_text())
+
 
 # === Public Functions === #
 
