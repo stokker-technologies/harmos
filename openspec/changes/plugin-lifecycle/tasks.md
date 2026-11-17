@@ -5,6 +5,11 @@ and proves only its changed behavior through focused `mise run test`, `mise run 
 `mise run generate` invocations; full lanes run only after group 7 closes. Products adopt the
 revision that landed this change in their own change; record the product-pinnable worker revision below (owner override).
 
+Local host/registration revision: `c0aaeac7ef21a2e230b612fedc6ecd7062131b6d`
+(not pushed). This revision pins the implemented host verbs, resource hook names
+and carrier-helper registration; it is not a complete plugin-lifecycle revision.
+Products requiring initialize/finalize guarantees must wait for groups 4 and 5.
+
 ## 1. Inventory and Contract
 
 - [ ] 1.1 Lock the source inventory against design.md Context: every public `launch`, `shutdown` and `serve` symbol and which of them denote start, stop or run; every `on_stop`, `on_initialize`, `on_shutdown`, `on_cleanup` and `cleanup` hook in the runtime, operations crate and four SDKs; every declaration builder chain and `declarations()` call in SDKs, examples, fixtures and conformance; every import alias and path override in the repository. Accept when each item names its owner and consumers and an owning task below; record surprises in design.md before editing.
