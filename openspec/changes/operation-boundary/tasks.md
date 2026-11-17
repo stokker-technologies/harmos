@@ -190,10 +190,10 @@ Linux, combined-source validation and hosted proof remain open under task 11.
 - [ ] 11.3 Repair Nightly 44039729986 after the host-wire cutover without restoring removed services or SDK roots.
   - [x] Remove superseded host-client/service guide sections and correct generator examples and plugin facility identities; prove `ci:docs`, `check:rust` and `check:repository`.
   - [x] Resolve C++ fixture dependencies and imports from their source directory independently of the top-level CMake project, retain the tooling interpreter for installed consumers, and prove development-profile SDK and installed-consumer builds and all 24 C++ unit tests.
-  - [x] Point Python example fixture servers at the reference product wrappers; regenerate through the Python SDK task and prove its drift check, examples and all 16 Python SDK stories.
+  - [x] Point Python example fixture servers at the reference product wrappers; regenerate through the Python SDK task and prove the complete `mise run check -- --language python`, including drift, generated-source checks and all 16 Python SDK stories.
   - [x] Correct the guest benchmark's settings grant to the plugin facility, remove its test-source path override and import rename, and prove development-profile runtime and benchmark compile checks and the single format run.
   - [ ] Run the system benchmark once; its required bench-profile producer conflicts with the worker build prohibition and awaits the owner's decision.
-  - [ ] Prove focused guest-contract stories and the SDK conformance journey, then run the Rust integration lane once and report its actual counts.
+  - [x] Prove all seven focused guest-contract stories and the SDK conformance journey, then run the Rust integration lane once: 796 passed, zero failed and zero skipped on Windows. Native Linux and hosted validation remain with the integration owner.
 
 ## Workflow Follow-Up
 
