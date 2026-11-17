@@ -1282,6 +1282,11 @@ fingerprints and projections. Dynamic client calls use Invocations.Create with
 operation, fingerprint and payload; application typed clients come from the
 application's descriptors and the same composition file.
 
+Plugin discovery uses the same admission predicate as child dispatch, including
+declared requirements, matching fingerprints, provider visibility and audience.
+Forwarding List or Get through a product wrapper preserves that plugin identity;
+undeclared or unauthorized operations are absent from List and unavailable to Get.
+
 ### Consumer Work Lists
 
 **Locked replacement, proposed (`operation-boundary`):** core crates close storage

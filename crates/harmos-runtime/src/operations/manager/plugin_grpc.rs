@@ -27,7 +27,7 @@ use harmos_protocol::model;
 // Local Imports
 use super::*;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
-use crate::plugin::grpc::{Activation, Error as PlacementError, invoke::Binding};
+use crate::plugin::grpc::{self, Activation, invoke::Binding};
 
 /* === Constants === */
 
@@ -168,24 +168,24 @@ impl Manager {
         self.reserve(&entries)
     }
 
-    pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<Admission, PlacementError> {
+    pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<Admission, grpc::Error> {
         self.prepare_grpc_admission(activation, lane, false)
     }
     pub(crate) fn prepare_grpc_admission(
         &self, activation: &Activation, lane: &'static str, replace: bool,
-    ) -> std::result::Result<Admission, PlacementError> {
+    ) -> std::result::Result<Admission, grpc::Error> {
         let catalog = activation.description.declarations.as_ref().unwrap();
         let mut entries = Vec::new();
         for contract in &catalog.operations {
             let definition = OperationDefinition {
-                id: Identifier::new(&contract.id).map_err(|error| PlacementError::Invalid(error.to_string()))?,
+                id: Identifier::new(&contract.id).map_err(|error| grpc::Error::Invalid(error.to_string()))?,
                 description: contract.description.clone(),
                 visibility: match contract.visibility() {
                     model::Visibility::Protected => Visibility::Protected,
                     model::Visibility::Public => Visibility::Public,
-                    _ => return Err(PlacementError::Invalid(format!("Invalid Visibility for {}", contract.id))),
+                    _ => return Err(grpc::Error::Invalid(format!("Invalid Visibility for {}", contract.id))),
                 },
-                policy: policy(contract.policy.as_ref()).map_err(|error| PlacementError::Invalid(error.to_string()))?,
+                policy: policy(contract.policy.as_ref()).map_err(|error| grpc::Error::Invalid(error.to_string()))?,
                 replay: if contract.replay_safe { ReplaySafety::Idempotent } else { ReplaySafety::Unknown },
                 fingerprint: harmos_domain::Fingerprint(contract.fingerprint.clone().try_into().unwrap()),
             };
@@ -200,12 +200,12 @@ impl Manager {
                     #[cfg(feature = "plugin-guest")]
                     None,
                 )
-                .map_err(|error| PlacementError::Invalid(error.to_string()))?;
+                .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
             use prost::Message;
             let types = catalog.types.as_ref().expect("admitted catalog types");
             let protobuf = harmos_operations::operations::Protobuf {
                 descriptors: harmos_protocol::schema::operation_types(types, &[&contract.request, &contract.response])
-                    .map_err(|error| PlacementError::Invalid(error.to_string()))?
+                    .map_err(|error| grpc::Error::Invalid(error.to_string()))?
                     .encode_to_vec(),
                 request: contract.request.clone(),
                 response: contract.response.clone(),
@@ -213,12 +213,12 @@ impl Manager {
                 output: None,
             };
             let metadata = crate::operations::Contract::from_protobuf(entry.definition.clone(), protobuf, None, &self.schema_settings)
-                .map_err(|error| PlacementError::Invalid(error.to_string()))?;
+                .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
             Arc::get_mut(&mut entry).expect("unpublished plugin entry").contract = Some(metadata);
             entries.push(entry);
         }
         self.reserve_inner(&entries, replace.then_some(activation.owner()), !replace)
-            .map_err(|error| PlacementError::Invalid(error.to_string()))?;
+            .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
         Ok(Admission {
             registry: Arc::downgrade(&self.registry),
             entries,
@@ -251,7 +251,6 @@ impl crate::operations::Context<'_> {
     }
 
     pub(crate) fn submit_grpc_child(&self, caller: &crate::plugin::grpc::CallingPlugin, child: ChildRequest) -> Result<ChildInvocation> {
-        let owner = caller.owner();
         let requires = &caller.description.declarations.as_ref().expect("admitted description").requires;
         if child.background && child.operation != "harmos.host.v1.Time/Sleep" {
             return Err(Error::InvalidInput {
@@ -261,19 +260,9 @@ impl crate::operations::Context<'_> {
         }
         let entry = self.operations.capture_entry(&child.operation)?;
         entry.available()?;
-        let denied = || Error::OperationUnauthorized {
-            caller: owner.into(),
-            owner: entry.owner.to_string(),
-            operation: child.operation.clone(),
-        };
+        entry.authorize_grpc_plugin(caller)?;
         let plugin = entry.binding.downcast_ref::<Binding>();
-        if !plugin.is_some_and(|binding| caller.same_activation(&binding.caller)) && entry.definition.visibility != Visibility::Public {
-            return Err(denied());
-        }
-        if !entry.plugin_visible() {
-            return Err(denied());
-        }
-        let required = requires.iter().find(|required| required.id == child.operation).ok_or_else(denied)?;
+        let required = requires.iter().find(|required| required.id == child.operation).expect("authorized requirement");
         if required.fingerprint != child.fingerprint || fingerprint(&entry)? != child.fingerprint {
             return Err(Error::InvalidInput {
                 field: "child fingerprint",
@@ -353,7 +342,7 @@ impl Manager {
                 cause: None,
                 preparation: None,
             },
-            Source::GrpcPlugin(caller.clone()),
+            Source::GrpcPlugin(Arc::new(caller.clone())),
             Some(crate::operations::wire::Parent {
                 scope: &context.scope,
                 ancestors: context.admission.held(),
