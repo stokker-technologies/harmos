@@ -5,7 +5,7 @@ and proves only its changed behavior through focused `mise run test`, `mise run 
 `mise run generate` invocations; full lanes run only after group 7 closes. Products adopt the
 revision that landed this change in their own change; record the product-pinnable worker revision below (owner override).
 
-Local host/registration revision: `c0aaeac7ef21a2e230b612fedc6ecd7062131b6d`
+Local host/registration revision: `9cae3d7d86178b00cc744bb36eba08347ff63acf`
 (not pushed). This revision pins the implemented host verbs, resource hook names
 and carrier-helper registration; it is not a complete plugin-lifecycle revision.
 Products requiring initialize/finalize guarantees must wait for groups 4 and 5.
