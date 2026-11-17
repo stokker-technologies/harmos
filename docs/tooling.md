@@ -376,7 +376,7 @@ python_protocol.generate(
     proto_root=root / "contracts",
     descriptors=descriptor_path,
     configuration=configuration,
-    module_prefixes={"shared": "shared._wire"},
+    module_prefixes={"shared": "shared.protocol"},
 )
 check_public_surfaces(
     root,
@@ -401,7 +401,7 @@ operations.generate(
 
 `python_protocol.generate` discovers `.proto` files below `proto_root/namespace`;
 `files` can instead supply an explicit tuple of paths relative to `proto_root`.
-The configured namespace is moved beneath `_wire`; `module_prefixes` rewrites
+The configured namespace is private; `module_prefixes` rewrites
 external imports without changing protobuf identities. Protoc's own private wire
 import aliases remain compiler-owned; the shared resource renderers emit no import
 or type renames. Public-surface roots are relative to `root` or absolute paths within

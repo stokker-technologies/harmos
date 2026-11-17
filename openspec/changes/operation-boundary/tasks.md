@@ -187,6 +187,13 @@ Linux, combined-source validation and hosted proof remain open under task 11.
 
 - [x] 11.2 Repair Nightly guest admission and caller-refusal fixtures, preserve memory-backend reader leases during session close, and update the facade compiler fixture after host export removal. Prove with focused guest-contract, maintenance-copy and facade acceptance stories, touched-package compile checks and formatting; compare the C++ formatter pin and line endings if its reported failure no longer reproduces.
 
+- [ ] 11.3 Repair Nightly 44039729986 after the host-wire cutover without restoring removed services or SDK roots.
+  - [x] Delete obsolete host-service/client guide sections, correct generator documentation and prove `ci:docs`, `check:rust` and `check:repository`.
+  - [x] Point Python example fixture servers at the reference product wrappers; regenerate through the Python SDK task and prove its drift check and focused examples.
+  - [ ] Resolve C++ fixture inputs from their source directory in both SDK and installed-consumer builds, retain the selected Python interpreter and prove the installed consumer.
+  - [ ] Grant the Schematic guest benchmark's plugin settings facility and prove one system benchmark run.
+  - [ ] Prove focused guest-contract stories, the SDK conformance journey, touched-package compilation and formatting, then run the Rust integration lane once and report its actual counts.
+
 ## Workflow Follow-Up
 
 - Products adopt group 8's revision for storage and statistics, then the revision that landed groups 9–10 in the task that removes their use of the removed surface.

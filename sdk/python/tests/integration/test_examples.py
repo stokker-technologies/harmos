@@ -69,7 +69,7 @@ class Examples(IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "harmos.host.v1.Operations",
+                    "application.host.v1.Operations",
                     {
                         "Get": grpc.unary_unary_rpc_method_handler(
                             discover,
@@ -79,7 +79,7 @@ class Examples(IsolatedAsyncioTestCase):
                     },
                 ),
                 grpc.method_handlers_generic_handler(
-                    "harmos.host.v1.Invocations",
+                    "application.host.v1.Invocations",
                     {
                         "Create": grpc.unary_unary_rpc_method_handler(
                             create,
@@ -121,7 +121,7 @@ class Examples(IsolatedAsyncioTestCase):
         server.add_generic_rpc_handlers(
             (
                 grpc.method_handlers_generic_handler(
-                    "harmos.host.v1.Operations",
+                    "application.host.v1.Operations",
                     {
                         "List": grpc.unary_unary_rpc_method_handler(
                             discover,
@@ -131,7 +131,7 @@ class Examples(IsolatedAsyncioTestCase):
                     },
                 ),
                 grpc.method_handlers_generic_handler(
-                    "harmos.host.v1.Status",
+                    "application.host.v1.Status",
                     {
                         "Get": grpc.unary_unary_rpc_method_handler(
                             get,

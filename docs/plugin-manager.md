@@ -41,12 +41,6 @@ let runtime = Arc::new(runtime);
 manager.start(&runtime).await?;
 ```
 
-The host's existing gRPC listener projects the registered operations. Generated
-Rust clients use `harmos_protocol::client::plugins_client::PluginsClient`;
-`harmos::client::Client` exposes the descriptor-generated `client.plugins`
-hierarchy for the same request/response contracts.
-Native hosts can also use the `Management` trait on `Manager` directly.
-
 `PluginManagerSettings` supplies entry and mutation-receipt capacities, encoded
 registry bytes, command queue capacity, retained cuts,
 Watch capacity and Get/Watch response bytes. It also contains the

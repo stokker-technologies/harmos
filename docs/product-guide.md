@@ -1110,10 +1110,6 @@ Protocol roots follow their executor: `harmos_protocol::host` contains host oper
 `harmos_protocol::model` contains shared values. Each product wrapper declares its
 callers; Harmos host operations are private and have no wire services. Public SDK code imports values from `harmos`, responses and client options
 from `harmos::client`, and plugin authoring types from `harmos::plugin`.
-Managed bundle replacement
-uses `client.plugins.replace`; library-stored settings use
-`client.plugins.settings.list` and `.set`. Product operations expose any required
-storage access; the SDK has no library storage wire root.
 
 `harmos::Client` is reusable connection plumbing with no resource root. A product
 client uses its transport handle and supplies `ClientSettings`.
@@ -1165,7 +1161,7 @@ including binary status details. Caller request metadata, extensions and timeout
 travel with the opening request. The server continues to own operation deadlines and retries.
 Dropping a call abandons its result. No reconnect, replay or automatic retry is added.
 
-The [library client example](../tools/conformance/examples/client.rs) uses library contracts.
+The [reference product client example](../tools/conformance/examples/client.rs) uses product wrapper contracts.
 The [Schematic application client](../examples/schematic/protocol/examples/client.rs)
 calls `schematic.validate` through the application's generated `client.schematic.validate`
 resource. Build it with
