@@ -14,8 +14,8 @@ revision that landed this change in their own change; record the product-pinnabl
 ## 2. Host Verbs and Hook Names
 
 - [x] 2.1 Rename `Runtime::launch`/`launch_with` to `start`/`start_with`, `shutdown`/`shutdown_with_timeout` to `stop`/`stop_with_timeout`, add `Builder::new` construction (D1 constructor deviation recorded in design.md) and `run` (start, wait for a stop request, stop) per design.md D1, and migrate runtime stories, benchmarks and the Schematic example. Prove with `runtime::lifecycle::runtime_run_stops_like_stop` via `mise run test -- --package harmos-runtime --target integration --exact runtime::lifecycle::runtime_run_stops_like_stop` and `mise run build -- --manifest-path examples/schematic/Cargo.toml --package schematic-app`.
-- [ ] 2.2 Rename `cleanup` to `finalize` on `Lifecycle`, `Service`, `Carrier`, `ServiceInstance` and `NativeInstance` with unchanged semantics, keeping `prepare` and the `stop` hooks (design.md D5). Prove with the existing resource-store setup-error and service restart stories after renaming their scenarios, run through `mise run test -- --paths <story file>`.
-- [ ] 2.3 Rename SDK serving entry points to `run` (Rust, Python, C++ `run`; C# `RunAsync`) and the Python endpoint `close` to `stop`; update the four SDK guides and `docs/product-guide.md`. Prove with each SDK's focused fixture build and `mise run check -- --repository`.
+- [x] 2.2 Rename `cleanup` to `finalize` on `Lifecycle`, `Service`, `Carrier`, `ServiceInstance` and `NativeInstance` with unchanged semantics, keeping `prepare` and the `stop` hooks (design.md D5). Proved with focused runtime tests `invalid_setup_cleanup`, `partial_cleanup_retry`, `finalizing_projects_cleanup` and `restart_cancels_refill` via `mise run test -- --package harmos-runtime --target integration --exact <full test path>` (four passed).
+- [x] 2.3 Rename SDK serving entry points to `run` (Rust, Python, C++ `run`; C# `RunAsync`) and the Python endpoint `close` to `stop`; update the four SDK guides and `docs/product-guide.md`. Proved with Rust/Python/C#/C++ fixture builds and focused tests, plus `mise run check:repository`; C# and C++ language checks passed.
 
 ## 3. Registration
 
@@ -36,7 +36,7 @@ revision that landed this change in their own change; record the product-pinnabl
 - [ ] Complete the native/Wasm lifecycle and guest wrapper replacement after the manager
   integration boundary in design.md is assigned; no hook/protocol compatibility path was added.
 - [ ] Finish the public clock/shared-test-support and host-client-generated alias inventory;
-  these unresolved items remain under group 6 rather than becoming exceptions.
+  these unresolved items remain under group 6 rather than becoming exceptions. Runtime feature-gate layout also remains with its owner.
 - [ ] Combined source closure, all affected conformance rules, Linux and hosted proof.
 
 ## 4. Plugin Phases on the Wire and in the Host
@@ -62,6 +62,10 @@ revision that landed this change in their own change; record the product-pinnabl
 - [ ] 7.1 Run `openspec validate plugin-lifecycle --strict`, the format task and the Rust, Python, C# and C++ language checks on the combined tree, and confirm every source item above is closed; report any pending native platform or hosted proof explicitly.
 
 ## Workflow Follow-Up
+
+- C++ generation currently rebuilds the complete protocol library after rewriting
+  generated sources even for renderer-only changes. Avoiding unchanged output
+  churn or separating descriptor generation from compilation is a tooling follow-up.
 
 - The native SDK metadata unit harness compiles its Wasmtime dev-dependency closure.
   Separating guest compiler-contract fixtures from that harness is a feedback-loop

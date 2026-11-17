@@ -218,7 +218,7 @@ async fn abandoned_stop_resumes() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn runtime_run_stops_like_stop() {
     let (mirror, (checkpoint, _)) = Mirror::new();
     let mut builder = harmos_runtime::Builder::<Editor>::new(Sheet::default());

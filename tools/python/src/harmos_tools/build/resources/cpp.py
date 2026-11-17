@@ -542,8 +542,8 @@ def client(
         if operations:
             lines += ["  std::shared_ptr<grpc::Channel> channel;"]
         lines += [f"  {names[child]} {_identifier(child[-1])};" for child in children]
-        initializers = (["channel(channel)"] if operations else []) + [f"{_identifier(child[-1])}(channel)" for child in children]
-        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> channel) : {', '.join(initializers)} {{}}"]
+        initializers = (["channel(connection)"] if operations else []) + [f"{_identifier(child[-1])}(connection)" for child in children]
+        lines += [f"  explicit {names[node]}(std::shared_ptr<grpc::Channel> connection) : {', '.join(initializers)} {{}}"]
         if not node:
             lines += [
                 "  static Client connect(std::string address, const ::harmos::StorageTransferSettings& transfer = {}, std::optional<int> message_bytes = {}) {",

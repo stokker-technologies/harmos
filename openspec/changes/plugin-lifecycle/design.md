@@ -268,8 +268,8 @@ verbs change. Per-invocation guest finalize remains distinct from plugin finaliz
 The initial state is a required construction argument in the current runtime.
 `Builder::new(origin)` constructs the existing registration builder; application
 `Runtime::start(origin, config)` retains application-owned preparation.
-`run` accepts the product's stop-request future, then settles stop even when waiting
-fails. This avoids library-owned signal policy and permits deterministic proof.
+`run` accepts the product's stop-request future, then settles stop when that future
+resolves. This avoids library-owned signal policy and permits deterministic proof.
 The worker task overrides the original tasks.md prohibition on revision pins.
 
 Constructor deviation from D1: the running handle remains `Runtime<A>` and the
@@ -322,3 +322,16 @@ and failure rollback. The lifecycle worker has not added an alternate scheduler,
 carrier protocol or teardown bypass while ownership of that integration is
 unresolved. The existing native and Wasm plugin hooks remain until that complete
 replacement is integrated; this checkpoint does not complete plugin-lifecycle.
+
+The required C++ language check exposed registration callback parameter shadowing
+and generic resource-constructor shadowing. Catalog callbacks now name the registrar
+explicitly, and the shared C++ renderer names its incoming constructor argument
+`connection` while retaining the existing field and constructor type. This is a
+minimal generator correction required for the existing shadowing gate; host-client
+surface removal stays with its owner. Outputs are regenerated, never hand-edited.
+
+Runtime feature-gated fields and statement blocks in `runtime.rs` and
+`runtime/lifecycle.rs` still need the runtime owner's module reorganization.
+This checkpoint does not claim company-style closure for those existing layouts;
+no new item-level feature gates are introduced. Test-only SDK imports are now
+inside their test module instead of individually gated imports.

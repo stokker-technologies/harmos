@@ -53,14 +53,12 @@ pub(super) async fn segmented_recovery() {
     policy.max_bytes = NonZeroUsize::new(64 * 1024).unwrap();
     let initial = Ledger::bulky(100_000);
     let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog()).managed_storage(
-            harmos_runtime::backend::storage_settings::ManagedStorageSettings {
-                replay: limits(),
-                capture: limits(),
-                snapshots: Some(policy.clone()),
-                journal_tail: 64,
-            },
-        );
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: Some(policy.clone()),
+            journal_tail: 64,
+        });
     })
     .await
     .unwrap();
@@ -82,14 +80,12 @@ pub(super) async fn segmented_recovery() {
     // Retain The Full Journal For An Independent Replay And Add Work Beyond The Checkpoint.
     let storage = store.manager(backend::storage_settings());
     let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
-        setup.settings().storage(&storage).register(catalog()).managed_storage(
-            harmos_runtime::backend::storage_settings::ManagedStorageSettings {
-                replay: limits(),
-                capture: limits(),
-                snapshots: None,
-                journal_tail: 64,
-            },
-        );
+        setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+            replay: limits(),
+            capture: limits(),
+            snapshots: None,
+            journal_tail: 64,
+        });
     })
     .await
     .unwrap();
@@ -104,14 +100,12 @@ pub(super) async fn segmented_recovery() {
     for (store, snapshots) in [(&store, Some(policy.clone())), (&full, None)] {
         let storage = store.manager(backend::storage_settings());
         let runtime = crate::support::app::start::<Bank>(initial.clone(), (), |setup| {
-            setup.settings().storage(&storage).register(catalog()).managed_storage(
-                harmos_runtime::backend::storage_settings::ManagedStorageSettings {
-                    replay: limits(),
-                    capture: limits(),
-                    snapshots,
-                    journal_tail: 64,
-                },
-            );
+            setup.settings().storage(&storage).register(catalog()).managed_storage(harmos_runtime::config::ManagedStorageSettings {
+                replay: limits(),
+                capture: limits(),
+                snapshots,
+                journal_tail: 64,
+            });
         })
         .await
         .unwrap();
