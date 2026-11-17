@@ -54,6 +54,8 @@ It does not retry an uncertain target write automatically.
 `storage.dispose_backend` invokes the supplied offline target's disposal hook. It
 permanently removes its data and durable snapshot ownership; close its sessions and
 release its reader leases first.
+Closing a memory-backend session leaves outstanding reader leases visible to
+maintenance; closing alone does not make that backend safe to dispose.
 It cannot erase the minimal assembly's active backend. The memory reference implements
 both hooks, refuses nonempty or active copy targets and keeps the copied data independent
 of later source writes. Products implement physical copy and disposal in their backends.

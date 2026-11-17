@@ -916,7 +916,6 @@ impl StorageBackend for Backend {
         Box::pin(async move {
             let _transaction = self.conditional.lock().unwrap();
             self.control.close()?;
-            self.snapshots.lock().unwrap().clear();
             self.reclaim_scoped_projections();
             self.control.release_completed.notify_waiters();
             Ok(())
