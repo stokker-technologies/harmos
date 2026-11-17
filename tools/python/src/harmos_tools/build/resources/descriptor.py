@@ -246,7 +246,7 @@ def payload_audiences(descriptors: FileDescriptorSet, *, library: FileDescriptor
     return audiences
 
 
-def public_paths(descriptors: FileDescriptorSet, *, namespace: str = "harmos") -> dict[str, str]:
+def public_paths(descriptors: FileDescriptorSet, *, namespace: str = "harmos", reserved_names: set[str] | None = None) -> dict[str, str]:
     """Preserve Type Names; Put Collisions Under Their Unversioned Package Path."""
     definitions = [
         (file, definition)
@@ -258,6 +258,7 @@ def public_paths(descriptors: FileDescriptorSet, *, namespace: str = "harmos") -
     for file, definition in definitions:
         names.setdefault(definition.name, set()).add(file.package)
     reserved = {"Call", "Client", "ClientRoot", "Context", "Failure", "FailureError", "HostOperation", "HostRoot", "Plugin", "Window"}
+    reserved.update(reserved_names or ())
     paths = {}
     for file, definition in definitions:
         parts = file.package.split(".")

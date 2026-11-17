@@ -66,9 +66,6 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
     """Generate Private Import Tables for the Three Public Barrel Points."""
     configuration = configuration or Configuration()
     public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
-    library_paths = descriptor.public_paths(
-        configuration.library if configuration.library is not None and configuration.library.file else descriptors
-    )
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     requests = descriptor.request_names(descriptors)
 
@@ -90,12 +87,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
             continue
         if file.package.startswith("harmos.plugin."):
             continue
-        module = (
-            file.name.removesuffix(".proto")
-            .replace("/", ".")
-            .replace(f"{configuration.namespace}.", f"{configuration.namespace}._wire.", 1)
-            + "_pb2"
-        )
+        owner = file.package.partition(".")[0]
+        module = file.name.removesuffix(".proto").replace("/", ".").replace(f"{owner}.", f"{owner}._wire.", 1) + "_pb2"
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests:
                 continue
@@ -110,17 +103,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
-                source = module
-                original = definition.name
-                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
-                    library_shared = ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
-                    source = "harmos" if library_shared else "harmos.client" if group == "client_types" else "harmos.plugin"
-                    original = library_paths[f"{file.package}.{definition.name}"]
-                    if "." in original:
-                        prefix, original = original.rsplit(".", 1)
-                        library_group = "shared" if library_shared else "client_types" if group == "client_types" else "plugin_types"
-                        source = f"harmos._generated._exports.{library_group}.{prefix}"
-                groups[group].append((source, original, name))
+                groups[group].append((module, definition.name, name))
         for definition in file.enum_type:
             groups_for_type = (
                 {"plugin_types"}
@@ -130,25 +113,12 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 else {group + "_types" for group in audiences.get(f"{file.package}.{definition.name}", {"client"})}
             )
             for group in groups_for_type:
-                source = (
-                    module
-                    if file.package.startswith(f"{configuration.namespace}.")
-                    else "harmos"
-                    if group == "shared"
-                    else "harmos.client"
-                    if group == "client_types"
-                    else "harmos.plugin"
-                )
                 prefix = (
                     public_paths[f"{file.package}.{definition.name}"].rsplit(".", 1)[0]
                     if "." in public_paths[f"{file.package}.{definition.name}"]
                     else ""
                 )
-                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
-                    library_prefix = library_paths[f"{file.package}.{definition.name}"].rpartition(".")[0]
-                    if library_prefix:
-                        source = f"harmos._generated._exports.{group}.{library_prefix}"
-                groups[group].extend((source, value.name, (prefix + "." if prefix else "") + value.name) for value in definition.value)
+                groups[group].extend((module, value.name, (prefix + "." if prefix else "") + value.name) for value in definition.value)
     messages = set()
     for messages_file in descriptors.file:
         if not (messages_file.package.startswith(f"{configuration.namespace}.")):

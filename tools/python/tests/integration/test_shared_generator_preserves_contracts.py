@@ -46,6 +46,110 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class SharedGeneratorPreservesContracts(unittest.TestCase):
+    def test_csharp_optional_multiword_fields_keep_wire_property_case(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="example/host/v1/jobs.proto", package="example.host.v1", syntax="proto3")
+        file.options.csharp_namespace = "Example.Wire"
+        request = file.message_type.add(name="Input")
+        for number, name in enumerate(("step_id", "maximum_seconds", "cycle_id", "execution_id"), 1):
+            request.oneof_decl.add(name="_" + name)
+            request.field.add(name=name, number=number, type=FieldDescriptorProto.TYPE_STRING, proto3_optional=True, oneof_index=number - 1)
+        file.message_type.add(name="Output")
+        file.service.add(name="Jobs").method.add(name="List", input_type=".example.host.v1.Input", output_type=".example.host.v1.Output")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        with patch.object(descriptor, "caller_options", return_value={"example.host.v1.Jobs/List": "CLIENTS"}):
+            methods = descriptor.table(schema)
+        csharp.client(root, methods, target=root / "Client.cs", configuration=Configuration(namespace="example"))
+        source = (root / "Client.cs").read_text()
+        for property_name, parameter in (
+            ("StepId", "stepId"),
+            ("MaximumSeconds", "maximumSeconds"),
+            ("CycleId", "cycleId"),
+            ("ExecutionId", "executionId"),
+        ):
+            self.assertIn(f"request.{property_name} = {parameter};", source)
+
+    def test_python_composed_payloads_import_original_wire_definitions(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="harmos/model/v1/failure.proto", package="harmos.model.v1", syntax="proto3")
+        file.message_type.add(name="Failure")
+        enum = file.enum_type.add(name="Classification")
+        enum.value.add(name="CLASSIFICATION_UNSPECIFIED", number=0)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        target = Path(scratch.name)
+        python.exports(target, schema, configuration=Configuration(namespace="example", library=schema))
+        payload = ast.parse((target / "_exports/shared/harmos/model/__init__.py").read_text())
+        imports = [
+            (node.module, name.name, name.asname) for node in ast.walk(payload) if isinstance(node, ast.ImportFrom) for name in node.names
+        ]
+        self.assertIn(("harmos._wire.model.v1.failure_pb2", "Failure", None), imports)
+        shared = (target / "shared.py").read_text()
+        self.assertIn("from harmos._wire.model.v1.failure_pb2 import Classification", shared)
+        self.assertIn("from harmos._wire.model.v1.failure_pb2 import CLASSIFICATION_UNSPECIFIED", shared)
+
+    def test_composed_exception_imports_its_defining_module(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        schema = FileDescriptorSet()
+        schema.file.add(name="example/model/v1/values.proto", package="example.model.v1", syntax="proto3").message_type.add(name="Value")
+        descriptors = root / "schema.bin"
+        descriptors.write_bytes(schema.SerializeToString())
+        configuration = Configuration(namespace="example", csharp_tools=root / "tools", library=FileDescriptorSet())
+        with (
+            patch.object(sdk.csharp_protocol, "protocols"),
+            patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0)),
+        ):
+            sdk.generate(root=root, descriptors=descriptors, configuration=configuration)
+        source = (root / "sdk/python/src/example/__init__.py").read_text()
+        self.assertIn("from harmos._invocation import FailureError", source)
+
+    def test_rust_composed_payloads_use_protocol_owner(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="harmos/model/v1/failure.proto", package="harmos.model.v1", syntax="proto3")
+        file.message_type.add(name="Failure")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        rust.exports(root, schema, configuration=Configuration(namespace="example", library=schema))
+        source = (root / "sdk/rust/src/exports.rs").read_text()
+        self.assertIn("pub use harmos_protocol::model::Failure;", source)
+        self.assertNotIn("::harmos::model::Failure", source)
+
+    def test_rust_client_payload_collision_uses_package_path(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="example/host/v1/storage/sources.proto", package="example.host.v1.storage", syntax="proto3")
+        file.message_type.add(name="Input")
+        file.message_type.add(name="StorageSources")
+        file.service.add(name="Sources").method.add(
+            name="Get", input_type=".example.host.v1.storage.Input", output_type=".example.host.v1.storage.StorageSources"
+        )
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        with patch.object(descriptor, "caller_options", return_value={"example.host.v1.storage.Sources/Get": "CLIENTS"}):
+            rust.exports(root, schema, configuration=Configuration(namespace="example"))
+        source = (root / "sdk/rust/src/client/types.rs").read_text()
+        self.assertIn("pub mod host {\npub mod storage {\npub use crate::wire::host::storage::StorageSources;\n}\n}", source)
+
+    def test_rust_plugin_payload_modules_do_not_shadow_host_resources(self) -> None:
+        schema = FileDescriptorSet()
+        for package in ("example.host.v1.files", "example.model.v1"):
+            schema.file.add(name=package.replace(".", "/") + ".proto", package=package, syntax="proto3").message_type.add(name="Stopped")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        with patch.object(descriptor, "payload_audiences", return_value={"example.host.v1.files.Stopped": {"plugin"}}):
+            rust.exports(root, schema, configuration=Configuration(namespace="example"))
+        source = (root / "sdk/rust/src/plugin/types.rs").read_text()
+        self.assertTrue(source.splitlines()[1].startswith("pub mod example {"))
+        self.assertIn("pub mod host {", source)
+        rust.host(root, [], configuration=Configuration(namespace="example"))
+        self.assertIn("pub use self::host::{", (root / "sdk/rust/src/plugin/host_exports.rs").read_text())
+
     def test_nested_values_presence_audiences_and_call_options(self) -> None:
         # Assemble a Product Contract With the Real Caller Extension.
         library = FileDescriptorSet.FromString((ROOT / "crates/harmos-protocol/src/descriptors.bin").read_bytes())

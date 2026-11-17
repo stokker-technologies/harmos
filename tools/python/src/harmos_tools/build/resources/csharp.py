@@ -208,7 +208,7 @@ def client(
                     continue
                 name = parameter(field["name"])
                 value = name if field["kind"] in (9, 11, 12) else name + ".Value"
-                lines += [f"    if ({name} is not null)", "    {", f"      request.{title(name)} = {value};", "    }"]
+                lines += [f"    if ({name} is not null)", "    {", f"      request.{title(field['name'])} = {value};", "    }"]
             lines += [
                 f'    var method = new Method<{request}, {response}>(MethodType.{kind}, "{method["package"]}.{method["service"]}", "{method["method"]}",',
                 f"        Marshallers.Create<{request}>(value => value.ToByteArray(), bytes => {request}.Parser.ParseFrom(bytes)),",

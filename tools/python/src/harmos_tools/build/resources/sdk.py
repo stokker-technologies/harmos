@@ -224,7 +224,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
             plugin_names.append(line.rsplit(" import ", 1)[-1])
     root_barrel = [
         "# @generated from protocol descriptors; do not edit.",
-        "from harmos import FailureError",
+        "from harmos._invocation import FailureError",
     ]
     for name in sorted(shared_names):
         root_barrel.append(f"from ._generated.shared import {name}")
