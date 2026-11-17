@@ -41,8 +41,7 @@
 - [x] P.3 Regenerate committed protocol outputs through `generate`, review README impact and document the maintained protocol authoring convention.
 - [x] P.4 On the committed candidate, prove descriptor equivalence against the baseline, run format, repository and Rust checks, the focused generated-code drift test and protocol Cargo check, and leave a clean local commit without pushing.
 - [x] P.5 Resolve the raw-descriptor versus Buf import/declaration ordering conflict with the owner, then apply the remaining skeleton/pairing to `v1/{invocations,plugins,status,storage_types,time}.proto`, `v1/access/{listener,pairings}.proto`, `v1/status/logs.proto`, `plugin/v1/instance.proto` and `context/v1/{invocations,time}.proto`. All declarations and file boundaries remain locked.
-- [x] 5.5 Merge build-speed tooling with SDK guest profiles and focused test selectors;
-  retain benchmark fixture separation; measured build evidence lives in design.md, outside the task inventory.
+- [x] 5.5 Merge build-speed tooling with SDK guest profiles and focused test selectors; retain benchmark fixture separation; measured build evidence lives in design.md, outside the task inventory.
 - [x] 8.1 Align dispatcher expectations with root-only preparation and per-SDK test delegation.
 - [x] 8.2 Replace the five C++ cases and runner with Catch2 v3 and automatic discovery.
 - [x] 8.3 Move shared client inputs under SDK tests and compose real library roots in all four SDKs.

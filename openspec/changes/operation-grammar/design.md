@@ -1983,7 +1983,7 @@ Issued-position/restart behavior and external watch semantics are implemented un
 Deletion with retained readers remains owned by task 3.10 and the reported deletion regression
 in the storage-facilities change's task 1.26. Preserve pre-deletion readers and refuse fresh
 reads of deleted data; obtain owner resolution before any data-loss change. Receipt-bearing
-log Append remains task I.8/3.4, and the unimplemented second-sleep refusal remains SB.2.
+log Append remains task 3.4, and the unimplemented second-sleep refusal remains SB.2.
 The tasks inventory owns the remaining deterministic guards, flakes and native/hosted proof.
 
 ## Migration Plan

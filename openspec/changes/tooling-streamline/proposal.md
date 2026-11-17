@@ -14,7 +14,7 @@ local compiler reuse without machine storage checks.
 | Task | Arguments After `--` | Behaviour |
 | --- | --- | --- |
 | `prepare` | None | Synchronize all locked Python groups and prepare the environment. |
-| `generate` | `[--profile <dev\|release>] [--sdk <rust|python|csharp|cpp>]` | Generate Python SDK protocol bindings, or Product-derived clients without the SDK selector. |
+| `generate` | `[--profile <dev\|release>] [--sdk <rust\|python\|csharp\|cpp>]` | Generate tracked SDK protocol bindings for the selected language, or Product-derived clients without the SDK selector. |
 | `format` | `[--check] [--language <rust\|python\|toml\|csharp>]` | Format selected maintained languages, or check their formatting. This repository has no TypeScript task. |
 | `lint` | `[--language <rust\|python\|toml>] [--extended]` | Lint selected languages; TOML has formatting checks only. Extended Rust lint covers optional compatibility configurations. |
 | `check` | `[--language <rust\|python\|toml\|csharp\|cpp>] [--package harmos-sdk] [--extended] [--repository] [--generated]` | Check formatting, lint, repository configuration and selected generated drift; Python includes tooling tests and consumes generated Product clients. `--repository` or `--generated` selects only that check. |

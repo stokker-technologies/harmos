@@ -274,6 +274,12 @@ or hosted proof is complete.
 
 ## Consumer Adoption
 
+The detailed call-site and performance repair inventory below records the former
+durable-reference implementation. Its SQLite paths and backend timings are
+historical evidence; they are not Harmos source tasks or a request to restore a
+bundled backend. The current memory/contract/conformance ownership above governs
+all remaining tasks, and products own durable equivalents.
+
 The library query-backend implementers are the memory reference and deterministic fixtures.
 A product supplies its durable backend through the backend contract and conformance kit.
 

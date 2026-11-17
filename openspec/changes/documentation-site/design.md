@@ -62,7 +62,7 @@ package, so it shares the site's navigation and search. It includes shared model
 plugin facilities and product-owned wrapper examples. Native-only host operations use the native
 API guides; retired host-client services are excluded from the generated reference. Each language generator will write retained Harmos API/helper reference
 pages under `reference/<name>/`; product author SDK pages stay product-owned. These
-four reference generators are not yet wired. Their pages the guides link to them. They are not converted into site pages.
+four reference generators are not yet wired. The guides link to their static pages; those pages are not converted into site pages.
 
 The following candidates were recorded on 2026-11-16. Their suitability and currency
 are not final validation evidence; task 2.2 verifies them against the post-cutover

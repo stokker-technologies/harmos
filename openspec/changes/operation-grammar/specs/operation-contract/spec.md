@@ -2,6 +2,11 @@
 
 ## ADDED Requirements
 
+Host-family names below identify native in-process operations. A product owns any
+remote wrapper, plugin contract/SDK and registry policy; these requirements do not
+add Harmos host wire methods or revive the deleted composition file. The active
+boundary/lifecycle changes own their API migration.
+
 ### Requirement: Product Declarations Follow Audience Packages
 
 Product declarations SHALL use `<product>.plugin.v1`, `<product>.context.v1` or
@@ -96,7 +101,7 @@ requirement SHALL NOT settle managed-invocation coverage.
 
 - **WHEN** a root is generated from library Plugins and application plugins.Settings/jobs.Progress descriptors
 - **THEN** calls read client.plugins.settings.get(request), client.jobs.progress.watch(request) and client.jobs.start(request)
-- **AND** the plugins node also exposes library plugin entry methods
+- **AND** a product may add its own plugin-entry management methods at the same generated parent
 
 ### Requirement: Explicit Domain Action Meanings
 
@@ -286,7 +291,7 @@ A hang guard MAY stop stuck work without making elapsed time a behavioral claim.
 
 ### Requirement: Manager-Owned Client Access
 The gRPC manager SHALL expose revision-guarded Listener.Get/Set, durable
-Pairings.Create/List/Delete and live Certificates.Create on the client face.
+Pairings.Create/List/Delete and live Certificates.Create as native host operations; a product owns any client wrapper.
 
 #### Scenario: Pair and Rotate Without Restart
 - **WHEN** a client changes the listener and creates a pairing
