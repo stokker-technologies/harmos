@@ -334,8 +334,12 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                     )
                     configuration = Configuration(namespace=namespace, library=FileDescriptorSet())
                     methods = descriptor.table(schema)
-                    with patch.object(python.subprocess, "run"):
+                    process_patch = patch.object(python.subprocess, "run")
+                    process_patch.start()
+                    try:
                         python.client(output / "client.py", methods, schema, configuration=configuration)
+                    finally:
+                        process_patch.stop()
                     csharp.client(output, methods, namespace=namespace, target=output / "Client.cs", configuration=configuration)
                     self.assertIn(f"global::{namespace.title()}.Clients.CapturesStopResponse", (output / "Client.cs").read_text())
                     parsed = ast.parse((output / "client.py").read_text())
@@ -402,12 +406,16 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 descriptor_path = source / "descriptors.bin"
                 descriptor_path.write_bytes(schema.SerializeToString())
                 configuration = Configuration(namespace=namespace, library=FileDescriptorSet(), csharp_tools=source / "tools")
-                with (
-                    patch.object(sdk.csharp_protocol, "protocols"),
-                    patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0)),
-                ):
+                protocol_patch = patch.object(sdk.csharp_protocol, "protocols")
+                process_patch = patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0))
+                protocol_patch.start()
+                process_patch.start()
+                try:
                     sdk.generate(root=source, descriptors=descriptor_path, configuration=configuration)
                     sdk.generate(True, root=source, descriptors=descriptor_path, configuration=configuration)
+                finally:
+                    process_patch.stop()
+                    protocol_patch.stop()
                 check_public_surfaces(source, namespace=namespace)
                 inventory = sdk.inventory(source, configuration)
                 self.assertTrue(inventory)
