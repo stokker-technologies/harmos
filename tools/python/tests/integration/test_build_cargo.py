@@ -43,6 +43,63 @@ from harmos_tools.release import review
 
 
 class FocusedCargoTests(unittest.TestCase):
+    def test_cache_startup_preserves_list_and_shell_commands(self) -> None:
+        selections = (
+            (["cargo", "clippy", "--locked"], None, ["cargo", "clippy", "--locked"]),
+            ("cargo clippy --locked", "bash", ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "cargo clippy --locked"]),
+            (
+                "cargo clippy --locked",
+                "pwsh",
+                [
+                    "pwsh",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "$ErrorActionPreference = 'Stop'\ncargo clippy --locked\nexit $LASTEXITCODE",
+                ],
+            ),
+        )
+        for command, shell, expected in selections:
+            with self.subTest(shell=shell):
+                # Start the Owned Cache
+                server = MagicMock()
+                server.stderr = io.StringIO("server started, listening on 127.0.0.1:23456\n")
+                server.poll.return_value = None
+                child = MagicMock()
+                child.poll.return_value = 0
+                child.returncode = 0
+                information = {"cache_location": "Local disk: test-cache", "version": compiler.SERIES + "0", "stats": {}}
+                environment = {"SCCACHE_LOCAL_RW_MODE": "READ_ONLY"}
+                with (
+                    patch.object(compiler.subprocess, "Popen", side_effect=[server, child]) as launch,
+                    patch.object(compiler.subprocess, "run", return_value=SimpleNamespace(stdout=json.dumps(information))) as inspect,
+                ):
+                    status = compiler._execute(command, shell, environment, "disk")
+
+                # Verify the Complete Startup Command and the Requested Compiler Command
+                self.assertEqual(status, 0)
+                self.assertEqual(launch.call_count, 2)
+                startup, compilation = launch.call_args_list
+                self.assertEqual(startup.args, (["sccache"],))
+                self.assertEqual(startup.kwargs["env"]["SCCACHE_START_SERVER"], "1")
+                self.assertEqual(startup.kwargs["env"]["SCCACHE_NO_DAEMON"], "1")
+                self.assertEqual(startup.kwargs["env"]["SCCACHE_SERVER_PORT"], "0")
+                self.assertEqual(compilation.args, (expected,))
+                child_environment = compilation.kwargs["env"]
+                self.assertNotIn("SCCACHE_START_SERVER", child_environment)
+                self.assertNotIn("SCCACHE_NO_DAEMON", child_environment)
+                self.assertEqual(child_environment["SCCACHE_SERVER_PORT"], "23456")
+                self.assertEqual(child_environment["SCCACHE_LOCAL_RW_MODE"], "READ_ONLY")
+                self.assertEqual(child_environment["RUSTC_WRAPPER"], "sccache")
+
+                # Inspect the Same Cache and Stop Only Its Owned Process
+                self.assertEqual(inspect.call_count, 2)
+                for inspection in inspect.call_args_list:
+                    self.assertEqual(inspection.args, (["sccache", "--show-stats", "--stats-format", "json"],))
+                    self.assertEqual(inspection.kwargs["env"], child_environment)
+                server.terminate.assert_called_once_with()
+                server.kill.assert_not_called()
+
     def test_cache_write_failures_preserve_compile_status_and_statistics(self) -> None:
         for status, reason, category in ((0, "Cannot write to a read-only cache", "ReadOnly"), (7, "PermissionDenied", "PermissionDenied")):
             with self.subTest(status=status):
@@ -50,7 +107,6 @@ class FocusedCargoTests(unittest.TestCase):
                 server = MagicMock()
                 server.stderr = io.StringIO(f"server started, listening on 127.0.0.1:23456\nError executing cache write: {reason}\n")
                 server.poll.return_value = None
-                server.__enter__.return_value = server
 
                 def terminate(server: MagicMock = server) -> None:
                     server.poll.return_value = 0
@@ -59,7 +115,6 @@ class FocusedCargoTests(unittest.TestCase):
                 child = MagicMock()
                 child.poll.return_value = status
                 child.returncode = status
-                child.__enter__.return_value = child
 
                 def inspect(command: list[str], **options: object) -> SimpleNamespace:
                     output = "sccache 0.19.0\n" if "--version" in command else json.dumps({"stats": {"cache_write_errors": 1}})

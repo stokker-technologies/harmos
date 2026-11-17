@@ -146,6 +146,12 @@ reuses the persistent server for cache storage; tasks never restart it per invoc
 `SCCACHE_BASEDIRS` is configured by the workstation to normalize cache keys across
 worktrees and drives. CI retains its explicitly configured cache settings.
 
+CI starts an owned foreground `sccache` process with `SCCACHE_START_SERVER=1`
+and `SCCACHE_NO_DAEMON=1`, then runs the requested compiler command against its
+reported port. Startup and statistics commands keep separate argument lists from
+the compiler command. Statistics use that same port; cleanup terminates only the
+owned process and never stops a shared server or resets its statistics.
+
 CI cache read/write errors remain warnings and build statistics; the compiler's
 exit status decides build success. Read-only Nightly caches can report failed
 writes after compiling misses. Backend configuration and readiness failures still
