@@ -80,6 +80,7 @@ impl OrderedSummary {
             max: point,
         }
     }
+
     pub fn merge(&mut self, other: &Self) {
         self.moments.merge(&other.moments);
         if (other.first.time_ns, other.first.position) < (self.first.time_ns, self.first.position) {
@@ -138,19 +139,19 @@ impl Buckets {
         if prior.len() > maximum {
             return Err(invalid("supply a continuation within the bucket bound"));
         }
-        let state: Self = postcard::from_bytes(prior).map_err(|_| invalid("supply an intact bucket continuation"))?;
+        let mut state: Self = postcard::from_bytes(prior).map_err(|_| invalid("supply an intact bucket continuation"))?;
         let compatible = state.plan.time == plan.time
             && state.plan.position == plan.position
             && state.plan.value == plan.value
             && state.plan.width_ns == plan.width_ns
-            && state.plan.max_buckets == plan.max_buckets
+            && state.plan.max_buckets >= plan.max_buckets
             && state.plan.source_cut.history == plan.source_cut.history
             && state.plan.source_cut.sequence <= plan.source_cut.sequence;
         let base = u128::from(plan.width_ns.get());
         let ratio = state.width_ns.checked_div(base).unwrap_or(0);
         let width_valid =
             state.width_ns >= base && state.width_ns.is_multiple_of(base) && ratio.is_power_of_two() && state.width_ns < (1_u128 << 65);
-        if !compatible || !width_valid || state.buckets.len() > plan.max_buckets.get() {
+        if !compatible || !width_valid || state.buckets.len() > state.plan.max_buckets.get() {
             return Err(invalid("continue with the same fields, width, bucket bound and source history at a nondecreasing cut"));
         }
         let mut count = 0_u64;
@@ -180,6 +181,7 @@ impl Buckets {
             previous_cut,
             last_position: None,
         };
+        state.plan.max_buckets = plan.max_buckets;
         result.merge(state, check)?;
         result.last_position = None;
         Ok(result)
@@ -291,6 +293,7 @@ mod tests {
             prior: None,
         }
     }
+
     fn compare(left: &Buckets, right: &Buckets) {
         assert_eq!(left.width_ns, right.width_ns);
         assert_eq!(left.buckets.keys().collect::<Vec<_>>(), right.buckets.keys().collect::<Vec<_>>());
@@ -298,6 +301,7 @@ mod tests {
             assert_eq!((left.first, left.last, left.min, left.max), (right.first, right.last, right.min, right.max));
             assert_eq!(left.moments.count(), right.moments.count());
             assert_eq!(left.moments.sum(), right.moments.sum());
+            assert_eq!(left.moments.squares(), right.moments.squares());
             for (left, right) in [
                 (left.moments.mean(), right.moments.mean()),
                 (left.moments.rms(), right.moments.rms()),
@@ -307,6 +311,7 @@ mod tests {
             }
         }
     }
+
     #[test]
     fn bounded_summaries_merge_associatively_with_ordered_points() {
         for bound in [1, 2, 7, 100] {
@@ -338,6 +343,7 @@ mod tests {
             compare(&reverse, &whole);
         }
     }
+
     #[test]
     fn bucket_width_covers_both_timestamp_extremes_at_a_single_bucket_bound() {
         let mut summary = Buckets::new(&plan(1), &mut || Ok(())).unwrap();
@@ -359,6 +365,7 @@ mod tests {
         assert_eq!(bucket.last.time_ns, i64::MAX);
         assert_eq!(bucket.moments.count(), 2);
     }
+
     #[test]
     fn ordered_summary_preserves_points_moments_and_extrema_ties() {
         let points = [(9, 1, 5.0), (3, 2, -2.0), (6, 3, 8.0), (9, 4, 5.0), (1, 5, -2.0)].map(|(time_ns, position, value)| Point {
@@ -392,6 +399,9 @@ mod tests {
         let mut continuation = plan(2);
         continuation.prior = Some(bytes.clone());
         assert!(Buckets::new(&continuation, &mut || Ok(())).is_ok());
+        let mut smaller = continuation.clone();
+        smaller.max_buckets = NonZeroUsize::new(1).unwrap();
+        assert!(Buckets::new(&smaller, &mut || Ok(())).is_ok());
         for change in 0..4 {
             let mut changed = continuation.clone();
             match change {
@@ -406,5 +416,43 @@ mod tests {
         assert!(Buckets::new(&continuation, &mut || Ok(())).is_err());
         assert!(original.push(Point { time_ns: 0, position: 10, value: 3.0 }, &mut || Ok(())).is_err());
         assert!(original.push(Point { time_ns: 0, position: 61, value: 3.0 }, &mut || Ok(())).is_err());
+    }
+
+    #[test]
+    fn continuation_coarsens_and_round_trips_with_further_points() {
+        for (large, small) in [(4, 2), (8, 1)] {
+            let points = (1..=60)
+                .map(|position| Point {
+                    time_ns: position as i64 / 2,
+                    position,
+                    value: (position % 5) as f64 - 2.0,
+                })
+                .collect::<Vec<_>>();
+            let mut larger = plan(large);
+            larger.source_cut.sequence = 30;
+            let mut smaller = plan(small);
+            smaller.source_cut.sequence = 30;
+            let mut original = Buckets::new(&larger, &mut || Ok(())).unwrap();
+            let mut direct = Buckets::new(&smaller, &mut || Ok(())).unwrap();
+            for point in &points[..30] {
+                original.push(*point, &mut || Ok(())).unwrap();
+                direct.push(*point, &mut || Ok(())).unwrap();
+            }
+            smaller.prior = Some(original.continuation().unwrap());
+            let coarsened = Buckets::new(&smaller, &mut || Ok(())).unwrap();
+            compare(&coarsened, &direct);
+            smaller.prior = Some(coarsened.continuation().unwrap());
+            let round_trip = Buckets::new(&smaller, &mut || Ok(())).unwrap();
+            compare(&round_trip, &direct);
+            smaller.source_cut.sequence = 60;
+            smaller.prior = Some(round_trip.continuation().unwrap());
+            let mut resumed = Buckets::new(&smaller, &mut || Ok(())).unwrap();
+            direct.plan.source_cut.sequence = 60;
+            for point in &points[30..] {
+                resumed.push(*point, &mut || Ok(())).unwrap();
+                direct.push(*point, &mut || Ok(())).unwrap();
+            }
+            compare(&resumed, &direct);
+        }
     }
 }
