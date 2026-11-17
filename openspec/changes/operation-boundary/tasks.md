@@ -118,6 +118,22 @@ validation and the complete required lint task passed. The remaining facade fami
 builder ownership, manager privacy, dependency fence and host/SDK cutover stay open; this is
 not source closure for groups 9–10. Native Linux and hosted proof remain pending.
 
+
+Native Host Facade Candidate Pin: `15701baafb19511544d268d4ddc21f35788aac89`
+(9.2 and the owned portions of 9.4, 9.5 and 9.8; local source checkpoint, not pushed).
+
+Windows proof passed: `mise run build` for the runtime library, conformance, Schematic
+app, CLI, sidecar and Wasm guest; 47 focused runtime stories (eight core facade,
+seven plugin facade, three settings, one protected built-in, thirteen scoped sleep
+and fifteen binding lifecycle); and the SDK-authored plugin conformance story,
+which runs all 41 rules. `mise run lint`, Rust/TOML format, `check:rust`,
+`check:repository`, Rust generation and strict validation of operation-boundary,
+plugin-boundary and plugin-lifecycle passed. No full lanes or benchmark measurements ran.
+The configured native sample-start policy owns its admission without a nested load
+deadline. Runtime/builder ownership, manager privacy, the dependency fence, product
+consumer migration and the host/SDK carrier cutover remain with their owning tasks.
+Combined integration, native Linux and hosted proof remain open.
+
 ## 10. Private Host Operations
 
 - [ ] 10.1 Add plugin protocol host facilities to `proto/harmos/plugin/v1` and the carrier for every call the plugin SDK contexts make today (time get/sleep, own settings list, own invocation Get/Cancel/Watch, admitted discovery List/Get) and move all four plugin SDK contexts to them without removing any capability. Prove with the plugin carrier stories, existing child-call stories and per-language SDK fixture tests.
