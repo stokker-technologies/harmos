@@ -22,9 +22,10 @@ use std::error;
 
 // Local Imports
 use super::requests::{CompoundOutcome, DeleteObjectRequest, DeleteScopeRequest, MutateRequest, MutateResponse, MutationItem, required};
-use crate::MemorySize;
+use super::snapshot::SavedSnapshots;
 use crate::execution::operations::{ExecutionContext, NativeOperation, Resource, ServingError};
 use crate::operations::{FailureKind, ReplaySafety};
+use crate::{MemorySize, OperationPolicy};
 use harmos_storage::{ObjectVersionToken, StorageManager};
 
 /* === Constants === */
@@ -52,12 +53,13 @@ impl NativeOperation for Mutate {
     type Response = MutateResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.mutate";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, _output: &()) -> Result<Self::Response, ServingError> {
         let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
+        let snapshots = context.resource::<SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
         let result: crate::Result<_> = async {
             let mutation = required(request.mutation)?;
 
@@ -80,7 +82,12 @@ impl NativeOperation for Mutate {
                 .into());
             }
 
+            let deletes = request.items.iter().any(|item| matches!(item, MutationItem::Delete { .. } | MutationItem::DeleteScope(_)));
+            let _issuance = if deletes { Some(snapshots.issuance.lock().await) } else { None };
             let receipt = storage.mutate_once(&mutation, request.items).await?;
+            if deletes && matches!(receipt.outcome, CompoundOutcome::Applied { .. }) {
+                snapshots.invalidate_implicit();
+            }
             Ok(MutateResponse {
                 outcome: receipt.outcome,
                 receipt: Some(super::transfers::receipt(&mutation, Some(receipt.position))),
@@ -100,9 +107,9 @@ impl NativeOperation for DeleteObject {
     type Response = MutateResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.delete_object";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &()) -> Result<Self::Response, ServingError> {
         let items = vec![MutationItem::Delete {
@@ -124,9 +131,9 @@ impl NativeOperation for DeleteScope {
     type Response = MutateResponse;
     type Endpoints = ();
     const ID: &'static str = "storage.delete_scope";
-    const POLICY: crate::OperationPolicy = super::POLICY;
+    const POLICY: OperationPolicy = super::POLICY;
     const REPLAY: ReplaySafety = ReplaySafety::Idempotent;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>()];
+    const RESOURCES: &'static [Resource] = &[Resource::of::<StorageManager>(), Resource::of::<SavedSnapshots>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &()) -> Result<Self::Response, ServingError> {
         let items = vec![MutationItem::DeleteScope(request.scope)];

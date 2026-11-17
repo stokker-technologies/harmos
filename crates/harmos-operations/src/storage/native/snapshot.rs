@@ -11,11 +11,14 @@
 
 /* === Imports === */
 
+use super::file_access::Observation;
+use super::pages::Queries;
 use super::requests::SavedSnapshot;
 
 use harmos_protocol::model;
 use harmos_storage::{BackendSnapshot, Identifier, Snapshot, StorageCursor, StorageManager};
 use ring::{digest, hmac};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     num::NonZeroUsize,
@@ -30,13 +33,14 @@ use tokio::sync;
 pub struct SavedSnapshots {
     capacity: Arc<sync::Semaphore>,
     registry: Mutex<Registry>,
-    issuance: sync::Mutex<()>,
+    pub(super) issuance: sync::Mutex<()>,
     signing: Mutex<Option<hmac::Key>>,
-    pub(super) queries: super::pages::Queries,
+    pub(super) queries: Queries,
 }
 
 #[derive(Default)]
 struct Registry {
+    epoch: u64,
     entries: BTreeMap<Vec<u8>, Arc<HeldSnapshot>>,
     order: VecDeque<Vec<u8>>,
 }
@@ -47,11 +51,12 @@ pub(crate) struct SnapshotRead {
 }
 
 struct HeldSnapshot {
+    epoch: u64,
     identity: Vec<u8>,
     snapshot: Arc<Snapshot>,
     cut: model::ReadCut,
     explicit: bool,
-    observation: Option<Arc<super::file_access::Observation>>,
+    observation: Option<Arc<Observation>>,
     _permit: sync::OwnedSemaphorePermit,
 }
 
@@ -70,7 +75,7 @@ impl SnapshotRead {
     pub(crate) fn cut(&self) -> &model::ReadCut {
         &self.snapshot.cut
     }
-    pub(super) fn observation(&self) -> Option<&super::file_access::Observation> {
+    pub(super) fn observation(&self) -> Option<&Observation> {
         self.snapshot.observation.as_deref()
     }
     pub(crate) fn snapshot(&self) -> Arc<Snapshot> {
@@ -85,8 +90,13 @@ impl SavedSnapshots {
             registry: Mutex::new(Registry::default()),
             issuance: sync::Mutex::new(()),
             signing: Mutex::new(None),
-            queries: super::pages::Queries::new(capacity),
+            queries: Queries::new(capacity),
         }
+    }
+    /// Call After a Deletion Commits, While Holding the Issuance Lock.
+    pub(super) fn invalidate_implicit(&self) {
+        let mut registry = self.registry.lock().unwrap();
+        registry.epoch = registry.epoch.checked_add(1).expect("snapshot mutation epoch exhausted");
     }
     pub(crate) fn reserve(&self) -> harmos_storage::Result<sync::OwnedSemaphorePermit> {
         let mut registry = self.registry.lock().unwrap();
@@ -116,7 +126,7 @@ impl SavedSnapshots {
     }
     fn insert_cut(
         &self, snapshot: Arc<Snapshot>, cut: model::ReadCut, explicit: bool, permit: sync::OwnedSemaphorePermit,
-        observation: Option<Arc<super::file_access::Observation>>, identity: Option<Vec<u8>>,
+        observation: Option<Arc<Observation>>, identity: Option<Vec<u8>>,
     ) -> harmos_storage::Result<SavedSnapshot> {
         let mut token = vec![0; 32];
         getrandom::fill(&mut token).map_err(|_| harmos_storage::Error::ResourceExhausted { resource: "snapshot entropy" })?;
@@ -126,10 +136,12 @@ impl SavedSnapshots {
         }
         let at = Some(snapshot.at().clone());
         let mut registry = self.registry.lock().unwrap();
+        let epoch = registry.epoch;
         registry.order.push_back(token.clone());
         registry.entries.insert(
             token.clone(),
             Arc::new(HeldSnapshot {
+                epoch,
                 identity,
                 snapshot,
                 cut,
@@ -214,17 +226,24 @@ impl SavedSnapshots {
             cut,
         ))
     }
-    /// Resolve Only A Cut Previously Returned By This Owner, Or Select Its Current Durable Cut.
+    /// Resolve Only a Cut Previously Returned by This Owner, or Select Its Current Durable Cut.
     pub(crate) async fn resolve(&self, storage: &StorageManager, at: Option<model::ReadCut>) -> crate::Result<SnapshotRead> {
         let _issuance = self.issuance.lock().await;
         let explicit = at.is_some();
         let cut = at.unwrap_or_else(|| super::transfers::cut(storage.get_saved_position()));
         let found = {
             let registry = self.registry.lock().unwrap();
-            registry.entries.iter().find(|(_, held)| held.cut == cut && held.snapshot.is_available()).map(|(token, held)| SavedSnapshot {
-                token: token.clone(),
-                at: Some(held.snapshot.at().clone()),
-            })
+            registry
+                .entries
+                .iter()
+                .find(|(_, held)| {
+                    let current = explicit || held.epoch == registry.epoch;
+                    current && held.cut == cut && held.snapshot.is_available()
+                })
+                .map(|(token, held)| SavedSnapshot {
+                    token: token.clone(),
+                    at: Some(held.snapshot.at().clone()),
+                })
         };
         let handle = if let Some(handle) = found {
             handle
@@ -254,7 +273,7 @@ impl SavedSnapshots {
         let read = self.read(handle)?;
         Ok(read)
     }
-    /// Retain A Cut Selected By The Storage/Provider Owner, Never An Unvalidated Caller Cut.
+    /// Retain a Cut Selected by the Storage/Provider Owner, Never an Unvalidated Caller Cut.
     pub(crate) async fn composite(&self, storage: &StorageManager, cut: model::ReadCut) -> crate::Result<model::ReadCut> {
         let _issuance = self.issuance.lock().await;
         if self.registry.lock().unwrap().entries.values().any(|held| held.cut == cut && held.snapshot.is_available()) {
@@ -293,7 +312,7 @@ impl SavedSnapshots {
     }
     /// Attach Only Observed Metadata; No Accepted Storage Bytes Are Copied.
     pub(super) async fn observe(
-        &self, storage: &StorageManager, position: StorageCursor, resource: String, observation: super::file_access::Observation,
+        &self, storage: &StorageManager, position: StorageCursor, resource: String, observation: Observation,
     ) -> crate::Result<SnapshotRead> {
         let _issuance = self.issuance.lock().await;
         let permit = self.reserve()?;
@@ -306,7 +325,7 @@ impl SavedSnapshots {
         let handle = self.insert_cut(snapshot, cut, false, permit, Some(Arc::new(observation)), None)?;
         Ok(self.read(handle)?)
     }
-    pub(crate) fn seal_cursor<T: serde::Serialize>(&self, read: &SnapshotRead, plan: &[u8], cursor: &T) -> crate::Result<String> {
+    pub(crate) fn seal_cursor<T: Serialize>(&self, read: &SnapshotRead, plan: &[u8], cursor: &T) -> crate::Result<String> {
         let mut signing = self.signing.lock().unwrap();
         if signing.is_none() {
             let mut secret = [0; 32];
@@ -320,7 +339,7 @@ impl SavedSnapshots {
         bytes.extend_from_slice(hmac::sign(signing.as_ref().unwrap(), &bytes).as_ref());
         Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
     }
-    pub(crate) fn open_cursor<T: serde::de::DeserializeOwned>(
+    pub(crate) fn open_cursor<T: DeserializeOwned>(
         &self, token: &str, plan: &[u8], maximum: usize, at: Option<&model::ReadCut>,
     ) -> crate::Result<(SnapshotRead, T)> {
         const PREFIX: &[u8] = b"storage.list:v1\0";
@@ -431,20 +450,31 @@ mod tests {
     use tokio::task::JoinHandle;
 
     use super::super::watch_rows::{self, Event};
+    use super::super::{
+        DeleteFile, DeleteFileRequest, DeleteObject, DeleteObjectRequest, DeleteScope, DeleteScopeRequest, GetFileBytes,
+        GetFileBytesRequest, Mutate, MutateRequest, object,
+    };
     use super::SavedSnapshots;
-    use crate::execution::operations::{ExecutionContext, ResourceSet};
+    use crate::execution::operations::{ExecutionContext, NativeOperation, ResourceSet};
+    use harmos_domain::Identified;
     use harmos_protocol::model;
     use harmos_storage::memory::{Backend, RecoveryBackend};
     use harmos_storage::query::{RecordSelection, Source};
     use harmos_storage::{
-        FileMetadata, Identifier, MutationId, MutationItem, PayloadEncoding, RecordInput, SchemaKey, StorageBackend, StorageBackends,
-        StorageFilesystemSettings, StorageFuture, StorageManager, StorageRequestSettings, StorageResponseSettings, StorageSettings,
-        StoreHistory, WorkerOwner,
+        CompoundOutcome, FileMetadata, Identifier, MutationId, MutationItem, ObjectCatalog, ObjectDefinition, ObjectRetention, ObjectValue,
+        PayloadEncoding, RecordInput, SchemaKey, StagedFile, StorageBackend, StorageBackends, StorageFilesystemSettings, StorageFuture,
+        StorageManager, StorageRequestSettings, StorageResponseSettings, StorageSettings, StoreHistory, StoredObject, WorkerOwner,
     };
 
     /* === Structs === */
 
     struct Task(sync::Mutex<Option<JoinHandle<harmos_storage::Result<()>>>>);
+
+    #[derive(harmos_domain::Message, Clone, Debug, PartialEq)]
+    struct Evidence {
+        id: u64,
+        scope: Identifier,
+    }
 
     /* === Implementations === */
 
@@ -454,11 +484,29 @@ mod tests {
         }
     }
 
+    impl Identified for Evidence {
+        const ID: &'static str = "native.evidence";
+    }
+
+    impl StoredObject for Evidence {
+        type Key = u64;
+        const RETENTION: ObjectRetention = ObjectRetention::Latest;
+
+        fn key(&self) -> &u64 {
+            &self.id
+        }
+
+        fn scope(&self) -> Option<&Identifier> {
+            Some(&self.scope)
+        }
+    }
+
     /* === Private Functions === */
 
     async fn start(primary: Arc<Backend>) -> StorageManager {
         let count = NonZeroUsize::new(64).unwrap();
-        let storage = StorageManager::new(
+        let storage = StorageManager::with_catalog(
+            ObjectCatalog::new().entry(ObjectDefinition::of::<Evidence>()),
             StorageBackends {
                 primary: primary.clone(),
                 state: Arc::new(RecoveryBackend::new(primary.history.clone())),
@@ -501,10 +549,13 @@ mod tests {
     }
 
     fn primary() -> Arc<Backend> {
-        Arc::new(Backend::new(StoreHistory {
-            store: Identifier::new("native-retention").unwrap(),
-            epoch: Identifier::new("epoch").unwrap(),
-        }))
+        Arc::new(Backend::with_catalog(
+            ObjectCatalog::new().entry(ObjectDefinition::of::<Evidence>()),
+            StoreHistory {
+                store: Identifier::new("native-retention").unwrap(),
+                epoch: Identifier::new("epoch").unwrap(),
+            },
+        ))
     }
 
     fn mutation(storage: &StorageManager, key: &str) -> MutationId {
@@ -514,7 +565,196 @@ mod tests {
         }
     }
 
+    async fn object_fixture() -> (StorageManager, ExecutionContext, ObjectValue) {
+        let storage = start(primary()).await;
+        let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Evidence>()).build().unwrap();
+        let value = catalog
+            .encode(
+                &Evidence {
+                    id: 1,
+                    scope: Identifier::new("evidence").unwrap(),
+                },
+                NonZeroUsize::MAX,
+            )
+            .unwrap();
+        storage.mutate_once(&mutation(&storage, "create"), vec![MutationItem::Create(value.clone())]).await.unwrap();
+        let mut resources = ResourceSet::new();
+        resources.insert(Arc::new(storage.clone())).unwrap();
+        resources.insert(Arc::new(SavedSnapshots::new(NonZeroUsize::new(8).unwrap()))).unwrap();
+        let context = ExecutionContext::new(resources, Default::default());
+        (storage, context, value)
+    }
+
     /* === Tests === */
+
+    #[tokio::test]
+    async fn implicit_read_observes_object_deletion() {
+        // Open an Implicit Snapshot Before Deleting the Object.
+        let (storage, context, value) = object_fixture().await;
+        let before = object::get(&context, Some(value.schema.clone()), value.item.to_string(), None).await.unwrap();
+        assert_eq!(before.0, Some(value.clone()));
+        let request = DeleteObjectRequest {
+            mutation: Some(mutation(&storage, "delete")),
+            schema: value.schema.id.clone(),
+            item: value.item.clone(),
+            expected: None,
+        };
+        let response = DeleteObject::run(context.clone(), request, &()).await.unwrap();
+        assert!(matches!(response.outcome, CompoundOutcome::Applied { .. }));
+
+        // An Unqualified Read Must Observe the Committed Deletion.
+        let after = object::get(&context, Some(value.schema), value.item.to_string(), None).await.unwrap();
+        assert!(after.0.is_none());
+        storage.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn implicit_read_observes_scope_deletion() {
+        // Open an Implicit Snapshot Before Deleting Its Scope.
+        let (storage, context, value) = object_fixture().await;
+        let before = object::get(&context, Some(value.schema.clone()), value.item.to_string(), None).await.unwrap();
+        assert_eq!(before.0, Some(value.clone()));
+        let request = DeleteScopeRequest {
+            mutation: Some(mutation(&storage, "delete-scope")),
+            scope: value.scope.clone().unwrap(),
+        };
+        let response = DeleteScope::run(context.clone(), request, &()).await.unwrap();
+        assert!(matches!(response.outcome, CompoundOutcome::Applied { .. }));
+
+        // An Unqualified Read Must Observe the Committed Scope Deletion.
+        let after = object::get(&context, Some(value.schema), value.item.to_string(), None).await.unwrap();
+        assert!(after.0.is_none());
+        storage.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn explicit_read_keeps_pre_deletion_image() {
+        // Preserve a Durable Retained Cut Through Each Delete.
+        for scope in [false, true] {
+            let (storage, context, value) = object_fixture().await;
+            let before = object::get(&context, Some(value.schema.clone()), value.item.to_string(), None).await.unwrap();
+            assert_eq!(before.0, Some(value.clone()));
+            let snapshots = context.resource::<SavedSnapshots>().unwrap();
+            let (_, retained) = snapshots.create(&storage, Some(before.2.clone()), None).await.unwrap();
+            let item = if scope {
+                MutationItem::DeleteScope(value.scope.clone().unwrap())
+            } else {
+                MutationItem::Delete {
+                    schema: value.schema.id.clone(),
+                    item: value.item.clone(),
+                    expected: None,
+                }
+            };
+            let request = MutateRequest {
+                mutation: Some(mutation(&storage, "delete")),
+                items: vec![item],
+            };
+            let response = Mutate::run(context.clone(), request, &()).await.unwrap();
+            assert!(matches!(response.outcome, CompoundOutcome::Applied { .. }));
+
+            let held = object::get(&context, Some(value.schema.clone()), value.item.to_string(), Some(before.2)).await.unwrap();
+            assert_eq!(held.0, Some(value.clone()));
+
+            // Explicit Reads Keep Their Original Image Even After an Implicit Refresh.
+            let after = object::get(&context, Some(value.schema.clone()), value.item.to_string(), None).await.unwrap();
+            assert!(after.0.is_none());
+            let held = object::get(&context, Some(value.schema.clone()), value.item.to_string(), Some(retained)).await.unwrap();
+            assert_eq!(held.0, Some(value));
+            storage.close().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn implicit_read_observes_compound_deletion() {
+        // Put Two Objects and Open an Implicit Snapshot Before Deleting Both.
+        let (storage, context, value) = object_fixture().await;
+        let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<Evidence>()).build().unwrap();
+        let second = catalog
+            .encode(
+                &Evidence {
+                    id: 2,
+                    scope: value.scope.clone().unwrap(),
+                },
+                NonZeroUsize::MAX,
+            )
+            .unwrap();
+        storage.mutate_once(&mutation(&storage, "create-second"), vec![MutationItem::Create(second.clone())]).await.unwrap();
+        let before = object::get(&context, Some(value.schema.clone()), value.item.to_string(), None).await.unwrap();
+        assert_eq!(before.0, Some(value.clone()));
+        let items = [&value, &second]
+            .map(|value| MutationItem::Delete {
+                schema: value.schema.id.clone(),
+                item: value.item.clone(),
+                expected: None,
+            })
+            .to_vec();
+        let request = MutateRequest {
+            mutation: Some(mutation(&storage, "delete-both")),
+            items,
+        };
+        let response = Mutate::run(context.clone(), request, &()).await.unwrap();
+        assert!(matches!(response.outcome, CompoundOutcome::Applied { .. }));
+
+        // Each Unqualified Read Must Observe the Entire Committed Mutation.
+        for value in [value, second] {
+            let after = object::get(&context, Some(value.schema), value.item.to_string(), None).await.unwrap();
+            assert!(after.0.is_none());
+        }
+        storage.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn implicit_read_observes_file_deletion() {
+        // Publish a File and Open Its Implicit Snapshot.
+        let primary = primary();
+        let storage = start(primary.clone()).await;
+        let mut resources = ResourceSet::new();
+        resources.insert(Arc::new(storage.clone())).unwrap();
+        resources.insert(Arc::new(SavedSnapshots::new(NonZeroUsize::new(8).unwrap()))).unwrap();
+        let context = ExecutionContext::new(resources, Default::default());
+        let mut writer = storage
+            .produce_file(FileMetadata {
+                id: Identifier::new("file").unwrap(),
+                scope: None,
+                media_type: "application/octet-stream".into(),
+                expected_length: None,
+                expected_sha256: None,
+            })
+            .await
+            .unwrap();
+        writer.write_all(b"evidence".to_vec()).await.unwrap();
+        let file = writer.finish().await.unwrap();
+        storage.flush().await.unwrap();
+        let request = GetFileBytesRequest {
+            file: Some(file.clone()),
+            offset: 0,
+            max_bytes: 8,
+            at: None,
+        };
+        let before = GetFileBytes::run(context.clone(), request.clone(), &()).await.unwrap();
+        assert_eq!(before.data, b"evidence");
+        let snapshots = context.resource::<SavedSnapshots>().unwrap();
+        let (_, cut) = snapshots.create(&storage, before.resolved_at, None).await.unwrap();
+        let position = storage.get_saved_position();
+
+        // Delete Through the Native Operation Used by Clients.
+        let deletion = DeleteFileRequest {
+            mutation: Some(mutation(&storage, "delete-file")),
+            file: Some(StagedFile {
+                history: file.position.history,
+                id: file.metadata.id,
+            }),
+        };
+        DeleteFile::run(context.clone(), deletion, &()).await.unwrap();
+        assert_eq!(storage.get_saved_position(), position);
+        assert!(GetFileBytes::run(context.clone(), request.clone(), &()).await.is_err());
+
+        // The Previously Issued Explicit Cut Still Reads Its Retained Bytes.
+        let retained = GetFileBytesRequest { at: Some(cut), ..request };
+        let held = GetFileBytes::run(context, retained, &()).await.unwrap();
+        assert_eq!(held.data, b"evidence");
+        storage.close().await.unwrap();
+    }
 
     #[tokio::test]
     async fn native_retained_handles_reopen_after_owner_and_storage_restart() {
