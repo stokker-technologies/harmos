@@ -19,6 +19,7 @@ use std::time::Duration;
 // Third Party Imports
 
 // Local Imports
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::operations::RetryPolicy;
 
 /* === Structs === */
@@ -101,11 +102,11 @@ pub fn echo_declaration_operation()
 
 /* === Public Functions === */
 
-pub fn wire_settings() -> harmos_runtime::grpc::server::Settings {
+pub fn wire_settings() -> GrpcServerSettings {
     let bytes = nz(16 * 1024 * 1024);
     let message = harmos_protocol::transfer::default_message_bytes();
     let direction = harmos_runtime::operations::StreamSettings { items: nz(16), bytes };
-    harmos_runtime::grpc::server::Settings {
+    GrpcServerSettings {
         calls: nz(64),
         decode: harmos_runtime::grpc::DecodeSettings {
             message_bytes: message,

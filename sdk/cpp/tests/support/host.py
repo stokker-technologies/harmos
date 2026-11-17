@@ -35,14 +35,16 @@ ROOT = Path(__file__).resolve().parents[4]
 # === Public Functions === #
 
 
-def run_managed() -> subprocess.CompletedProcess[str]:
+def run_managed(*, host: Path | None = None, plugin: Path | None = None, timeout_s: int = 540) -> subprocess.CompletedProcess[str]:
     profile = os.environ.get("TEST_PROFILE", "dev")
     suffix = ".exe" if os.name == "nt" else ""
-    exported = output(ROOT, "build", profile) / "bin" / f"harmos-conformance{suffix}"
-    local = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug" / f"harmos-conformance{suffix}"
-    host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
-    directory = ROOT / "target/cpp" / ("tests" if profile == "dev" else "release")
-    plugin = directory / f"harmos-cpp-conformance{suffix}"
+    if host is None:
+        exported = output(ROOT, "build", profile) / "bin" / f"harmos-conformance{suffix}"
+        local = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug" / f"harmos-conformance{suffix}"
+        host = Path(os.environ.get("HARMOS_CONFORMANCE_HOST", exported if exported.is_file() else local))
+    if plugin is None:
+        directory = ROOT / "target/cpp" / ("tests" if profile == "dev" else "release")
+        plugin = directory / f"harmos-cpp-conformance{suffix}"
     if not host.is_file():
         raise FileNotFoundError("Build the Host: mise run build -- --package harmos-conformance")
     if not plugin.is_file():
@@ -57,7 +59,7 @@ def run_managed() -> subprocess.CompletedProcess[str]:
         stderr=subprocess.STDOUT,
         text=True,
         check=False,
-        timeout=540,
+        timeout=timeout_s,
         creationflags=spawn_flags(),
     )
     print(result.stdout, end="")

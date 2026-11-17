@@ -13,7 +13,6 @@ mod concurrency;
 
 /* === Re-Exports === */
 
-pub use crate::config::GrpcServerSettings as Settings;
 pub use concurrency::Calls;
 
 /* === Imports === */
@@ -38,6 +37,7 @@ use tonic::{
 use super::inbound::TrustedContext;
 use super::{Codec, Event, InputEnvelope, InputError, Wire};
 use crate::clock::Clock;
+use crate::config::GrpcServerSettings;
 
 #[cfg(feature = "plugin-guest")]
 use crate::operations::Caller;
@@ -66,7 +66,7 @@ type Items<I> = Pin<Box<dyn Stream<Item = Result<StreamItem<I>, Status>> + Send>
 
 struct Endpoint<O> {
     authority: Authority,
-    settings: Settings,
+    settings: GrpcServerSettings,
     operation: PhantomData<fn() -> O>,
 }
 
@@ -133,7 +133,7 @@ impl Authority {
     }
 }
 
-impl Settings {
+impl GrpcServerSettings {
     pub fn validate(&self) -> Result<(), Status> {
         Calls::validate(self.calls)?;
         self.decode.validate()?;
@@ -245,7 +245,7 @@ where
 
 /* === Public Functions === */
 
-pub fn unary<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
+pub fn unary<O, W>(authority: Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> HttpFuture
 where
     O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
@@ -269,7 +269,7 @@ where
         codec.server().unary(call, request).await
     })
 }
-pub fn download<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
+pub fn download<O, W>(authority: Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> HttpFuture
 where
     O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
@@ -293,7 +293,7 @@ where
         codec.server().server_streaming(call, request).await
     })
 }
-pub fn upload<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
+pub fn upload<O, W>(authority: Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> HttpFuture
 where
     O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,
@@ -320,7 +320,7 @@ where
         codec.server().client_streaming(call, request).await
     })
 }
-pub fn exchange<O, W>(authority: Authority, settings: Settings, request: http::Request<Body>) -> HttpFuture
+pub fn exchange<O, W>(authority: Authority, settings: GrpcServerSettings, request: http::Request<Body>) -> HttpFuture
 where
     O: RequestShape,
     W: Wire<O::Request> + Wire<<O::Input as Direction>::Item> + Wire<<O::Output as Direction>::Item> + Wire<O::Response>,

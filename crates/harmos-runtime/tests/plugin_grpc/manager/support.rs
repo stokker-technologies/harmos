@@ -56,6 +56,7 @@ use harmos_protocol::host::plugins_watch_response::Event;
 use harmos_protocol::plugin::InstanceGetRequest;
 use harmos_protocol::plugin::InstanceGetResponse;
 use harmos_protocol::plugin::instance_client::InstanceClient;
+use harmos_runtime::config::GrpcServerSettings;
 use harmos_runtime::{
     Runtime,
     clock::Clock,
@@ -148,7 +149,7 @@ impl Host {
             calls_per_connection: nz(16),
             request_timeout: Duration::from_secs(30),
             shutdown_timeout: Duration::from_secs(30),
-            operations: harmos_runtime::grpc::server::Settings::default(),
+            operations: GrpcServerSettings::default(),
         };
         let listener = runtime.grpc().attach(transport).await.unwrap();
         let channel =

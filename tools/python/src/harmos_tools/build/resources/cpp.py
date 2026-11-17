@@ -737,8 +737,8 @@ def client(
 
 
 def format_code(paths: list[Path]) -> None:
-    policy = "{BasedOnStyle: LLVM, ColumnLimit: 140, AllowShortFunctionsOnASingleLine: Empty, AllowShortLambdasOnASingleLine: None}"
-    subprocess.run(["clang-format", f"--style={policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
+    policy = Path(__file__).resolve().parents[6] / "sdk/cpp/.clang-format"
+    subprocess.run(["clang-format", f"--style=file:{policy}", "-i", *map(str, paths)], check=True, creationflags=spawn_flags())
 
 
 # === Private Functions === #
