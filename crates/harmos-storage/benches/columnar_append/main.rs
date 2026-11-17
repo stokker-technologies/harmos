@@ -167,7 +167,12 @@ async fn run() {
             ])
             .unwrap();
             let data = ArrowBatch::try_new(batch).unwrap().into();
-            let batch = writes::DataBatch { schema: key.clone(), destination, data };
+            let batch = writes::DataBatch {
+                sequence: index + 1,
+                schema: key.clone(),
+                destination,
+                data,
+            };
             let mutation = MutationId {
                 window: window.clone(),
                 key: Identifier::new(format!("window.{index}.{stream}")).unwrap(),

@@ -74,7 +74,15 @@ impl StorageManager {
                 reason: "register a backend implementing columnar appends",
             });
         }
-        let schema = self.lookup_schema(&batch.schema).await?;
+        // Reuse One Immutable Schema Without Opening a Read Cut per Stream Window.
+        let cached = self.inner.sample_schema.lock().unwrap().as_ref().filter(|schema| schema.key == batch.schema).cloned();
+        let schema = if let Some(schema) = cached {
+            schema
+        } else {
+            let schema = self.lookup_schema(&batch.schema).await?;
+            *self.inner.sample_schema.lock().unwrap() = Some(schema.clone());
+            schema
+        };
         SampleAppend::validate(scope, batch, &schema)?;
         let fingerprint = SampleAppend::fingerprint(scope, batch);
         let count = batch.data.as_record_batch().num_rows();

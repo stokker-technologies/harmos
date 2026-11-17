@@ -91,7 +91,9 @@ task group closes. Floating-point population RMS/standard deviation are accepted
 `AppendSamples` admits one immutable Arrow batch through
 `StorageBackend::append_sample_columns(&writes::SampleAppend)`. Admission validates
 columns, reserves contiguous positions in Arrow row order, and fingerprints the
-whole IPC unit; it never constructs sample row payloads. Providers advertise
+whole IPC unit; it never constructs sample row payloads. One session-local cache
+entry reuses the last resolved immutable sample schema so repeated windows do not
+open read cuts over growing history. A different schema resolves normally. Providers advertise
 `columnar_append` and atomically commit the complete batch and mutation receipt.
 An accepted position alone is insufficient for acknowledgement: the native receipt
 has `completed=true` and `durable_at` only after that commit. Identical replay

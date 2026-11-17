@@ -38,6 +38,7 @@ use harmos_query::columnar::ColumnPredicate;
 use harmos_query::columnar::ColumnSource;
 use harmos_query::columnar::TimeBounds;
 use harmos_query::{arrow::ArrowBatch, source};
+use harmos_storage::query::StreamSelection;
 use harmos_storage::query::columnar::list_column_rows;
 use harmos_storage::*;
 
@@ -54,6 +55,11 @@ struct Sample {
     time_ns: i64,
     value: f64,
     unused: Vec<u8>,
+}
+
+#[derive(harmos_domain::Message)]
+struct Reading {
+    amplitude: f64,
 }
 
 /* === Enums === */
@@ -331,5 +337,89 @@ async fn columnar_append_replays_after_lost_durable_acknowledgement() {
     fixture.storage.wait_mutation_durable(&mutation, &accepted).await.unwrap();
     assert_eq!(fixture.data.rows.lock().unwrap().len(), 100);
     assert_eq!(fixture.data.control.write_sizes.lock().unwrap().last(), Some(&1));
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn columnar_appends_preserve_multiple_registered_schemas() {
+    let (fixture, sample_schema) = columnar_fixture(backend::storage_settings()).await;
+    let scope = Identifier::new("execution.columns").unwrap();
+    let samples = sample_columns(&sample_schema, &scope, 2);
+    let window = fixture.storage.mutation_window().unwrap().id;
+    let first = MutationId {
+        window: window.clone(),
+        key: Identifier::new("sample.first").unwrap(),
+    };
+    fixture.storage.append_sample_batch(&first, Some(&scope), &samples).await.unwrap();
+    let key = SchemaKey {
+        id: Identifier::new("reading.columns").unwrap(),
+        ..sample_schema.key.clone()
+    };
+    let graph = graph::Schema::from_declaration(Reading::DEFINITION, &SchemaSettings::default()).unwrap();
+    fixture.storage.write_schema(key.clone(), graph).await.unwrap();
+    fixture.storage.flush().await.unwrap();
+    let reading_schema = fixture.storage.lookup_schema(&key).await.unwrap();
+    let stream = Identifier::new("columnar.readings").unwrap();
+    let rows = [2.0, 3.0]
+        .into_iter()
+        .enumerate()
+        .map(|(index, amplitude)| StoredRow {
+            record: StoredRecord {
+                position: reading_schema.position.clone(),
+                schema: key.clone(),
+                scope: Some(scope.clone()),
+                item: Identifier::new("execution").unwrap(),
+                source: None,
+                source_time: None,
+                payload: Reading { amplitude }.encode(),
+            },
+            stream: stream.clone(),
+            sequence: index as u64 + 1,
+        })
+        .collect::<Vec<_>>();
+    let readings = writes::DecodedBatch {
+        schema: key.clone(),
+        destination: stream.clone(),
+        data: ArrowBatch::try_new(source::stream(&reading_schema, &rows).unwrap()).unwrap(),
+    };
+    let second = MutationId {
+        window: window.clone(),
+        key: Identifier::new("reading").unwrap(),
+    };
+    fixture.storage.append_sample_batch(&second, Some(&scope), &readings).await.unwrap();
+    let third = MutationId {
+        window,
+        key: Identifier::new("sample.repeat").unwrap(),
+    };
+    fixture.storage.append_sample_batch(&third, Some(&scope), &samples).await.unwrap();
+    fixture.storage.flush().await.unwrap();
+    let cut = fixture.data.create_snapshot(&fixture.storage.get_saved_position()).await.unwrap();
+    let selection = StreamSelection {
+        schema: key,
+        scope: Some(scope),
+        item: None,
+        stream: Some(stream),
+        source_start: None,
+        source_end: None,
+        after: 0,
+    };
+    let page = ScanPage {
+        after: 0,
+        rows: nz(10),
+        bytes: nz(64 * 1024),
+    };
+    let actual = fixture.data.list_samples(&cut, &selection, page).await.unwrap();
+    assert_eq!(
+        actual.iter().map(|row| row.record.payload.clone()).collect::<Vec<_>>(),
+        rows.iter().map(|row| row.record.payload.clone()).collect::<Vec<_>>()
+    );
+    let selection = StreamSelection {
+        schema: sample_schema.key,
+        stream: Some(samples.destination),
+        ..selection
+    };
+    let actual = fixture.data.list_samples(&cut, &selection, page).await.unwrap();
+    assert_eq!(actual.len(), 4);
+    fixture.data.delete_snapshot(&cut).await.unwrap();
     fixture.finish().await;
 }
