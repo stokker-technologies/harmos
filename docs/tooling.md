@@ -15,6 +15,14 @@ rehearsal, tagging, publication and verification have separate modules under
 `release/`; registry publication is separate from provider transport. The test
 runner separates lane execution, coverage, benchmarks and native evidence handling.
 Resource owners expose explicit `close()` operations, paired with `try`/`finally`.
+Composed SDK generators import shared payloads from their defining protocol
+modules, preserving original names without depending on another SDK's generated
+barrel layout. Python imports the authored exception from
+`harmos._invocation.FailureError`; these internal imports stay behind a product's
+public barrels. Rust qualifies payload names that collide with client resources
+by their package and nests plugin payload packages under the product namespace
+when they would shadow the SDK's local `host` resource module. C# optional field
+assignments derive protobuf property casing from the original field name.
 Bootstrap loads the shared console policy by file before the tooling package is
 installed; ordinary task children run installed modules in their own interpreter.
 

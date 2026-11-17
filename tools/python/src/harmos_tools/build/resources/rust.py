@@ -60,10 +60,15 @@ SCALARS = {
 
 def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     configuration = configuration or Configuration()
+    methods = descriptor.table(descriptors)
+    resource_names = {
+        "".join(part.title().replace("_", "") for part in method["path"][:length])
+        for method in methods
+        if method["face"] == "client"
+        for length in range(1, len(method["path"]))
+    }
     public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
-    library_paths = descriptor.public_paths(
-        configuration.library if configuration.library is not None and configuration.library.file else descriptors
-    )
+    client_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace, reserved_names=resource_names)
     requests = descriptor.request_names(descriptors)
 
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
@@ -103,12 +108,11 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
                 else audiences.get(full, {"client"})
             )
             for group in groups_for_type:
-                prefix = tuple(public_paths[full].split(".")[:-1])
-                exported = source
-                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
-                    boundary = "" if group == "shared" else group + "::"
-                    exported = "::harmos::" + boundary + library_paths[full].replace(".", "::")
-                groups[group].append((prefix, f"pub use {exported};"))
+                paths = client_paths if group == "client" else public_paths
+                prefix = tuple(paths[full].split(".")[:-1])
+                if group == "plugin" and prefix[:1] == ("host",):
+                    prefix = (configuration.namespace, *prefix)
+                groups[group].append((prefix, f"pub use {source};"))
             if isinstance(definition, DescriptorProto) and (
                 any(not nested.options.map_entry for nested in definition.nested_type)
                 or definition.enum_type
@@ -116,10 +120,12 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
             ):
                 parent = source.rsplit("::", 1)[0]
                 for group in groups_for_type:
+                    paths = client_paths if group == "client" else public_paths
+                    prefix = tuple(paths[full].split(".")[:-1])
+                    if group == "plugin" and prefix[:1] == ("host",):
+                        prefix = (configuration.namespace, *prefix)
                     module = parent + "::" + descriptor.snake(definition.name)
-                    if configuration.namespace != "harmos" and file.package.startswith("harmos."):
-                        module = "::harmos::" + ("" if group == "shared" else group + "::") + descriptor.snake(definition.name)
-                    groups[group].append((tuple(public_paths[full].split(".")[:-1]), f"pub use {module};"))
+                    groups[group].append((prefix, f"pub use {module};"))
     for group, entries in groups.items():
         lines = []
         opened: tuple[str, ...] = ()
@@ -665,7 +671,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         if method["server_streaming"]:
             exports += [f"Host{name}"]
     (target.parent / "host_exports.rs").write_text(
-        "// @generated from protocol descriptors; do not edit.\npub use host::{" + ", ".join(sorted(exports)) + "};\n",
+        "// @generated from protocol descriptors; do not edit.\npub use self::host::{" + ", ".join(sorted(exports)) + "};\n",
         encoding="utf-8",
         newline="\n",
     )
