@@ -18,11 +18,12 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.ci import docs, impact, required
+from harmos_tools.ci import docs, impact, required, tasks
+from harmos_tools.task import execute
 
 # Type Checking Imports
 
@@ -133,8 +134,40 @@ class ImpactPlanning(unittest.TestCase):
             for language in languages:
                 self.assertEqual({row["platform"] for row in checks if row["language"] == language}, {"unix", "windows"})
             tests = selected["test_matrix"]["include"]
-            for layer in {row["layer"] for row in tests}:
-                self.assertEqual({row["platform"] for row in tests if row["layer"] == layer}, {"unix", "windows"})
+            for language, layer in {(row["language"], row["layer"]) for row in tests}:
+                platforms = {row["platform"] for row in tests if (row["language"], row["layer"]) == (language, layer)}
+                self.assertEqual(platforms, {"unix", "windows"})
+
+    def test_python_plan_runs_the_complete_sdk_on_both_platforms(self) -> None:
+        for event, profile in (("review", "dev"), ("nightly", "release")):
+            for paths in (["sdk/python/uv.lock"], ["mise.toml"]):
+                selected = impact.plan(impact.classify(paths), event)
+                self.assertTrue(selected["test"])
+                rows = [row for row in selected["test_matrix"]["include"] if row["language"] == "python"]
+                self.assertEqual([row["platform"] for row in rows], ["unix", "windows"])
+                for row in rows:
+                    arguments = ["test", "--language", row["language"], *row["arguments"].split(), "--profile", profile]
+                    with (
+                        self.subTest(event=event, paths=paths, platform=row["platform"]),
+                        patch.object(execute, "command", return_value=0) as command,
+                    ):
+                        self.assertEqual(tasks.dispatch(arguments), 0)
+                    self.assertEqual(command.call_args.args[0], ["mise", "-C", "sdk/python", "run", "test", "--", "--profile", profile])
+
+    def test_python_check_preserves_checks_without_running_tests(self) -> None:
+        with (
+            patch.object(Path, "is_dir", return_value=True),
+            patch.object(execute, "task", return_value=0) as task,
+            patch.object(execute, "command", return_value=0) as command,
+            patch.object(execute, "module", return_value=0) as module,
+        ):
+            self.assertEqual(tasks.dispatch(["check", "--language", "python"]), 0)
+        self.assertEqual(
+            task.call_args_list,
+            [call("format:python", "--check"), call("lint:python"), call("check:repository"), call("check:python:generated")],
+        )
+        command.assert_called_once_with(["mise", "-C", "sdk/python", "run", "prepare"])
+        module.assert_called_once_with("build.python_protocol", "--check")
 
     def test_provider_events_route_ready_draft_closed_and_release_reviews(self) -> None:
         cases = [

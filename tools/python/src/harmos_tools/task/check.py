@@ -13,7 +13,6 @@
 
 # Standard Library Imports
 import argparse
-import os
 from pathlib import Path
 
 # Third Party Imports
@@ -63,7 +62,6 @@ def run(options: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             execute.command(command)
             execute.task("lint:python")
             execute.module("build.python_protocol", "--check")
-            execute.task("test:python:integration", "--profile", os.environ.get("PROFILE", "dev"))
         if language == "rust":
             # Check Rust
             extra = ["--extended"] if options.extended else []
