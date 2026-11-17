@@ -12,8 +12,13 @@
 /* === Modules === */
 
 mod context;
+pub mod invocations;
+pub mod plugins;
+pub mod settings;
+pub mod status;
 pub mod storage;
 pub mod streams;
+pub mod time;
 
 /* === Re-Exports === */
 
@@ -78,6 +83,34 @@ impl Call {
         streams::Streams { call: self }
     }
 
+    pub fn time(&self) -> time::Time<'_> {
+        time::Time { call: self }
+    }
+
+    pub fn invocations(&self) -> invocations::Invocations<'_> {
+        invocations::Invocations { call: self }
+    }
+
+    pub fn settings(&self) -> settings::Settings<'_> {
+        settings::Settings { call: self }
+    }
+
+    pub fn status(&self) -> status::Status<'_> {
+        status::Status { call: self }
+    }
+
+    pub fn plugins(&self) -> plugins::Plugins<'_> {
+        plugins::Plugins { call: self }
+    }
+
+    fn with_plugins(mut self, host: crate::plugin::grpc::facade::Host) -> Self {
+        let mut context = self.operations.call_context().clone();
+        context.remove::<crate::plugin::grpc::facade::Host>();
+        context.insert(host).expect("one plugin call owner");
+        self.operations = self.operations.with_context(context);
+        self
+    }
+
     /// Start Typed Work Without Encoding; Dropping Its Unsettled Handle Cancels It.
     pub fn submit<O: NativeOperation>(&self, request: O::Request, endpoints: O::Endpoints) -> Result<NativeInvocation<O>> {
         let policy = self.options.policy.map(|policy| (policy, "CallOptions.policy"));
@@ -103,13 +136,13 @@ impl Call {
 
 impl<A: Application> Runtime<A> {
     pub fn for_call(&self, context: &(impl CallContextSource + ?Sized)) -> Call {
-        Call::new(self.operations.execution(), context)
+        self.handle().for_call(context)
     }
 }
 
 impl<A: Application> Handle<A> {
     pub fn for_call(&self, context: &(impl CallContextSource + ?Sized)) -> Call {
-        Call::new(self.operations.execution(), context)
+        Call::new(self.operations.execution(), context).with_plugins(self.plugin_calls())
     }
 }
 

@@ -68,6 +68,7 @@ native_payload!(Answer);
 /* === Structs === */
 
 pub struct NativeInvocation<O: NativeOperation> {
+    id: super::OperationInstanceId,
     future: BoxFuture<'static, crate::Result<Response<O::Response>>>,
     control: Arc<crate::supervision::instance::Instance>,
 }
@@ -112,6 +113,10 @@ impl<O: NativeOperation> std::future::Future for NativeInvocation<O> {
     }
 }
 impl<O: NativeOperation> NativeInvocation<O> {
+    pub fn id(&self) -> super::OperationInstanceId {
+        self.id
+    }
+
     pub fn request_cancel(&self) {
         self.control.request_cancel();
     }
@@ -175,6 +180,7 @@ impl super::Manager {
             parent.map(|parent| &parent.scope),
             parent.map_or(&[], |parent| parent.admission.held()),
         )?;
+        let id = running.id();
         let control = running.control.clone();
         let future = Box::pin(async move {
             let response = crate::clock::waiting(running).await?.0.clone();
@@ -183,7 +189,7 @@ impl super::Manager {
                 reason: "native response type differs",
             })
         });
-        Ok(NativeInvocation { future, control })
+        Ok(NativeInvocation { id, future, control })
     }
     pub async fn call_native<O: NativeOperation<Endpoints = ()>>(&self, request: O::Request) -> crate::Result<O::Response> {
         let response = self.submit_native::<O>(request, ())?.await?;
@@ -210,7 +216,7 @@ impl Caller for HostContext {
                 }
                 let origin = context.source.check()?;
                 let entry = context.operations.entry_as(target.id, &origin)?;
-                if entry.declared().fingerprint != target.definition.fingerprint {
+                if !target.in_process && entry.declared().fingerprint != target.definition.fingerprint {
                     return Err(crate::Error::InvalidInput {
                         field: "declared operation",
                         reason: "callee fingerprint differs",
@@ -273,8 +279,9 @@ impl ChildInstance for NativeChild {
     fn join(self: Box<Self>) -> CallFuture<'static> {
         Box::pin(async move {
             let response = crate::clock::waiting(self.0).await.map_err(|error| InvocationError::failed(self.1.id, error))?.0.clone();
-            if self.1.protobuf_native {
-                let bytes = response.restore::<Vec<u8>>().ok_or(InvocationError::Response { operation: self.1.id })?;
+            if self.1.protobuf_native
+                && let Some(bytes) = response.clone().restore::<Vec<u8>>()
+            {
                 return (self.1.decode_protobuf)(&bytes).map_err(|error| InvocationError::failed(self.1.id, error));
             }
             Ok(response)
@@ -542,14 +549,16 @@ mod tests {
     static PARENT_CALLEES: [crate::operations::WireDeclaration; 1] = [LEAF_DESCRIPTION.copied()];
     const PARENT_OPERATION: crate::operations::OperationSpec<Parent> =
         crate::operations::OperationSpec::<Parent>::new(&PARENT_DESCRIPTION).calls(&PARENT_CALLEES);
-    async fn parent_handler(request: Parent, ctx: crate::operations::FunctionContext<Parent>) -> Result<Response<u64>, InvocationError> {
-        ctx.operation(LEAF_OPERATION, Leaf { value: request.value }).await
-    }
 
     fn parent_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(PARENT_OPERATION, const { &[] }, parent_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            PARENT_OPERATION,
+            const { &[] },
+            async move |request: Parent, ctx: crate::operations::FunctionContext<Parent>| -> Result<Response<u64>, InvocationError> {
+                ctx.operation(LEAF_OPERATION, Leaf { value: request.value }).await
+            },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     struct RetrySettings {
@@ -773,16 +782,16 @@ mod tests {
 
     const DEADLINE_OPERATION: crate::operations::OperationSpec<Deadline> =
         crate::operations::OperationSpec::<Deadline>::new(&DEADLINE_DESCRIPTION);
-    async fn deadline_handler(
-        _request: Deadline, _: crate::operations::FunctionContext<Deadline>,
-    ) -> Result<Response<()>, std::convert::Infallible> {
-        std::future::pending().await
-    }
 
     fn deadline_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(DEADLINE_OPERATION, const { &[] }, deadline_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            DEADLINE_OPERATION,
+            const { &[] },
+            async move |_request: Deadline,
+                        _: crate::operations::FunctionContext<Deadline>|
+                        -> Result<Response<()>, std::convert::Infallible> { std::future::pending().await },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     #[tokio::test(start_paused = true)]
@@ -1066,16 +1075,16 @@ mod tests {
     static WAIT_PARENT_CALLEES: [crate::operations::WireDeclaration; 1] = [WAIT_CHILD_DESCRIPTION.copied()];
     const WAIT_PARENT_OPERATION: crate::operations::OperationSpec<WaitParent> =
         crate::operations::OperationSpec::<WaitParent>::new(&WAIT_PARENT_DESCRIPTION).calls(&WAIT_PARENT_CALLEES);
-    async fn wait_parent_handler(
-        _request: WaitParent, ctx: crate::operations::FunctionContext<WaitParent>,
-    ) -> Result<Response<()>, InvocationError> {
-        ctx.operation(WAIT_CHILD_OPERATION, WaitChild {}).await
-    }
 
     fn wait_parent_operation() -> ::core::result::Result<crate::operations::OperationFactory, crate::operations::ServingError> {
-        crate::operations::OperationFactory::function(WAIT_PARENT_OPERATION, const { &[] }, wait_parent_handler, |_| {
-            crate::operations::FailureKind::Permanent
-        })
+        crate::operations::OperationFactory::function(
+            WAIT_PARENT_OPERATION,
+            const { &[] },
+            async move |_request: WaitParent,
+                        ctx: crate::operations::FunctionContext<WaitParent>|
+                        -> Result<Response<()>, InvocationError> { ctx.operation(WAIT_CHILD_OPERATION, WaitChild {}).await },
+            |_| crate::operations::FailureKind::Permanent,
+        )
     }
 
     #[tokio::test]

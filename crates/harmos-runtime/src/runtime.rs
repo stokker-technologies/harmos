@@ -40,6 +40,7 @@ use tokio::task::JoinHandle;
 use tracing::Instrument;
 
 // Local Imports
+use crate::plugin::grpc::facade;
 use crate::services::{Once, ServiceDefinition};
 use crate::state::dispatch::Dispatch;
 use crate::state::{Feed, Inverting, Origin, ReadRequest, Tail, Undos, replay};
@@ -111,6 +112,7 @@ pub struct Handle<A: Application> {
     grpc: crate::grpc::GrpcManager,
 
     storage: Arc<OnceLock<crate::storage::StorageManager>>,
+    participants: Participants,
 }
 
 pub struct Builder<A: Application> {
@@ -369,11 +371,17 @@ impl<A: Application> Clone for Handle<A> {
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
             storage: self.storage.clone(),
+            participants: self.participants.clone(),
         }
     }
 }
 
 impl<A: Application> Handle<A> {
+    pub(crate) fn plugin_calls(&self) -> facade::Host {
+        let participants = self.participants.clone();
+        facade::Host::new(self.streams.clone(), Arc::new(move || participants.register()))
+    }
+
     #[cfg(feature = "grpc")]
     pub fn grpc(&self) -> &crate::grpc::GrpcManager {
         &self.grpc
@@ -462,6 +470,7 @@ impl<A: Application> Runtime<A> {
             #[cfg(feature = "grpc")]
             grpc: self.grpc.clone(),
             storage: self.storage.clone(),
+            participants: self.participants.clone(),
         }
     }
 }

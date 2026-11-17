@@ -14,6 +14,7 @@
 mod catalog;
 mod config;
 mod connection;
+pub(crate) mod facade;
 pub(crate) mod invoke;
 mod load;
 mod managed;
@@ -107,7 +108,7 @@ struct Startup {
     process_participant: Option<crate::runtime::StopParticipant>,
     entry: Option<EntrySettings>,
     cancelled: Option<oneshot::Receiver<()>>,
-    options: LoadOptions,
+    options: Option<LoadOptions>,
 }
 
 struct EntrySettings {
@@ -152,6 +153,9 @@ enum Ending {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Inspect Plugin: {0}; correct the candidate or its placement settings before inspecting again")]
+    Inspection(#[source] Box<Error>),
+
     #[error("{0}")]
     Invalid(String),
 
@@ -356,7 +360,7 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: Some(EntrySettings { name, values }),
                 cancelled: Some(cancelled),
-                options: LoadOptions::default(),
+                options: Some(LoadOptions::default()),
             },
         )
         .await
@@ -383,7 +387,7 @@ impl<A: Application> Runtime<A> {
                 process_participant: Some(self.stop_participant()),
                 entry: None,
                 cancelled: None,
-                options,
+                options: Some(options),
             },
         )
         .await
@@ -502,12 +506,18 @@ impl Attached {
                 None => std::future::pending().await,
             }
         };
+        let setup = async {
+            match options {
+                Some(options) => load::load(&operations, &plugin, options, setup).await,
+                None => setup.await,
+            }
+        };
         let result = tokio::select! {
             biased;
             _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
             () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
             () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
-            result = load::load(&operations, &plugin, options, setup) => result,
+            result = setup => result,
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
         let mut process = spawned.lock().await.take();
@@ -632,19 +642,7 @@ async fn connect(
             "Instance.Get: peer message_bytes cannot carry StorageSettings.transfer.chunk_bytes plus framing".into(),
         ));
     }
-    let valid_time = description
-        .started_at
-        .is_some_and(|time| (-62_135_596_800..=253_402_300_799).contains(&time.seconds) && (0..1_000_000_000).contains(&time.nanos));
-    if description.revision == 0
-        || description.id.is_empty()
-        || description.sdk.is_empty()
-        || description.sdk_version.is_empty()
-        || semver::Version::parse(&description.version).is_err()
-        || !valid_time
-        || description.declarations.is_none()
-    {
-        return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
-    }
+    validate_description(&description)?;
     catalog::verify(description.declarations.as_ref().expect("description catalog was checked"))?;
     Ok(Activation {
         number,
@@ -661,6 +659,23 @@ async fn connect(
         publications: Arc::new(std::sync::OnceLock::new()),
         clock: clock.clone(),
     })
+}
+
+fn validate_description(description: &InstanceGetResponse) -> Result<(), Error> {
+    let valid_time = description
+        .started_at
+        .is_some_and(|time| (-62_135_596_800..=253_402_300_799).contains(&time.seconds) && (0..1_000_000_000).contains(&time.nanos));
+    if description.revision == 0
+        || description.id.is_empty()
+        || description.sdk.is_empty()
+        || description.sdk_version.is_empty()
+        || semver::Version::parse(&description.version).is_err()
+        || !valid_time
+        || description.declarations.is_none()
+    {
+        return Err(Error::Invalid("Get Plugin returned an invalid response".into()));
+    }
+    Ok(())
 }
 
 async fn disconnected(mut closed: watch::Receiver<bool>) {

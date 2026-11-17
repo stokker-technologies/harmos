@@ -2,7 +2,8 @@
 
 Detailed composition, feature selection and runnable examples. Start with the [Quick Start](../README.md#quick-start).
 
-Native storage and stream publication use the typed in-process facade. Bind one
+Native storage, stream publication, plugin activation and inspection, time, settings,
+status and invocations use the typed in-process facade. Bind one
 call context; the registered native operation owns admission, retries and cancellation:
 
 ```rust
@@ -19,11 +20,33 @@ context to override one invocation's policy. Children keep their own registered
 policies and inherit the other context values. `StorageRuntime::for_call` provides
 the same calls during storage-only assembly.
 
-The remaining locked `operation-boundary` direction moves plugin activation and
-the other host families to this facade, gives the builder sole manager ownership,
+The remaining locked `operation-boundary` direction gives the builder sole manager ownership,
 and removes host-client roots and wire exposure. Products declare their own remote
 wrappers. Those remaining changes are pending; their tasks and product pins live
 in `openspec/changes/operation-boundary/tasks.md`.
+
+The `plugins()` family supplies `load`, `bind`, `start_samples`, `stop_samples`,
+`settle` and `inspect` for managed or remote gRPC placement. Import its request types from `facade::plugins`. `load`
+returns an opaque activation handle; `bind` returns an opaque binding for one scope
+and clock. Use `binding.for_call()` for native calls under that clock, or
+`binding.for_call_with(CallOptions { policy: Some(policy) })` for one caller override. A sample start returns its own opaque handle, supplied to `StopSamplesRequest`;
+an old sample handle cannot stop a later run. Settlement closes every binding clone. Handles reject another runtime and a retired activation rather
+than following reconnects. A product settles a retired handle before loading again to acquire the next generation.
+
+`inspect(InspectRequest { placement, settings, metadata_bytes })` reads and validates
+frozen metadata without operation admission, sample demand or installed-state writes.
+The explicit positive `metadata_bytes` bounds the transport response; the registered
+inspection policy bounds the call. Managed inspection kills and reaps its candidate
+under `settings.stop_grace`; remote inspection detaches without sending Stop.
+Cancellation retains the process owner until cleanup, and runtime shutdown waits
+for that owner. Inspection invokes no acquisition or initialization hook.
+
+`time()` offers `get` and `sleep`; `invocations()` offers `create`, `get`, `cancel`
+and typed `watch`; `settings()` offers `list` and `set`; `status()` offers health,
+logs, trace events and diagnostics calls. Native watches accept `native_stream`
+outputs. `NativeInvocation::id()` supplies the identity used by invocation controls.
+Settings currently address registered persisted entries; their policy transfer to
+products remains part of the separate plugin-boundary change.
 
 Storage operation results now use operation-owned IPC frames and page DTOs.
 `ListRows` returns `RowOutput`, and column/projection batches contain schema and
@@ -58,8 +81,8 @@ Built-in host operations use generated `harmos_protocol::{model, host, plugin}` 
 directly. Their declarations and handlers stay together in `harmos-operations`; its
 former `runtime` feature is removed. Lifecycle requests/results are
 `harmos_protocol::model::{InvocationsGetRequest, InvocationsGetResponse, InvocationsCancelRequest, InvocationsCancelResponse, InvocationsWatchRequest, InvocationsWatchResponse}`. Register `harmos_operations::lifecycle_catalog()` by value and invoke
-`operations.call_protobuf::<harmos_operations::lifecycle::Get>(request)` for a
-native unary call. `submit_protobuf` supplies bounded stream endpoints for Watch.
+`runtime.for_call(&ctx).invocations().get(request)` for a native unary call.
+`invocations().watch(request, output)` supplies typed bounded stream endpoints.
 The consumer configures `preparation_bytes` for encoded admission; the callee owns
 its timeout and cancellation policy. Status and cancellation expose only instances
 owned by the caller. Guest child controls use the SDK protobuf adapter and retain

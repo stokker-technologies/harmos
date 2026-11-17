@@ -149,6 +149,35 @@ impl ExecutionContext {
     }
 }
 impl OperationFactory {
+    pub fn native_with_policy<O: NativeOperation>(policy: OperationPolicy) -> Result<Self, ServingError> {
+        let mut factory = Self::native::<O>()?;
+        factory.definition.policy = policy;
+        let declared = factory.definition.clone();
+        factory.declared = Arc::new(move || declared.clone());
+        factory.named = Arc::new(move |id| {
+            let mut declared = definition::<O>(id)?;
+            declared.policy = policy;
+            Ok(declared)
+        });
+        Ok(factory)
+    }
+
+    /// Use the Typed Declaration In Process and Retain the Separate Wire Carrier.
+    pub fn with_native<O: NativeOperation>(mut self) -> Result<Self, ServingError> {
+        if self.definition.id.as_str() != O::ID {
+            return Err(ServingError::EndpointTypes);
+        }
+        let native = Self::native::<O>()?;
+        let original = (self.native_types)();
+        let typed = (native.native_types)();
+        if (original.0, original.1) != (typed.0, typed.1) {
+            return Err(ServingError::EndpointTypes);
+        }
+        self.native = native.native;
+        self.native_types = native.native_types;
+        Ok(self)
+    }
+
     pub fn native<O: NativeOperation>() -> Result<Self, ServingError> {
         let declared = definition::<O>(O::ID)?;
         Ok(Self {

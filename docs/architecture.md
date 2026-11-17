@@ -21,8 +21,9 @@ same content boundary. See [Application-Owned Content](storage.md#application-ow
 
 ## Plugin Boundary
 
-**Locked owner decision, 2026-11-16; not implemented:** several products embed
-Harmos. Harmos owns plugin runtime machinery; a product owns policy and everything
+**Locked owner decision, 2026-11-16; policy transfer pending:** several products embed
+Harmos. Typed activation and bounded inspection are implemented below; the product
+policy and carrier cutovers remain open. Harmos owns plugin runtime machinery; a product owns policy and everything
 an author touches. [Plugin Boundary](../openspec/changes/plugin-boundary/design.md)
 amends `operation-boundary` and `plugin-lifecycle` together.
 
@@ -64,9 +65,9 @@ and lifecycle changes; generated output stays tracked pending the separate decis
 
 `Runtime::for_call` and `Handle::for_call` accept a `CallContext` or a trusted
 `HostContext`. `StorageRuntime::for_call` offers the same storage calls before full
-startup. The facade's `storage()` group covers the native storage catalog;
-`streams().publish()` submits one native publication. Request and result DTOs live
-under `harmos_runtime::facade::{storage, streams}`. Watch methods take typed output
+startup. The facade groups cover storage, stream publication, plugins, time,
+settings, status and invocations. Request and result DTOs live under the corresponding
+`harmos_runtime::facade` module. Watch methods take typed output
 endpoints and return cancellable invocation handles.
 
 A `CallOptions` value on the call context replaces the registered operation policy
@@ -78,8 +79,31 @@ payloads retain their allocation and are never encoded for dispatch.
 
 The runtime's whole-crate `domain` and `builtins` reexports are removed. Builder
 catalogs have explicit exports under `harmos_runtime::catalog`. Backend-authoring
-exports, manager privacy, the remaining facade groups and private host transport
-are still governed by the pending Operation Boundary inventory below.
+exports, manager privacy and private host transport are still governed by the pending Operation Boundary inventory below.
+
+Plugin calls reuse the process, connection and scoped-publication owners in
+`crates/harmos-runtime/src/plugin/grpc`. Opaque facade handles retain their original
+connection and runtime identity; they cannot retarget after reconnect or settlement.
+A binding's `for_call()` retains its unit clock and cancellation fence. Scoped
+settlement shares the existing completion signal, so concurrent callers observe one
+outcome without a second lifecycle lock or registry.
+
+The registered `plugins.activate` and `plugins.inspect` policies use
+`GrpcPluginSettings.policy.load`. An already admitted facade load performs startup
+directly; it does not submit a second load with a competing deadline. Other startup
+owners retain their existing load admission. Inspection uses bounded Instance.Get,
+validates frozen declarations and performs no installation or activation. Managed
+inspection retains a runtime stop participant through termination and reaping;
+remote inspection closes only its connection.
+
+Built-in registrations attach a native declaration to the existing carrier factory.
+Native admission keeps typed requests, responses and watch items; encoded admission
+uses the wire carrier. Both retain one registered policy and authorization owner.
+Watch behavior has one implementation shared by its two endpoint writers. Protocol
+generation emits allocation accounting for the native request and watch-item closure
+into `crates/harmos-domain/src/message/allocation/protobuf.rs`, using the locked Rust descriptor
+layout, so memory admission does not serialize payloads. Host-wire removal remains
+owned by the transport cutover.
 
 ## Storage and Query Ownership
 

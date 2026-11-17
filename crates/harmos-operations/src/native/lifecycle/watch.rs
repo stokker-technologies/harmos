@@ -21,6 +21,8 @@ use crate::execution::operations::instances::InstanceAccess;
 use crate::execution::operations::{ExecutionContext, Grpc, ProtobufOperation, ProtobufOutput, Resource, ServingError, Visibility};
 use harmos_operations::operations::instance::Id;
 
+use crate::host::declarations::Events;
+
 /* === Constants === */
 
 /* === Macros === */
@@ -48,6 +50,20 @@ impl ProtobufOperation for Watch {
     const RESOURCES: &'static [Resource] = &[Resource::of::<InstanceAccess>()];
 
     async fn run(context: ExecutionContext, request: Self::Request, output: &Self::Endpoints) -> Result<Self::Response, ServingError> {
+        Self::run_with(context, request, output).await
+    }
+}
+
+impl Watch {
+    pub fn of(instance: Id) -> InvocationsWatchRequest {
+        InvocationsWatchRequest { instance: instance.value() }
+    }
+}
+
+impl Watch {
+    pub(crate) async fn run_with(
+        context: ExecutionContext, request: InvocationsWatchRequest, output: &(impl Events<InvocationsWatchResponse> + Sync),
+    ) -> Result<InvocationsWatchResponse, ServingError> {
         let access = context.resource::<InstanceAccess>().map_err(|_| ServingError::Catalog)?;
         let instance = access
             .0
@@ -63,12 +79,6 @@ impl ProtobufOperation for Watch {
                 return Ok(state);
             }
         }
-    }
-}
-
-impl Watch {
-    pub fn of(instance: Id) -> InvocationsWatchRequest {
-        InvocationsWatchRequest { instance: instance.value() }
     }
 }
 

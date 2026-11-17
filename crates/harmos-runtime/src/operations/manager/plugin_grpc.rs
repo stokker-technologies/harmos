@@ -122,20 +122,40 @@ impl Manager {
             operation: "plugins.load".into(),
             source: Arc::new(source),
         })?;
+        let mut plugin_calls = Vec::new();
+        use crate::plugin::grpc::facade;
+        let factories = [
+            OperationFactory::native_with_policy::<facade::Load>(self.registry.plugin_load),
+            OperationFactory::native_with_policy::<facade::Inspect>(self.registry.plugin_load),
+            OperationFactory::native::<facade::Bind>(),
+            OperationFactory::native::<facade::StartSamples>(),
+            OperationFactory::native::<facade::StopSamples>(),
+            OperationFactory::native::<facade::Settle>(),
+        ];
+        for factory in factories {
+            let factory = factory.map_err(|source| Error::OperationFailed {
+                operation: "Plugin Facade".into(),
+                source: Arc::new(source),
+            })?;
+            plugin_calls.push(factory);
+        }
+        plugin_calls.extend([sample_window, plugin_load]);
         // A Load Waits on Its Plugin, Never on a Lane Slot Its Own Caller May Hold.
         let resident = crate::operations::Lane::new(crate::operations::lane::RESIDENT, crate::operations::Capacity::unbounded());
         self.register_native(crate::operations::Registration {
             batch: crate::operations::Catalog {
                 name: "harmos.samples",
-                operations: vec![sample_window, plugin_load],
+                operations: plugin_calls,
                 services: vec![],
             },
-            lane: None,
+            lane: Some(resident),
             defaults: std::collections::BTreeMap::from([("plugins.load", resident)]),
         })?;
         let factories = [
-            OperationFactory::protobuf::<harmos_operations::clock::Sleep>(),
-            OperationFactory::protobuf::<harmos_operations::clock::Get>(),
+            OperationFactory::protobuf::<harmos_operations::clock::Sleep>()
+                .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Sleep>),
+            OperationFactory::protobuf::<harmos_operations::clock::Get>()
+                .and_then(OperationFactory::with_native::<harmos_operations::host::declarations::clock::Get>),
         ];
         for factory in factories {
             let factory = factory.map_err(|source| Error::OperationFailed {
