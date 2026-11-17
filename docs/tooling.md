@@ -251,7 +251,6 @@ configuration = Configuration(
     csharp_tools=root / "target/cs/packages/grpc.tools/2.76.0/tools",
     rustfmt=root / "rustfmt.toml",
     python_style=root / "sdk/python/ruff.toml",
-    rust_selectors={"application.host.v1.DocumentsGetRequest": {"scope", "document_id"}},
 )
 generate(
     root=root,
@@ -798,6 +797,11 @@ Raw output and compiler metadata remain in `target/benchmarks/storage/`. Without
 filter, the same executable additionally uses ordinary Criterion sampling, whose native files
 remain under `target/benchmarks/storage/criterion/`. The storage-interface design owns workload
 identity and proposed acceptance budgets; this command does not establish a performance claim.
+
+`mise run bench -- --storage --filter columnar_append` measures 128 sample streams
+at 1 kHz in 100 ms Arrow windows through IPC decode, bounded admission and durable
+memory-backend completion. Its native output reports samples/s without asserting
+a timing threshold; product backends require their own throughput measurement.
 
 `mise run bench -- --storage --filter time_merge` selects the million-row engine
 merge cases; `--filter query` selects the existing query executable. Both build
