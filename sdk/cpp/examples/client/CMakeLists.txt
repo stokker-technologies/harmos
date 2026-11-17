@@ -40,6 +40,11 @@ harmos_protocol(harmos_client_fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../../test
 
 target_link_libraries(harmos_client_fixture PUBLIC Harmos::Cpp)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import harmos_tools.build.cpp; print(harmos_tools.build.cpp.ROOT.as_posix())"
+    OUTPUT_VARIABLE tooling_root
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
 set(fixture_root "${CMAKE_CURRENT_SOURCE_DIR}/../../../tests/fixtures/client/proto")
 set(fixture_dependencies ${fixture_protocols})
 list(TRANSFORM fixture_dependencies PREPEND "${fixture_root}/")
@@ -59,16 +64,16 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
     COMMAND "${Python3_EXECUTABLE}" -m harmos_tools.build.cpp
         --fixture-client "${CMAKE_CURRENT_BINARY_DIR}/generated/client.hpp"
         --fixture-descriptors "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-    WORKING_DIRECTORY "${repository_root}"
+    WORKING_DIRECTORY "${tooling_root}"
     DEPENDS
-        "${repository_root}/tools/python/src/harmos_tools/build/resource_roots.py"
-        "${repository_root}/tools/python/src/harmos_tools/build/resources/descriptor.py"
-        "${repository_root}/tools/python/src/harmos_tools/build/resources/cpp.py"
-        "${repository_root}/tools/python/src/harmos_tools/build/cpp.py"
-        "${repository_root}/tools/python/src/harmos_tools/source/protocol.py"
-        "${repository_root}/sdk/cpp/.clang-format"
+        "${tooling_root}/tools/python/src/harmos_tools/build/resource_roots.py"
+        "${tooling_root}/tools/python/src/harmos_tools/build/resources/descriptor.py"
+        "${tooling_root}/tools/python/src/harmos_tools/build/resources/cpp.py"
+        "${tooling_root}/tools/python/src/harmos_tools/build/cpp.py"
+        "${tooling_root}/tools/python/src/harmos_tools/source/protocol.py"
+        "${tooling_root}/sdk/cpp/.clang-format"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/fixture-descriptors.bin"
-        "${repository_root}/crates/harmos-protocol/src/descriptors.bin"
+        "${tooling_root}/crates/harmos-protocol/src/descriptors.bin"
     VERBATIM)
 
 target_include_directories(harmos_client_fixture PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/generated")

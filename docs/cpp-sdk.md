@@ -1,12 +1,12 @@
 # C++ SDK
 
-`sdk/cpp` is a C++20 authoring and client library. Include `harmos/harmos.hpp`;
-it includes the typed client, shared messages and plugin authoring boundary. The
+`sdk/cpp` supplies C++20 carrier and connection helpers. Include `harmos/harmos.hpp`;
+it includes shared messages and the plugin authoring boundary. The
 [conformance example](../sdk/cpp/examples/conformance/) supplies test support.
-The minimal [client](../sdk/cpp/examples/client/) connects and reads host status;
+The reference product [client](../sdk/cpp/examples/client/) connects and reads status through product wrappers;
 the minimal [plugin](../sdk/cpp/examples/plugin/) declares one typed library setting.
 The client optionally discovers an operation and calls `invocations.create` with its
-fingerprint and an encoded payload; neither example needs application bindings.
+fingerprint and an encoded payload. Its client root is generated from the product fixture descriptors.
 Both are built by the presets and can also use the installed package independently.
 
 ```cmake
@@ -70,6 +70,10 @@ and runs every host rule. Test consumers use existing SDK and host builds;
 `--layer unit` selects CTest and `--layer integration` selects the Python stories.
 The native client fixture projects library and product descriptors directly,
 preserving each operation's declared client and plugin audiences.
+Fixture generation uses the active `harmos_tools.build.cpp` module's source tree
+for generator dependencies, including when protocol inputs come from an extracted
+source package. Consumer tasks pass their tooling interpreter to CMake; generation
+requires the repository's prepared Python environment.
 `HARMOS_CONFORMANCE_HOST` may select a separately built host.
 For a focused host build, select `target/debug/harmos-conformance` (`.exe` on
 Windows) explicitly with that variable; otherwise stories prefer the native
