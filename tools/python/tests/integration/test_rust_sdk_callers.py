@@ -20,6 +20,7 @@ from pathlib import Path
 from google.protobuf.descriptor_pb2 import FileDescriptorSet
 
 # Local Imports
+import harmos_tools.build.resource_roots
 import harmos_tools.build.resources.descriptor
 import harmos_tools.build.resources.rust
 
@@ -50,7 +51,12 @@ class RustSdkCallers(unittest.TestCase):
         methods = harmos_tools.build.resources.descriptor.table(self.descriptors)
         harmos_tools.build.resources.rust.client(self.output, [method for method in methods if method["face"] == "client"])
         harmos_tools.build.resources.rust.host(self.output, [method for method in methods if method["face"] == "context"])
-        client = (self.output / "sdk/rust/src/connection/resources.rs").read_text()
+        self.assertFalse((self.output / "sdk/rust/src/connection/resources.rs").exists())
+        client_path = self.output / "client.rs"
+        harmos_tools.build.resource_roots.compose(
+            self.root, [self.root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"], client_path, "fixture", language="rust"
+        )
+        client = client_path.read_text()
         context = (self.output / "sdk/rust/src/plugin/host.rs").read_text()
         self.assertIn("pub async fn list(&self, name: impl Into<String>)", client)
         self.assertIn("pub async fn list(&self) -> Result<SettingsListResponse>", context)

@@ -508,7 +508,7 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   Samples samples(host);
   samples.window(1, 1);
   const auto child = samples.read();
-  harmos::FailureValue failure;
+  harmos::model::Failure failure;
   failure.set_classification(harmos::CLASSIFICATION_REFUSED);
   failure.set_code("refused");
   failure.set_message("Child Refused");
@@ -522,7 +522,7 @@ TEST_CASE("A Window Preserves Every Structured Child Failure Field") {
   response.mutable_child()->set_call(child.child().call());
   *response.mutable_child()->mutable_failure() = failure;
   REQUIRE(samples.stream->Write(response));
-  const auto actual = harmos::plugin::decode<harmos::FailureValue>(samples.answer(1, host.message_bytes).at(0));
+  const auto actual = harmos::plugin::decode<harmos::model::Failure>(samples.answer(1, host.message_bytes).at(0));
   REQUIRE(harmos::plugin::detail::encode(actual) == harmos::plugin::detail::encode(failure));
   REQUIRE(samples.finish().ok());
 }

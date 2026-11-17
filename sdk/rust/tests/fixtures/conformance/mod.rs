@@ -27,10 +27,11 @@ use prost_types::FileDescriptorSet;
 
 // Local Imports
 use graph::Nested;
+use harmos::model::Failure;
 use harmos::plugin::HostOperation;
 use harmos::plugin::TimeGetResponse;
 use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Registrar, Registration, Stream, Window};
-use harmos::{Classification, Failure, OperationRequest, Result, Visibility};
+use harmos::{Classification, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 
 /* === Constants === */

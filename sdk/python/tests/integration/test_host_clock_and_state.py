@@ -21,7 +21,7 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
 
-from harmos import CLASSIFICATION_REFUSED, FailureValue, SettingDeclaration, SettingValue
+from harmos import CLASSIFICATION_REFUSED, SettingDeclaration, SettingValue, model
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepRequest, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceInvokeRequest, InstanceSamplesRequest, InstanceStopRequest
@@ -68,7 +68,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         channel = grpc.aio.insecure_channel(endpoint.address)
         self.addAsyncCleanup(channel.close)
         client = InstanceStub(channel)
-        failure = FailureValue(
+        failure = model.Failure(
             classification=CLASSIFICATION_REFUSED,
             operation="application.host.v1.Invocations/Create",
             code="caller_not_allowed",
@@ -85,7 +85,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await call.write(InstanceInvokeRequest(child=ChildResponse(call=child.call, failure=failure)))
         terminal = await call.read()
         value = Value.FromString(terminal.response.payload)
-        self.assertEqual(FailureValue.FromString(value.value), failure)
+        self.assertEqual(model.Failure.FromString(value.value), failure)
         self.assertIs(await call.read(), EOF)
 
         # Preserve the Same Refusal From an Unanswered Window at Controlled Host Time.
@@ -100,7 +100,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
         batch = (await stream.read()).batch
         self.assertTrue(batch.last)
-        self.assertEqual(FailureValue.FromString(Values.FromString(batch.columns).value[0]), failure)
+        self.assertEqual(model.Failure.FromString(Values.FromString(batch.columns).value[0]), failure)
         stream.cancel()
 
         # Keep the Plugin Connection Usable After Both Refusals.

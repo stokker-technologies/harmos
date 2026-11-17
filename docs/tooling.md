@@ -325,8 +325,18 @@ target paths for focused composition. No product package is imported by the tool
 existing SDK adapter layout: Rust's `crate::message::Wire`, Python's `_context` and
 `_plugin`, C#'s `Context`/`Plugin`, and the namespace's C++ umbrella header. Products
 supply these adapters; the shared tool owns their descriptor-derived projections.
-Generated barrels retain the original `Wire`, `ClientRoot` and `Window` type names.
-Callers qualify clashing names instead of renaming imports.
+Generated barrels retain original type names. Collisions with another payload or
+an SDK type live beneath their unversioned package path, for example
+`client.host.captures.Client` in Python and `client::host::captures::Client` in Rust/C++.
+Python exposes these namespace modules as barrel attributes. C# references messages
+with `global::` qualification, including collisions introduced by imported namespaces.
+`csharp_namespace` preserves an explicit SDK namespace (including acronym casing),
+and `csharp_namespaces` maps descriptor namespaces to emitted namespaces in both
+wire compilation and typed resources. Python transport parameters choose unused
+names before rendering; a request field named `metadata`, `timeout` or `credentials`
+keeps its payload value. Library Python generation exports the authored exception
+as `FailureError` and the protocol failure as `model.Failure`; C++ also uses
+`model::Failure`, preserving the message name without a type alias.
 
 `check=True` renders into a temporary directory and compares the complete output
 inventory, reporting missing, changed and obsolete files without rewriting sources.
@@ -334,7 +344,71 @@ Normal generation retires obsolete output and writes tracked files under `sdk/`.
 Focused descriptor fixtures run with
 `mise run test -- --language python --exact tests.integration.test_shared_generator_preserves_contracts`.
 They cover nested values/enums, presence, repeated values, language keywords,
-declared audiences and per-call metadata/deadlines.
+declared audiences and per-call metadata/deadlines. Small descriptor tables also
+cover reserved and repeated message names in all four renderers, product namespace
+exports, transport/payload name collisions, configurable wire paths and complete-SDK
+check/write comparison. Compiler and formatter boundaries are replaced in these
+small fixtures; their tests require no compiler or network.
+
+Product tools can use the same public-surface checker, Python wire compiler and
+operations renderer with their own roots and package inventory:
+
+```python
+from harmos_tools.build import python_protocol
+from harmos_tools.build.resources.configuration import Configuration
+from harmos_tools.build.resources.sdk import generate
+from harmos_tools.docs import operations
+from harmos_tools.source.protocol import check_public_surfaces
+
+configuration = Configuration(
+    namespace="application",
+    library=library_descriptors,
+    csharp_tools=grpc_tools_directory,
+    csharp_namespace="ApplicationSDK",
+    csharp_namespaces={"Application.Wire": "ApplicationSDK.Models"},
+    rustfmt=root / "sdk/rust/rustfmt.toml",
+    python_style=root / "sdk/python/pyproject.toml",
+)
+generate(root=root, descriptors=descriptor_path, configuration=configuration)
+python_protocol.generate(
+    root / "sdk/python/src",
+    root=root,
+    proto_root=root / "contracts",
+    descriptors=descriptor_path,
+    configuration=configuration,
+    module_prefixes={"shared": "shared._wire"},
+)
+check_public_surfaces(
+    root,
+    namespace="application",
+    csharp_namespace="ApplicationSDK",
+    python_package=Path("sdk/python/src/application"),
+    csharp_source=Path("sdk/csharp/src/Application"),
+    cpp_include=Path("sdk/cpp/include"),
+    cpp_examples=Path("sdk/cpp/examples"),
+    rust_source=Path("sdk/rust/src"),
+)
+operations.generate(
+    root,
+    descriptors=descriptor_path,
+    output=Path("target/reference/operations"),
+    namespaces=("application",),
+    exclude=("google.",),
+    namespace="application",
+    overview_paragraphs=(),
+)
+```
+
+`python_protocol.generate` discovers `.proto` files below `proto_root/namespace`;
+`files` can instead supply an explicit tuple of paths relative to `proto_root`.
+The configured namespace is moved beneath `_wire`; `module_prefixes` rewrites
+external imports without changing protobuf identities. Protoc's own private wire
+import aliases remain compiler-owned; the shared resource renderers emit no import
+or type renames. Public-surface roots are relative to `root` or absolute paths within
+it. Operations rendering accepts a descriptor path or a `FileDescriptorSet` directly,
+without running Buf when descriptors are supplied. `namespaces` selects package
+prefixes, `exclude` removes package prefixes, and `overview_paragraphs` supplies product
+introductory text. Output must remain inside the supplied repository root.
 
 `harmos-protocol` supplies reflection for generated host messages. Lifecycle
 handlers register their generated request and response contracts directly.
@@ -380,7 +454,7 @@ cancellation for each call. The transport options belong to that call:
 | SDK | Caller Control |
 | --- | --- |
 | Rust | Pass `tonic::Request<Q>` with metadata and `set_timeout`; drop the pending future or returned Watch to cancel observation. |
-| Python | Pass `metadata=`, `credentials=` and `timeout=` to the generated callable; retain its call object and use `cancel()`. |
+| Python | Pass `call_metadata=`, `credentials=` and `timeout=` to product SDK calls; colliding payload names add a `call_` prefix. Close a Watch with `await updates.aclose()`. |
 | C# | Pass `Grpc.Core.CallOptions` with Headers, Credentials, Deadline and CancellationToken. |
 | C++ | Pass `grpc::ClientContext&` as the first argument of every generated root method; configure metadata, credentials and deadline on it and use `TryCancel()`. |
 
@@ -460,8 +534,8 @@ the endpoint serving. `start(address)` returns an endpoint with its bound
 plugin. Other calls use typed unary children on the parent invocation; declare
 those contracts in `requires`. `ctx.watch(contract, request, max_item_bytes=...)`
 returns an async generator. Each item requires demand; exhaust it or await its
-`aclose()` method to cancel the watch. Import `Failure` and `FailureValue` from the
-SDK root and raise `Failure(FailureValue(...))` for a structured application
+`aclose()` method to cancel the watch. Import `FailureError` and `model` from the
+SDK root and raise `FailureError(model.Failure(...))` for a structured application
 failure; failures received from children retain every field. `ctx.cancelled()`
 waits for cooperative cancellation and returns its reason. Every operation must select Private, Protected or Public explicitly. `ctx.set(value)` and `ctx.get(Type)` retain
 invocation-local resources; ordinary `self` fields retain the author's instance state.

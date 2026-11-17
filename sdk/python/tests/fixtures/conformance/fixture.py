@@ -24,12 +24,12 @@ from harmos import (
     VISIBILITY_PRIVATE,
     VISIBILITY_PROTECTED,
     VISIBILITY_PUBLIC,
-    Failure,
-    FailureValue,
+    FailureError,
     OperationPolicy,
     RetryPolicy,
     SettingDeclaration,
     SettingValue,
+    model,
 )
 from harmos._wire.host.v1.invocations_pb2 import InvocationsCreateRequest, InvocationsCreateResponse
 from harmos.plugin import (
@@ -39,8 +39,8 @@ from harmos.plugin import (
     Operation,
     Plugin,
     Publisher,
-    TimeGetResponse,
     Registrar,
+    TimeGetResponse,
     Window,
     observer,
     operation,
@@ -90,7 +90,7 @@ class Fixture:
             return Value(value=(await context.cancelled()).encode())
         if request.value in (b"retry", b"retry-bound"):
             if context.attempt == 1:
-                raise Failure(FailureValue(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
+                raise FailureError(model.Failure(classification=CLASSIFICATION_TRANSIENT, code="retry", message="Retry"))
             return Value(value=str(context.attempt).encode())
         return request
 
@@ -127,15 +127,15 @@ class Fixture:
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
-        raise Failure(
-            FailureValue(
+        raise FailureError(
+            model.Failure(
                 classification=CLASSIFICATION_PERMANENT,
                 code="fixture_failure",
                 message="Fixture Failed",
                 action="Use Another Input",
                 operation="conformance.failure",
                 plugin="conformance",
-                cause=FailureValue(
+                cause=model.Failure(
                     classification=CLASSIFICATION_TRANSIENT,
                     code="fixture_cause",
                     message="Fixture Cause",
@@ -239,7 +239,7 @@ class Fixture:
         create = InvocationsCreateRequest.FromString(REQUEST)
         try:
             await context.call(CREATE_INVOCATION, create)
-        except Failure as failure:
+        except FailureError as failure:
             if request.value == b"propagate":
                 raise
             return Value(value=failure.value.SerializeToString())
@@ -278,7 +278,7 @@ class Fixture:
     async def window_failure(self, context: Context) -> Value:
         try:
             return await context.call(HOST_FAIL, Value())
-        except Failure as failure:
+        except FailureError as failure:
             return Value(value=failure.value.SerializeToString())
 
     @observer("conformance.window_watch", row=Value, interval=Duration(seconds=1))
@@ -300,7 +300,7 @@ class Fixture:
             started.set()
             try:
                 return await context.call(HOST_PENDING, Value())
-            except Failure:
+            except FailureError:
                 return Value()
 
         task = asyncio.create_task(pending())

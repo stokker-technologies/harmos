@@ -411,7 +411,7 @@ async fn lifecycle_reports_failures() {
     });
     let (stop, cleanup) = combined.expect("both lifecycle failures are retained");
     assert!(matches!(stop.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application stop", .. }));
-    assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application cleanup", .. }));
+    assert!(matches!(cleanup.as_ref(), harmos_runtime::Error::TaskFailed { domain: "application finalize", .. }));
 
     assert!(crate::support::app::stop(&runtime).await.is_err());
     assert!(crate::support::app::stop(&runtime).await.is_err());

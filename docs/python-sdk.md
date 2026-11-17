@@ -16,7 +16,7 @@ try:
     print(response.status.identity.application_name)
     operations = await client.operations.list()
     selected = await client.plugins.get("example")
-    updates = client.status.watch(metadata=(("authorization", token),))
+    updates = client.status.watch(call_metadata=(("authorization", token),))
     try:
         async for update in updates:
             print(update.status)
@@ -40,9 +40,10 @@ list in [SDK Call Contracts](architecture.md#sdk-call-contracts).
 
 Unary calls are typed awaitables. Streaming calls are async generators; use
 `await updates.aclose()` when ending demand early. Exhaustion, errors and closure
-cancel the owned native call. `metadata`, `credentials` and `timeout` are typed
-keyword overrides; timeout is in seconds. An omitted deadline remains governed by
-operation policy, with no literal SDK default.
+cancel the owned native call. `call_metadata`, `credentials` and `timeout` are typed
+keyword overrides; timeout is in seconds. If a payload field occupies a transport
+option name, generation prefixes that option with `call_` until it is distinct.
+An omitted deadline remains governed by operation policy, with no literal SDK default.
 
 `Client(channel)` borrows a caller-owned channel. `Client.connect(address)` owns
 its channel and closes it through `await client.close()`. Connection transfer
@@ -50,12 +51,14 @@ budgets use `transfer` and `message_ceiling`; invalid limits refuse before diali
 
 ## Public Types
 
-Import connection plumbing, errors and shared vocabulary such as
+Import connection plumbing, `FailureError` and shared vocabulary such as
 `SettingValue`, `Declarations`, `File`, `PageRequest` and `Position` from `harmos`.
 Client response types live in `harmos.client`; Context, Plugin, Operation, decorators,
 HostOperation and plugin response types live in `harmos.plugin`. Shared host replies
 are available from both audience barrels. Generated wire requests, version packages
-and transport carriers stay private.
+and transport carriers stay private. The protocol failure keeps its name at
+`harmos.model.Failure`; raise `FailureError(model.Failure(...))` after importing
+`FailureError` and `model` from `harmos`.
 
 Harmos host operations have no wire services or client root. Products declare their
 own wrapper operations and CLIENTS, PLUGINS or ALL audiences. Generators project

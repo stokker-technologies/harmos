@@ -5,13 +5,21 @@ from harmos._wire.host.v1.plugins.settings_pb2 import SettingsListResponse
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 
 InvocationsCancelResponse.__module__ = "harmos.plugin"
+InvocationsCancelResponse.__qualname__ = "InvocationsCancelResponse"
 InvocationsGetResponse.__module__ = "harmos.plugin"
+InvocationsGetResponse.__qualname__ = "InvocationsGetResponse"
 InvocationsWatchResponse.__module__ = "harmos.plugin"
+InvocationsWatchResponse.__qualname__ = "InvocationsWatchResponse"
 OperationsGetResponse.__module__ = "harmos.plugin"
+OperationsGetResponse.__qualname__ = "OperationsGetResponse"
 OperationsListResponse.__module__ = "harmos.plugin"
+OperationsListResponse.__qualname__ = "OperationsListResponse"
 SettingsListResponse.__module__ = "harmos.plugin"
+SettingsListResponse.__qualname__ = "SettingsListResponse"
 TimeGetResponse.__module__ = "harmos.plugin"
+TimeGetResponse.__qualname__ = "TimeGetResponse"
 TimeSleepResponse.__module__ = "harmos.plugin"
+TimeSleepResponse.__qualname__ = "TimeSleepResponse"
 
 __all__ = [
     "InvocationsCancelResponse",

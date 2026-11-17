@@ -63,7 +63,9 @@ using ::harmos::model::v1::SettingsDeclarations;
 using ::harmos::model::v1::SettingValue;
 using ::harmos::model::v1::SettingValues;
 using ::harmos::model::v1::StreamDeclaration;
-using FailureValue = ::harmos::model::v1::Failure;
+namespace model {
+using ::harmos::model::v1::Failure;
+}
 using ::harmos::model::v1::Classification;
 inline constexpr auto CLASSIFICATION_UNSPECIFIED = static_cast<::harmos::model::v1::Classification>(0);
 inline constexpr auto CLASSIFICATION_PERMANENT = static_cast<::harmos::model::v1::Classification>(1);

@@ -2,8 +2,6 @@
 #nullable enable
 using Google.Protobuf;
 using Google.Protobuf.WellKnownTypes;
-using Harmos;
-using Harmos.Clients;
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -23,14 +21,14 @@ public enum HostOperation
 }
 internal static class HostContracts
 {
-  internal static readonly Operation<InvocationsGetRequest, InvocationsGetResponse> InvocationsGet = new("harmos.plugin.v1.Invocations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsCancelRequest, InvocationsCancelResponse> InvocationsCancel = new("harmos.plugin.v1.Invocations/Cancel", Visibility.Public, watch: false);
-  internal static readonly Operation<InvocationsWatchRequest, InvocationsWatchResponse> InvocationsWatch = new("harmos.plugin.v1.Invocations/Watch", Visibility.Public, watch: true);
-  internal static readonly Operation<OperationsListRequest, OperationsListResponse> OperationsList = new("harmos.plugin.v1.Operations/List", Visibility.Public, watch: false);
-  internal static readonly Operation<OperationsGetRequest, OperationsGetResponse> OperationsGet = new("harmos.plugin.v1.Operations/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<SettingsListRequest, SettingsListResponse> PluginsSettingsList = new("harmos.plugin.v1.plugins.Settings/List", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeGetRequest, TimeGetResponse> TimeGet = new("harmos.plugin.v1.Time/Get", Visibility.Public, watch: false);
-  internal static readonly Operation<TimeSleepRequest, TimeSleepResponse> TimeSleep = new("harmos.plugin.v1.Time/Sleep", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.InvocationsGetRequest, global::Harmos.Clients.InvocationsGetResponse> InvocationsGet = new("harmos.plugin.v1.Invocations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.InvocationsCancelRequest, global::Harmos.Clients.InvocationsCancelResponse> InvocationsCancel = new("harmos.plugin.v1.Invocations/Cancel", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.InvocationsWatchRequest, global::Harmos.Clients.InvocationsWatchResponse> InvocationsWatch = new("harmos.plugin.v1.Invocations/Watch", Visibility.Public, watch: true);
+  internal static readonly Operation<global::Harmos.Clients.OperationsListRequest, global::Harmos.Clients.OperationsListResponse> OperationsList = new("harmos.plugin.v1.Operations/List", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.OperationsGetRequest, global::Harmos.Clients.OperationsGetResponse> OperationsGet = new("harmos.plugin.v1.Operations/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.SettingsListRequest, global::Harmos.Clients.SettingsListResponse> PluginsSettingsList = new("harmos.plugin.v1.plugins.Settings/List", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.TimeGetRequest, global::Harmos.Clients.TimeGetResponse> TimeGet = new("harmos.plugin.v1.Time/Get", Visibility.Public, watch: false);
+  internal static readonly Operation<global::Harmos.Clients.TimeSleepRequest, global::Harmos.Clients.TimeSleepResponse> TimeSleep = new("harmos.plugin.v1.Time/Sleep", Visibility.Public, watch: false);
 }
 public static class HostRequirements
 {
@@ -56,18 +54,18 @@ public sealed class HostRoot(Context context)
 }
 public sealed class HostInvocationsResource(Context context)
 {
-  public async Task<InstanceState> Get(ulong instance, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Harmos.InstanceState> Get(ulong instance, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new InvocationsGetRequest
+    var request = new global::Harmos.Clients.InvocationsGetRequest
     {
       Instance = instance,
     };
     var response = await context.CallAsync(HostContracts.InvocationsGet, request, policy, cancellationToken);
     return response.Invocation ?? throw new InvalidOperationException("Read InvocationsGet: Missing Payload");
   }
-  public async Task<InstanceState> Cancel(ulong instance, string reason, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Harmos.InstanceState> Cancel(ulong instance, string reason, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new InvocationsCancelRequest
+    var request = new global::Harmos.Clients.InvocationsCancelRequest
     {
       Instance = instance,
       Reason = reason,
@@ -75,9 +73,9 @@ public sealed class HostInvocationsResource(Context context)
     var response = await context.CallAsync(HostContracts.InvocationsCancel, request, policy, cancellationToken);
     return response.Invocation ?? throw new InvalidOperationException("Read InvocationsCancel: Missing Payload");
   }
-  public async IAsyncEnumerable<InstanceState> Watch(ulong instance, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+  public async IAsyncEnumerable<global::Harmos.InstanceState> Watch(ulong instance, ulong maxItemBytes, [EnumeratorCancellation] CancellationToken cancellationToken = default)
   {
-    var request = new InvocationsWatchRequest
+    var request = new global::Harmos.Clients.InvocationsWatchRequest
     {
       Instance = instance,
     };
@@ -89,17 +87,17 @@ public sealed class HostInvocationsResource(Context context)
 }
 public sealed class HostOperationsResource(Context context)
 {
-  public async Task<IReadOnlyList<DiscoveredOperation>> List(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<IReadOnlyList<global::Harmos.DiscoveredOperation>> List(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new OperationsListRequest
+    var request = new global::Harmos.Clients.OperationsListRequest
     {
     };
     var response = await context.CallAsync(HostContracts.OperationsList, request, policy, cancellationToken);
     return response.Operations;
   }
-  public async Task<DiscoveredOperation> Get(string id, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Harmos.DiscoveredOperation> Get(string id, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new OperationsGetRequest
+    var request = new global::Harmos.Clients.OperationsGetRequest
     {
       Id = id,
     };
@@ -113,9 +111,9 @@ public sealed class HostPluginsResource(Context context)
 }
 public sealed class HostPluginsSettingsResource(Context context)
 {
-  public async Task<SettingsListResponse> List(string? name = null, ReadCut? at = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Harmos.Clients.SettingsListResponse> List(string? name = null, global::Harmos.ReadCut? at = null, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new SettingsListRequest
+    var request = new global::Harmos.Clients.SettingsListRequest
     {
     };
     if (name is not null)
@@ -132,17 +130,17 @@ public sealed class HostPluginsSettingsResource(Context context)
 }
 public sealed class HostTimeResource(Context context)
 {
-  public async Task<Timestamp> Get(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Google.Protobuf.WellKnownTypes.Timestamp> Get(OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new TimeGetRequest
+    var request = new global::Harmos.Clients.TimeGetRequest
     {
     };
     var response = await context.CallAsync(HostContracts.TimeGet, request, policy, cancellationToken);
     return response.Now ?? throw new InvalidOperationException("Read TimeGet: Missing Payload");
   }
-  public async Task<TimeSleepResponse> Sleep(Duration duration, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
+  public async Task<global::Harmos.Clients.TimeSleepResponse> Sleep(global::Google.Protobuf.WellKnownTypes.Duration duration, OperationPolicy? policy = null, CancellationToken cancellationToken = default)
   {
-    var request = new TimeSleepRequest
+    var request = new global::Harmos.Clients.TimeSleepRequest
     {
       Duration = duration,
     };

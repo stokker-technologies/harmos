@@ -183,7 +183,7 @@ async fn budget_retains_journal() {
     })
     .await
     .unwrap();
-    assert!(matches!(runtime.stop_with_timeout(Duration::ZERO).await, Err(Error::InvalidInput { field: "runtime shutdown timeout", .. })));
+    assert!(matches!(runtime.stop_with_timeout(Duration::ZERO).await, Err(Error::InvalidInput { field: "runtime stop timeout", .. })));
     let accepted = runtime.state.commit(crate::runtime::probe::rename("open")).await.unwrap();
     assert_eq!(accepted.position, Position(1));
     for _ in 0..2 {

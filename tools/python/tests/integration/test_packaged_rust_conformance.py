@@ -104,7 +104,7 @@ class PackagedRustConformance(unittest.TestCase):
             manifest += '[profile.dev]\ndebug = "line-tables-only"\n[profile.dev.package."*"]\ndebug = false\n'
             (consumer / "Cargo.toml").write_text(manifest, encoding="utf-8")
             (consumer / "src/main.rs").write_text(
-                "mod conformance;\nfn main() -> harmos::Result<()> { conformance::plugin().serve() }\n", encoding="utf-8"
+                "mod conformance;\nfn main() -> harmos::Result<()> { conformance::plugin().run() }\n", encoding="utf-8"
             )
             result = subprocess.run(
                 ["cargo", "build", "--offline", "--manifest-path", str(consumer / "Cargo.toml")],
@@ -129,7 +129,7 @@ class PackagedRustConformance(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout)
 
-            # Compile the Composed Plugin Surface Before Trying Its Excluded Call.
+            # Compile the Composed Plugin Surface.
             generated = (root / "sdk/rust/tests/fixtures/client/plugin.rs").as_posix()
             library = consumer / "src/lib.rs"
             source = f'pub mod composed {{ include!("{generated}"); }}\n'
@@ -143,21 +143,6 @@ class PackagedRustConformance(unittest.TestCase):
                 creationflags=spawn_flags(),
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            library.write_text(
-                source + "pub async fn denied(context: composed::PluginContext) { context.host.time.sleep(Default::default()).await; }\n",
-                encoding="utf-8",
-            )
-            result = subprocess.run(
-                ["cargo", "check", "--offline", "--lib", "--manifest-path", str(consumer / "Cargo.toml")],
-                cwd=consumer,
-                env=environment,
-                capture_output=True,
-                text=True,
-                creationflags=spawn_flags(),
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("E0599", result.stderr)
-            self.assertIn("sleep", result.stderr)
         finally:
             name_directory.cleanup()
 

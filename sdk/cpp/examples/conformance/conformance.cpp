@@ -58,8 +58,8 @@ harmos::conformance::Value value(string bytes) {
   return result;
 }
 
-harmos::FailureValue failure() {
-  harmos::FailureValue failure;
+harmos::model::Failure failure() {
+  harmos::model::Failure failure;
   failure.set_classification(harmos::CLASSIFICATION_PERMANENT);
   failure.set_code("fixture_failure");
   failure.set_message("Fixture Failed");

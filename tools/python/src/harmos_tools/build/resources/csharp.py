@@ -12,6 +12,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import re
 from pathlib import Path
 
 # Local Imports
@@ -52,7 +53,9 @@ SCALARS = {
 # === Public Functions === #
 
 
-def message(name: str) -> str:
+def message(name: str, namespaces: dict[str, str] | None = None) -> str:
+    for source, destination in sorted((namespaces or {}).items(), key=lambda entry: -len(entry[0])):
+        name = re.sub(r"(?<![\w.])" + re.escape(source) + r"(?=\.|\s*[;{])", destination, name)
     return (
         name.replace("Harmos.Plugin.V1", "Harmos.Internal.Plugin")
         .replace("Harmos.Host.V1.StatusResources", "Harmos.Clients")
@@ -96,7 +99,7 @@ def client(
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["csharp"]
     )
-    message_names = _csharp_names(used)
+    message_names = _csharp_names(used, configuration.csharp_namespaces)
 
     def field_type(field: Field) -> str:
         value = message_names[field["csharp"]] if field["csharp"] else SCALARS.get(field["kind"], "long")
@@ -115,12 +118,11 @@ def client(
         "Google.Protobuf",
         "Google.Protobuf.WellKnownTypes",
     }
-    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "#nullable enable",
         *[f"using {name};" for name in sorted(namespaces)],
-        f"namespace {'.'.join(part.title() for part in namespace.split('.'))};",
+        f"namespace {configuration.csharp_namespace or '.'.join(part.title() for part in namespace.split('.'))};",
         "",
     ]
     for node in sorted(nodes):
@@ -283,7 +285,7 @@ def host(
     used = {method[key + "_csharp"] for method in methods for key in ("request", "response")}
     used.update(field["csharp"] for method in methods for field in method["fields"] if field["csharp"])
     used.update(method["payload_field"]["csharp"] for method in methods if method["payload_field"] and method["payload_field"]["csharp"])
-    message_names = _csharp_names(used)
+    message_names = _csharp_names(used, configuration.csharp_namespaces)
 
     def field_type(field: Field) -> str:
         if field["type"]:
@@ -303,7 +305,6 @@ def host(
         "Google.Protobuf",
         "Google.Protobuf.WellKnownTypes",
     }
-    namespaces.update(message(full).rsplit(".", 1)[0] for full in used if ".Types." not in full)
     if target is not None:
         namespaces.update({"Harmos", "Harmos.Plugins", "Harmos.Clients"})
     lines = [
@@ -536,13 +537,9 @@ def _identifier(name: str) -> str:
     )
 
 
-def _csharp_names(used: set[str]) -> dict[str, str]:
-    names = {full: full.rsplit(".", 1)[-1] for full in used}
-    duplicates = {name for name in names.values() if list(names.values()).count(name) > 1}
-    for full in used:
-        if names[full] in duplicates or ".Types." in full:
-            names[full] = "global::" + message(full)
-    return names
+def _csharp_names(used: set[str], namespaces: dict[str, str] | None = None) -> dict[str, str]:
+    # Imported Namespaces Can Contain Collisions Outside the Used Message Set.
+    return {full: "global::" + message(full, namespaces) for full in used}
 
 
 # === Entry Point === #

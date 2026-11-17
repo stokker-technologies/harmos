@@ -99,8 +99,8 @@ struct Watch {
 namespace harmos {
 class Failure : public std::runtime_error {
 public:
-  FailureValue value;
-  explicit Failure(FailureValue failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
+  model::Failure value;
+  explicit Failure(model::Failure failure) : std::runtime_error(failure.message()), value(std::move(failure)) {}
 };
 
 class TransportError : public std::runtime_error {

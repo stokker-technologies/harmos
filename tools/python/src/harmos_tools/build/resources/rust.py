@@ -60,11 +60,14 @@ SCALARS = {
 
 def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     configuration = configuration or Configuration()
-    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
+    library_paths = descriptor.public_paths(
+        configuration.library if configuration.library is not None and configuration.library.file else descriptors
+    )
     requests = descriptor.request_names(descriptors)
 
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
-    groups: dict[str, list[str]] = {"shared": [], "client": [], "plugin": []}
+    groups: dict[str, list[tuple[tuple[str, ...], str]]] = {"shared": [], "client": [], "plugin": []}
     for file in descriptors.file:
         if not file.package.startswith((f"{configuration.namespace}.", "harmos.")):
             continue
@@ -100,12 +103,12 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
                 else audiences.get(full, {"client"})
             )
             for group in groups_for_type:
-                alias = definition.name if configuration.namespace == "harmos" else descriptor.public_name(full, public_names)
+                prefix = tuple(public_paths[full].split(".")[:-1])
                 exported = source
                 if configuration.namespace != "harmos" and file.package.startswith("harmos."):
                     boundary = "" if group == "shared" else group + "::"
-                    exported = "harmos::" + boundary + definition.name
-                groups[group].append(f"pub use {exported}" + (f" as {alias}" if alias != definition.name else "") + ";")
+                    exported = "::harmos::" + boundary + library_paths[full].replace(".", "::")
+                groups[group].append((prefix, f"pub use {exported};"))
             if isinstance(definition, DescriptorProto) and (
                 any(not nested.options.map_entry for nested in definition.nested_type)
                 or definition.enum_type
@@ -115,14 +118,23 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
                 for group in groups_for_type:
                     module = parent + "::" + descriptor.snake(definition.name)
                     if configuration.namespace != "harmos" and file.package.startswith("harmos."):
-                        module = "harmos::" + ("" if group == "shared" else group + "::") + descriptor.snake(definition.name)
-                    groups[group].append(f"pub use {module};")
-    for group, lines in groups.items():
+                        module = "::harmos::" + ("" if group == "shared" else group + "::") + descriptor.snake(definition.name)
+                    groups[group].append((tuple(public_paths[full].split(".")[:-1]), f"pub use {module};"))
+    for group, entries in groups.items():
+        lines = []
+        opened: tuple[str, ...] = ()
+        for prefix, declaration in sorted(entries):
+            shared = 0
+            while shared < min(len(opened), len(prefix)) and opened[shared] == prefix[shared]:
+                shared += 1
+            lines += ["}" for _ in opened[shared:]]
+            lines += [f"pub mod {part} {{" for part in prefix[shared:]]
+            lines.append(declaration)
+            opened = prefix
+        lines += ["}" for _ in opened]
         target = root / "sdk/rust/src" / ("exports.rs" if group == "shared" else f"{group}/types.rs")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            "\n".join(["// @generated from protocol descriptors; do not edit.", *sorted(lines), ""]), encoding="utf-8", newline="\n"
-        )
+        target.write_text("\n".join(["// @generated from protocol descriptors; do not edit.", *lines, ""]), encoding="utf-8", newline="\n")
 
 
 def message(full: str) -> str:
@@ -196,15 +208,12 @@ def client(
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    aliases = {full: full.rsplit(".", 1)[-1] for full in used}
-    reserved = set(names.values()) | {"CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"}
-    duplicates = reserved | {name for name in aliases.values() if list(aliases.values()).count(name) > 1}
-    for full in used:
-        if aliases[full] in duplicates:
-            aliases[full] = message(full)
+    reserved = set(names.values()) | {"Call", "Client", "CallOptions", "ClientTransport", "Watching", "ReflectMessage", "PathAndQuery"}
+    reserved.update("".join(part.title().replace("_", "") for part in method["path"]) + "Options" for method in methods)
+    message_names = _message_names(used, reserved)
 
     def field_type(field: descriptor.Field) -> str:
-        value = aliases[field["type"]] if field["type"] else SCALARS.get(field["kind"], "i64")
+        value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "i64")
         return f"std::collections::HashMap<String, {value}>" if field["map"] else f"Vec<{value}>" if field["repeated"] else value
 
     lines = [
@@ -213,7 +222,7 @@ def client(
         "use prost_reflect::ReflectMessage;",
         "use tonic::codegen::http::uri::PathAndQuery;",
     ]
-    lines += [f"use {message(full)};" for full in sorted(used) if "::" not in aliases[full]]
+    lines += [f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full]]
     for method in methods:
         name = "".join(part.title().replace("_", "") for part in method["path"]) + "Options"
         lines += ["#[derive(Default)]", f"pub struct {name} {{"]
@@ -257,7 +266,7 @@ def client(
                 raise ValueError(
                     f"Generate Rust Client {method['method']}: Declare a Managed Contract for Client Streaming Before Regenerating"
                 )
-            request, response = (aliases[method[key]] for key in ("request", "response"))
+            request, response = (message_names[method[key]] for key in ("request", "response"))
             required = []
             for required_field in method["fields"]:
                 if required_field["optional"]:
@@ -436,7 +445,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         return "".join(word.title() for word in value.split("_"))
 
     def field_type(field: descriptor.Field) -> str:
-        value = field["type"].rsplit(".", 1)[-1] if field["type"] else SCALARS.get(field["kind"], "i64")
+        value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "i64")
         return f"std::collections::HashMap<String, {value}>" if field["map"] else f"Vec<{value}>" if field["repeated"] else value
 
     nodes = sorted({tuple(method["path"][:length]) for method in methods for length in range(1, len(method["path"]))})
@@ -452,13 +461,18 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
+    reserved = {"Context", "Error", "Result", "Plugin", "OperationPolicy", "NonZeroUsize", "HostOperation", "HostRoot", *names.values()}
+    for method in methods:
+        name = "".join(title(part) for part in method["path"])
+        reserved.update({f"Host{name}", f"Host{name}Options"})
+    message_names = _message_names(used, reserved)
     lines = [
         "// @generated from protocol descriptors; do not edit.",
         "use crate::{Context, Error, Result, OperationPolicy};",
         "use crate::plugin::{Dependency, Registrar, Registration};",
         "use std::num::NonZeroUsize;",
     ]
-    lines += [f"use {message(full)};" for full in sorted(used)]
+    lines += [f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full]]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
     lines += [
@@ -469,7 +483,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        lines += [f"            HostOperation::{name} => ctx.register(Dependency::<{method['request'].rsplit('.', 1)[-1]}>::new()),"]
+        lines += [f"            HostOperation::{name} => ctx.register(Dependency::<{message_names[method['request']]}>::new()),"]
     lines += [
         "        }",
         "    }",
@@ -507,7 +521,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         lines += lines_items
         lines += (["    pub policy: Option<OperationPolicy>,"] if not method["server_streaming"] else []) + ["}"]
         if method["server_streaming"]:
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            q, r = (message_names[method[key]] for key in ("request", "response"))
             payload = method["payload_field"]
             result = field_type(payload) if payload else r
             lines += [
@@ -542,7 +556,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         ]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
-            q, r = (method[key].rsplit(".", 1)[-1] for key in ("request", "response"))
+            q, r = (message_names[method[key]] for key in ("request", "response"))
             required = []
             for required_field in method["fields"]:
                 if required_field["optional"]:
@@ -635,7 +649,7 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
         source = source[:start] + source[end:]
         source = source.replace("use crate::{Context, Error, Result, OperationPolicy};", "use harmos::{Error, Result, OperationPolicy};")
         source = source.replace("use crate::plugin::{Dependency, Registrar, Registration};", "")
-        source = re.sub(r"\bContext\b", "harmos::plugin::Context", source)
+        source = re.sub(r"(?<![:\w])Context\b", "harmos::plugin::Context", source)
         source = source.replace("crate::context::Watching", "harmos::plugin::Watching")
         source += "\n#[derive(Clone)]\npub struct PluginContext { pub host: HostRoot }\nimpl PluginContext {\n"
         source += "pub fn new(context: harmos::plugin::Context) -> Self { Self { host: HostRoot::new(context) } }\n}\n"
@@ -658,6 +672,12 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
 
 
 # === Private Functions === #
+
+
+def _message_names(used: set[str], reserved: set[str]) -> dict[str, str]:
+    names = {full: full.rsplit(".", 1)[-1] for full in used}
+    duplicates = reserved | {name for name in names.values() if list(names.values()).count(name) > 1}
+    return {full: message(full) if name in duplicates else name for full, name in names.items()}
 
 
 def _identifier(name: str) -> str:

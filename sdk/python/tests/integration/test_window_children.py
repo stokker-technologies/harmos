@@ -27,14 +27,14 @@ from grpc.aio import EOF, AioRpcError
 from harmos import (
     CLASSIFICATION_REFUSED,
     VISIBILITY_PUBLIC,
-    Failure,
-    FailureValue,
+    FailureError,
     Position,
     ReadCut,
     SettingDeclaration,
     SettingsDeclarations,
     SettingValue,
     SettingValues,
+    model,
 )
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse, TimeSleepResponse
 from harmos._wire.plugin.v1.instance_pb2 import InstanceGetRequest, InstanceSamplesRequest
@@ -93,7 +93,7 @@ class Reader:
             return BytesValue(value=b"answered")
         try:
             return await context.call(ECHO, BytesValue(value=b"failure"))
-        except Failure as failure:
+        except FailureError as failure:
             return BytesValue(value=failure.value.SerializeToString())
 
     @publisher("example.device", row=BytesValue)
@@ -192,27 +192,27 @@ class WindowChildren(IsolatedAsyncioTestCase):
         self.assertEqual((await stream.read()).child_cancel.call, pending.call)
         self.assertEqual((await stream.read()).batch.columns, _columns(b"answered"))
         assert reader.pending is not None
-        with self.assertRaises(Failure):
+        with self.assertRaises(FailureError):
             await reader.pending
 
-        # A Late Retired Reply Cannot Corrupt the Next Window or Its Failure.
+        # A Late Retired Reply Cannot Corrupt the Next Window or Its FailureError.
         await stream.write(
             InstanceSamplesRequest(window=Window(start=Timestamp(seconds=103), period=Duration(seconds=1), count=1, sequence=4))
         )
         child = (await stream.read()).child
         self.assertGreater(child.call, pending.call)
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=pending.call, payload=b"")))
-        failure = FailureValue(
+        failure = model.Failure(
             classification=CLASSIFICATION_REFUSED,
             code="denied",
             operation=ECHO.id,
             plugin="example",
             details={"key": "value"},
-            cause=FailureValue(code="source"),
+            cause=model.Failure(code="source"),
             diagnostics="details",
         )
         await stream.write(InstanceSamplesRequest(child=ChildResponse(call=child.call, failure=failure)))
-        self.assertEqual(FailureValue.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
+        self.assertEqual(model.Failure.FromString(Values.FromString((await stream.read()).batch.columns).value[0]), failure)
         await stream.done_writing()
         self.assertIs(await stream.read(), EOF)
 

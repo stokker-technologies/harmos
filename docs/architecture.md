@@ -1774,7 +1774,13 @@ marked in the protocol definitions rather than inferred by parameter name. The o
 Plugins.Watch name selects all entries when absent.
 
 Product generators merge descriptors, keep their own protocol modules private and export
-response types through a client barrel. The shared descriptor fixture proves a product
+response types through a client barrel. Shared renderers preserve message names;
+colliding names use their unversioned package namespace beneath that barrel rather
+than import or type renames. C# message references are globally qualified. Python
+transport options use distinct parameter names from request payload fields. Shared
+wire compilation, public-surface checks and operations reference rendering accept
+product roots, packages and namespaces; see
+[Protocol Generation](tooling.md#protocol-generation). The shared descriptor fixture proves a product
 Annotations resource beneath library Plugins alongside the sibling Jobs.Progress root.
-Python composed roots inherit Client connection ownership and preserve typed resource
+Python composed roots inherit Connection ownership and preserve typed resource
 properties. No application-side resource grafting is required.

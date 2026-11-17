@@ -65,7 +65,10 @@ SCALARS = {
 def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
     configuration = configuration or Configuration()
-    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
+    library_paths = descriptor.public_paths(
+        configuration.library if configuration.library is not None and configuration.library.file else descriptors
+    )
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     requests = descriptor.request_names(descriptors)
 
@@ -98,13 +101,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 continue
             if definition.name in carriers:
                 continue
-            name = (
-                "FailureValue"
-                if definition.name == "Failure"
-                else definition.name
-                if configuration.namespace == "harmos"
-                else descriptor.public_name(f"{file.package}.{definition.name}", public_names)
-            )
+            name = public_paths[f"{file.package}.{definition.name}"]
             groups_for_type = (
                 {"plugin_types"}
                 if ".plugin." in file.package
@@ -118,7 +115,11 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 if configuration.namespace != "harmos" and file.package.startswith("harmos."):
                     library_shared = ".model." in file.package or len(audiences.get(f"{file.package}.{definition.name}", set())) > 1
                     source = "harmos" if library_shared else "harmos.client" if group == "client_types" else "harmos.plugin"
-                    original = "FailureValue" if definition.name == "Failure" else definition.name
+                    original = library_paths[f"{file.package}.{definition.name}"]
+                    if "." in original:
+                        prefix, original = original.rsplit(".", 1)
+                        library_group = "shared" if library_shared else "client_types" if group == "client_types" else "plugin_types"
+                        source = f"harmos._generated._exports.{library_group}.{prefix}"
                 groups[group].append((source, original, name))
         for definition in file.enum_type:
             groups_for_type = (
@@ -138,7 +139,16 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                     if group == "client_types"
                     else "harmos.plugin"
                 )
-                groups[group].extend((source, value.name, value.name) for value in definition.value)
+                prefix = (
+                    public_paths[f"{file.package}.{definition.name}"].rsplit(".", 1)[0]
+                    if "." in public_paths[f"{file.package}.{definition.name}"]
+                    else ""
+                )
+                if configuration.namespace != "harmos" and file.package.startswith("harmos."):
+                    library_prefix = library_paths[f"{file.package}.{definition.name}"].rpartition(".")[0]
+                    if library_prefix:
+                        source = f"harmos._generated._exports.{group}.{library_prefix}"
+                groups[group].extend((source, value.name, (prefix + "." if prefix else "") + value.name) for value in definition.value)
     messages = set()
     for messages_file in descriptors.file:
         if not (messages_file.package.startswith(f"{configuration.namespace}.")):
@@ -155,19 +165,44 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
             )
 
     target.mkdir(parents=True, exist_ok=True)
+    for path in (target / "_exports").rglob("*.py"):
+        path.unlink()
     for group, entries in groups.items():
-        lines = ["# @generated from protocol descriptors; do not edit."]
-        lines += [
-            f"from {module} import {original}" + (f" as {name}" if original != name else "") for module, original, name in sorted(entries)
-        ]
-        public_module = f"{configuration.namespace}" if group == "shared" else f"{configuration.namespace}." + group.removesuffix("_types")
+        modules: dict[tuple[str, ...], list[str]] = {(): []}
+        exports: dict[tuple[str, ...], set[str]] = {(): set()}
+        metadata: dict[tuple[str, ...], list[str]] = {}
         for module, original, name in sorted(entries):
+            parts = name.split(".")
+            node = tuple(parts[:-1])
+            for length in range(1, len(node) + 1):
+                parent, child = node[: length - 1], node[length - 1]
+                modules.setdefault(parent, []).append(f"from . import {child}")
+                exports.setdefault(parent, set()).add(child)
+            modules.setdefault(node, []).append(f"from {module} import {original}")
+            exports.setdefault(node, set()).add(original)
             if (module, original) in messages:
-                lines += [f'{name}.__module__ = "{public_module}"']
-                if configuration.namespace != "harmos":
-                    lines += [f'{name}.__qualname__ = "{name}"']
-        lines += ["", "__all__ = [", *[f"    {name!r}," for name in sorted(name for _, _, name in entries)], "]", ""]
-        (target / f"{group}.py").write_text("\n".join(lines), encoding="utf-8", newline="\n")
+                public_module = (
+                    configuration.namespace if group == "shared" else configuration.namespace + "." + group.removesuffix("_types")
+                )
+                metadata.setdefault(node, []).append(f'{original}.__module__ = "{public_module}"')
+                metadata[node].append(f'{original}.__qualname__ = "{name}"')
+        for node, imports in modules.items():
+            if node:
+                path = target / "_exports" / group / Path(*node) / "__init__.py"
+            else:
+                path = target / f"{group}.py"
+                imports = [line.replace("from . import ", f"from ._exports.{group} import ") for line in imports]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            lines = [
+                "# @generated from protocol descriptors; do not edit.",
+                *dict.fromkeys(imports),
+                "",
+                *metadata.get(node, []),
+                "",
+                f"__all__ = {sorted(exports[node])!r}",
+                "",
+            ]
+            path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
     if configuration.namespace != "harmos":
         return
@@ -192,25 +227,25 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
             newline="\n",
         )
 
-    shared = sorted(name for _, _, name in groups["shared"])
-    # Preserve the Public Exception Name While Its Authored Implementation Is Outside Generation.
+    shared = sorted({name.split(".", 1)[0] for _, _, name in groups["shared"]})
+    # Export the Authored Exception Under Its Original Name.
     barrel(
         package / "__init__.py",
         [
             "from ._connection import Connection",
-            "from ._invocation import FailureError as Failure",
+            "from ._invocation import FailureError",
             "from ._invocation import ProtocolError",
             *[f"from ._generated.shared import {name}" for name in shared],
         ],
-        ["Connection", "Failure", "ProtocolError", *shared],
+        ["Connection", "FailureError", "ProtocolError", *shared],
     )
-    client = sorted(name for _, _, name in groups["client_types"])
+    client = sorted({name.split(".", 1)[0] for _, _, name in groups["client_types"]})
     barrel(
         package / "client.py",
         [f"from ._generated.client_types import {name}" for name in client],
         client,
     )
-    plugin = sorted(name for _, _, name in groups["plugin_types"])
+    plugin = sorted({name.split(".", 1)[0] for _, _, name in groups["plugin_types"]})
     authored = {
         "_authoring": ["Catalog", "Endpoint", "Plugin", "Registrar", "Registration"],
         "_contracts": ["Operation", "Stream", "Window", "observer", "on_stop", "operation", "publisher", "window_observer"],
@@ -224,7 +259,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
         [*plugin, *[name for names in authored.values() for name in names]],
     )
     paths = [target / f"{group}.py" for group in groups] + [package / "__init__.py", package / "client.py", package / "plugin/__init__.py"]
-    config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
+    paths += sorted((target / "_exports").rglob("*.py"))
+    config = configuration.python_style or Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", *map(str, paths)],
         check=True,
@@ -285,7 +321,7 @@ def client(
         for field in [*method["fields"], *([method["payload_field"]] if method["payload_field"] else [])]
         if field["type"]
     )
-    imports, message_names = _message_imports(messages, used)
+    imports, message_names = _message_imports(messages, used, reserved=set(names.values()))
 
     def field_type(field: descriptor.Field) -> str:
         value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "int")
@@ -325,7 +361,19 @@ def client(
             parameters = [f"{_identifier(field['name'])}: {field_type(field)}" for field in required]
             parameters += ["*"]
             parameters += [f"{_identifier(field['name'])}: {field_type(field)} | None = None" for field in optional]
-            parameters += ["metadata: Metadata | None = None", "timeout: float | None = None", "credentials: CallCredentials | None = None"]
+            occupied = {_identifier(field["name"]) for field in method["fields"]} | {"self"}
+            transport = {}
+            for name in ("metadata", "timeout", "credentials"):
+                parameter = "call_" + name if configuration.namespace != "harmos" and name == "metadata" else name
+                while parameter in occupied:
+                    parameter = "call_" + parameter
+                occupied.add(parameter)
+                transport[name] = parameter
+            parameters += [
+                f"{transport['metadata']}: Metadata | None = None",
+                f"{transport['timeout']}: float | None = None",
+                f"{transport['credentials']}: CallCredentials | None = None",
+            ]
             payload = method["payload_field"]
             result = field_type(payload) if payload else response
             result = result.replace("Sequence[", "list[")
@@ -352,7 +400,7 @@ def client(
                 ]
             lines += [f"        request = {request}({', '.join(values)})"]
             path = f"/{method['package']}.{method['service']}/{method['method']}"
-            call = f"{'stream' if stream_call else 'unary'}(self._channel, {path!r}, request, {response}, metadata=metadata, timeout=timeout, credentials=credentials)"
+            call = f"{'stream' if stream_call else 'unary'}(self._channel, {path!r}, request, {response}, metadata={transport['metadata']}, timeout={transport['timeout']}, credentials={transport['credentials']})"
             if stream_call:
                 lines += [f"        call = {call}", "        try:", "            async for response in call:"]
                 if payload and payload["kind"] == 11 and not payload["repeated"]:
@@ -383,8 +431,6 @@ def client(
                     value = f"list({value})"
                 lines += [f"        return {value}"]
     source = "\n".join(lines) + "\n"
-    if configuration.namespace != "harmos":
-        source = source.replace("metadata: Metadata", "call_metadata: Metadata").replace("metadata=metadata,", "metadata=call_metadata,")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(source, encoding="utf-8", newline="\n")
     if target.parent.name == "_generated" and configuration.namespace == "harmos":
@@ -416,7 +462,7 @@ def client(
             newline="\n",
         )
 
-    config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
+    config = configuration.python_style or Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     paths = [target] + (
         [target.parent / "client_types.py", target.parent.parent / "client.py", target.parent.parent / "__init__.py"]
         if target.parent.name == "_generated" and configuration.namespace == "harmos"
@@ -451,7 +497,12 @@ def host(
         if field["type"]
     )
 
-    imports, message_names = _message_imports(messages, used)
+    reserved = {
+        "Host" + "".join(part.title().replace("_", "") for part in method["path"][:length]) + "Resource"
+        for method in methods
+        for length in range(1, len(method["path"]))
+    }
+    imports, message_names = _message_imports(messages, used, reserved=reserved)
 
     def field_type(field: descriptor.Field) -> str:
         value = message_names[field["type"]] if field["type"] else SCALARS.get(field["kind"], "int")
@@ -557,7 +608,7 @@ def host(
         lines += ["class PluginContext:", '    def __init__(self, context: "Context") -> None:', "        self.host = HostRoot(context)"]
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    config = Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
+    config = configuration.python_style or Path(__file__).resolve().parents[6] / "sdk/python/pyproject.toml"
     subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--config", str(config), "--select", "I,F401", "--fix", str(target)],
         check=True,
@@ -595,15 +646,19 @@ def _message_types(descriptors: FileDescriptorSet, namespace: str, module_prefix
     return types
 
 
-def _message_imports(types: dict[str, tuple[str, str]], used: set[str]) -> tuple[list[str], dict[str, str]]:
+def _message_imports(
+    types: dict[str, tuple[str, str]], used: set[str], *, reserved: set[str] | None = None
+) -> tuple[list[str], dict[str, str]]:
     names = {full: types[full][1] for full in used}
     modules: dict[str, set[str]] = {}
     for full in used:
         module, name = types[full]
         modules.setdefault(name.split(".", 1)[0], set()).add(module)
-    duplicates = {name for name, values in modules.items() if len(values) > 1}
+    duplicates = {name for name, values in modules.items() if len(values) > 1} | (reserved or set())
     duplicates.update(
         {
+            "Client",
+            "Call",
             "Metadata",
             "Channel",
             "CallCredentials",

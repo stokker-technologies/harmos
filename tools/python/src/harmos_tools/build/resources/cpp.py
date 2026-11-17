@@ -73,7 +73,7 @@ class PayloadExport:
 
 def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> dict[str, str]:
     configuration = configuration or Configuration()
-    public_names = descriptor.public_names(descriptors, namespace=configuration.namespace)
+    public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
     type_names: dict[str, str] = {}
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     requests = descriptor.request_names(descriptors)
@@ -99,13 +99,7 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
             boundary = "" if ".model." in file.package or len(groups_for_type) > 1 else next(iter(groups_for_type))
             if f"{file.package}.{definition.name}" in requests or definition.name in carriers:
                 continue
-            name = (
-                "FailureValue"
-                if definition.name == "Failure"
-                else definition.name
-                if configuration.namespace == "harmos"
-                else descriptor.public_name(f"{file.package}.{definition.name}", public_names)
-            )
+            name = public_paths[f"{file.package}.{definition.name}"].replace(".", "::")
             type_names[f"{file.package}.{definition.name}"] = (
                 f"::{configuration.namespace}::" + (boundary + "::" if boundary else "") + name
             )
@@ -120,13 +114,16 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
                             pending.append((f"{full}.{nested.name}", f"{parent}::{nested.name}", nested))
 
         for definition in file.enum_type:
+            groups_for_type = audiences.get(f"{file.package}.{definition.name}", {"client"})
+            boundary = "" if ".model." in file.package or len(groups_for_type) > 1 else next(iter(groups_for_type))
+            scope = public_paths[f"{file.package}.{definition.name}"].rpartition(".")[0].replace(".", "::")
             for value in definition.value:
                 prefix = descriptor.snake(definition.name).upper() + "_"
                 name = value.name if value.name.startswith(prefix) else prefix + value.name
                 entries.append(
                     PayloadExport(
                         boundary,
-                        name,
+                        (scope + "::" if scope else "") + name,
                         f"static_cast<::{file.package.replace('.', '::')}::{definition.name}>({value.number})",
                         True,
                     )
@@ -142,13 +139,10 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
         for entry in entries:
             if entry.boundary != boundary:
                 continue
-            if entry.constant:
-                declaration = f"inline constexpr auto {entry.name} = {entry.qualified};"
-            elif entry.name == entry.qualified.rsplit("::", 1)[-1]:
-                declaration = f"using {entry.qualified};"
-            else:
-                # FailureValue Preserves the Public Distinction From Runtime Failures.
-                declaration = f"using {entry.name} = {entry.qualified};"
+            prefix, _, name = entry.name.rpartition("::")
+            declaration = f"inline constexpr auto {name} = {entry.qualified};" if entry.constant else f"using {entry.qualified};"
+            if prefix:
+                declaration = f"namespace {prefix} {{ {declaration} }}"
             private.append(declaration)
         if boundary:
             private.append("}")
@@ -159,7 +153,11 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
             if entry.boundary != boundary:
                 continue
             qualified = (boundary + "::" if boundary else "") + entry.name
-            public.append(f"using ::harmos::detail::payloads::{qualified};")
+            prefix, _, name = entry.name.rpartition("::")
+            declaration = f"using ::{configuration.namespace}::detail::payloads::{qualified};"
+            if prefix:
+                declaration = f"namespace {prefix} {{ {declaration} }}"
+            public.append(declaration)
         public += ["}"]
     destination = root / f"sdk/cpp/include/{configuration.namespace}"
     (destination / "detail").mkdir(parents=True, exist_ok=True)
@@ -207,8 +205,19 @@ def host(
         source_items.append(f'''#include "{source_file.removesuffix(".proto")}.pb.h"''')
     source += source_items
     used = sorted({method[key] for method in methods for key in ("request", "response")})
-    # Source Files Import Named Wire Types Once; Headers Mention Only Public Types.
-    source += sorted({f"using {_type_import('::' + full.replace('.', '::'))[1]};" for full in used})
+    # Source Files Import Unambiguous Wire Types; Clashes Keep Their Qualified Path.
+    imports: dict[str, set[str]] = {}
+    reserved = {"Context", "Plugin", "Operation", "Watching", "HostRoot", "HostOperation", *names.values()}
+    for full in used:
+        _, container = _type_import("::" + full.replace(".", "::"))
+        imports.setdefault(container.rsplit("::", 1)[-1], set()).add(container)
+    clashes = reserved | {name for name, containers in imports.items() if len(containers) > 1}
+    wire_names = {}
+    for full in used:
+        qualified = "::" + full.replace(".", "::")
+        name, container = _type_import(qualified)
+        wire_names[full] = qualified if container.rsplit("::", 1)[-1] in clashes else name
+    source += sorted({f"using {container};" for name, containers in imports.items() if name not in clashes for container in containers})
     source += [f"namespace {configuration.namespace}::plugin {{"]
     if configuration.namespace != "harmos":
         source += ["using ::harmos::plugin::Operation;", "using ::harmos::plugin::Watching;", "using ::harmos::VISIBILITY_PUBLIC;"]
@@ -256,7 +265,7 @@ def host(
         header += [f"  {names[node]}(Context {parameter}) : {', '.join(initializers)} {{}}"]
         for method in (method for method in methods if tuple(method["path"][:-1]) == node):
             name = "".join(title(part) for part in method["path"])
-            q, r = (_type_import("::" + method[key].replace(".", "::"))[0] for key in ("request", "response"))
+            q, r = (wire_names[method[key]] for key in ("request", "response"))
             payload = method["payload_field"]
             result = (
                 f"Host{name}" if method["server_streaming"] else field_type(payload) if payload else message(method["response"], type_names)
@@ -377,7 +386,7 @@ def host(
     ]
     for method in methods:
         name = "".join(title(part) for part in method["path"])
-        q, r = (_type_import("::" + method[key].replace(".", "::"))[0] for key in ("request", "response"))
+        q, r = (wire_names[method[key]] for key in ("request", "response"))
         expression = f'Operation<{q}, {r}>("{method["package"]}.{method["service"]}/{method["method"]}", VISIBILITY_PUBLIC)' + (
             ".watch()" if method["server_streaming"] else ""
         )
@@ -412,24 +421,25 @@ def host(
             "invalid_argument",
         )
     )
-    imported = set()
-    for imported_method in methods:
-        for imported_key in ("request", "response"):
-            imported.add(imported_method[imported_key].rsplit(".", 1)[-1])
-
+    for qualified in named:
+        _, container = _type_import(qualified)
+        imports.setdefault(container.rsplit("::", 1)[-1], set()).add(container)
+    clashes = reserved | {name for name, containers in imports.items() if len(containers) > 1}
     declarations: set[str] = set()
     for qualified in sorted(named, key=len, reverse=True):
         if qualified not in body:
             continue
         name, imported_type = _type_import(qualified)
+        if imported_type.rsplit("::", 1)[-1] in clashes:
+            continue
         body = re.sub(re.escape(qualified) + r"\b", name, body)
-        if name not in imported:
-            declarations.add(f"using {imported_type};")
-            imported.add(name)
+        declaration = f"using {imported_type};"
+        if declaration not in source:
+            declarations.add(declaration)
     source = [*source[:boundary], *sorted(declarations), body]
     if target is not None:
         public = "\n".join(header).replace("namespace harmos::plugin {", f"namespace {namespace.replace('.', '::')}::plugin {{")
-        public = re.sub(r"\bContext\b", "::harmos::plugin::Context", public)
+        public = re.sub(r"(?<![:\w])Context\b", "::harmos::plugin::Context", public)
         public = public.replace("  ::harmos::plugin::Context context;", "private:\n  ::harmos::plugin::Context context;\npublic:")
         public = public.rsplit("}", 1)[0]
         public += "struct PluginContext {\n  HostRoot host;\n  explicit PluginContext(::harmos::plugin::Context context) : host{"
@@ -488,12 +498,12 @@ def client(
     type_names = dict(type_names or {})
     library = configuration.library_descriptors()
     if library.file:
-        descriptors = library
-        for full, groups in descriptor.payload_audiences(descriptors, library=configuration.library).items():
-            if not full.startswith("harmos.host."):
+        public_paths = descriptor.public_paths(library)
+        for full, groups in descriptor.payload_audiences(library, library=configuration.library).items():
+            if full not in public_paths:
                 continue
-            boundary = "" if len(groups) > 1 else next(iter(groups)) + "::"
-            type_names[full] = "::harmos::" + boundary + full.rsplit(".", 1)[-1]
+            boundary = "" if ".model." in full or len(groups) > 1 else next(iter(groups)) + "::"
+            type_names[full] = "::harmos::" + boundary + public_paths[full].replace(".", "::")
     nodes = {()}
     for method in methods:
         nodes.update(tuple(method["path"][:length]) for length in range(1, len(method["path"])))

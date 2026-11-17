@@ -27,9 +27,10 @@ from google.protobuf.message import Message
 from google.protobuf.message_factory import GetMessageClass
 
 # Local Imports
+from harmos_tools.build import csharp_protocol, python_protocol
 from harmos_tools.build.resources import cpp, csharp, descriptor, python, rust, sdk
 from harmos_tools.build.resources.configuration import Configuration
-from harmos_tools.source.protocol import caller_options
+from harmos_tools.source.protocol import caller_options, check_public_surfaces
 
 # Type Checking Imports
 
@@ -196,7 +197,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         }
         parsed.body = [node for node in parsed.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
         exec(compile(parsed, "generated-client", "exec"), environment)
-        client = environment["ClientRoot"](object())
+        client = environment["Client"](object())
         result = asyncio.run(client.nested.jobs.delete("value", 7, [1], count=None, call_metadata={"token": "opaque"}, timeout=2.5))
         self.assertEqual(result, ["accepted"])
         self.assertFalse(calls[0][0].HasField("count"))
@@ -207,6 +208,218 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         asyncio.run(client.nested.jobs.delete("value", 7, [1], count=0))
         self.assertTrue(calls[1][0].HasField("count"))
         self.assertEqual(cast(Any, calls[1][0]).count, 0)
+
+    def test_product_payload_names_and_transport_options_remain_independent(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        output = Path(scratch.name)
+        for namespace in ("example", "harmos"):
+            for field_names in (("metadata",), ("call_metadata", "metadata"), ("timeout", "credentials", "call_timeout")):
+                with self.subTest(namespace=namespace, fields=field_names):
+                    schema = FileDescriptorSet()
+                    file = schema.file.add(name=f"{namespace}/v1/jobs.proto", package=f"{namespace}.v1", syntax="proto3")
+                    file.options.csharp_namespace = namespace.title() + ".Clients"
+                    request = file.message_type.add(name="Input")
+                    for number, name in enumerate(field_names, 1):
+                        request.field.add(name=name, number=number, type=FieldDescriptorProto.TYPE_STRING)
+                    response = file.message_type.add(name="CapturesStopResponse")
+                    response.field.add(name="value", number=1, type=FieldDescriptorProto.TYPE_STRING)
+                    service = file.service.add(name="Jobs")
+                    service.method.add(
+                        name="Stop", input_type=f".{file.package}.Input", output_type=f".{file.package}.CapturesStopResponse"
+                    )
+                    configuration = Configuration(namespace=namespace, library=FileDescriptorSet())
+                    methods = descriptor.table(schema)
+                    with patch.object(python.subprocess, "run"):
+                        python.client(output / "client.py", methods, schema, configuration=configuration)
+                    csharp.client(output, methods, namespace=namespace, target=output / "Client.cs", configuration=configuration)
+                    self.assertIn(f"global::{namespace.title()}.Clients.CapturesStopResponse", (output / "Client.cs").read_text())
+                    parsed = ast.parse((output / "client.py").read_text())
+                    signature = next(node for node in ast.walk(parsed) if isinstance(node, ast.AsyncFunctionDef))
+                    self.assertEqual([argument.arg for argument in signature.args.args][1:], list(field_names))
+                    transport = [argument.arg for argument in signature.args.kwonlyargs]
+                    self.assertTrue(set(transport).isdisjoint(field_names))
+                    pool = DescriptorPool()
+                    pool.Add(file)
+                    input_type = GetMessageClass(pool.FindMessageTypeByName(file.package + ".Input"))
+                    response_type = GetMessageClass(pool.FindMessageTypeByName(file.package + ".CapturesStopResponse"))
+                    calls: list[tuple[Message, dict[str, object]]] = []
+
+                    async def unary(
+                        channel: object,
+                        path: str,
+                        value: Message,
+                        response: type[Message],
+                        *,
+                        captured: list[tuple[Message, dict[str, object]]] = calls,
+                        **options: object,
+                    ) -> Message:
+                        captured.append((value, options))
+                        return response(value="accepted")
+
+                    class Connection:
+                        def __init__(self, channel: object) -> None:
+                            pass
+
+                    environment: dict[str, Any] = {
+                        "Input": input_type,
+                        "CapturesStopResponse": response_type,
+                        "Channel": object,
+                        "CallCredentials": object,
+                        "Metadata": dict,
+                        "_connection": SimpleNamespace(Connection=Connection),
+                        "unary": unary,
+                    }
+                    parsed.body = [node for node in parsed.body if not isinstance(node, (ast.Import, ast.ImportFrom))]
+                    exec(compile(parsed, "product-client", "exec"), environment)
+                    client = environment["Client"](object())
+                    options = dict(zip(transport, ({"token": "transport"}, 2.5, None), strict=True))
+                    result = asyncio.run(client.jobs.stop(*field_names, **options))
+                    self.assertEqual(result, "accepted")
+                    self.assertEqual([getattr(calls[0][0], name) for name in field_names], list(field_names))
+                    self.assertEqual(calls[0][1]["metadata"], {"token": "transport"})
+                    self.assertEqual(calls[0][1]["timeout"], 2.5)
+
+    def test_small_product_descriptors_generate_without_aliases_or_composition(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        for namespace in ("example", "another"):
+            with self.subTest(namespace=namespace):
+                schema = FileDescriptorSet()
+                for package in (namespace + ".model.v1", namespace + ".model.v1.nested", "harmos.model.v1"):
+                    file = schema.file.add(name=package.replace(".", "/") + "/values.proto", package=package, syntax="proto3")
+                    for name in ("Call", "Client", "Window", "Failure", "Value"):
+                        file.message_type.add(name=name)
+                    mode = file.enum_type.add(name="Mode")
+                    mode.value.add(name="MODE_UNSPECIFIED", number=0)
+                source = root / namespace
+                source.mkdir()
+                descriptor_path = source / "descriptors.bin"
+                descriptor_path.write_bytes(schema.SerializeToString())
+                configuration = Configuration(namespace=namespace, library=FileDescriptorSet(), csharp_tools=source / "tools")
+                with (
+                    patch.object(sdk.csharp_protocol, "protocols"),
+                    patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0)),
+                ):
+                    sdk.generate(root=source, descriptors=descriptor_path, configuration=configuration)
+                    sdk.generate(True, root=source, descriptors=descriptor_path, configuration=configuration)
+                check_public_surfaces(source, namespace=namespace)
+                inventory = sdk.inventory(source, configuration)
+                self.assertTrue(inventory)
+                for relative in inventory:
+                    text = (source / relative).read_text()
+                    if relative.suffix == ".py":
+                        parsed = ast.parse(text)
+                        self.assertFalse(any(isinstance(node, ast.alias) and node.asname for node in ast.walk(parsed)), str(relative))
+                    if relative.suffix == ".rs":
+                        self.assertNotRegex(text, r"(?:pub )?use [^;]+ as ")
+                    if relative.suffix == ".hpp":
+                        self.assertNotRegex(text, r"using \w+ = ")
+                public = (source / f"sdk/cpp/include/{namespace}/messages.hpp").read_text()
+                self.assertIn(f"using ::{namespace}::detail::payloads::model::Client;", public)
+                self.assertNotIn("using ::harmos::detail::", public)
+                self.assertIn(
+                    "from . import nested",
+                    (source / f"sdk/python/src/{namespace}/_generated/_exports/shared/model/__init__.py").read_text(),
+                )
+                self.assertIn("pub mod nested", (source / "sdk/rust/src/exports.rs").read_text())
+
+    def test_product_wire_compilation_uses_configured_inputs_and_private_modules(self) -> None:
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="example/model/v1/values.proto", package="example.model.v1", syntax="proto3")
+        file.message_type.add(name="Value")
+        descriptor_path = root / "schema.bin"
+        descriptor_path.write_bytes(schema.SerializeToString())
+        proto_root = root / "contracts"
+        proto_file = proto_root / file.name
+        proto_file.parent.mkdir(parents=True)
+        proto_file.write_text('syntax = "proto3";')
+        self.assertEqual(python_protocol.protocols(root=root, namespace="example", proto_root=proto_root), (file.name,))
+        output = root / "bindings"
+        stale = output / "example/_wire/obsolete_pb2.py"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("obsolete")
+        commands = []
+
+        def compile_protocol(command: list[str], **options: object) -> SimpleNamespace:
+            if "grpc_tools.protoc" not in command:
+                return SimpleNamespace(returncode=0)
+            commands.append(command)
+            self.assertEqual(options["cwd"], root)
+            for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
+                path = output / (file.name.removesuffix(".proto") + suffix)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("from example.model.v1 import values_pb2\nfrom shared.model.v1 import shared_pb2\n")
+            return SimpleNamespace(returncode=0)
+
+        configuration = Configuration(namespace="example")
+        with patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol):
+            python_protocol.generate(
+                output,
+                root=root,
+                proto_root=proto_root,
+                descriptors=descriptor_path,
+                configuration=configuration,
+                module_prefixes={"shared": "shared._wire"},
+            )
+        self.assertEqual(len(commands), 1)
+        self.assertIn(f"-I{proto_root}", commands[0])
+        self.assertFalse(stale.exists())
+        self.assertFalse((output / file.name.removesuffix(".proto")).with_name("values_pb2.py").exists())
+        generated = output / "example/_wire/model/v1/values_pb2.py"
+        self.assertIn("from example._wire.model.v1 import values_pb2", generated.read_text())
+        self.assertIn("from shared._wire.model.v1 import shared_pb2", generated.read_text())
+        file.options.csharp_namespace = "Example.Wire"
+        source = "namespace Example.Wire {\npublic sealed partial class Value : global::Example.Wire.Base {}\n}"
+        rendered = csharp_protocol._wire_source(source, "Values.cs", file, set(), None, {"Example.Wire": "ExampleSDK.Models"})
+        self.assertIn("namespace ExampleSDK.Models;", rendered)
+        self.assertIn("global::ExampleSDK.Models.Base", rendered)
+
+    def test_clashing_message_names_remain_qualified_in_every_language(self) -> None:
+        schema = FileDescriptorSet()
+        for parent in ("first", "second"):
+            package = "example.host.v1." + parent
+            file = schema.file.add(name=f"example/v1/{parent}.proto", package=package, syntax="proto3")
+            file.options.csharp_namespace = "Example." + parent.title()
+            context = file.message_type.add(name="Context")
+            context.field.add(name="value", number=1, type=FieldDescriptorProto.TYPE_STRING)
+            request = file.message_type.add(name="Input")
+            request.field.add(name="context", number=1, type=FieldDescriptorProto.TYPE_MESSAGE, type_name=f".{package}.Context")
+            file.message_type.add(name="Client")
+            service = file.service.add(name="Jobs")
+            service.method.add(name="Run", input_type=f".{package}.Input", output_type=f".{package}.Client")
+        configuration = Configuration(namespace="example", library=FileDescriptorSet())
+        clients = descriptor.table(schema)
+        hosts = [descriptor.Method(**{**method, "face": "context"}) for method in clients]
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        with patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0)):
+            types = cpp.exports(root, schema, configuration=configuration)
+            cpp.client(root, clients, type_names=types, namespace="example", target=root / "client.hpp", configuration=configuration)
+            cpp.host(root, hosts, type_names=types, configuration=configuration)
+            python.client(root / "client.py", clients, schema, configuration=configuration)
+            python.host(root / "host.py", hosts, schema, configuration=configuration)
+            rust.client(root, clients, target=root / "client.rs", configuration=configuration)
+            rust.host(root, hosts, target=root / "host.rs", configuration=configuration)
+            csharp.client(root, clients, target=root / "Client.cs", configuration=configuration)
+            csharp.host(root, hosts, target=root / "Host.cs", configuration=configuration)
+        for parent in ("first", "second"):
+            for filename in ("client.py", "host.py"):
+                text = (root / filename).read_text()
+                self.assertIn(f"example._wire.v1.{parent}_pb2.Context", text)
+                ast.parse(text)
+            for filename in ("client.rs", "host.rs"):
+                self.assertIn(f"example_protocol::host::{parent}::Context", (root / filename).read_text())
+            for filename in ("Client.cs", "Host.cs"):
+                self.assertIn(f"global::Example.{parent.title()}.Context", (root / filename).read_text())
+            text = (root / "sdk/cpp/src/generated/host.cpp").read_text()
+            self.assertIn(f"::example::host::v1::{parent}::Input", text)
+            self.assertNotIn(f"using ::example::host::v1::{parent}::Input;", text)
 
 
 # === Public Functions === #

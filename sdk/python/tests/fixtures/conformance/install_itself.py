@@ -13,8 +13,8 @@
 
 from harmos import VISIBILITY_PUBLIC, StorageTransferSettings
 from harmos.client import PLUGIN_STATE_READY, PluginPlacement, PluginRemote, PluginValue
-from tests.fixtures.client import Client
 from harmos.plugin import Catalog, Context, Plugin, operation
+from tests.fixtures.client import Client
 
 from . import Value
 

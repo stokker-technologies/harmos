@@ -41,14 +41,14 @@ Timestamp HostTimeResource::get(HostTimeGetOptions options) {
   }
   return std::move(*response.mutable_now());
 }
-TimeSleepResponse HostTimeResource::sleep(const Duration &duration, HostTimeSleepOptions options) {
+::harmos::plugin::TimeSleepResponse HostTimeResource::sleep(const Duration &duration, HostTimeSleepOptions options) {
   TimeSleepRequest request;
   *request.mutable_duration() = duration;
   auto operation = Operation<TimeSleepRequest, TimeSleepResponse>("harmos.plugin.v1.Time/Sleep", VISIBILITY_PUBLIC);
   auto response = context.call(operation, request, options.policy).get();
   return response;
 }
-SettingsListResponse HostPluginsSettingsResource::list(HostPluginsSettingsListOptions options) {
+::harmos::plugin::SettingsListResponse HostPluginsSettingsResource::list(HostPluginsSettingsListOptions options) {
   SettingsListRequest request;
   if (options.name) {
     request.set_name(*options.name);

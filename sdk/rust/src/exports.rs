@@ -4,7 +4,6 @@ pub use crate::wire::shared::Classification;
 pub use crate::wire::shared::Declarations;
 pub use crate::wire::shared::DiscoveredContract;
 pub use crate::wire::shared::DiscoveredOperation;
-pub use crate::wire::shared::Failure;
 pub use crate::wire::shared::File;
 pub use crate::wire::shared::FileMetadata;
 pub use crate::wire::shared::FileReference;
@@ -35,3 +34,6 @@ pub use crate::wire::shared::Upload;
 pub use crate::wire::shared::UploadState;
 pub use crate::wire::shared::Visibility;
 pub use crate::wire::shared::setting_value;
+pub mod model {
+    pub use crate::wire::shared::Failure;
+}

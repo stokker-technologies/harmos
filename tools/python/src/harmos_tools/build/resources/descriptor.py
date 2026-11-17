@@ -246,26 +246,27 @@ def payload_audiences(descriptors: FileDescriptorSet, *, library: FileDescriptor
     return audiences
 
 
-def public_names(descriptors: FileDescriptorSet, *, namespace: str = "harmos") -> dict[str, str]:
-    names = {
-        definition.name
+def public_paths(descriptors: FileDescriptorSet, *, namespace: str = "harmos") -> dict[str, str]:
+    """Preserve Type Names; Put Collisions Under Their Unversioned Package Path."""
+    definitions = [
+        (file, definition)
         for file in descriptors.file
-        if file.package.startswith(namespace + ".model.")
+        if file.package.startswith((namespace + ".", "harmos."))
         for definition in [*file.message_type, *file.enum_type]
-    }
-    return {
-        f"{file.package}.{definition.name}": "Harmos" + definition.name
-        for file in descriptors.file
-        if namespace != "harmos" and file.package.startswith("harmos.model.")
-        for definition in [*file.message_type, *file.enum_type]
-        if definition.name in names
-    }
-
-
-def public_name(full: str, public_names: dict[str, str]) -> str:
-    parts = full.split(".")
-    version = next((i for i, part in enumerate(parts) if re.fullmatch(r"v[0-9]+", part)), len(parts) - 1)
-    return public_names.get(full, "".join(part.title().replace("_", "") for part in parts[version + 1 : -1]) + parts[-1])
+    ]
+    names: dict[str, set[str]] = {}
+    for file, definition in definitions:
+        names.setdefault(definition.name, set()).add(file.package)
+    reserved = {"Call", "Client", "ClientRoot", "Context", "Failure", "FailureError", "HostOperation", "HostRoot", "Plugin", "Window"}
+    paths = {}
+    for file, definition in definitions:
+        parts = file.package.split(".")
+        package = [part for part in parts[1:] if re.fullmatch(r"v[0-9]+", part) is None]
+        if parts[0] != namespace:
+            package.insert(0, parts[0])
+        prefix = package if len(names[definition.name]) > 1 or definition.name in reserved else []
+        paths[f"{file.package}.{definition.name}"] = ".".join([*prefix, definition.name])
+    return paths
 
 
 def snake(name: str) -> str:

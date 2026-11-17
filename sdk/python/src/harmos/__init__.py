@@ -26,7 +26,6 @@ from ._generated.shared import (
     Declarations,
     DiscoveredContract,
     DiscoveredOperation,
-    FailureValue,
     File,
     FileMetadata,
     FileReference,
@@ -56,9 +55,9 @@ from ._generated.shared import (
     Upload,
     UploadState,
     Visibility,
+    model,
 )
-from ._invocation import FailureError as Failure
-from ._invocation import ProtocolError
+from ._invocation import FailureError, ProtocolError
 
 __all__ = [
     "ALL",
@@ -76,8 +75,7 @@ __all__ = [
     "Declarations",
     "DiscoveredContract",
     "DiscoveredOperation",
-    "Failure",
-    "FailureValue",
+    "FailureError",
     "File",
     "FileMetadata",
     "FileReference",
@@ -119,4 +117,5 @@ __all__ = [
     "VISIBILITY_PUBLIC",
     "VISIBILITY_UNSPECIFIED",
     "Visibility",
+    "model",
 ]

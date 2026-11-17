@@ -38,6 +38,8 @@ class Configuration:
     csharp_tools: Path | None = None
     rustfmt: Path | None = None
     python_style: Path | None = None
+    csharp_namespace: str | None = None
+    csharp_namespaces: dict[str, str] = field(default_factory=dict)
     client_required_fields: dict[str, set[str]] = field(default_factory=dict)
     rust_selectors: dict[str, set[str]] = field(default_factory=dict)
 
