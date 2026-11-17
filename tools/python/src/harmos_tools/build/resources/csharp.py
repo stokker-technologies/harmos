@@ -401,6 +401,9 @@ def host(
                 continue
             lines += [f"    var request = new {request_type}", "    {"]
             for field in method["fields"]:
+                if field["name"] == "request_id":
+                    lines += ['      RequestId = request_id ?? Guid.NewGuid().ToString("N"),']
+                    continue
                 if field["optional"] or field["repeated"] or field["map"]:
                     continue
                 lines += [f"      {title(field['name'])} = {_identifier(field['name'])},"]
@@ -417,7 +420,7 @@ def host(
                 elif field["repeated"]:
                     lines += [f"    request.{title(field['name'])}.Add({field_name});"]
             for field in method["fields"]:
-                if not field["optional"]:
+                if not field["optional"] or field["name"] == "request_id":
                     continue
                 lines += [
                     f"    if ({_identifier(field['name'])} is not null)",

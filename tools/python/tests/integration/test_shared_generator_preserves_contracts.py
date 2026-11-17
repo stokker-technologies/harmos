@@ -46,6 +46,25 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class SharedGeneratorPreservesContracts(unittest.TestCase):
+    def test_csharp_host_defaults_request_identity_before_policy_dispatch(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="example/host/v1/logs.proto", package="example.host.v1", syntax="proto3")
+        file.options.csharp_namespace = "Example.Wire"
+        request = file.message_type.add(name="Input")
+        request.field.add(name="request_id", number=1, type=FieldDescriptorProto.TYPE_STRING)
+        file.message_type.add(name="Output")
+        file.service.add(name="Logs").method.add(name="Append", input_type=".example.host.v1.Input", output_type=".example.host.v1.Output")
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        with patch.object(descriptor, "caller_options", return_value={"example.host.v1.Logs/Append": "PLUGINS"}):
+            methods = descriptor.table(schema)
+        csharp.host(root, methods, target=root / "Host.cs", configuration=Configuration(namespace="example"))
+        source = (root / "Host.cs").read_text()
+        self.assertIn("string? request_id = null", source)
+        self.assertIn('RequestId = request_id ?? Guid.NewGuid().ToString("N"),', source)
+        self.assertNotIn("if (request_id is not null)", source)
+
     def test_csharp_optional_multiword_fields_keep_wire_property_case(self) -> None:
         schema = FileDescriptorSet()
         file = schema.file.add(name="example/host/v1/jobs.proto", package="example.host.v1", syntax="proto3")
