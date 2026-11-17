@@ -1139,11 +1139,14 @@ impl Participants {
         self.stopping.send_replace(true);
         let mut active = self.active.subscribe();
         let mut failure = self.failure.subscribe();
+        tracing::debug!(active = *active.borrow(), "waiting for runtime stop participants");
         loop {
             if let Some(source) = failure.borrow_and_update().clone() {
+                tracing::debug!(active = *active.borrow(), outcome = "failed", error = %source, "runtime stop participants wait completed");
                 return Err(Error::TaskFailed { domain: "runtime participant", source });
             }
             if *active.borrow_and_update() == 0 {
+                tracing::debug!(active = 0, outcome = "stopped", "runtime stop participants wait completed");
                 return Ok(());
             }
             tokio::select! {
