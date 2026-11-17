@@ -43,7 +43,7 @@ use tokio::{
 
 // Local Imports
 use super::Error;
-use crate::{Error as RuntimeError, clock::Clock, runtime::StopParticipant};
+use crate::{clock::Clock, runtime::StopParticipant};
 use spawner::Spawner;
 #[cfg(unix)]
 use unix::command;
@@ -118,13 +118,22 @@ impl Process {
         let process = format!("{} (pid {:?})", self.executable.display(), self.id());
         let lines = self.lines.as_mut().expect("managed stdout is owned until readiness");
         let announced = loop {
-            let line = lines
-                .next_line()
-                .await
-                .map_err(|error| Error::Invalid(format!("Read Managed Plugin Readiness: process {process}: {error}")))?
-                .ok_or_else(|| {
-                    Error::Invalid(format!("Read Managed Plugin Readiness: process {process} exited before announcing its address"))
-                })?;
+            tracing::debug!(%process, "waiting for managed plugin readiness line");
+            let line = lines.next_line().await;
+            tracing::debug!(
+                %process,
+                outcome = match &line {
+                    Ok(Some(_)) => "line",
+                    Ok(None) => "eof",
+                    Err(_) => "failed",
+                },
+                error = ?line.as_ref().err(),
+                "managed plugin readiness line wait completed"
+            );
+            let line =
+                line.map_err(|error| Error::Invalid(format!("Read Managed Plugin Readiness: process {process}: {error}")))?.ok_or_else(
+                    || Error::Invalid(format!("Read Managed Plugin Readiness: process {process} exited before announcing its address")),
+                )?;
             let Some(address) = line.strip_prefix("harmos listening ") else { continue };
             let socket: SocketAddr = address
                 .parse()
@@ -192,7 +201,7 @@ impl Process {
 
     fn reap_failure(&self, message: String) -> Error {
         if let Some(participant) = &self.participant {
-            participant.fail(Arc::new(RuntimeError::TaskFailed {
+            participant.fail(Arc::new(crate::Error::TaskFailed {
                 domain: "managed plugin process",
                 source: Arc::new(Error::Reap(message.clone())),
             }));
@@ -228,7 +237,7 @@ impl Drop for Process {
                 if let Err(error) = child.wait().await {
                     tracing::error!(%process, %error, "Reap Managed Plugin Process");
                     if let Some(participant) = &participant {
-                        participant.fail(Arc::new(RuntimeError::TaskFailed {
+                        participant.fail(Arc::new(crate::Error::TaskFailed {
                             domain: "managed plugin process",
                             source: Arc::new(Error::Reap(format!(
                                 "Reap Managed Plugin: process {process}: {error}; retain its installation"

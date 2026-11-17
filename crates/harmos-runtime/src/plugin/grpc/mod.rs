@@ -745,18 +745,41 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         match ending {
             Ending::Stop(reason) => {
                 let mut client = activation.connection.client();
+                tracing::debug!(plugin = %activation.description.id, "waiting for plugin Instance.Stop reply");
                 let stopped = teardown
                     .wait(clock.timeout_at(deadline, client.stop(InstanceStopRequest { reason })))
                     .await
                     .map_err(|_| Error::Timeout("Stop"))
                     .and_then(|result| result.map(|_| ()).map_err(|error| Error::Transport(error.to_string())));
-                if let Err(error) = &stopped {
-                    tracing::warn!(plugin = %activation.description.id, action = "Stop Plugin", %error, "plugin Stop failed; closing its connection");
+                match &stopped {
+                    Err(error @ Error::Timeout(_)) => {
+                        tracing::warn!(plugin = %activation.description.id, action = "Stop Plugin", outcome = "deadline", %error, "plugin Instance.Stop reply wait gave up at stop_grace; closing its connection");
+                    }
+                    outcome => {
+                        tracing::debug!(plugin = %activation.description.id, outcome = if outcome.is_ok() { "stopped" } else { "failed" }, error = ?outcome.as_ref().err(), "plugin Instance.Stop reply wait completed");
+                        if let Err(error) = outcome {
+                            tracing::warn!(plugin = %activation.description.id, action = "Stop Plugin", %error, "plugin Stop failed; closing its connection");
+                        }
+                    }
                 }
                 activation.connection.closed.send_replace(true);
                 let exit = match &mut process {
                     Some(process) => {
-                        match teardown.wait(process.stop(&clock, deadline, settings.stop_grace, "Stop Managed Plugin")).await {
+                        let process_id = process.id();
+                        tracing::debug!(plugin = %activation.description.id, ?process_id, "waiting for managed plugin child exit and reap");
+                        let exit = teardown.wait(process.stop(&clock, deadline, settings.stop_grace, "Stop Managed Plugin")).await;
+                        match &exit {
+                            Err(error @ Error::Deadline { .. }) => {
+                                tracing::warn!(plugin = %activation.description.id, ?process_id, outcome = "deadline", %error, "managed plugin child exit and reap wait gave up at stop_grace");
+                            }
+                            Err(error @ Error::Reap(_)) => {
+                                tracing::warn!(plugin = %activation.description.id, ?process_id, outcome = "failed", %error, "managed plugin child exit and reap wait gave up");
+                            }
+                            outcome => {
+                                tracing::debug!(plugin = %activation.description.id, ?process_id, outcome = ?outcome, "managed plugin child exit and reap wait completed");
+                            }
+                        }
+                        match exit {
                             Ok(exit) if exit.success() => Ok(()),
                             Ok(exit) => Err(Error::Exit(exit)),
                             Err(error) => Err(error),

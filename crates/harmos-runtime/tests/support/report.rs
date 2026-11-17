@@ -97,6 +97,7 @@ pub fn capture(directory: Option<&Path>) -> Report {
     }
 }
 
+#[allow(dead_code, reason = "each integration-test binary compiles only the fixture slice it needs")]
 pub fn diagnostics() {
     EXPORTER.get_or_init(|| initialize(None));
 }

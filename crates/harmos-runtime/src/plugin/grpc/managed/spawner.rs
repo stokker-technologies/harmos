@@ -68,6 +68,7 @@ impl Spawner {
         &self, mut command: Command, own: impl FnOnce(Child) -> T + Send + 'static,
     ) -> std::io::Result<T> {
         let runtime = Handle::current();
+        let executable = command.as_std().get_program().to_owned();
         let (reply, spawned) = oneshot::channel();
         self.submit(Box::new(move || {
             if reply.is_closed() {
@@ -76,7 +77,18 @@ impl Spawner {
             let _entered = runtime.enter();
             let _ = reply.send(command.spawn().map(own));
         }))?;
-        spawned.await.map_err(|_| std::io::Error::other("the spawner failed while forking; start the plugin again"))?
+        tracing::debug!(process = ?executable, "waiting for managed plugin spawn reply");
+        let spawned = spawned
+            .await
+            .map_err(|_| std::io::Error::other("the spawner failed while forking; start the plugin again"))
+            .and_then(|result| result);
+        tracing::debug!(
+            process = ?executable,
+            outcome = if spawned.is_ok() { "spawned" } else { "failed" },
+            error = ?spawned.as_ref().err(),
+            "managed plugin spawn reply wait completed"
+        );
+        spawned
     }
 
     fn submit(&self, job: Job) -> std::io::Result<()> {

@@ -15,17 +15,10 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::InstanceSamplesRequest;
-use harmos_protocol::plugin::InstanceSamplesResponse;
-use harmos_protocol::plugin::SamplesSelection;
-use harmos_protocol::plugin::Window as WireWindow;
-use harmos_protocol::plugin::instance_samples_request::Frame;
-use harmos_protocol::plugin::instance_samples_response::Frame as ResponseFrame;
-
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
-    error::Error as StdError,
+    error,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -33,7 +26,7 @@ use std::{
 // Third Party Imports
 use futures_util::stream;
 use tokio::{
-    sync::{Mutex as AsyncMutex, mpsc, watch},
+    sync::{self, mpsc, watch},
     time::Instant,
 };
 
@@ -46,6 +39,8 @@ use crate::{
     clock::Clock,
     streams::{ConnectionStreams, PublicationRow, StreamManager, StreamPublicationError, StreamWriter},
 };
+use harmos_protocol::plugin::instance_samples_request::Frame;
+use harmos_protocol::plugin::{InstanceSamplesRequest, InstanceSamplesResponse, SamplesSelection, Window, instance_samples_response};
 
 /* === Constants === */
 
@@ -56,6 +51,7 @@ use crate::{
 /* === Structs === */
 
 pub(super) struct Publications {
+    plugin: String,
     close: watch::Sender<bool>,
     jobs: tokio::task::JoinSet<Result<(), Error>>,
     /// Failures of Unscoped Demands, Which Their Attachment Reports.
@@ -238,6 +234,7 @@ impl Publications {
         let close = watch::channel(false).0;
         let (failed, failures) = mpsc::unbounded_channel();
         let mut publications = Self {
+            plugin: activation.description.id.clone(),
             close,
             jobs: tokio::task::JoinSet::new(),
             failures,
@@ -360,6 +357,7 @@ impl Publications {
         let mut failure = match drained {
             Ok(failure) => failure,
             Err(_) => {
+                tracing::warn!(plugin = %self.plugin, %action, outcome = "deadline", "plugin publication drain wait gave up at settlement grace deadline");
                 self.jobs.abort_all();
                 while self.jobs.join_next().await.is_some() {}
                 Some(Error::Deadline { action })
@@ -516,9 +514,9 @@ fn admission(stream: &str, error: StreamPublicationError) -> Error {
 
 /// Recover the Window Operation's Own Failure; Its Carrier Exposes It Only as a Shared `dyn Error` Whose Source Skips It.
 fn sample_error(error: crate::Error) -> Error {
-    let mut source: Option<&(dyn StdError + 'static)> = Some(&error);
+    let mut source: Option<&(dyn error::Error + 'static)> = Some(&error);
     while let Some(current) = source {
-        let shared = current.downcast_ref::<Arc<dyn StdError + Send + Sync>>().and_then(|shared| shared.downcast_ref::<Error>());
+        let shared = current.downcast_ref::<Arc<dyn error::Error + Send + Sync>>().and_then(|shared| shared.downcast_ref::<Error>());
         let failure = current.downcast_ref::<Error>().or(shared);
         match failure {
             Some(Error::Invalid(message)) => return Error::Invalid(message.clone()),
@@ -582,7 +580,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
         caller,
     } = demand;
     let stream = lease.stream().definition().id().to_owned();
-    let input = Arc::new(AsyncMutex::new(input));
+    let input = Arc::new(sync::Mutex::new(input));
     let seen = Arc::new(Mutex::new(BTreeSet::new()));
     let mut ingested_through = None;
     // A Scoped Interval Demand Joins Its Unit's Window Schedule; Its Windows' Call Trees Are Marked.
@@ -608,7 +606,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                         .await
                         .map_err(|error| Error::Transport(error.to_string()))?
                         .ok_or_else(|| invalid("Read Device Samples: demand ended"))?;
-                    if matches!(response.frame, Some(ResponseFrame::Batch(_))) {
+                    if matches!(response.frame, Some(instance_samples_response::Frame::Batch(_))) {
                         return Err(invalid("Read Device Samples: a device stream answers with samples, not batches"));
                     }
                     if response.frame.is_some() {
@@ -723,7 +721,7 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
                 }
                 let start = origin.date + span((granted + 1) * period_nanos)?;
                 let start_nanos = unix_nanos(start)?;
-                let grant = WireWindow {
+                let grant = Window {
                     start: Some(start.into()),
                     period: Some(wire_period),
                     count,
@@ -818,12 +816,21 @@ async fn run(clock: &Clock, activity: crate::clock::Activity, demand: Demand) ->
     outcome?;
     drop(output);
     // Input EOF Ends Demand and Awaits the SDK's Producer/Observer Cleanup; That Wait Is on the Plugin.
-    activity
+    tracing::debug!(plugin = %caller.description.id, %stream, "waiting for plugin Samples response EOF");
+    let drained = activity
         .wait(async {
             while input.lock().await.message().await.map_err(|error| Error::Transport(error.to_string()))?.is_some() {}
             Ok(())
         })
-        .await
+        .await;
+    tracing::debug!(
+        plugin = %caller.description.id,
+        %stream,
+        outcome = if drained.is_ok() { "eof" } else { "failed" },
+        error = ?drained.as_ref().err(),
+        "plugin Samples response EOF wait completed"
+    );
+    drained
 }
 
 /* === Tests === */
