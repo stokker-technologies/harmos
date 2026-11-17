@@ -14,7 +14,7 @@ local compiler reuse without machine storage checks.
 | Task | Arguments After `--` | Behaviour |
 | --- | --- | --- |
 | `prepare` | None | Synchronize all locked Python groups and prepare the environment. |
-| `generate` | `[--profile <dev\|release>] [--sdk python]` | Generate Python SDK protocol bindings, or Product-derived clients without the SDK selector. |
+| `generate` | `[--profile <dev\|release>] [--sdk <rust|python|csharp|cpp>]` | Generate Python SDK protocol bindings, or Product-derived clients without the SDK selector. |
 | `format` | `[--check] [--language <rust\|python\|toml\|csharp>]` | Format selected maintained languages, or check their formatting. This repository has no TypeScript task. |
 | `lint` | `[--language <rust\|python\|toml>] [--extended]` | Lint selected languages; TOML has formatting checks only. Extended Rust lint covers optional compatibility configurations. |
 | `check` | `[--language <rust\|python\|toml\|csharp\|cpp>] [--package harmos-sdk] [--extended] [--repository] [--generated]` | Check formatting, lint, repository configuration and selected generated drift; Python includes tooling tests and consumes generated Product clients. `--repository` or `--generated` selects only that check. |
@@ -53,8 +53,9 @@ local compiler reuse without machine storage checks.
 - Tooling is duplicated between Harmos and a product on purpose: each project is an independent
   module with its own copy. The copies are kept harmonized, with the same task names, arguments,
   module layout and behaviour, and a fix made in one is made in the other.
-- Impact planning is removed. Every pull request runs every job, and its dependency graph is
-  deleted.
+- CI impact analysis is implemented in `ci:impact` and `.github/workflows/ci.yml`;
+  affected jobs and dependent fixtures are selected conservatively. Nightly retains
+  its configured validation matrix while publication depends only on packaging.
 - The composite actions stay in each repository, reduced to the setup action. The duplication
   between products is accepted, since shared tooling no longer renders CI.
 
@@ -92,13 +93,21 @@ handler validates/converts a supplied timestamp and forwards these values to
 `PublicationHost`; its deterministic native-publication story proves forwarding,
 not assignment defaults or interpretation of the following-row duration.
 
-The raw descriptor-byte requirement conflicts with canonical source ordering:
-Buf sorts imports, changing `FileDescriptorProto.dependency`, and pairing messages
-in service order changes `FileDescriptorProto.message_type`. Source-info removal
-does not remove these ordered lists. The comparison policy needs an owner decision
-before applying declaration reordering or claiming final descriptor proof; names,
-fields, numbers, types, options, file boundaries and service method order remain
-locked regardless of that decision.
+Canonical Buf import/declaration ordering and regenerated tracked output have landed
+under task P.5. The earlier raw-before-reordering descriptor comparison is superseded:
+generation drift compares current output, while schema graph normalization sorts
+reachable declarations/dependencies and removes source information. Names, fields,
+numbers, types, options, file boundaries and service method order retain their
+contractual meaning; ordering cleanup does not authorize a semantic protocol change.
+
+## Release Readiness
+
+Source modernization, impact selection and generated protocol ordering are landed.
+Tasks 4.1 and 4.3 retain combined native/SDK/tooling/drift proof and verification of
+the installed checker against current task/generated-path declarations. The project
+currently declares the retired `crates/harmos-protocol/src/v1.rs` generated root;
+reconcile that inventory with the tracked model/host/plugin roots before claiming
+repository-check proof. No compilation or language checks are claimed by this audit.
 
 ## Impact
 
