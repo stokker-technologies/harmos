@@ -14,11 +14,15 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // Third Party Imports
-use serde::{Deserialize, Deserializer, Serialize};
+use semver::Version;
+use serde::{Deserialize, Deserializer, Serialize, de};
+
 // Local Imports
+use harmos_operations::Registration;
+
 use super::{Error, invalid};
 
 /* === Constants === */
@@ -33,7 +37,7 @@ use super::{Error, invalid};
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub name: String,
-    pub version: semver::Version,
+    pub version: Version,
     pub description: String,
 
     #[serde(default)]
@@ -79,7 +83,7 @@ pub struct File {
 pub struct Executable {
     pub facility: Facility,
     pub target: String,
-    pub registrations: Vec<harmos_operations::Registration>,
+    pub registrations: Vec<Registration>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -114,7 +118,7 @@ impl Manifest {
             .as_ref()
             .and_then(|launch| launch.first())
             .and_then(|program| relative_program(program).ok().flatten())
-            .is_some_and(|path| path == PathBuf::from(&file.path));
+            .is_some_and(|path| path == Path::new(&file.path));
         native || launched
     }
 }
@@ -157,7 +161,7 @@ pub fn validate_launch(launch: &[String]) -> Result<(), Error> {
 
 fn decode_launch<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<String>>, D::Error> {
     let launch = Vec::<String>::deserialize(deserializer)?;
-    validate_launch(&launch).map_err(serde::de::Error::custom)?;
+    validate_launch(&launch).map_err(de::Error::custom)?;
     Ok(Some(launch))
 }
 
