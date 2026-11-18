@@ -481,7 +481,10 @@ def host(root: Path, methods: list[descriptor.Method], *, target: Path | None = 
     lines += [f"use {message(full)};" for full in sorted(used) if "::" not in message_names[full]]
     lines += ["pub enum HostOperation {"]
     lines += ["    " + "".join(title(part) for part in method["path"]) + "," for method in methods]
+    lines += ["}", "impl HostOperation {", f"    pub const ALL: [Self; {len(methods)}] = ["]
+    lines += ["        Self::" + "".join(title(part) for part in method["path"]) + "," for method in methods]
     lines += [
+        "    ];",
         "}",
         "impl Registration for HostOperation {",
         "    fn register(self, ctx: &mut Registrar<'_>) -> Result<()> {",

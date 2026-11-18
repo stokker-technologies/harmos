@@ -33,6 +33,18 @@ pub enum HostOperation {
     TimeGet,
     TimeSleep,
 }
+impl HostOperation {
+    pub const ALL: [Self; 8] = [
+        Self::InvocationsGet,
+        Self::InvocationsCancel,
+        Self::InvocationsWatch,
+        Self::OperationsList,
+        Self::OperationsGet,
+        Self::PluginsSettingsList,
+        Self::TimeGet,
+        Self::TimeSleep,
+    ];
+}
 #[derive(Clone)]
 pub struct HostRoot {
     pub invocations: HostInvocationsResource,

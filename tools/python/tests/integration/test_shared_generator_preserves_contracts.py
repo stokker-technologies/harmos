@@ -46,6 +46,45 @@ ROOT = Path(__file__).resolve().parents[4]
 
 
 class SharedGeneratorPreservesContracts(unittest.TestCase):
+    def test_composed_rust_host_bindings_preserve_operation_kinds(self) -> None:
+        schema = FileDescriptorSet()
+        file = schema.file.add(name="example/host/v1/jobs.proto", package="example.host.v1", syntax="proto3")
+        service = file.service.add(name="Jobs")
+        for name, streaming in (("Get", False), ("Watch", True)):
+            file.message_type.add(name=name + "Request")
+            file.message_type.add(name=name + "Response")
+            service.method.add(
+                name=name,
+                input_type=f".example.host.v1.{name}Request",
+                output_type=f".example.host.v1.{name}Response",
+                server_streaming=streaming,
+            )
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        root = Path(scratch.name)
+        descriptors = root / "schema.bin"
+        descriptors.write_bytes(schema.SerializeToString())
+        configuration = Configuration(namespace="example", csharp_tools=root / "tools", library=FileDescriptorSet())
+        with (
+            patch.object(
+                descriptor, "caller_options", return_value={f"example.host.v1.Jobs/{name}": "PLUGINS" for name in ("Get", "Watch")}
+            ),
+            patch.object(sdk.csharp_protocol, "protocols"),
+            patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0)),
+        ):
+            sdk.generate(root=root, descriptors=descriptors, configuration=configuration)
+        bindings = (root / "sdk/rust/src/host.rs").read_text()
+        self.assertIn("const WATCH: bool;", bindings)
+        self.assertIn("const WATCH: bool = T::WATCH;", bindings)
+        for name, streaming in (("Get", "false"), ("Watch", "true")):
+            self.assertIn(
+                f'impl Request for example_protocol::host::{name}Request {{ type Response = example_protocol::host::{name}Response; const ID: &\'static str = "example.host.v1.Jobs/{name}"; const WATCH: bool = {streaming}; }}',
+                bindings,
+            )
+        inventory = (root / "sdk/rust/src/plugin/host.rs").read_text()
+        self.assertIn("Self::JobsGet,", inventory)
+        self.assertIn("Self::JobsWatch,", inventory)
+
     def test_csharp_host_defaults_request_identity_before_policy_dispatch(self) -> None:
         schema = FileDescriptorSet()
         file = schema.file.add(name="example/host/v1/logs.proto", package="example.host.v1", syntax="proto3")

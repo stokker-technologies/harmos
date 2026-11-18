@@ -162,14 +162,16 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         "// @generated from protocol descriptors; do not edit.",
         "pub use crate::message::Wire;",
         "use prost_reflect::ReflectMessage;",
-        "pub trait Request: ReflectMessage + Default + 'static {\n    type Response: ReflectMessage + Default + 'static;\n    const ID: &'static str;\n}",
-        "impl<T: Request> harmos::OperationRequest for Wire<T> { type Response = Wire<T::Response>; const ID: &'static str = T::ID; }",
+        "pub trait Request: ReflectMessage + Default + 'static {\n    type Response: ReflectMessage + Default + 'static;\n    const ID: &'static str;\n    const WATCH: bool;\n}",
+        "impl<T: Request> harmos::OperationRequest for Wire<T> { type Response = Wire<T::Response>; const ID: &'static str = T::ID; const WATCH: bool = T::WATCH; }",
     ]
     for method in context:
         request = rust.message(method["request"])
         response = rust.message(method["response"])
         identity = f"{method['package']}.{method['service']}/{method['method']}"
-        bindings.append(f"impl Request for {request} {{ type Response = {response}; const ID: &'static str = {json.dumps(identity)}; }}")
+        bindings.append(
+            f"impl Request for {request} {{ type Response = {response}; const ID: &'static str = {json.dumps(identity)}; const WATCH: bool = {str(method['server_streaming']).lower()}; }}"
+        )
     (root / "sdk/rust/src/host.rs").write_text("\n".join(bindings) + "\n", encoding="utf-8", newline="\n")
 
     python.exports(root / f"sdk/python/src/{configuration.namespace}/_generated", descriptors, configuration=configuration)
