@@ -14,11 +14,17 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 // Third Party Imports
+use tracing::Instrument;
+use tracing::Span;
 
 // Local Imports
 use super::*;
+use crate::CompoundWrite;
+use crate::receipts::Completion;
 
 /* === Constants === */
 
@@ -53,7 +59,7 @@ impl StorageManager {
     pub(crate) async fn admit_mutation_owned(
         &self, domain: Domain, bytes: usize, count: usize, mutation: Option<Mutation<'_>>, measurement: bool,
         build: impl FnOnce(u64) -> Result<Operation>,
-    ) -> Result<(u64, Option<crate::receipts::Completion>)> {
+    ) -> Result<(u64, Option<Completion>)> {
         let result = async {
             if mutation.is_some() && !self.inner.primary.capabilities().mutation_receipts {
                 return Err(Error::InvalidInput {
@@ -63,13 +69,17 @@ impl StorageManager {
             }
             // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
             let _class = if measurement {
-                tracing::Instrument::instrument(self.inner.measurement_admission.lock(), tracing::trace_span!("storage.lock.wait")).await
+                Instrument::instrument(self.inner.measurement_admission.lock(), tracing::trace_span!("storage.lock.wait")).await
             } else {
-                tracing::Instrument::instrument(self.inner.control_admission.lock(), tracing::trace_span!("storage.lock.wait")).await
+                Instrument::instrument(self.inner.control_admission.lock(), tracing::trace_span!("storage.lock.wait")).await
             };
             let counter = if measurement { &self.inner.measurement_waiting } else { &self.inner.control_waiting };
-            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            counter.fetch_add(1, Ordering::SeqCst);
             let _waiting = WriteWaiter { inner: self.inner.clone(), measurement };
+            let resolution = match mutation {
+                Some(mutation) => Some(self.resolve_mutation(mutation.id, mutation.fingerprint).await?),
+                None => None,
+            };
             let bytes = bytes.max(1);
             let byte_capacity = self.inner.settings.request.max_pending_write_bytes.get();
             let batch_capacity = self.inner.settings.request.max_pending_write_batches.get();
@@ -80,7 +90,11 @@ impl StorageManager {
                         return Attempt::Refuse(Refusal::Failed(error));
                     }
                     if let Some(mutation) = mutation {
-                        match state.receipts.lookup(mutation.id, &mutation.fingerprint, None) {
+                        match state.receipts.lookup(
+                            mutation.id,
+                            &mutation.fingerprint,
+                            resolution.as_ref().map(|resolution| &resolution.completion),
+                        ) {
                             Ok(ReceiptState::Complete(value)) => {
                                 return match value.cursor() {
                                     Ok(cursor) => {
@@ -117,7 +131,7 @@ impl StorageManager {
 
                     // FIFO Within Each Class; Alternate Classes When Both Are Waiting.
                     let opposite = if measurement { &self.inner.control_waiting } else { &self.inner.measurement_waiting };
-                    let turn = state.prefer_measurement == measurement || opposite.load(std::sync::atomic::Ordering::SeqCst) == 0;
+                    let turn = state.prefer_measurement == measurement || opposite.load(Ordering::SeqCst) == 0;
                     if !(turn
                         && state.reserved_batches == 0
                         && state.finishing.is_none()
@@ -148,8 +162,8 @@ impl StorageManager {
                 Admitted::Replayed(sequence, completion) => return Ok((sequence, completion)),
                 Admitted::Reserved(sequence, last, index) => (sequence, last, index),
             };
-            // The original exclusive reservation owns capacity and capture order.
-            // Producer code runs without the state mutex; unwind releases the permit.
+            // The Original Exclusive Reservation Owns Capacity and Capture Order.
+            // Producer Code Runs Without the State Mutex; Unwind Releases the Permit.
             let mut admission = Admission { inner: self.inner.clone(), active: true };
             let operation =
                 tracing::debug_span!("storage.admission.prepare").in_scope(|| build(if count == 0 { sequence } else { sequence + 1 }))?;
@@ -168,8 +182,8 @@ impl StorageManager {
                 Operation::Conditional(_) | Operation::Compound(_) => encoded_bound,
                 _ => bytes,
             };
-            tracing::Span::current().record("sequence", last);
-            tracing::Span::current().record("index", index);
+            Span::current().record("sequence", last);
+            Span::current().record("index", index);
             let pending = Arc::new(Pending::new(&self.inner, None, index, bytes, encoded_bound, operation));
             let completion;
             {
@@ -182,7 +196,7 @@ impl StorageManager {
                     return Err(Error::Persistence { source: source.clone() });
                 }
                 if let Operation::Compound(exchange) = &pending.operation
-                    && let [crate::CompoundWrite::Scope { scope, .. }] = exchange.items.as_slice()
+                    && let [CompoundWrite::Scope { scope, .. }] = exchange.items.as_slice()
                     && state.files.values().any(|file| file.belongs_to_scope(scope))
                 {
                     return Err(Error::InvalidInput {
@@ -192,7 +206,7 @@ impl StorageManager {
                 }
                 if let Some(mutation) = mutation {
                     let outcome = MutationValue::Cursor(self.position(last));
-                    state.receipts.insert(mutation.id, mutation.fingerprint)?;
+                    state.receipts.admit(mutation.id, mutation.fingerprint)?;
                     if let Operation::Compound(exchange) = &pending.operation {
                         exchange.header.set(state.receipts.header(mutation.id)).map_err(|_| Error::InvalidInput {
                             field: "compound mutation",
@@ -239,7 +253,7 @@ impl StorageManager {
             Ok((last, completion))
         }
         .await;
-        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
     }
 
@@ -260,15 +274,15 @@ impl StorageManager {
                         Domain::Recovery => state.recovery_accepted,
                     }
                 };
-                // Explicit retry permits another bounded attempt after a failure.
+                // Explicit Retry Permits Another Bounded Attempt After a Failure.
                 if state.status.failure.is_some() {
                     state.status.failure = None;
                     state.retry = state.retry.wrapping_add(1);
                 }
                 target
             };
-            tracing::Span::current().record("sequence", target.sequence);
-            tracing::Span::current().record("index", target.index);
+            Span::current().record("sequence", target.sequence);
+            Span::current().record("index", target.index);
             self.inner.notify();
             loop {
                 let notify;
@@ -294,7 +308,7 @@ impl StorageManager {
                     notify = request.is_none_or(|current| target.index < current.index);
                     if notify {
                         *request = Some(target);
-                        let now = std::time::Instant::now();
+                        let now = Instant::now();
                         for entry in state.queue.iter().filter(|entry| entry.index <= target.index && entry.operation.domain() == domain) {
                             entry.ready_at.get_or_init(|| now);
                         }
@@ -307,7 +321,7 @@ impl StorageManager {
             }
         }
         .await;
-        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
     }
 }

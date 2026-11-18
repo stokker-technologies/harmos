@@ -15,15 +15,18 @@
 
 /* === Imports === */
 
-use super::requests::{IndexDefinition, MutationId, ProjectionDefinition, ReadLimits};
+// Standard Library Imports
+use std::{io, result};
 
-use super::requests::required;
-
-use super::requests::ColumnSource;
-use crate::execution::operations::{ExecutionContext, ServingError};
+// Third Party Imports
 use harmos_protocol::model;
 use harmos_query::columnar::Cancellation;
 use harmos_storage::StorageManager;
+
+// Local Imports
+use super::requests::{ColumnSource, IndexDefinition, MutationId, ProjectionDefinition, ReadLimits, required};
+use crate::execution::operations::{ExecutionContext, ServingError};
+use crate::{Error, Result};
 
 /* === Structs === */
 
@@ -38,7 +41,7 @@ pub(super) struct SetIndexInput {
 
 /* === Public Functions === */
 
-pub(super) fn expected(bytes: &[u8], create_if_absent: bool) -> crate::Result<Option<u64>> {
+pub(super) fn expected(bytes: &[u8], create_if_absent: bool) -> Result<Option<u64>> {
     if create_if_absent && bytes.is_empty() {
         return Ok(None);
     }
@@ -48,7 +51,7 @@ pub(super) fn expected(bytes: &[u8], create_if_absent: bool) -> crate::Result<Op
             return Ok(Some(revision));
         }
     }
-    Err(crate::Error::InvalidInput {
+    Err(Error::InvalidInput {
         field: "Set definition",
         reason: "supply the Get revision or explicit create-if-absent",
     })
@@ -60,7 +63,7 @@ pub(super) fn revision(value: u64) -> Vec<u8> {
 
 pub(super) async fn get_index(
     context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<model::ReadCut>,
-) -> Result<(IndexDefinition, Vec<u8>, model::ReadCut), ServingError> {
+) -> result::Result<(IndexDefinition, Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -88,7 +91,7 @@ pub(super) async fn get_index(
 
 pub(super) async fn set_index(
     context: &ExecutionContext, input: SetIndexInput,
-) -> Result<(IndexDefinition, Vec<u8>, model::Receipt), ServingError> {
+) -> result::Result<(IndexDefinition, Vec<u8>, model::Receipt), ServingError> {
     let SetIndexInput {
         definition,
         expected_revision,
@@ -98,7 +101,7 @@ pub(super) async fn set_index(
         mutation,
     } = input;
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-    let result: crate::Result<_> = async {
+    let result: Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;
         let definition = required(definition)?.into_engine();
         definition.validate()?;
@@ -111,7 +114,7 @@ pub(super) async fn set_index(
             rebuild,
             work,
         };
-        if !storage.definition_admitted(&mutation, &input)? {
+        if !storage.definition_admitted(&mutation, &input).await? {
             match storage.get_index_definition(&definition.name).await {
                 Ok((_current, revision)) => {
                     if expected != Some(revision) {
@@ -132,7 +135,7 @@ pub(super) async fn set_index(
 
 pub(super) async fn get_projection(
     context: &ExecutionContext, name: String, source: Option<ColumnSource>, at: Option<model::ReadCut>,
-) -> Result<(ProjectionDefinition, Vec<u8>, model::ReadCut), ServingError> {
+) -> result::Result<(ProjectionDefinition, Vec<u8>, model::ReadCut), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
     let snapshots = context.resource::<super::snapshot::SavedSnapshots>().map_err(|_| ServingError::Catalog)?;
     let cancel = Cancellation::default();
@@ -159,9 +162,9 @@ pub(super) async fn get_projection(
 pub(super) async fn set_projection(
     context: &ExecutionContext, definition: Option<ProjectionDefinition>, expected_revision: Vec<u8>, create_if_absent: bool,
     rebuild: bool, mutation: Option<MutationId>,
-) -> Result<(ProjectionDefinition, Vec<u8>, model::Receipt), ServingError> {
+) -> result::Result<(ProjectionDefinition, Vec<u8>, model::Receipt), ServingError> {
     let storage = context.resource::<StorageManager>().map_err(|_| ServingError::Catalog)?;
-    let result: crate::Result<_> = async {
+    let result: Result<_> = async {
         let expected = expected(&expected_revision, create_if_absent)?;
         let definition = required(definition)?.into_engine();
         definition.validate()?;
@@ -173,7 +176,7 @@ pub(super) async fn set_projection(
             expected,
             rebuild,
         };
-        if !storage.definition_admitted(&mutation, &input)? {
+        if !storage.definition_admitted(&mutation, &input).await? {
             match storage.get_projection_definition(&definition.name, None).await {
                 Ok((_current, revision)) => {
                     if expected != Some(revision) {
@@ -192,11 +195,11 @@ pub(super) async fn set_projection(
     result.map_err(super::admission::failure)
 }
 
-fn conflict(kind: &'static str) -> crate::Error {
+fn conflict(kind: &'static str) -> Error {
     harmos_storage::Error::backend(
         if kind == "Index" { "SetIndexDefinition" } else { "SetProjectionDefinition" },
         harmos_storage::BackendFailure::Conflict,
-        std::io::Error::other("get again and retry"),
+        io::Error::other("get again and retry"),
     )
     .into()
 }

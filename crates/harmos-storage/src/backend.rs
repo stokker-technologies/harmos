@@ -30,8 +30,8 @@ use std::sync::Arc;
 use super::query::{FileSelection, ObjectSelection, RecordSelection, SchemaSelection, StreamSelection};
 use super::state::StateBackend;
 use super::{
-    FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationReceipt, ObjectCatalog, ObjectEntry, ObjectKey,
-    ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
+    FileCheckpoint, FileChunk, FileMetadata, FileProgress, FileReference, MutationId, MutationReceipt, ObjectCatalog, ObjectEntry,
+    ObjectKey, ObjectPoint, SchemaKey, StagedFile, StorageBatch, StorageCursor, StorageSchema, StoreHistory, StoredRecord, StoredRow,
 };
 use crate::BackendFailure;
 use crate::CompareExchange;
@@ -346,6 +346,10 @@ pub trait StorageBackend: Any + Send + Sync + 'static {
     fn append_mutation_receipts(&self, _receipts: StorageBatch<MutationReceipt>) -> StorageFuture<'_, ()> {
         unsupported("storage mutations")
     }
+
+    /// Return the original unexpired receipt independently of recovery listing bounds.
+    /// Only unknown or expired identities return None; lookup failures remain errors.
+    fn get_mutation_receipt<'a>(&'a self, id: &'a MutationId) -> StorageFuture<'a, Option<MutationReceipt>>;
 
     fn list_mutation_receipts(&self, _limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         unsupported("storage mutations")

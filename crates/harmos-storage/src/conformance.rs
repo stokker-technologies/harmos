@@ -21,6 +21,7 @@
 use arrow_array::{StructArray, UInt64Array};
 
 // Local Imports
+use crate::MutationValue;
 use crate::query::{FileSelection, RecordSelection, StreamSelection};
 use crate::writes::{DecodedBatch, convert};
 use crate::{
@@ -109,6 +110,22 @@ pub async fn compound_mutations(storage: &StorageManager, fixture: CompoundFixtu
     }
     if storage.mutate_once(&mutation, items).await? != created {
         return Err(invalid("repair backend durable compound receipt replay"));
+    }
+    let receipt = storage
+        .inner
+        .primary
+        .get_mutation_receipt(&mutation)
+        .await?
+        .ok_or_else(|| invalid("retain every unexpired receipt for keyed lookup"))?;
+    if receipt.mutation != mutation || receipt.value != MutationValue::Compound(created.clone()) {
+        return Err(invalid("return the original compound result from keyed receipt lookup"));
+    }
+    let unknown = MutationId {
+        window: mutation.window.clone(),
+        key: Identifier::new("conformance.receipt.unknown").expect("valid conformance identity"),
+    };
+    if storage.inner.primary.get_mutation_receipt(&unknown).await?.is_some() {
+        return Err(invalid("return no receipt for an unknown mutation identity"));
     }
     let (observed, frontier) = follower.next_durable().await?;
     if observed.entries().len() != 1 || frontier != created.position {

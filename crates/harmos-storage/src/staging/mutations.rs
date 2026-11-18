@@ -18,6 +18,7 @@ mod end;
 /* === Imports === */
 
 // Standard Library Imports
+use std::mem;
 
 // Third Party Imports
 
@@ -105,8 +106,9 @@ impl StorageManager {
         if !self.inner.primary.capabilities().mutation_receipts {
             return Err(invalid("backend does not support mutation receipts"));
         }
+        let resolution = self.resolve_mutation(mutation, fingerprint).await?;
         let mut retry = true;
-        let mut completion = None;
+        let mut completion = Some(resolution.completion.clone());
         let mut changed = self.inner.changed.subscribe();
         let mut turn = None;
         loop {
@@ -194,7 +196,7 @@ impl StorageManager {
 
 impl MemorySize for Mutation {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>() + self.id.memory_size() - std::mem::size_of::<MutationId>()
+        mem::size_of::<Self>() + self.id.memory_size() - mem::size_of::<MutationId>()
     }
 }
 
@@ -252,7 +254,7 @@ fn reserve(inner: &Inner, state: &mut State, mutation: &MutationId, fingerprint:
         inner.relieve_pressure(state, bytes, 1);
         return Ok(false);
     }
-    state.receipts.insert(mutation, fingerprint)?;
+    state.receipts.admit(mutation, fingerprint)?;
     Ok(true)
 }
 

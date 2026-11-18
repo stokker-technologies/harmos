@@ -13,17 +13,26 @@
 
 /* === Imports === */
 
-use crate::manager::{Inner, State, Target};
-use crate::query::projection::ProjectionDefinition;
-use crate::receipts::ReceiptState;
-use crate::{
-    BackendFailure, Error, Identifier, MutationHeader, MutationId, MutationReceipt, MutationValue, ReadLimits, Result, StorageManager,
-};
+// Standard Library Imports
+use std::sync::{Arc, Mutex};
+use std::{io, mem, slice};
+
+// Third Party Imports
 use harmos_query::columnar::Cancellation;
 use harmos_query::index::IndexDefinition;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use tracing::Span;
+
+// Local Imports
+use crate::execution::Context;
+use crate::manager::{Inner, State, Target};
+use crate::query::projection::ProjectionDefinition;
+use crate::receipts::ReceiptState;
+use crate::{
+    BackendFailure, Error, Identifier, MutationHeader, MutationId, MutationReceipt, MutationValue, ReadLimits, Result, StorageBatch,
+    StorageManager,
+};
 
 /* === Structs === */
 
@@ -33,8 +42,8 @@ pub(super) struct DefinitionPending {
     retrying: bool,
 }
 pub(super) struct DefinitionWork {
-    pub(super) context: crate::execution::Context,
-    pub(super) queued: std::sync::Mutex<Option<tracing::Span>>,
+    pub(super) context: Context,
+    pub(super) queued: Mutex<Option<Span>>,
     pub(super) header: MutationHeader,
     input: DefinitionInput,
     target: Target,
@@ -118,7 +127,7 @@ impl DefinitionOutcome {
                     DefinitionRefusal::Unsupported => BackendFailure::Unsupported,
                     _ => BackendFailure::Permanent,
                 },
-                std::io::Error::other(reason),
+                io::Error::other(reason),
             )),
         }
     }
@@ -160,10 +169,12 @@ impl DefinitionInput {
 }
 impl StorageManager {
     /// Test Admission Before Looking Up Mutable Definition State During A Retry.
-    pub fn definition_admitted(&self, mutation: &MutationId, input: &DefinitionInput) -> Result<bool> {
+    pub async fn definition_admitted(&self, mutation: &MutationId, input: &DefinitionInput) -> Result<bool> {
+        let fingerprint = input.fingerprint()?;
+        let resolution = self.resolve_mutation(mutation, fingerprint).await?;
         let state = self.inner.state.lock().unwrap();
         crate::capacity::admitting(&state, false)?;
-        Ok(!matches!(state.receipts.lookup(mutation, &input.fingerprint()?, None)?, ReceiptState::Missing))
+        Ok(!matches!(state.receipts.lookup(mutation, &fingerprint, Some(&resolution.completion))?, ReceiptState::Missing))
     }
     pub async fn set_index_definition_once(
         &self, mutation: &MutationId, value: IndexDefinition, expected: Option<u64>, rebuild: bool, work: ReadLimits,
@@ -182,17 +193,18 @@ impl StorageManager {
             return Err(Error::backend(
                 input.kind().action(),
                 BackendFailure::Unsupported,
-                std::io::Error::other("provider must retain mutation receipts"),
+                io::Error::other("provider must retain mutation receipts"),
             ));
         }
         let encoded = input.encoded()?;
         let fingerprint = input.fingerprint()?;
-        let bytes = encoded.len().saturating_add(std::mem::size_of::<DefinitionWork>()).saturating_add(2 * input.name().as_str().len());
+        let bytes = encoded.len().saturating_add(mem::size_of::<DefinitionWork>()).saturating_add(2 * input.name().as_str().len());
         if bytes > self.inner.settings.request.max_pending_write_bytes.get() {
             return Err(exhausted());
         }
+        let resolution = self.resolve_mutation(mutation, fingerprint).await?;
         let mut changed = self.inner.changed.subscribe();
-        let mut completion = None;
+        let mut completion = Some(resolution.completion.clone());
         let mut retry = true;
         loop {
             let mut notify = false;
@@ -240,7 +252,7 @@ impl StorageManager {
                         if state.status.pending_bytes.saturating_add(bytes) <= self.inner.settings.request.max_pending_write_bytes.get()
                             && state.status.pending_batches < self.inner.settings.request.max_pending_write_batches.get()
                         {
-                            state.receipts.insert(mutation, fingerprint)?;
+                            state.receipts.admit(mutation, fingerprint)?;
                             completion = Some(state.receipts.completion(mutation));
                             let header = state.receipts.header(mutation);
                             let target = state.data_accepted;
@@ -248,8 +260,8 @@ impl StorageManager {
                                 mutation.clone(),
                                 DefinitionPending {
                                     work: Arc::new(DefinitionWork {
-                                        context: crate::execution::Context::current(),
-                                        queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.definition.queue"))),
+                                        context: Context::current(),
+                                        queued: Mutex::new(Some(tracing::debug_span!("storage.definition.queue"))),
                                         header,
                                         input: input.clone(),
                                         target,
@@ -337,7 +349,7 @@ impl State {
             return Err(invalid("provider changed the definition result"));
         }
         self.receipts.complete(&receipt.mutation, receipt.value.clone());
-        self.receipts.saved(std::slice::from_ref(&receipt));
+        self.receipts.saved(slice::from_ref(&receipt));
         self.definition_mutations.remove(&receipt.mutation);
         Ok(())
     }
@@ -389,7 +401,7 @@ impl DefinitionWork {
             inner
                 .bounded(
                     "primary.append_mutation_receipts",
-                    inner.primary.append_mutation_receipts(crate::StorageBatch::new(vec![receipt.clone()])),
+                    inner.primary.append_mutation_receipts(StorageBatch::new(vec![receipt.clone()])),
                 )
                 .await?;
         }
