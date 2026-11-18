@@ -69,9 +69,10 @@ def generate(check: bool = False, *, root: Path, descriptors: Path, configuratio
 
 def inventory(root: Path, configuration: Configuration) -> set[Path]:
     """Collect This Generator's Complete Output Inventory, Including Retired Files."""
+    python_package = configuration.python_package if configuration.python_package is not None else configuration.namespace
     patterns = (
-        f"sdk/python/src/{configuration.namespace}/_generated/**/*.py",
-        f"sdk/python/src/{configuration.namespace}/_generated/**/*.pyi",
+        f"sdk/python/src/{python_package}/_generated/**/*.py",
+        f"sdk/python/src/{python_package}/_generated/**/*.pyi",
         f"sdk/csharp/src/{configuration.namespace.title()}/Generated/**/*.cs",
         f"sdk/cpp/include/{configuration.namespace}/_generated/**/*.hpp",
         "sdk/cpp/src/generated/*.cpp",
@@ -89,9 +90,9 @@ def inventory(root: Path, configuration: Configuration) -> set[Path]:
         "sdk/rust/src/plugin/host.rs",
         "sdk/rust/src/plugin/host_exports.rs",
         "sdk/rust/src/plugin/types.rs",
-        f"sdk/python/src/{configuration.namespace}/__init__.py",
-        f"sdk/python/src/{configuration.namespace}/client.py",
-        f"sdk/python/src/{configuration.namespace}/plugin/__init__.py",
+        f"sdk/python/src/{python_package}/__init__.py",
+        f"sdk/python/src/{python_package}/client.py",
+        f"sdk/python/src/{python_package}/plugin/__init__.py",
         f"sdk/cpp/include/{configuration.namespace}/messages.hpp",
         f"sdk/cpp/include/{configuration.namespace}/detail/messages.hpp",
     )
@@ -123,6 +124,7 @@ def compare(source: Path, expected: Path, configuration: Configuration) -> list[
 
 
 def _render(source: Path, root: Path, descriptor_path: Path, configuration: Configuration) -> None:
+    python_package = configuration.python_package if configuration.python_package is not None else configuration.namespace
     csharp_tools = configuration.csharp_tools
     if csharp_tools is None:
         raise ValueError("Generate SDK: Supply the Restored Grpc.Tools Directory in Configuration.csharp_tools")
@@ -149,8 +151,8 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
     for folder in (
         "sdk/rust/src/client",
         "sdk/rust/src/plugin",
-        f"sdk/python/src/{configuration.namespace}/_generated",
-        f"sdk/python/src/{configuration.namespace}/plugin",
+        f"sdk/python/src/{python_package}/_generated",
+        f"sdk/python/src/{python_package}/plugin",
         f"sdk/csharp/src/{configuration.namespace.title()}/Generated",
     ):
         (root / folder).mkdir(parents=True, exist_ok=True)
@@ -174,16 +176,14 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         )
     (root / "sdk/rust/src/host.rs").write_text("\n".join(bindings) + "\n", encoding="utf-8", newline="\n")
 
-    python.exports(root / f"sdk/python/src/{configuration.namespace}/_generated", descriptors, configuration=configuration)
-    python.client(
-        root / f"sdk/python/src/{configuration.namespace}/_generated/client.py", clients, descriptors, configuration=configuration
-    )
-    python.host(root / f"sdk/python/src/{configuration.namespace}/_generated/host.py", context, descriptors, configuration=configuration)
+    python.exports(root / f"sdk/python/src/{python_package}/_generated", descriptors, configuration=configuration)
+    python.client(root / f"sdk/python/src/{python_package}/_generated/client.py", clients, descriptors, configuration=configuration)
+    python.host(root / f"sdk/python/src/{python_package}/_generated/host.py", context, descriptors, configuration=configuration)
     csharp.client(
         root,
         clients,
         configuration=configuration,
-        namespace=f"{configuration.namespace}",
+        namespace=configuration.namespace,
         target=root / f"sdk/csharp/src/{configuration.namespace.title()}/Generated/Client.g.cs",
     )
     csharp.host(
@@ -207,21 +207,21 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         clients,
         configuration=configuration,
         type_names=type_names,
-        namespace=f"{configuration.namespace}",
+        namespace=configuration.namespace,
         target=root / f"sdk/cpp/include/{configuration.namespace}/_generated/client.hpp",
     )
     cpp.host(root, context, type_names, configuration=configuration)
     # Generated Public Barrel Points Hide the Wire Packages.
     shared_names = []
-    for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/shared.py").read_text().splitlines():
+    for line in (root / f"sdk/python/src/{python_package}/_generated/shared.py").read_text().splitlines():
         if line.startswith("from "):
             shared_names.append(line.rsplit(" import ", 1)[-1])
     client_names = []
-    for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/client_types.py").read_text().splitlines():
+    for line in (root / f"sdk/python/src/{python_package}/_generated/client_types.py").read_text().splitlines():
         if line.startswith("from "):
             client_names.append(line.rsplit(" import ", 1)[-1])
     plugin_names = []
-    for line in (root / f"sdk/python/src/{configuration.namespace}/_generated/plugin_types.py").read_text().splitlines():
+    for line in (root / f"sdk/python/src/{python_package}/_generated/plugin_types.py").read_text().splitlines():
         if line.startswith("from "):
             plugin_names.append(line.rsplit(" import ", 1)[-1])
     root_barrel = [
@@ -231,16 +231,12 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
     for name in sorted(shared_names):
         root_barrel.append(f"from ._generated.shared import {name}")
     root_barrel += ["", "__all__ = " + repr(["FailureError", *sorted(shared_names)])]
-    (root / f"sdk/python/src/{configuration.namespace}/__init__.py").write_text(
-        "\n".join(root_barrel) + "\n", encoding="utf-8", newline="\n"
-    )
+    (root / f"sdk/python/src/{python_package}/__init__.py").write_text("\n".join(root_barrel) + "\n", encoding="utf-8", newline="\n")
     client_barrel = ["# @generated from protocol descriptors; do not edit.", "from ._generated.client import ClientRoot"]
     for name in sorted(client_names):
         client_barrel.append(f"from ._generated.client_types import {name}")
     client_barrel += ["", "__all__ = " + repr(["ClientRoot", *sorted(client_names)])]
-    (root / f"sdk/python/src/{configuration.namespace}/client.py").write_text(
-        "\n".join(client_barrel) + "\n", encoding="utf-8", newline="\n"
-    )
+    (root / f"sdk/python/src/{python_package}/client.py").write_text("\n".join(client_barrel) + "\n", encoding="utf-8", newline="\n")
     plugin_barrel = [
         "# @generated from protocol descriptors; do not edit.",
         "from .._plugin import Plugin",
@@ -252,7 +248,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
     for name in sorted(plugin_names):
         plugin_barrel.append(f"from .._generated.plugin_types import {name}")
     plugin_barrel += ["", "__all__ = " + repr(["Plugin", "Context", "HostOperation", "HostRoot", "Window", *sorted(plugin_names)])]
-    (root / f"sdk/python/src/{configuration.namespace}/plugin/__init__.py").write_text(
+    (root / f"sdk/python/src/{python_package}/plugin/__init__.py").write_text(
         "\n".join(plugin_barrel) + "\n", encoding="utf-8", newline="\n"
     )
     paths = []
@@ -290,8 +286,8 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
         "_generated/host.py",
         "_generated/client.py",
     ):
-        python_paths.append(root / f"sdk/python/src/{configuration.namespace}" / name)
-    python_paths = sorted(set(python_paths) | set((root / f"sdk/python/src/{configuration.namespace}/_generated").rglob("*.py")))
+        python_paths.append(root / f"sdk/python/src/{python_package}" / name)
+    python_paths = sorted(set(python_paths) | set((root / f"sdk/python/src/{python_package}/_generated").rglob("*.py")))
     subprocess.run(
         [
             sys.executable,
@@ -301,7 +297,7 @@ def _render(source: Path, root: Path, descriptor_path: Path, configuration: Conf
             "--config",
             str(configuration.python_style or source / "sdk/python/ruff.toml"),
             "--config",
-            f'lint.isort.known-first-party=["{configuration.namespace}"]',
+            f'lint.isort.known-first-party=["{python_package}"]',
             "--select",
             "I,F401,RUF022",
             "--fix",

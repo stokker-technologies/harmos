@@ -12,6 +12,7 @@
 # === Imports === #
 
 # Standard Library Imports
+import keyword
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +43,14 @@ class Configuration:
     csharp_namespaces: dict[str, str] = field(default_factory=dict)
     client_required_fields: dict[str, set[str]] = field(default_factory=dict)
     rust_selectors: dict[str, set[str]] = field(default_factory=dict)
+    python_package: str | None = None
+
+    def __post_init__(self) -> None:
+        python_package = self.python_package if self.python_package is not None else self.namespace
+        identifier = python_package.isidentifier()
+        reserved = keyword.iskeyword(python_package)
+        if not identifier or reserved:
+            raise ValueError("Generate Python SDK: Set Configuration.python_package to a Python Identifier That Is Not a Keyword")
 
     def library_descriptors(self) -> FileDescriptorSet:
         if self.library is not None:

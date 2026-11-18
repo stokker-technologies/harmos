@@ -13,8 +13,13 @@
 # Standard Library Imports
 import ast
 import asyncio
+import hashlib
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -30,6 +35,7 @@ from google.protobuf.message_factory import GetMessageClass
 from harmos_tools.build import csharp_protocol, python_protocol
 from harmos_tools.build.resources import cpp, csharp, descriptor, python, rust, sdk
 from harmos_tools.build.resources.configuration import Configuration
+from harmos_tools.process import spawn_flags
 from harmos_tools.source.protocol import caller_options, check_public_surfaces
 
 # Type Checking Imports
@@ -320,6 +326,59 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         self.assertIn("request.Count = count.Value", host_source)
         self.assertIn("context.CallAsync(HostContracts.NestedJobsDelete", host_source)
         inventory = {path: (source / path).read_bytes() for path in sdk.inventory(source, full)}
+        baseline_path = Path(__file__).parents[1] / "fixtures/shared_sdk_inventory.json"
+        baseline = json.loads(baseline_path.read_text())
+        self.assertEqual(baseline, {path.as_posix(): hashlib.sha256(content).hexdigest() for path, content in inventory.items()})
+
+        # Separate the Python Import Package From the Protocol Namespace.
+        for python_package in ("example", "example_sdk"):
+            with self.subTest(python_package=python_package):
+                configured = replace(full, python_package=python_package)
+                destination = output / python_package
+                destination.mkdir()
+                sdk.generate(root=destination, descriptors=descriptor_path, configuration=configured)
+                actual = {path: (destination / path).read_bytes() for path in sdk.inventory(destination, configured)}
+                self.assertEqual(compiler.call_args.kwargs["namespace"], full.namespace)
+                self.assertEqual(
+                    {path: content for path, content in inventory.items() if path.parts[1] != "python"},
+                    {path: content for path, content in actual.items() if path.parts[1] != "python"},
+                )
+                package_root = Path("sdk/python/src") / python_package
+                python_outputs = {path: content for path, content in actual.items() if path.parts[1] == "python"}
+                self.assertTrue(python_outputs)
+                self.assertEqual(
+                    set(python_outputs),
+                    {
+                        path.relative_to(destination)
+                        for path in (destination / "sdk/python/src").rglob("*")
+                        if path.is_file() and path.suffix in (".py", ".pyi")
+                    },
+                )
+                self.assertEqual(
+                    {package_root / path.relative_to("sdk/python/src/example") for path in inventory if path.parts[1] == "python"},
+                    set(python_outputs),
+                )
+                for path, content in python_outputs.items():
+                    self.assertTrue(path.is_relative_to(package_root))
+                    original = Path("sdk/python/src/example") / path.relative_to(package_root)
+                    expected_content = inventory[original]
+                    for prefix in (b"from example.", b"import example.", b'__module__ = "example'):
+                        expected_content = expected_content.replace(prefix, prefix.replace(b"example", python_package.encode()))
+                    self.assertEqual(expected_content, content)
+                    parsed_output = ast.parse(content)
+                    for node in ast.walk(parsed_output):
+                        if isinstance(node, ast.ImportFrom):
+                            self.assertFalse((node.module or "").startswith("example.") and python_package != "example")
+                        if isinstance(node, ast.Import):
+                            self.assertFalse(any(name.name.startswith("example.") for name in node.names) and python_package != "example")
+                    self.assertNotIn(b"example/", content)
+                sdk.generate(True, root=destination, descriptors=descriptor_path, configuration=configured)
+                stale_stub = destination / package_root / "_generated/obsolete.pyi"
+                stale_stub.write_text("obsolete")
+                self.assertRaises(ValueError, sdk.generate, True, root=destination, descriptors=descriptor_path, configuration=configured)
+                sdk.generate(root=destination, descriptors=descriptor_path, configuration=configured)
+                self.assertFalse(stale_stub.exists())
+
         sdk.generate(True, root=source, descriptors=descriptor_path, configuration=full)
         self.assertEqual(inventory, {path: (source / path).read_bytes() for path in sdk.inventory(source, full)})
         obsolete = source / "sdk/cpp/include/example/_generated/obsolete.hpp"
@@ -450,8 +509,8 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         root = Path(scratch.name)
-        for namespace in ("example", "another"):
-            with self.subTest(namespace=namespace):
+        for namespace, python_package in (("example", None), ("another", None), ("example", "example_sdk")):
+            with self.subTest(namespace=namespace, python_package=python_package):
                 schema = FileDescriptorSet()
                 for package in (namespace + ".model.v1", namespace + ".model.v1.nested", "harmos.model.v1"):
                     file = schema.file.add(name=package.replace(".", "/") + "/values.proto", package=package, syntax="proto3")
@@ -459,11 +518,14 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                         file.message_type.add(name=name)
                     mode = file.enum_type.add(name="Mode")
                     mode.value.add(name="MODE_UNSPECIFIED", number=0)
-                source = root / namespace
+                package = python_package or namespace
+                source = root / package
                 source.mkdir()
                 descriptor_path = source / "descriptors.bin"
                 descriptor_path.write_bytes(schema.SerializeToString())
-                configuration = Configuration(namespace=namespace, library=FileDescriptorSet(), csharp_tools=source / "tools")
+                configuration = Configuration(
+                    namespace=namespace, python_package=python_package, library=FileDescriptorSet(), csharp_tools=source / "tools"
+                )
                 protocol_patch = patch.object(sdk.csharp_protocol, "protocols")
                 process_patch = patch.object(sdk.subprocess, "run", return_value=SimpleNamespace(returncode=0))
                 protocol_patch.start()
@@ -474,7 +536,7 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 finally:
                     process_patch.stop()
                     protocol_patch.stop()
-                check_public_surfaces(source, namespace=namespace)
+                check_public_surfaces(source, namespace=namespace, python_package=Path(f"sdk/python/src/{package}"))
                 inventory = sdk.inventory(source, configuration)
                 self.assertTrue(inventory)
                 for relative in inventory:
@@ -491,9 +553,14 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 self.assertNotIn("using ::harmos::detail::", public)
                 self.assertIn(
                     "from . import nested",
-                    (source / f"sdk/python/src/{namespace}/_generated/_exports/shared/model/__init__.py").read_text(),
+                    (source / f"sdk/python/src/{package}/_generated/_exports/shared/model/__init__.py").read_text(),
                 )
                 self.assertIn("pub mod nested", (source / "sdk/rust/src/exports.rs").read_text())
+
+    def test_python_package_rejects_invalid_identifiers(self) -> None:
+        for python_package in ("", "example-sdk", "example.sdk", "123example", "class", " example", "../example", "example/sdk"):
+            with self.subTest(python_package=python_package):
+                self.assertRaisesRegex(ValueError, "Set Configuration.python_package", Configuration, python_package=python_package)
 
     def test_product_wire_compilation_uses_configured_inputs_and_private_modules(self) -> None:
         scratch = tempfile.TemporaryDirectory()
@@ -509,10 +576,6 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
         proto_file.parent.mkdir(parents=True)
         proto_file.write_text('syntax = "proto3";')
         self.assertEqual(python_protocol.protocols(root=root, namespace="example", proto_root=proto_root), (file.name,))
-        output = root / "bindings"
-        stale = output / "example/_wire/obsolete_pb2.py"
-        stale.parent.mkdir(parents=True)
-        stale.write_text("obsolete")
         commands = []
 
         def compile_protocol(command: list[str], **options: object) -> SimpleNamespace:
@@ -520,29 +583,77 @@ class SharedGeneratorPreservesContracts(unittest.TestCase):
                 return SimpleNamespace(returncode=0)
             commands.append(command)
             self.assertEqual(options["cwd"], root)
+            output = Path(next(argument.removeprefix("--python_out=") for argument in command if argument.startswith("--python_out=")))
             for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
                 path = output / (file.name.removesuffix(".proto") + suffix)
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("from example.model.v1 import values_pb2\nfrom shared.model.v1 import shared_pb2\n")
+                path.write_text(
+                    "from example.model.v1 import values_pb2\n"
+                    "import example.model.v1.values_pb2\n"
+                    "from example import model\n"
+                    "from shared.model.v1 import shared_pb2\n"
+                    "BuildTopDescriptorsAndMessages(DESCRIPTOR, 'example.model.v1.values_pb2', _globals)\n"
+                )
             return SimpleNamespace(returncode=0)
 
-        configuration = Configuration(namespace="example")
-        with patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol):
-            python_protocol.generate(
-                output,
-                root=root,
-                proto_root=proto_root,
-                descriptors=descriptor_path,
-                configuration=configuration,
-                module_prefixes={"shared": "shared._wire"},
-            )
-        self.assertEqual(len(commands), 1)
-        self.assertIn(f"-I{proto_root}", commands[0])
-        self.assertFalse(stale.exists())
-        self.assertFalse((output / file.name.removesuffix(".proto")).with_name("values_pb2.py").exists())
-        generated = output / "example/_wire/model/v1/values_pb2.py"
-        self.assertIn("from example._wire.model.v1 import values_pb2", generated.read_text())
-        self.assertIn("from shared._wire.model.v1 import shared_pb2", generated.read_text())
+        for python_package in (None, "example", "example_sdk"):
+            with self.subTest(python_package=python_package):
+                package = python_package or "example"
+                output = root / ("bindings_" + str(python_package))
+                stale = output / package / "_wire/obsolete_pb2.py"
+                stale.parent.mkdir(parents=True)
+                stale.write_text("obsolete")
+                commands.clear()
+                configuration = Configuration(namespace="example", python_package=python_package)
+                with patch.object(python_protocol.subprocess, "run", side_effect=compile_protocol):
+                    python_protocol.generate(
+                        output,
+                        root=root,
+                        proto_root=proto_root,
+                        descriptors=descriptor_path,
+                        configuration=configuration,
+                        module_prefixes={"shared": "shared._wire"},
+                    )
+                self.assertEqual(len(commands), 1)
+                self.assertIn(f"-I{proto_root}", commands[0])
+                self.assertEqual(commands[0][-1], file.name)
+                self.assertFalse(stale.exists())
+                self.assertFalse((output / file.name.removesuffix(".proto")).with_name("values_pb2.py").exists())
+                for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
+                    generated = output / package / ("_wire/model/v1/values" + suffix)
+                    source = generated.read_text()
+                    self.assertIn(f"from {package}._wire.model.v1 import values_pb2", source)
+                    self.assertIn(f"import {package}._wire.model.v1.values_pb2", source)
+                    self.assertIn(f"from {package}._wire import model", source)
+                    self.assertIn("from shared._wire.model.v1 import shared_pb2", source)
+                    self.assertIn(f"BuildTopDescriptorsAndMessages(DESCRIPTOR, '{package}._wire.model.v1.values_pb2'", source)
+                shared = (output / package / "_generated/shared.py").read_text()
+                self.assertIn(f"from {package}._wire.model.v1.values_pb2 import Value", shared)
+                self.assertIn(f'Value.__module__ = "{package}"', shared)
+                self.assertTrue((output / package / "_generated/host.py").is_file())
+
+        # Import Real Compiler Output and Round-Trip Its Public Message.
+        proto_file.write_text('syntax = "proto3";\npackage example.model.v1;\nmessage Value {}\n')
+        for python_package in (None, "example_sdk"):
+            with self.subTest(real_compiler=True, python_package=python_package):
+                package = python_package or "example"
+                output = root / ("compiled_" + package)
+                python_protocol.generate(
+                    output,
+                    root=root,
+                    proto_root=proto_root,
+                    descriptors=descriptor_path,
+                    configuration=Configuration(namespace="example", python_package=python_package),
+                )
+                command = [
+                    sys.executable,
+                    "-c",
+                    f"from {package}._generated.shared import Value\n"
+                    "assert Value.DESCRIPTOR.full_name == 'example.model.v1.Value'\n"
+                    f"assert Value.__module__ == '{package}'\n"
+                    "assert Value.FromString(Value().SerializeToString()) == Value()",
+                ]
+                subprocess.run(command, check=True, cwd=output, creationflags=spawn_flags())
         file.options.csharp_namespace = "Example.Wire"
         source = "namespace Example.Wire {\npublic sealed partial class Value : global::Example.Wire.Base {}\n}"
         rendered = csharp_protocol._wire_source(source, "Values.cs", file, set(), None, {"Example.Wire": "ExampleSDK.Models"})
