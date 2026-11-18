@@ -92,7 +92,7 @@ struct ArrowScan {
     limits: ReadLimits,
     work: ReadLimits,
 }
-struct ColumnPredicate { column: String, lower: Option<f64>, upper: Option<f64> }
+struct ColumnPredicate { column: String, lower: Option<f64>, upper: Option<f64>, prefix: Option<String> }
 struct ArrowSeek { snapshot: Vec<u8>, plan: [u8; 32], position: u64 }
 struct TimeBounds { column: String, lower_ns: i64, upper_ns: i64 }
 struct ArrowPage { batch: RecordBatch, next: Option<ArrowSeek>, complete: bool, scanned: usize, bytes_read: usize, columns_read: Vec<String>, payload_rows: usize }
@@ -102,6 +102,20 @@ struct IndexRead { name: Identifier, lower: Option<Vec<u8>>, upper: Option<Vec<u
 struct IndexSeek { snapshot: Vec<u8>, plan: [u8; 32], revision: u64, key: Vec<u8>, position: u64 }
 struct IndexPage { entries: Vec<IndexEntry>, next: Option<IndexSeek>, complete: bool }
 ```
+
+A column predicate uses either unchanged numeric half-open bounds or a nonempty,
+case-sensitive TEXT prefix. Combining a prefix with either numeric bound is refused;
+the selected column must match the predicate kind, including on empty pages. The
+serialized selection binds native operation cursors and backend seeks to the predicate
+and retained read cut. Storage listing remains native-only: no storage messages or
+services are added to the public protocol or any SDK.
+
+Shared execution loads predicate/time columns before constructing selected payload
+columns for matching rows. Metadata key prefixes therefore avoid payload decoding for
+rejected rows. `payload_rows` counts payload projection visits (including a predicate
+projection and any separate output projection); byte-limited output can revisit accepted
+rows on continuation. Physical row and byte budgets remain unchanged. Native backends
+receive the selection through `ArrowScan` and can prune keys before fetching payloads.
 
 Reason: one object-safe `StorageBackend` contract with capability flags and free executor functions
 selects native methods or an equivalent explicitly bounded fallback. Arrow/index capability

@@ -23,20 +23,21 @@ use std::{
 };
 
 // Third Party Imports
-use arrow_array::{Float64Array, UInt64Array};
+use arrow_array::{Float64Array, StringArray, UInt64Array};
 
 // Local Imports
 use crate::manager::backend;
 use crate::manager::fixture::{self, Fixture};
 use harmos_domain::config::SchemaSettings;
+use harmos_domain::model::storage::catalog::object_schema;
 use harmos_domain::schema::graph;
-use harmos_domain::{Message, schema::Described};
-use harmos_query::columnar::ArrowScan;
+use harmos_domain::{Identified, Message, schema::Described};
 use harmos_query::columnar::Cancellation;
 use harmos_query::columnar::ColumnKind;
 use harmos_query::columnar::ColumnPredicate;
 use harmos_query::columnar::ColumnSource;
 use harmos_query::columnar::TimeBounds;
+use harmos_query::columnar::{self, ArrowScan, ScanEvidence};
 use harmos_query::{arrow::ArrowBatch, source};
 use harmos_storage::query::StreamSelection;
 use harmos_storage::query::columnar::list_column_rows;
@@ -62,11 +63,31 @@ struct Reading {
     amplitude: f64,
 }
 
+#[derive(harmos_domain::Message, Clone)]
+struct TextObject {
+    id: String,
+    value: u64,
+    unused: Vec<u8>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Identified for TextObject {
+    const ID: &'static str = "test.text-object";
+}
+
+impl StoredObject for TextObject {
+    type Key = String;
+    const RETENTION: ObjectRetention = ObjectRetention::All;
+
+    fn key(&self) -> &String {
+        &self.id
+    }
+}
 
 /* === Public Functions === */
 
@@ -77,6 +98,238 @@ fn nz(value: usize) -> NonZeroUsize {
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn text_prefix_pages_match_filter_after_read_at_saved_object_revisions() {
+    let history = backend::history();
+    let catalog = ObjectCatalog::new().entry(ObjectDefinition::of::<TextObject>());
+    let primary = backend::Backend::with_catalog(catalog, history.clone());
+    primary.create_session().await.unwrap();
+    let key = object_schema::<TextObject>().unwrap();
+    let graph = graph::Schema::from_declaration(TextObject::DEFINITION, &SchemaSettings::default()).unwrap();
+    let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
+    primary.append_schemas(StorageBatch::new(vec![schema.clone()]).into()).await.unwrap();
+    let mut entries = Vec::new();
+    for revision in 0..3 {
+        for index in 0..48 {
+            let prefix = ["other/", "group/", "grouped/", "é/", "group/"][index % 5];
+            let value = TextObject {
+                id: format!("{prefix}{index}"),
+                value: (revision * 100 + index) as u64,
+                unused: vec![7; 64],
+            };
+            let position = StorageCursor {
+                history: history.clone(),
+                sequence: entries.len() as u64 + 2,
+            };
+            entries.push(ObjectEntry {
+                version: ObjectVersionToken::new(position.clone()),
+                position,
+                value: ObjectValue {
+                    scope: None,
+                    schema: key.clone(),
+                    item: ObjectKey::new(&value.id, nz(256)).unwrap(),
+                    payload: value.encode(),
+                },
+            });
+        }
+    }
+    primary.append_object_revisions(StorageBatch::new(entries[..96].to_vec())).await.unwrap();
+    let cut = StorageCursor { history: history.clone(), sequence: 97 };
+    let saved = primary.create_snapshot(&cut).await.unwrap();
+    primary.append_object_revisions(StorageBatch::new(entries[96..].to_vec())).await.unwrap();
+    let current = primary.create_snapshot(&entries.last().unwrap().position).await.unwrap();
+
+    for snapshot in [&saved, &current] {
+        let read = ArrowScan {
+            source: ColumnSource {
+                kind: ColumnKind::Objects,
+                schema: key.clone(),
+            },
+            columns: vec!["_storage.position".into(), "_storage.item".into(), "payload.value".into()],
+            predicate: None,
+            time: None,
+            start: 0,
+            after: None,
+            limits: ReadLimits { rows: nz(64), bytes: nz(65536) },
+            work: ReadLimits { rows: nz(64), bytes: nz(65536) },
+        };
+        let all = collect_text_columns(&primary, snapshot, read.clone()).await.0;
+        assert_eq!(all.len(), 48);
+        for prefix in ["group/", "é/", "absent/"] {
+            let expected = all.iter().filter(|(_, key, _)| key.starts_with(prefix)).cloned().collect::<Vec<_>>();
+            for rows in [1, 3, 7] {
+                let mut selected = read.clone();
+                selected.limits.rows = nz(rows);
+                selected.predicate = Some(ColumnPredicate {
+                    column: "_storage.item".into(),
+                    lower: None,
+                    upper: None,
+                    prefix: Some(prefix.into()),
+                });
+                let (actual, decoded, scanned) = collect_text_columns(&primary, snapshot, selected).await;
+                assert_eq!(actual, expected);
+                assert_eq!(decoded, expected.len());
+                assert_eq!(scanned, all.len());
+            }
+        }
+        let mut payload_prefix = read.clone();
+        payload_prefix.predicate = Some(ColumnPredicate {
+            column: "payload.id".into(),
+            lower: None,
+            upper: None,
+            prefix: Some("group/".into()),
+        });
+        let expected = all.iter().filter(|(_, key, _)| key.starts_with("group/")).cloned().collect::<Vec<_>>();
+        assert_eq!(collect_text_columns(&primary, snapshot, payload_prefix).await.0, expected);
+        let mut byte_limited = read.clone();
+        byte_limited.limits.bytes = nz(1536);
+        byte_limited.predicate = Some(ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: None,
+            upper: None,
+            prefix: Some("g".into()),
+        });
+        let expected = all.iter().filter(|(_, key, _)| key.starts_with('g')).cloned().collect::<Vec<_>>();
+        assert_eq!(collect_text_columns(&primary, snapshot, byte_limited).await.0, expected);
+
+        // Compare the Eager Reference Executor with the Staged Backend Executor.
+        let rows =
+            entries.iter().filter(|entry| entry.position.sequence <= snapshot.at.sequence).rev().take(48).cloned().collect::<Vec<_>>();
+        let mut rows = rows;
+        rows.sort_by_key(|entry| entry.position.sequence);
+        let batch = columnar::objects(&schema, &rows).unwrap();
+        let mut selected = read.clone();
+        selected.predicate = Some(ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: None,
+            upper: None,
+            prefix: Some("group/".into()),
+        });
+        let eager = columnar::finish_page(
+            snapshot,
+            &selected,
+            &batch,
+            ScanEvidence {
+                complete: true,
+                bytes: 0,
+                columns: selected.required_columns(),
+                payload_rows: rows.len(),
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+        let staged = list_column_rows(&primary, snapshot, &selected, &Cancellation::default()).await.unwrap();
+        assert_eq!(staged.batch, eager.batch);
+        let mut replayed = selected.clone();
+        replayed.limits.rows = nz(1);
+        replayed.after = list_column_rows(&primary, snapshot, &replayed, &Cancellation::default()).await.unwrap().next;
+        assert!(replayed.after.is_some());
+        replayed.predicate.as_mut().unwrap().prefix = Some("other/".into());
+        assert!(list_column_rows(&primary, snapshot, &replayed, &Cancellation::default()).await.is_err());
+    }
+    primary.delete_snapshot(&saved).await.unwrap();
+    primary.delete_snapshot(&current).await.unwrap();
+    primary.delete_session().await.unwrap();
+}
+
+async fn collect_text_columns(
+    primary: &dyn StorageBackend, snapshot: &BackendSnapshot, mut read: ArrowScan,
+) -> (Vec<(u64, String, u64)>, usize, usize) {
+    let mut result = Vec::new();
+    let mut decoded = 0;
+    let mut scanned = 0;
+    loop {
+        let page = list_column_rows(primary, snapshot, &read, &Cancellation::default()).await.unwrap();
+        assert!(columnar::page_bytes(&page.batch).unwrap() <= read.limits.bytes.get());
+        let positions = page.batch.column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
+        let keys = page.batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
+        let values = page.batch.column(2).as_any().downcast_ref::<UInt64Array>().unwrap();
+        for row in 0..page.batch.num_rows() {
+            result.push((positions.value(row), keys.value(row).to_owned(), values.value(row)));
+        }
+        decoded += page.payload_rows;
+        scanned += page.scanned;
+        if page.complete {
+            break;
+        }
+        let next = page.next.unwrap();
+        assert!(next.position > read.after.as_ref().map_or(read.start, |after| after.position));
+        read.after = Some(next);
+    }
+    (result, decoded, scanned)
+}
+
+#[tokio::test]
+async fn key_prefix_rejects_rows_before_decoding_their_payloads() {
+    let history = backend::history();
+    let primary = backend::Backend::new(history.clone());
+    primary.create_session().await.unwrap();
+    let key = SchemaKey {
+        id: Identifier::new("prefix-record").unwrap(),
+        version: NonZeroU32::MIN,
+        payload_encoding: PayloadEncoding::PostcardV1,
+    };
+    let graph = graph::Schema::from_declaration(Sample::DEFINITION, &SchemaSettings::default()).unwrap();
+    let schema = StorageSchema::new(StorageCursor { history: history.clone(), sequence: 1 }, key.clone(), graph);
+    primary.append_schemas(StorageBatch::new(vec![schema]).into()).await.unwrap();
+    let rows = (0..32)
+        .map(|index| StoredRecord {
+            position: StorageCursor {
+                history: history.clone(),
+                sequence: index + 2,
+            },
+            schema: key.clone(),
+            scope: None,
+            item: Identifier::new(if index == 31 { "group-match".to_owned() } else { format!("other-{index}") }).unwrap(),
+            source: None,
+            source_time: None,
+            payload: if index == 31 {
+                Sample {
+                    time_ns: 1,
+                    value: 42.0,
+                    unused: vec![0; 1024],
+                }
+                .encode()
+            } else {
+                vec![255]
+            },
+        })
+        .collect::<Vec<_>>();
+    primary.append_records(StorageBatch::new(rows)).await.unwrap();
+    let saved = primary.create_snapshot(&StorageCursor { history, sequence: 33 }).await.unwrap();
+    let mut read = ArrowScan {
+        source: ColumnSource { kind: ColumnKind::Records, schema: key },
+        columns: vec!["payload.value".into()],
+        predicate: Some(ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: None,
+            upper: None,
+            prefix: Some("group-".into()),
+        }),
+        time: None,
+        start: 0,
+        after: None,
+        limits: ReadLimits { rows: nz(32), bytes: nz(8192) },
+        work: ReadLimits { rows: nz(32), bytes: nz(65536) },
+    };
+    let page = list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.unwrap();
+    assert_eq!(page.payload_rows, 1);
+    assert_eq!(page.scanned, 32);
+    assert_eq!(page.batch.column(0).as_any().downcast_ref::<Float64Array>().unwrap().values(), &[42.0]);
+    read.predicate.as_mut().unwrap().prefix = Some("missing-".into());
+    let page = list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.unwrap();
+    assert_eq!(page.payload_rows, 0);
+    assert_eq!(page.batch.num_rows(), 0);
+    assert!(page.complete);
+    read.columns = vec!["_storage.item".into()];
+    read.predicate.as_mut().unwrap().prefix = Some("group-".into());
+    let page = list_column_rows(&primary, &saved, &read, &Cancellation::default()).await.unwrap();
+    assert_eq!(page.payload_rows, 0);
+    assert_eq!(page.batch.num_rows(), 1);
+    primary.delete_snapshot(&saved).await.unwrap();
+    primary.delete_session().await.unwrap();
+}
 
 #[tokio::test]
 async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance() {
@@ -133,6 +386,7 @@ async fn saved_windows_match_fallback_while_live_writes_and_cancellation_advance
             column: "payload.value".into(),
             lower: Some(3.0),
             upper: Some(6.0),
+            prefix: None,
         }),
         time: Some(TimeBounds {
             column: "payload.time_ns".into(),

@@ -24,9 +24,11 @@ use crate::MemorySize;
 use crate::execution::operations::{ExecutionContext, ServingError};
 use harmos_protocol::model;
 use harmos_query::arrow::{ArrowBatch, ArrowSchema};
-use harmos_query::columnar::Cancellation;
+use harmos_query::columnar::{self, Cancellation};
+use harmos_query::index;
 use harmos_storage::ReadLimits;
 use harmos_storage::StorageManager;
+use harmos_storage::query::projection;
 use prost::Message;
 use std::num::NonZeroUsize;
 
@@ -51,7 +53,7 @@ pub(super) async fn columns(
             let (selected, after) = if page.page_token.is_empty() {
                 (snapshots.resolve(&storage, at.clone()).await?, None)
             } else {
-                let (read, cursor) = snapshots.open_cursor::<harmos_query::columnar::ArrowSeek>(
+                let (read, cursor) = snapshots.open_cursor::<columnar::ArrowSeek>(
                     &page.page_token,
                     &plan,
                     storage.settings().response.batch_bytes.get(),
@@ -60,16 +62,16 @@ pub(super) async fn columns(
                 (read, Some(cursor))
             };
             let (limits, maximum) = bounds(&storage, &page, selected.cut(), false)?;
-            let read = harmos_query::columnar::ArrowScan {
+            let read = columnar::ArrowScan {
                 source: source.clone(),
                 columns: selection.columns,
-                predicate: selection.predicate.map(|value| harmos_query::columnar::ColumnPredicate {
+                predicate: selection.predicate.map(|value| columnar::ColumnPredicate {
                     column: value.column,
                     lower: value.lower,
                     upper: value.upper,
                     prefix: value.prefix,
                 }),
-                time: selection.time.map(|value| harmos_query::columnar::TimeBounds {
+                time: selection.time.map(|value| columnar::TimeBounds {
                     column: value.column,
                     lower_ns: value.lower_ns,
                     upper_ns: value.upper_ns,
@@ -130,7 +132,7 @@ pub(super) async fn indexes(
                 let cut = snapshots.composite(&storage, cut).await?;
                 (snapshots.resolve(&storage, Some(cut)).await?, None)
             } else {
-                let (read, cursor) = snapshots.open_cursor::<harmos_query::index::IndexSeek>(
+                let (read, cursor) = snapshots.open_cursor::<index::IndexSeek>(
                     &page.page_token,
                     &plan,
                     storage.settings().response.batch_bytes.get(),
@@ -140,7 +142,7 @@ pub(super) async fn indexes(
             };
             let revision = revision_at(selected.cut(), &resource)?.ok_or_else(|| unavailable("ListIndexEntries revision"))?;
             let (limits, maximum) = bounds(&storage, &page, selected.cut(), true)?;
-            let read = harmos_query::index::IndexRead {
+            let read = index::IndexRead {
                 revision: Some(revision),
                 name,
                 lower: selection.lower,
@@ -213,7 +215,7 @@ pub(super) async fn projections(
             let (definition, _) = storage.get_projection_definition(&name, Some(revision)).await?;
             super::admission::source_matches(&source, &definition.source)?;
             let (limits, maximum) = bounds(&storage, &page, selected.cut(), true)?;
-            let read = harmos_storage::query::projection::ProjectionRead {
+            let read = projection::ProjectionRead {
                 name,
                 revision,
                 frontier: selected.at().clone(),

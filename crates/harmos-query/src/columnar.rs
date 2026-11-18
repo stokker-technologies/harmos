@@ -16,14 +16,14 @@
 // Standard Library Imports
 use std::cmp;
 use std::collections::BTreeSet;
-use std::mem;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::{iter, mem};
 
 // Third Party Imports
-use arrow_array::{Array, LargeStringArray, RecordBatch, StringArray, StringViewArray, UInt64Array};
+use arrow_array::{Array, LargeStringArray, RecordBatch, RecordBatchOptions, StringArray, StringViewArray, UInt64Array};
 use arrow_schema::Field;
 use arrow_schema::{DataType, TimeUnit};
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,7 @@ use super::transform::{
 use crate::ObjectEntry;
 use crate::StoredRecord;
 use crate::StoredRow;
+use crate::arrow::ArrowBatch;
 use crate::{BackendFailure, Error, MemorySize, Result, SchemaKey};
 use harmos_domain::model::storage::StorageSchema;
 use harmos_domain::model::storage::{BackendSnapshot, ReadLimits};
@@ -70,6 +71,8 @@ pub struct ColumnPredicate {
     pub column: String,
     pub lower: Option<f64>,
     pub upper: Option<f64>,
+
+    /// Nonempty Case-Sensitive TEXT Prefix; Numeric Bounds Must Be Absent.
     pub prefix: Option<String>,
 }
 
@@ -114,6 +117,8 @@ pub struct ArrowPage {
     pub scanned: usize,
     pub bytes_read: usize,
     pub columns_read: Vec<String>,
+
+    /// Payload Projection Visits, Including Separate Predicate and Output Reads.
     pub payload_rows: usize,
 }
 
@@ -310,7 +315,7 @@ fn leaves(field: &Field, parent: String, paths: &mut Vec<String>) {
 pub fn empty(schema: &StorageSchema, kind: ColumnKind) -> Result<RecordBatch> {
     let batch = match kind {
         ColumnKind::Objects => crate::source::objects(schema, &[])?,
-        ColumnKind::Records => crate::source::records(schema, std::iter::empty())?,
+        ColumnKind::Records => crate::source::records(schema, iter::empty())?,
         ColumnKind::Stream => crate::source::stream(schema, &[])?,
     };
     flatten(&batch)
@@ -438,7 +443,7 @@ pub fn finish_scan(
 }
 
 pub fn page_bytes(batch: &RecordBatch) -> Result<usize> {
-    let ipc = crate::arrow::ArrowBatch::try_new(batch.clone())?;
+    let ipc = ArrowBatch::try_new(batch.clone())?;
     Ok(batch.get_array_memory_size().max(ipc.ipc_bytes().len()))
 }
 
@@ -531,7 +536,7 @@ pub fn take(batch: &RecordBatch, indices: &[u64]) -> Result<RecordBatch> {
         .iter()
         .map(|column| arrow_select::take::take(column.as_ref(), &indices, None).map_err(|_| invalid("Arrow row selection failed")))
         .collect::<Result<Vec<_>>>()?;
-    RecordBatch::try_new_with_options(batch.schema(), columns, &arrow_array::RecordBatchOptions::new().with_row_count(Some(indices.len())))
+    RecordBatch::try_new_with_options(batch.schema(), columns, &RecordBatchOptions::new().with_row_count(Some(indices.len())))
         .map_err(|_| invalid("invalid selected Arrow batch"))
 }
 

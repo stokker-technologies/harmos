@@ -67,6 +67,8 @@ pub struct ColumnPredicate {
     pub column: String,
     pub lower: Option<f64>,
     pub upper: Option<f64>,
+
+    /// Nonempty Case-Sensitive TEXT Prefix; Numeric Bounds Must Be Absent.
     pub prefix: Option<String>,
 }
 

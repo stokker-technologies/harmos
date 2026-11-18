@@ -36,6 +36,8 @@ use super::transform::project::Project;
 use crate::SchemaKey;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::{Error, Result};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::message::postcard::Reader;
 use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 
 /* === Constants === */
@@ -84,7 +86,7 @@ pub fn projected<'a>(
 pub fn projected_payloads<'a>(
     schema: &StorageSchema, payloads: impl ExactSizeIterator<Item = &'a [u8]>, project: &Project, output: Arc<Schema>,
 ) -> Result<RecordBatch> {
-    let settings = harmos_domain::config::SchemaSettings::default();
+    let settings = SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     // Compile A Single Required Float Projection Without Per-Value Builder Dispatch.
     let primitive = project
@@ -116,7 +118,7 @@ pub fn projected_payloads<'a>(
         });
         for payload in payloads {
             if numeric {
-                let mut input = harmos_domain::message::postcard::Reader::new(payload);
+                let mut input = Reader::new(payload);
                 input
                     .nested(|input| {
                         for current in fields {
@@ -392,7 +394,7 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
 }
 
 fn payload(schema: &StorageSchema, payloads: &[&[u8]]) -> Result<ArrayRef> {
-    let settings = harmos_domain::config::SchemaSettings::default();
+    let settings = SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     let kind = DataType::Struct(payload_fields(&schema.schema)?);
     let mut columns = columns::Column::new(&kind, payloads.len());

@@ -15,6 +15,8 @@
   - [x] Operations/runtime: saved_queries_and_conditional_updates_cross_the_protocol covers all five capabilities, unsupported refusal, replay, saved cuts and source-changing rebuilds.
   - [x] Verify retained wire-page buffer limits, including IPC schema and continuation metadata, through the runtime and example journeys.
   - [x] Rust/Python/C#/C++ SDK generated storage surfaces and existing plugin conformance; retain protocol-only SDK dependencies.
+- [x] 2.8 Add native TEXT prefix column predicates, exclusive numeric/text validation, predicate-bound continuations and staged payload projection in the shared memory/reference executor.
+  - [ ] Prove prefix/page/revision parity, rejected-payload work, native operation validation/token binding and unchanged generated protocol with focused Windows tasks.
 - [x] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
   - [x] Storage documentation portion: native API guide, README claims, tooling commands and retained recovery/file obligations.
   - [x] Example composition, generated-client usage, source grants, bounds, failures and README claims match the adopted interface.

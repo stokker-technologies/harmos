@@ -16,7 +16,9 @@ mod compound_mutation_through_operations;
 /* === Imports === */
 
 use super::{Fixture, config};
+use arrow_array::UInt64Array;
 use harmos_domain::Message;
+use harmos_domain::schema::{Described, graph};
 use harmos_operations::storage;
 use harmos_operations::storage::{
     ColumnKind, ColumnPredicate, ColumnSelection, ColumnSource, IndexDefinition, IndexSelection, ProjectionDefinition, ProjectionSelection,
@@ -39,6 +41,125 @@ struct Reading {
 /* === Tests === */
 
 #[tokio::test]
+async fn native_text_predicates_bind_pages_to_the_prefix_and_read_cut() {
+    let fixture = Fixture::new(config()).await;
+    crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
+        .await
+        .unwrap();
+    let schema = SchemaKey {
+        id: Identifier::new("text-reading").unwrap(),
+        version: NonZeroU32::MIN,
+        payload_encoding: PayloadEncoding::PostcardV1,
+    };
+    let graph = graph::Schema::from_declaration(Reading::DEFINITION, &Default::default()).unwrap();
+    fixture.storage.write_schema(schema.clone(), graph).await.unwrap();
+    for (index, item) in ["other-first", "group-first", "group-last", "other-last"].into_iter().enumerate() {
+        fixture
+            .storage
+            .append_records(vec![RecordInput {
+                schema: schema.clone(),
+                scope: None,
+                item: Identifier::new(item).unwrap(),
+                source: None,
+                source_time: None,
+                payload: Reading { value: index as u64 }.encode(),
+            }])
+            .await
+            .unwrap();
+    }
+    fixture.storage.flush().await.unwrap();
+    let mut request = storage::ListColumnRowsRequest {
+        selection: Some(ColumnSelection {
+            source: Some(ColumnSource {
+                kind: ColumnKind::Records,
+                schema: schema.clone(),
+            }),
+            columns: vec!["payload.value".into()],
+            predicate: Some(ColumnPredicate {
+                column: "_storage.item".into(),
+                lower: None,
+                upper: None,
+                prefix: Some("group-".into()),
+            }),
+            time: None,
+            start: 0,
+            work: Some(ReadLimits {
+                rows: NonZeroUsize::new(64).unwrap(),
+                bytes: NonZeroUsize::new(65536).unwrap(),
+            }),
+        }),
+        at: None,
+        page: Some(model::PageRequest {
+            page_size: 2,
+            max_bytes: 8192,
+            page_token: String::new(),
+        }),
+    };
+    let first = fixture.runtime.operations.call_native::<storage::ListColumnRows>(request.clone()).await.unwrap();
+    assert_eq!(first.page.as_ref().unwrap().payload_rows, 1);
+    assert!(!first.next_page_token.is_empty());
+    request.at = first.resolved_at;
+    request.page.as_mut().unwrap().page_token = first.next_page_token;
+    let mut changed = request.clone();
+    changed.selection.as_mut().unwrap().predicate.as_mut().unwrap().prefix = Some("other-".into());
+    assert!(fixture.runtime.operations.call_native::<storage::ListColumnRows>(changed).await.is_err());
+
+    fixture
+        .storage
+        .append_records(vec![RecordInput {
+            schema,
+            scope: None,
+            item: Identifier::new("group-later").unwrap(),
+            source: None,
+            source_time: None,
+            payload: Reading { value: 99 }.encode(),
+        }])
+        .await
+        .unwrap();
+    fixture.storage.flush().await.unwrap();
+    let second = fixture.runtime.operations.call_native::<storage::ListColumnRows>(request.clone()).await.unwrap();
+    assert_eq!(second.resolved_at, request.at);
+    let page = second.page.unwrap();
+    assert_eq!(page.payload_rows, 1);
+    let batch = ArrowBatch::from_ipc(page.batch.data).unwrap();
+    let values = batch.as_record_batch().column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
+    assert_eq!(values.values(), &[2]);
+    assert!(second.next_page_token.is_empty());
+
+    request.page.as_mut().unwrap().page_token.clear();
+    for predicate in [
+        ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: Some(1.0),
+            upper: None,
+            prefix: Some("group-".into()),
+        },
+        ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: None,
+            upper: None,
+            prefix: Some(String::new()),
+        },
+        ColumnPredicate {
+            column: "payload.value".into(),
+            lower: None,
+            upper: None,
+            prefix: Some("group-".into()),
+        },
+        ColumnPredicate {
+            column: "_storage.item".into(),
+            lower: Some(1.0),
+            upper: None,
+            prefix: None,
+        },
+    ] {
+        request.selection.as_mut().unwrap().predicate = Some(predicate);
+        assert!(fixture.runtime.operations.call_native::<storage::ListColumnRows>(request.clone()).await.is_err());
+    }
+    fixture.finish().await;
+}
+
+#[tokio::test]
 async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
     let fixture = Fixture::new(config()).await;
     crate::support::app::register(&fixture.runtime, harmos_operations::storage_catalog(), harmos_runtime::operations::Lane::default())
@@ -49,11 +170,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         version: NonZeroU32::MIN,
         payload_encoding: PayloadEncoding::PostcardV1,
     };
-    let graph = harmos_domain::schema::graph::Schema::from_declaration(
-        <Reading as harmos_domain::schema::Described>::DEFINITION,
-        &Default::default(),
-    )
-    .unwrap();
+    let graph = graph::Schema::from_declaration(Reading::DEFINITION, &Default::default()).unwrap();
     fixture.storage.write_schema(schema.clone(), graph).await.unwrap();
     for (item, value) in [("first", 0), ("second", 0), ("third", 2), ("fourth", 3)] {
         fixture
@@ -92,6 +209,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
                 column: "payload.value".into(),
                 lower: Some(2.0),
                 upper: None,
+                prefix: None,
             }),
             work: Some(work),
             time: None,
@@ -134,7 +252,7 @@ async fn native_lists_continue_filtered_pages_and_refuse_changed_revisions() {
         let batch = ArrowBatch::from_ipc(batch.data).unwrap();
         batch.validate_schema(schema.as_schema()).unwrap();
         let decoded = batch.as_record_batch();
-        let column = decoded.column(0).as_any().downcast_ref::<arrow_array::UInt64Array>().unwrap();
+        let column = decoded.column(0).as_any().downcast_ref::<UInt64Array>().unwrap();
         values.extend(column.values().iter().copied());
         if response.next_page_token.is_empty() {
             break;

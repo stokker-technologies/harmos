@@ -16,12 +16,14 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::mem;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 // Third Party Imports
-use arrow_array::RecordBatch;
+use arrow_array::{RecordBatch, UInt64Array};
 use arrow_schema::Schema;
+use arrow_select::take;
 
 // Local Imports
 use crate::{BackendSnapshot, Error, MemorySize, Result, ScanPage, StorageBackend, StorageSchema};
@@ -92,13 +94,17 @@ impl Columns<'_> {
             decoded = indices.len();
             Some(source::projected_payloads(self.schema, payloads, &project, output)?)
         };
-        let metadata = columnar::take(&self.metadata, indices)?;
+        let indices = UInt64Array::from(indices.to_vec());
         let arrays = names
             .iter()
             .map(|name| {
-                metadata
-                    .column_by_name(name)
-                    .or_else(|| payload.as_ref().and_then(|payload| payload.column_by_name(name)))
+                if let Some(array) = self.metadata.column_by_name(name) {
+                    return take::take(array.as_ref(), &indices, None)
+                        .map_err(|_| columnar::invalid("select valid metadata row positions"));
+                }
+                payload
+                    .as_ref()
+                    .and_then(|payload| payload.column_by_name(name))
                     .cloned()
                     .ok_or_else(|| columnar::invalid("select an available column"))
             })
@@ -111,7 +117,7 @@ impl Columns<'_> {
 
 impl MemorySize for StorageCapabilities {
     fn memory_size(&self) -> usize {
-        std::mem::size_of::<Self>()
+        mem::size_of::<Self>()
     }
 }
 

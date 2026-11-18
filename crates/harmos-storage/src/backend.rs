@@ -216,6 +216,9 @@ pub trait StorageBackend: Any + Send + Sync + 'static {
         StorageCapabilities::default()
     }
 
+    /// Apply the Scan at the Issued Snapshot, Including Its Numeric or TEXT Predicate.
+    /// Read Predicate Columns Before Other Selected Columns of Matching Rows.
+    /// Use `harmos_query::columnar::finish_scan` to Share Paging and Plan Validation.
     fn list_column_rows<'a>(
         &'a self, _snapshot: &'a BackendSnapshot, _read: &'a ArrowScan, _cancel: &'a Cancellation,
     ) -> StorageFuture<'a, ArrowPage> {
