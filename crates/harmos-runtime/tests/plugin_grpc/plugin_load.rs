@@ -27,7 +27,7 @@ use super::{
 };
 use harmos_runtime::{
     Runtime,
-    clock::{Clock, Source as _},
+    clock::{Clock, Source},
     operations::OperationPolicy,
     plugin::grpc::{Error, GrpcPluginPolicy, GrpcPluginSettings, LoadOptions, Managed, Placement},
 };
@@ -44,7 +44,7 @@ const LOAD: Duration = Duration::from_secs(10);
 /* === Structs === */
 
 /// The Writing End of a Hung Spawn's Executable: the Spawn's Read Blocks Until It Is Dropped.
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 struct Hung(#[allow(dead_code)] tokio::net::windows::named_pipe::NamedPipeServer);
 
 /// The Writing End of a Hung Spawn's Executable: the Spawn's Read Blocks Until It Is Dropped.
@@ -81,7 +81,7 @@ async fn configured(source: &Manual) -> Runtime<App> {
 /// A Plugin Executable Whose Spawn Hangs Reading It, and the Hung Spawn Once It Has Opened the Executable.
 ///
 /// The spawn's read blocks until the returned [`Hung`] is dropped, so the story ends a read it knows has started.
-#[cfg(windows)]
+#[cfg(target_os = "windows")]
 fn hung_executable() -> (PathBuf, impl Future<Output = Hung>) {
     let name = format!(r"\\.\pipe\harmos-hung-spawn-{}", std::process::id());
     let server = tokio::net::windows::named_pipe::ServerOptions::new().first_pipe_instance(true).create(&name).unwrap();
@@ -183,6 +183,7 @@ async fn a_spawn_that_hangs_fails_at_the_load_deadline_and_names_the_plugin() {
     let (executable, opened) = hung_executable();
     let placement = Placement::Managed(Managed {
         executable: executable.clone(),
+        directory: None,
         arguments: Vec::new(),
         environment: Default::default(),
     });

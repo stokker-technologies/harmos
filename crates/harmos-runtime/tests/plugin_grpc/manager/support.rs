@@ -377,6 +377,38 @@ pub fn bundle_with_startup(executable: bool, control: Option<&str>) -> Vec<u8> {
             package: Default::default(),
         },
         &sources,
+        None,
+        Default::default(),
+    )
+    .unwrap()
+    .bytes()
+    .to_vec()
+}
+pub fn launch_bundle(program: &str) -> Vec<u8> {
+    let interpreter = fs::read(support::binary("harmos-conformance-plugin")).unwrap();
+    let path = format!("bin/interpreter{}", env::consts::EXE_SUFFIX);
+    let sources = [
+        Source {
+            path: &path,
+            bytes: &interpreter,
+            executable: None,
+        },
+        Source {
+            path: "main.script",
+            bytes: b"serve conformance",
+            executable: None,
+        },
+    ];
+    let launch = vec![program.into(), "--bundle-script".into(), "main.script".into(), "$literal argument with spaces".into()];
+    bundle::build(
+        Identity {
+            name: "reference.plugin".into(),
+            version: "1.0.0".parse().unwrap(),
+            description: "Command Plugin".into(),
+            package: Default::default(),
+        },
+        &sources,
+        Some(&launch),
         Default::default(),
     )
     .unwrap()

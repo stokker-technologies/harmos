@@ -130,6 +130,7 @@ impl Host {
         .await;
         let placement = Placement::Managed(Managed {
             executable: std::env::current_exe().unwrap(),
+            directory: None,
             arguments: vec![plugin::MODE.into(), case.streams.to_string().into(), case.interval.to_string().into(), case.observer.into()],
             environment: Default::default(),
         });

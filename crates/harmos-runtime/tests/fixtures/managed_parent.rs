@@ -51,6 +51,7 @@ fn main() {
         let runtime = harmos_runtime::Runtime::<Model>::start_with((), (), |_| {}).await.unwrap();
         let placement = Placement::Managed(Managed {
             executable,
+            directory: None,
             arguments,
             environment: Default::default(),
         });

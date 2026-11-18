@@ -278,6 +278,7 @@ impl HostFixture {
     pub fn managed_sdk(&self, mode: &str) -> harmos_runtime::plugin::grpc::Placement {
         harmos_runtime::plugin::grpc::Placement::Managed(harmos_runtime::plugin::grpc::Managed {
             executable: support::binary("harmos-sdk-invoke-fixture"),
+            directory: None,
             arguments: vec![
                 mode.into(),
                 self.types.path().join("host.pb").into_os_string(),

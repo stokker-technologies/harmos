@@ -20,7 +20,7 @@ use serde_json::json;
 use harmos_operations::Registrar;
 use harmos_packaging::bundle::Source;
 use harmos_runtime::bundle::{Bundle, Executable, Facility, Identity, Limits};
-use prost::Message as _;
+use prost::Message;
 
 /* === Private Functions === */
 
@@ -81,6 +81,7 @@ fn asset() -> Bundle {
             bytes: b"abc",
             executable: None,
         }],
+        None,
         Limits::default(),
     )
     .unwrap()
@@ -129,7 +130,7 @@ fn independent_files_roundtrip() {
             executable: Some(executable(Facility::Guest)),
         },
     ];
-    let bundle = harmos_packaging::bundle::build(identity(), &sources, Limits::default()).unwrap();
+    let bundle = harmos_packaging::bundle::build(identity(), &sources, None, Limits::default()).unwrap();
 
     // Source Order Does Not Change the Archive
     let reversed = [
@@ -149,7 +150,7 @@ fn independent_files_roundtrip() {
             executable: None,
         },
     ];
-    assert_eq!(bundle.bytes(), harmos_packaging::bundle::build(identity(), &reversed, Limits::default()).unwrap().bytes());
+    assert_eq!(bundle.bytes(), harmos_packaging::bundle::build(identity(), &reversed, None, Limits::default()).unwrap().bytes());
 
     // Inspection Preserves Each File and Its Declaration
     let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
@@ -200,6 +201,7 @@ fn executable_owned_registrations() {
                 bytes: &native,
                 executable: Some(export),
             }],
+            None,
             Limits::default(),
         )
     };
@@ -214,7 +216,7 @@ fn executable_owned_registrations() {
         bytes: &native,
         executable: Some(export.clone()),
     }];
-    let bundle = harmos_packaging::bundle::build(dotted.clone(), &sources, Limits::default()).unwrap();
+    let bundle = harmos_packaging::bundle::build(dotted.clone(), &sources, None, Limits::default()).unwrap();
     assert_eq!(Bundle::inspect(bundle.bytes(), Limits::default()).unwrap().manifest().identity, dotted);
 
     // Reject Invalid or Duplicated Registration Metadata
@@ -244,7 +246,7 @@ fn executable_owned_registrations() {
             executable: Some(export.clone()),
         },
     ];
-    assert!(harmos_packaging::bundle::build(identity(), &sources, Limits::default()).is_err());
+    assert!(harmos_packaging::bundle::build(identity(), &sources, None, Limits::default()).is_err());
     let mut other_target = export.clone();
     other_target.target = "another-target".into();
     assert!(
@@ -262,6 +264,7 @@ fn executable_owned_registrations() {
                     executable: Some(other_target)
                 },
             ],
+            None,
             Limits::default()
         )
         .is_ok()
@@ -274,6 +277,7 @@ fn executable_owned_registrations() {
                 bytes: b"no declaration",
                 executable: Some(executable(Facility::Sidecar))
             }],
+            None,
             Limits::default()
         )
         .is_ok()
@@ -367,7 +371,7 @@ fn paths_stay_portable() {
         "unicode-é",
     ] {
         let sources = [Source { path, bytes: b"abc", executable: None }];
-        assert!(harmos_packaging::bundle::build(identity(), &sources, Limits::default()).is_err(), "{path}");
+        assert!(harmos_packaging::bundle::build(identity(), &sources, None, Limits::default()).is_err(), "{path}");
         assert!(Bundle::inspect(&archive(&manifest, &[(path, b"abc", tar::EntryType::Regular)]), Limits::default()).is_err(), "{path}");
     }
     for paths in [["a", "a"], ["A", "a"], ["A", "a/b"], ["a/b", "a"]] {
@@ -375,6 +379,7 @@ fn paths_stay_portable() {
             harmos_packaging::bundle::build(
                 identity(),
                 &paths.map(|path| Source { path, bytes: b"abc", executable: None }),
+                None,
                 Limits::default()
             )
             .is_err()
@@ -404,6 +409,7 @@ fn inspection_bounds_inputs() {
                     bytes: b"abc",
                     executable: None
                 }],
+                None,
                 limits
             )
             .is_err()
@@ -420,12 +426,13 @@ fn inspection_bounds_inputs() {
                 bytes: &native,
                 executable: Some(export)
             }],
+            None,
             Limits { registrations: 1, ..Limits::default() }
         )
         .is_err()
     );
     assert!(Bundle::inspect(&bundle.bytes()[..512], Limits::default()).is_err());
-    let empty = harmos_packaging::bundle::build(identity(), &[], Limits::default()).unwrap();
+    let empty = harmos_packaging::bundle::build(identity(), &[], None, Limits::default()).unwrap();
     assert!(Bundle::inspect(empty.bytes(), Limits::default()).is_ok());
 }
 
@@ -461,6 +468,7 @@ fn metadata_budgets_precede() {
                 bytes: b"abc",
                 executable: None
             }],
+            None,
             exact
         )
         .is_ok()
@@ -477,6 +485,7 @@ fn metadata_budgets_precede() {
             bytes: &native,
             executable: Some(original),
         }],
+        None,
         Limits::default(),
     )
     .unwrap();
@@ -498,6 +507,7 @@ fn metadata_budgets_precede() {
                 executable: Some(other),
             },
         ],
+        None,
         Limits {
             manifest_bytes: limit,
             ..Limits::default()
@@ -506,4 +516,82 @@ fn metadata_budgets_precede() {
     .err()
     .unwrap();
     assert!(error.to_string().contains("manifest byte limit"), "{error}");
+}
+
+#[test]
+fn launch_manifest_roundtrip_and_validation() {
+    // Preserve the Native Manifest Encoding When Launch Is Absent.
+    let native = asset();
+    let json = serde_json::to_value(native.manifest()).unwrap();
+    assert!(json.get("launch").is_none());
+    let decoded: harmos_runtime::bundle::Manifest = serde_json::from_value(json).unwrap();
+    assert_eq!(&decoded, native.manifest());
+
+    // A Launch Bundle Packs Only the Supplied Files and Keeps Arguments Literal.
+    let launch = vec!["package-runner".into(), "run".into(), "$literal argument with spaces".into()];
+    let sources = [Source {
+        path: "main.script",
+        bytes: b"plugin source",
+        executable: None,
+    }];
+    let bundle = harmos_packaging::bundle::build(identity(), &sources, Some(&launch), Limits::default()).unwrap();
+    let inspected = Bundle::inspect(bundle.bytes(), Limits::default()).unwrap();
+    assert_eq!(inspected.manifest().launch.as_ref(), Some(&launch));
+    assert_eq!(inspected.manifest().files.len(), 1);
+    assert_eq!(inspected.file("main.script"), Some(b"plugin source".as_slice()));
+    let json = serde_json::to_value(inspected.manifest()).unwrap();
+    let decoded: harmos_runtime::bundle::Manifest = serde_json::from_value(json.clone()).unwrap();
+    assert_eq!(&decoded, inspected.manifest());
+
+    // Creation and Untrusted Archive Inspection Reject Invalid Commands.
+    for launch in [
+        vec![],
+        vec![""],
+        vec!["/absolute/program"],
+        vec!["C:\\program.exe"],
+        vec!["\\server\\program"],
+        vec!["../program"],
+        vec!["bin/../../program"],
+        vec!["bin\\..\\..\\program"],
+    ] {
+        let launch = launch.into_iter().map(String::from).collect::<Vec<_>>();
+        assert!(harmos_packaging::bundle::build(identity(), &sources, Some(&launch), Limits::default()).is_err());
+        let mut invalid = json.clone();
+        invalid["launch"] = serde_json::json!(launch);
+        assert!(serde_json::from_value::<harmos_runtime::bundle::Manifest>(invalid.clone()).is_err());
+        let bytes = archive(&serde_json::to_vec(&invalid).unwrap(), &[("main.script", b"plugin source", tar::EntryType::Regular)]);
+        assert!(Bundle::inspect(&bytes, Limits::default()).is_err());
+    }
+
+    // Unknown Entries Still Refuse Decoding.
+    let mut unknown = json;
+    unknown["environment"] = serde_json::json!({"NAME": "value"});
+    assert!(serde_json::from_value::<harmos_runtime::bundle::Manifest>(unknown).is_err());
+
+    // Launch Metadata Observes the Existing Manifest Budget.
+    let exact = serde_json::to_vec(bundle.manifest()).unwrap().len();
+    assert!(
+        harmos_packaging::bundle::build(
+            identity(),
+            &sources,
+            Some(&launch),
+            Limits {
+                manifest_bytes: exact,
+                ..Limits::default()
+            }
+        )
+        .is_ok()
+    );
+    assert!(
+        harmos_packaging::bundle::build(
+            identity(),
+            &sources,
+            Some(&launch),
+            Limits {
+                manifest_bytes: exact - 1,
+                ..Limits::default()
+            }
+        )
+        .is_err()
+    );
 }

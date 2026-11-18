@@ -15,10 +15,10 @@
 
 /* === Imports === */
 
-use harmos_protocol::plugin::GuestRegistration as WireGuestRegistration;
+use harmos_protocol::plugin::GuestRegistration;
 
 use super::{Error, invalid};
-use prost::Message as _;
+use prost::Message;
 
 // Standard Library Imports
 
@@ -28,7 +28,7 @@ use prost::Message as _;
 
 /* === Constants === */
 
-pub const METADATA_SECTION: &str = "harmos.plugin.v1.GuestRegistration";
+pub const GUEST_METADATA_SECTION: &str = "harmos.plugin.v1.GuestRegistration";
 
 /* === Macros === */
 
@@ -44,7 +44,7 @@ pub const METADATA_SECTION: &str = "harmos.plugin.v1.GuestRegistration";
 
 /* === Public Functions === */
 
-pub fn registration(component: &[u8]) -> Result<WireGuestRegistration, Error> {
+pub fn guest_registration(component: &[u8]) -> Result<GuestRegistration, Error> {
     let mut bytes = component.strip_prefix(b"\0asm\x0d\0\x01\0").ok_or_else(|| invalid("guest executable is not a component"))?;
     let mut registration = None;
     while let Some((&section, rest)) = bytes.split_first() {
@@ -55,7 +55,7 @@ pub fn registration(component: &[u8]) -> Result<WireGuestRegistration, Error> {
         }
         let mut custom = data;
         let name = delimited(&mut custom)?;
-        if name != METADATA_SECTION.as_bytes() {
+        if name != GUEST_METADATA_SECTION.as_bytes() {
             continue;
         }
         if registration.is_some() {
@@ -64,7 +64,7 @@ pub fn registration(component: &[u8]) -> Result<WireGuestRegistration, Error> {
         if custom.len() > harmos_protocol::guest::COMMAND_BYTES {
             return Err(Error::Limit("guest registration bytes"));
         }
-        let value = WireGuestRegistration::decode(custom).map_err(|error| invalid(error.to_string()))?;
+        let value = GuestRegistration::decode(custom).map_err(|error| invalid(error.to_string()))?;
         let declarations = value.declarations.as_ref().ok_or_else(|| invalid("guest declarations is missing"))?;
         if declarations.digest != harmos_protocol::schema::declarations_digest(declarations) {
             return Err(invalid("guest declarations digest differs"));

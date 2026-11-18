@@ -16,6 +16,7 @@ use harmos_protocol::host::PluginsDeleteRequest;
 use harmos_protocol::host::PluginsRestartRequest;
 use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::{PluginValue, PluginsSetRequest};
+use harmos_protocol::model::Failure;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
@@ -222,5 +223,99 @@ async fn restart_during_startup_reaps_before_reusing_the_installation() {
         .unwrap();
     process.assert_exited().await;
     assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    host.close().await;
+}
+
+#[tokio::test]
+async fn command_bundle_installs_starts_restarts_and_restores() {
+    // Install an Interpreter and Script Without Native Executable Metadata.
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let program = format!("./bin/interpreter{}", std::env::consts::EXE_SUFFIX);
+    let content = host.upload("command", support::launch_bundle(&program)).await;
+    let mut watch = host.client.watch(PluginsWatchRequest { name: Some("command".into()), at: None }).await.unwrap().into_inner();
+    host.client.create(support::managed("command", content, true)).await.unwrap();
+    let ready = support::state(&mut watch, "command", PluginState::Ready, 1).await;
+    let first = support::Process::observe(ready.process.as_ref().unwrap().id).await;
+
+    // Restart Uses the Same Command and the Existing Process Contract.
+    let restarted = host
+        .client
+        .restart(PluginsRestartRequest {
+            name: ready.name.clone(),
+            expected_revision: ready.revision,
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .entry
+        .unwrap();
+    first.assert_exited().await;
+    let ready = support::state(&mut watch, "command", PluginState::Ready, restarted.activation).await;
+    let second = support::Process::observe(ready.process.unwrap().id).await;
+    drop(watch);
+    host.close().await;
+    second.assert_exited().await;
+
+    // Persisted Command Entries Restore and Delete Through the Same Manager.
+    let mut host = Host::start(root.path(), &backends).await;
+    let mut watch = host.client.watch(PluginsWatchRequest { name: Some("command".into()), at: None }).await.unwrap().into_inner();
+    let ready = support::state(&mut watch, "command", PluginState::Ready, 1).await;
+    let third = support::Process::observe(ready.process.unwrap().id).await;
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: ready.name,
+            expected_revision: ready.revision,
+        })
+        .await
+        .unwrap();
+    third.assert_exited().await;
+    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    drop(watch);
+    host.close().await;
+}
+
+#[tokio::test]
+async fn command_bundle_reports_missing_program_at_install_and_activation() {
+    // A Missing Relative Program Refuses Even a Disabled Installation.
+    let root = tempfile::tempdir().unwrap();
+    let backends = Backends::new();
+    let mut host = Host::start(root.path(), &backends).await;
+    let content = host.upload("missing-program", support::launch_bundle("./bin/missing-interpreter")).await;
+    let error = host.client.create(support::managed("missing-program", content, false)).await.unwrap_err();
+    let detail = harmos_runtime::Failure::decode(error.details()).unwrap();
+    let failure = Failure::from(&detail);
+    assert!(failure.message.contains("missing-interpreter"), "{failure:?}");
+    assert!(failure.action.contains("install ./bin/missing-interpreter"), "{failure:?}");
+    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+
+    // Removing an Installed Program Produces the Same Actionable Activation Error.
+    let program = format!("./bin/interpreter{}", std::env::consts::EXE_SUFFIX);
+    let content = host.upload("removed-program", support::launch_bundle(&program)).await;
+    let entry = host.client.create(support::managed("removed-program", content, false)).await.unwrap().into_inner().entry.unwrap();
+    let directory = std::fs::read_dir(root.path().join("plugins")).unwrap().next().unwrap().unwrap().path();
+    std::fs::remove_file(directory.join(program)).unwrap();
+    let mut watch = host.client.watch(PluginsWatchRequest { name: Some(entry.name.clone()), at: None }).await.unwrap().into_inner();
+    host.client
+        .set(PluginsSetRequest {
+            name: entry.name.clone(),
+            expected_revision: entry.revision,
+            value: Some(PluginValue { enabled: true }),
+        })
+        .await
+        .unwrap();
+    let failed = support::state(&mut watch, &entry.name, PluginState::Unavailable, 1).await;
+    let failure = failed.failure.unwrap();
+    assert!(failure.message.contains("interpreter"), "{failure:?}");
+    assert!(failure.message.contains("install"), "{failure:?}");
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: failed.name,
+            expected_revision: failed.revision,
+        })
+        .await
+        .unwrap();
+    drop(watch);
     host.close().await;
 }

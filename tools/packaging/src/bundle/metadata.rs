@@ -54,11 +54,16 @@ impl Write for Count {
 
 /* === Public Functions === */
 
-pub(super) fn identity_size(identity: &Identity, limit: usize) -> Result<usize, Error> {
+pub(super) fn identity_size(identity: &Identity, launch: Option<&[String]>, limit: usize) -> Result<usize, Error> {
     let mut output = Count { size: 0, limit };
     output.write_all(b"{\"schema\":1,\"identity\":")?;
     serde_json::to_writer(&mut output, identity)?;
-    output.write_all(b",\"files\":[]}")?;
+    output.write_all(b",\"files\":[]")?;
+    if let Some(launch) = launch {
+        output.write_all(b",\"launch\":")?;
+        serde_json::to_writer(&mut output, launch)?;
+    }
+    output.write_all(b"}")?;
     Ok(output.size)
 }
 
