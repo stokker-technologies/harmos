@@ -17,14 +17,19 @@
 
 // Standard Library Imports
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 // Third Party Imports
+use arrow_array::RecordBatch;
+use arrow_schema::Schema;
 
 // Local Imports
-use crate::{BackendSnapshot, Error, MemorySize, Result, ScanPage, StorageBackend};
+use crate::{BackendSnapshot, Error, MemorySize, Result, ScanPage, StorageBackend, StorageSchema};
 use harmos_domain::model::storage::{ObjectSelection, ObjectVersions, RecordSelection, SchemaSelection, StreamSelection};
-use harmos_query::columnar::{ArrowPage, ArrowScan, Cancellation, ColumnKind, ScanEvidence, finish_page, flatten};
+use harmos_query::columnar::{self, ArrowPage, ArrowScan, Cancellation, ColumnKind, ScanEvidence, finish_scan};
 use harmos_query::source;
+use harmos_query::transform::FieldPath;
+use harmos_query::transform::project::{Project, Projection};
 
 /* === Constants === */
 
@@ -47,11 +52,62 @@ pub struct StorageCapabilities {
     pub compound_mutations: bool,
 }
 
+struct Columns<'a> {
+    schema: &'a StorageSchema,
+    metadata: RecordBatch,
+    payloads: Vec<&'a [u8]>,
+    template: RecordBatch,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Columns<'_> {
+    fn load(&self, names: &[String], indices: &[u64]) -> harmos_query::Result<(RecordBatch, usize)> {
+        let schema = self.template.schema();
+        let fields = names
+            .iter()
+            .map(|name| schema.field_with_name(name).cloned().map_err(|_| columnar::invalid("select an available column")))
+            .collect::<harmos_query::Result<Vec<_>>>()?;
+        let project = Project {
+            fields: names
+                .iter()
+                .filter(|name| name.starts_with("payload."))
+                .map(|name| Projection {
+                    field: FieldPath::from(name.as_str()),
+                    name: name.clone(),
+                })
+                .collect(),
+        };
+        let mut decoded = 0;
+        let payload = if project.fields.is_empty() {
+            None
+        } else {
+            let fields = fields.iter().filter(|field| field.name().starts_with("payload.")).cloned().collect::<Vec<_>>();
+            let output = Arc::new(Schema::new(fields));
+            let payloads = indices.iter().map(|index| self.payloads[*index as usize]);
+            decoded = indices.len();
+            Some(source::projected_payloads(self.schema, payloads, &project, output)?)
+        };
+        let metadata = columnar::take(&self.metadata, indices)?;
+        let arrays = names
+            .iter()
+            .map(|name| {
+                metadata
+                    .column_by_name(name)
+                    .or_else(|| payload.as_ref().and_then(|payload| payload.column_by_name(name)))
+                    .cloned()
+                    .ok_or_else(|| columnar::invalid("select an available column"))
+            })
+            .collect::<harmos_query::Result<Vec<_>>>()?;
+        let batch =
+            RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).map_err(|_| columnar::invalid("selected column batch mismatch"))?;
+        Ok((batch, decoded))
+    }
+}
 
 impl MemorySize for StorageCapabilities {
     fn memory_size(&self) -> usize {
@@ -100,7 +156,7 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
         rows: read.work.rows.min(read.limits.rows),
         bytes: read.work.bytes,
     };
-    let (batch, bytes, count) = match read.source.kind {
+    match read.source.kind {
         ColumnKind::Records => {
             let selection = RecordSelection {
                 schema: read.source.schema.clone(),
@@ -111,7 +167,10 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
             };
             let rows = backend.list_records(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
-            (source::records(schema, rows.iter())?, bytes, rows.len())
+            let refs = rows.iter().collect::<Vec<_>>();
+            let metadata = source::record_metadata(schema, &refs, None)?;
+            let payloads = rows.iter().map(|row| row.payload.as_slice()).collect();
+            scan(snapshot, read, cancel, schema, metadata, payloads, bytes)
         }
         ColumnKind::Stream => {
             let selection = StreamSelection {
@@ -125,7 +184,10 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
             };
             let rows = backend.list_samples(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
-            (source::stream(schema, &rows)?, bytes, rows.len())
+            let refs = rows.iter().map(|row| &row.record).collect::<Vec<_>>();
+            let metadata = source::record_metadata(schema, &refs, Some(&rows))?;
+            let payloads = rows.iter().map(|row| row.record.payload.as_slice()).collect();
+            scan(snapshot, read, cancel, schema, metadata, payloads, bytes)
         }
         ColumnKind::Objects => {
             let selection = ObjectSelection {
@@ -135,26 +197,59 @@ async fn fallback(backend: &dyn StorageBackend, snapshot: &BackendSnapshot, read
             };
             let rows = backend.list_object_revisions(snapshot, &selection, page).await?;
             let bytes = rows.iter().try_fold(0usize, |total, row| Ok::<_, Error>(total.saturating_add(crate::encoded_size(row)?)))?;
-            (source::objects(schema, &rows)?, bytes, rows.len())
+            let metadata = source::object_metadata(&rows)?;
+            let payloads = rows.iter().map(|row| row.value.payload.as_slice()).collect();
+            scan(snapshot, read, cancel, schema, metadata, payloads, bytes)
         }
-    };
-    cancel.check()?;
-    read.work.check(count, bytes)?;
-    let flat = flatten(&batch)?;
-    if flat.get_array_memory_size() > read.work.bytes.get() {
-        return Err(exhausted());
     }
-    Ok(finish_page(
+}
+
+fn scan(
+    snapshot: &BackendSnapshot, read: &ArrowScan, cancel: &Cancellation, schema: &StorageSchema, metadata: RecordBatch,
+    payloads: Vec<&[u8]>, bytes: usize,
+) -> Result<ArrowPage> {
+    cancel.check()?;
+    let count = metadata.num_rows();
+    read.work.check(count, bytes)?;
+    let template = columnar::empty(schema, read.source.kind)?;
+    for name in read.required_columns() {
+        template.schema().index_of(&name).map_err(|_| invalid("select an available column"))?;
+    }
+    if let Some(predicate) = &read.predicate {
+        let field =
+            template.schema().field_with_name(&predicate.column).cloned().map_err(|_| invalid("select an available predicate column"))?;
+        predicate.validate_type(field.data_type())?;
+    }
+    let columns = Columns { schema, metadata, payloads, template };
+    let mut names = vec!["_storage.position".to_owned()];
+    if let Some(predicate) = &read.predicate {
+        names.push(predicate.column.clone());
+    }
+    if let Some(time) = &read.time {
+        names.push(time.column.clone());
+    }
+    names.sort();
+    names.dedup();
+    let indices = (0..count as u64).collect::<Vec<_>>();
+    let (filter, payload_rows) = columns.load(&names, &indices)?;
+    read.work.check(count, filter.get_array_memory_size())?;
+    Ok(finish_scan(
         snapshot,
         read,
-        &flat,
+        &filter,
         ScanEvidence {
             complete: count == 0,
             bytes,
             columns: read.required_columns(),
-            payload_rows: count,
+            payload_rows,
         },
         cancel,
+        |indices| {
+            cancel.check()?;
+            let (batch, decoded) = columns.load(&read.columns, indices)?;
+            read.work.check(count, filter.get_array_memory_size().saturating_add(batch.get_array_memory_size()))?;
+            Ok((batch, decoded))
+        },
     )?)
 }
 

@@ -67,6 +67,7 @@ pub(super) async fn columns(
                     column: value.column,
                     lower: value.lower,
                     upper: value.upper,
+                    prefix: value.prefix,
                 }),
                 time: selection.time.map(|value| harmos_query::columnar::TimeBounds {
                     column: value.column,

@@ -67,6 +67,7 @@ pub struct ColumnPredicate {
     pub column: String,
     pub lower: Option<f64>,
     pub upper: Option<f64>,
+    pub prefix: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
@@ -750,7 +751,7 @@ pub mod watch_file_production_response {
 /* === Implementations === */
 
 memory!(ColumnSource, schema);
-memory!(ColumnPredicate, column);
+memory!(ColumnPredicate, column, prefix);
 memory!(TimeBounds, column);
 memory!(IndexDefinition, name, source, columns);
 memory!(ProjectionDefinition, name, source, transform);
