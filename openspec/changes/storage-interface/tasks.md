@@ -22,7 +22,7 @@
 - [x] 2.8 Add native TEXT prefix column predicates, exclusive numeric/text validation, predicate-bound continuations and staged payload projection in the shared memory/reference executor.
   - [x] Prove prefix/page/revision parity, rejected-payload work and native operation validation/token binding with focused Windows tasks.
   - [x] Verify unchanged Rust protocol generation and the saved-preview column-listing example; run focused Windows compile, format and package lint proof through the existing managed Cargo runner without benchmark profiles.
-  - [ ] Reconcile Python export and C# qualification drift before claiming all generated-bindings checks pass; the native predicate adds no SDK or protocol surface.
+  - [x] Verify Python SDK export and C# generated-root checks on dev; the native predicate adds no SDK or protocol surface.
 - [x] 3.9.1 Record the owner's 2026-11-13 proposed Nightly budget scheme in design.md and docs/tooling.md: absolute reporting, paired relative comparison, instruction counts, track-only hosted measurements and append-only/twenty-run history. First hosted confirmation and automation remain pending; publication is ungated.
 - [ ] 3.10 Measure the current two-million-row generic scan after the landed bounded scan repairs; compare reproducible before/after results with the proposed budgets in design.md. Keep measurements outside correctness tests.
 - [ ] 3.11 Measure first, next and deep indexed pages after the landed seek repairs; compare against the proposed page budgets in design.md without timing assertions.
