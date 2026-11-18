@@ -7,7 +7,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   ci_mirror:
-    name: Mirror / Push
+    name: Release / Mirror / Push
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:

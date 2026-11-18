@@ -25,7 +25,7 @@ env:
   GIT_CONFIG_VALUE_0: 'true'
 jobs:
   build_docs:
-    name: Build / Documentation (Any)
+    name: Build / Docs
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:

@@ -46,7 +46,7 @@ class ReleaseChecksTests(unittest.TestCase):
         }
         self.gate: dict = {
             "id": 12,
-            "name": "CI / Required",
+            "name": "Check / CI / Required",
             "app": {"slug": "github-actions", "id": 8},
             "check_suite": {"id": 9},
             "status": "completed",
