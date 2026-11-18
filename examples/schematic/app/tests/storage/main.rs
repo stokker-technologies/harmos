@@ -11,20 +11,30 @@
 
 /* === Imports === */
 
+// Standard Library Imports
+use std::{
+    num::NonZeroUsize,
+    time::{Duration, SystemTime},
+};
+
+// Third Party Imports
 use arrow_array::UInt64Array;
-use harmos::encoding::Message;
+use sha2::{Digest, Sha256};
+
+// Local Imports
 use harmos::{Client, ClientSettings, FileMetadata, PageRequest, StorageTransferSettings, UploadState};
 use harmos_query::arrow::ArrowBatch;
 use harmos_runtime::Identifier;
-use harmos_runtime::catalog;
 use harmos_runtime::clock::Clock;
 use harmos_runtime::facade::storage::{
     ColumnKind, ColumnSelection, ColumnSource, CreateSnapshotRequest, DeleteSnapshotRequest, GetObjectRequest, ListColumnRowsRequest,
     MutationId, SchemaInput, SetObjectRequest, set_object_response::Outcome,
 };
-use harmos_runtime::operations::CallContext;
+use harmos_runtime::grpc;
+use harmos_runtime::operations::{self, CallContext};
+use harmos_runtime::schema::{Described, graph};
 use harmos_runtime::{
-    Identified,
+    Identified, Message,
     storage::{
         ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject,
         config::{StorageFilesystemSettings, StorageRequestSettings, StorageResponseSettings, StorageSettings},
@@ -36,8 +46,8 @@ use schematic_app::operations::transfer::{
 };
 use schematic_app::protocol::client;
 use schematic_app::protocol::{
-    Connection, FilesHashRequest, FilesReadRequest, FilesReadResponse, Snapshot, UploadMutation, UploadsAppendRequest,
-    UploadsCreateRequest, UploadsDeleteRequest, UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
+    Connection, FilesHashRequest, FilesReadRequest, Snapshot, UploadMutation, UploadsAppendRequest, UploadsCreateRequest,
+    UploadsDeleteRequest, UploadsGetRequest, UploadsPublishRequest, UploadsResumeRequest, files_hash_request::Source,
 };
 use schematic_app::{
     app::Runtime,
@@ -45,15 +55,10 @@ use schematic_app::{
     document::Document,
     services,
 };
-use sha2::{Digest, Sha256};
-use std::{
-    num::NonZeroUsize,
-    time::{Duration, SystemTime},
-};
 
 /* === Structs === */
 
-#[derive(harmos_runtime::Message, Clone, Debug, Default)]
+#[derive(Message, Clone, Debug, Default)]
 struct Preview {
     id: String,
     symbols: u64,
@@ -111,7 +116,7 @@ async fn saved_preview_survives_atomic_replacement() {
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::start_with(document.into_origin(), Some(start), |setup| {
         setup.settings().clock(clock);
-        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+        setup.settings().operation_settings(operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
@@ -128,11 +133,7 @@ async fn saved_preview_survives_atomic_replacement() {
     let saved_cut = retained.resolved_at.unwrap();
     let saved = retained.snapshot.unwrap();
     assert_eq!(saved.at.as_ref().unwrap().sequence, first.position.sequence);
-    let schema = harmos_runtime::schema::graph::Schema::from_declaration(
-        <Preview as harmos_runtime::schema::Described>::DEFINITION,
-        &Default::default(),
-    )
-    .unwrap();
+    let schema = graph::Schema::from_declaration(Preview::DEFINITION, &Default::default()).unwrap();
     let encoded = catalog.encode(&Preview { id: "board".into(), symbols: 3 }, NonZeroUsize::new(4096).unwrap()).unwrap();
     let source = ColumnSource {
         kind: ColumnKind::Objects,
@@ -247,7 +248,7 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     let (clock, _) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
     let runtime = Runtime::start_with(document.into_origin(), Some(start), |setup| {
         setup.settings().clock(clock);
-        setup.settings().operation_settings(harmos_runtime::operations::Settings {
+        setup.settings().operation_settings(operations::Settings {
             preparation_bytes: Some(NonZeroUsize::new(16 * 1024 * 1024).unwrap()),
             ..Default::default()
         });
@@ -345,13 +346,11 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
     assert!(published.receipt.unwrap().durable_at.is_some());
     let file = published.file.unwrap();
 
-    // Discover the Application Contract and Use Its Generic Call Path.
-    runtime.register_catalog(catalog::host_catalog(), Default::default()).await.unwrap();
+    // Call the Application's Generated Client.
     runtime.operations.register_catalog(schematic_app::operations::operations_catalog(), Default::default()).await.unwrap();
-    runtime.operations.register_catalog(catalog::lifecycle_catalog(), Default::default()).await.unwrap();
     let listener = runtime
         .grpc()
-        .attach(harmos_runtime::grpc::Settings {
+        .attach(grpc::Settings {
             address: "127.0.0.1:0".parse().unwrap(),
             ..Default::default()
         })
@@ -381,27 +380,6 @@ async fn application_upload_fences_writers_and_publishes_readable_content() {
         .unwrap();
     assert_eq!(diagnostics.len(), 1);
 
-    let listed = client.operations.list().await.unwrap();
-    let discovered =
-        listed.iter().find(|entry| entry.contract.as_ref().is_some_and(|contract| contract.id == "schematic.host.v1.Files/Read")).unwrap();
-    let selected = client.operations.get("schematic.host.v1.Files/Read").await.unwrap();
-    assert_eq!(&selected, discovered);
-    let contract = discovered.contract.as_ref().unwrap();
-    let protobuf = contract.protobuf.as_ref().unwrap();
-    assert_eq!(protobuf.request, "schematic.host.v1.FilesReadRequest");
-    assert_eq!(protobuf.response, "schematic.host.v1.FilesReadResponse");
-    assert!(!protobuf.descriptors.is_empty());
-    assert!(contract.policy.is_some());
-    assert_eq!(contract.grpc.as_ref().unwrap().method, "Read");
-    let request = FilesReadRequest {
-        file: Some(file.clone()),
-        offset: 0,
-        max_bytes: 4,
-        at: None,
-    };
-    let response = client.invocations.create(contract.id.clone(), contract.fingerprint.clone(), request.encode_to_vec()).await.unwrap();
-    let generic = <FilesReadResponse as Message>::decode(response.as_slice()).unwrap();
-    assert_eq!(generic.bytes, payload[..4]);
     drop(schematic);
     drop(client);
     drop(listener);

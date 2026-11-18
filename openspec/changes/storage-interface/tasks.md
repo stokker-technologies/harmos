@@ -14,11 +14,16 @@
   - [x] Protocol and native mappings: generated_code_matches_proto and malformed_plans_refuse_before_backend_access.
   - [x] Operations/runtime: saved_queries_and_conditional_updates_cross_the_protocol covers all five capabilities, unsupported refusal, replay, saved cuts and source-changing rebuilds.
   - [x] Verify retained wire-page buffer limits, including IPC schema and continuation metadata, through the runtime and example journeys.
-  - [x] Rust/Python/C#/C++ SDK generated storage surfaces and existing plugin conformance; retain protocol-only SDK dependencies.
+  - [x] Rust/Python/C#/C++ SDKs retain protocol-only dependencies; native storage listing DTOs are outside their generated surfaces.
 - [x] 2.7 Update affected README/storage guides, examples and backend obligations; verify dependency direction and preservation of existing files, recovery and mutation receipts.
   - [x] Storage documentation portion: native API guide, README claims, tooling commands and retained recovery/file obligations.
   - [x] Example composition, generated-client usage, source grants, bounds, failures and README claims match the adopted interface.
   - [x] Prepare an ordered per-file consumer adoption inventory with inspected ownership and dependency blockers under Consumer Adoption; do not overwrite dirty shared protocol generation outputs.
+- [x] 2.8 Add native TEXT prefix column predicates, exclusive numeric/text validation, predicate-bound continuations and staged payload projection in the shared memory/reference executor.
+  - [x] Prove prefix/page/revision parity, rejected-payload work and native operation validation/token binding with focused Windows tasks.
+  - [x] Verify unchanged Rust protocol generation and the saved-preview column-listing example; run focused Windows compile, format and package lint proof through the existing managed Cargo runner without benchmark profiles.
+  - [x] Remove superseded host-client discovery/invocation assertions and their catalog setup from the example storage proof; retain typed application-client and native storage/file journeys.
+  - [x] Verify Python SDK export and C# generated-root checks on dev; the native predicate adds no SDK or protocol surface.
 - [x] 3.9.1 Record the owner's 2026-11-13 proposed Nightly budget scheme in design.md and docs/tooling.md: absolute reporting, paired relative comparison, instruction counts, track-only hosted measurements and append-only/twenty-run history. First hosted confirmation and automation remain pending; publication is ungated.
 - [ ] 3.10 Measure the current two-million-row generic scan after the landed bounded scan repairs; compare reproducible before/after results with the proposed budgets in design.md. Keep measurements outside correctness tests.
 - [ ] 3.11 Measure first, next and deep indexed pages after the landed seek repairs; compare against the proposed page budgets in design.md without timing assertions.

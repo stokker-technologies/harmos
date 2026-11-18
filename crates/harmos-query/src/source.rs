@@ -36,6 +36,8 @@ use super::transform::project::Project;
 use crate::SchemaKey;
 use crate::schema::{self, Cardinality, Event, PathElement, Scalar, graph};
 use crate::{Error, Result};
+use harmos_domain::config::SchemaSettings;
+use harmos_domain::message::postcard::Reader;
 use harmos_domain::model::storage::{FileReference, ObjectEntry, StorageCursor, StorageSchema, StoredRecord, StoredRow};
 
 /* === Constants === */
@@ -73,7 +75,18 @@ pub fn stream(schema: &StorageSchema, rows: &[StoredRow]) -> Result<RecordBatch>
 pub fn projected<'a>(
     schema: &StorageSchema, rows: impl ExactSizeIterator<Item = &'a StoredRecord>, project: &Project, output: Arc<Schema>,
 ) -> Result<RecordBatch> {
-    let settings = harmos_domain::config::SchemaSettings::default();
+    let rows = rows.collect::<Vec<_>>();
+    if rows.iter().any(|row| row.schema != schema.key) {
+        return Err(invalid("record batch has incompatible schemas"));
+    }
+    projected_payloads(schema, rows.iter().map(|row| row.payload.as_slice()), project, output)
+}
+
+/// Build Only the Requested Payload Columns Without Constructing Other Columns.
+pub fn projected_payloads<'a>(
+    schema: &StorageSchema, payloads: impl ExactSizeIterator<Item = &'a [u8]>, project: &Project, output: Arc<Schema>,
+) -> Result<RecordBatch> {
+    let settings = SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     // Compile A Single Required Float Projection Without Per-Value Builder Dispatch.
     let primitive = project
@@ -87,7 +100,7 @@ pub fn projected<'a>(
             })
         });
     if let Some(field) = primitive {
-        let count = rows.len();
+        let count = payloads.len();
         let mut values = Float64Builder::with_capacity(count);
         let fields = &schema.schema.definitions[schema.schema.root];
         let numeric = fields.iter().all(|field| {
@@ -103,12 +116,9 @@ pub fn projected<'a>(
                         | graph::Kind::F64
                 )
         });
-        for row in rows {
-            if row.schema != schema.key {
-                return Err(invalid("record batch has incompatible schemas"));
-            }
+        for payload in payloads {
             if numeric {
-                let mut input = harmos_domain::message::postcard::Reader::new(&row.payload);
+                let mut input = Reader::new(payload);
                 input
                     .nested(|input| {
                         for current in fields {
@@ -148,7 +158,7 @@ pub fn projected<'a>(
                 continue;
             }
             validator
-                .visit(&row.payload, |path, event| {
+                .visit(payload, |path, event| {
                     if path.len() == 1
                         && matches!(path[0], PathElement::Field { tag, .. } if tag == field.tag)
                         && let Event::Scalar(Scalar::F64(value)) = event
@@ -165,14 +175,11 @@ pub fn projected<'a>(
         }
         return RecordBatch::try_new(output, vec![Arc::new(values)]).map_err(|_| invalid("projected payload batch mismatch"));
     }
-    let mut columns = output.fields().iter().map(|field| columns::Column::new(field.data_type(), rows.len())).collect::<Vec<_>>();
+    let mut columns = output.fields().iter().map(|field| columns::Column::new(field.data_type(), payloads.len())).collect::<Vec<_>>();
 
-    for (row_index, row) in rows.enumerate() {
-        if row.schema != schema.key {
-            return Err(invalid("record batch has incompatible schemas"));
-        }
+    for (row_index, payload) in payloads.enumerate() {
         validator
-            .visit(&row.payload, |path, event| {
+            .visit(payload, |path, event| {
                 for (column, projected) in columns.iter_mut().zip(&project.fields) {
                     let prefix = &projected.field.fields[1..];
                     if let Event::Variant { index } = event
@@ -213,25 +220,17 @@ pub fn objects(schema: &StorageSchema, rows: &[ObjectEntry]) -> Result<RecordBat
     let payloads = rows.iter().map(|row| row.value.payload.as_slice()).collect::<Vec<_>>();
     let payload = payload(schema, &payloads)?;
 
-    let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
-    columns.push((
-        Field::new("scope", DataType::Utf8, true),
-        strings(rows.iter().map(|row| row.value.scope.as_ref().map(|scope| scope.as_str()))),
-    ));
-    columns.push((Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.item.as_str())))));
-    columns.push((
-        Field::new("revision", DataType::UInt64, false),
-        Arc::new(UInt64Array::from(rows.iter().map(|row| row.version.revision().get()).collect::<Vec<_>>())),
-    ));
+    assemble(object_columns(rows), payload)
+}
 
-    columns.push((Field::new("schema_id", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.schema.id.as_str())))));
-    columns.push((
-        Field::new("schema_version", DataType::UInt32, false),
-        Arc::new(UInt32Array::from(rows.iter().map(|row| row.value.schema.version.get()).collect::<Vec<_>>())),
-    ));
-    columns
-        .push((Field::new("payload_encoding", DataType::Utf8, false), strings(rows.iter().map(|row| Some(encoding(&row.value.schema))))));
-    assemble(columns, payload)
+/// Read Object Metadata Without Decoding Any Payload.
+pub fn object_metadata(rows: &[ObjectEntry]) -> Result<RecordBatch> {
+    metadata(object_columns(rows))
+}
+
+/// Read Record Metadata Without Decoding Any Payload.
+pub fn record_metadata(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>) -> Result<RecordBatch> {
+    metadata(record_columns(schema, rows, streams)?)
 }
 
 pub fn files(rows: &[FileReference]) -> Result<RecordBatch> {
@@ -286,20 +285,46 @@ pub fn schemas(rows: &[StorageSchema]) -> Result<RecordBatch> {
 
 /* === Private Functions === */
 
+fn object_columns(rows: &[ObjectEntry]) -> Vec<(Field, ArrayRef)> {
+    let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
+    columns.push((
+        Field::new("scope", DataType::Utf8, true),
+        strings(rows.iter().map(|row| row.value.scope.as_ref().map(|scope| scope.as_str()))),
+    ));
+    columns.push((Field::new("item", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.item.as_str())))));
+    columns.push((
+        Field::new("revision", DataType::UInt64, false),
+        Arc::new(UInt64Array::from(rows.iter().map(|row| row.version.revision().get()).collect::<Vec<_>>())),
+    ));
+
+    columns.push((Field::new("schema_id", DataType::Utf8, false), strings(rows.iter().map(|row| Some(row.value.schema.id.as_str())))));
+    columns.push((
+        Field::new("schema_version", DataType::UInt32, false),
+        Arc::new(UInt32Array::from(rows.iter().map(|row| row.value.schema.version.get()).collect::<Vec<_>>())),
+    ));
+    columns
+        .push((Field::new("payload_encoding", DataType::Utf8, false), strings(rows.iter().map(|row| Some(encoding(&row.value.schema))))));
+    columns
+}
+
 fn path_matches(path: &[PathElement<'_>], prefix: &[String]) -> bool {
     path.len() >= prefix.len()
         && path.iter().zip(prefix).all(|(part, name)| matches!(part, PathElement::Field { name: field, .. } if *field == name))
 }
 
 fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>) -> Result<RecordBatch> {
+    let columns = record_columns(schema, rows, streams)?;
+    let payloads = rows.iter().map(|row| row.payload.as_slice()).collect::<Vec<_>>();
+    let payload = payload(schema, &payloads)?;
+    assemble(columns, payload)
+}
+
+fn record_columns(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<&[StoredRow]>) -> Result<Vec<(Field, ArrayRef)>> {
     for row in rows {
         if row.schema != schema.key {
             return Err(invalid("record batch has incompatible schemas"));
         }
     }
-
-    let payloads = rows.iter().map(|row| row.payload.as_slice()).collect::<Vec<_>>();
-    let payload = payload(schema, &payloads)?;
 
     let times = rows.iter().map(|row| row.source_time.map(timestamp).transpose()).collect::<Result<Vec<_>>>()?;
     let mut columns = cursor_columns(rows.iter().map(|row| &row.position));
@@ -320,7 +345,13 @@ fn record_batch(schema: &StorageSchema, rows: &[&StoredRecord], streams: Option<
         ));
     }
     append_schema_columns(&mut columns, &schema.key, rows.len())?;
-    assemble(columns, payload)
+    Ok(columns)
+}
+
+fn metadata(columns: Vec<(Field, ArrayRef)>) -> Result<RecordBatch> {
+    let columns =
+        columns.into_iter().map(|(field, array)| (field.clone().with_name(format!("_storage.{}", field.name())), array)).collect();
+    flat(columns)
 }
 
 fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) -> Result<Fields> {
@@ -363,7 +394,7 @@ fn fields(schema: &graph::Schema, root: usize, depth: usize, count: &mut usize) 
 }
 
 fn payload(schema: &StorageSchema, payloads: &[&[u8]]) -> Result<ArrayRef> {
-    let settings = harmos_domain::config::SchemaSettings::default();
+    let settings = SchemaSettings::default();
     let validator = schema::Validator::from_schema(&schema.schema, &settings).map_err(|_| invalid("invalid payload schema"))?;
     let kind = DataType::Struct(payload_fields(&schema.schema)?);
     let mut columns = columns::Column::new(&kind, payloads.len());

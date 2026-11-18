@@ -154,6 +154,7 @@ pub fn run(runtime: &tokio::runtime::Runtime, backend: &dyn StorageBackend, work
                 column: "payload.value".into(),
                 lower: Some(10000.0),
                 upper: Some(20000.0),
+                prefix: None,
             });
         }
         let expected = (0..workload.rows)
