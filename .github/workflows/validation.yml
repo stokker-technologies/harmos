@@ -454,7 +454,7 @@ jobs:
           container: ''
   package_rust:
     if: inputs.selection == 'package_rust'
-    name: Package / Rust (${{ matrix.platform }})
+    name: Package / Library (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
     steps:
@@ -659,7 +659,7 @@ jobs:
           tools: python,uv
   test_unit:
     if: inputs.selection == 'test_unit'
-    name: Test / Runtime / ${{ matrix.label }} (${{ matrix.platform }})
+    name: Test / Library / ${{ matrix.label }} (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.minutes }}
     steps:
@@ -844,7 +844,7 @@ jobs:
       CI_CACHE_PROFILE: bench
   coverage:
     if: inputs.selection == 'coverage'
-    name: Test / Runtime / Coverage (unix)
+    name: Test / Library / Coverage (unix)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -892,7 +892,7 @@ jobs:
       MISE_ENABLE_TOOLS: dotnet,python,rust,uv,aqua:nextest-rs/nextest/cargo-nextest,aqua:taiki-e/cargo-llvm-cov
   bench:
     if: inputs.selection == 'bench'
-    name: Bench / Runtime / ${{ matrix.layer == 'unit' && 'Unit' || matrix.layer == 'integration' && 'Integration' || 'System' }} (unix)
+    name: Bench / Library / ${{ matrix.layer == 'unit' && 'Unit' || matrix.layer == 'integration' && 'Integration' || 'System' }} (unix)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

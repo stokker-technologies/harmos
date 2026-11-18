@@ -36,7 +36,7 @@ CHECKS = [
     },
     {
         "language": "rust",
-        "label": "SDK / Rust (unix)",
+        "label": "Library (unix)",
         "platform": "unix",
         "runner": "ubuntu-24.04",
         "arguments": "--language rust",
@@ -54,7 +54,7 @@ CHECKS = [
     },
     {
         "language": "rust",
-        "label": "SDK / Rust (windows)",
+        "label": "Library (windows)",
         "platform": "windows",
         "runner": "windows-2022",
         "arguments": "--language rust",
@@ -97,7 +97,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "integration",
-        "label": "Runtime / Integration",
+        "label": "Library / Integration",
         "arguments": "--layer integration",
     },
     {
@@ -106,7 +106,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "acceptance",
-        "label": "Runtime / Acceptance",
+        "label": "Library / Acceptance",
         "arguments": "--layer acceptance",
     },
     {
@@ -115,7 +115,7 @@ TESTS = [
         "runner": "ubuntu-24.04",
         "minutes": 120,
         "layer": "system",
-        "label": "Runtime / System",
+        "label": "Library / System",
         "arguments": "--layer system",
     },
     {
@@ -124,7 +124,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "integration",
-        "label": "Runtime / Integration",
+        "label": "Library / Integration",
         "arguments": "--layer integration",
     },
     {
@@ -133,7 +133,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "acceptance",
-        "label": "Runtime / Acceptance",
+        "label": "Library / Acceptance",
         "arguments": "--layer acceptance",
     },
     {
@@ -142,7 +142,7 @@ TESTS = [
         "runner": "windows-2022",
         "minutes": 120,
         "layer": "system",
-        "label": "Runtime / System",
+        "label": "Library / System",
         "arguments": "--layer system",
     },
 ]

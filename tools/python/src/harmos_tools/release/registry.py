@@ -544,7 +544,7 @@ def rehearsed(directory: Path, settings: dict, review: dict, sha: str) -> None:
     pipeline_jobs = pages(settings, f"pipelines/{pipeline['id']}/jobs?include_retried=false")
     if any(job.get("name") == "Check / CI / Impact" for job in pipeline_jobs):
         bridges = [
-            bridge for bridge in pages(settings, f"pipelines/{pipeline['id']}/bridges") if bridge.get("name") == "Check / CI / Required"
+            bridge for bridge in pages(settings, f"pipelines/{pipeline['id']}/bridges") if bridge.get("name") == "CI / Required"
         ]
         if len(bridges) != 1 or bridges[0].get("status") != "success":
             raise policy.ToolError(
