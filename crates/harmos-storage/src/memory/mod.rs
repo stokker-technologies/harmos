@@ -33,8 +33,8 @@ use std::time::SystemTime;
 // Third Party Imports
 use serde::Serialize;
 use tokio::sync::{Notify, oneshot};
-use tracing::Instrument;
 use tracing::subscriber::NoSubscriber;
+use tracing::{Instrument, dispatcher};
 
 // Local Imports
 use crate::SchemaWrite;
@@ -75,6 +75,11 @@ struct IoAttempt<'a>(&'a Notify);
 
 #[derive(Default)]
 pub struct Control {
+    pub receipt_lookups: AtomicUsize,
+    pub fail_receipt_lookup: AtomicBool,
+    pub block_receipt_lookup: AtomicBool,
+    pub receipt_lookup_entered: Notify,
+    pub receipt_lookup_release: Notify,
     pub record_rows_examined: AtomicUsize,
     pub record_page_rows: AtomicUsize,
     pub record_rows_copied: AtomicUsize,
@@ -507,8 +512,8 @@ impl StorageBackend for Backend {
         }
     }
     fn set_projection_definition<'a>(
-        &'a self, definition: &'a ProjectionDefinition, expected: Option<u64>, rebuild: bool, mutation: Option<&'a crate::MutationHeader>,
-    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
+        &'a self, definition: &'a ProjectionDefinition, expected: Option<u64>, rebuild: bool, mutation: Option<&'a MutationHeader>,
+    ) -> StorageFuture<'a, DefinitionOutcome> {
         Box::pin(async move {
             if self.control.block_definition.load(Ordering::Acquire) {
                 self.control.definition_entered.notify_one();
@@ -519,14 +524,14 @@ impl StorageBackend for Backend {
             if let Some(header) = mutation
                 && let Some(prior) = ledger.get(&header.mutation)
             {
-                return header.replay_definition(prior, crate::DefinitionKind::Projection, &definition.name);
+                return header.replay_definition(prior, DefinitionKind::Projection, &definition.name);
             }
 
-            let outcome = crate::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            let outcome = DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
             if let Some(header) = mutation {
                 ledger.insert(
                     header.mutation.clone(),
-                    header.definition(crate::DefinitionKind::Projection, definition.name.clone(), outcome.clone()),
+                    header.definition(DefinitionKind::Projection, definition.name.clone(), outcome.clone()),
                 );
             }
             drop(definitions);
@@ -605,8 +610,8 @@ impl StorageBackend for Backend {
 
     fn set_index_definition<'a>(
         &'a self, definition: &'a IndexDefinition, expected: Option<u64>, rebuild: bool, _work: ReadLimits, cancel: &'a Cancellation,
-        mutation: Option<&'a crate::MutationHeader>,
-    ) -> StorageFuture<'a, crate::DefinitionOutcome> {
+        mutation: Option<&'a MutationHeader>,
+    ) -> StorageFuture<'a, DefinitionOutcome> {
         Box::pin(async move {
             if self.control.block_definition.load(Ordering::Acquire) {
                 self.control.definition_entered.notify_one();
@@ -617,15 +622,12 @@ impl StorageBackend for Backend {
             if let Some(header) = mutation
                 && let Some(prior) = ledger.get(&header.mutation)
             {
-                return header.replay_definition(prior, crate::DefinitionKind::Index, &definition.name);
+                return header.replay_definition(prior, DefinitionKind::Index, &definition.name);
             }
             cancel.check()?;
-            let outcome = crate::DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
+            let outcome = DefinitionOutcome::capture(definitions.register(definition, expected, rebuild))?;
             if let Some(header) = mutation {
-                ledger.insert(
-                    header.mutation.clone(),
-                    header.definition(crate::DefinitionKind::Index, definition.name.clone(), outcome.clone()),
-                );
+                ledger.insert(header.mutation.clone(), header.definition(DefinitionKind::Index, definition.name.clone(), outcome.clone()));
             }
             drop(definitions);
             drop(ledger);
@@ -766,12 +768,12 @@ impl StorageBackend for Backend {
                             reason: "invalid finite schema graph",
                         })?;
                         schemas.insert(exchange.value.position.sequence, exchange.value.clone());
-                        crate::DefinitionOutcome::Applied {
+                        DefinitionOutcome::Applied {
                             revision: exchange.value.position.sequence,
                         }
                     } else {
-                        crate::DefinitionOutcome::Refused {
-                            kind: crate::DefinitionRefusal::Conflict,
+                        DefinitionOutcome::Refused {
+                            kind: DefinitionRefusal::Conflict,
                             reason: "schema revision changed or graph is immutable; get again and retry".to_owned(),
                         }
                     };
@@ -807,7 +809,7 @@ impl StorageBackend for Backend {
         )
     }
     fn append_records(&self, batch: StorageBatch<StoredRecord>) -> StorageFuture<'_, StorageCursor> {
-        let bytes = batch.as_slice().iter().map(|value| crate::encoded_size(value).unwrap()).sum();
+        let bytes = batch.as_slice().iter().map(|value| encoded_size(value).unwrap()).sum();
         let committing = self.persist(batch, &self.records, |value| &value.position, |_| Ok(()));
         Box::pin(async move {
             let saved = committing.await?;
@@ -819,7 +821,7 @@ impl StorageBackend for Backend {
         self.commit_sample_columns(append)
     }
     fn append_samples(&self, batch: StorageBatch<StoredRow>) -> StorageFuture<'_, StorageCursor> {
-        let bytes = batch.as_slice().iter().map(|value| crate::encoded_size(value).unwrap()).sum();
+        let bytes = batch.as_slice().iter().map(|value| encoded_size(value).unwrap()).sum();
         let committing = self.persist(batch, &self.rows, |value| &value.record.position, |_| Ok(()));
         Box::pin(async move {
             let saved = committing.await?;
@@ -1040,6 +1042,20 @@ impl StorageBackend for Backend {
     }
     fn list_mutation_receipts(&self, limits: ReadLimits) -> StorageFuture<'_, Vec<MutationReceipt>> {
         self.recover_mutations(limits)
+    }
+    fn get_mutation_receipt<'a>(&'a self, id: &'a MutationId) -> StorageFuture<'a, Option<MutationReceipt>> {
+        Box::pin(async move {
+            self.control.receipt_lookups.fetch_add(1, Ordering::SeqCst);
+            if self.control.block_receipt_lookup.load(Ordering::Acquire) {
+                self.control.receipt_lookup_entered.notify_one();
+                self.control.receipt_lookup_release.notified().await;
+            }
+            if self.control.fail_receipt_lookup.load(Ordering::Acquire) {
+                return Err(failure(BackendFailure::Permanent));
+            }
+            let saved = self.mutation_receipts.lock().unwrap();
+            Ok(saved.get(id).filter(|receipt| receipt.expires_at > self.date()).cloned())
+        })
     }
     fn create_file_production<'a>(&'a self, metadata: &'a FileMetadata) -> StorageFuture<'a, StagedFile> {
         Box::pin(async move { self.create_production(metadata).await })
@@ -1349,7 +1365,7 @@ impl StateBackend for RecoveryBackend {
 
 async fn recovery_call<T>(method: &'static str, work: impl Future<Output = Result<T>>) -> Result<T> {
     // Avoid Registering An Unobserved Site Against Another Scoped Collector.
-    if tracing::dispatcher::get_default(|dispatch| dispatch.is::<NoSubscriber>()) {
+    if dispatcher::get_default(|dispatch| dispatch.is::<NoSubscriber>()) {
         return work.await;
     }
     let context = Context::current();

@@ -14,16 +14,18 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 // Third Party Imports
 use sha2::{Digest, Sha256};
+use tracing::Span;
 
 // Local Imports
 use super::manager::{Inner, State, Target};
 use super::receipts::ReceiptState;
 use super::{MutationId, MutationReceipt, MutationValue, StagedFile, StorageManager};
-use crate::{Error, Identifier, Result};
+use crate::execution::Context;
+use crate::{Error, Identifier, Result, StorageBatch};
 
 /* === Constants === */
 
@@ -39,11 +41,11 @@ pub(super) struct Deletion {
 }
 
 pub(super) struct DeleteWork {
-    pub(super) context: crate::execution::Context,
-    pub(super) queued: std::sync::Mutex<Option<tracing::Span>>,
+    pub(super) context: Context,
+    pub(super) queued: Mutex<Option<Span>>,
     target: Target,
     pub(super) file: StagedFile,
-    receipt: crate::StorageBatch<MutationReceipt>,
+    receipt: StorageBatch<MutationReceipt>,
 }
 
 /* === Enums === */
@@ -67,8 +69,9 @@ impl StorageManager {
                 return Err(invalid("backend must support durable deletion"));
             }
             let fingerprint = fingerprint(file);
+            let resolution = self.resolve_mutation(mutation, fingerprint).await?;
             let mut retry = true;
-            let mut completion = None;
+            let mut completion = Some(resolution.completion.clone());
             let mut changed = self.inner.changed.subscribe();
             loop {
                 let mut notify = false;
@@ -121,7 +124,7 @@ impl StorageManager {
                                 return Err(exhausted());
                             }
                             let outcome = MutationValue::Deleted(file.clone());
-                            state.receipts.insert(mutation, fingerprint)?;
+                            state.receipts.admit(mutation, fingerprint)?;
                             let owner = state.receipts.completion(mutation);
                             completion = Some(owner);
                             let receipt = state.receipts.prepared(mutation, outcome);
@@ -130,11 +133,11 @@ impl StorageManager {
                                 mutation.clone(),
                                 Deletion {
                                     work: Arc::new(DeleteWork {
-                                        context: crate::execution::Context::current(),
-                                        queued: std::sync::Mutex::new(Some(tracing::debug_span!("storage.deletion.queue"))),
+                                        context: Context::current(),
+                                        queued: Mutex::new(Some(tracing::debug_span!("storage.deletion.queue"))),
                                         target,
                                         file: file.clone(),
-                                        receipt: crate::StorageBatch::new(vec![receipt]),
+                                        receipt: StorageBatch::new(vec![receipt]),
                                     }),
                                     failure: None,
                                 },
@@ -152,7 +155,7 @@ impl StorageManager {
             }
         }
         .await;
-        tracing::Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
+        Span::current().record("outcome", if result.is_ok() { "completed" } else { "failed" });
         result
     }
 
