@@ -65,6 +65,7 @@ SCALARS = {
 def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Configuration | None = None) -> None:
     """Generate Private Import Tables for the Three Public Barrel Points."""
     configuration = configuration or Configuration()
+    python_package = configuration.python_package if configuration.python_package is not None else configuration.namespace
     public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
     audiences = descriptor.payload_audiences(descriptors, library=configuration.library)
     requests = descriptor.request_names(descriptors)
@@ -88,7 +89,8 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
         if file.package.startswith("harmos.plugin."):
             continue
         owner = file.package.partition(".")[0]
-        module = file.name.removesuffix(".proto").replace("/", ".").replace(f"{owner}.", f"{owner}._wire.", 1) + "_pb2"
+        package = python_package if owner == configuration.namespace else owner
+        module = file.name.removesuffix(".proto").replace("/", ".").replace(f"{owner}.", f"{package}._wire.", 1) + "_pb2"
         for definition in [*file.message_type, *file.enum_type]:
             if f"{file.package}.{definition.name}" in requests:
                 continue
@@ -121,14 +123,14 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
                 groups[group].extend((module, value.name, (prefix + "." if prefix else "") + value.name) for value in definition.value)
     messages = set()
     for messages_file in descriptors.file:
-        if not (messages_file.package.startswith(f"{configuration.namespace}.")):
+        if not messages_file.package.startswith(f"{configuration.namespace}."):
             continue
         for messages_definition in messages_file.message_type:
             messages.add(
                 (
                     messages_file.name.removesuffix(".proto")
                     .replace("/", ".")
-                    .replace(f"{configuration.namespace}.", f"{configuration.namespace}._wire.", 1)
+                    .replace(f"{configuration.namespace}.", f"{python_package}._wire.", 1)
                     + "_pb2",
                     messages_definition.name,
                 )
@@ -151,9 +153,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
             modules.setdefault(node, []).append(f"from {module} import {original}")
             exports.setdefault(node, set()).add(original)
             if (module, original) in messages:
-                public_module = (
-                    configuration.namespace if group == "shared" else configuration.namespace + "." + group.removesuffix("_types")
-                )
+                public_module = python_package if group == "shared" else python_package + "." + group.removesuffix("_types")
                 metadata.setdefault(node, []).append(f'{original}.__module__ = "{public_module}"')
                 metadata[node].append(f'{original}.__qualname__ = "{name}"')
         for node, imports in modules.items():
@@ -283,7 +283,7 @@ def client(
         )
     root_name = "Client"
     names = {node: root_name if not node else "".join(part.title().replace("_", "") for part in node) + "Resource" for node in nodes}
-    messages = _message_types(descriptors, configuration.namespace, module_prefixes)
+    messages = _message_types(descriptors, configuration, module_prefixes)
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
         field["type"]
@@ -458,7 +458,7 @@ def host(
     configuration: Configuration | None = None,
 ) -> None:
     configuration = configuration or Configuration()
-    messages = _message_types(descriptors, configuration.namespace, module_prefixes)
+    messages = _message_types(descriptors, configuration, module_prefixes)
     used = {method[key] for method in methods for key in ("request", "response")}
     used.update(
         field["type"]
@@ -590,7 +590,10 @@ def host(
 # === Private Functions === #
 
 
-def _message_types(descriptors: FileDescriptorSet, namespace: str, module_prefixes: dict[str, str] | None) -> dict[str, tuple[str, str]]:
+def _message_types(
+    descriptors: FileDescriptorSet, configuration: Configuration, module_prefixes: dict[str, str] | None
+) -> dict[str, tuple[str, str]]:
+    python_package = configuration.python_package if configuration.python_package is not None else configuration.namespace
     types: dict[str, tuple[str, str]] = {}
 
     def record(definitions: list[DescriptorProto], package: str, module: str, parent: str = "") -> None:
@@ -603,9 +606,10 @@ def _message_types(descriptors: FileDescriptorSet, namespace: str, module_prefix
 
     for file in descriptors.file:
         module = file.name.removesuffix(".proto").replace("/", ".") + "_pb2"
-        for owner in {"harmos", namespace}:
+        for owner in {"harmos", configuration.namespace}:
             if module.startswith(owner + "."):
-                module = module.replace(owner + ".", owner + "._wire.", 1)
+                package = python_package if owner == configuration.namespace else owner
+                module = module.replace(owner + ".", package + "._wire.", 1)
                 break
         for prefix, replacement in (module_prefixes or {}).items():
             if module.startswith(prefix + "."):

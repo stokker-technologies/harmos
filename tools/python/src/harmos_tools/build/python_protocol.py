@@ -65,17 +65,18 @@ def generate(
     """Compile Product-Owned Wire Modules and Render Their Typed Resources."""
     configuration = configuration or Configuration(namespace=namespace)
     namespace = configuration.namespace
+    python_package = configuration.python_package if configuration.python_package is not None else namespace
     proto_root = proto_root or root / "proto"
     definitions = files if files is not None else protocols(root=root, namespace=namespace, proto_root=proto_root)
     if not definitions:
         raise ValueError("Generate Python Protocol: Supply Protocol Files or a Populated proto_root/namespace Directory")
     generated = tuple(
-        name.removesuffix(".proto").replace(namespace + "/", namespace + "/_wire/", 1) + suffix
+        name.removesuffix(".proto").replace(namespace + "/", python_package + "/_wire/", 1) + suffix
         for name in definitions
         for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")
     )
     output.mkdir(parents=True, exist_ok=True)
-    for path in (output / namespace).rglob("*_pb2*"):
+    for path in (output / python_package).rglob("*_pb2*"):
         name = path.relative_to(output).as_posix()
         if path.is_file() and path.name.endswith(("_pb2.py", "_pb2.pyi", "_pb2_grpc.py")) and name not in generated:
             path.unlink()
@@ -91,12 +92,12 @@ def generate(
         *definitions,
     ]
     subprocess.run(command, check=True, cwd=root, creationflags=spawn_flags())
-    prefixes = {"harmos": "harmos._wire", namespace: namespace + "._wire", **(module_prefixes or {})}
+    prefixes = {"harmos": "harmos._wire", namespace: python_package + "._wire", **(module_prefixes or {})}
     for name in definitions:
         for suffix in ("_pb2.py", "_pb2.pyi", "_pb2_grpc.py"):
             relative = name.removesuffix(".proto") + suffix
             source_path = output / relative
-            destination = output / relative.replace(namespace + "/", namespace + "/_wire/", 1)
+            destination = output / relative.replace(namespace + "/", python_package + "/_wire/", 1)
             source = source_path.read_text(encoding="utf-8")
             for prefix, replacement in sorted(prefixes.items(), key=lambda item: -len(item[0])):
                 source = source.replace(f"from {prefix}.", f"from {replacement}.")
@@ -116,16 +117,16 @@ def generate(
     if configuration.library is None:
         configuration = replace(configuration, library=schema)
     methods = harmos_tools.build.resources.descriptor.table(schema)
-    harmos_tools.build.resources.python.exports(output / namespace / "_generated", schema, configuration=configuration)
+    harmos_tools.build.resources.python.exports(output / python_package / "_generated", schema, configuration=configuration)
     harmos_tools.build.resources.python.host(
-        output / namespace / "_generated/host.py",
+        output / python_package / "_generated/host.py",
         [method for method in methods if method["face"] == "context"],
         schema,
         configuration=configuration,
         module_prefixes=module_prefixes,
     )
     harmos_tools.build.resources.python.client(
-        output / namespace / "_generated/client.py",
+        output / python_package / "_generated/client.py",
         [method for method in methods if method["face"] == "client"],
         schema,
         configuration=configuration,
