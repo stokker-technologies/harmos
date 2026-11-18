@@ -208,7 +208,7 @@ run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.c
 
 [tasks."ci:required"]
 hide = true
-description = "CI / Required"
+description = "Check / CI / Required"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.tasks ci:required"
 
 [tasks."prepare:tests:fixtures"]

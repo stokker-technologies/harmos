@@ -138,7 +138,7 @@ jobs:
       selection: prepare_test_fixtures
       profile: ${{ (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'release/v')) && 'release' || 'dev' }}
   required:
-    name: CI / Required
+    name: Check / CI / Required
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     if: always()

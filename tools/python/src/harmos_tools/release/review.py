@@ -156,7 +156,7 @@ def github_validation_run(runs: list[dict], jobs_for: Callable[[int], list[dict]
         if run.get("display_title") != "CI / Validation" or run.get("status") != "completed" or run.get("conclusion") != "success":
             raise ValueError("review run is not green validation")
         jobs = jobs_for(run["id"])
-        gates = [job for job in jobs if job.get("name") == "CI / Required"]
+        gates = [job for job in jobs if job.get("name") == "Check / CI / Required"]
         if len(gates) != 1 or gates[0].get("conclusion") != "success":
             raise ValueError("review required gate is not green")
         if not jobs or any(job.get("conclusion") not in ("success", "skipped") for job in jobs):
@@ -280,7 +280,7 @@ def lookup() -> dict:
             raise ValueError("review pipeline is not green")
         jobs = pages(f"pipelines/{run['id']}/jobs?include_retried=false")
         if any(job.get("name") == "Check / CI / Impact" for job in jobs):
-            bridges = [bridge for bridge in pages(f"pipelines/{run['id']}/bridges") if bridge.get("name") == "CI / Required"]
+            bridges = [bridge for bridge in pages(f"pipelines/{run['id']}/bridges") if bridge.get("name") == "Check / CI / Required"]
             if len(bridges) != 1 or bridges[0].get("status") != "success":
                 raise ValueError("review child gate is not green")
             child = bridges[0].get("downstream_pipeline")

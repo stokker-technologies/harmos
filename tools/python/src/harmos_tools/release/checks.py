@@ -51,7 +51,7 @@ def green(sha: str, pages: Callable[..., list[dict]]) -> bool:
     gates = [
         check
         for check in checks
-        if check.get("name") == "CI / Required"
+        if check.get("name") == "Check / CI / Required"
         and check.get("app", {}).get("slug") == "github-actions"
         and check.get("check_suite", {}).get("id") == run["check_suite_id"]
     ]
