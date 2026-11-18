@@ -29,6 +29,7 @@ async fn managed_sdk_plugin_is_described_and_stopped_with_its_host() {
     let cleaned = evidence.path().join("cleanup");
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-sdk-host-fixture"),
+        directory: None,
         arguments: vec![cleaned.clone().into_os_string()],
         environment: Default::default(),
     });
@@ -58,6 +59,7 @@ async fn a_stopping_host_refuses_to_start_a_plugin() {
     // Attaching Refuses With an Action Instead of Spawning a Process the Host Would Have to Reap.
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-sdk-host-fixture"),
+        directory: None,
         arguments: vec![tempfile::tempdir().unwrap().path().join("cleanup").into_os_string()],
         environment: Default::default(),
     });

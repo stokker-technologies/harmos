@@ -576,7 +576,7 @@ pub fn package_with_cancellation(build: &Build, output: &Path, cancellation: &Bu
                 }),
             })
             .collect();
-        let bundle = crate::bundle::build(identity, &sources, Limits::default())?;
+        let bundle = crate::bundle::build(identity, &sources, None, Limits::default())?;
         let destination = output.join(&artifact.producer).join(format!("{}.harmos", artifact.name));
         if prepared.insert(destination.clone(), (artifact.producer.clone(), bundle)).is_some() {
             return Err(Error::Collision(destination.display().to_string()));
@@ -605,7 +605,7 @@ fn safe_name(name: &str) -> Result<(), Error> {
 }
 
 fn read_artifact(path: &Path) -> Result<Vec<u8>, Error> {
-    use std::io::Read as _;
+    use std::io::Read;
     let limit = crate::bundle::Limits::default().file_bytes;
     if path.is_symlink() {
         return Err(Error::Settings("artifact must be a regular file".into()));

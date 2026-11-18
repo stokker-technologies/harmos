@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::io::{self, Write};
 // Third Party Imports
 // Local Imports
-use super::{Error, Facility, Limits, Manifest};
+use super::{Error, Limits, Manifest};
 
 /* === Constants === */
 
@@ -67,12 +67,7 @@ pub(super) fn encode(manifest: &Manifest, contents: &BTreeMap<String, &[u8]>, li
     let mut builder = tar::Builder::new(output);
     append(&mut builder, "manifest.json", &json.bytes, false)?;
     for file in &manifest.files {
-        append(
-            &mut builder,
-            &file.path,
-            contents[&file.path],
-            file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar),
-        )?;
+        append(&mut builder, &file.path, contents[&file.path], manifest.is_executable(file))?;
     }
     Ok(builder.into_inner()?.bytes)
 }

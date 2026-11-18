@@ -17,10 +17,11 @@ mod metadata;
 
 /* === Re-Exports === */
 
-pub use archive::path as validate_path;
+pub use archive::validate_path;
 pub use error::Error;
-pub use guest::{METADATA_SECTION as GUEST_METADATA_SECTION, registration as guest_registration};
-pub use manifest::{Executable, Facility, File, Identity, Limits, Manifest, PackageMetadata};
+pub use guest::{GUEST_METADATA_SECTION, guest_registration};
+pub(crate) use manifest::relative_program;
+pub use manifest::{Executable, Facility, File, Identity, Limits, Manifest, PackageMetadata, validate_launch};
 
 /* === Imports === */
 
@@ -111,7 +112,7 @@ impl Bundle {
             std::fs::create_dir_all(path.parent().expect("a file has a staging parent"))?;
             let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
             output.write_all(self.file(&file.path).expect("verified file exists"))?;
-            archive::permissions(&output, file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar))?;
+            archive::permissions(&output, self.manifest.is_executable(file))?;
         }
         let path = directory.path().join("manifest.json");
         let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
@@ -143,12 +144,15 @@ fn invalid(message: impl Into<String>) -> Error {
 }
 
 fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
+    if let Some(launch) = &manifest.launch {
+        validate_launch(launch)?;
+    }
     if manifest.schema != 1 {
         return Err(invalid("unsupported schema"));
     }
     let name = &manifest.identity.name;
-    let native =
-        manifest.files.iter().any(|file| file.executable.as_ref().is_some_and(|executable| executable.facility == Facility::Sidecar));
+    let native = manifest.launch.is_some()
+        || manifest.files.iter().any(|file| file.executable.as_ref().is_some_and(|executable| executable.facility == Facility::Sidecar));
     if name.is_empty() || !name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_') || (native && byte == b'.'))
     {
         return Err(invalid("invalid plugin identity"));
@@ -159,7 +163,7 @@ fn validate(manifest: &Manifest, limits: Limits) -> Result<(), Error> {
     let mut paths = BTreeSet::new();
     let mut previous = None;
     for file in &manifest.files {
-        archive::path(&file.path)?;
+        archive::validate_path(&file.path)?;
         if previous.is_some_and(|value: &str| value >= file.path.as_str()) {
             return Err(invalid("files are not in unique path order"));
         }

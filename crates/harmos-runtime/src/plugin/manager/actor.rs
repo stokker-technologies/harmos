@@ -60,7 +60,7 @@ use super::{
     persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
 use crate::plugin::grpc::{Activation, Attached, Managed, Placement, Status};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use harmos_protocol::model;
 
 /* === Constants === */
@@ -143,8 +143,8 @@ pub(super) enum Command {
         failure: Option<String>,
     },
     Replace(PluginsReplaceRequest, Reply<PluginsReplaceResponse>),
-    SettingsList(wire::plugins::SettingsListRequest, Reply<wire::plugins::SettingsListResponse>),
-    SettingsSet(wire::plugins::SettingsSetRequest, Reply<wire::plugins::SettingsSetResponse>),
+    SettingsList(host::plugins::SettingsListRequest, Reply<host::plugins::SettingsListResponse>),
+    SettingsSet(host::plugins::SettingsSetRequest, Reply<host::plugins::SettingsSetResponse>),
     Get(PluginsGetRequest, Reply<PluginsGetResponse>),
     List(PluginsListRequest, Reply<PluginsListResponse>),
     Watch(PluginsWatchRequest, Reply<mpsc::Receiver<PluginsWatchResponse>>),
@@ -288,7 +288,7 @@ impl Actor {
                         tracing::error!(%error, "plugin state persistence failed; stopping manager");
                         let _ = self.changes.send(PluginsWatchResponse {
                             resolved_at: Some(self.cut()),
-                            event: Some(wire::plugins_watch_response::Event::ResyncRequired(error.to_string())),
+                            event: Some(host::plugins_watch_response::Event::ResyncRequired(error.to_string())),
                         });
                         break;
                     }
@@ -347,7 +347,7 @@ impl Actor {
             }
             let _ = self.changes.send(PluginsWatchResponse {
                 resolved_at: Some(cut),
-                event: Some(wire::plugins_watch_response::Event::Change(event)),
+                event: Some(host::plugins_watch_response::Event::Change(event)),
             });
         }
         Ok(())
@@ -401,7 +401,7 @@ impl Actor {
         let entries = snapshot.entries.values().filter(|entry| name.is_empty() || entry.name == name).cloned().collect();
         let opening = PluginsWatchResponse {
             resolved_at: Some(snapshot.cut.clone()),
-            event: Some(wire::plugins_watch_response::Event::Snapshot(PluginSnapshot { entries })),
+            event: Some(host::plugins_watch_response::Event::Snapshot(PluginSnapshot { entries })),
         };
         if opening.encoded_len() > self.settings.response_bytes.get() {
             return Err(Error::new(
@@ -424,7 +424,7 @@ impl Actor {
             .filter_map(|snapshot| {
                 snapshot.event.clone().map(|event| PluginsWatchResponse {
                     resolved_at: Some(snapshot.cut.clone()),
-                    event: Some(wire::plugins_watch_response::Event::Change(event)),
+                    event: Some(host::plugins_watch_response::Event::Change(event)),
                 })
             })
             .collect::<Vec<_>>();
@@ -449,7 +449,7 @@ impl Actor {
                         Ok(event) if selected(&event, &name) => if !watch_event(&sender, event, response_bytes, &mut resolved_at).await { return; },
                         Ok(_) => {},
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            let event = PluginsWatchResponse { resolved_at, event: Some(wire::plugins_watch_response::Event::ResyncRequired(GAP_ACTION.into())) };
+                            let event = PluginsWatchResponse { resolved_at, event: Some(host::plugins_watch_response::Event::ResyncRequired(GAP_ACTION.into())) };
                             let _ = sender.send(event).await;
                             return;
                         },
@@ -508,7 +508,7 @@ impl Actor {
             .ok_or_else(|| Error::new("placement_required", "Create Plugin", "choose remote or managed placement"))?;
         let value = request.value.ok_or_else(|| Error::new("value_required", "Create Plugin", "supply the complete writable value"))?;
         let installation = match placement {
-            wire::plugin_placement::Kind::Remote(remote) => {
+            host::plugin_placement::Kind::Remote(remote) => {
                 let endpoint =
                     tonic::transport::Endpoint::from_shared(remote.url.clone()).map_err(|error| problem("Create Remote Plugin", error))?;
                 let uri = endpoint.uri();
@@ -520,14 +520,14 @@ impl Actor {
                 }
                 None
             }
-            wire::plugin_placement::Kind::Guest(_) => {
+            host::plugin_placement::Kind::Guest(_) => {
                 return Err(Error::new(
                     "host_registration_required",
                     "Create Guest Plugin",
                     "register the loaded module through PluginHost.register_guest",
                 ));
             }
-            wire::plugin_placement::Kind::Managed(managed) => {
+            host::plugin_placement::Kind::Managed(managed) => {
                 Some(Installation::prepare(&self.store.storage, managed, &self.settings).await?)
             }
         };
@@ -692,7 +692,7 @@ impl Actor {
         self.commit(
             registry,
             PluginChange {
-                kind: Some(wire::plugin_change::Kind::Deleted(entry.name.clone())),
+                kind: Some(host::plugin_change::Kind::Deleted(entry.name.clone())),
             },
         )
         .await?;
@@ -720,9 +720,9 @@ impl Actor {
             return;
         }
         let placement = match entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()) {
-            Some(wire::plugin_placement::Kind::Remote(remote)) => Ok(Placement::Remote(remote.url.clone())),
-            Some(wire::plugin_placement::Kind::Managed(_)) => managed(saved, &self.settings),
-            Some(wire::plugin_placement::Kind::Guest(_)) => unreachable!("guest handled above"),
+            Some(host::plugin_placement::Kind::Remote(remote)) => Ok(Placement::Remote(remote.url.clone())),
+            Some(host::plugin_placement::Kind::Managed(_)) => managed(saved, &self.settings),
+            Some(host::plugin_placement::Kind::Guest(_)) => unreachable!("guest handled above"),
             None => Err(Error::new("placement_required", "Start Plugin", "restore a valid placement")),
         };
         let values = (!saved.settings.is_empty())
@@ -909,7 +909,7 @@ impl Actor {
 /* === Private Functions === */
 
 pub(super) fn is_guest(entry: &PluginEntry) -> bool {
-    matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(wire::plugin_placement::Kind::Guest(_)))
+    matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(host::plugin_placement::Kind::Guest(_)))
 }
 
 fn missing() -> Error {
@@ -920,7 +920,7 @@ pub(super) fn next_activation(value: u64) -> Result<u64, Error> {
 }
 pub(super) fn changed(entry: PluginEntry) -> PluginChange {
     PluginChange {
-        kind: Some(wire::plugin_change::Kind::Entry(entry)),
+        kind: Some(host::plugin_change::Kind::Entry(entry)),
     }
 }
 pub(super) fn unavailable(name: &str, cause: String) -> model::Failure {
@@ -939,7 +939,7 @@ async fn watch_event(
     if event.encoded_len() > max_bytes {
         let event = PluginsWatchResponse {
             resolved_at: resolved_at.clone(),
-            event: Some(wire::plugins_watch_response::Event::ResyncRequired(CAPACITY_ACTION.into())),
+            event: Some(host::plugins_watch_response::Event::ResyncRequired(CAPACITY_ACTION.into())),
         };
         let _ = sender.send(event).await;
         return false;
@@ -957,9 +957,9 @@ fn selected(event: &PluginsWatchResponse, name: &str) -> bool {
         return true;
     }
     match &event.event {
-        Some(wire::plugins_watch_response::Event::Change(change)) => match &change.kind {
-            Some(wire::plugin_change::Kind::Entry(entry)) => entry.name == name,
-            Some(wire::plugin_change::Kind::Deleted(deleted)) => deleted == name,
+        Some(host::plugins_watch_response::Event::Change(change)) => match &change.kind {
+            Some(host::plugin_change::Kind::Entry(entry)) => entry.name == name,
+            Some(host::plugin_change::Kind::Deleted(deleted)) => deleted == name,
             None => false,
         },
         _ => true,
@@ -973,7 +973,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
     crate::bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
     let executable = settings.directory.join(executable);
     let bytes = std::fs::read(&executable).map_err(|error| problem("Read Installed Executable", error))?;
-    let digest: [u8; 32] = Sha256::digest(bytes).into();
+    let digest: [u8; 32] = Sha256::digest(&bytes).into();
     if saved.executable_digest != Some(digest) {
         return Err(Error::new(
             "executable_digest",
@@ -981,8 +981,42 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
             "recreate the entry from the original verified bundle",
         ));
     }
+    if executable.file_name().is_some_and(|name| name == "manifest.json") {
+        let manifest: crate::bundle::Manifest =
+            serde_json::from_slice(&bytes).map_err(|error| problem("Read Installed Manifest", error))?;
+        let launch = manifest
+            .launch
+            .as_ref()
+            .ok_or_else(|| Error::new("launch_missing", "Start Managed Plugin", "reinstall the original command bundle"))?;
+        let root = executable.parent().expect("installed manifest has a parent");
+        let placement = Managed::launch(launch, root).map_err(|error| {
+            Error::new("launch_program", error.to_string(), &format!("install {} at its declared location and retry", launch[0]))
+        })?;
+        let canonical_root = root.canonicalize().map_err(|error| problem("Resolve Installed Bundle", error))?;
+        for file in &manifest.files {
+            crate::bundle::validate_path(&file.path).map_err(|error| problem("Verify Installed File Path", error))?;
+            let path = root.join(&file.path).canonicalize().map_err(|error| problem("Read Installed File", error))?;
+            if !path.starts_with(&canonical_root) {
+                return Err(Error::new(
+                    "installation_path",
+                    "Start Managed Plugin",
+                    "reinstall the original bundle inside the manager directory",
+                ));
+            }
+            let bytes = std::fs::read(path).map_err(|error| problem("Read Installed File", error))?;
+            if file.verify(&bytes).is_err() {
+                return Err(Error::new(
+                    "file_digest",
+                    "Start Managed Plugin: Installed File Was Changed",
+                    "reinstall the original verified bundle",
+                ));
+            }
+        }
+        return Ok(Placement::Managed(placement));
+    }
     Ok(Placement::Managed(Managed {
         executable,
+        directory: None,
         arguments: vec![],
         environment: [("HARMOS_ADDRESS".into(), "127.0.0.1:0".into())].into(),
     }))

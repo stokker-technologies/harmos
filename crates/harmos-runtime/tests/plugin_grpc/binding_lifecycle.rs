@@ -28,13 +28,13 @@ use {
 
 // Third Party Imports
 use futures_util::stream;
-use prost::Message as _;
+use prost::Message;
 use tokio::{
     net::TcpListener,
     sync::{mpsc, oneshot},
 };
 use tonic::Status;
-use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::layer::SubscriberExt;
 
 // Local Imports
 use super::{
@@ -43,7 +43,7 @@ use super::{
 };
 use harmos_protocol::model;
 use harmos_runtime::{
-    clock::{Clock, Source as _},
+    clock::{Clock, Source},
     plugin::grpc::{Error, Managed, Placement, PlacementSettings},
 };
 
@@ -388,6 +388,7 @@ async fn plugin_exit_settles_its_live_binding_before_reporting() {
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-managed-stub-fixture"),
+        directory: None,
         arguments: vec![control.local_addr().unwrap().to_string().into(), remote.address.trim_start_matches("http://").into()],
         environment: Default::default(),
     });
@@ -489,6 +490,7 @@ async fn managed_disconnect_settles_its_binding_and_kills_the_process() {
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-managed-stub-fixture"),
+        directory: None,
         arguments: vec![control.local_addr().unwrap().to_string().into(), remote.address.trim_start_matches("http://").into()],
         environment: Default::default(),
     });
@@ -625,6 +627,7 @@ async fn a_drain_that_spends_the_grace_still_tells_the_managed_plugin_to_stop_be
     let control = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-managed-stub-fixture"),
+        directory: None,
         arguments: vec![control.local_addr().unwrap().to_string().into(), hung.remote.address.trim_start_matches("http://").into()],
         environment: Default::default(),
     });

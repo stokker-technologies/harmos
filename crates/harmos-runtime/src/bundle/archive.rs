@@ -19,8 +19,7 @@ use std::io;
 use std::ops::Range;
 // Third Party Imports
 // Local Imports
-use super::digest;
-use super::{Error, Facility, Limits, Manifest, invalid};
+use super::{Error, Limits, Manifest, invalid};
 
 /* === Constants === */
 
@@ -40,7 +39,7 @@ type Contents = BTreeMap<String, Range<usize>>;
 
 /* === Public Functions === */
 
-pub fn path(path: &str) -> Result<(), Error> {
+pub fn validate_path(path: &str) -> Result<(), Error> {
     // A deliberately small USTAR/Windows/Unix intersection: no extensions or
     // alternate separators are needed to interpret these names.
     if path.is_empty() || path.len() > 100 {
@@ -112,7 +111,7 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
         }
         let path_bytes = entry.path_bytes();
         let name = std::str::from_utf8(&path_bytes).map_err(|_| invalid("non-UTF8 file path"))?;
-        path(name)?;
+        validate_path(name)?;
         let range = entry_range(&entry, bytes.len(), limits.file_bytes)?;
         total = total.checked_add(range.len()).ok_or(Error::Limit("total file bytes"))?;
         if total > limits.total_file_bytes {
@@ -127,9 +126,7 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
     }
     for file in &manifest.files {
         let range = contents.get(&file.path).ok_or_else(|| invalid("missing declared file"))?;
-        if range.len() as u64 != file.size || digest(&bytes[range.clone()]) != file.sha256 {
-            return Err(invalid("file size or digest mismatch"));
-        }
+        file.verify(&bytes[range.clone()])?;
     }
     // Validate Canonical Metadata, Header Order, Padding and the Exact Trailer.
     let json = serde_json::to_vec(&manifest)?;
@@ -137,7 +134,7 @@ pub(super) fn decode(bytes: &[u8], limits: Limits) -> Result<(Manifest, Contents
     canonical_entry(bytes, &mut offset, "manifest.json", &json, false)?;
     for file in &manifest.files {
         let content = &bytes[contents[&file.path].clone()];
-        let executable = file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar);
+        let executable = manifest.is_executable(file);
         canonical_entry(bytes, &mut offset, &file.path, content, executable)?;
     }
     if bytes.len() != offset + 1024 || bytes[offset..].iter().any(|byte| *byte != 0) {

@@ -24,7 +24,7 @@ use std::num::NonZeroUsize;
 
 // Third Party Imports
 use futures_util::StreamExt;
-use harmos::encoding::Message as _;
+use harmos::encoding::Message;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
@@ -93,6 +93,7 @@ impl Fixture {
         .unwrap();
         let placement = Placement::Managed(Managed {
             executable: std::fs::canonicalize(path).unwrap(),
+            directory: None,
             arguments: Vec::new(),
             environment: Default::default(),
         });

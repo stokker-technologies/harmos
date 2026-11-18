@@ -34,6 +34,7 @@ async fn managed_plugin_receives_launch_environment() {
     let value = evidence.path().join("Plugin Data é").to_str().unwrap().to_owned();
     let placement = Placement::Managed(Managed {
         executable: support::binary("harmos-sdk-host-fixture"),
+        directory: None,
         arguments: vec![cleaned.clone().into_os_string()],
         environment: [("HARMOS_EXPLICIT".into(), value.clone().into())].into(),
     });
@@ -44,7 +45,7 @@ async fn managed_plugin_receives_launch_environment() {
     assert_eq!(response, payload(value.as_bytes()));
 
     // Preserve Windows System Paths In The Managed Child
-    #[cfg(windows)]
+    #[cfg(target_os = "windows")]
     for name in ["SystemRoot", "ProgramData"] {
         let inherited = std::env::var(name).unwrap();
         let response = runtime.operations.call_encoded("placement.environment", payload(name.as_bytes())).await.unwrap();

@@ -14,10 +14,16 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::path::{Path, PathBuf};
 
 // Third Party Imports
-use serde::{Deserialize, Serialize};
+use semver::Version;
+use serde::{Deserialize, Deserializer, Serialize, de};
+
 // Local Imports
+use harmos_operations::Registration;
+
+use super::{Error, invalid};
 
 /* === Constants === */
 
@@ -31,7 +37,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub name: String,
-    pub version: semver::Version,
+    pub version: Version,
     pub description: String,
 
     #[serde(default)]
@@ -56,6 +62,9 @@ pub struct Manifest {
     pub schema: u32,
     pub identity: Identity,
     pub files: Vec<File>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "decode_launch")]
+    pub launch: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,7 +83,7 @@ pub struct File {
 pub struct Executable {
     pub facility: Facility,
     pub target: String,
-    pub registrations: Vec<harmos_operations::Registration>,
+    pub registrations: Vec<Registration>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -100,6 +109,29 @@ pub enum Facility {
 
 /* === Implementations === */
 
+impl Manifest {
+    /// Whether Extraction Must Preserve Executable Permissions for This File.
+    pub fn is_executable(&self, file: &File) -> bool {
+        let native = file.executable.as_ref().is_some_and(|value| value.facility == Facility::Sidecar);
+        let launched = self
+            .launch
+            .as_ref()
+            .and_then(|launch| launch.first())
+            .and_then(|program| relative_program(program).ok().flatten())
+            .is_some_and(|path| path == Path::new(&file.path));
+        native || launched
+    }
+}
+
+impl File {
+    pub(crate) fn verify(&self, bytes: &[u8]) -> Result<(), Error> {
+        if bytes.len() as u64 != self.size || super::digest(bytes) != self.sha256 {
+            return Err(invalid("file size or digest mismatch"));
+        }
+        Ok(())
+    }
+}
+
 impl Default for Limits {
     fn default() -> Self {
         Self {
@@ -115,6 +147,47 @@ impl Default for Limits {
 
 /* === Public Functions === */
 
+/// Validate a Command Without Resolving Programs on the Build Machine.
+pub fn validate_launch(launch: &[String]) -> Result<(), Error> {
+    let program = launch.first().filter(|program| !program.is_empty()).ok_or_else(|| invalid("launch must contain a nonempty program"))?;
+    if launch.iter().any(|argument| argument.contains('\0')) {
+        return Err(invalid("launch strings must not contain NUL"));
+    }
+    relative_program(program)?;
+    Ok(())
+}
+
 /* === Private Functions === */
+
+fn decode_launch<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<String>>, D::Error> {
+    let launch = Vec::<String>::deserialize(deserializer)?;
+    validate_launch(&launch).map_err(de::Error::custom)?;
+    Ok(Some(launch))
+}
+
+pub(crate) fn relative_program(program: &str) -> Result<Option<PathBuf>, Error> {
+    if program.starts_with(['/', '\\']) || program.contains(':') {
+        return Err(invalid("launch program must be on PATH or relative to the bundle root; remove the absolute path"));
+    }
+    if !program.contains(['/', '\\']) && program != "." && program != ".." {
+        return Ok(None);
+    }
+    let mut path = PathBuf::new();
+    for component in program.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if !path.pop() {
+                    return Err(invalid("launch program escapes the bundle root; use a path inside the bundle"));
+                }
+            }
+            _ => path.push(component),
+        }
+    }
+    if path.as_os_str().is_empty() {
+        return Err(invalid("launch program must name a program inside the bundle or on PATH"));
+    }
+    Ok(Some(path))
+}
 
 /* === Tests === */

@@ -47,14 +47,18 @@ pub struct Source<'a> {
 
 /* === Public Functions === */
 
-pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Result<Bundle, Error> {
+/// Pack the Supplied Files; `launch` Replaces Native Executable Selection When Present.
+pub fn build(identity: Identity, sources: &[Source<'_>], launch: Option<&[String]>, limits: Limits) -> Result<Bundle, Error> {
+    if let Some(launch) = launch {
+        harmos_runtime::bundle::validate_launch(launch)?;
+    }
     if sources.len() > limits.files {
         return Err(Error::Limit("file count"));
     }
     let mut files = Vec::with_capacity(sources.len());
     let mut contents = BTreeMap::new();
     let mut total = 0usize;
-    let mut metadata_bytes = metadata::identity_size(&identity, limits.manifest_bytes)?;
+    let mut metadata_bytes = metadata::identity_size(&identity, launch, limits.manifest_bytes)?;
     for source in sources {
         harmos_runtime::bundle::validate_path(source.path)?;
         total = total.checked_add(source.bytes.len()).ok_or(Error::Limit("total file bytes"))?;
@@ -81,7 +85,12 @@ pub fn build(identity: Identity, sources: &[Source<'_>], limits: Limits) -> Resu
         });
     }
     files.sort_by(|left, right| left.path.cmp(&right.path));
-    let manifest = Manifest { schema: 1, identity, files };
+    let manifest = Manifest {
+        schema: 1,
+        identity,
+        files,
+        launch: launch.map(<[String]>::to_vec),
+    };
     let bytes = archive::encode(&manifest, &contents, limits)?;
     Bundle::inspect(&bytes, limits)
 }

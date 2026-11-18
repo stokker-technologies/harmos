@@ -24,9 +24,10 @@ mod windows;
 // Standard Library Imports
 use std::{
     collections::BTreeMap,
-    ffi::OsString,
+    env,
+    ffi::{OsStr, OsString},
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::Arc,
     time::Duration,
@@ -60,11 +61,12 @@ static SPAWNER: Spawner = Spawner::new();
 
 /* === Structs === */
 
-/// A Native Executable And Its Consumer-Owned Launch Environment.
+/// A Program, Arguments, Working Directory and Consumer-Owned Environment.
 #[derive(Clone, Debug)]
 pub struct Managed {
     pub executable: PathBuf,
     pub arguments: Vec<OsString>,
+    pub directory: Option<PathBuf>,
     pub environment: BTreeMap<OsString, OsString>,
 }
 
@@ -83,6 +85,45 @@ pub(super) struct Process {
 
 /* === Implementations === */
 
+impl Managed {
+    pub(crate) fn launch(launch: &[String], root: &Path) -> Result<Self, Error> {
+        crate::bundle::validate_launch(launch).map_err(|error| Error::Invalid(format!("Start Managed Plugin: {error}")))?;
+        let root = root.canonicalize().map_err(|error| Error::Invalid(format!("Resolve Bundle Root: {error}; reinstall the bundle")))?;
+        let program = &launch[0];
+        let executable = if let Some(relative) =
+            crate::bundle::relative_program(program).map_err(|error| Error::Invalid(format!("Start Managed Plugin: {error}")))?
+        {
+            let executable = root.join(relative).canonicalize().map_err(|error| {
+                Error::Invalid(format!("Start Managed Plugin: program {program}: {error}; install program {program} in the bundle"))
+            })?;
+            if !executable.starts_with(&root) {
+                return Err(Error::Invalid(format!(
+                    "Start Managed Plugin: program {program} escapes the bundle root; reinstall the bundle"
+                )));
+            }
+            executable
+        } else {
+            path_program(program, &root, &env::var_os("PATH").unwrap_or_default())?
+        };
+        if !executable.is_file() {
+            return Err(Error::Invalid(format!("Start Managed Plugin: program {program} is not a file; install {program}")));
+        }
+        let batch =
+            executable.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("bat") || extension.eq_ignore_ascii_case("cmd"));
+        if cfg!(target_os = "windows") && batch {
+            return Err(Error::Invalid(format!(
+                "Start Managed Plugin: program {program} requires a shell; install and invoke a native interpreter directly"
+            )));
+        }
+        Ok(Self {
+            executable,
+            arguments: launch[1..].iter().map(OsString::from).collect(),
+            directory: Some(root),
+            environment: [("HARMOS_ADDRESS".into(), "127.0.0.1:0".into())].into(),
+        })
+    }
+}
+
 impl Process {
     pub(super) async fn spawn(placement: &Managed, participant: StopParticipant) -> Result<Self, Error> {
         let bytes = tokio::fs::read(&placement.executable)
@@ -90,6 +131,9 @@ impl Process {
             .map_err(|error| Error::Invalid(format!("Start Managed Plugin: read {}: {error}", placement.executable.display())))?;
         let digest = Sha256::digest(bytes).into();
         let mut command = command(&placement.executable);
+        if let Some(directory) = &placement.directory {
+            command.current_dir(directory);
+        }
         command
             .args(&placement.arguments)
             .envs(&placement.environment)
@@ -255,4 +299,37 @@ impl Drop for Process {
 
 /* === Private Functions === */
 
+fn path_program(program: &str, root: &Path, path: &OsStr) -> Result<PathBuf, Error> {
+    for directory in env::split_paths(path) {
+        let mut candidate = root.join(directory).join(program);
+        if cfg!(target_os = "windows") && candidate.extension().is_none() {
+            candidate.set_extension("exe");
+        }
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(Error::Invalid(format!("Start Managed Plugin: program {program} is missing; install {program} and make it available on PATH")))
+}
+
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs};
+
+    use super::path_program;
+
+    #[test]
+    fn path_resolution_and_missing_program() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("programs");
+        fs::create_dir(&directory).unwrap();
+        let program = directory.join(format!("interpreter{}", env::consts::EXE_SUFFIX));
+        fs::write(&program, b"program").unwrap();
+        let path = env::join_paths([root.path().join("absent"), directory]).unwrap();
+        assert_eq!(path_program("interpreter", root.path(), &path).unwrap(), program);
+        let error = path_program("missing-interpreter", root.path(), &path).unwrap_err();
+        assert!(error.to_string().contains("install missing-interpreter"));
+    }
+}

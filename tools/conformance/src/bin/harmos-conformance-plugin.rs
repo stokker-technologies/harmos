@@ -16,7 +16,13 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::io::{BufRead, Write};
+use std::{
+    env, fs, future,
+    io::{self, BufRead, BufReader, Write},
+    net::TcpStream,
+    path::Path,
+    process,
+};
 
 // Third Party Imports
 
@@ -40,23 +46,33 @@ use std::io::{BufRead, Write};
 
 #[tokio::main]
 async fn main() -> harmos_conformance::Result<()> {
-    let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
     let remote = arguments == ["--remote"];
-    if !arguments.is_empty() && !remote {
+    let interpreter = arguments.first().is_some_and(|argument| argument == "--bundle-script");
+    if interpreter {
+        if arguments.len() != 3 || arguments[2] != "$literal argument with spaces" {
+            return Err(harmos_conformance::Error::Invalid("Pass the Script and Literal Argument to the Bundle Interpreter".into()));
+        }
+        let script = fs::read(&arguments[1])?;
+        if script != b"serve conformance" || !Path::new("manifest.json").is_file() {
+            return Err(harmos_conformance::Error::Invalid("Start the Interpreter in the Unpacked Bundle Root".into()));
+        }
+    }
+    if !arguments.is_empty() && !remote && !interpreter {
         return Err(harmos_conformance::Error::Invalid("Usage: harmos-conformance-plugin [--remote]".into()));
     }
     // A Bundle May Supply an Explicit Startup Control Endpoint for Lifecycle Stories.
-    let control = std::env::current_exe()?.parent().expect("executable directory").join("startup-control");
+    let control = env::current_exe()?.parent().expect("executable directory").join("startup-control");
     if control.exists() {
-        let address = std::fs::read_to_string(control)?;
-        let mut connection = std::net::TcpStream::connect(address.trim())?;
-        writeln!(connection, "{}", std::process::id())?;
+        let address = fs::read_to_string(control)?;
+        let mut connection = TcpStream::connect(address.trim())?;
+        writeln!(connection, "{}", process::id())?;
         let mut command = String::new();
-        std::io::BufReader::new(connection).read_line(&mut command)?;
+        BufReader::new(connection).read_line(&mut command)?;
         if command.trim() == "fail" {
             println!("harmos listening invalid");
-            std::io::stdout().flush()?;
-            std::future::pending::<()>().await;
+            io::stdout().flush()?;
+            future::pending::<()>().await;
         }
     }
     harmos_conformance::serve(remote).await
