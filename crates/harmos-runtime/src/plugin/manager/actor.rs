@@ -42,6 +42,7 @@ use harmos_protocol::host::PluginsWatchResponse;
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
+    fs,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -59,6 +60,7 @@ use super::{
     content::Installation,
     persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
+use crate::bundle::Manifest;
 use crate::plugin::grpc::{Activation, Attached, Managed, Placement, Status};
 use harmos_protocol::host;
 use harmos_protocol::model;
@@ -874,9 +876,16 @@ impl Actor {
                         executable_digest: current.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
                         started_at: current.description.started_at,
                     });
+                    let version = match entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()) {
+                        Some(host::plugin_placement::Kind::Managed(_)) => {
+                            let saved = self.registry.entries.get(&name).expect("selected entry exists");
+                            super::content::version(saved, &self.settings)?
+                        }
+                        _ => current.description.version,
+                    };
                     entry.description = Some(PluginDescription {
                         id: current.description.id,
-                        version: current.description.version,
+                        version,
                         started_at: current.description.started_at,
                         declarations: current.description.declarations,
                         revision: current.description.revision,
@@ -972,7 +981,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         .ok_or_else(|| Error::new("executable_missing", "Start Managed Plugin", "recreate the entry from a verified bundle"))?;
     crate::bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
     let executable = settings.directory.join(executable);
-    let bytes = std::fs::read(&executable).map_err(|error| problem("Read Installed Executable", error))?;
+    let bytes = fs::read(&executable).map_err(|error| problem("Read Installed Executable", error))?;
     let digest: [u8; 32] = Sha256::digest(&bytes).into();
     if saved.executable_digest != Some(digest) {
         return Err(Error::new(
@@ -982,8 +991,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         ));
     }
     if executable.file_name().is_some_and(|name| name == "manifest.json") {
-        let manifest: crate::bundle::Manifest =
-            serde_json::from_slice(&bytes).map_err(|error| problem("Read Installed Manifest", error))?;
+        let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|error| problem("Read Installed Manifest", error))?;
         let launch = manifest
             .launch
             .as_ref()
@@ -1003,7 +1011,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
                     "reinstall the original bundle inside the manager directory",
                 ));
             }
-            let bytes = std::fs::read(path).map_err(|error| problem("Read Installed File", error))?;
+            let bytes = fs::read(path).map_err(|error| problem("Read Installed File", error))?;
             if file.verify(&bytes).is_err() {
                 return Err(Error::new(
                     "file_digest",

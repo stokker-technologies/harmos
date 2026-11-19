@@ -11,20 +11,105 @@
 
 /* === Imports === */
 
+use std::{env, fs};
+
+use harmos_packaging::bundle::{self, Executable, Facility, Identity, Source};
 use harmos_protocol::host::PluginState;
 use harmos_protocol::host::PluginsDeleteRequest;
 use harmos_protocol::host::PluginsRestartRequest;
 use harmos_protocol::host::PluginsWatchRequest;
+use harmos_protocol::host::{PluginPlacement, PluginsReplaceRequest, plugin_placement};
 use harmos_protocol::host::{PluginValue, PluginsSetRequest};
 use harmos_protocol::model::Failure;
+use harmos_runtime::plugin::manager::Management;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
 };
 
 use super::support::{self, Backends, Host};
+use crate::plugin_grpc::support::binary;
 
 /* === Tests === */
+
+#[tokio::test]
+async fn managed_bundle_version_survives_activation_replacement_and_manager_restart() {
+    for command in [false, true] {
+        // Build Two Bundles With Versions Independent of the Same Executable.
+        let root = tempfile::tempdir().unwrap();
+        let bytes = fs::read(binary("harmos-conformance-plugin")).unwrap();
+        let path = format!("bin/plugin{}", env::consts::EXE_SUFFIX);
+        let launch = command.then(|| vec![format!("./{path}")]);
+        let sources = [Source {
+            path: &path,
+            bytes: &bytes,
+            executable: Some(Executable {
+                facility: Facility::Sidecar,
+                target: support::settings(root.path()).target,
+                registrations: vec![],
+            }),
+        }];
+        let identity = Identity {
+            name: "frozen-plugin".into(),
+            version: "8.7.6".parse().unwrap(),
+            description: "Frozen Plugin".into(),
+            package: Default::default(),
+        };
+        let original = bundle::build(identity.clone(), &sources, launch.as_deref(), Default::default()).unwrap();
+        let replacement_identity = Identity {
+            version: "9.8.7".parse().unwrap(),
+            ..identity.clone()
+        };
+        let replacement = bundle::build(replacement_identity.clone(), &sources, launch.as_deref(), Default::default()).unwrap();
+
+        // Activation Publishes the Verified Bundle Version While Retaining Live Metadata.
+        let backends = Backends::new();
+        let mut host = Host::start(root.path(), &backends).await;
+        let content = host.upload("original", original.bytes().to_vec()).await;
+        let mut watch = host.client.watch(PluginsWatchRequest { name: Some("frozen".into()), at: None }).await.unwrap().into_inner();
+        host.client.create(support::managed("frozen", content, true)).await.unwrap();
+        let ready = support::state(&mut watch, "frozen", PluginState::Ready, 1).await;
+        let live = host.manager.activation("frozen").await.unwrap();
+        assert_ne!(live.description.version, identity.version.to_string());
+        assert_eq!(ready.description.as_ref().unwrap().version, identity.version.to_string());
+        assert_eq!(ready.description.as_ref().unwrap().id, live.description.id);
+
+        // Replacement Publishes the New Bundle Version in Both Response and Watch.
+        let content = host.upload("replacement", replacement.bytes().to_vec()).await;
+        let replaced = host
+            .client
+            .replace(PluginsReplaceRequest {
+                name: ready.name,
+                placement: Some(PluginPlacement {
+                    kind: Some(plugin_placement::Kind::Managed(content)),
+                }),
+                expected_revision: ready.revision,
+                request_id: "replace-frozen".into(),
+            })
+            .await
+            .unwrap()
+            .into_inner()
+            .entry
+            .unwrap();
+        assert_eq!(replaced.description.as_ref().unwrap().version, replacement_identity.version.to_string());
+        let ready = support::state(&mut watch, "frozen", PluginState::Ready, replaced.activation).await;
+        assert_eq!(ready.description.as_ref().unwrap().version, replacement_identity.version.to_string());
+        let live = host.manager.activation("frozen").await.unwrap();
+        assert_ne!(live.description.version, replacement_identity.version.to_string());
+        drop(watch);
+        host.close().await;
+
+        // A New Manager Reconstructs the Bundle Authority From Its Installed Manifest.
+        let mut host = Host::start(root.path(), &backends).await;
+        let mut watch = host.client.watch(PluginsWatchRequest { name: Some("frozen".into()), at: None }).await.unwrap().into_inner();
+        let restored = support::state(&mut watch, "frozen", PluginState::Ready, ready.activation + 1).await;
+        assert_eq!(restored.description.as_ref().unwrap().version, replacement_identity.version.to_string());
+        let live = host.manager.activation("frozen").await.unwrap();
+        assert_ne!(live.description.version, replacement_identity.version.to_string());
+        drop(watch);
+        host.close().await;
+    }
+}
 
 #[tokio::test]
 async fn client_manages_bundled_plugins() {
@@ -80,7 +165,7 @@ async fn client_manages_bundled_plugins() {
         .await
         .unwrap();
     assert!(second.exited().await.success());
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     assert!(host.client.list(support::list()).await.unwrap().into_inner().entries.is_empty());
     drop(watch);
     host.close().await;
@@ -123,7 +208,7 @@ async fn cancelled_startup_is_reaped_before_immediate_delete() {
         })
         .await
         .unwrap();
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     host.close().await;
 }
 
@@ -155,7 +240,7 @@ async fn failed_readiness_is_reaped_before_immediate_delete() {
         })
         .await
         .unwrap();
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     host.close().await;
 }
 
@@ -222,7 +307,7 @@ async fn restart_during_startup_reaps_before_reusing_the_installation() {
         .await
         .unwrap();
     process.assert_exited().await;
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     host.close().await;
 }
 
@@ -232,7 +317,7 @@ async fn command_bundle_installs_starts_restarts_and_restores() {
     let root = tempfile::tempdir().unwrap();
     let backends = Backends::new();
     let mut host = Host::start(root.path(), &backends).await;
-    let program = format!("./bin/interpreter{}", std::env::consts::EXE_SUFFIX);
+    let program = format!("./bin/interpreter{}", env::consts::EXE_SUFFIX);
     let content = host.upload("command", support::launch_bundle(&program)).await;
     let mut watch = host.client.watch(PluginsWatchRequest { name: Some("command".into()), at: None }).await.unwrap().into_inner();
     host.client.create(support::managed("command", content, true)).await.unwrap();
@@ -271,7 +356,7 @@ async fn command_bundle_installs_starts_restarts_and_restores() {
         .await
         .unwrap();
     third.assert_exited().await;
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
     drop(watch);
     host.close().await;
 }
@@ -288,14 +373,14 @@ async fn command_bundle_reports_missing_program_at_install_and_activation() {
     let failure = Failure::from(&detail);
     assert!(failure.message.contains("missing-interpreter"), "{failure:?}");
     assert!(failure.action.contains("install ./bin/missing-interpreter"), "{failure:?}");
-    assert_eq!(std::fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
+    assert_eq!(fs::read_dir(root.path().join("plugins")).unwrap().count(), 0);
 
     // Removing an Installed Program Produces the Same Actionable Activation Error.
-    let program = format!("./bin/interpreter{}", std::env::consts::EXE_SUFFIX);
+    let program = format!("./bin/interpreter{}", env::consts::EXE_SUFFIX);
     let content = host.upload("removed-program", support::launch_bundle(&program)).await;
     let entry = host.client.create(support::managed("removed-program", content, false)).await.unwrap().into_inner().entry.unwrap();
-    let directory = std::fs::read_dir(root.path().join("plugins")).unwrap().next().unwrap().unwrap().path();
-    std::fs::remove_file(directory.join(program)).unwrap();
+    let directory = fs::read_dir(root.path().join("plugins")).unwrap().next().unwrap().unwrap().path();
+    fs::remove_file(directory.join(program)).unwrap();
     let mut watch = host.client.watch(PluginsWatchRequest { name: Some(entry.name.clone()), at: None }).await.unwrap().into_inner();
     host.client
         .set(PluginsSetRequest {

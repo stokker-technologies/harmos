@@ -29,7 +29,7 @@ use super::{
     content::Installation,
     persistence::{SavedMutation, problem},
 };
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use prost::Message;
 
 // Standard Library Imports
@@ -75,7 +75,7 @@ impl Actor {
         }
         let previous_executable = saved.executable.clone();
         let mut entry = self.entry(&request.name, &request.expected_revision, "Replace Plugin")?;
-        if !matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(wire::plugin_placement::Kind::Managed(_)))
+        if !matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(host::plugin_placement::Kind::Managed(_)))
         {
             return Err(Error::new("managed_required", "Replace Plugin", "select a managed bundle entry"));
         }
@@ -83,7 +83,7 @@ impl Actor {
             .placement
             .clone()
             .ok_or_else(|| Error::new("placement_required", "Replace Plugin", "supply the replacement managed placement"))?;
-        let Some(wire::plugin_placement::Kind::Managed(bundle)) = placement.kind.as_ref() else {
+        let Some(host::plugin_placement::Kind::Managed(bundle)) = placement.kind.as_ref() else {
             return Err(Error::new("managed_required", "Replace Plugin", "supply a managed bundle"));
         };
         let retained = self.registry.creates.len()
@@ -110,6 +110,10 @@ impl Actor {
             saved.executable = Some(executable.clone());
             saved.executable_digest = Some(digest);
             saved.generation = entry.activation;
+            let version = super::content::version(saved, &self.settings)?;
+            if let Some(description) = &mut entry.description {
+                description.version = version.clone();
+            }
             let enabled = entry.value.as_ref().is_some_and(|value| value.enabled);
             if enabled {
                 let placement = managed(saved, &self.settings)?;
@@ -133,7 +137,7 @@ impl Actor {
                 entry.declarations_digest = description.declarations.as_ref().expect("admitted description").digest.clone();
                 entry.description = Some(PluginDescription {
                     id: description.id.clone(),
-                    version: description.version.clone(),
+                    version,
                     started_at: description.started_at,
                     declarations: description.declarations.clone(),
                     revision: description.revision,
