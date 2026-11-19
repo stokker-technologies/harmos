@@ -125,6 +125,7 @@ impl MemorySize for host::PluginEntry {
             .saturating_add(self.declarations_digest.memory_size().saturating_sub(mem::size_of_val(&self.declarations_digest)))
             .saturating_add(self.process.memory_size().saturating_sub(mem::size_of_val(&self.process)))
             .saturating_add(self.activation.memory_size().saturating_sub(mem::size_of_val(&self.activation)))
+            .saturating_add(self.origin.memory_size().saturating_sub(mem::size_of_val(&self.origin)))
     }
 }
 
@@ -182,6 +183,7 @@ impl MemorySize for host::PluginsCreateRequest {
             .saturating_add(self.name.memory_size().saturating_sub(mem::size_of_val(&self.name)))
             .saturating_add(self.placement.memory_size().saturating_sub(mem::size_of_val(&self.placement)))
             .saturating_add(self.value.memory_size().saturating_sub(mem::size_of_val(&self.value)))
+            .saturating_add(self.origin.memory_size().saturating_sub(mem::size_of_val(&self.origin)))
     }
 }
 

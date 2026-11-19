@@ -81,16 +81,18 @@ class PluginsWatchResponse(_message.Message):
     def __init__(self, resolved_at: _Optional[_Union[_position_pb2.ReadCut, _Mapping]] = ..., snapshot: _Optional[_Union[PluginSnapshot, _Mapping]] = ..., change: _Optional[_Union[PluginChange, _Mapping]] = ..., resync_required: _Optional[str] = ...) -> None: ...
 
 class PluginsCreateRequest(_message.Message):
-    __slots__ = ("request_id", "name", "placement", "value")
+    __slots__ = ("request_id", "name", "placement", "value", "origin")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     PLACEMENT_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]
+    ORIGIN_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     name: str
     placement: PluginPlacement
     value: PluginValue
-    def __init__(self, request_id: _Optional[str] = ..., name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ...) -> None: ...
+    origin: str
+    def __init__(self, request_id: _Optional[str] = ..., name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., origin: _Optional[str] = ...) -> None: ...
 
 class PluginsCreateResponse(_message.Message):
     __slots__ = ("entry", "receipt")
@@ -229,7 +231,7 @@ class PluginProcess(_message.Message):
     def __init__(self, id: _Optional[int] = ..., executable_digest: _Optional[bytes] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
 
 class PluginEntry(_message.Message):
-    __slots__ = ("name", "placement", "value", "revision", "state", "failure", "description", "declarations_digest", "process", "activation")
+    __slots__ = ("name", "placement", "value", "revision", "state", "failure", "description", "declarations_digest", "process", "activation", "origin")
     NAME_FIELD_NUMBER: _ClassVar[int]
     PLACEMENT_FIELD_NUMBER: _ClassVar[int]
     VALUE_FIELD_NUMBER: _ClassVar[int]
@@ -240,6 +242,7 @@ class PluginEntry(_message.Message):
     DECLARATIONS_DIGEST_FIELD_NUMBER: _ClassVar[int]
     PROCESS_FIELD_NUMBER: _ClassVar[int]
     ACTIVATION_FIELD_NUMBER: _ClassVar[int]
+    ORIGIN_FIELD_NUMBER: _ClassVar[int]
     name: str
     placement: PluginPlacement
     value: PluginValue
@@ -250,7 +253,8 @@ class PluginEntry(_message.Message):
     declarations_digest: bytes
     process: PluginProcess
     activation: int
-    def __init__(self, name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., state: _Optional[_Union[PluginState, str]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ..., description: _Optional[_Union[PluginDescription, _Mapping]] = ..., declarations_digest: _Optional[bytes] = ..., process: _Optional[_Union[PluginProcess, _Mapping]] = ..., activation: _Optional[int] = ...) -> None: ...
+    origin: str
+    def __init__(self, name: _Optional[str] = ..., placement: _Optional[_Union[PluginPlacement, _Mapping]] = ..., value: _Optional[_Union[PluginValue, _Mapping]] = ..., revision: _Optional[bytes] = ..., state: _Optional[_Union[PluginState, str]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ..., description: _Optional[_Union[PluginDescription, _Mapping]] = ..., declarations_digest: _Optional[bytes] = ..., process: _Optional[_Union[PluginProcess, _Mapping]] = ..., activation: _Optional[int] = ..., origin: _Optional[str] = ...) -> None: ...
 
 class PluginSnapshot(_message.Message):
     __slots__ = ("entries",)

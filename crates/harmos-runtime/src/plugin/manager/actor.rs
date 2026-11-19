@@ -576,6 +576,7 @@ impl Actor {
         let mut registry = self.registry.clone();
         let entry = PluginEntry {
             name: request.name.clone(),
+            origin: request.origin.unwrap_or_default(),
             placement: request.placement.clone(),
             value: Some(value),
             revision: registry.revision()?,

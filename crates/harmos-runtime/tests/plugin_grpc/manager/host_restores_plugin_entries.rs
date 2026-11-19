@@ -28,8 +28,30 @@ async fn host_restores_plugin_entries() {
     let backends = Backends::new();
     let remote = Remote::start().await;
     let mut host = Host::start(root.path(), &backends).await;
+    // Reopen Legacy and Labelled Disabled Entries Without Writing Storage
+    let mut request = support::remote("legacy", &remote.address);
+    request.value.as_mut().unwrap().enabled = false;
+    host.client.create(request).await.unwrap();
+    let mut request = support::remote("labelled", &remote.address);
+    request.value.as_mut().unwrap().enabled = false;
+    request.origin = Some("installation".into());
+    host.client.create(request).await.unwrap();
+    host.close().await;
+    let writes = backends.data.control.writes.lock().unwrap().len();
+    let recovery_writes = backends.recovery.control.writes.lock().unwrap().len();
+    let mut host = Host::start(root.path(), &backends).await;
+    let entries = host.client.list(support::list()).await.unwrap().into_inner().entries;
+    assert_eq!(entries.iter().find(|entry| entry.name == "legacy").unwrap().origin, "");
+    assert_eq!(entries.iter().find(|entry| entry.name == "labelled").unwrap().origin, "installation");
+    host.close().await;
+    assert_eq!(backends.data.control.writes.lock().unwrap().len(), writes);
+    assert_eq!(backends.recovery.control.writes.lock().unwrap().len(), recovery_writes);
+
+    // Persist Enabled Entries With an Origin
+    let mut host = Host::start(root.path(), &backends).await;
     let content = host.upload("bundle", support::bundle(true)).await;
-    let request = support::managed("enabled", content.clone(), true);
+    let mut request = support::managed("enabled", content.clone(), true);
+    request.origin = Some("installation".into());
     let original = host.client.create(request.clone()).await.unwrap().into_inner();
     host.client.create(support::managed("disabled", content, false)).await.unwrap();
     host.client.create(support::remote("remote", &remote.address)).await.unwrap();
@@ -44,7 +66,9 @@ async fn host_restores_plugin_entries() {
     assert!(first.exited().await.success());
 
     // Restore Durable Entries and Reconstruct Live State
+    let writes = backends.data.control.writes.lock().unwrap().len();
     let mut host = Host::start(root.path(), &backends).await;
+    assert!(backends.data.control.writes.lock().unwrap().len() > writes);
     let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
     let managed_after = support::state(&mut watch, "enabled", PluginState::Ready, managed.activation + 1).await;
     let remote_after = host.manager.get(PluginsGetRequest { name: "remote".into(), at: None }).await.unwrap();
@@ -52,6 +76,7 @@ async fn host_restores_plugin_entries() {
     let remote_watch = host.client.watch(PluginsWatchRequest { name: Some("remote".into()), at: None }).await.unwrap();
     let mut remote_watch = remote_watch.into_inner();
     let remote_after = support::state(&mut remote_watch, "remote", PluginState::Ready, 2).await;
+    assert_eq!(managed_after.origin, "installation");
     assert_eq!(managed_after.name, managed.name);
     assert_eq!(managed_after.placement, managed.placement);
     assert_eq!(managed_after.revision, managed.revision);

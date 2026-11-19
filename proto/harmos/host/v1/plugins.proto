@@ -89,6 +89,8 @@ message PluginsCreateRequest {
   string name = 2;
   PluginPlacement placement = 3;
   PluginValue value = 4;
+  // Opaque creator-chosen label; empty or absent means unspecified and replacement preserves it.
+  optional string origin = 5;
 }
 
 // Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
@@ -239,6 +241,8 @@ message PluginEntry {
   PluginProcess process = 9;
   // Generation of the entry's activation; old calls and handles do not follow its replacement.
   uint64 activation = 10;
+  // Opaque creator-chosen label; empty means unspecified and only Delete then Create can change it.
+  string origin = 11;
 }
 
 // Carries the entries selected at the opening boundary of a plugin watch.

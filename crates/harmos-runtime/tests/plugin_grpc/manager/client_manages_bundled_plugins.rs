@@ -76,7 +76,9 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
             // Activation Publishes the Bundle Version While Retaining Live Metadata
             let name = if enabled { "frozen_enabled" } else { "frozen_disabled" };
             let mut watch = host.client.watch(PluginsWatchRequest { name: Some(name.into()), at: None }).await.unwrap().into_inner();
-            host.client.create(support::managed(name, original.clone(), true)).await.unwrap();
+            let mut request = support::managed(name, original.clone(), true);
+            request.origin = Some("installation".into());
+            host.client.create(request).await.unwrap();
             let ready = support::state(&mut watch, name, PluginState::Ready, 1).await;
             let first = support::Process::observe(ready.process.as_ref().unwrap().id).await;
             let live = host.manager.activation(name).await.unwrap();
@@ -127,6 +129,7 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
             if let Some(first) = first {
                 first.assert_exited().await;
             }
+            assert_eq!(replaced.origin, "installation");
             assert_eq!(replaced.description.as_ref().unwrap().version, replacement_identity.version.to_string());
 
             // Enable the Replaced Entry When Necessary and Observe Its Live Version
@@ -166,6 +169,7 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         for ready in entries {
             let mut watch = host.client.watch(PluginsWatchRequest { name: Some(ready.name.clone()), at: None }).await.unwrap().into_inner();
             let restored = support::state(&mut watch, &ready.name, PluginState::Ready, ready.activation + 1).await;
+            assert_eq!(restored.origin, "installation");
             assert_eq!(restored.description.as_ref().unwrap().version, replacement_identity.version.to_string());
             let live = host.manager.activation(&ready.name).await.unwrap();
             assert_ne!(live.description.version, replacement_identity.version.to_string());

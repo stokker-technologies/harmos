@@ -340,12 +340,14 @@ impl Clone for PluginsWatchOptions {
 #[derive(Default)]
 pub struct PluginsCreateOptions {
     pub request_id: Option<String>,
+    pub origin: Option<String>,
     pub context: CallOptions,
 }
 impl Clone for PluginsCreateOptions {
     fn clone(&self) -> Self {
         Self {
             request_id: self.request_id.clone(),
+            origin: self.origin.clone(),
             context: CallOptions {
                 metadata: self.context.metadata.clone(),
                 timeout: self.context.timeout,
@@ -1088,6 +1090,7 @@ impl Plugins {
             name: name.into(),
             placement: Some(placement),
             value: Some(value),
+            origin: options.origin,
         };
         let request = options.context.request(value);
         let response = self
