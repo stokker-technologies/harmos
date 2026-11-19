@@ -37,7 +37,10 @@ use super::{Error, invalid};
 #[serde(deny_unknown_fields)]
 pub struct Identity {
     pub name: String,
+
+    /// Bundle Author's Version, Independent of the Executable's Reported Version.
     pub version: Version,
+
     pub description: String,
 
     #[serde(default)]

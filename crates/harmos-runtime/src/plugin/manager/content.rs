@@ -16,12 +16,18 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::fs::{self, File};
+use std::io::Read;
 // Third Party Imports
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 // Local Imports
-use super::{Error, PluginManagerSettings, persistence::problem};
+use super::{
+    Error, PluginManagerSettings,
+    persistence::{SavedEntry, problem},
+};
 use crate::{
-    bundle::{Bundle, Facility},
+    bundle::{self, Bundle, Facility, Manifest},
     plugin::grpc::Managed,
 };
 use harmos_protocol::host;
@@ -36,7 +42,7 @@ use harmos_storage::{FileReference, StorageManager};
 /* === Structs === */
 
 pub(super) struct Installation {
-    directory: tempfile::TempDir,
+    directory: TempDir,
     executable: String,
     digest: [u8; 32],
 }
@@ -115,7 +121,7 @@ impl Installation {
             let digest = Sha256::digest(bundle.file(&executable).expect("verified executable exists")).into();
             (executable, digest)
         };
-        std::fs::create_dir_all(&settings.directory).map_err(|error| problem("Create Plugin Directory", error))?;
+        fs::create_dir_all(&settings.directory).map_err(|error| problem("Create Plugin Directory", error))?;
         let directory = bundle.extract(&settings.directory).map_err(|error| problem("Install Verified Plugin Bundle", error))?;
         if let Some(launch) = &bundle.manifest().launch {
             Managed::launch(launch, directory.path()).map_err(|error| {
@@ -139,8 +145,32 @@ impl Installation {
 
 /* === Public Functions === */
 
+pub(super) fn version(saved: &SavedEntry, settings: &PluginManagerSettings) -> Result<String, Error> {
+    let executable = saved
+        .executable
+        .as_ref()
+        .ok_or_else(|| Error::new("executable_missing", "Read Managed Plugin Version", "recreate the entry from a verified bundle"))?;
+    bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
+    let parent = executable.split('/').next().expect("installation path has a parent");
+    let path = settings.directory.join(parent).join("manifest.json");
+    let file = File::open(path).map_err(|error| problem("Read Installed Manifest", error))?;
+    let mut bytes = Vec::new();
+    file.take((settings.bundle.manifest_bytes as u64).saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| problem("Read Installed Manifest", error))?;
+    if bytes.len() > settings.bundle.manifest_bytes {
+        return Err(Error::new(
+            "manifest_capacity",
+            "Read Installed Manifest",
+            "reinstall a bundle within the configured manifest capacity",
+        ));
+    }
+    let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|error| problem("Read Installed Manifest", error))?;
+    Ok(manifest.identity.version.to_string())
+}
+
 pub(super) fn remove(executable: &str, settings: &PluginManagerSettings) -> Result<(), Error> {
-    crate::bundle::validate_path(executable).map_err(|error| problem("Delete Plugin Installation", error))?;
+    bundle::validate_path(executable).map_err(|error| problem("Delete Plugin Installation", error))?;
     let parent = executable.split('/').next().expect("installation path has a parent");
     let root = settings.directory.canonicalize().map_err(|error| problem("Resolve Plugin Directory", error))?;
     let directory = root.join(parent).canonicalize().map_err(|error| problem("Resolve Plugin Installation", error))?;
@@ -151,7 +181,7 @@ pub(super) fn remove(executable: &str, settings: &PluginManagerSettings) -> Resu
             "restore an installation directly beneath the manager directory",
         ));
     }
-    std::fs::remove_dir_all(directory).map_err(|error| problem("Delete Plugin Installation", error))
+    fs::remove_dir_all(directory).map_err(|error| problem("Delete Plugin Installation", error))
 }
 
 /* === Private Functions === */
