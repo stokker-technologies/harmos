@@ -213,13 +213,19 @@ store or reentrant mutation loop.
 
 #### Native Shutdown Phase
 
-The runtime's existing participant authority first requests plugin settlement.
+The runtime first closes connection admission and settles connections, their calls
+and connection-end observers while plugins, operations, application services and
+storage remain usable. It then closes guest admission and settles guest plugins
+before the existing participant authority requests native plugin settlement.
 Native attachment and staged-replacement participants retain that settlement until
 their admitted operations and publications settle and finalize completes. Running
 attachments then acknowledge settlement and wait for the later participant stop.
 The runtime keeps the dispatcher and host settings owner available through this
-barrier, closes the dispatcher, then requests participant stop, which sends the
-existing transport Stop and reaps managed processes. Startup and failed activation
+barrier, closes operation admission, settles listeners and application services,
+closes the dispatcher, then requests participant stop, which sends the existing
+transport Stop and reaps managed processes. Application lifecycle cleanup, state
+sealing, journal drainage, storage closure and infrastructure cleanup follow.
+Startup and failed activation
 retain their existing cancellation, finalization and process-settlement policies.
 No deadline or operation bound is lengthened, and no second dispatcher is added.
 
