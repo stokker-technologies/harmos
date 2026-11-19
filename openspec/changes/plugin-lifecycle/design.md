@@ -140,6 +140,20 @@ A lost carrier cannot deliver Invoke; the host records that failure and releases
 its admission. This design does not invent an SDK-local context or a second
 finalization path on disconnect. Reconnection is a fresh activation.
 
+#### Catalog Composition
+
+Python keeps declaration-only `Catalog`/`Registrar` assembly. Catalog contributions
+collect their async instance hooks in registration order; the plugin encodes one
+reserved operation for each contributed phase. Each hook and ordinary handler
+receives its own catalog instance through `ctx.plugin`, including local calls and
+stream contexts. Hook composition introduces no second stop callback path.
+
+Runtime stop closes listener admission first. Native plugin participants report
+settlement only after accepted work and finalize complete, while the dispatcher
+can still serve hook child calls. Dispatcher closure then precedes participant
+transport Stop. The no-guest runtime configuration follows the same ordering;
+owned listener signals and joins retain their existing owner.
+
 #### Plugin-Lifetime Subscription Boundary
 
 An Invoke child Watch belongs to its invocation and ends with that invocation.
