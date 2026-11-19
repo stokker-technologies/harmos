@@ -43,6 +43,8 @@ async fn host_restores_plugin_entries() {
     let entries = host.client.list(support::list()).await.unwrap().into_inner().entries;
     assert_eq!(entries.iter().find(|entry| entry.name == "legacy").unwrap().origin, "");
     assert_eq!(entries.iter().find(|entry| entry.name == "labelled").unwrap().origin, "installation");
+    let labelled = host.client.get(PluginsGetRequest { name: "labelled".into(), at: None }).await.unwrap().into_inner();
+    assert_eq!(labelled.entry.unwrap().origin, "installation");
     host.close().await;
     assert_eq!(backends.data.control.writes.lock().unwrap().len(), writes);
     assert_eq!(backends.recovery.control.writes.lock().unwrap().len(), recovery_writes);
