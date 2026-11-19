@@ -28,20 +28,33 @@ use harmos_protocol::plugin::response;
 // Standard Library Imports
 use std::{
     collections::{BTreeMap, BTreeSet},
+    error,
     sync::Arc,
 };
 
 // Third Party Imports
-use futures_util::{StreamExt, stream};
+use futures_util::{
+    StreamExt,
+    future::BoxFuture,
+    stream::{self, FuturesUnordered},
+};
+use harmos_operations::execution::{ExecutionContext, ServingError, operations::WireStreams};
 use harmos_protocol::plugin::instance_invoke_request;
 use harmos_protocol::plugin::instance_invoke_response;
 
 use harmos_protocol::model;
-use tokio::sync::mpsc;
+use tokio::{
+    sync::{mpsc, watch},
+    time::Instant,
+};
 
 // Local Imports
 use super::{Activation, connection::Connection};
-use crate::operations::{ErasedResponse, FailureKind, HostContext, NativeInstance, ServiceFuture};
+use crate::{
+    Error, Refusal, Scope, clock,
+    operations::{EncodedInvocation, ErasedResponse, FailureKind, HostContext, NativeInstance, Response, ServiceFuture},
+    supervision::instance::Instance,
+};
 
 /* === Constants === */
 
@@ -103,11 +116,15 @@ impl ChildReplies {
                 .await
                 .map_err(|_| ()),
         };
-        result.map_err(|()| crate::Error::Closing { domain: "child response carrier" })
+        result.map_err(|()| Error::Closing { domain: "child response carrier" })
     }
 }
 
 impl Binding {
+    pub(crate) fn is_lifecycle(&self) -> bool {
+        super::lifecycle_operation(&self.caller.description.id, &self.contract.id)
+    }
+
     pub(crate) fn new(activation: &Activation, contract: model::OperationContract) -> Self {
         Self {
             contract,
@@ -143,7 +160,7 @@ impl CallError {
 }
 
 impl NativeInstance for Invocation {
-    fn classify(&self, error: &(dyn std::error::Error + Send + Sync + 'static)) -> FailureKind {
+    fn classify(&self, error: &(dyn error::Error + Send + Sync + 'static)) -> FailureKind {
         match error.downcast_ref::<CallError>().map(CallError::classification) {
             Some(model::Classification::Transient) => FailureKind::Transient,
             Some(model::Classification::Cancelled) => FailureKind::Cancelled,
@@ -152,17 +169,19 @@ impl NativeInstance for Invocation {
         }
     }
 
-    fn initialize(&mut self, _: harmos_operations::execution::ExecutionContext) -> ServiceFuture<'_, ()> {
+    fn initialize(&mut self, _: ExecutionContext) -> ServiceFuture<'_, ()> {
         Box::pin(async { Ok(()) })
     }
 
-    fn run(&mut self, context: harmos_operations::execution::ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
+    fn run(&mut self, context: ExecutionContext) -> ServiceFuture<'_, ErasedResponse> {
         Box::pin(async move {
-            let host = context.resource::<HostContext>().map_err(|_| harmos_operations::execution::ServingError::Catalog)?;
+            if !self.binding.is_lifecycle() && !self.binding.caller.is_ready() {
+                let error: Error = Error::NotReady { domain: "operation plugin" };
+                return Err(ServingError::Native(Arc::new(error)));
+            }
+            let host = context.resource::<HostContext>().map_err(|_| ServingError::Catalog)?;
             let result = invoke(&self.binding, self.payload.clone(), &context, &host).await;
-            result
-                .map(|bytes| crate::operations::Response::from(bytes).into_erased())
-                .map_err(|error| harmos_operations::execution::ServingError::Native(Arc::new(error)))
+            result.map(|bytes| Response::from(bytes).into_erased()).map_err(|error| ServingError::Native(Arc::new(error)))
         })
     }
 
@@ -175,7 +194,7 @@ impl NativeInstance for Invocation {
     fn transferred(&self) -> bool {
         false
     }
-    fn progress(&self) -> Vec<tokio::sync::watch::Receiver<Option<tokio::time::Instant>>> {
+    fn progress(&self) -> Vec<watch::Receiver<Option<Instant>>> {
         Vec::new()
     }
 }
@@ -184,9 +203,7 @@ impl NativeInstance for Invocation {
 
 /* === Private Functions === */
 
-async fn invoke(
-    binding: &Binding, payload: Vec<u8>, context: &harmos_operations::execution::ExecutionContext, host: &HostContext,
-) -> Result<Vec<u8>, CallError> {
+async fn invoke(binding: &Binding, payload: Vec<u8>, context: &ExecutionContext, host: &HostContext) -> Result<Vec<u8>, CallError> {
     let connection = &binding.connection;
     let closed = connection.closed.subscribe();
     let work = async {
@@ -196,7 +213,7 @@ async fn invoke(
             payload,
             invocation: host.borrow().id().to_string(),
             attempt: host.borrow().attempt() as u32 + 1,
-            scope: host.borrow().context().get::<crate::Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
+            scope: host.borrow().context().get::<Scope>().map(|scope| scope.as_str().to_owned()).unwrap_or_default(),
         };
         output
             .send(InstanceInvokeRequest {
@@ -207,9 +224,7 @@ async fn invoke(
         let input = stream::unfold(input, |mut input| async { input.recv().await.map(|frame| (frame, input)) });
         let mut client = connection.client();
         let mut input = client.invoke(input).await.map_err(CallError::Transport)?.into_inner();
-        let mut children = futures_util::stream::FuturesUnordered::<
-            futures_util::future::BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>,
-        >::new();
+        let mut children = FuturesUnordered::<BoxFuture<'static, (u64, String, crate::Result<Vec<u8>>)>>::new();
         let mut controls = BTreeMap::new();
         let mut seen = BTreeSet::new();
         let mut ended = BTreeSet::new();
@@ -222,9 +237,7 @@ async fn invoke(
         }
         loop {
             let has_children = !children.is_empty();
-            let waiting = controls
-                .values()
-                .any(|(_, background, _): &(Arc<crate::supervision::instance::Instance>, bool, Option<mpsc::Sender<()>>)| !background);
+            let waiting = controls.values().any(|(_, background, _): &(Arc<Instance>, bool, Option<mpsc::Sender<()>>)| !background);
             let next = async {
                 tokio::select! {
                     biased;
@@ -233,7 +246,7 @@ async fn invoke(
                     frame = input.message() => Event::Frame(frame),
                 }
             };
-            let event = if waiting { crate::clock::waiting(next).await } else { next.await };
+            let event = if waiting { clock::waiting(next).await } else { next.await };
             match event {
                 Event::Cancel => {
                     cancelled = true;
@@ -331,8 +344,7 @@ async fn invoke(
 }
 
 pub(super) async fn watch_child(
-    call: u64, mut invocation: crate::operations::EncodedInvocation, streams: harmos_operations::execution::operations::WireStreams,
-    mut credits: mpsc::Receiver<()>, output: ChildReplies,
+    call: u64, mut invocation: EncodedInvocation, streams: WireStreams, mut credits: mpsc::Receiver<()>, output: ChildReplies,
 ) -> crate::Result<Vec<u8>> {
     let mut response = None;
     loop {
@@ -344,7 +356,7 @@ pub(super) async fn watch_child(
         let item = loop {
             tokio::select! {
                 result = &mut invocation, if response.is_none() => response = Some(result?),
-                item = streams.receive_current() => break item.map_err(|source| crate::Error::OperationFailed {
+                item = streams.receive_current() => break item.map_err(|source| Error::OperationFailed {
                     operation: "Watch child".into(), source: Arc::new(source),
                 })?,
             }
@@ -364,7 +376,7 @@ pub(super) async fn watch_child(
     }
 }
 
-pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> model::Failure {
+pub(crate) fn failure(error: &Error, operation: &str, plugin: &str) -> model::Failure {
     if let Some(failure) = error.operation_failure() {
         let mut failure = model::Failure::from(&failure);
         if failure.plugin.is_empty() {
@@ -372,7 +384,7 @@ pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> mo
         }
         return failure;
     }
-    if let crate::Error::OperationFailed { source, .. } = error {
+    if let Error::OperationFailed { source, .. } = error {
         if let Some(CallError::Remote(failure)) = source.downcast_ref::<CallError>() {
             return model::Failure::from(failure.as_ref());
         }
@@ -392,13 +404,12 @@ pub(crate) fn failure(error: &crate::Error, operation: &str, plugin: &str) -> mo
         return model::Failure::from(failure);
     }
     let classification = match error {
-        crate::Error::NotRegistered { .. }
-        | crate::Error::OperationUnauthorized { .. }
-        | crate::Error::PermissionDenied
-        | crate::Error::InvalidInput { .. } => model::Classification::Refused,
-        crate::Error::OperationRefused(crate::Refusal::Cancelled { .. }) => model::Classification::Cancelled,
-        crate::Error::OperationRefused(crate::Refusal::TimedOut { .. }) => model::Classification::TimedOut,
-        crate::Error::OperationRefused(crate::Refusal::Unavailable) => model::Classification::Transient,
+        Error::NotRegistered { .. } | Error::OperationUnauthorized { .. } | Error::PermissionDenied | Error::InvalidInput { .. } => {
+            model::Classification::Refused
+        }
+        Error::OperationRefused(Refusal::Cancelled { .. }) => model::Classification::Cancelled,
+        Error::OperationRefused(Refusal::TimedOut { .. }) => model::Classification::TimedOut,
+        Error::OperationRefused(Refusal::Unavailable) => model::Classification::Transient,
         _ => model::Classification::Permanent,
     };
     model::Failure {

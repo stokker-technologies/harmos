@@ -11,7 +11,7 @@ A plugin activation SHALL proceed local register → host admission → initiali
 #### Scenario: Invocation Waits for Initialize
 
 - **WHEN** a client calls a plugin operation while that plugin's initialize is running
-- **THEN** the call is admitted only after initialize succeeds, or fails with the activation's initialize failure
+- **THEN** the call fails with the existing not-ready refusal until initialize succeeds
 
 ### Requirement: Admission Runs No Author Code
 
@@ -24,12 +24,12 @@ Admission SHALL only check the frozen declarations: identities, schemas, referen
 
 ### Requirement: Finalize Follows Every Attempted Initialize
 
-Once the host has attempted initialize for an activation, finalize SHALL run exactly once for it, whether initialize succeeded, failed, timed out or was cancelled. Finalize SHALL receive the reason it runs.
+Once the host has attempted initialize for an activation, finalize SHALL run exactly once for it, whether initialize succeeded, failed, timed out or was cancelled. Native hooks SHALL use reserved `<plugin>.initialize` and `<plugin>.finalize` operations with Empty request and response messages; no reason payload or new RPC is added. Each declared hook uses existing operation policy/defaults and is callable only by the host lifecycle.
 
 #### Scenario: Failed Initialize
 
 - **WHEN** a plugin's initialize returns an error after acquiring part of its resources
-- **THEN** the host calls finalize with the initialize-failed reason and then reports the activation failure
+- **THEN** the host calls finalize through Invoke with an admitted context and then reports the activation failure
 
 #### Scenario: Plugin Without Hooks
 
@@ -45,20 +45,39 @@ Before stopping or removing a plugin, the host SHALL refuse new invocations to i
 - **WHEN** the host stops while a plugin operation is running
 - **THEN** the operation observes cancellation and settles before finalize starts
 
-### Requirement: Finalize After Carrier Loss
+### Requirement: Lifecycle Visibility
 
-When a native plugin's connection closes after initialize was attempted and before finalize, the plugin SDK SHALL run finalize locally with the disconnected reason. A later connection SHALL be a new activation with its own initialize.
+The SDK SHALL reserve the two lifecycle identifiers against ordinary operation declarations. The host SHALL exclude them from ordinary routing for clients, plugins and host callers.
 
-#### Scenario: Remote Plugin Loses Its Host
+#### Scenario: Client Attempts a Lifecycle Call
 
-- **WHEN** the connection to a remote plugin drops after its initialize succeeded
-- **THEN** the plugin runs finalize with the disconnected reason, keeps running, and initializes again on the next connection
+- **WHEN** a client invokes either lifecycle identifier with the correct fingerprint
+- **THEN** the host refuses it without dispatching the hook
+
+### Requirement: Subscription Lifetime Is Explicit
+
+The SDK SHALL NOT present invocation-owned or window-owned child Watch calls as plugin-lifetime subscriptions. The unchanged wire has no activation-owned subscription context.
+
+#### Scenario: Initialize Returns With a Subscription
+
+- **WHEN** initialize opened a child Watch and then returns
+- **THEN** its invocation ends and the Watch cannot be retained until finalize
 
 ### Requirement: Lifecycle Policies Are Declared
 
-Each plugin SHALL declare the policies of its initialize and finalize phases in its declarations for native and Wasm placements alike. The host SHALL enforce them as the callee's policies.
+Native hook operations MAY declare existing operation policies; absent policies SHALL use the existing operation default. The host SHALL enforce them as ordinary callee policies without a new lifecycle setting.
 
 #### Scenario: Initialize Deadline
 
 - **WHEN** a plugin's initialize exceeds its declared deadline
-- **THEN** the host cancels it, calls finalize with the initialize-failed reason and reports the deadline failure
+- **THEN** the host cancels it, calls finalize through Invoke with an admitted context and reports the deadline failure
+
+#### Scenario: Cancelled Initialize
+
+- **WHEN** initialization is cancelled after it started
+- **THEN** the host settles its invocation and invokes finalize exactly once before Stop
+
+#### Scenario: Repeated Stop
+
+- **WHEN** stop is requested twice for one activation
+- **THEN** finalize is invoked only once and Stop still follows a failed finalize

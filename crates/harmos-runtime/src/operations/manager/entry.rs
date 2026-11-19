@@ -99,6 +99,9 @@ impl Entry {
     }
 
     pub(in crate::operations) fn retirement_control(&self) -> bool {
+        if self.binding.downcast_ref::<Binding>().is_some_and(Binding::is_lifecycle) {
+            return true;
+        }
         #[cfg(feature = "plugin-guest")]
         if self.sdk == Some(harmos_operations::lifecycle::Action::Shutdown) {
             return true;
@@ -139,6 +142,12 @@ impl Entry {
     }
 
     pub(in crate::operations) fn available(&self) -> Result<()> {
+        if let Some(binding) = self.binding.downcast_ref::<Binding>()
+            && !binding.is_lifecycle()
+            && !binding.caller.is_ready()
+        {
+            return Err(Error::NotReady { domain: "operation plugin" });
+        }
         if !self.publication.load(Ordering::Acquire) {
             return Err(Error::NotReady { domain: "operation batch" });
         }

@@ -218,7 +218,7 @@ def exports(target: Path, descriptors: FileDescriptorSet, *, configuration: Conf
     plugin = sorted({name.split(".", 1)[0] for _, _, name in groups["plugin_types"]})
     authored = {
         "_authoring": ["Catalog", "Endpoint", "Plugin", "Registrar", "Registration"],
-        "_contracts": ["Operation", "Stream", "Window", "observer", "on_stop", "operation", "publisher", "window_observer"],
+        "_contracts": ["Operation", "Stream", "Window", "observer", "operation", "publisher", "window_observer"],
         "_invocation": ["Context", "Publisher"],
         "_generated.host": ["HostOperation"],
     }

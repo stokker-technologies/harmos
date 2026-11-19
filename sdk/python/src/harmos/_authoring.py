@@ -25,6 +25,7 @@ import grpc
 from google.protobuf.descriptor_pb2 import FileDescriptorProto
 from google.protobuf.descriptor_pool import DescriptorPool
 from google.protobuf.duration_pb2 import Duration
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import DecodeError, Message
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
@@ -70,7 +71,7 @@ STARTED_AT.GetCurrentTime()
 type Observer = Callable[[Context], Awaitable[Message]]
 type WindowObserver = Callable[[Context, Window], Awaitable[Message]]
 type Producer = Callable[[Context, Publisher], Awaitable[None]]
-type Cleanup = Callable[[], Awaitable[None] | None]
+type Hook = Callable[[Context], Awaitable[None]]
 
 # === Classes === #
 
@@ -85,7 +86,7 @@ class Registrar:
     def __init__(self) -> None:
         self.operations: list[tuple[Operation[Message, Message], Handler]] = []
         self.streams: list[tuple[Stream, Observer | WindowObserver | Producer, bool]] = []
-        self.cleanup: list[Cleanup] = []
+        self.hooks: dict[str, list[Hook]] = {}
         self.requires: list[Operation] = []
         self.sections: list[Message] = []
         self.settings: list[SettingDeclaration] = []
@@ -115,16 +116,13 @@ class Catalog:
 
     def _registrations(
         self,
-    ) -> tuple[
-        list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]], list[Cleanup]
-    ]:
+    ) -> tuple[list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]]]:
         # Preserve Declaration Order While Honoring Subclass Overrides.
         methods = {}
         for cls in reversed(type(self.instance).__mro__):
             methods.update(vars(cls))
         operations: list[tuple[Operation[Message, Message], Handler]] = []
         streams: list[tuple[Stream, Observer | WindowObserver | Producer, bool]] = []
-        cleanup: list[Cleanup] = []
         for name, method in methods.items():
             definition = getattr(method, "__harmos_operation__", None)
             if isinstance(definition, Operation):
@@ -135,15 +133,19 @@ class Catalog:
             definition = getattr(method, "__harmos_publisher__", None)
             if isinstance(definition, Stream):
                 streams.append((definition, cast(Producer, getattr(self.instance, name)), False))
-            if getattr(method, "__harmos_stop__", False):
-                cleanup.append(cast(Cleanup, getattr(self.instance, name)))
-        return operations, streams, cleanup
+        return operations, streams
 
     def register(self, ctx: Registrar) -> None:
-        operations, streams, cleanup = self._registrations()
+        operations, streams = self._registrations()
         ctx.operations.extend(operations)
         ctx.streams.extend(streams)
-        ctx.cleanup.extend(cleanup)
+        for name in ("initialize", "finalize"):
+            hook = getattr(self.instance, name, None)
+            if hook is None:
+                continue
+            if not inspect.iscoroutinefunction(hook):
+                raise ValueError(f"Register {name}: Define an Async Lifecycle Hook")
+            ctx.hooks.setdefault(name, []).append(cast(Hook, hook))
         ctx.requires.extend(self.requires)
         ctx.sections.extend(self.sections)
         ctx.settings.extend(self.settings)
@@ -165,7 +167,12 @@ class Plugin:
         register(registrar)
         self._operations = list(registrar.operations)
         self._streams = list(registrar.streams)
-        self._cleanup = list(registrar.cleanup)
+        for definition, _ in self._operations:
+            if definition.id in (f"{id}.initialize", f"{id}.finalize"):
+                raise ValueError(f"Register {definition.id}: Lifecycle Operation Names Are Reserved; Define an Async Hook Instead")
+        for name, hooks in registrar.hooks.items():
+            definition = Operation(f"{id}.{name}", Empty, Empty, VISIBILITY_PROTECTED)
+            self._operations.append((cast(Operation[Message, Message], definition), _lifecycle(hooks)))
         self.requires = tuple(registrar.requires)
         self.sections = tuple(registrar.sections)
         self.settings = tuple(registrar.settings)
@@ -176,10 +183,8 @@ class Plugin:
 
     def _registrations(
         self,
-    ) -> tuple[
-        list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]], list[Cleanup]
-    ]:
-        return self._operations, self._streams, self._cleanup
+    ) -> tuple[list[tuple[Operation[Message, Message], Handler]], list[tuple[Stream, Observer | WindowObserver | Producer, bool]]]:
+        return self._operations, self._streams
 
     def declarations(self) -> Declarations:
         if not re.fullmatch(r"[a-z0-9._]+", self.id):
@@ -191,7 +196,7 @@ class Plugin:
         declarations = Declarations()
         files: dict[str, FileDescriptorProto] = {}
         _merge(files, *self.messages)
-        operations, streams, _ = self._registrations()
+        operations, streams = self._registrations()
         for definition, _ in operations:
             if definition.watch:
                 raise ValueError(f"Register {definition.id}: Plugin Operations Are Unary")
@@ -263,7 +268,7 @@ class Plugin:
         return declarations
 
     async def start(self, address: str) -> "Endpoint":
-        """Bind the Author's Address; Stop Runs Cleanup and Keeps Serving."""
+        """Bind the Author's Address; the Host Invokes Lifecycle Operations Before Stop."""
         service = _Service(self, self.declarations())
         maximum = message_bytes(self.transfer)
         server = grpc.aio.server(options=[("grpc.max_send_message_length", maximum), ("grpc.max_receive_message_length", maximum)])
@@ -357,12 +362,14 @@ class _SamplesScope:
         plugin: str,
         requires: dict[str, bytes],
         local: dict[str, tuple[Operation[Message, Message], Handler]],
+        instance: object | None,
     ) -> None:
         self.stream = stream
         self.scope = scope
         self.plugin = plugin
         self.requires = requires
         self.local = local
+        self.instance = instance
         self.context: Context | None = None
         self.next = [0]
         self.retired: set[int] = set()
@@ -380,7 +387,7 @@ class _Service:
             sdk_version=version("harmos-sdk"),
             message_bytes=message_bytes(plugin.transfer),
         )
-        operations, streams, self.cleanup = plugin._registrations()
+        operations, streams = plugin._registrations()
         self.local = {
             definition.id: (definition, handler) for definition, handler in operations if definition.visibility == VISIBILITY_PRIVATE
         }
@@ -396,13 +403,6 @@ class _Service:
         return self.description
 
     async def stop(self, request: InstanceStopRequest, context: ServicerContext) -> InstanceStopResponse:
-        try:
-            for cleanup in self.cleanup:
-                result = cleanup()
-                if inspect.isawaitable(result):
-                    await result
-        except Exception as error:
-            await context.abort(StatusCode.INTERNAL, str(error))
         return InstanceStopResponse()
 
     async def invoke(self, request_iterator: AsyncIterator[InstanceInvokeRequest], context: ServicerContext) -> None:
@@ -427,6 +427,7 @@ class _Service:
         output = Queue(maxsize=1)
         execution = Context(request, self.description.id, self.requires, output)
         execution._local = self.local
+        execution._instance = getattr(handler, "__self__", None)
         running = asyncio.create_task(_execute(handler, execution, value, definition.response, output))
         reading = asyncio.create_task(_read_invoke(request_iterator, execution, output))
         try:
@@ -454,7 +455,9 @@ class _Service:
         await context.send_initial_metadata(())
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
         windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
-        scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, self.local)
+        scope = _SamplesScope(
+            first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None)
+        )
         reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output))
         running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
         sequence = 0
@@ -482,6 +485,16 @@ class _Service:
 # === Public Functions === #
 
 # === Private Functions === #
+
+
+def _lifecycle(hooks: Sequence[Hook]) -> Handler:
+    async def invoke(context: Context, request: Message) -> Message:
+        for hook in hooks:
+            context._instance = getattr(hook, "__self__", None)
+            await hook(context)
+        return Empty()
+
+    return invoke
 
 
 def _merge(files: dict[str, FileDescriptorProto], *messages: type[Message]) -> None:
@@ -582,6 +595,7 @@ async def _read_publish(
             execution._next = scope.next
             execution._retired = scope.retired
             execution._local = scope.local
+            execution._instance = scope.instance
             scope.context = execution
             await windows.put((window, execution))
         await output.put(None)
@@ -623,6 +637,8 @@ async def _produce(
     try:
         if not observing:
             execution = Context(Request(operation=scope.stream, scope=scope.scope), scope.plugin, scope.requires)
+            execution._local = scope.local
+            execution._instance = scope.instance
             await cast(Producer, handler)(execution, Publisher(definition.row, output))
             return
         while True:

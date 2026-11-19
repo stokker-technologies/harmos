@@ -109,6 +109,14 @@ class Context:
         self._cancelled = Event()
         self._reason = ""
         self._resources: dict[type, object] = {}
+        self._instance: object | None = None
+
+    @property
+    def plugin(self) -> object:
+        """The Plugin Instance Shared by Lifecycle Hooks, Operations and Streams."""
+        if self._instance is None:
+            raise ValueError("Read Plugin State: Use a Context Created by the Plugin Server")
+        return self._instance
 
     def scope(self) -> str:
         """Require a Caller-Bound Scope for This Invocation."""
@@ -280,6 +288,7 @@ class Context:
                             action="Invoke Again If Safe",
                         )
                     )
+                context._instance = getattr(handler, "__self__", None)
                 running = asyncio.create_task(handler(context, request))
                 cancelled = asyncio.create_task(self.cancelled())
                 timer = (

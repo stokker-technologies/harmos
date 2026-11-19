@@ -46,15 +46,21 @@ Products requiring initialize/finalize guarantees must wait for groups 4 and 5.
 
 ## 4. Plugin Phases on the Wire and in the Host
 
-- [ ] 4.1 Add `Instance.Initialize`, replace `Instance.Stop` with `Instance.Finalize` including reason, rename `GuestShutdown`/policy to finalize and move lifecycle policies into generic declarations. Lock these carrier declarations with both boundary changes for `plugin-boundary` task 6.1's single regeneration; prove the resulting protocol through a focused package build.
+- [x] 4.1 Reserve `<plugin>.initialize` and `<plugin>.finalize` as Protected, non-replayable Empty operations; retain the existing native wire and operation policies. Replace the superseded dedicated-RPC/reason design and pass strict OpenSpec validation.
 - [ ] 4.2 Make plugin activation call initialize after admission and before any invocation or sample window, and make stop and removal refuse new invocations, cancel and settle in-flight work, then call finalize exactly once per attempted initialize, for native and Wasm placements. Prove with new stories `plugin_finalizes_after_failed_initialize`, `plugin_invocation_waits_for_initialize`, `plugin_stop_cancels_then_finalizes` and `plugin_initialize_deadline_finalizes` in `crates/harmos-runtime/tests/plugin_grpc`, plus the guest equivalents, via `mise run test -- --paths <story file>`.
 - [ ] 4.3 Update conformance in `tools/conformance` with initialize, finalize, failed-initialize and cancel-then-finalize rules for every SDK reference plugin. Prove with `mise run build -- --package harmos-conformance` and the conformance fixture run for each language.
 
 ## 5. Plugin Hooks in the SDKs
 
-- [ ] 5.1 Replace Rust `Plugin::on_stop` and Wasm `on_initialize`/`on_shutdown`/`on_cleanup` with `initialize` and `finalize` hooks receiving a context and, for finalize, the reason; run finalize locally on carrier loss after an attempted initialize. Prove with SDK tests for failed initialize and carrier loss via `mise run test -- --package harmos --target integration`.
-- [ ] 5.2 Make the same change in Python (`@on_stop` removed), C# (`OnStop` removed) and C++ (`on_stop` removed), with idiomatic casing and async forms. Prove with each SDK's focused fixture tests for failed initialize, finalize reason and carrier loss.
+- [ ] 5.1 Replace Rust `Plugin::on_stop` with reserved Empty lifecycle operations receiving an invocation context; update the separately assigned Wasm hooks. Prove the Rust SDK with focused integration tests; do not synthesize a native lifecycle context after carrier loss.
+- [ ] 5.2 Encode the same reserved lifecycle operations in C# (`OnStop` removed) and C++ (`on_stop` removed), with idiomatic casing and context forms; prove each assigned SDK fixture. No dedicated native lifecycle RPC or finalize-reason payload.
 - [ ] 5.3 Update `docs/architecture.md` (Managed Process Ownership, Guest Entries and Reported Declarations, Call Mapping and Message and Enum Mapping rows for Instance and guest lifecycle), `docs/plugin-manager.md` and the four SDK guides for plugin phases. Prove with `mise run check -- --repository`.
+
+- [x] 5.4 Implement Python async instance hooks, reserve names, share author state via `ctx.plugin` across every context, remove `@on_stop`, migrate its callers and regenerate tracked exports. Prove focused Python tests, format/lint/types and binding drift checks.
+- [x] 5.5 Implement native lifecycle dispatch, Ready gating, failure/cancellation finalization, replacement/reconnect and shutdown settlement in `crates/harmos-runtime/src/plugin/grpc`, with the required private operation-admission integration in `operations/manager/{plugin_grpc,entry}.rs`. Prove Python-backed lifecycle and plugin manager/gRPC stories, focused package compilation and scoped lint. Tests belong to the existing `tests/plugin_grpc` modules in the `integration` target; no protocol or other SDK edits.
+- [x] 5.6 Record the current wire's plugin-lifetime subscription limitation and provide owner handoff locations for Rust/C#/C++ plus documentation corrections; do not edit `docs/` in this worker delivery.
+- [x] 5.7 Run replacement initialization and activation-worker settlement in owned tasks while the same actor serves bounded read requests. Keep one registry/settings owner, materialize settings before initialize, preserve state order and replacement rollback/receipts, and prove hook settings reads through initialize, restart, disable, deletion and shutdown.
+- [x] 5.8 Settle connections, their calls and connection-end observers before closing plugin admission; settle native plugin in-flight work and finalize through the existing runtime participant authority before closing operation admission and the dispatcher. Retain the later transport Stop and process-reaping phase. Keep admitted Invoke and all existing bounds, including shutdown stories with live bindings and failed finalization.
 
 ## 6. Qualified Paths
 

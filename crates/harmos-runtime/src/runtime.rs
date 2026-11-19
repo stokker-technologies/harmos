@@ -176,12 +176,16 @@ struct Supervision<A: Application> {
 
 #[derive(Clone)]
 struct Participants {
+    settling: watch::Sender<bool>,
+    unsettled: watch::Sender<usize>,
     stopping: watch::Sender<bool>,
     active: watch::Sender<usize>,
     failure: watch::Sender<Option<Arc<Error>>>,
 }
 
 pub struct StopParticipant {
+    settling: watch::Receiver<bool>,
+    unsettled: Option<watch::Sender<usize>>,
     stopping: watch::Receiver<bool>,
     active: watch::Sender<usize>,
     failure: watch::Sender<Option<Arc<Error>>>,
@@ -406,6 +410,13 @@ impl<A: Application> Runtime<A> {
             state: Inspection { state: Arc::new(state), reads },
             source,
         })
+    }
+
+    pub(crate) fn plugin_participant(&self) -> StopParticipant {
+        let mut participant = self.participants.register();
+        self.participants.unsettled.send_modify(|active| *active += 1);
+        participant.unsettled = Some(self.participants.unsettled.clone());
+        participant
     }
 
     pub fn stop_participant(&self) -> StopParticipant {
@@ -1118,6 +1129,8 @@ impl Incompatible {
 impl Participants {
     fn new() -> Self {
         Self {
+            settling: watch::channel(false).0,
+            unsettled: watch::channel(0).0,
             stopping: watch::channel(false).0,
             active: watch::channel(0).0,
             failure: watch::channel(None).0,
@@ -1128,6 +1141,8 @@ impl Participants {
         self.active.send_modify(|active| *active += 1);
 
         StopParticipant {
+            settling: self.settling.subscribe(),
+            unsettled: None,
             stopping: self.stopping.subscribe(),
             active: self.active.clone(),
             failure: self.failure.clone(),
@@ -1135,9 +1150,18 @@ impl Participants {
         }
     }
 
+    async fn settle(&self) -> Result<(), Error> {
+        self.settling.send_replace(true);
+        self.wait(&self.unsettled).await
+    }
+
     async fn stop(&self) -> Result<(), Error> {
         self.stopping.send_replace(true);
-        let mut active = self.active.subscribe();
+        self.wait(&self.active).await
+    }
+
+    async fn wait(&self, active: &watch::Sender<usize>) -> Result<(), Error> {
+        let mut active = active.subscribe();
         let mut failure = self.failure.subscribe();
         tracing::debug!(active = *active.borrow(), "waiting for runtime stop participants");
         loop {
@@ -1158,6 +1182,24 @@ impl Participants {
 }
 
 impl StopParticipant {
+    pub(crate) fn is_settling(&self) -> bool {
+        *self.settling.borrow()
+    }
+
+    pub(crate) async fn settling(&mut self) {
+        while !*self.settling.borrow_and_update() {
+            if self.settling.changed().await.is_err() {
+                break;
+            }
+        }
+    }
+
+    pub(crate) fn settled(&mut self) {
+        if let Some(unsettled) = self.unsettled.take() {
+            unsettled.send_modify(|active| *active = active.saturating_sub(1));
+        }
+    }
+
     pub(crate) fn fail(&self, source: Arc<Error>) {
         self.failure.send_if_modified(|failure| {
             if failure.is_some() {
@@ -1185,6 +1227,7 @@ impl StopParticipant {
     }
 
     fn release(&mut self) {
+        self.settled();
         if !self.released {
             self.active.send_modify(|active| *active = active.saturating_sub(1));
             self.released = true;

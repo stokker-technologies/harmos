@@ -15,8 +15,9 @@
 
 // Standard Library Imports
 use std::error;
-use std::future::{Future, poll_fn};
+use std::future::{self, Future};
 use std::pin::Pin;
+use std::result;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock, Weak};
 use std::task::Poll;
@@ -38,7 +39,7 @@ use crate::{Application, Error, Result, state::Position};
 
 /* === Type Aliases === */
 
-pub(super) type Outcome = std::result::Result<Position, Failure>;
+pub(super) type Outcome = result::Result<Position, Failure>;
 
 /* === Structs === */
 
@@ -175,6 +176,8 @@ impl<A: Application> Stop<A> {
                 self.handles.plugin.close_admission();
                 self.handles.plugin.shutdown().await?;
             }
+            self.progress.send_replace("plugin settlement");
+            self.participants.settle().await?;
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
             #[cfg(feature = "plugin-guest")]
@@ -194,7 +197,6 @@ impl<A: Application> Stop<A> {
             if self.handles.operations.service_cleanup_pending(false) {
                 return Err(services.err().unwrap_or(Error::NotReady { domain: "service cleanup" }));
             }
-            // Original SDK Stop Keeps Its Dispatcher Until Application Cleanup Settles.
             self.progress.send_replace("operations");
             self.handles.operations.shutdown().await?;
             self.progress.send_replace("participants");
@@ -264,7 +266,7 @@ async fn joined(
     clock: &Clock, supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>,
 ) -> Outcome {
     let mut grace = Box::pin(clock.sleep(STOP_GRACE));
-    let joined = poll_fn(|context| {
+    let joined = future::poll_fn(|context| {
         if let Poll::Ready(settled) = Pin::new(&mut *supervisor).poll(context) {
             return Poll::Ready(Some(settled));
         }

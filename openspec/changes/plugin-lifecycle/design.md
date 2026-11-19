@@ -16,7 +16,7 @@ Current surface (landed, verified 2026-11-16):
   `ServiceInstance` and `NativeInstance` carry `stop` and `cleanup`
   (`execution/operations/authored.rs`, `execution/operations/registration.rs`).
 - Native plugins: `Plugin::on_stop(Fn() -> Result<()>)` in Rust (`sdk/rust/src/plugin.rs`),
-  `@on_stop` in Python (`sdk/python/src/harmos/_contracts.py`), `OnStop(Func<Task>)` in C#
+  Python instance hooks (`sdk/python/src/harmos/_authoring.py`), `OnStop(Func<Task>)` in C#
   (`sdk/csharp/src/Harmos/Plugin.cs`) and `on_stop(std::function<void()>)` in C++
   (`sdk/cpp/include/harmos/harmos.hpp`); no context, no initialize hook. The host calls
   `Instance.Stop` before removal or shutdown (`proto/harmos/plugin/v1/instance.proto`).
@@ -64,11 +64,8 @@ registration as admission, the registrar API with C++ `add`, module `catalog()`,
 vocabulary, no aliases or path overrides, SDK ownership. Derived by this design to make them
 implementable; the owner may override each before its group starts:
 
-- `Instance.Initialize` as a new host-invoked RPC: the owner's "no new host-invoked phase"
-  is read as covering registration only, since initialize must follow host admission.
-- Finalize reasons (`Stopped`, `InitializeFailed`, `Disconnected`) and SDK-local finalize on
-  carrier loss.
-- Initialize and finalize policies moving into the model declarations.
+- Reserved native lifecycle operation identifiers and admitted contexts.
+- Initialize and finalize using existing operation policies and defaults.
 - `Runtime::new()` as the construction step, `harmos::wasm::Guest` for guest capacity, and
   C++ `add` also on the plugin builder method that takes the register function.
 - Python endpoint `close` becoming `stop`, and deleting the superseded builder chain methods.
@@ -93,57 +90,158 @@ a symbol denotes start, stop or run; listener and storage internals that merely 
 resource keep their names unless they are public verbs of the host. Alternative rejected:
 keeping `launch`/`shutdown` beside `start`/`stop` as aliases.
 
-### D2. Plugin Phases (Proposed)
+### D2. Plugin Lifecycle Operations (Owner Decision, 2026-11-19)
 
-The sketch uses a fixture product's author API; helper types are internal under
-the later `plugin-boundary` owner amendment. Local register freezes declarations,
-then host admission runs generic checks and the registered product-kind callback;
-initialize follows only after both accept and effective settings resolve.
+Lifecycle hooks are ordinary operations with SDK-encoded well-known identifiers.
+This replaces the dedicated initialization/finalization RPC design. Native wire
+messages and `Instance.Get`, `Invoke`, `Samples` and `Stop` stay unchanged.
 
-```rust
-fn main() -> Result<()> {
-    fixture::Plugin::new("thermal", env!("CARGO_PKG_VERSION"))
-        .register(register)?
-        .initialize(initialize)
-        .finalize(finalize)
-        .run()
-}
+For plugin identifier `p`, the reserved operation identifiers are `p.initialize`
+and `p.finalize`. Each uses `google.protobuf.Empty` for request and response,
+Protected visibility and no replay safety. Both identifiers follow the existing
+local operation grammar (nonempty dot-separated alphanumeric/underscore segments).
+An SDK lists each hook only when defined and rejects ordinary author operations
+using either reserved identifier. The host retains their admitted entries outside
+normal routing, so clients, plugins and ordinary host calls cannot invoke them.
 
-fn register(ctx: &mut fixture::Registrar) -> Result<()> {
-    ctx.register(settings::catalog())?;
-    ctx.register(operations::catalog())?;
-    ctx.register(streams::catalog())?;
-    Ok(())
-}
+```python
+class Author:
+    async def initialize(self, ctx):
+        self.resource = await acquire(ctx)
 
-async fn initialize(ctx: &Context) -> Result<()> { ctx.insert(Chamber::open(ctx).await?) }
-async fn finalize(ctx: &Context, reason: Finalization) -> Result<()> { Chamber::close(ctx).await }
+    async def finalize(self, ctx):
+        await release(self.resource)
+
+    async def execute(self, ctx, request):
+        assert ctx.plugin is self
+        return self.resource.execute(request)
 ```
 
-- **Admission:** `Instance.Get` (native) and `GuestRegistration` (Wasm) report the frozen
-  declarations; the host checks identities, schemas, references, permissions and limits and
-  creates the activation. No author code runs on the host's behalf before initialize.
-- **Initialize:** host-invoked once per activation after admission and before the first
-  invocation or sample window: a new `Instance.Initialize` RPC for native plugins and the
-  existing `GuestInitialize` for guests. Its context carries settings, the plugin host
-  facilities, declared child calls and cancellation, like the existing Wasm initialization
-  context. A plugin without an initialize hook answers immediately.
-- **Finalize:** `Instance.Stop` becomes `Instance.Finalize`; `GuestShutdown` becomes
-  `GuestFinalize` and the guest `shutdown` policy becomes `finalize`. Before removal or stop the
-  host refuses new invocations, cancels in-flight invocations and sample windows, waits for
-  them to settle within their policies, then calls finalize. Finalize runs once initialize was
-  attempted, including after it failed, timed out or was cancelled; the finalize context
-  reports the reason (`Stopped`, `InitializeFailed`, `Disconnected`). A managed plugin exits
-  after replying; a remote plugin keeps running and a later connection is a new activation.
-- **Lost carrier:** when a native connection closes after initialize was attempted and
-  before finalize, the SDK runs finalize locally with `Disconnected`; host facilities are then
-  unavailable and calls fail with the existing disconnected failure.
-- **Policies:** initialize and finalize policies are declared by the plugin in its
-  declarations (moving the guest's lifecycle policies into `harmos.model.v1`), so the callee
-  owns them; products override one call through existing overrides only.
-- Native `on_stop`, Wasm `on_shutdown` and `on_cleanup` are deleted, not deprecated.
-  Alternative rejected: keeping a cooperative plugin stop hook before finalize; cancellation
-  already reaches every in-flight call, and a second hook splits release logic.
+`ctx.plugin` is the same author instance for hooks, ordinary operations, local
+calls and stream contexts. Invocation resources (`ctx.set`/`ctx.get`) remain
+invocation-owned. Python removes the context-free `@on_stop` path; Stop performs
+transport shutdown only. Rust, C# and C++ must encode the same reserved operations
+and replace their context-free cleanup callbacks in their assigned SDK work.
+
+The host admits declarations and effective settings first. It invokes initialize
+through normal operation admission, policy enforcement and the existing Invoke
+carrier. Declared child calls, settings, secrets, logging and cancellation retain
+ordinary invocation semantics. Ordinary operations refuse with the existing
+`NotReady` error until initialize succeeds; Ready and sample demands follow its
+success. Failure is retained as the activation failure. No hook means no added
+wire call. Policies use the existing operation policy/default; no new setting or
+lifecycle policy messages are introduced.
+
+Every orderly ending stops new dispatch, settles sample demands and cancels and
+settles admitted operations, invokes finalize exactly once, then sends the existing
+Stop. A failed or cancelled initialize follows the same finalization/Stop path,
+retaining its original failure. Finalize failure is recorded and Stop still runs.
+A lost carrier cannot deliver Invoke; the host records that failure and releases
+its admission. This design does not invent an SDK-local context or a second
+finalization path on disconnect. Reconnection is a fresh activation.
+
+#### Catalog Composition
+
+Python keeps declaration-only `Catalog`/`Registrar` assembly. Catalog contributions
+collect their async instance hooks in registration order; the plugin encodes one
+reserved operation for each contributed phase. Each hook and ordinary handler
+receives its own catalog instance through `ctx.plugin`, including local calls and
+stream contexts. Hook composition introduces no second stop callback path.
+
+Runtime stop closes listener admission first. Native plugin participants report
+settlement only after accepted work and finalize complete, while the dispatcher
+can still serve hook child calls. Dispatcher closure then precedes participant
+transport Stop. The no-guest runtime configuration follows the same ordering;
+owned listener signals and joins retain their existing owner.
+
+#### Plugin-Lifetime Subscription Boundary
+
+An Invoke child Watch belongs to its invocation and ends with that invocation.
+`Samples` is a separate, host-opened publication demand: Open selects a declared
+plugin stream; window responses may issue child calls only while the window is
+unanswered. Answering that window ends its children. Device producers have no
+child-call output carrier. Neither carrier names an activation-owned subscription
+or lets a plugin transfer a Watch from initialize to finalize. Consequently a
+subscription opened inside initialize cannot survive its return with the current
+wire. Plugin-lifetime subscriptions are left out; they need a wire contract for
+subscription lifetime and child replies beyond an invocation/window. Holding
+initialize open, retaining its context or launching an untracked task is not a
+substitute.
+
+Wasm hook/verb migrations remain assigned to the separate SDK/guest tasks. Their
+existing guest commands are unchanged by this native host/Python delivery.
+
+#### Other SDK and Documentation Owners
+
+Rust's `sdk/rust/src/plugin.rs` operation/declaration construction must encode
+Protected Empty lifecycle entries and reserve their identifiers, replacing
+`Plugin::on_stop`; its callback vector, `server::Cleanup::run` and the invocations
+from `Server::stop`, `server::run` shutdown and the owned listener thread in
+`sdk/rust/src/native.rs` become redundant. Listener stop signals and owned RPC/task
+draining remain transport responsibilities. The separately assigned Wasm migration
+replaces `Registration::on_initialize`, `on_shutdown` and `on_cleanup` with the
+plugin's initialize/finalize operations; native serving does not alter those hooks.
+C# needs the same operation entries in `sdk/csharp/src/Harmos/Plugin.cs`, replacing
+`OnStop`, its cleanup callback array and their execution from `PluginService.Stop`. C++ needs them in
+`sdk/cpp/include/harmos/harmos.hpp` and `sdk/cpp/src/catalog.cpp`, replacing
+`on_stop`, its `cleanup_` callback vector and `Service::finish_cleanup`
+from both Stop and the listener worker in `sdk/cpp/src/server.cpp`. The internal
+transport stop signal, shutdown reactor and listener ownership remain. Each SDK must share
+its author state with subsequent invocation contexts and retain ordinary operation
+policy enforcement. The old callbacks and new lifecycle operations would otherwise
+be two independent release paths; delete the context-free callbacks in those owners.
+
+The documentation owner updates `docs/tooling.md` to replace `@on_stop` with async
+instance hooks, explain transport-only Stop and use `FailureError(model.Failure(...))`.
+`docs/python-sdk.md` documents `ctx.plugin` and invocation-owned resources separately.
+`docs/plugin-manager.md` records initialization before Ready. `docs/architecture.md`
+records hidden lifecycle operations, their ordinary policies and the required native
+shutdown ordering; the native runtime now separates plugin settlement from transport Stop.
+The Stop comments in `proto/harmos/plugin/v1/instance.proto` still describe SDK cleanup;
+the protocol owner must reconcile those comments without changing wire messages.
+
+#### Manager Actor Reentrancy
+
+The manager retains one registry and settings owner. Its bounded read mailbox serves
+settings, entry, activation and watch requests while an owned lifecycle task runs;
+mutations remain ordered in their bounded mailbox. Replacement initialization runs
+in an owned task, and activation workers own finalization. Their outcomes resume the
+same ordered mutation, preserving rollback and replay receipts. Admission publishes
+the description and materializes effective settings while the entry remains
+Connecting; only successful initialize permits Ready. There is no second settings
+store or reentrant mutation loop.
+
+#### Native Shutdown Phase
+
+The runtime first closes connection admission and settles connections, their calls
+and connection-end observers while plugins, operations, application services and
+storage remain usable. It then closes guest admission and settles guest plugins
+before the existing participant authority requests native plugin settlement.
+Native attachment and staged-replacement participants retain that settlement until
+their admitted operations and publications settle and finalize completes. Running
+attachments then acknowledge settlement and wait for the later participant stop.
+The runtime keeps the dispatcher and host settings owner available through this
+barrier, closes operation admission, settles listeners and application services,
+closes the dispatcher, then requests participant stop, which sends the existing
+transport Stop and reaps managed processes. Application lifecycle cleanup, state
+sealing, journal drainage, storage closure and infrastructure cleanup follow.
+Startup and failed activation
+retain their existing cancellation, finalization and process-settlement policies.
+No deadline or operation bound is lengthened, and no second dispatcher is added.
+
+
+#### Overlapping Implementations Requiring Owner Resolution
+
+- `plugin/manager/settings.rs::select` fills defaults and validates effective
+  values for native startup/replacement and guest admission. `materialize` repeats
+  that computation when actor commits persist settings. Delete the repeated
+  default-selection computation in `materialize`, retaining its persistence work
+  and calling the existing selection owner.
+- `plugin/manager/actor.rs::describe` projects activation description/process
+  metadata for admission and health. `plugin/manager/replacement.rs::replace`
+  projects those same fields for staged replacement. Delete the replacement's
+  repeated projection after one shared projection accepts the candidate version;
+  do not read the previous bundle version during candidate projection.
 
 ### D3. Registrar and Typed Registration (Proposed)
 
@@ -165,7 +263,7 @@ closure are checked when the plugin freezes its declarations, as today.
 | Language | Phase Function | Registration Call | Hooks | Serving |
 | --- | --- | --- | --- | --- |
 | Rust | `fn register(ctx: &mut Registrar) -> Result<()>` | `ctx.register(settings::catalog())?` | `.initialize(f)`, `.finalize(f)` | `.run()` |
-| Python | `def register(ctx: Registrar) -> None` | `ctx.register(settings.catalog())` | `initialize=`, `finalize=` | `run()`, `start()`/`stop()` |
+| Python | `def register(ctx: Registrar) -> None` | `ctx.register(settings.catalog())` | `async initialize(self, ctx)`, `async finalize(self, ctx)` | `run()`, `start()`/`stop()` |
 | C# | `static void Register(Registrar ctx)` | `ctx.Register(Settings.Catalog())` | `.Initialize(f)`, `.Finalize(f)` | `RunAsync()` |
 | C++ | `void register_plugin(Registrar &ctx)` | `ctx.add(settings::catalog())` | `.initialize(f)`, `.finalize(f)` | `run()` |
 
@@ -214,11 +312,8 @@ an ordinary module tree.
 
 - [Every plugin and product breaks at once] → one revision lands all renames; products adopt
   it in their own change; development policy allows clean breaks.
-- [Finalize after a failed initialize sees partial resources] → finalize receives the reason
-  and SDK-owned resources are released by the SDK; authored finalize must tolerate absent
-  resources, documented in each SDK guide.
-- [Local finalize on carrier loss cannot reach the host] → the reason says so; release logic
-  that needs host calls belongs before the loss and is best effort after it.
+- [Finalize after a failed initialize sees partial resources] → authored finalize must tolerate absent resources; its context is an ordinary admitted invocation.
+- [Carrier loss prevents remote finalization] → record the transport failure; no SDK-local emulation supplies a false admitted context.
 - [Removing test `#[path]` sharing grows test structure] → shared support moves into an
   ordinary module tree or a dev-only crate; named exceptions remain where neither works.
 
@@ -313,15 +408,15 @@ host-client removal. These are unresolved items, not accepted exceptions.
 
 ## Native Phase Integration Boundary
 
-`operations/manager/entry.rs::retirement_control` currently recognizes only staged
-SDK `Action::Shutdown`; `submission.rs::admit_entry` refuses other submissions
-after operation admission closes. Native gRPC activations use `GrpcAdmission`
-instead of that staged lifecycle. The remaining initialize/finalize integration
-must use one manager-owned policy/retirement authority, including admission gates
-and failure rollback. The lifecycle worker has not added an alternate scheduler,
-carrier protocol or teardown bypass while ownership of that integration is
-unresolved. The existing native and Wasm plugin hooks remain until that complete
-replacement is integrated; this checkpoint does not complete plugin-lifecycle.
+`operations/manager/entry.rs::retirement_control` recognizes reserved native
+lifecycle bindings alongside the separately assigned SDK `Action::Shutdown`.
+`GrpcAdmission` retains initialize/finalize entries outside ordinary routing and
+uses the existing dispatcher, operation policy and settlement authority. Native
+admission gates, failure rollback and participant settlement are implemented;
+the Rust, C# and C++ authoring and serving layers still require their assigned
+operation encoding and callback removal. Wasm hook replacement and combined
+platform validation remain open, so this native host/Python delivery does not
+complete the entire plugin-lifecycle change.
 
 The required C++ language check exposed registration callback parameter shadowing
 and generic resource-constructor shadowing. Catalog callbacks now name the registrar

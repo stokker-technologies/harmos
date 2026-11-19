@@ -22,7 +22,7 @@ use std::{
     future::Future,
     io,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
     task::{Context, Poll},
 };
 
@@ -51,6 +51,7 @@ pub(super) struct Connection {
     pub(super) channel: Channel,
     message_bytes: usize,
     pub(super) closed: watch::Sender<bool>,
+    pub(super) ready: AtomicBool,
 }
 
 struct Socket {
@@ -94,7 +95,13 @@ impl Connection {
         let mut identity = [0; 16];
         getrandom::fill(&mut identity).map_err(|error| Error::Invalid(format!("Name Plugin Attachment: {error}")))?;
         let owner = format!("attachment_{}", u128::from_le_bytes(identity));
-        Ok(Self { owner, channel, closed, message_bytes })
+        Ok(Self {
+            owner,
+            channel,
+            closed,
+            message_bytes,
+            ready: AtomicBool::new(false),
+        })
     }
 }
 
