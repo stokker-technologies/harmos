@@ -526,7 +526,7 @@ public sealed class PluginsResource
       yield return response;
     }
   }
-  public async Task<global::Harmos.Clients.PluginsCreateResponse> Create(string name, global::Harmos.Clients.PluginPlacement placement, global::Harmos.Clients.PluginValue value, string? requestId = null, CallOptions context = default)
+  public async Task<global::Harmos.Clients.PluginsCreateResponse> Create(string name, global::Harmos.Clients.PluginPlacement placement, global::Harmos.Clients.PluginValue value, string? requestId = null, string? origin = null, CallOptions context = default)
   {
     var request = new global::Harmos.Clients.PluginsCreateRequest
     {
@@ -535,6 +535,10 @@ public sealed class PluginsResource
       Placement = placement,
       Value = value,
     };
+    if (origin is not null)
+    {
+      request.Origin = origin;
+    }
     var method = new Method<global::Harmos.Clients.PluginsCreateRequest, global::Harmos.Clients.PluginsCreateResponse>(MethodType.Unary, "application.host.v1.Plugins", "Create",
         Marshallers.Create<global::Harmos.Clients.PluginsCreateRequest>(value => value.ToByteArray(), bytes => global::Harmos.Clients.PluginsCreateRequest.Parser.ParseFrom(bytes)),
         Marshallers.Create<global::Harmos.Clients.PluginsCreateResponse>(value => value.ToByteArray(), bytes => global::Harmos.Clients.PluginsCreateResponse.Parser.ParseFrom(bytes)));

@@ -308,6 +308,7 @@ pub fn settings(root: &Path) -> PluginManagerSettings {
 }
 pub fn remote(name: &str, url: &str) -> PluginsCreateRequest {
     PluginsCreateRequest {
+        origin: None,
         request_id: name.into(),
         name: name.into(),
         placement: Some(PluginPlacement {
@@ -318,6 +319,7 @@ pub fn remote(name: &str, url: &str) -> PluginsCreateRequest {
 }
 pub fn managed(name: &str, content: PluginManaged, enabled: bool) -> PluginsCreateRequest {
     PluginsCreateRequest {
+        origin: None,
         request_id: name.into(),
         name: name.into(),
         placement: Some(PluginPlacement {

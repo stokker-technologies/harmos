@@ -48,7 +48,6 @@ using harmos::plugin::v1::InstanceStopResponse;
 using std::async;
 using std::atomic;
 using std::launch;
-using std::move;
 using std::promise;
 using std::runtime_error;
 using std::stoi;
@@ -191,10 +190,10 @@ TEST_CASE("Listener Destruction and Moves Own Shutdown") {
   {
     auto listener = plugin.start("127.0.0.1:0");
     address = listener.address();
-    Listener moved(move(listener));
+    Listener moved(std::move(listener));
     listener.close();
     auto replacement = plugin.start("127.0.0.1:0");
-    replacement = move(moved);
+    replacement = std::move(moved);
     REQUIRE(stopped == 1);
   }
   REQUIRE(stopped == 2);

@@ -17,13 +17,14 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
+use std::fmt::Display;
 // Third Party Imports
 use prost::Message;
 use serde::{Deserialize, Serialize};
 // Local Imports
 use super::{Error, PluginManagerSettings};
 use harmos_domain::model::storage::{ObjectCatalog, ObjectDefinition, ObjectRetention, StoredObject};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 use harmos_storage::{CompareExchange, ObjectVersion, ObjectVersionToken, StorageManager};
 
 /* === Constants === */
@@ -53,12 +54,16 @@ pub(super) struct SavedEntry {
     pub executable: Option<String>,
     pub executable_digest: Option<[u8; 32]>,
     pub generation: u64,
+
     #[serde(default)]
     pub settings: Vec<u8>,
+
     #[serde(default)]
     pub settings_revision: Vec<u8>,
+
     #[serde(default)]
     pub settings_receipts: BTreeMap<String, SavedMutation>,
+
     #[serde(default)]
     pub replacements: BTreeMap<String, SavedMutation>,
 }
@@ -73,6 +78,7 @@ pub(super) struct Store {
     pub(super) storage: StorageManager,
     namespace: String,
     version: Option<ObjectVersionToken>,
+    payload: Option<Vec<u8>>,
     max_bytes: usize,
 }
 
@@ -107,11 +113,11 @@ impl Registry {
             revision.checked_add(1).ok_or_else(|| Error::new("exhausted", "Set Plugin Revision", "create a new manager namespace"))?;
         Ok(revision.to_be_bytes().to_vec())
     }
-    pub fn values(&self) -> Result<BTreeMap<String, wire::PluginEntry>, Error> {
+    pub fn values(&self) -> Result<BTreeMap<String, host::PluginEntry>, Error> {
         self.entries
             .iter()
             .map(|(name, saved)| {
-                let entry = wire::PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Restore Plugin Entry", error))?;
+                let entry = host::PluginEntry::decode(saved.entry.as_slice()).map_err(|error| problem("Restore Plugin Entry", error))?;
                 Ok((name.clone(), entry))
             })
             .collect()
@@ -124,17 +130,18 @@ impl Store {
             .get_object::<RegistryObject>(&settings.namespace, ObjectVersion::Latest)
             .await
             .map_err(|error| problem("Restore Plugin Registry", error))?;
-        let (version, registry) = match saved {
+        let (version, payload, registry) = match saved {
             Some(saved) => {
                 let registry = serde_json::from_slice(&saved.value.payload).map_err(|error| problem("Decode Plugin Registry", error))?;
-                (Some(saved.version.clone()), registry)
+                (Some(saved.version.clone()), Some(saved.value.payload.clone()), registry)
             }
-            None => (None, Registry::empty()),
+            None => (None, None, Registry::empty()),
         };
         let store = Self {
             storage,
             namespace: settings.namespace.clone(),
             version,
+            payload,
             max_bytes: settings.registry_bytes.get(),
         };
         Ok((store, registry))
@@ -148,12 +155,16 @@ impl Store {
                 "reduce the entry set or configure a larger registry capacity",
             ));
         }
+        if self.payload.as_deref() == Some(payload.as_slice()) {
+            return Ok(());
+        }
         let object = RegistryObject { id: self.namespace.clone(), payload };
         let result =
             self.storage.compare_exchange(self.version.clone(), &object).await.map_err(|error| problem("Save Plugin Registry", error))?;
         match result {
             CompareExchange::Applied(receipt) => {
                 self.version = Some(receipt.version);
+                self.payload = Some(object.payload);
                 Ok(())
             }
             CompareExchange::Conflict { .. } => {
@@ -171,7 +182,7 @@ pub fn catalog() -> ObjectCatalog {
 
 /* === Private Functions === */
 
-pub(super) fn problem(action: &str, source: impl std::fmt::Display) -> Error {
+pub(super) fn problem(action: &str, source: impl Display) -> Error {
     Error::new("manager_failure", format!("{action}: {source}"), "correct the reported cause and retry the action")
 }
 

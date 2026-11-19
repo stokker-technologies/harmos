@@ -712,12 +712,13 @@ class PluginsResource:
         value: PluginValue,
         *,
         request_id: str | None = None,
+        origin: str | None = None,
         metadata: Metadata | None = None,
         timeout: float | None = None,
         credentials: CallCredentials | None = None,
     ) -> PluginsCreateResponse:
         request = PluginsCreateRequest(
-            request_id=request_id if request_id is not None else str(uuid4()), name=name, placement=placement, value=value
+            request_id=request_id if request_id is not None else str(uuid4()), name=name, placement=placement, value=value, origin=origin
         )
         response = await unary(
             self._channel,

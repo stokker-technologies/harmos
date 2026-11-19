@@ -47,71 +47,72 @@ namespace Harmos.Clients;
             "Lmhvc3QudjEuUGx1Z2luU25hcHNob3RIAFIIc25hcHNob3QSNgoGY2hhbmdl",
             "GAMgASgLMhwuaGFybW9zLmhvc3QudjEuUGx1Z2luQ2hhbmdlSABSBmNoYW5n",
             "ZRIpCg9yZXN5bmNfcmVxdWlyZWQYBCABKAlIAFIOcmVzeW5jUmVxdWlyZWRC",
-            "BwoFZXZlbnQiuwEKFFBsdWdpbnNDcmVhdGVSZXF1ZXN0Eh0KCnJlcXVlc3Rf",
+            "BwoFZXZlbnQi4wEKFFBsdWdpbnNDcmVhdGVSZXF1ZXN0Eh0KCnJlcXVlc3Rf",
             "aWQYASABKAlSCXJlcXVlc3RJZBISCgRuYW1lGAIgASgJUgRuYW1lEj0KCXBs",
             "YWNlbWVudBgDIAEoCzIfLmhhcm1vcy5ob3N0LnYxLlBsdWdpblBsYWNlbWVu",
             "dFIJcGxhY2VtZW50EjEKBXZhbHVlGAQgASgLMhsuaGFybW9zLmhvc3QudjEu",
-            "UGx1Z2luVmFsdWVSBXZhbHVlIn4KFVBsdWdpbnNDcmVhdGVSZXNwb25zZRIx",
-            "CgVlbnRyeRgBIAEoCzIbLmhhcm1vcy5ob3N0LnYxLlBsdWdpbkVudHJ5UgVl",
-            "bnRyeRIyCgdyZWNlaXB0GAIgASgLMhguaGFybW9zLm1vZGVsLnYxLlJlY2Vp",
-            "cHRSB3JlY2VpcHQihwEKEVBsdWdpbnNTZXRSZXF1ZXN0EhIKBG5hbWUYASAB",
-            "KAlSBG5hbWUSMQoFdmFsdWUYAiABKAsyGy5oYXJtb3MuaG9zdC52MS5QbHVn",
-            "aW5WYWx1ZVIFdmFsdWUSKwoRZXhwZWN0ZWRfcmV2aXNpb24YAyABKAxSEGV4",
-            "cGVjdGVkUmV2aXNpb24iewoSUGx1Z2luc1NldFJlc3BvbnNlEjEKBWVudHJ5",
-            "GAEgASgLMhsuaGFybW9zLmhvc3QudjEuUGx1Z2luRW50cnlSBWVudHJ5EjIK",
-            "B3JlY2VpcHQYAiABKAsyGC5oYXJtb3MubW9kZWwudjEuUmVjZWlwdFIHcmVj",
-            "ZWlwdCJXChRQbHVnaW5zRGVsZXRlUmVxdWVzdBISCgRuYW1lGAEgASgJUgRu",
-            "YW1lEisKEWV4cGVjdGVkX3JldmlzaW9uGAIgASgMUhBleHBlY3RlZFJldmlz",
-            "aW9uIksKFVBsdWdpbnNEZWxldGVSZXNwb25zZRIyCgdyZWNlaXB0GAEgASgL",
-            "MhguaGFybW9zLm1vZGVsLnYxLlJlY2VpcHRSB3JlY2VpcHQiWAoVUGx1Z2lu",
-            "c1Jlc3RhcnRSZXF1ZXN0EhIKBG5hbWUYASABKAlSBG5hbWUSKwoRZXhwZWN0",
-            "ZWRfcmV2aXNpb24YAiABKAxSEGV4cGVjdGVkUmV2aXNpb24iSwoWUGx1Z2lu",
-            "c1Jlc3RhcnRSZXNwb25zZRIxCgVlbnRyeRgBIAEoCzIbLmhhcm1vcy5ob3N0",
-            "LnYxLlBsdWdpbkVudHJ5UgVlbnRyeSK2AQoVUGx1Z2luc1JlcGxhY2VSZXF1",
-            "ZXN0EhIKBG5hbWUYASABKAlSBG5hbWUSPQoJcGxhY2VtZW50GAIgASgLMh8u",
-            "aGFybW9zLmhvc3QudjEuUGx1Z2luUGxhY2VtZW50UglwbGFjZW1lbnQSKwoR",
-            "ZXhwZWN0ZWRfcmV2aXNpb24YAyABKAxSEGV4cGVjdGVkUmV2aXNpb24SHQoK",
-            "cmVxdWVzdF9pZBgEIAEoCVIJcmVxdWVzdElkIn8KFlBsdWdpbnNSZXBsYWNl",
-            "UmVzcG9uc2USMQoFZW50cnkYASABKAsyGy5oYXJtb3MuaG9zdC52MS5QbHVn",
-            "aW5FbnRyeVIFZW50cnkSMgoHcmVjZWlwdBgCIAEoCzIYLmhhcm1vcy5tb2Rl",
-            "bC52MS5SZWNlaXB0UgdyZWNlaXB0IicKC1BsdWdpblZhbHVlEhgKB2VuYWJs",
-            "ZWQYASABKAhSB2VuYWJsZWQiigIKEVBsdWdpbkRlc2NyaXB0aW9uEg4KAmlk",
-            "GAEgASgJUgJpZBIYCgd2ZXJzaW9uGAIgASgJUgd2ZXJzaW9uEjkKCnN0YXJ0",
-            "ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wUglzdGFy",
-            "dGVkQXQSQQoMZGVjbGFyYXRpb25zGAQgASgLMh0uaGFybW9zLm1vZGVsLnYx",
-            "LkRlY2xhcmF0aW9uc1IMZGVjbGFyYXRpb25zEhoKCHJldmlzaW9uGAUgASgN",
-            "UghyZXZpc2lvbhIQCgNzZGsYBiABKAlSA3NkaxIfCgtzZGtfdmVyc2lvbhgH",
-            "IAEoCVIKc2RrVmVyc2lvbiIgCgxQbHVnaW5SZW1vdGUSEAoDdXJsGAEgASgJ",
-            "UgN1cmwiYQoNUGx1Z2luTWFuYWdlZBI4Cgdjb250ZW50GAEgASgLMh4uaGFy",
-            "bW9zLm1vZGVsLnYxLkZpbGVSZWZlcmVuY2VSB2NvbnRlbnQSFgoGc2hhMjU2",
-            "GAIgASgMUgZzaGEyNTYiDQoLUGx1Z2luR3Vlc3QiwQEKD1BsdWdpblBsYWNl",
-            "bWVudBI5CgdtYW5hZ2VkGAEgASgLMh0uaGFybW9zLmhvc3QudjEuUGx1Z2lu",
-            "TWFuYWdlZEgAUgdtYW5hZ2VkEjYKBnJlbW90ZRgCIAEoCzIcLmhhcm1vcy5o",
-            "b3N0LnYxLlBsdWdpblJlbW90ZUgAUgZyZW1vdGUSMwoFZ3Vlc3QYAyABKAsy",
-            "Gy5oYXJtb3MuaG9zdC52MS5QbHVnaW5HdWVzdEgAUgVndWVzdEIGCgRraW5k",
-            "IocBCg1QbHVnaW5Qcm9jZXNzEg4KAmlkGAEgASgNUgJpZBIrChFleGVjdXRh",
-            "YmxlX2RpZ2VzdBgCIAEoDFIQZXhlY3V0YWJsZURpZ2VzdBI5CgpzdGFydGVk",
-            "X2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJc3RhcnRl",
-            "ZEF0IuUDCgtQbHVnaW5FbnRyeRISCgRuYW1lGAEgASgJUgRuYW1lEj0KCXBs",
-            "YWNlbWVudBgCIAEoCzIfLmhhcm1vcy5ob3N0LnYxLlBsdWdpblBsYWNlbWVu",
-            "dFIJcGxhY2VtZW50EjEKBXZhbHVlGAMgASgLMhsuaGFybW9zLmhvc3QudjEu",
-            "UGx1Z2luVmFsdWVSBXZhbHVlEhoKCHJldmlzaW9uGAQgASgMUghyZXZpc2lv",
-            "bhIxCgVzdGF0ZRgFIAEoDjIbLmhhcm1vcy5ob3N0LnYxLlBsdWdpblN0YXRl",
-            "UgVzdGF0ZRIyCgdmYWlsdXJlGAYgASgLMhguaGFybW9zLm1vZGVsLnYxLkZh",
-            "aWx1cmVSB2ZhaWx1cmUSQwoLZGVzY3JpcHRpb24YByABKAsyIS5oYXJtb3Mu",
-            "aG9zdC52MS5QbHVnaW5EZXNjcmlwdGlvblILZGVzY3JpcHRpb24SLwoTZGVj",
-            "bGFyYXRpb25zX2RpZ2VzdBgIIAEoDFISZGVjbGFyYXRpb25zRGlnZXN0EjcK",
-            "B3Byb2Nlc3MYCSABKAsyHS5oYXJtb3MuaG9zdC52MS5QbHVnaW5Qcm9jZXNz",
-            "Ugdwcm9jZXNzEh4KCmFjdGl2YXRpb24YCiABKARSCmFjdGl2YXRpb24iRwoO",
-            "UGx1Z2luU25hcHNob3QSNQoHZW50cmllcxgBIAMoCzIbLmhhcm1vcy5ob3N0",
-            "LnYxLlBsdWdpbkVudHJ5UgdlbnRyaWVzImcKDFBsdWdpbkNoYW5nZRIzCgVl",
-            "bnRyeRgBIAEoCzIbLmhhcm1vcy5ob3N0LnYxLlBsdWdpbkVudHJ5SABSBWVu",
-            "dHJ5EhoKB2RlbGV0ZWQYAiABKAlIAFIHZGVsZXRlZEIGCgRraW5kKrMBCgtQ",
-            "bHVnaW5TdGF0ZRIcChhQTFVHSU5fU1RBVEVfVU5TUEVDSUZJRUQQABIbChdQ",
-            "TFVHSU5fU1RBVEVfQ09OTkVDVElORxABEhYKElBMVUdJTl9TVEFURV9SRUFE",
-            "WRACEhwKGFBMVUdJTl9TVEFURV9VTkFWQUlMQUJMRRADEhgKFFBMVUdJTl9T",
-            "VEFURV9TVE9QUEVEEAQSGQoVUExVR0lOX1NUQVRFX1NUT1BQSU5HEAViBnBy",
-            "b3RvMw=="));
+            "UGx1Z2luVmFsdWVSBXZhbHVlEhsKBm9yaWdpbhgFIAEoCUgAUgZvcmlnaW6I",
+            "AQFCCQoHX29yaWdpbiJ+ChVQbHVnaW5zQ3JlYXRlUmVzcG9uc2USMQoFZW50",
+            "cnkYASABKAsyGy5oYXJtb3MuaG9zdC52MS5QbHVnaW5FbnRyeVIFZW50cnkS",
+            "MgoHcmVjZWlwdBgCIAEoCzIYLmhhcm1vcy5tb2RlbC52MS5SZWNlaXB0Ugdy",
+            "ZWNlaXB0IocBChFQbHVnaW5zU2V0UmVxdWVzdBISCgRuYW1lGAEgASgJUgRu",
+            "YW1lEjEKBXZhbHVlGAIgASgLMhsuaGFybW9zLmhvc3QudjEuUGx1Z2luVmFs",
+            "dWVSBXZhbHVlEisKEWV4cGVjdGVkX3JldmlzaW9uGAMgASgMUhBleHBlY3Rl",
+            "ZFJldmlzaW9uInsKElBsdWdpbnNTZXRSZXNwb25zZRIxCgVlbnRyeRgBIAEo",
+            "CzIbLmhhcm1vcy5ob3N0LnYxLlBsdWdpbkVudHJ5UgVlbnRyeRIyCgdyZWNl",
+            "aXB0GAIgASgLMhguaGFybW9zLm1vZGVsLnYxLlJlY2VpcHRSB3JlY2VpcHQi",
+            "VwoUUGx1Z2luc0RlbGV0ZVJlcXVlc3QSEgoEbmFtZRgBIAEoCVIEbmFtZRIr",
+            "ChFleHBlY3RlZF9yZXZpc2lvbhgCIAEoDFIQZXhwZWN0ZWRSZXZpc2lvbiJL",
+            "ChVQbHVnaW5zRGVsZXRlUmVzcG9uc2USMgoHcmVjZWlwdBgBIAEoCzIYLmhh",
+            "cm1vcy5tb2RlbC52MS5SZWNlaXB0UgdyZWNlaXB0IlgKFVBsdWdpbnNSZXN0",
+            "YXJ0UmVxdWVzdBISCgRuYW1lGAEgASgJUgRuYW1lEisKEWV4cGVjdGVkX3Jl",
+            "dmlzaW9uGAIgASgMUhBleHBlY3RlZFJldmlzaW9uIksKFlBsdWdpbnNSZXN0",
+            "YXJ0UmVzcG9uc2USMQoFZW50cnkYASABKAsyGy5oYXJtb3MuaG9zdC52MS5Q",
+            "bHVnaW5FbnRyeVIFZW50cnkitgEKFVBsdWdpbnNSZXBsYWNlUmVxdWVzdBIS",
+            "CgRuYW1lGAEgASgJUgRuYW1lEj0KCXBsYWNlbWVudBgCIAEoCzIfLmhhcm1v",
+            "cy5ob3N0LnYxLlBsdWdpblBsYWNlbWVudFIJcGxhY2VtZW50EisKEWV4cGVj",
+            "dGVkX3JldmlzaW9uGAMgASgMUhBleHBlY3RlZFJldmlzaW9uEh0KCnJlcXVl",
+            "c3RfaWQYBCABKAlSCXJlcXVlc3RJZCJ/ChZQbHVnaW5zUmVwbGFjZVJlc3Bv",
+            "bnNlEjEKBWVudHJ5GAEgASgLMhsuaGFybW9zLmhvc3QudjEuUGx1Z2luRW50",
+            "cnlSBWVudHJ5EjIKB3JlY2VpcHQYAiABKAsyGC5oYXJtb3MubW9kZWwudjEu",
+            "UmVjZWlwdFIHcmVjZWlwdCInCgtQbHVnaW5WYWx1ZRIYCgdlbmFibGVkGAEg",
+            "ASgIUgdlbmFibGVkIooCChFQbHVnaW5EZXNjcmlwdGlvbhIOCgJpZBgBIAEo",
+            "CVICaWQSGAoHdmVyc2lvbhgCIAEoCVIHdmVyc2lvbhI5CgpzdGFydGVkX2F0",
+            "GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcFIJc3RhcnRlZEF0",
+            "EkEKDGRlY2xhcmF0aW9ucxgEIAEoCzIdLmhhcm1vcy5tb2RlbC52MS5EZWNs",
+            "YXJhdGlvbnNSDGRlY2xhcmF0aW9ucxIaCghyZXZpc2lvbhgFIAEoDVIIcmV2",
+            "aXNpb24SEAoDc2RrGAYgASgJUgNzZGsSHwoLc2RrX3ZlcnNpb24YByABKAlS",
+            "CnNka1ZlcnNpb24iIAoMUGx1Z2luUmVtb3RlEhAKA3VybBgBIAEoCVIDdXJs",
+            "ImEKDVBsdWdpbk1hbmFnZWQSOAoHY29udGVudBgBIAEoCzIeLmhhcm1vcy5t",
+            "b2RlbC52MS5GaWxlUmVmZXJlbmNlUgdjb250ZW50EhYKBnNoYTI1NhgCIAEo",
+            "DFIGc2hhMjU2Ig0KC1BsdWdpbkd1ZXN0IsEBCg9QbHVnaW5QbGFjZW1lbnQS",
+            "OQoHbWFuYWdlZBgBIAEoCzIdLmhhcm1vcy5ob3N0LnYxLlBsdWdpbk1hbmFn",
+            "ZWRIAFIHbWFuYWdlZBI2CgZyZW1vdGUYAiABKAsyHC5oYXJtb3MuaG9zdC52",
+            "MS5QbHVnaW5SZW1vdGVIAFIGcmVtb3RlEjMKBWd1ZXN0GAMgASgLMhsuaGFy",
+            "bW9zLmhvc3QudjEuUGx1Z2luR3Vlc3RIAFIFZ3Vlc3RCBgoEa2luZCKHAQoN",
+            "UGx1Z2luUHJvY2VzcxIOCgJpZBgBIAEoDVICaWQSKwoRZXhlY3V0YWJsZV9k",
+            "aWdlc3QYAiABKAxSEGV4ZWN1dGFibGVEaWdlc3QSOQoKc3RhcnRlZF9hdBgD",
+            "IAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBSCXN0YXJ0ZWRBdCL9",
+            "AwoLUGx1Z2luRW50cnkSEgoEbmFtZRgBIAEoCVIEbmFtZRI9CglwbGFjZW1l",
+            "bnQYAiABKAsyHy5oYXJtb3MuaG9zdC52MS5QbHVnaW5QbGFjZW1lbnRSCXBs",
+            "YWNlbWVudBIxCgV2YWx1ZRgDIAEoCzIbLmhhcm1vcy5ob3N0LnYxLlBsdWdp",
+            "blZhbHVlUgV2YWx1ZRIaCghyZXZpc2lvbhgEIAEoDFIIcmV2aXNpb24SMQoF",
+            "c3RhdGUYBSABKA4yGy5oYXJtb3MuaG9zdC52MS5QbHVnaW5TdGF0ZVIFc3Rh",
+            "dGUSMgoHZmFpbHVyZRgGIAEoCzIYLmhhcm1vcy5tb2RlbC52MS5GYWlsdXJl",
+            "UgdmYWlsdXJlEkMKC2Rlc2NyaXB0aW9uGAcgASgLMiEuaGFybW9zLmhvc3Qu",
+            "djEuUGx1Z2luRGVzY3JpcHRpb25SC2Rlc2NyaXB0aW9uEi8KE2RlY2xhcmF0",
+            "aW9uc19kaWdlc3QYCCABKAxSEmRlY2xhcmF0aW9uc0RpZ2VzdBI3Cgdwcm9j",
+            "ZXNzGAkgASgLMh0uaGFybW9zLmhvc3QudjEuUGx1Z2luUHJvY2Vzc1IHcHJv",
+            "Y2VzcxIeCgphY3RpdmF0aW9uGAogASgEUgphY3RpdmF0aW9uEhYKBm9yaWdp",
+            "bhgLIAEoCVIGb3JpZ2luIkcKDlBsdWdpblNuYXBzaG90EjUKB2VudHJpZXMY",
+            "ASADKAsyGy5oYXJtb3MuaG9zdC52MS5QbHVnaW5FbnRyeVIHZW50cmllcyJn",
+            "CgxQbHVnaW5DaGFuZ2USMwoFZW50cnkYASABKAsyGy5oYXJtb3MuaG9zdC52",
+            "MS5QbHVnaW5FbnRyeUgAUgVlbnRyeRIaCgdkZWxldGVkGAIgASgJSABSB2Rl",
+            "bGV0ZWRCBgoEa2luZCqzAQoLUGx1Z2luU3RhdGUSHAoYUExVR0lOX1NUQVRF",
+            "X1VOU1BFQ0lGSUVEEAASGwoXUExVR0lOX1NUQVRFX0NPTk5FQ1RJTkcQARIW",
+            "ChJQTFVHSU5fU1RBVEVfUkVBRFkQAhIcChhQTFVHSU5fU1RBVEVfVU5BVkFJ",
+            "TEFCTEUQAxIYChRQTFVHSU5fU1RBVEVfU1RPUFBFRBAEEhkKFVBMVUdJTl9T",
+            "VEFURV9TVE9QUElORxAFYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Harmos.DescriptionReflection.Descriptor, global::Harmos.FailureReflection.Descriptor, global::Harmos.FileReflection.Descriptor, global::Harmos.PositionReflection.Descriptor, global::Harmos.ReceiptReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Harmos.Clients.PluginState), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -121,7 +122,7 @@ namespace Harmos.Clients;
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsListResponse), global::Harmos.Clients.PluginsListResponse.Parser, new[]{ "Entries", "ResolvedAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsWatchRequest), global::Harmos.Clients.PluginsWatchRequest.Parser, new[]{ "Name", "At" }, new[]{ "Name", "At" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsWatchResponse), global::Harmos.Clients.PluginsWatchResponse.Parser, new[]{ "ResolvedAt", "Snapshot", "Change", "ResyncRequired" }, new[]{ "Event" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsCreateRequest), global::Harmos.Clients.PluginsCreateRequest.Parser, new[]{ "RequestId", "Name", "Placement", "Value" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsCreateRequest), global::Harmos.Clients.PluginsCreateRequest.Parser, new[]{ "RequestId", "Name", "Placement", "Value", "Origin" }, new[]{ "Origin" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsCreateResponse), global::Harmos.Clients.PluginsCreateResponse.Parser, new[]{ "Entry", "Receipt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsSetRequest), global::Harmos.Clients.PluginsSetRequest.Parser, new[]{ "Name", "Value", "ExpectedRevision" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginsSetResponse), global::Harmos.Clients.PluginsSetResponse.Parser, new[]{ "Entry", "Receipt" }, null, null, null, null),
@@ -138,7 +139,7 @@ namespace Harmos.Clients;
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginGuest), global::Harmos.Clients.PluginGuest.Parser, null, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginPlacement), global::Harmos.Clients.PluginPlacement.Parser, new[]{ "Managed", "Remote", "Guest" }, new[]{ "Kind" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginProcess), global::Harmos.Clients.PluginProcess.Parser, new[]{ "Id", "ExecutableDigest", "StartedAt" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginEntry), global::Harmos.Clients.PluginEntry.Parser, new[]{ "Name", "Placement", "Value", "Revision", "State", "Failure", "Description", "DeclarationsDigest", "Process", "Activation" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginEntry), global::Harmos.Clients.PluginEntry.Parser, new[]{ "Name", "Placement", "Value", "Revision", "State", "Failure", "Description", "DeclarationsDigest", "Process", "Activation", "Origin" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginSnapshot), global::Harmos.Clients.PluginSnapshot.Parser, new[]{ "Entries" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Clients.PluginChange), global::Harmos.Clients.PluginChange.Parser, new[]{ "Entry", "Deleted" }, new[]{ "Kind" }, null, null, null)
           }));
@@ -1787,6 +1788,7 @@ namespace Harmos.Clients;
       name_ = other.name_;
       placement_ = other.placement_ != null ? other.placement_.Clone() : null;
       value_ = other.value_ != null ? other.value_.Clone() : null;
+      origin_ = other.origin_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1844,6 +1846,32 @@ namespace Harmos.Clients;
       }
     }
 
+    /// <summary>Field number for the "origin" field.</summary>
+    public const int OriginFieldNumber = 5;
+    private readonly static string OriginDefaultValue = "";
+
+    private string origin_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Origin {
+      get { return origin_ ?? OriginDefaultValue; }
+      set {
+        origin_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+    /// <summary>Gets whether the "origin" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasOrigin {
+      get { return origin_ != null; }
+    }
+    /// <summary>Clears the value of the "origin" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearOrigin() {
+      origin_ = null;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1863,6 +1891,7 @@ namespace Harmos.Clients;
       if (Name != other.Name) return false;
       if (!object.Equals(Placement, other.Placement)) return false;
       if (!object.Equals(Value, other.Value)) return false;
+      if (Origin != other.Origin) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1874,6 +1903,7 @@ namespace Harmos.Clients;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
       if (placement_ != null) hash ^= Placement.GetHashCode();
       if (value_ != null) hash ^= Value.GetHashCode();
+      if (HasOrigin) hash ^= Origin.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1908,6 +1938,10 @@ namespace Harmos.Clients;
         output.WriteRawTag(34);
         output.WriteMessage(Value);
       }
+      if (HasOrigin) {
+        output.WriteRawTag(42);
+        output.WriteString(Origin);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1934,6 +1968,10 @@ namespace Harmos.Clients;
         output.WriteRawTag(34);
         output.WriteMessage(Value);
       }
+      if (HasOrigin) {
+        output.WriteRawTag(42);
+        output.WriteString(Origin);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1955,6 +1993,9 @@ namespace Harmos.Clients;
       }
       if (value_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Value);
+      }
+      if (HasOrigin) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Origin);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1985,6 +2026,9 @@ namespace Harmos.Clients;
           Value = new global::Harmos.Clients.PluginValue();
         }
         Value.MergeFrom(other.Value);
+      }
+      if (other.HasOrigin) {
+        Origin = other.Origin;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -2027,6 +2071,10 @@ namespace Harmos.Clients;
             input.ReadMessage(Value);
             break;
           }
+          case 42: {
+            Origin = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -2066,6 +2114,10 @@ namespace Harmos.Clients;
               Value = new global::Harmos.Clients.PluginValue();
             }
             input.ReadMessage(Value);
+            break;
+          }
+          case 42: {
+            Origin = input.ReadString();
             break;
           }
         }
@@ -6229,6 +6281,7 @@ namespace Harmos.Clients;
       declarationsDigest_ = other.declarationsDigest_;
       process_ = other.process_ != null ? other.process_.Clone() : null;
       activation_ = other.activation_;
+      origin_ = other.origin_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -6358,6 +6411,18 @@ namespace Harmos.Clients;
       }
     }
 
+    /// <summary>Field number for the "origin" field.</summary>
+    public const int OriginFieldNumber = 11;
+    private string origin_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Origin {
+      get { return origin_; }
+      set {
+        origin_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -6383,6 +6448,7 @@ namespace Harmos.Clients;
       if (DeclarationsDigest != other.DeclarationsDigest) return false;
       if (!object.Equals(Process, other.Process)) return false;
       if (Activation != other.Activation) return false;
+      if (Origin != other.Origin) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -6400,6 +6466,7 @@ namespace Harmos.Clients;
       if (DeclarationsDigest.Length != 0) hash ^= DeclarationsDigest.GetHashCode();
       if (process_ != null) hash ^= Process.GetHashCode();
       if (Activation != 0UL) hash ^= Activation.GetHashCode();
+      if (Origin.Length != 0) hash ^= Origin.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -6458,6 +6525,10 @@ namespace Harmos.Clients;
         output.WriteRawTag(80);
         output.WriteUInt64(Activation);
       }
+      if (Origin.Length != 0) {
+        output.WriteRawTag(90);
+        output.WriteString(Origin);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -6508,6 +6579,10 @@ namespace Harmos.Clients;
         output.WriteRawTag(80);
         output.WriteUInt64(Activation);
       }
+      if (Origin.Length != 0) {
+        output.WriteRawTag(90);
+        output.WriteString(Origin);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -6547,6 +6622,9 @@ namespace Harmos.Clients;
       }
       if (Activation != 0UL) {
         size += 1 + pb::CodedOutputStream.ComputeUInt64Size(Activation);
+      }
+      if (Origin.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Origin);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -6604,6 +6682,9 @@ namespace Harmos.Clients;
       }
       if (other.Activation != 0UL) {
         Activation = other.Activation;
+      }
+      if (other.Origin.Length != 0) {
+        Origin = other.Origin;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -6679,6 +6760,10 @@ namespace Harmos.Clients;
             Activation = input.ReadUInt64();
             break;
           }
+          case 90: {
+            Origin = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -6751,6 +6836,10 @@ namespace Harmos.Clients;
           }
           case 80: {
             Activation = input.ReadUInt64();
+            break;
+          }
+          case 90: {
+            Origin = input.ReadString();
             break;
           }
         }

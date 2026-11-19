@@ -187,6 +187,9 @@ pub struct PluginsCreateRequest {
     pub placement: ::core::option::Option<PluginPlacement>,
     #[prost(message, optional, tag = "4")]
     pub value: ::core::option::Option<PluginValue>,
+    /// Opaque creator-chosen label; empty or absent means unspecified and replacement preserves it.
+    #[prost(string, optional, tag = "5")]
+    pub origin: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Returns the created entry and persisted receipt; identical request-ID replay returns this original response.
 #[allow(clippy::all)]
@@ -398,6 +401,9 @@ pub struct PluginEntry {
     /// Generation of the entry's activation; old calls and handles do not follow its replacement.
     #[prost(uint64, tag = "10")]
     pub activation: u64,
+    /// Opaque creator-chosen label; empty means unspecified and only Delete then Create can change it.
+    #[prost(string, tag = "11")]
+    pub origin: ::prost::alloc::string::String,
 }
 /// Carries the entries selected at the opening boundary of a plugin watch.
 #[allow(clippy::all)]

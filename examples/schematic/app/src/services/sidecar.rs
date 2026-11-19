@@ -144,6 +144,7 @@ pub async fn start(runtime: &Runtime, path: &Path, directory: &Path) -> Result<R
     let mut watch = manager.watch(PluginsWatchRequest { name: Some(NAME.into()), at: None }).await.map_err(failed)?;
     manager
         .create(PluginsCreateRequest {
+            origin: None,
             request_id: "schematic-tools".into(),
             name: NAME.into(),
             placement: Some(PluginPlacement {
