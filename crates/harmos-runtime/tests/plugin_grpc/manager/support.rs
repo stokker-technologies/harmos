@@ -340,10 +340,17 @@ pub async fn state(watch: &mut Streaming<PluginsWatchResponse>, name: &str, stat
         };
         if let Some(entry) = entry
             && entry.name == name
-            && entry.state == state as i32
             && entry.activation >= activation
         {
-            return entry;
+            if entry.state == state as i32 {
+                return entry;
+            }
+            let waiting_for_ready = state == PluginState::Ready;
+            let unavailable = entry.state == PluginState::Unavailable as i32;
+            let managed =
+                matches!(entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()), Some(plugin_placement::Kind::Managed(_)));
+            let failed_start = waiting_for_ready && unavailable && managed;
+            assert!(!failed_start, "managed plugin {name} failed before readiness: {:?}", entry.failure);
         }
     }
 }

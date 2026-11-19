@@ -74,7 +74,7 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         let mut processes = Vec::new();
         for enabled in [true, false] {
             // Activation Publishes the Bundle Version While Retaining Live Metadata
-            let name = if enabled { "frozen-enabled" } else { "frozen-disabled" };
+            let name = if enabled { "frozen_enabled" } else { "frozen_disabled" };
             let mut watch = host.client.watch(PluginsWatchRequest { name: Some(name.into()), at: None }).await.unwrap().into_inner();
             host.client.create(support::managed(name, original.clone(), true)).await.unwrap();
             let ready = support::state(&mut watch, name, PluginState::Ready, 1).await;
@@ -303,6 +303,21 @@ async fn failed_readiness_is_reaped_before_immediate_delete() {
     let failed = support::state(&mut watch, "failing", PluginState::Unavailable, 1).await;
     assert!(failed.failure.is_some());
     process.assert_exited().await;
+
+    // A Ready Wait Reports the Retained Startup Failure Without Waiting for Another Event
+    let mut ready_watch = host
+        .client
+        .watch(PluginsWatchRequest {
+            name: Some(failed.name.clone()),
+            at: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    let waiting = tokio::spawn(async move { support::state(&mut ready_watch, "failing", PluginState::Ready, 1).await });
+    assert!(waiting.await.unwrap_err().is_panic());
+
+    // Delete the Failed Entry After Its Child Has Exited
     host.client
         .delete(PluginsDeleteRequest {
             name: failed.name,
