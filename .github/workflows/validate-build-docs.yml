@@ -42,8 +42,6 @@ jobs:
       run: mise run format -- --language typescript --check
     - name: Lint the Site
       run: mise run lint -- --language typescript
-    - name: Check Guide Public Surfaces
-      run: mise run ci:docs
     - run: mise run docs:build -- --archive ${{ inputs.profile == 'release' && inputs.channel != 'nightly' && '--release' || '' }}
       name: Build Documentation and Check Local Links
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

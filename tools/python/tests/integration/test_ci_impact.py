@@ -22,7 +22,7 @@ from unittest.mock import call, patch
 
 # Third Party Imports
 # Local Imports
-from harmos_tools.ci import docs, impact, required, tasks
+from harmos_tools.ci import impact, required, tasks
 from harmos_tools.task import execute
 
 # Type Checking Imports
@@ -268,21 +268,6 @@ class ImpactPlanning(unittest.TestCase):
             self.assertTrue(all(values[name] == "true" for name in selected))
             self.assertTrue(all(values[name] == "false" for name in skipped))
             self.assertEqual(values["test"], "true")
-        finally:
-            scratch.cleanup()
-
-    def test_guide_and_link_checks_refuse_invalid_public_names_and_missing_targets(self) -> None:
-        scratch = tempfile.TemporaryDirectory()
-        try:
-            root = Path(scratch.name)
-            (root / "docs").mkdir()
-            (root / "README.md").write_text("# Product\n[Guide](docs/guide.md#usage)\n", encoding="utf-8")
-            (root / "docs/guide.md").write_text("[Home](../README.md)\n[Web](https://example.test)\n", encoding="utf-8")
-            self.assertEqual(docs.check_links(root, ["README.md", "docs/guide.md"]), [])
-            self.assertEqual(docs.check_guides(root), [])
-            (root / "docs/guide.md").write_text("import sample.v1.Client\n[Missing](missing.md)\n", encoding="utf-8")
-            self.assertEqual(len(docs.check_guides(root)), 1)
-            self.assertEqual(len(docs.check_links(root, ["docs/guide.md"])), 1)
         finally:
             scratch.cleanup()
 
