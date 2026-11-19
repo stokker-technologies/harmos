@@ -18,6 +18,7 @@
 
 // Third Party Imports
 #include <catch2/catch_test_macros.hpp>
+#include <grpc/impl/channel_arg_names.h>
 #include <grpcpp/grpcpp.h>
 
 // Local Imports
@@ -25,8 +26,10 @@
 #include "harmos/harmos.hpp"
 #include "harmos/plugin/v1/instance.grpc.pb.h"
 
+using grpc::ChannelArguments;
 using grpc::ClientContext;
 using grpc::CreateChannel;
+using grpc::CreateCustomChannel;
 using grpc::InsecureChannelCredentials;
 using grpc::StatusCode;
 using harmos::conformance::Value;
@@ -45,8 +48,10 @@ using harmos::plugin::v1::InstanceStopResponse;
 using std::async;
 using std::atomic;
 using std::launch;
+using std::move;
 using std::promise;
 using std::runtime_error;
+using std::stoi;
 using std::string;
 
 /* === Macros === */
@@ -90,7 +95,7 @@ TEST_CASE("An Owned Listener Drains Invocations and Restarts") {
   auto listener = plugin.start("127.0.0.1:0");
   const auto address = listener.address();
   REQUIRE(address.starts_with("127.0.0.1:"));
-  REQUIRE(std::stoi(address.substr(address.rfind(':') + 1)) > 0);
+  REQUIRE(stoi(address.substr(address.rfind(':') + 1)) > 0);
   auto stub = Instance::NewStub(CreateChannel(address, InsecureChannelCredentials()));
   ClientContext context;
   auto call = stub->Invoke(&context);
@@ -139,9 +144,15 @@ TEST_CASE("An Owned Listener Drains Invocations and Restarts") {
 
   // The Same Process Can Bind the Released Address Again.
   auto second = Plugin("second", "1.0.0").start(address);
-  auto second_stub = Instance::NewStub(CreateChannel(second.address(), InsecureChannelCredentials()));
+  REQUIRE(second.address() == address);
+  // Isolate the New Transport From the Closed Channel's Shared Connection Backoff.
+  ChannelArguments arguments;
+  arguments.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+  auto second_stub = Instance::NewStub(CreateCustomChannel(second.address(), InsecureChannelCredentials(), arguments));
   ClientContext connected;
-  REQUIRE(second_stub->Get(&connected, get, &description).ok());
+  const auto status = second_stub->Get(&connected, get, &description);
+  INFO("Restart Get: " << status.error_code() << ": " << status.error_message());
+  REQUIRE(status.ok());
   REQUIRE(description.id() == "second");
   second.close();
 }
@@ -180,10 +191,10 @@ TEST_CASE("Listener Destruction and Moves Own Shutdown") {
   {
     auto listener = plugin.start("127.0.0.1:0");
     address = listener.address();
-    Listener moved(std::move(listener));
+    Listener moved(move(listener));
     listener.close();
     auto replacement = plugin.start("127.0.0.1:0");
-    replacement = std::move(moved);
+    replacement = move(moved);
     REQUIRE(stopped == 1);
   }
   REQUIRE(stopped == 2);
