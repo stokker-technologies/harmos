@@ -287,7 +287,7 @@ async fn story(language: &str) {
     let _ = first.await;
     fixture.state(&["1", "2", "3", "4", "5", "6", "7", "8", "9"]).await;
     fixture.close().await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }
 
 /* === Tests === */
@@ -333,5 +333,5 @@ async fn invalid_plugin_lane_facts_are_refused_at_admission() {
         assert!(error.contains(&operation), "{error}");
     }
     drop(remote);
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
 }

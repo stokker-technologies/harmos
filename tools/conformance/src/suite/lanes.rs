@@ -130,7 +130,7 @@ pub(super) async fn run(address: &str) -> Result<()> {
         entered,
         release: Mutex::new(BTreeMap::new()),
     });
-    let runtime = Runtime::<App>::launch_with((), (), |setup| {
+    let runtime = Runtime::<App>::start_with((), (), |setup| {
         setup.resource::<Signals>(signals.clone());
     })
     .await
@@ -228,7 +228,7 @@ pub(super) async fn run(address: &str) -> Result<()> {
     }
     stop_result.map_err(invalid)?;
     let _ = probe.await;
-    runtime.shutdown().await.map_err(invalid)?;
+    runtime.stop().await.map_err(invalid)?;
     let _ = stop.send(());
     server.await.map_err(invalid)??;
     Ok(())
