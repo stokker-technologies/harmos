@@ -42,7 +42,7 @@ use harmos::plugin::Plugin;
 /* === Private Functions === */
 
 fn main() -> Result<()> {
-    Plugin::new("bundle-version", "1.2.3").run()
+    Plugin::new("bundle_version", "1.2.3").run()
 }
 
 /* === Tests === */
