@@ -474,15 +474,56 @@ impl Drop for Dependency {
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::pin::pin;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::task::{Context, Wake, Waker};
+
+    use tokio::sync::watch;
+
     use super::{Instance, Phase};
     use crate::clock;
-    use tokio::sync::watch;
+
+    struct InitializeOnCancellation {
+        instance: Arc<Instance>,
+        cancelled: watch::Receiver<bool>,
+        entered: AtomicBool,
+        admitted: AtomicBool,
+        interrupted: AtomicBool,
+    }
+
+    impl Wake for InitializeOnCancellation {
+        fn wake(self: Arc<Self>) {
+            self.interrupted.store(*self.cancelled.borrow(), Ordering::SeqCst);
+            self.admitted.store(self.instance.initialize_attempt(0), Ordering::SeqCst);
+            self.entered.store(true, Ordering::SeqCst);
+        }
+    }
 
     #[tokio::test]
     async fn queued_cancellation_prevents_initialization_and_attempts() {
         let (cancellation, cancelled) = watch::channel(false);
-        let instance = Instance::queued(cancellation, clock::current());
+        let instance = Arc::new(Instance::queued(cancellation, clock::current()));
+        let initialization = Arc::new(InitializeOnCancellation {
+            instance: instance.clone(),
+            cancelled: cancelled.clone(),
+            entered: AtomicBool::new(false),
+            admitted: AtomicBool::new(false),
+            interrupted: AtomicBool::new(false),
+        });
+        let waker = Waker::from(initialization.clone());
+        let mut context = Context::from_waker(&waker);
+        let mut status = instance.settlement();
+        let mut changed = pin!(status.changed());
+        assert!(changed.as_mut().poll(&mut context).is_pending());
+
         instance.cancel_queued();
+        assert!(initialization.entered.load(Ordering::SeqCst));
+        assert!(!initialization.interrupted.load(Ordering::SeqCst));
+        assert!(!initialization.admitted.load(Ordering::SeqCst));
         assert!(!instance.initialize_attempt(0));
         assert!(!instance.attempt(0));
         assert!(*cancelled.borrow());
