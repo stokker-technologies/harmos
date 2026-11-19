@@ -401,11 +401,19 @@ impl Instance {
     }
 
     pub(crate) fn request_cancel(&self) {
-        tracing::dispatcher::with_default(&self.dispatcher, || {
-            tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
-        });
+        self.cancel(false);
+    }
+
+    pub(crate) fn cancel_queued(&self) {
+        self.cancel(true);
+    }
+
+    fn cancel(&self, queued_only: bool) {
         let mut interrupt = false;
-        self.status.send_modify(|status| {
+        let requested = self.status.send_if_modified(|status| {
+            if queued_only && status.phase != Phase::Queued {
+                return false;
+            }
             interrupt = status.dependents == 0;
             status.cancellation_requested = true;
             if !status.phase.is_terminal() {
@@ -414,6 +422,13 @@ impl Instance {
             if !matches!(status.phase, Phase::Finalizing) && !status.phase.is_terminal() {
                 status.phase = Phase::Stopping;
             }
+            true
+        });
+        if !requested {
+            return;
+        }
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
         });
         if interrupt {
             self.cancellation.send_replace(true);
@@ -456,3 +471,76 @@ impl Drop for Dependency {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use std::future::Future;
+    use std::pin::pin;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    use std::task::{Context, Wake, Waker};
+
+    use tokio::sync::watch;
+
+    use super::{Instance, Phase};
+    use crate::clock;
+
+    struct InitializeOnCancellation {
+        instance: Arc<Instance>,
+        cancelled: watch::Receiver<bool>,
+        entered: AtomicBool,
+        admitted: AtomicBool,
+        interrupted: AtomicBool,
+    }
+
+    impl Wake for InitializeOnCancellation {
+        fn wake(self: Arc<Self>) {
+            self.interrupted.store(*self.cancelled.borrow(), Ordering::SeqCst);
+            self.admitted.store(self.instance.initialize_attempt(0), Ordering::SeqCst);
+            self.entered.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[tokio::test]
+    async fn queued_cancellation_prevents_initialization_and_attempts() {
+        let (cancellation, cancelled) = watch::channel(false);
+        let instance = Arc::new(Instance::queued(cancellation, clock::current()));
+        let initialization = Arc::new(InitializeOnCancellation {
+            instance: instance.clone(),
+            cancelled: cancelled.clone(),
+            entered: AtomicBool::new(false),
+            admitted: AtomicBool::new(false),
+            interrupted: AtomicBool::new(false),
+        });
+        let waker = Waker::from(initialization.clone());
+        let mut context = Context::from_waker(&waker);
+        let mut status = instance.settlement();
+        let mut changed = pin!(status.changed());
+        assert!(changed.as_mut().poll(&mut context).is_pending());
+
+        instance.cancel_queued();
+        assert!(initialization.entered.load(Ordering::SeqCst));
+        assert!(!initialization.interrupted.load(Ordering::SeqCst));
+        assert!(!initialization.admitted.load(Ordering::SeqCst));
+        assert!(!instance.initialize_attempt(0));
+        assert!(!instance.attempt(0));
+        assert!(*cancelled.borrow());
+        assert!(instance.status().started_at().is_none());
+    }
+
+    #[tokio::test]
+    async fn queued_cancellation_preserves_started_work() {
+        for phase in [Phase::Initializing, Phase::Running, Phase::RetryWaiting, Phase::Restarting] {
+            let (cancellation, cancelled) = watch::channel(false);
+            let instance = Instance::queued(cancellation, clock::current());
+            assert!(instance.initialize_attempt(0));
+            instance.transition(phase);
+            instance.cancel_queued();
+            assert!(!*cancelled.borrow());
+            assert!(!instance.status().cancellation_requested());
+            assert_eq!(instance.status().phase(), phase);
+        }
+    }
+}

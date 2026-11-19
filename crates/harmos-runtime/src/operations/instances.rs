@@ -276,6 +276,16 @@ impl Instances {
         Ok(reservation)
     }
 
+    pub(crate) fn cancel_queued(&self) {
+        let instances: Vec<_> = {
+            let state = self.state.lock().expect("operation instance index is healthy");
+            state.active.values().chain(state.residents.values().map(|(instance, _)| instance)).cloned().collect()
+        };
+        for instance in instances {
+            instance.cancel_queued();
+        }
+    }
+
     pub(crate) fn close(&self) {
         let instances: Vec<_> = {
             let mut state = self.state.lock().expect("operation instance index is healthy");

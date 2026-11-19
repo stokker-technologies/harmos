@@ -35,6 +35,11 @@ use super::*;
 /* === Implementations === */
 
 impl Manager {
+    pub(crate) fn cancel_queued(&self) {
+        self.resident.close_activation_admission();
+        self.instances.cancel_queued();
+    }
+
     pub(crate) fn close_admission(&self) {
         if let Some(status) = self.registry.status_owner.lock().expect("status owner lock is healthy").as_ref() {
             status.close();
