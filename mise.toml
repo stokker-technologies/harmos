@@ -129,11 +129,6 @@ hide = true
 description = "CI / Impact"
 run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.impact"
 
-[tasks."ci:docs"]
-hide = true
-description = "CI / Docs"
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.docs"
-
 [tasks."ci:native-dependencies"]
 hide = true
 description = "CI / Native Dependencies"
@@ -307,7 +302,6 @@ run = [
   "buf format --diff --exit-code",
   "buf lint",
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.source.protocol",
-  { task = "ci:docs" },
   { task = "format:toml --check" },
   "uv run --locked --no-sync --project tools/python python -m harmos_tools.ci.mise",
   "shellcheck --version",
