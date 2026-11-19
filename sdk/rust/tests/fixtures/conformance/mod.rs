@@ -226,11 +226,6 @@ pub fn catalog() -> impl Registration {
     let parallel = Lane::concurrent("parallel", 2);
     let other = Lane::serial("other");
     move |ctx: &mut Registrar<'_>| {
-        ctx.register(Operation::new("conformance.lane.first", cancel).visibility(Visibility::Public).lane(&instrument))?;
-        ctx.register(Operation::new("conformance.lane.second", cancel).visibility(Visibility::Public).lane(&instrument))?;
-        ctx.register(Operation::new("conformance.lane.parallel", cancel).visibility(Visibility::Public).lane(&parallel))?;
-        ctx.register(Operation::new("conformance.lane.other", cancel).visibility(Visibility::Public).lane(&other))?;
-        ctx.register(Operation::new("conformance.lane.open", cancel).visibility(Visibility::Public))?;
         ctx.register(SettingsDeclarations {
             values: vec![
                 SettingDeclaration {
@@ -296,6 +291,11 @@ pub fn catalog() -> impl Registration {
         ctx.register(Operation::new("conformance.settings_read", settings_read).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.discover", discover).visibility(Visibility::Public))?;
         ctx.register(Operation::new("conformance.caller_refusal", caller_refusal).visibility(Visibility::Public))?;
+        ctx.register(Operation::new("conformance.lane.first", cancel).visibility(Visibility::Public).lane(&instrument))?;
+        ctx.register(Operation::new("conformance.lane.second", cancel).visibility(Visibility::Public).lane(&instrument))?;
+        ctx.register(Operation::new("conformance.lane.parallel", cancel).visibility(Visibility::Public).lane(&parallel))?;
+        ctx.register(Operation::new("conformance.lane.other", cancel).visibility(Visibility::Public).lane(&other))?;
+        ctx.register(Operation::new("conformance.lane.open", cancel).visibility(Visibility::Public))?;
         ctx.register(harmos::plugin::Dependency::<CreateInvocation>::new())?;
         ctx.register(harmos::plugin::Dependency::<PeerPublic>::new())?;
         ctx.register(harmos::plugin::Dependency::<PeerProtected>::new())?;

@@ -101,20 +101,6 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     const auto instrument = harmos::plugin::Lane::serial("instrument");
     const auto parallel = harmos::plugin::Lane::concurrent("parallel", 2);
     const auto other = harmos::plugin::Lane::serial("other");
-    for (const auto &name : {"first", "second", "parallel", "other", "open"}) {
-      harmos::plugin::Operation<Value, Value> operation(string("conformance.lane.") + name, harmos::VISIBILITY_PUBLIC,
-                                                        [pending](Context &ctx, Value request) {
-                                                          return ctx.call(pending, request).get();
-                                                        });
-      if (string(name) == "first" || string(name) == "second") {
-        operation.lane(instrument);
-      } else if (string(name) == "parallel") {
-        operation.lane(parallel);
-      } else if (string(name) == "other") {
-        operation.lane(other);
-      }
-      registrar.add(operation);
-    }
     harmos::plugin::Operation<Value, Value> local("conformance.local", harmos::VISIBILITY_PRIVATE, [echo](Context &context, Value request) {
       if (request.value() == "deadline" || request.value() == "overall") {
         Duration delay;
@@ -436,6 +422,20 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     };
     registrar.add(harmos::plugin::Operation<Value, Value>("conformance.caller_refusal", harmos::VISIBILITY_PUBLIC, refuse))
         .add(harmos::plugin::Dependency{create});
+    for (const auto &name : {"first", "second", "parallel", "other", "open"}) {
+      harmos::plugin::Operation<Value, Value> operation(string("conformance.lane.") + name, harmos::VISIBILITY_PUBLIC,
+                                                        [pending](Context &ctx, Value request) {
+                                                          return ctx.call(pending, request).get();
+                                                        });
+      if (string(name) == "first" || string(name) == "second") {
+        operation.lane(instrument);
+      } else if (string(name) == "parallel") {
+        operation.lane(parallel);
+      } else if (string(name) == "other") {
+        operation.lane(other);
+      }
+      registrar.add(operation);
+    }
     harmos::plugin::Stream<Value> refusals("conformance.window_caller_refusal");
     harmos::plugin::Observer<Value> refusal_observer(refusals, [refuse](Context &context) {
       return refuse(context, Value{});

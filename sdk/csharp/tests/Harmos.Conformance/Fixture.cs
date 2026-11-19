@@ -45,11 +45,6 @@ public sealed class Fixture
   public Registration Catalog() => ctx =>
   {
     ctx.Register(new global::Harmos.Plugins.Descriptor<PayloadOnly>());
-    ctx.Register(new Operation<Value, Value>("conformance.lane.first", Visibility.Public, lane: Instrument), Cancel);
-    ctx.Register(new Operation<Value, Value>("conformance.lane.second", Visibility.Public, lane: Instrument), Cancel);
-    ctx.Register(new Operation<Value, Value>("conformance.lane.parallel", Visibility.Public, lane: Parallel), Cancel);
-    ctx.Register(new Operation<Value, Value>("conformance.lane.other", Visibility.Public, lane: Other), Cancel);
-    ctx.Register(new Operation<Value, Value>("conformance.lane.open", Visibility.Public), Cancel);
     ctx.Register(local, Local);
     ctx.Register(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall);
     ctx.Register(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo);
@@ -73,6 +68,11 @@ public sealed class Fixture
     ctx.Register(new Operation<Value, Value>("conformance.settings_read", Visibility.Public), ReadSettings);
     ctx.Register(new Operation<Value, Value>("conformance.discover", Visibility.Public), Discover);
     ctx.Register(new Operation<Value, Value>("conformance.caller_refusal", Visibility.Public), CallerRefusal);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.first", Visibility.Public, lane: Instrument), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.second", Visibility.Public, lane: Instrument), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.parallel", Visibility.Public, lane: Parallel), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.other", Visibility.Public, lane: Other), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.open", Visibility.Public), Cancel);
     ctx.Register(createInvocation);
     ctx.Register(peerPublic);
     ctx.Register(peerProtected);
