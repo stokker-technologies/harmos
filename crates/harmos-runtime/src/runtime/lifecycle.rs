@@ -120,8 +120,6 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-        self.plugin.close_admission();
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
@@ -174,6 +172,7 @@ impl<A: Application> Stop<A> {
             #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             {
                 self.progress.send_replace("plugins");
+                self.handles.plugin.close_admission();
                 self.handles.plugin.shutdown().await?;
             }
             self.handles.operations.close_resident_admission();
