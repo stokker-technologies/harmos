@@ -11,12 +11,17 @@
 
 // Standard Library Imports
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
-#include <deque>
+#include <exception>
+#include <functional>
 #include <iostream>
+#include <map>
+#include <mutex>
 #include <thread>
 
 // Third Party Imports
+#include <grpc/event_engine/event_engine.h>
 #include <grpcpp/grpcpp.h>
 
 // Local Imports
@@ -26,12 +31,16 @@
 #include "samples.hpp"
 
 using grpc::CallbackServerContext;
+using grpc::ChannelArguments;
 using grpc::InsecureServerCredentials;
 using grpc::ServerBidiReactor;
 using grpc::ServerBuilder;
+using grpc::ServerBuilderOption;
+using grpc::ServerBuilderPlugin;
 using grpc::ServerUnaryReactor;
 using grpc::Status;
 using grpc::StatusCode;
+using grpc_event_engine::experimental::EventEngine;
 using std::condition_variable;
 using std::exception;
 using std::lock_guard;
@@ -55,13 +64,40 @@ using std::vector;
 namespace harmos::plugin {
 namespace {
 using detail::Duplex;
-using Requirements = std::map<std::string, std::string>;
 
 /* === Classes === */
 
+// gRPC 1.76 Accepts a Per-Server Engine Through Owned Channel Arguments.
+class ServingEngine final : public ServerBuilderOption {
+public:
+  explicit ServingEngine(shared_ptr<EventEngine> engine) : engine_(std::move(engine)) {}
+
+  void UpdateArguments(ChannelArguments *arguments) override {
+    static const grpc_arg_pointer_vtable ownership = {
+        [](void *value) -> void * {
+          return new shared_ptr<EventEngine>(*static_cast<shared_ptr<EventEngine> *>(value));
+        },
+        [](void *value) {
+          delete static_cast<shared_ptr<EventEngine> *>(value);
+        },
+        [](void *left, void *right) {
+          const auto *left_engine = static_cast<shared_ptr<EventEngine> *>(left)->get();
+          const auto *right_engine = static_cast<shared_ptr<EventEngine> *>(right)->get();
+          const std::less<const EventEngine *> before;
+          return before(left_engine, right_engine) ? -1 : before(right_engine, left_engine) ? 1 : 0;
+        }};
+    arguments->SetPointerWithVtable("grpc.internal.event_engine", &engine_, &ownership);
+  }
+
+  void UpdatePlugins(vector<unique_ptr<ServerBuilderPlugin>> *) override {}
+
+private:
+  shared_ptr<EventEngine> engine_;
+};
+
 class InvocationCall final : public Duplex<plugin::v1::InstanceInvokeRequest, plugin::v1::InstanceInvokeResponse> {
 public:
-  InvocationCall(const vector<detail::OperationDefinition> &operations, const Requirements &requirements, const string &plugin)
+  InvocationCall(const vector<detail::OperationDefinition> &operations, const std::map<string, string> &requirements, const string &plugin)
       : operations_(operations), state_(std::make_shared<detail::Invocation>()) {
     state_->requirements = requirements;
     for (const auto &operation : operations)
@@ -233,9 +269,26 @@ public:
   plugin::v1::InstanceGetResponse description;
   vector<detail::OperationDefinition> operations;
   vector<detail::StreamDefinition> streams;
-  Requirements requirements;
+  std::map<string, string> requirements;
   vector<std::function<void()>> cleanup;
   std::function<void()> stop;
+  std::once_flag cleanup_once;
+  std::exception_ptr cleanup_failure;
+
+  void finish_cleanup() {
+    std::call_once(cleanup_once, [this] {
+      for (const auto &hook : cleanup) {
+        try {
+          hook();
+        } catch (...) {
+          if (!cleanup_failure)
+            cleanup_failure = std::current_exception();
+        }
+      }
+    });
+    if (cleanup_failure)
+      std::rethrow_exception(cleanup_failure);
+  }
 
   ServerUnaryReactor *Get(CallbackServerContext *context, const plugin::v1::InstanceGetRequest *request,
                           plugin::v1::InstanceGetResponse *response) override {
@@ -257,8 +310,7 @@ public:
   ServerUnaryReactor *Stop(CallbackServerContext *context, const plugin::v1::InstanceStopRequest *,
                            plugin::v1::InstanceStopResponse *) override {
     try {
-      for (const auto &hook : cleanup)
-        hook();
+      finish_cleanup();
     } catch (const exception &error) {
       auto *reactor = context->DefaultReactor();
       reactor->Finish({StatusCode::INTERNAL, error.what()});
@@ -273,22 +325,74 @@ public:
 
 /* === Public Functions === */
 
-void Plugin::run(string address) const {
-  const bool remote = !address.empty();
-  if (address.empty()) {
-#ifdef _WIN32
-    char *raw = nullptr;
-    size_t length = 0;
-    if (_dupenv_s(&raw, &length, "HARMOS_ADDRESS") != 0)
-      throw runtime_error("Cannot Read HARMOS_ADDRESS");
-    const unique_ptr<char, decltype(&std::free)> configured(raw, &std::free);
-    address = configured ? configured.get() : "127.0.0.1:0";
-#else
-    const char *configured = std::getenv("HARMOS_ADDRESS");
-    address = configured ? configured : "127.0.0.1:0";
-#endif
-  }
+struct Listener::State {
   Service service;
+  shared_ptr<EventEngine> engine;
+  unique_ptr<grpc::Server> server;
+  string address;
+  mutex stop_mutex;
+  condition_variable changed;
+  bool stopped = false;
+  thread worker;
+  std::exception_ptr failure;
+
+  void request_stop() {
+    lock_guard lock(stop_mutex);
+    stopped = true;
+    changed.notify_all();
+  }
+
+  void wait() {
+    if (worker.joinable())
+      worker.join();
+    if (failure)
+      std::rethrow_exception(std::exchange(failure, {}));
+  }
+
+  ~State() {
+    request_stop();
+    try {
+      wait();
+    } catch (...) {
+      // Explicit Close Reports Cleanup Failure; Destruction Still Releases Resources.
+    }
+    if (server) {
+      server->Shutdown();
+      server->Wait();
+    }
+  }
+};
+
+Listener::Listener(unique_ptr<State> state) : state_(std::move(state)) {}
+Listener::Listener(Listener &&) noexcept = default;
+Listener &Listener::operator=(Listener &&) noexcept = default;
+Listener::~Listener() = default;
+
+const string &Listener::address() const {
+  if (!state_)
+    throw std::logic_error("Read Plugin Address: Use a Listener That Has Not Been Moved");
+  return state_->address;
+}
+
+void Listener::wait() {
+  if (state_)
+    state_->wait();
+}
+
+void Listener::close() {
+  if (!state_)
+    return;
+  state_->request_stop();
+  wait();
+}
+
+Listener Plugin::start(string address) const {
+  return start(std::move(address), true);
+}
+
+Listener Plugin::start(string address, bool remote) const {
+  auto state = std::make_unique<Listener::State>();
+  auto &service = state->service;
   auto &description = service.description;
   description.set_id(id_);
   description.set_version(version_);
@@ -308,39 +412,61 @@ void Plugin::run(string address) const {
   service.cleanup = cleanup_;
   for (const auto &[requirement, types] : requirements_)
     service.requirements[requirement.id()] = requirement.fingerprint();
-  mutex stop_mutex;
-  condition_variable changed;
-  bool stopped = false;
-  service.stop = [&] {
-    if (remote)
-      return;
-    lock_guard lock(stop_mutex);
-    stopped = true;
-    changed.notify_all();
+  service.stop = [owned = state.get(), remote] {
+    if (!remote)
+      owned->request_stop();
   };
   ServerBuilder builder;
+  state->engine = grpc_event_engine::experimental::CreateEventEngine();
+  builder.SetOption(std::make_unique<ServingEngine>(state->engine));
   builder.SetMaxReceiveMessageSize(maximum);
   builder.SetMaxSendMessageSize(maximum);
   int port = 0;
   builder.AddListeningPort(address, InsecureServerCredentials(), &port);
   builder.RegisterService(&service);
-  auto server = builder.BuildAndStart();
-  if (!server || port == 0)
-    throw runtime_error("Cannot Bind Plugin Address");
+  state->server = builder.BuildAndStart();
+  if (!state->server || port == 0)
+    throw runtime_error("Start Plugin: Choose an Available Listening Address: " + address);
   const auto colon = address.rfind(':');
-  std::cout << "harmos listening " << address.substr(0, colon + 1) << port << std::endl;
-  if (remote) {
-    server->Wait();
-    return;
+  state->address = address.substr(0, colon + 1) + std::to_string(port);
+  state->worker = thread([owned = state.get()] {
+    {
+      unique_lock lock(owned->stop_mutex);
+      owned->changed.wait(lock, [owned] {
+        return owned->stopped;
+      });
+    }
+    try {
+      owned->service.finish_cleanup();
+    } catch (...) {
+      owned->failure = std::current_exception();
+    }
+    owned->server->Shutdown();
+    owned->server->Wait();
+    owned->server.reset();
+    owned->engine.reset();
+  });
+  return Listener(std::move(state));
+}
+
+void Plugin::run(string address) const {
+  const bool remote = !address.empty();
+  if (address.empty()) {
+#ifdef _WIN32
+    char *raw = nullptr;
+    size_t length = 0;
+    if (_dupenv_s(&raw, &length, "HARMOS_ADDRESS") != 0)
+      throw runtime_error("Cannot Read HARMOS_ADDRESS");
+    const unique_ptr<char, decltype(&std::free)> configured(raw, &std::free);
+    address = configured ? configured.get() : "127.0.0.1:0";
+#else
+    const char *configured = std::getenv("HARMOS_ADDRESS");
+    address = configured ? configured : "127.0.0.1:0";
+#endif
   }
-  {
-    unique_lock lock(stop_mutex);
-    changed.wait(lock, [&] {
-      return stopped;
-    });
-  }
-  server->Shutdown();
-  server->Wait();
+  auto listener = start(std::move(address), remote);
+  std::cout << "harmos listening " << listener.address() << std::endl;
+  listener.wait();
 }
 } // namespace harmos::plugin
 

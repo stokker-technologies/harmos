@@ -15,17 +15,28 @@
 
 /* === Imports === */
 
-use crate::{Context, Plugin, Result, server};
-
-use std::result;
-use tokio::{runtime::Builder, task::LocalSet};
-use tonic::Status;
-
 // Standard Library Imports
+use std::{
+    env,
+    io::{self, Write},
+    mem,
+    net::SocketAddr,
+    result,
+    sync::{Arc, OnceLock},
+    thread,
+};
 
 // Third Party Imports
+use tokio::{
+    net::TcpListener,
+    runtime::Builder,
+    sync::{oneshot, watch},
+    task::LocalSet,
+};
+use tonic::Status;
 
 // Local Imports
+use crate::{Context, Error, Plugin, Result, server};
 use harmos_protocol::plugin::ChildResponse;
 use harmos_protocol::plugin::child_response;
 
@@ -37,17 +48,110 @@ use harmos_protocol::plugin::child_response;
 
 /* === Structs === */
 
+/// Owns a Plugin's Transport and Runtime. Call `close` to Await Graceful Settlement.
+/// Dropping the Handle Requests the Same Shutdown Without Waiting for It.
+#[must_use = "close the listener to await plugin shutdown"]
+pub struct Listener {
+    address: SocketAddr,
+    shutdown: watch::Sender<bool>,
+    finished: Option<oneshot::Receiver<Result<()>>>,
+    worker: Option<thread::JoinHandle<()>>,
+}
+
 /* === Enums === */
 
 /* === Traits === */
 
 /* === Implementations === */
 
+impl Listener {
+    /// The Concrete Address Selected When Binding, Including a Port Chosen for Port Zero.
+    pub fn address(&self) -> SocketAddr {
+        self.address
+    }
+
+    /// Run Stop Hooks Once, Drain Accepted RPCs, and Release the Owned Runtime.
+    /// Repeated Calls Are No-Ops. Cancellation of This Future Still Requests Shutdown.
+    pub async fn close(&mut self) -> Result<()> {
+        self.shutdown.send_replace(true);
+        self.wait().await
+    }
+
+    async fn wait(&mut self) -> Result<()> {
+        let Some(finished) = self.finished.as_mut() else {
+            return Ok(());
+        };
+        let result = finished.await;
+        self.finished = None;
+        if let Some(worker) = self.worker.take() {
+            worker.join().map_err(|_| Error::Invalid("Close Plugin: Inspect the Panicked Listener Thread".into()))?;
+        }
+        result.map_err(|_| Error::Invalid("Close Plugin: Inspect the Interrupted Listener Thread".into()))?
+    }
+}
+
+impl Drop for Listener {
+    fn drop(&mut self) {
+        self.shutdown.send_replace(true);
+    }
+}
+
 impl Plugin {
-    pub fn run(self) -> Result<()> {
+    /// Start an Addressable Listener on Its Own Runtime; No Caller LocalSet Is Required.
+    pub async fn start(mut self, address: impl Into<String>) -> Result<Listener> {
         let declarations = self.declarations()?;
+        let cleanup = Arc::new(server::Cleanup {
+            hooks: mem::take(&mut self.cleanup),
+            result: OnceLock::new(),
+        });
+        let address = address.into();
+        let socket = TcpListener::bind(&address)
+            .await
+            .map_err(|error| Error::Invalid(format!("Start Plugin: Choose an Available Listening Address {address}: {error}")))?;
+        let address = socket.local_addr()?;
+        let socket = socket.into_std()?;
+        let (shutdown, stopped) = watch::channel(false);
+        let signal = shutdown.clone();
+        let (ready, started) = oneshot::channel();
+        let (complete, finished) = oneshot::channel();
+        let worker = thread::Builder::new().name("harmos-plugin".into()).spawn(move || {
+            let result = (|| {
+                let runtime = Builder::new_current_thread().enable_all().build()?;
+                runtime.block_on(LocalSet::new().run_until(server::run(
+                    self,
+                    declarations,
+                    socket,
+                    signal,
+                    stopped,
+                    ready,
+                    cleanup.clone(),
+                )))
+            })();
+            let cleaned = cleanup.run();
+            let _ = complete.send(result.and(cleaned));
+        })?;
+        let mut listener = Listener {
+            address,
+            shutdown,
+            finished: Some(finished),
+            worker: Some(worker),
+        };
+        if started.await.is_err() {
+            listener.close().await?;
+            return Err(Error::Invalid("Start Plugin: Inspect the Listener Startup Failure".into()));
+        }
+        Ok(listener)
+    }
+
+    pub fn run(self) -> Result<()> {
+        let address = env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
         let runtime = Builder::new_current_thread().enable_all().build()?;
-        runtime.block_on(LocalSet::new().run_until(server::run(self, declarations)))
+        runtime.block_on(async move {
+            let mut listener = self.start(address).await?;
+            println!("harmos listening {}", listener.address());
+            io::stdout().flush()?;
+            listener.wait().await
+        })
     }
 }
 

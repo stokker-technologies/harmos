@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "conformance.hpp"
-#include <grpc/event_engine/event_engine.h>
 #include <iostream>
 
-using grpc_event_engine::experimental::ShutdownDefaultEventEngine;
 using std::exception;
 using std::invalid_argument;
 using std::string;
@@ -28,7 +26,5 @@ int main(int argc, char **argv) {
     std::cerr << error.what() << std::endl;
     result = 1;
   }
-  // Drain EventEngine Work Before Windows Begins DLL Teardown.
-  ShutdownDefaultEventEngine();
   return result;
 }
