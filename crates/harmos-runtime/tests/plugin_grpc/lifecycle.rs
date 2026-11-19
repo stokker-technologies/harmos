@@ -26,8 +26,8 @@ use tokio::{
 
 // Local Imports
 use super::{manager, support};
-use harmos_protocol::host::InvocationsCreateRequest;
 use harmos_conformance::host::invocations_client::InvocationsClient;
+use harmos_protocol::host::InvocationsCreateRequest;
 use harmos_protocol::host::{
     PluginState, PluginValue, PluginsDeleteRequest, PluginsGetRequest, PluginsRestartRequest, PluginsSetRequest, PluginsWatchRequest,
 };
