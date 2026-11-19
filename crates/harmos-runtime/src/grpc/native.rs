@@ -198,6 +198,9 @@ impl Endpoint {
                 },
             )
             .map_err(server::status)?;
+        if let Some(scope) = binding.operations.call_context().get::<Arc<super::connection::Scope>>() {
+            scope.track(invocation.control.clone());
+        }
         Ok(Pending {
             operation: binding.contract().operation().id.to_string(),
             invocation,

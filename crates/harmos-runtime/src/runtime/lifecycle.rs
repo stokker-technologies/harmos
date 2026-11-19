@@ -26,8 +26,9 @@ use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 // Local Imports
+use super::start::ApplicationCleanup;
 use super::{Handle, Participants, Runtime, STOP_GRACE, Stopping};
-use crate::clock::Clock;
+use crate::clock::{self, Clock};
 use crate::storage::StorageManager;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Result, state::Position};
@@ -43,7 +44,7 @@ pub(super) type Outcome = result::Result<Position, Failure>;
 /* === Structs === */
 
 pub(super) struct Stop<A: Application> {
-    application: Option<super::start::ApplicationCleanup<A>>,
+    application: Option<ApplicationCleanup<A>>,
     handles: Handle<A>,
     participants: Participants,
     journal_handles: Weak<()>,
@@ -120,12 +121,10 @@ impl<A: Application> Runtime<A> {
         self.closing.store(true, Ordering::Release);
         #[cfg(feature = "grpc")]
         self.grpc.close_admission();
-        #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
-        self.plugin.close_admission();
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
-                let _clock = crate::clock::enter(self.operations.clock().clone());
+                let _clock = clock::enter(self.operations.clock().clone());
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Stop {
@@ -166,9 +165,15 @@ impl<A: Application> Resource for Stop<A> {
 impl<A: Application> Stop<A> {
     async fn finish(&mut self) -> Result<()> {
         if let Drain::Running(supervisor) = &mut self.state {
+            #[cfg(feature = "grpc")]
+            {
+                self.progress.send_replace("gRPC connections and observers");
+                self.handles.grpc.shutdown().await?;
+            }
             #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
             {
                 self.progress.send_replace("plugins");
+                self.handles.plugin.close_admission();
                 self.handles.plugin.shutdown().await?;
             }
             self.progress.send_replace("plugin settlement");
@@ -205,7 +210,7 @@ impl<A: Application> Stop<A> {
             self.handles.state.seal();
             self.progress.send_replace("journal");
             let mut settled = joined(self.handles.operations.clock(), supervisor, &self.journal_handles, &self.notices).await;
-            if let Some(source) = self.application.as_ref().and_then(super::start::ApplicationCleanup::failure)
+            if let Some(source) = self.application.as_ref().and_then(ApplicationCleanup::failure)
                 && settled.is_ok()
             {
                 settled = Err(Failure { domain: "application", source });
