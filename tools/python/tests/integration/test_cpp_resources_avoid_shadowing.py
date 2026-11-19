@@ -22,6 +22,7 @@ from google.protobuf.descriptor_pb2 import FieldDescriptorProto, FileDescriptorS
 
 # Local Imports
 from harmos_tools.build.resources import cpp, descriptor
+from harmos_tools.build.resources.configuration import Configuration
 
 # Type Checking Imports
 
@@ -56,7 +57,7 @@ class CppResourcesAvoidShadowing(unittest.TestCase):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         root = Path(scratch.name)
-        cpp.client(root, methods, target=root / "client.hpp")
+        cpp.client(root, methods, target=root / "client.hpp", configuration=Configuration(library=FileDescriptorSet()))
         cpp.host(root, methods, target=root / "host.hpp")
         members = {"get", "channel_", "channel_value", "context_", "context_value", "value", "options", "max_item_bytes"}
         for filename, resource, transport in [

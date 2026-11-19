@@ -235,13 +235,14 @@ def compose(
 
 def main() -> None:
     parser = ArgumentParser(description=__doc__)
+    parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--descriptors", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--namespace", default="harmos")
     parser.add_argument("--language", choices=("python",))
     parser.add_argument("--cpp-fixture", type=Path)
     options = parser.parse_args()
-    root = Path(__file__).resolve().parents[5]
+    root = options.source_root.resolve()
     if options.cpp_fixture:
         fixture = root / "sdk/rust/tests/fixtures/client/client-descriptors.bin"
         library = root / "crates/harmos-protocol/src/descriptors.bin"

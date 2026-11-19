@@ -496,7 +496,7 @@ def client(
         return
     configuration = configuration or Configuration()
     type_names = dict(type_names or {})
-    library = configuration.library_descriptors()
+    library = configuration.library_descriptors(root)
     if library.file:
         public_paths = descriptor.public_paths(library)
         for full, groups in descriptor.payload_audiences(library, library=configuration.library).items():

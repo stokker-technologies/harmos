@@ -52,10 +52,9 @@ class Configuration:
         if not identifier or reserved:
             raise ValueError("Generate Python SDK: Set Configuration.python_package to a Python Identifier That Is Not a Keyword")
 
-    def library_descriptors(self) -> FileDescriptorSet:
+    def library_descriptors(self, root: Path) -> FileDescriptorSet:
         if self.library is not None:
             return self.library
-        root = Path(__file__).resolve().parents[6]
         return FileDescriptorSet.FromString((root / "crates/harmos-protocol/src/descriptors.bin").read_bytes())
 
 
