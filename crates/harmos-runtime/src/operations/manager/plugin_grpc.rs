@@ -89,6 +89,11 @@ impl GrpcAdmission {
     }
 
     pub(crate) fn close(&self) {
+        for entry in &self.entries {
+            if let Some(lane) = &entry.plugin_lane {
+                lane.close();
+            }
+        }
         for entry in self.entries.iter().chain(&self.lifecycle) {
             let pending = entry.pending.lock().expect("operation settlement lock is healthy");
             if !entry.retirement_control() {
@@ -121,6 +126,9 @@ impl GrpcAdmission {
     pub(crate) fn seal(&mut self) {
         self.sealed = true;
         for entry in &self.previous {
+            if let Some(lane) = &entry.plugin_lane {
+                lane.close();
+            }
             entry.active.store(false, Ordering::Release);
             for control in entry.pending.lock().expect("operation settlement lock is healthy").values() {
                 control.request_cancel();
@@ -142,6 +150,7 @@ impl GrpcAdmission {
 
 impl Drop for GrpcAdmission {
     fn drop(&mut self) {
+        self.close();
         if !self.sealed
             && !self.staged
             && let Some(registry) = self.registry.upgrade()
@@ -240,13 +249,23 @@ impl Manager {
         self.reserve(&entries)
     }
 
-    pub(crate) fn admit_grpc(&self, activation: &Activation, lane: &'static str) -> std::result::Result<GrpcAdmission, grpc::Error> {
-        self.prepare_grpc_admission(activation, lane, false)
+    pub(crate) fn admit_grpc(&self, activation: &Activation) -> std::result::Result<GrpcAdmission, grpc::Error> {
+        self.prepare_grpc_admission(activation, false)
     }
-    pub(crate) fn prepare_grpc_admission(
-        &self, activation: &Activation, lane: &'static str, replace: bool,
-    ) -> std::result::Result<GrpcAdmission, grpc::Error> {
+    pub(crate) fn prepare_grpc_admission(&self, activation: &Activation, replace: bool) -> std::result::Result<GrpcAdmission, grpc::Error> {
         let catalog = activation.description.declarations.as_ref().unwrap();
+        harmos_protocol::schema::plugin_lanes(&activation.description.id, catalog)
+            .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
+        let mut lanes = BTreeMap::new();
+        lanes.insert(String::new(), super::super::lane::Admission::new("Open", usize::MAX));
+        for lane in &catalog.lanes {
+            let width = match lane.capacity.as_ref().expect("validated capacity") {
+                model::lane_declaration::Capacity::Serial(_) => 1,
+                model::lane_declaration::Capacity::Concurrent(width) => *width as usize,
+                model::lane_declaration::Capacity::Unbounded(_) => usize::MAX,
+            };
+            lanes.insert(lane.name.clone(), super::super::lane::Admission::new(lane.name.as_str(), width));
+        }
         let mut entries = Vec::new();
         let mut lifecycle = Vec::new();
         for contract in &catalog.operations {
@@ -278,7 +297,7 @@ impl Manager {
             let mut entry = self
                 .binding_erased(
                     activation.owner(),
-                    if hook { crate::operations::lane::RESIDENT } else { lane },
+                    if hook { crate::operations::lane::RESIDENT } else { Lane::default().name() },
                     binding,
                     definition,
                     Some(crate::operations::wire::dispatch_native),
@@ -286,6 +305,10 @@ impl Manager {
                     None,
                 )
                 .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
+            if !hook {
+                Arc::get_mut(&mut entry).expect("unpublished plugin entry").plugin_lane =
+                    Some(lanes.get(&contract.lane).expect("validated lane").clone());
+            }
             use prost::Message;
             let types = catalog.types.as_ref().expect("admitted catalog types");
             let protobuf = harmos_operations::operations::Protobuf {

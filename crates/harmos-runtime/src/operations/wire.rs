@@ -69,7 +69,7 @@ pub struct PluginCallback {
 
 pub(super) struct Parent<'a> {
     pub(super) scope: &'a Scope<'a>,
-    pub(super) ancestors: &'a [&'static str],
+    pub(super) ancestors: &'a [crate::operations::lane::Admission],
 }
 
 pub struct EncodedInvocation {

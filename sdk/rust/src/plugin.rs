@@ -40,13 +40,13 @@ use std::{
 
 // Local Imports
 use crate::{Error, Message, Result, message::merge_types, stream::StreamDefinition};
-use harmos_protocol::model::Declarations;
 use harmos_protocol::model::Protobuf;
 use harmos_protocol::model::Requirement;
 use harmos_protocol::model::Section;
 use harmos_protocol::model::SettingsDeclarations;
 use harmos_protocol::model::StorageTransferSettings;
 use harmos_protocol::model::Visibility;
+use harmos_protocol::model::{Declarations, LaneDeclaration, lane_declaration};
 
 use prost_reflect::DescriptorPool;
 use prost_types::FileDescriptorSet;
@@ -59,10 +59,16 @@ use prost_types::FileDescriptorSet;
 
 /* === Structs === */
 
+#[derive(Clone, Debug)]
+pub struct Lane {
+    pub(crate) declaration: LaneDeclaration,
+}
+
 pub struct Plugin {
     pub(crate) id: String,
     pub(crate) version: String,
     pub(crate) operations: Vec<Operation>,
+    lanes: Vec<Lane>,
     pub(crate) streams: Vec<StreamDefinition>,
     pub(crate) observers: Vec<Observer>,
     pub(crate) requirements: Vec<Required>,
@@ -87,12 +93,46 @@ pub(crate) struct Required {
 
 /* === Implementations === */
 
+impl Lane {
+    pub fn serial(name: impl Into<String>) -> Self {
+        Self {
+            declaration: LaneDeclaration {
+                name: name.into(),
+                capacity: Some(lane_declaration::Capacity::Serial(true)),
+            },
+        }
+    }
+
+    pub fn concurrent(name: impl Into<String>, width: u32) -> Self {
+        Self {
+            declaration: LaneDeclaration {
+                name: name.into(),
+                capacity: Some(lane_declaration::Capacity::Concurrent(width)),
+            },
+        }
+    }
+
+    pub fn unbounded(name: impl Into<String>) -> Self {
+        Self {
+            declaration: LaneDeclaration {
+                name: name.into(),
+                capacity: Some(lane_declaration::Capacity::Unbounded(true)),
+            },
+        }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.declaration.name
+    }
+}
+
 impl Plugin {
     pub fn new(id: impl Into<String>, version: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             version: version.into(),
             operations: Vec::new(),
+            lanes: Vec::new(),
             streams: Vec::new(),
             observers: Vec::new(),
             requirements: Vec::new(),
@@ -114,6 +154,11 @@ impl Plugin {
         Ok(self)
     }
 
+    pub fn lane(mut self, lane: Lane) -> Self {
+        self.lanes.push(lane);
+        self
+    }
+
     /// Stop hooks complete in registration order before the RPC replies.
     pub fn on_stop(mut self, cleanup: impl Fn() -> Result<()> + Send + Sync + 'static) -> Self {
         self.cleanup.push(Box::new(cleanup));
@@ -133,7 +178,28 @@ impl Plugin {
             return Err(Error::Invalid("Plugin Identity Must Be Lowercase with Dots or Underscores".into()));
         }
         semver::Version::parse(&self.version).map_err(|error| Error::Invalid(format!("Invalid Plugin Version: {error}")))?;
-        let mut declarations = Declarations::default();
+        let mut declarations = Declarations {
+            lanes: self.lanes.iter().map(|lane| lane.declaration.clone()).collect(),
+            ..Default::default()
+        };
+        for operation in &self.operations {
+            if operation.lane.is_some()
+                && (operation.contract.id == format!("{}.initialize", self.id) || operation.contract.id == format!("{}.finalize", self.id))
+            {
+                return Err(Error::Invalid(format!(
+                    "Declare Operation {} Lane `{}`: Remove the Lifecycle Lane Assignment",
+                    operation.contract.id, operation.contract.lane
+                )));
+            }
+            if let Some(lane) = &operation.lane
+                && !self.lanes.iter().any(|declared| declared.declaration == lane.declaration)
+            {
+                return Err(Error::Invalid(format!(
+                    "Declare Operation {} Lane `{}`: Declare This Lane in the Plugin",
+                    operation.contract.id, operation.contract.lane
+                )));
+            }
+        }
         let mut types = FileDescriptorSet::default();
         for (_, definitions) in &self.messages {
             merge_types(&mut types, definitions.clone())?;
@@ -266,6 +332,7 @@ impl Plugin {
             }
         }
         declarations.types = Some(types);
+        harmos_protocol::schema::plugin_lanes(&self.id, &declarations).map_err(|error| Error::Invalid(error.to_string()))?;
         declarations.digest = harmos_protocol::schema::declarations_digest(&declarations);
         Ok(declarations)
     }
@@ -391,6 +458,37 @@ mod tests {
                     Ok(())
                 })
                 .expect("Register Plugin Declarations")
+                .declarations()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn lanes_declare_capacity_and_refuse_invalid_assignments() {
+        let instrument = Lane::serial("instrument");
+        let parallel = Lane::concurrent("parallel", 2);
+        let open = Lane::unbounded("open");
+        let plugin = Plugin::new("example", "1.0.0")
+            .lane(instrument.clone())
+            .lane(parallel)
+            .lane(open)
+            .register(|ctx| ctx.register(Operation::new("example.measure", empty).visibility(Visibility::Public).lane(&instrument)))
+            .unwrap();
+        let declarations = plugin.declarations().unwrap();
+        let encoded = declarations.lanes.iter().map(prost::Message::encode_to_vec).collect::<Vec<_>>();
+        assert_eq!(
+            encoded,
+            vec![b"\x0a\x0ainstrument\x10\x01".to_vec(), b"\x0a\x08parallel\x18\x02".to_vec(), b"\x0a\x04open\x20\x01".to_vec()]
+        );
+        assert_eq!(declarations.operations[0].lane, "instrument");
+        assert!(Plugin::new("example", "1.0.0").lane(instrument.clone()).lane(instrument.clone()).declarations().is_err());
+        for lane in [Lane::serial(""), Lane::serial("Open"), Lane::serial("harmos.resident"), Lane::concurrent("instrument", 0)] {
+            assert!(Plugin::new("example", "1.0.0").lane(lane).declarations().is_err());
+        }
+        assert!(
+            Plugin::new("example", "1.0.0")
+                .register(|ctx| ctx.register(Operation::new("example.measure", empty).visibility(Visibility::Public).lane(&instrument)))
+                .unwrap()
                 .declarations()
                 .is_err()
         );

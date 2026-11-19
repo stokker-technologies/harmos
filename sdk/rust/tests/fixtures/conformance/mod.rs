@@ -30,7 +30,7 @@ use graph::Nested;
 use harmos::model::Failure;
 use harmos::plugin::HostOperation;
 use harmos::plugin::TimeGetResponse;
-use harmos::plugin::{Context, Observer, Operation, Plugin, Publisher, Registrar, Registration, Stream, Window};
+use harmos::plugin::{Context, Lane, Observer, Operation, Plugin, Publisher, Registrar, Registration, Stream, Window};
 use harmos::{Classification, OperationRequest, Result, Visibility};
 use harmos::{SettingDeclaration, SettingValue, SettingsDeclarations, setting_value};
 
@@ -190,7 +190,13 @@ impl OperationRequest for HostFail {
 /* === Private Functions === */
 
 pub fn plugin() -> Plugin {
-    Plugin::new("conformance", "1.0.0").register(|ctx| ctx.register(catalog())).expect("Register Plugin Declarations")
+    Plugin::new("conformance", "1.0.0")
+        .lane(Lane::serial("instrument"))
+        .lane(Lane::concurrent("parallel", 2))
+        .lane(Lane::unbounded("open"))
+        .lane(Lane::serial("other"))
+        .register(|ctx| ctx.register(catalog()))
+        .expect("Register Plugin Declarations")
 }
 
 pub fn catalog() -> impl Registration {
@@ -215,7 +221,15 @@ pub fn catalog() -> impl Registration {
     let window_observer = Observer::window(&window_stream, window).every(prost_types::Duration { seconds: 1, nanos: 0 });
     let oversized_stream = Stream::<Value>::new("conformance.oversized");
     let oversized_observer = Observer::new(&oversized_stream, oversized).every(prost_types::Duration { seconds: 1, nanos: 0 });
+    let instrument = Lane::serial("instrument");
+    let parallel = Lane::concurrent("parallel", 2);
+    let other = Lane::serial("other");
     move |ctx: &mut Registrar<'_>| {
+        ctx.register(Operation::new("conformance.lane.first", cancel).visibility(Visibility::Public).lane(&instrument))?;
+        ctx.register(Operation::new("conformance.lane.second", cancel).visibility(Visibility::Public).lane(&instrument))?;
+        ctx.register(Operation::new("conformance.lane.parallel", cancel).visibility(Visibility::Public).lane(&parallel))?;
+        ctx.register(Operation::new("conformance.lane.other", cancel).visibility(Visibility::Public).lane(&other))?;
+        ctx.register(Operation::new("conformance.lane.open", cancel).visibility(Visibility::Public))?;
         ctx.register(SettingsDeclarations {
             values: vec![
                 SettingDeclaration {

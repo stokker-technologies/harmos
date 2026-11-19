@@ -80,8 +80,8 @@ impl Manager {
     }
 
     pub(in crate::operations) fn admit<O: RequestShape, P: Send + 'static>(
-        &self, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>, ancestors: &[&'static str],
-        source: &Source, cause: Option<Position>,
+        &self, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
+        ancestors: &[crate::operations::lane::Admission], source: &Source, cause: Option<Position>,
     ) -> Result<Running<O>> {
         let entry = self.typed_entry::<O, P>(&source.check()?, None)?;
         let id = entry.id().to_owned();
@@ -91,7 +91,7 @@ impl Manager {
     #[tracing::instrument(target = "harmos::operations", name = "operations.admit_at", level = "debug", skip_all, fields(operation = %id))]
     pub(in crate::operations) fn admit_at<O: RequestShape, P: Send + 'static>(
         &self, id: &str, input: (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
-        ancestors: &[&'static str], source: &Source, cause: Option<Position>,
+        ancestors: &[crate::operations::lane::Admission], source: &Source, cause: Option<Position>,
     ) -> Result<Running<O>> {
         let submitted = self.clock().now();
         let origin = source.check()?;
@@ -113,7 +113,7 @@ impl Manager {
     #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane, outcome = "refused"))]
     pub(in crate::operations) fn admit_entry<O: RequestShape, P: Send + 'static>(
         &self, (mut request, endpoints): (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
-        ancestors: &[&'static str], source: &Source, submission: Submission,
+        ancestors: &[crate::operations::lane::Admission], source: &Source, submission: Submission,
     ) -> Result<Running<O>> {
         let Submission { submitted, entry, cause, preparation } = submission;
         let origin = source.check()?;
@@ -164,11 +164,13 @@ impl Manager {
             field: "operation",
             reason: "identity belongs to a different operation or endpoint type",
         })?;
-        let lane = request.lane.unwrap_or(entry.lane);
-        let bounded = self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered {
-            domain: "operation lane",
-            name: lane.to_owned(),
-        })?;
+        let lane = match &entry.plugin_lane {
+            Some(lane) => lane.clone(),
+            None => self.instances.lane(request.lane.unwrap_or(entry.lane)).ok_or_else(|| Error::NotRegistered {
+                domain: "operation lane",
+                name: request.lane.unwrap_or(entry.lane).to_owned(),
+            })?,
+        };
         let policy_source = request.policy.map(|_| request.policy_source.unwrap_or("per-call policy override"));
         let mut policy = request.policy.unwrap_or(entry.definition.policy);
         if let Some(retry) = request.retry {
@@ -187,7 +189,7 @@ impl Manager {
                 reason: "Call retries require declared replay safety",
             });
         }
-        let admission = self.lanes.admit(ancestors, lane, bounded)?;
+        let admission = self.lanes.admit(ancestors, &lane)?;
         let id = crate::operations::handler::fresh_instance()?;
         let mut pending = entry.pending.lock().expect("operation settlement lock is healthy");
         source.check()?;

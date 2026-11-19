@@ -56,6 +56,7 @@ inline constexpr auto VISIBILITY_PRIVATE = static_cast<::harmos::model::v1::Visi
 inline constexpr auto VISIBILITY_PUBLIC = static_cast<::harmos::model::v1::Visibility>(2);
 inline constexpr auto VISIBILITY_PROTECTED = static_cast<::harmos::model::v1::Visibility>(3);
 using ::harmos::model::v1::Declarations;
+using ::harmos::model::v1::LaneDeclaration;
 using ::harmos::model::v1::Receipt;
 using ::harmos::model::v1::Section;
 using ::harmos::model::v1::SettingDeclaration;

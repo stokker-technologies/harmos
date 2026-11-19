@@ -50,7 +50,7 @@ use tokio::sync::{self, oneshot, watch};
 use tonic::transport::Channel;
 
 // Local Imports
-use crate::operations::{GrpcAdmission, Lane, Manager};
+use crate::operations::{GrpcAdmission, Manager};
 use crate::runtime::StopParticipant;
 use crate::streams::StreamManager;
 use crate::{Application, Runtime, clock::Clock};
@@ -141,7 +141,6 @@ struct ConnectedPlugin {
 struct Session<A: Application> {
     operations: Manager,
     streams: StreamManager<A>,
-    lane: &'static str,
     clock: Clock,
     settings: PlacementSettings,
     process: Option<Process>,
@@ -355,7 +354,7 @@ impl<A: Application> Runtime<A> {
                 )
                 .map_err(|error| Error::Invalid(error.to_string()))?;
                 activation.process_id = process.id();
-                let admission = operations.prepare_grpc_admission(&activation, Lane::default().name(), true)?;
+                let admission = operations.prepare_grpc_admission(&activation, true)?;
                 let publications = Publications::prepare(&streams, &activation, &settings, &operations, true, None).await?;
                 Ok((address, activation, admission, publications))
             }
@@ -439,7 +438,6 @@ impl<A: Application> Runtime<A> {
         Ok(Attached::run(
             operations,
             self.streams.clone(),
-            Lane::default().name(),
             settings,
             participant,
             ConnectedPlugin {
@@ -458,7 +456,6 @@ impl<A: Application> Runtime<A> {
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
-            Lane::default().name(),
             placement,
             settings,
             Startup {
@@ -485,7 +482,6 @@ impl<A: Application> Runtime<A> {
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
-            Lane::default().name(),
             placement,
             settings,
             Startup {
@@ -523,19 +519,18 @@ impl Activation {
 
 impl Attached {
     async fn start<A: Application>(
-        operations: Manager, streams: StreamManager<A>, lane: &'static str, placement: Placement, settings: PlacementSettings,
-        startup: Startup,
+        operations: Manager, streams: StreamManager<A>, placement: Placement, settings: PlacementSettings, startup: Startup,
     ) -> Result<Self, Error> {
         let (cancel, dropped) = oneshot::channel();
-        let task = tokio::spawn(Self::start_owned(operations, streams, lane, placement, settings, startup, dropped));
+        let task = tokio::spawn(Self::start_owned(operations, streams, placement, settings, startup, dropped));
         let result = task.await.map_err(|error| Error::Invalid(format!("Join Plugin Startup: {error}")))?;
         drop(cancel);
         result
     }
 
     async fn start_owned<A: Application>(
-        operations: Manager, streams: StreamManager<A>, lane: &'static str, placement: Placement, settings: PlacementSettings,
-        startup: Startup, dropped: oneshot::Receiver<()>,
+        operations: Manager, streams: StreamManager<A>, placement: Placement, settings: PlacementSettings, startup: Startup,
+        dropped: oneshot::Receiver<()>,
     ) -> Result<Self, Error> {
         let Startup {
             mut participant,
@@ -598,7 +593,7 @@ impl Attached {
                 )
                 .map_err(|error| Error::Invalid(error.to_string()))?;
                 activation.process_id = process.as_ref().and_then(Process::id);
-                let admission = operations.admit_grpc(&activation, lane).inspect_err(|_| {
+                let admission = operations.admit_grpc(&activation).inspect_err(|_| {
                     activation.connection.closed.send_replace(true);
                 })?;
                 activation.admission = Some(Arc::new(admission));
@@ -663,11 +658,11 @@ impl Attached {
             activation,
             publications,
         };
-        Ok(Self::run(operations, streams, lane, settings, participant, connected))
+        Ok(Self::run(operations, streams, settings, participant, connected))
     }
 
     fn run<A: Application>(
-        operations: Manager, streams: StreamManager<A>, lane: &'static str, settings: PlacementSettings, participant: StopParticipant,
+        operations: Manager, streams: StreamManager<A>, settings: PlacementSettings, participant: StopParticipant,
         connected: ConnectedPlugin,
     ) -> Self {
         let ConnectedPlugin {
@@ -687,7 +682,6 @@ impl Attached {
             let session = Session {
                 operations,
                 streams,
-                lane,
                 clock,
                 settings,
                 process,
@@ -833,7 +827,6 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
     let Session {
         operations,
         streams,
-        lane,
         clock,
         settings,
         mut process,
@@ -993,7 +986,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
                             )));
                         }
                     };
-                    match operations.admit_grpc(&next, lane) {
+                    match operations.admit_grpc(&next) {
                         Ok(admission) => next.admission = Some(Arc::new(admission)),
                         Err(error) => {
                             next.connection.closed.send_replace(true);

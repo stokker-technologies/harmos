@@ -15,9 +15,12 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 // Third Party Imports
-use tokio::sync::Semaphore;
+use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 // Local Imports
 
 /* === Constants === */
@@ -29,6 +32,8 @@ pub(crate) const RESIDENT: &str = "harmos.resident";
 /* === Macros === */
 
 /* === Type Aliases === */
+
+pub(crate) type Ticket = Pin<Box<dyn Future<Output = Result<OwnedSemaphorePermit, AcquireError>> + Send>>;
 
 /* === Structs === */
 
@@ -55,7 +60,7 @@ pub struct LaneSet {
 
 #[derive(Clone)]
 pub(crate) struct Admission {
-    name: &'static str,
+    name: Arc<str>,
     width: usize,
     semaphore: Arc<Semaphore>,
 }
@@ -160,8 +165,39 @@ impl LaneSet {
 }
 
 impl Admission {
-    pub(crate) fn name(&self) -> &'static str {
-        self.name
+    pub(crate) fn new(name: impl Into<Arc<str>>, width: usize) -> Self {
+        Self {
+            name: name.into(),
+            width,
+            semaphore: Arc::new(Semaphore::new(width.min(Semaphore::MAX_PERMITS))),
+        }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn key(&self) -> usize {
+        Arc::as_ptr(&self.semaphore) as usize
+    }
+
+    pub(crate) fn close(&self) {
+        self.semaphore.close();
+    }
+
+    pub(crate) fn closed(&self) -> bool {
+        self.semaphore.is_closed()
+    }
+
+    pub(crate) fn enqueue(&self) -> Ticket {
+        let mut waiting: Pin<Box<dyn Future<Output = Result<OwnedSemaphorePermit, AcquireError>> + Send>> =
+            Box::pin(self.semaphore().acquire_owned());
+        // Poll at Submission So FIFO Is Arrival Order, Independent of Driver Scheduling.
+        let ready = waiting.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+        match ready {
+            Poll::Ready(result) => Box::pin(std::future::ready(result)),
+            Poll::Pending => waiting,
+        }
     }
 
     pub(crate) fn bounded(&self) -> bool {
@@ -175,14 +211,7 @@ impl Admission {
 
 impl Lanes {
     pub(crate) fn freeze(declared: LaneSet) -> Result<Self, String> {
-        let mut lanes = BTreeMap::from([(
-            RESIDENT,
-            Admission {
-                name: RESIDENT,
-                width: usize::MAX,
-                semaphore: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)),
-            },
-        )]);
+        let mut lanes = BTreeMap::from([(RESIDENT, Admission::new(RESIDENT, usize::MAX))]);
 
         for (name, capacity) in declared.entries() {
             if name.is_empty() {
@@ -191,11 +220,7 @@ impl Lanes {
             if capacity.width() == 0 {
                 return Err(format!("lane `{name}` must admit at least one job"));
             }
-            let admission = Admission {
-                name,
-                width: capacity.width(),
-                semaphore: Arc::new(Semaphore::new(capacity.width().min(Semaphore::MAX_PERMITS))),
-            };
+            let admission = Admission::new(name, capacity.width());
             if lanes.insert(name, admission).is_some() {
                 return Err(format!("lane `{name}` is declared more than once"));
             }

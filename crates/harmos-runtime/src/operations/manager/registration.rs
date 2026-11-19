@@ -210,6 +210,7 @@ impl Manager {
             grpc: None,
             generation,
             lane,
+            plugin_lane: None,
 
             active: AtomicBool::new(true),
             publication: Arc::new(AtomicBool::new(true)),

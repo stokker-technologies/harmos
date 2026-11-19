@@ -81,7 +81,7 @@ pub enum Error<E = Infallible> {
     OperationRefused(#[from] crate::Refusal),
 
     #[error("operation child lane `{child}` would cycle with held lane `{parent}`")]
-    OperationLaneCycle { parent: &'static str, child: &'static str },
+    OperationLaneCycle { parent: String, child: String },
 
     #[cfg(feature = "plugin-guest")]
     #[error("operation caller is unavailable: {source}")]

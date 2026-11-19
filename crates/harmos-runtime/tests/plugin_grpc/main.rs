@@ -34,6 +34,7 @@ mod independent_streams;
 mod interval_stream;
 mod interval_windows;
 mod invoke_support;
+mod lanes;
 mod lifecycle;
 mod malformed_identity;
 mod malformed_payload;

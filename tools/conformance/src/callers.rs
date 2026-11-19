@@ -98,9 +98,10 @@ struct Forwarding<T> {
 }
 
 #[derive(Clone)]
-struct Forward {
-    client: InstanceClient<Channel>,
-    sample: Arc<Mutex<Option<Vec<u8>>>>,
+pub(crate) struct Forward {
+    pub(crate) client: InstanceClient<Channel>,
+    pub(crate) lanes: bool,
+    pub(crate) sample: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
 /* === Enums === */
@@ -216,11 +217,19 @@ impl Instance for Forward {
             .declarations
             .as_mut()
             .ok_or_else(|| Status::invalid_argument("Admit Caller Fixture: Missing Declarations"))?;
-        declarations.operations.retain(|operation| matches!(operation.id.as_str(), "conformance.caller_refusal" | "conformance.step.0"));
-        declarations.streams.retain(|stream| stream.id == "conformance.window_caller_refusal");
-        declarations.requires.retain(|requirement| requirement.id == CREATE);
-        if declarations.operations.len() != 2 || declarations.streams.len() != 1 || declarations.requires.len() != 1 {
-            return Err(Status::invalid_argument("Admit Caller Fixture: Missing Caller Refusal Contracts"));
+        if self.lanes {
+            declarations.operations.retain(|operation| operation.id.starts_with("conformance.lane."));
+            declarations.streams.clear();
+            declarations.requires.retain(|requirement| requirement.id == "conformance.host.pending");
+        } else {
+            declarations
+                .operations
+                .retain(|operation| matches!(operation.id.as_str(), "conformance.caller_refusal" | "conformance.step.0"));
+            declarations.streams.retain(|stream| stream.id == "conformance.window_caller_refusal");
+            declarations.requires.retain(|requirement| requirement.id == CREATE);
+            if declarations.operations.len() != 2 || declarations.streams.len() != 1 || declarations.requires.len() != 1 {
+                return Err(Status::invalid_argument("Admit Caller Fixture: Missing Caller Refusal Contracts"));
+            }
         }
         declarations.digest = harmos_protocol::schema::declarations_digest(declarations);
         Ok(response)
@@ -410,7 +419,11 @@ async fn plugin_refusal(runtime: &Runtime<App>, counter: &AtomicU64, controller:
         .ok_or_else(|| Error::Invalid("Call Operation: Missing Refusal Fixture".into()))?
         .fingerprint
         .clone();
-    let forward = Forward { client, sample: sample.clone() };
+    let forward = Forward {
+        client,
+        lanes: false,
+        sample: sample.clone(),
+    };
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let address = format!("http://{}", listener.local_addr()?);
     let incoming = stream::unfold(listener, |listener| async {

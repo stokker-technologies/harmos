@@ -16,7 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::{future::Future, marker::PhantomData, pin::Pin, result::Result as StdResult, sync::Arc};
+use std::{future::Future, marker::PhantomData, pin::Pin, result, sync::Arc};
 
 // Third Party Imports
 use prost_types::FileDescriptorSet;
@@ -42,6 +42,7 @@ pub struct Operation {
     pub(crate) contract: OperationContract,
     pub(crate) types: FileDescriptorSet,
     pub(crate) handler: Arc<dyn Handler>,
+    pub(crate) lane: Option<crate::plugin::Lane>,
 }
 
 struct TypedHandler<Q, R, H> {
@@ -54,7 +55,7 @@ struct TypedHandler<Q, R, H> {
 /* === Traits === */
 
 pub(crate) trait Handler: Send + Sync {
-    fn validate(&self, payload: &[u8]) -> StdResult<(), Status>;
+    fn validate(&self, payload: &[u8]) -> result::Result<(), Status>;
     fn execute<'a>(&'a self, context: &'a Context, payload: Vec<u8>) -> LocalFuture<'a, Result<Vec<u8>>>;
 }
 
@@ -80,7 +81,14 @@ impl Operation {
             },
             types,
             handler: Arc::new(TypedHandler { handler, marker: PhantomData }),
+            lane: None,
         }
+    }
+
+    pub fn lane(mut self, lane: &crate::plugin::Lane) -> Self {
+        self.contract.lane = lane.name().to_owned();
+        self.lane = Some(lane.clone());
+        self
     }
 
     pub fn visibility(mut self, visibility: Visibility) -> Self {
@@ -107,7 +115,7 @@ where
     R: Message,
     H: for<'a> AsyncFn(&'a Context, Q) -> Result<R> + Send + Sync + 'static,
 {
-    fn validate(&self, payload: &[u8]) -> StdResult<(), Status> {
+    fn validate(&self, payload: &[u8]) -> result::Result<(), Status> {
         Q::decode(payload).map(|_| ()).map_err(|error| Status::invalid_argument(error.to_string()))
     }
 

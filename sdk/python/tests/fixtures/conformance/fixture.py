@@ -36,6 +36,7 @@ from harmos.plugin import (
     Catalog,
     Context,
     HostOperation,
+    Lane,
     Operation,
     Plugin,
     Publisher,
@@ -56,6 +57,11 @@ from ._caller import REQUEST
 # === Public Exports === #
 
 # === Constants === #
+
+INSTRUMENT = Lane("instrument", serial=True)
+PARALLEL = Lane("parallel", concurrent=2)
+OPEN = Lane("open")
+OTHER = Lane("other", serial=True)
 
 LOCAL = Operation("conformance.local", Value, Value, visibility=VISIBILITY_PRIVATE)
 HOST_WATCH = Operation("conformance.host.watch", Value, Value, visibility=VISIBILITY_PUBLIC, watch=True)
@@ -123,6 +129,26 @@ class Fixture:
 
     @operation("conformance.cancel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def cancel(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.first", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
+    async def lane_first(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.second", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
+    async def lane_second(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.parallel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=PARALLEL)
+    async def lane_parallel(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.other", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=OTHER)
+    async def lane_other(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.open", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def lane_open(self, ctx: Context, request: Value) -> Value:
         return await ctx.call(HOST_PENDING, request)
 
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
@@ -340,7 +366,7 @@ class ClockFixture:
 
 
 def plugin() -> Plugin:
-    return Plugin(id="conformance", version="1.0.0", register=register)
+    return Plugin(id="conformance", version="1.0.0", register=register, lanes=[INSTRUMENT, PARALLEL, OPEN, OTHER])
 
 
 def register(ctx: Registrar) -> None:

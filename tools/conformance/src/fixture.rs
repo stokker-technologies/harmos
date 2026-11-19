@@ -27,8 +27,8 @@ use prost_types::{DescriptorProto, Duration, FieldDescriptorProto, FileDescripto
 use crate::conformance::Graph;
 use harmos_protocol::host::plugins::SettingsListRequest;
 use harmos_protocol::model::{
-    Classification, Declarations, Failure, OperationContract, Protobuf, Requirement, Section, SettingDeclaration, SettingValue,
-    SettingValues, SettingsDeclarations, StreamDeclaration, Visibility, setting_value,
+    Classification, Declarations, Failure, LaneDeclaration, OperationContract, Protobuf, Requirement, Section, SettingDeclaration,
+    SettingValue, SettingValues, SettingsDeclarations, StreamDeclaration, Visibility, lane_declaration, setting_value,
 };
 
 /* === Constants === */
@@ -221,6 +221,18 @@ pub fn declarations() -> Declarations {
             }
         })
         .collect();
+    for (name, lane) in [("first", "instrument"), ("second", "instrument"), ("parallel", "parallel"), ("other", "other"), ("open", "")] {
+        let id = format!("conformance.lane.{name}");
+        operations.push(OperationContract {
+            fingerprint: fingerprint(&id),
+            id,
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            lane: lane.into(),
+            ..Default::default()
+        });
+    }
     let mut requires: Vec<_> = [
         "conformance.host.echo",
         "conformance.host.pending",
@@ -357,6 +369,24 @@ pub fn declarations() -> Declarations {
     }
     let mut declarations = Declarations {
         operations,
+        lanes: vec![
+            LaneDeclaration {
+                name: "instrument".into(),
+                capacity: Some(lane_declaration::Capacity::Serial(true)),
+            },
+            LaneDeclaration {
+                name: "parallel".into(),
+                capacity: Some(lane_declaration::Capacity::Concurrent(2)),
+            },
+            LaneDeclaration {
+                name: "open".into(),
+                capacity: Some(lane_declaration::Capacity::Unbounded(true)),
+            },
+            LaneDeclaration {
+                name: "other".into(),
+                capacity: Some(lane_declaration::Capacity::Serial(true)),
+            },
+        ],
         requires,
         streams,
         types: Some(types),

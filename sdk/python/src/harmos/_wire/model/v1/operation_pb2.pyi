@@ -21,7 +21,7 @@ VISIBILITY_PUBLIC: Visibility
 VISIBILITY_PROTECTED: Visibility
 
 class OperationContract(_message.Message):
-    __slots__ = ("id", "request", "response", "visibility", "policy", "fingerprint", "description", "replay_safe")
+    __slots__ = ("id", "request", "response", "visibility", "policy", "fingerprint", "description", "replay_safe", "lane")
     ID_FIELD_NUMBER: _ClassVar[int]
     REQUEST_FIELD_NUMBER: _ClassVar[int]
     RESPONSE_FIELD_NUMBER: _ClassVar[int]
@@ -30,6 +30,7 @@ class OperationContract(_message.Message):
     FINGERPRINT_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     REPLAY_SAFE_FIELD_NUMBER: _ClassVar[int]
+    LANE_FIELD_NUMBER: _ClassVar[int]
     id: str
     request: str
     response: str
@@ -38,7 +39,8 @@ class OperationContract(_message.Message):
     fingerprint: bytes
     description: str
     replay_safe: bool
-    def __init__(self, id: _Optional[str] = ..., request: _Optional[str] = ..., response: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[_policy_pb2.OperationPolicy, _Mapping]] = ..., fingerprint: _Optional[bytes] = ..., description: _Optional[str] = ..., replay_safe: _Optional[bool] = ...) -> None: ...
+    lane: str
+    def __init__(self, id: _Optional[str] = ..., request: _Optional[str] = ..., response: _Optional[str] = ..., visibility: _Optional[_Union[Visibility, str]] = ..., policy: _Optional[_Union[_policy_pb2.OperationPolicy, _Mapping]] = ..., fingerprint: _Optional[bytes] = ..., description: _Optional[str] = ..., replay_safe: _Optional[bool] = ..., lane: _Optional[str] = ...) -> None: ...
 
 class Requirement(_message.Message):
     __slots__ = ("id", "fingerprint")

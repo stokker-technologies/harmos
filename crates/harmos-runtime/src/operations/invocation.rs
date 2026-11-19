@@ -436,7 +436,7 @@ fn admit_native<P: Send + 'static>(
 
 fn admit_native_as<P: Send + 'static>(
     manager: &super::Manager, request: NativeRequest<'_, P>, source: &super::caller::Source, scope: Option<&super::Scope<'_>>,
-    ancestors: &[&'static str],
+    ancestors: &[crate::operations::lane::Admission],
 ) -> crate::Result<super::Running<NativeCall>> {
     let NativeRequest {
         target,

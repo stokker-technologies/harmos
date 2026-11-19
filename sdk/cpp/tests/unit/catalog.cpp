@@ -68,6 +68,43 @@ TEST_CASE("Caller Options Select SDK Surfaces") {
   REQUIRE_FALSE(SetsSettings<harmos::plugin::HostRoot>);
 }
 
+TEST_CASE("Lanes Encode Facts and Refuse Invalid Declarations") {
+  const auto instrument = harmos::plugin::Lane::serial("instrument");
+  const auto parallel = harmos::plugin::Lane::concurrent("parallel", 2);
+  const auto open = harmos::plugin::Lane::unbounded("open");
+  harmos::plugin::Operation<Value, Value> operation("example.measure", harmos::VISIBILITY_PUBLIC,
+                                                    [](harmos::plugin::Context &, Value request) {
+                                                      return request;
+                                                    });
+  operation.lane(instrument);
+  harmos::plugin::Plugin plugin("example", "1.0.0");
+  plugin.lane(instrument).lane(parallel).lane(open).add([&](harmos::plugin::Registrar &ctx) {
+    ctx.add(operation);
+  });
+  const auto declarations = plugin.declarations();
+  REQUIRE(declarations.lanes(0).SerializeAsString() == string("\x0a\x0a"
+                                                              "instrument"
+                                                              "\x10\x01",
+                                                              14));
+  REQUIRE(declarations.lanes(1).SerializeAsString() == string("\x0a\x08"
+                                                              "parallel"
+                                                              "\x18\x02",
+                                                              12));
+  REQUIRE(declarations.lanes(2).SerializeAsString() == string("\x0a\x04"
+                                                              "open"
+                                                              "\x20\x01",
+                                                              8));
+  REQUIRE(declarations.operations(0).lane() == "instrument");
+  REQUIRE_THROWS_AS(harmos::plugin::Lane::serial(""), invalid_argument);
+  REQUIRE_THROWS_AS(harmos::plugin::Lane::concurrent("instrument", 0), invalid_argument);
+  REQUIRE_THROWS_AS(plugin.lane(instrument), invalid_argument);
+  harmos::plugin::Plugin undeclared("example", "1.0.0");
+  undeclared.add([&](harmos::plugin::Registrar &ctx) {
+    ctx.add(operation);
+  });
+  REQUIRE_THROWS_AS(undeclared.declarations(), invalid_argument);
+}
+
 TEST_CASE("A Declaration Refuses Duplicate Operations") {
   SECTION("Duplicate Registrations Are Refused") {
     harmos::plugin::Operation<Value, Value> echo("example.echo", harmos::VISIBILITY_PUBLIC, [](harmos::plugin::Context &, Value request) {

@@ -58,6 +58,7 @@ pub(crate) struct Prepared<O> {
 
 pub(super) struct Execution {
     pub(super) admission: Admission,
+    pub(super) ticket: super::lane::Ticket,
     pub(super) submitted: tokio::time::Instant,
     pub(super) cancelled: watch::Receiver<bool>,
     pub(super) instance: Arc<Instance>,
@@ -165,6 +166,7 @@ pub(super) async fn execute<O: Send + 'static>(
 ) -> Result<O> {
     let Execution {
         admission,
+        ticket,
         submitted,
         mut cancelled,
         instance,
@@ -192,7 +194,7 @@ pub(super) async fn execute<O: Send + 'static>(
     let mut permit = None;
     let answer = match refusal {
         Some(error) => Err(error),
-        None => match crate::clock::waiting(acquire(&admission, &budget, &mut cancelled)).await {
+        None => match crate::clock::waiting(acquire(&admission, ticket, &budget, &mut cancelled)).await {
             Err(error) => Err(error),
             Ok(acquired) => {
                 permit = Some(acquired);
@@ -261,18 +263,25 @@ pub(super) async fn execute<O: Send + 'static>(
 /* === Private Functions === */
 
 #[tracing::instrument(target = "harmos::operations", name = "operations.acquire", level = "debug", skip_all)]
-async fn acquire(admission: &Admission, budget: &Budget, cancelled: &mut watch::Receiver<bool>) -> Result<OwnedSemaphorePermit> {
+async fn acquire(
+    admission: &Admission, ticket: super::lane::Ticket, budget: &Budget, cancelled: &mut watch::Receiver<bool>,
+) -> Result<OwnedSemaphorePermit> {
+    if admission.closed() {
+        return Err(Refusal::Unavailable.into());
+    }
     if *cancelled.borrow() {
         return Err(budget.cancelled(1).into());
     }
     if budget.remaining().is_zero() {
         return Err(budget.timed_out(1).into());
     }
-    let waiting = interruptible(admission.semaphore().acquire_owned(), cancelled);
+    let waiting = interruptible(ticket, cancelled);
     match executor::timeout(budget.remaining(), waiting).await {
         Err(_) => Err(budget.timed_out(1).into()),
+        Ok(None) if admission.closed() => Err(Refusal::Unavailable.into()),
         Ok(None) => Err(budget.cancelled(1).into()),
         Ok(Some(Err(_))) => Err(Refusal::Unavailable.into()),
+        Ok(Some(Ok(_))) if admission.closed() => Err(Refusal::Unavailable.into()),
         Ok(Some(Ok(permit))) => Ok(permit),
     }
 }

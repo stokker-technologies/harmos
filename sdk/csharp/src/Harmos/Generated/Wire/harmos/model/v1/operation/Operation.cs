@@ -26,45 +26,46 @@ namespace Harmos;
           string.Concat(
             "Ch9oYXJtb3MvbW9kZWwvdjEvb3BlcmF0aW9uLnByb3RvEg9oYXJtb3MubW9k",
             "ZWwudjEaHWhhcm1vcy9tb2RlbC92MS9jYWxsZXJzLnByb3RvGhxoYXJtb3Mv",
-            "bW9kZWwvdjEvcG9saWN5LnByb3RvIrUCChFPcGVyYXRpb25Db250cmFjdBIO",
+            "bW9kZWwvdjEvcG9saWN5LnByb3RvIskCChFPcGVyYXRpb25Db250cmFjdBIO",
             "CgJpZBgBIAEoCVICaWQSGAoHcmVxdWVzdBgCIAEoCVIHcmVxdWVzdBIaCghy",
             "ZXNwb25zZRgDIAEoCVIIcmVzcG9uc2USOwoKdmlzaWJpbGl0eRgEIAEoDjIb",
             "Lmhhcm1vcy5tb2RlbC52MS5WaXNpYmlsaXR5Ugp2aXNpYmlsaXR5EjgKBnBv",
             "bGljeRgFIAEoCzIgLmhhcm1vcy5tb2RlbC52MS5PcGVyYXRpb25Qb2xpY3lS",
             "BnBvbGljeRIgCgtmaW5nZXJwcmludBgGIAEoDFILZmluZ2VycHJpbnQSIAoL",
             "ZGVzY3JpcHRpb24YByABKAlSC2Rlc2NyaXB0aW9uEh8KC3JlcGxheV9zYWZl",
-            "GAggASgIUgpyZXBsYXlTYWZlIj8KC1JlcXVpcmVtZW50Eg4KAmlkGAEgASgJ",
-            "UgJpZBIgCgtmaW5nZXJwcmludBgCIAEoDFILZmluZ2VycHJpbnQirwEKCFBy",
-            "b3RvYnVmEiAKC2Rlc2NyaXB0b3JzGAEgASgMUgtkZXNjcmlwdG9ycxIYCgdy",
-            "ZXF1ZXN0GAIgASgJUgdyZXF1ZXN0EhoKCHJlc3BvbnNlGAMgASgJUghyZXNw",
-            "b25zZRIZCgVpbnB1dBgEIAEoCUgAUgVpbnB1dIgBARIbCgZvdXRwdXQYBSAB",
-            "KAlIAVIGb3V0cHV0iAEBQggKBl9pbnB1dEIJCgdfb3V0cHV0ImwKBEdycGMS",
-            "GAoHcGFja2FnZRgBIAEoCVIHcGFja2FnZRIYCgdzZXJ2aWNlGAIgASgJUgdz",
-            "ZXJ2aWNlEhYKBm1ldGhvZBgDIAEoCVIGbWV0aG9kEhgKB21hbmFnZWQYBCAB",
-            "KAhSB21hbmFnZWQiSgoFR3JhbnQSHAoJb3BlcmF0aW9uGAEgASgJUglvcGVy",
-            "YXRpb24SGQoFc2NvcGUYAiABKAlIAFIFc2NvcGWIAQFCCAoGX3Njb3BlIpYD",
-            "ChJEaXNjb3ZlcmVkQ29udHJhY3QSDgoCaWQYASABKAlSAmlkEiAKC2Rlc2Ny",
-            "aXB0aW9uGAIgASgJUgtkZXNjcmlwdGlvbhI7Cgp2aXNpYmlsaXR5GAMgASgO",
-            "MhsuaGFybW9zLm1vZGVsLnYxLlZpc2liaWxpdHlSCnZpc2liaWxpdHkSOAoG",
-            "cG9saWN5GAQgASgLMiAuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvblBvbGlj",
-            "eVIGcG9saWN5Eh8KC3JlcGxheV9zYWZlGAUgASgIUgpyZXBsYXlTYWZlEiAK",
-            "C2ZpbmdlcnByaW50GAYgASgMUgtmaW5nZXJwcmludBI1Cghwcm90b2J1ZhgH",
-            "IAEoCzIZLmhhcm1vcy5tb2RlbC52MS5Qcm90b2J1ZlIIcHJvdG9idWYSKQoE",
-            "Z3JwYxgIIAEoCzIVLmhhcm1vcy5tb2RlbC52MS5HcnBjUgRncnBjEjIKB2Nh",
-            "bGxlcnMYCSABKA4yGC5oYXJtb3MubW9kZWwudjEuQ2FsbGVyc1IHY2FsbGVy",
-            "cyKSAgoTRGlzY292ZXJlZE9wZXJhdGlvbhIUCgVvd25lchgBIAEoCVIFb3du",
-            "ZXISHgoKZ2VuZXJhdGlvbhgCIAEoBFIKZ2VuZXJhdGlvbhI/Cghjb250cmFj",
-            "dBgDIAEoCzIjLmhhcm1vcy5tb2RlbC52MS5EaXNjb3ZlcmVkQ29udHJhY3RS",
-            "CGNvbnRyYWN0Ei4KBmdyYW50cxgEIAMoCzIWLmhhcm1vcy5tb2RlbC52MS5H",
-            "cmFudFIGZ3JhbnRzEi0KEmNvbmRpdGlvbmFsX2FjY2VzcxgFIAEoCFIRY29u",
-            "ZGl0aW9uYWxBY2Nlc3MSJQoOZ3JwY19hdmFpbGFibGUYBiABKAhSDWdycGNB",
-            "dmFpbGFibGUqcQoKVmlzaWJpbGl0eRIaChZWSVNJQklMSVRZX1VOU1BFQ0lG",
-            "SUVEEAASFgoSVklTSUJJTElUWV9QUklWQVRFEAESFQoRVklTSUJJTElUWV9Q",
-            "VUJMSUMQAhIYChRWSVNJQklMSVRZX1BST1RFQ1RFRBADYgZwcm90bzM="));
+            "GAggASgIUgpyZXBsYXlTYWZlEhIKBGxhbmUYCSABKAlSBGxhbmUiPwoLUmVx",
+            "dWlyZW1lbnQSDgoCaWQYASABKAlSAmlkEiAKC2ZpbmdlcnByaW50GAIgASgM",
+            "UgtmaW5nZXJwcmludCKvAQoIUHJvdG9idWYSIAoLZGVzY3JpcHRvcnMYASAB",
+            "KAxSC2Rlc2NyaXB0b3JzEhgKB3JlcXVlc3QYAiABKAlSB3JlcXVlc3QSGgoI",
+            "cmVzcG9uc2UYAyABKAlSCHJlc3BvbnNlEhkKBWlucHV0GAQgASgJSABSBWlu",
+            "cHV0iAEBEhsKBm91dHB1dBgFIAEoCUgBUgZvdXRwdXSIAQFCCAoGX2lucHV0",
+            "QgkKB19vdXRwdXQibAoER3JwYxIYCgdwYWNrYWdlGAEgASgJUgdwYWNrYWdl",
+            "EhgKB3NlcnZpY2UYAiABKAlSB3NlcnZpY2USFgoGbWV0aG9kGAMgASgJUgZt",
+            "ZXRob2QSGAoHbWFuYWdlZBgEIAEoCFIHbWFuYWdlZCJKCgVHcmFudBIcCglv",
+            "cGVyYXRpb24YASABKAlSCW9wZXJhdGlvbhIZCgVzY29wZRgCIAEoCUgAUgVz",
+            "Y29wZYgBAUIICgZfc2NvcGUilgMKEkRpc2NvdmVyZWRDb250cmFjdBIOCgJp",
+            "ZBgBIAEoCVICaWQSIAoLZGVzY3JpcHRpb24YAiABKAlSC2Rlc2NyaXB0aW9u",
+            "EjsKCnZpc2liaWxpdHkYAyABKA4yGy5oYXJtb3MubW9kZWwudjEuVmlzaWJp",
+            "bGl0eVIKdmlzaWJpbGl0eRI4CgZwb2xpY3kYBCABKAsyIC5oYXJtb3MubW9k",
+            "ZWwudjEuT3BlcmF0aW9uUG9saWN5UgZwb2xpY3kSHwoLcmVwbGF5X3NhZmUY",
+            "BSABKAhSCnJlcGxheVNhZmUSIAoLZmluZ2VycHJpbnQYBiABKAxSC2Zpbmdl",
+            "cnByaW50EjUKCHByb3RvYnVmGAcgASgLMhkuaGFybW9zLm1vZGVsLnYxLlBy",
+            "b3RvYnVmUghwcm90b2J1ZhIpCgRncnBjGAggASgLMhUuaGFybW9zLm1vZGVs",
+            "LnYxLkdycGNSBGdycGMSMgoHY2FsbGVycxgJIAEoDjIYLmhhcm1vcy5tb2Rl",
+            "bC52MS5DYWxsZXJzUgdjYWxsZXJzIpICChNEaXNjb3ZlcmVkT3BlcmF0aW9u",
+            "EhQKBW93bmVyGAEgASgJUgVvd25lchIeCgpnZW5lcmF0aW9uGAIgASgEUgpn",
+            "ZW5lcmF0aW9uEj8KCGNvbnRyYWN0GAMgASgLMiMuaGFybW9zLm1vZGVsLnYx",
+            "LkRpc2NvdmVyZWRDb250cmFjdFIIY29udHJhY3QSLgoGZ3JhbnRzGAQgAygL",
+            "MhYuaGFybW9zLm1vZGVsLnYxLkdyYW50UgZncmFudHMSLQoSY29uZGl0aW9u",
+            "YWxfYWNjZXNzGAUgASgIUhFjb25kaXRpb25hbEFjY2VzcxIlCg5ncnBjX2F2",
+            "YWlsYWJsZRgGIAEoCFINZ3JwY0F2YWlsYWJsZSpxCgpWaXNpYmlsaXR5EhoK",
+            "FlZJU0lCSUxJVFlfVU5TUEVDSUZJRUQQABIWChJWSVNJQklMSVRZX1BSSVZB",
+            "VEUQARIVChFWSVNJQklMSVRZX1BVQkxJQxACEhgKFFZJU0lCSUxJVFlfUFJP",
+            "VEVDVEVEEANiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Harmos.CallersReflection.Descriptor, global::Harmos.PolicyReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Harmos.Visibility), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.OperationContract), global::Harmos.OperationContract.Parser, new[]{ "Id", "Request", "Response", "Visibility", "Policy", "Fingerprint", "Description", "ReplaySafe" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.OperationContract), global::Harmos.OperationContract.Parser, new[]{ "Id", "Request", "Response", "Visibility", "Policy", "Fingerprint", "Description", "ReplaySafe", "Lane" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Requirement), global::Harmos.Requirement.Parser, new[]{ "Id", "Fingerprint" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Protobuf), global::Harmos.Protobuf.Parser, new[]{ "Descriptors", "Request", "Response", "Input", "Output" }, new[]{ "Input", "Output" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Grpc), global::Harmos.Grpc.Parser, new[]{ "Package", "Service", "Method", "Managed" }, null, null, null, null),
@@ -130,6 +131,7 @@ namespace Harmos;
       fingerprint_ = other.fingerprint_;
       description_ = other.description_;
       replaySafe_ = other.replaySafe_;
+      lane_ = other.lane_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -235,6 +237,18 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "lane" field.</summary>
+    public const int LaneFieldNumber = 9;
+    private string lane_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Lane {
+      get { return lane_; }
+      set {
+        lane_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -258,6 +272,7 @@ namespace Harmos;
       if (Fingerprint != other.Fingerprint) return false;
       if (Description != other.Description) return false;
       if (ReplaySafe != other.ReplaySafe) return false;
+      if (Lane != other.Lane) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -273,6 +288,7 @@ namespace Harmos;
       if (Fingerprint.Length != 0) hash ^= Fingerprint.GetHashCode();
       if (Description.Length != 0) hash ^= Description.GetHashCode();
       if (ReplaySafe != false) hash ^= ReplaySafe.GetHashCode();
+      if (Lane.Length != 0) hash ^= Lane.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -323,6 +339,10 @@ namespace Harmos;
         output.WriteRawTag(64);
         output.WriteBool(ReplaySafe);
       }
+      if (Lane.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(Lane);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -365,6 +385,10 @@ namespace Harmos;
         output.WriteRawTag(64);
         output.WriteBool(ReplaySafe);
       }
+      if (Lane.Length != 0) {
+        output.WriteRawTag(74);
+        output.WriteString(Lane);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -398,6 +422,9 @@ namespace Harmos;
       }
       if (ReplaySafe != false) {
         size += 1 + 1;
+      }
+      if (Lane.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Lane);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -437,6 +464,9 @@ namespace Harmos;
       }
       if (other.ReplaySafe != false) {
         ReplaySafe = other.ReplaySafe;
+      }
+      if (other.Lane.Length != 0) {
+        Lane = other.Lane;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -492,6 +522,10 @@ namespace Harmos;
             ReplaySafe = input.ReadBool();
             break;
           }
+          case 74: {
+            Lane = input.ReadString();
+            break;
+          }
         }
       }
     #endif
@@ -544,6 +578,10 @@ namespace Harmos;
           }
           case 64: {
             ReplaySafe = input.ReadBool();
+            break;
+          }
+          case 74: {
+            Lane = input.ReadString();
             break;
           }
         }

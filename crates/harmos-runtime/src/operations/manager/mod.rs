@@ -137,6 +137,7 @@ pub(super) struct Entry {
 
     pub(super) generation: OperationGeneration,
     lane: &'static str,
+    plugin_lane: Option<super::lane::Admission>,
 
     // A resident control runs until cancelled, even while its plugin retires.
     active: AtomicBool,

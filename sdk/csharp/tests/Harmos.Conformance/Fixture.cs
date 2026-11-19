@@ -29,7 +29,13 @@ public sealed class Fixture
   private readonly Operation<Value, Value> hostFail = new("conformance.host.fail", Visibility.Public);
   private readonly Operation<Wire.InvocationsCreateRequest, Wire.InvocationsCreateResponse> createInvocation = new("application.host.v1.Invocations/Create", Visibility.Public);
 
-  public global::Harmos.Plugins.Plugin Build() => new global::Harmos.Plugins.Plugin("conformance", "1.0.0").Register(Register);
+  private static readonly Lane Instrument = Lane.Serial("instrument");
+  private static readonly Lane Parallel = Lane.Concurrent("parallel", 2);
+  private static readonly Lane Open = Lane.Unbounded("open");
+  private static readonly Lane Other = Lane.Serial("other");
+
+  public global::Harmos.Plugins.Plugin Build() => new global::Harmos.Plugins.Plugin("conformance", "1.0.0")
+      .Lane(Instrument).Lane(Parallel).Lane(Open).Lane(Other).Register(Register);
 
   private void Register(Registrar ctx)
   {
@@ -39,6 +45,11 @@ public sealed class Fixture
   public Registration Catalog() => ctx =>
   {
     ctx.Register(new global::Harmos.Plugins.Descriptor<PayloadOnly>());
+    ctx.Register(new Operation<Value, Value>("conformance.lane.first", Visibility.Public, lane: Instrument), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.second", Visibility.Public, lane: Instrument), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.parallel", Visibility.Public, lane: Parallel), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.other", Visibility.Public, lane: Other), Cancel);
+    ctx.Register(new Operation<Value, Value>("conformance.lane.open", Visibility.Public), Cancel);
     ctx.Register(local, Local);
     ctx.Register(new Operation<Value, Value>("conformance.local_call", Visibility.Public), LocalCall);
     ctx.Register(new Operation<Value, Value>("conformance.step.0", Visibility.Public), Echo);
