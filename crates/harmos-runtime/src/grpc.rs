@@ -13,6 +13,7 @@ pub mod access;
 pub mod authentication;
 pub mod client;
 mod codec;
+mod connection;
 mod controlled;
 mod decoding;
 mod descriptors;
@@ -34,6 +35,7 @@ mod tls;
 /* === Re-Exports === */
 
 pub use codec::{Codec, Encode, EncodeSettings, Encoder, Transcoded, Wire};
+pub use connection::ConnectionEnd;
 pub use controlled::ControlEnvelope;
 pub use decoding::{DecodeSettings, Decoder};
 pub use descriptors::descriptor;

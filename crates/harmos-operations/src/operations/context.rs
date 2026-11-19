@@ -16,7 +16,10 @@
 // Standard Library Imports
 use std::any::{Any, TypeId, type_name};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 // Third Party Imports
 
 // Local Imports
@@ -27,6 +30,8 @@ use crate::{Message, MessageError};
 pub use harmos_protocol::guest::CONTEXT_VALUES as PORTABLE_VALUES;
 
 pub use harmos_protocol::guest::CONTEXT_BYTES as PORTABLE_BYTES;
+
+static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
 
 /* === Macros === */
 
@@ -40,6 +45,10 @@ pub struct CallContext {
     portable: BTreeMap<String, Arc<[u8]>>,
     portable_types: HashMap<&'static str, TypeId>,
 }
+
+/// Opaque Process-Unique Transport Identity. Never Serialized or Reused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ConnectionId(u64);
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CallValue {
@@ -98,6 +107,12 @@ impl Scope {
 }
 
 impl CallContext {
+    /// The Inbound Transport Connection, or None for Native In-Process Calls.
+    /// Child Invocations Retain Their Originating Connection's Identity.
+    pub fn connection_id(&self) -> Option<ConnectionId> {
+        self.get::<ConnectionId>().copied()
+    }
+
     pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Result<(), ContextError> {
         let key = TypeId::of::<T>();
         if self.values.contains_key(&key) {
@@ -218,6 +233,13 @@ impl CallContext {
     }
 }
 
+impl ConnectionId {
+    /// Allocate an Identity for a New Transport Connection; None Means Exhaustion.
+    pub fn allocate() -> Option<Self> {
+        NEXT_CONNECTION.try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1)).ok().map(Self)
+    }
+}
+
 /* === Public Functions === */
 
 /* === Private Functions === */
@@ -226,7 +248,7 @@ impl CallContext {
 
 #[cfg(test)]
 mod tests {
-    use super::{CallContext, ContextValue};
+    use super::{CallContext, ConnectionId, ContextValue};
 
     #[derive(crate::Message)]
     #[harmos_path(crate)]
@@ -236,6 +258,21 @@ mod tests {
 
     impl ContextValue for Trace {
         const KEY: &'static str = "trace";
+    }
+
+    #[test]
+    fn connection_identity_is_local_and_inherited_by_child_contexts() {
+        let first = ConnectionId::allocate().unwrap();
+        let second = ConnectionId::allocate().unwrap();
+        assert_ne!(first, second);
+        let mut context = CallContext::default();
+        assert_eq!(context.connection_id(), None);
+        context.insert(first).unwrap();
+        let child = context.with_value(Trace { value: 17 }).unwrap();
+        assert_eq!(context.connection_id(), Some(first));
+        assert_eq!(child.connection_id(), Some(first));
+        let remote = CallContext::from_portable(child.portable()).unwrap();
+        assert_eq!(remote.connection_id(), None);
     }
 
     #[test]
