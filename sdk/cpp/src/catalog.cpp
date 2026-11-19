@@ -220,8 +220,23 @@ Registrar &Registrar::add(model::v1::SettingDeclaration declaration) {
   return *this;
 }
 
+Plugin &Plugin::lane(const Lane &lane) {
+  for (const auto &declared : lanes_) {
+    if (declared.name() == lane.declaration().name()) {
+      throw invalid_argument("Declare Lane `" + declared.name() + "`: Declare Each Name Once");
+    }
+  }
+  lanes_.push_back(lane.declaration());
+  return *this;
+}
+
 model::v1::Declarations Plugin::declarations() const {
   model::v1::Declarations declarations;
+  set<string> lanes;
+  for (const auto &lane : lanes_) {
+    lanes.insert(lane.name());
+    *declarations.add_lanes() = lane;
+  }
   *declarations.mutable_types() = messages_;
   set<string> operations;
   set<string> requirements;
@@ -230,6 +245,16 @@ model::v1::Declarations Plugin::declarations() const {
   if (id_.empty() || version_.empty())
     throw invalid_argument("Plugin Identity Is Required");
   for (const auto &operation : operations_) {
+    const auto &contract = operation.contract;
+    if (!contract.lane().empty()) {
+      if (contract.id() == id_ + ".initialize" || contract.id() == id_ + ".finalize") {
+        throw invalid_argument("Declare Operation `" + contract.id() + "` Lane `" + contract.lane() +
+                               "`: Remove the Lifecycle Lane Assignment");
+      }
+      if (!lanes.contains(contract.lane())) {
+        throw invalid_argument("Declare Operation `" + contract.id() + "` Lane `" + contract.lane() + "`: Declare This Lane in the Plugin");
+      }
+    }
     if (!operations.insert(operation.contract.id()).second || !operation.handler) {
       throw invalid_argument("Duplicate or Unhandled Operation");
     }

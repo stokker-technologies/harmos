@@ -18,7 +18,6 @@
 // Standard Library Imports
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io;
 use std::marker::PhantomData;
 use std::result;
 use std::sync::Arc;
@@ -105,10 +104,7 @@ impl<A: Application> Builder<A> {
         }
         let storage = self.startup_storage.as_ref().expect("storage is registered").engine().new_session()?;
         self.operation_settings.validate()?;
-        let lanes = Lanes::freeze(self.lanes.clone()).map_err(|reason| Error::TaskFailed {
-            domain: "configure storage-only lanes; supply valid lane settings",
-            source: Arc::new(io::Error::other(reason)),
-        })?;
+        let lanes = Lanes::freeze(self.lanes.clone());
         let mut resources = ResourceSet::new();
         resources.replace(Arc::new(storage.clone()));
         resources.replace(Arc::new(SavedSnapshots::new(storage.query_capacity())));

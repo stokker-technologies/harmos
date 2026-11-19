@@ -156,7 +156,6 @@ impl<A: Application> Hosting for Owner<A> {
         Box::pin(Attached::start(
             operations,
             self.streams.clone(),
-            crate::operations::Lane::default().name(),
             request.placement,
             request.settings,
             Startup {

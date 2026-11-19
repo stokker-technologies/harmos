@@ -9,6 +9,7 @@ use harmos_protocol::host::plugins;
 use harmos_protocol::host::plugins_watch_response;
 use harmos_protocol::host::status;
 use harmos_protocol::model;
+use harmos_protocol::model::lane_declaration;
 use harmos_protocol::model::setting_value;
 use prost_types::descriptor_proto;
 use prost_types::enum_descriptor_proto;
@@ -467,6 +468,7 @@ impl MemorySize for model::Declarations {
             .saturating_add(self.sections.memory_size().saturating_sub(mem::size_of_val(&self.sections)))
             .saturating_add(self.digest.memory_size().saturating_sub(mem::size_of_val(&self.digest)))
             .saturating_add(self.types.memory_size().saturating_sub(mem::size_of_val(&self.types)))
+            .saturating_add(self.lanes.memory_size().saturating_sub(mem::size_of_val(&self.lanes)))
     }
 }
 
@@ -524,6 +526,14 @@ impl MemorySize for model::InstanceState {
     }
 }
 
+impl MemorySize for model::LaneDeclaration {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>()
+            .saturating_add(self.name.memory_size().saturating_sub(mem::size_of_val(&self.name)))
+            .saturating_add(self.capacity.memory_size().saturating_sub(mem::size_of_val(&self.capacity)))
+    }
+}
+
 impl MemorySize for model::OperationContract {
     fn memory_size(&self) -> usize {
         mem::size_of::<Self>()
@@ -535,6 +545,7 @@ impl MemorySize for model::OperationContract {
             .saturating_add(self.fingerprint.memory_size().saturating_sub(mem::size_of_val(&self.fingerprint)))
             .saturating_add(self.description.memory_size().saturating_sub(mem::size_of_val(&self.description)))
             .saturating_add(self.replay_safe.memory_size().saturating_sub(mem::size_of_val(&self.replay_safe)))
+            .saturating_add(self.lane.memory_size().saturating_sub(mem::size_of_val(&self.lane)))
     }
 }
 
@@ -628,6 +639,16 @@ impl MemorySize for model::StreamDeclaration {
             .saturating_add(self.interval.memory_size().saturating_sub(mem::size_of_val(&self.interval)))
             .saturating_add(self.interval_setting.memory_size().saturating_sub(mem::size_of_val(&self.interval_setting)))
             .saturating_add(self.window_setting.memory_size().saturating_sub(mem::size_of_val(&self.window_setting)))
+    }
+}
+
+impl MemorySize for lane_declaration::Capacity {
+    fn memory_size(&self) -> usize {
+        mem::size_of::<Self>().saturating_add(match self {
+            Self::Serial(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+            Self::Concurrent(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+            Self::Unbounded(value) => value.memory_size().saturating_sub(mem::size_of_val(value)),
+        })
     }
 }
 

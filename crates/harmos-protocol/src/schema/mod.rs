@@ -14,6 +14,8 @@
 mod callers;
 mod graph;
 mod identity;
+#[cfg(test)]
+mod tests_lanes;
 
 /* === Re-Exports === */
 
@@ -31,7 +33,8 @@ use prost_types::FileDescriptorSet;
 use sha2::{Digest, Sha256};
 
 // Local Imports
-use crate::model::{Declarations, Protobuf};
+use crate::model::{Declarations, Protobuf, lane_declaration};
+use std::collections::BTreeSet;
 
 /* === Constants === */
 
@@ -93,6 +96,40 @@ pub fn declarations_digest(declarations: &Declarations) -> Vec<u8> {
     let mut declarations = declarations.clone();
     declarations.digest.clear();
     Sha256::digest(declarations.encode_to_vec()).to_vec()
+}
+
+/// Validate Plugin Lane Facts Before Publishing or Admitting a Description.
+pub fn plugin_lanes(plugin: &str, declarations: &Declarations) -> Result<(), Error> {
+    let mut names = BTreeSet::new();
+    for lane in &declarations.lanes {
+        let operation = declarations.operations.iter().find(|operation| operation.lane == lane.name);
+        let operation = operation.map_or("<unassigned>", |operation| operation.id.as_str());
+        let context = format!("Declare Operation `{operation}` Lane `{}`", lane.name);
+        if lane.name.is_empty() || lane.name == "Open" || lane.name == "harmos.resident" || lane.name.chars().any(char::is_control) {
+            return Err(Error(format!("{context}: Choose a Nonempty, Nonreserved Name Without Control Characters")));
+        }
+        if !names.insert(lane.name.as_str()) {
+            return Err(Error(format!("{context}: Declare Each Lane Name Once")));
+        }
+        match lane.capacity {
+            Some(lane_declaration::Capacity::Serial(true) | lane_declaration::Capacity::Unbounded(true)) => {}
+            Some(lane_declaration::Capacity::Concurrent(width)) if width > 0 => {}
+            _ => return Err(Error(format!("{context}: Declare Serial, a Positive Concurrent Width or Unbounded Capacity"))),
+        }
+    }
+    for operation in &declarations.operations {
+        if operation.lane.is_empty() {
+            continue;
+        }
+        let context = format!("Declare Operation `{}` Lane `{}`", operation.id, operation.lane);
+        if operation.id == format!("{plugin}.initialize") || operation.id == format!("{plugin}.finalize") {
+            return Err(Error(format!("{context}: Remove the Lifecycle Lane Assignment")));
+        }
+        if !names.contains(operation.lane.as_str()) {
+            return Err(Error(format!("{context}: Declare This Lane in the Plugin")));
+        }
+    }
+    Ok(())
 }
 
 /// Preprojected Message Options for Validation Without Loading Unrelated Meta-Schemas.

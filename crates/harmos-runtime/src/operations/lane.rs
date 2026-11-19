@@ -15,9 +15,12 @@
 
 // Standard Library Imports
 use std::collections::BTreeMap;
+use std::future::{self, Future};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Waker};
 // Third Party Imports
-use tokio::sync::Semaphore;
+use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 // Local Imports
 
 /* === Constants === */
@@ -29,6 +32,8 @@ pub(crate) const RESIDENT: &str = "harmos.resident";
 /* === Macros === */
 
 /* === Type Aliases === */
+
+pub(crate) type Ticket = Pin<Box<dyn Future<Output = Result<OwnedSemaphorePermit, AcquireError>> + Send>>;
 
 /* === Structs === */
 
@@ -55,7 +60,7 @@ pub struct LaneSet {
 
 #[derive(Clone)]
 pub(crate) struct Admission {
-    name: &'static str,
+    name: Arc<str>,
     width: usize,
     semaphore: Arc<Semaphore>,
 }
@@ -113,6 +118,16 @@ impl Capacity {
     pub(crate) const fn width(self) -> usize {
         self.width
     }
+
+    fn validate(self, name: &'static str) -> crate::Result<Self> {
+        if self.width == 0 {
+            return Err(crate::Error::InvalidLane {
+                name,
+                reason: "must admit at least one job",
+            });
+        }
+        Ok(self)
+    }
 }
 
 impl LaneSet {
@@ -125,12 +140,7 @@ impl LaneSet {
                     reason: "names must be nonempty, contain no control characters, and not be reserved",
                 });
             }
-            if lane.capacity.width() == 0 {
-                return Err(crate::Error::InvalidLane {
-                    name: lane.name,
-                    reason: "must admit at least one job",
-                });
-            }
+            lane.capacity.validate(lane.name)?;
             if set.contains(lane.name) {
                 return Err(crate::Error::InvalidLane {
                     name: lane.name,
@@ -150,58 +160,62 @@ impl LaneSet {
         self.entries.iter().any(|(name, _)| *name == lane)
     }
 
-    pub(crate) fn configure(&mut self, lane: &str, capacity: Capacity) -> bool {
-        let Some((_, configured)) = self.entries.iter_mut().find(|(name, _)| *name == lane) else {
-            return false;
+    pub(crate) fn configure(&mut self, lane: &str, capacity: Capacity) -> crate::Result<bool> {
+        let Some((name, configured)) = self.entries.iter_mut().find(|(name, _)| *name == lane) else {
+            return Ok(false);
         };
-        *configured = capacity;
-        true
+        *configured = capacity.validate(name)?;
+        Ok(true)
     }
 }
 
 impl Admission {
-    pub(crate) fn name(&self) -> &'static str {
-        self.name
+    pub(crate) fn new(name: impl Into<Arc<str>>, width: usize) -> Self {
+        Self {
+            name: name.into(),
+            width,
+            semaphore: Arc::new(Semaphore::new(width.min(Semaphore::MAX_PERMITS))),
+        }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn key(&self) -> usize {
+        Arc::as_ptr(&self.semaphore) as usize
+    }
+
+    pub(crate) fn close(&self) {
+        self.semaphore.close();
+    }
+
+    pub(crate) fn closed(&self) -> bool {
+        self.semaphore.is_closed()
+    }
+
+    pub(crate) fn enqueue(&self) -> Ticket {
+        let mut waiting: Ticket = Box::pin(Arc::clone(&self.semaphore).acquire_owned());
+        // Poll at Submission So FIFO Is Arrival Order, Independent of Driver Scheduling.
+        let ready = waiting.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+        match ready {
+            Poll::Ready(result) => Box::pin(future::ready(result)),
+            Poll::Pending => waiting,
+        }
     }
 
     pub(crate) fn bounded(&self) -> bool {
         self.width != usize::MAX
     }
-
-    pub(crate) fn semaphore(&self) -> Arc<Semaphore> {
-        Arc::clone(&self.semaphore)
-    }
 }
 
 impl Lanes {
-    pub(crate) fn freeze(declared: LaneSet) -> Result<Self, String> {
-        let mut lanes = BTreeMap::from([(
-            RESIDENT,
-            Admission {
-                name: RESIDENT,
-                width: usize::MAX,
-                semaphore: Arc::new(Semaphore::new(Semaphore::MAX_PERMITS)),
-            },
-        )]);
-
+    pub(crate) fn freeze(declared: LaneSet) -> Self {
+        let mut lanes = BTreeMap::from([(RESIDENT, Admission::new(RESIDENT, usize::MAX))]);
         for (name, capacity) in declared.entries() {
-            if name.is_empty() {
-                return Err("a lane name must not be empty".to_owned());
-            }
-            if capacity.width() == 0 {
-                return Err(format!("lane `{name}` must admit at least one job"));
-            }
-            let admission = Admission {
-                name,
-                width: capacity.width(),
-                semaphore: Arc::new(Semaphore::new(capacity.width().min(Semaphore::MAX_PERMITS))),
-            };
-            if lanes.insert(name, admission).is_some() {
-                return Err(format!("lane `{name}` is declared more than once"));
-            }
+            lanes.insert(name, Admission::new(name, capacity.width()));
         }
-
-        Ok(Self { lanes })
+        Self { lanes }
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<Admission> {
@@ -214,3 +228,29 @@ impl Lanes {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{Capacity, Lane, LaneSet, Lanes};
+    use crate::Error;
+
+    #[test]
+    fn configuration_refuses_invalid_capacity_without_mutating_the_lane() {
+        let lane = Lane::new("worker", Capacity::serial());
+        let mut lanes = LaneSet::new([lane]).unwrap();
+        let invalid = lanes.configure(lane.name(), Capacity::concurrent(0));
+        assert!(matches!(invalid, Err(Error::InvalidLane { name: "worker", .. })));
+
+        let frozen = Lanes::freeze(lanes.clone());
+        let admission = frozen.get(lane.name()).unwrap();
+        assert!(admission.semaphore.clone().try_acquire_owned().is_ok());
+        assert!(lanes.configure(lane.name(), Capacity::concurrent(2)).unwrap());
+        assert!(!lanes.configure("undeclared", Capacity::serial()).unwrap());
+        let frozen = Lanes::freeze(lanes);
+        let admission = frozen.get(lane.name()).unwrap();
+        let first = admission.semaphore.clone().try_acquire_owned().unwrap();
+        let second = admission.semaphore.clone().try_acquire_owned().unwrap();
+        assert!(admission.semaphore.clone().try_acquire_owned().is_err());
+        drop((first, second));
+    }
+}

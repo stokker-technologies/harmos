@@ -574,6 +574,31 @@ async fn invoke(
             };
             response::Result::Failure(failure)
         }
+        operation if operation.starts_with("conformance.lane.") => {
+            send_child(output, 1, "conformance.host.pending", request.payload).await?;
+            let frame = input.message().await?.and_then(|frame| frame.frame);
+            match frame {
+                Some(instance_invoke_request::Frame::Child(ChildResponse {
+                    call: 1,
+                    result: Some(child_response::Result::Payload(payload)),
+                })) => response::Result::Payload(payload),
+                Some(instance_invoke_request::Frame::Cancel(cancel)) => {
+                    output
+                        .send(Ok(InstanceInvokeResponse {
+                            frame: Some(instance_invoke_response::Frame::ChildCancel(ChildCancel { call: 1 })),
+                        }))
+                        .await
+                        .map_err(|_| Status::cancelled("Host Closed"))?;
+                    response::Result::Failure(Failure {
+                        classification: Classification::Cancelled as i32,
+                        code: "cancelled".into(),
+                        message: cancel.reason,
+                        ..Default::default()
+                    })
+                }
+                _ => return Err(Status::invalid_argument("Release Lane Barrier: Return Its Child Payload or Cancel")),
+            }
+        }
         "conformance.cancel" => {
             send_child(output, 1, "conformance.host.pending", request.payload).await?;
             let frame = input.message().await?.and_then(|frame| frame.frame);

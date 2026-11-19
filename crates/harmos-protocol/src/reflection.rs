@@ -670,6 +670,12 @@ impl ReflectMessage for crate::model::Declarations {
     }
 }
 
+impl ReflectMessage for crate::model::LaneDeclaration {
+    fn descriptor(&self) -> MessageDescriptor {
+        pool().get_message_by_name("harmos.model.v1.LaneDeclaration").expect("generated message")
+    }
+}
+
 impl ReflectMessage for crate::model::Section {
     fn descriptor(&self) -> MessageDescriptor {
         pool().get_message_by_name("harmos.model.v1.Section").expect("generated message")

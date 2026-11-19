@@ -198,6 +198,15 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
     return this;
   }
 
+  public Plugin Lane(Lane lane)
+  {
+    var declaration = lane.Declaration;
+    if (registrar.declarations.Lanes.Any(item => item.Name == declaration.Name))
+      throw new ArgumentException($"Declare Lane `{declaration.Name}`: Declare Each Name Once");
+    registrar.declarations.Lanes.Add(declaration.Clone());
+    return this;
+  }
+
   public Plugin OnStop(Func<Task> hook)
   {
     cleanup.Add(hook);
@@ -208,6 +217,16 @@ public sealed class Plugin(string id, string version, StorageTransferSettings? t
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(id);
     ArgumentException.ThrowIfNullOrWhiteSpace(version);
+    foreach (var operation in registrar.operations.Values)
+    {
+      var contract = operation.Contract;
+      if (contract.Lane.Length == 0)
+        continue;
+      if (contract.Id == $"{id}.initialize" || contract.Id == $"{id}.finalize")
+        throw new ArgumentException($"Declare Operation `{contract.Id}` Lane `{contract.Lane}`: Remove the Lifecycle Lane Assignment");
+      if (!registrar.declarations.Lanes.Any(lane => lane.Name == contract.Lane))
+        throw new ArgumentException($"Declare Operation `{contract.Id}` Lane `{contract.Lane}`: Declare This Lane in the Plugin");
+    }
     var result = registrar.declarations.Clone();
     result.Digest = ByteString.CopyFrom(SHA256.HashData(result.ToByteArray()));
     return result;

@@ -39,6 +39,8 @@ message OperationContract {
   string description = 7;
   // Only explicitly replay-safe operations may retry transient failures.
   bool replay_safe = 8;
+  // Name in Declarations.lanes; empty uses the plugin instance's unbounded default. Lifecycle operations cannot name a lane.
+  string lane = 9;
 }
 // Binds a declared dependency to the contract fingerprint against which the caller was built.
 message Requirement {

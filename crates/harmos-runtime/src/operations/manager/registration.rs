@@ -19,6 +19,7 @@
 
 // Local Imports
 use super::*;
+use crate::operations::lane;
 
 /* === Constants === */
 
@@ -147,7 +148,10 @@ impl Manager {
                 };
             let mut entry = self.binding_erased(
                 owner,
-                selected.name(),
+                self.instances.lane(selected.name()).ok_or_else(|| Error::NotRegistered {
+                    domain: "operation lane",
+                    name: selected.name().to_owned(),
+                })?,
                 Arc::new(factory),
                 definition,
                 wire,
@@ -179,11 +183,15 @@ impl Manager {
         let binding = crate::operations::authored::factory_with::<D, O::StreamEndpoints>(self, move |request, endpoints| {
             Ok(harmos_operations::execution::operations::OperationFactory::prepare_carrier::<O>(resources.clone(), request, endpoints))
         });
+        let lane = self.instances.lane(lane).ok_or_else(|| Error::NotRegistered {
+            domain: "operation lane",
+            name: lane.to_owned(),
+        })?;
         self.binding_erased(owner, lane, Arc::new(binding), definition, wire, plugin)
     }
 
     pub(in crate::operations) fn binding_erased(
-        &self, owner: impl Into<String>, lane: &'static str, binding: Arc<dyn Any + Send + Sync>, definition: OperationDefinition,
+        &self, owner: impl Into<String>, lane: lane::Admission, binding: Arc<dyn Any + Send + Sync>, definition: OperationDefinition,
         wire: Option<crate::operations::wire::Dispatch>, #[cfg(feature = "plugin-guest")] plugin: Option<PluginScope>,
     ) -> Result<Arc<Entry>> {
         let owner = Identifier::new(owner.into()).map_err(|source| Error::OperationDeclaration { source: source.into() })?;
@@ -196,10 +204,6 @@ impl Manager {
                 reason: "owner must be a lowercase portable segment",
             });
         }
-        let _bounded = self.instances.lane_bounded(lane).ok_or_else(|| Error::NotRegistered {
-            domain: "operation lane",
-            name: lane.to_owned(),
-        })?;
         let generation = OperationGeneration::fresh()?;
         Ok(Arc::new(Entry {
             carrier: harmos_operations::execution::__private::ResourceSet::new(),

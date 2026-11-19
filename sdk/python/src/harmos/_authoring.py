@@ -49,7 +49,7 @@ from harmos._wire.plugin.v1.invocation_pb2 import Request, Response
 from harmos._wire.plugin.v1.stream_pb2 import Sample
 
 from ._columns import OversizedSampleError, append, batches, extract
-from ._contracts import Operation, Stream, Window, message_types
+from ._contracts import Lane, Operation, Stream, Window, message_types
 from ._generated.host import HostOperation, host_requirement
 
 # Local Imports
@@ -159,9 +159,11 @@ class Plugin:
         id: str,
         version: str,
         register: Callable[[Registrar], None],
+        lanes: Sequence[Lane] = (),
         transfer: StorageTransferSettings | None = None,
     ) -> None:
         self.id = id
+        self.lanes = tuple(lanes)
         self.version = version
         registrar = Registrar()
         register(registrar)
@@ -194,10 +196,22 @@ class Plugin:
         if not re.fullmatch(core + rf"(?:-{prerelease}(?:\.{prerelease})*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?", self.version):
             raise ValueError("Invalid Plugin Version")
         declarations = Declarations()
+        lanes: dict[str, Lane] = {}
+        for lane in self.lanes:
+            if lane.name in lanes:
+                raise ValueError(f"Declare Lane {lane.name!r}: Declare Each Name Once")
+            lanes[lane.name] = lane
+            declarations.lanes.add().CopyFrom(lane.declaration())
         files: dict[str, FileDescriptorProto] = {}
         _merge(files, *self.messages)
         operations, streams = self._registrations()
         for definition, _ in operations:
+            if definition.lane is not None:
+                lane = definition.lane
+                if definition.id in (f"{self.id}.initialize", f"{self.id}.finalize"):
+                    raise ValueError(f"Register {definition.id} Lane {lane.name!r}: Remove the Lifecycle Lane Assignment")
+                if lanes.get(lane.name) != lane:
+                    raise ValueError(f"Register {definition.id} Lane {lane.name!r}: Declare This Lane in the Plugin")
             if definition.watch:
                 raise ValueError(f"Register {definition.id}: Plugin Operations Are Unary")
             if definition.visibility not in (VISIBILITY_PRIVATE, VISIBILITY_PROTECTED, VISIBILITY_PUBLIC):

@@ -436,7 +436,7 @@ fn admit_native<P: Send + 'static>(
 
 fn admit_native_as<P: Send + 'static>(
     manager: &super::Manager, request: NativeRequest<'_, P>, source: &super::caller::Source, scope: Option<&super::Scope<'_>>,
-    ancestors: &[&'static str],
+    ancestors: &[crate::operations::lane::Admission],
 ) -> crate::Result<super::Running<NativeCall>> {
     let NativeRequest {
         target,
@@ -1192,7 +1192,7 @@ mod tests {
             .expect("representable carrier");
         let factory = batch.operations.pop().unwrap();
         let binding = Arc::new(factory);
-        let lane = crate::operations::Lane::default().name();
+        let lane = runtime.operations.instances.lane(crate::operations::Lane::default().name()).unwrap();
         let definition = LEAF_OPERATION.definition().expect("valid operation");
         let mut entry = runtime
             .operations

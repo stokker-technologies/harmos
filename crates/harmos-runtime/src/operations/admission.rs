@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex, Weak};
 // Third Party Imports
 
 // Local Imports
+use super::lane;
 use crate::{Error, Result};
 
 /* === Constants === */
@@ -31,18 +32,18 @@ use crate::{Error, Result};
 
 #[derive(Default)]
 pub(super) struct Lanes {
-    edges: Mutex<BTreeMap<(&'static str, &'static str), usize>>,
+    edges: Mutex<BTreeMap<(usize, usize), usize>>,
 }
 
 #[derive(Clone)]
 pub(super) struct Admission {
-    held: Arc<[&'static str]>,
+    held: Arc<[lane::Admission]>,
     _claim: Arc<Claim>,
 }
 
 struct Claim {
     lanes: Weak<Lanes>,
-    edges: Vec<(&'static str, &'static str)>,
+    edges: Vec<(usize, usize)>,
 }
 
 /* === Enums === */
@@ -52,14 +53,17 @@ struct Claim {
 /* === Implementations === */
 
 impl Lanes {
-    pub(super) fn admit(self: &Arc<Self>, ancestors: &[&'static str], lane: &'static str, bounded: bool) -> Result<Admission> {
-        let dependencies = if bounded { ancestors.iter().map(|&parent| (parent, lane)).collect::<Vec<_>>() } else { Vec::new() };
+    pub(super) fn admit(self: &Arc<Self>, ancestors: &[lane::Admission], lane: &lane::Admission) -> Result<Admission> {
+        let dependencies =
+            if lane.bounded() { ancestors.iter().map(|parent| (parent.key(), lane.key())).collect::<Vec<_>>() } else { Vec::new() };
         let mut edges = self.edges.lock().expect("operation lane graph is healthy");
 
         // Validate the whole claim before mutating counts. Checking the reverse
         // path also catches two independent roots calling each other's lane.
         for &(parent, child) in &dependencies {
             if reaches(&edges, child, parent) {
+                let parent = ancestors.iter().find(|lane| lane.key() == parent).expect("held parent lane").name().to_owned();
+                let child = lane.name().to_owned();
                 return Err(Error::OperationLaneCycle { parent, child });
             }
         }
@@ -69,8 +73,8 @@ impl Lanes {
         drop(edges);
 
         let mut held = ancestors.to_vec();
-        if bounded {
-            held.push(lane);
+        if lane.bounded() {
+            held.push(lane.clone());
         }
         Ok(Admission {
             held: held.into(),
@@ -83,7 +87,7 @@ impl Lanes {
 }
 
 impl Admission {
-    pub(super) fn held(&self) -> &[&'static str] {
+    pub(super) fn held(&self) -> &[lane::Admission] {
         &self.held
     }
 }
@@ -108,7 +112,7 @@ impl Drop for Claim {
 
 /* === Private Functions === */
 
-fn reaches(edges: &BTreeMap<(&'static str, &'static str), usize>, from: &'static str, to: &'static str) -> bool {
+fn reaches(edges: &BTreeMap<(usize, usize), usize>, from: usize, to: usize) -> bool {
     let mut pending = vec![from];
     let mut visited = BTreeSet::new();
     while let Some(lane) = pending.pop() {

@@ -23,6 +23,7 @@ from google.protobuf.duration_pb2 import Duration
 from google.protobuf.message import Message
 from google.protobuf.timestamp_pb2 import Timestamp
 
+from harmos._wire.model.v1.description_pb2 import LaneDeclaration
 from harmos._wire.model.v1.operation_pb2 import OperationContract, Visibility
 from harmos._wire.model.v1.policy_pb2 import OperationPolicy
 from harmos._wire.model.v1.stream_pb2 import StreamDeclaration
@@ -41,6 +42,31 @@ from ._columns import check_columns, columns_type
 # === Classes === #
 
 
+@dataclass(frozen=True, init=False)
+class Lane:
+    """A Plugin Lane Declaration; the Host Owns Admission."""
+
+    name: str
+    serial: bool
+    concurrent: int | None
+
+    def __init__(self, name: str, *, serial: bool = False, concurrent: int | None = None) -> None:
+        if not name or name in ("Open", "harmos.resident") or any(ord(character) < 32 or ord(character) == 127 for character in name):
+            raise ValueError(f"Declare Lane {name!r}: Choose a Nonempty, Nonreserved Name Without Control Characters")
+        if concurrent is not None and (serial or concurrent <= 0 or concurrent > 0xFFFFFFFF):
+            raise ValueError(f"Declare Lane {name!r}: Choose Either Serial or a Positive Concurrent Width")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "serial", serial)
+        object.__setattr__(self, "concurrent", concurrent)
+
+    def declaration(self) -> LaneDeclaration:
+        if self.serial:
+            return LaneDeclaration(name=self.name, serial=True)
+        if self.concurrent is not None:
+            return LaneDeclaration(name=self.name, concurrent=self.concurrent)
+        return LaneDeclaration(name=self.name, unbounded=True)
+
+
 @dataclass(frozen=True)
 class Operation[Q: Message, R: Message]:
     id: str
@@ -51,6 +77,7 @@ class Operation[Q: Message, R: Message]:
     description: str = ""
     replay_safe: bool = False
     watch: bool = False
+    lane: Lane | None = None
 
     @property
     def fingerprint(self) -> bytes:
@@ -72,6 +99,7 @@ class Operation[Q: Message, R: Message]:
             fingerprint=self.fingerprint,
             description=self.description,
             replay_safe=self.replay_safe,
+            lane=self.lane.name if self.lane is not None else "",
         )
 
 
@@ -118,8 +146,9 @@ def operation[Q: Message, R: Message, F: Callable](
     policy: OperationPolicy | None = None,
     description: str = "",
     replay_safe: bool = False,
+    lane: Lane | None = None,
 ) -> Callable[[F], F]:
-    definition = Operation(id, request, response, visibility, policy, description, replay_safe)
+    definition = Operation(id, request, response, visibility, policy, description, replay_safe, lane=lane)
 
     def decorate(handler: F) -> F:
         handler.__dict__["__harmos_operation__"] = definition

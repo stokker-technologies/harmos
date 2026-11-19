@@ -14,6 +14,7 @@ using ::harmos::detail::payloads::Grant;
 using ::harmos::detail::payloads::Grpc;
 using ::harmos::detail::payloads::History;
 using ::harmos::detail::payloads::InstanceState;
+using ::harmos::detail::payloads::LaneDeclaration;
 using ::harmos::detail::payloads::OperationContract;
 using ::harmos::detail::payloads::OperationPolicy;
 using ::harmos::detail::payloads::Position;

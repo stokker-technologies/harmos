@@ -141,8 +141,8 @@ impl Instances {
         !self.state.lock().expect("operation instance index is healthy").closing
     }
 
-    pub(crate) fn lane_bounded(&self, name: &str) -> Option<bool> {
-        self.lanes.get(name).map(|lane| lane.bounded())
+    pub(crate) fn lane(&self, name: &str) -> Option<Admission> {
+        self.lanes.get(name)
     }
 
     pub(crate) fn status(&self, id: OperationInstanceId) -> Option<OperationStatus> {
@@ -196,11 +196,10 @@ impl Instances {
     }
 
     pub(crate) fn reserve<O: Send + 'static>(
-        self: &Arc<Self>, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
+        self: &Arc<Self>, id: OperationInstanceId, admission: Admission, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> Result<Reservation<O>> {
         let activity = self.clock.activity(format!("invocation {}", id.value()));
-        let admission = self.lanes.get(lane).expect("registration validated its lane");
         let mut state = self.state.lock().expect("operation instance index is healthy");
         if state.closing {
             return Err(Error::Closing { domain: "operation instances" });
@@ -229,7 +228,7 @@ impl Instances {
         let instance = Arc::new(instance);
         let trace = instance.trace();
         trace.record("instance_id", id.value());
-        let queued = tracing::debug_span!(target: "harmos::operations", parent: &trace, "operations.queue", lane);
+        let queued = tracing::debug_span!(target: "harmos::operations", parent: &trace, "operations.queue", lane = admission.name());
         let queued_driver = queued;
         let (deposit, prepared) = oneshot::channel();
         let reservation = Reservation {
@@ -240,7 +239,9 @@ impl Instances {
             admission: admission.clone(),
             cause: None,
         };
+        let ticket = admission.enqueue();
         let execution = Execution {
+            ticket,
             admission,
             submitted,
             cancelled,

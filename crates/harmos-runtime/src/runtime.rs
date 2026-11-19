@@ -943,7 +943,7 @@ impl<A: Application> Builder<A> {
             cause: Cause::Operations(source),
             cleanup: None,
         })?;
-        let lanes = crate::operations::lane::Lanes::freeze(lanes).map_err(Incompatible::work)?;
+        let lanes = crate::operations::lane::Lanes::freeze(lanes);
         let storage = Arc::new(boot.storage.clone().map(OnceLock::from).unwrap_or_default());
         let handles = crate::services::Handles {
             storage: storage.clone(),

@@ -85,7 +85,7 @@ impl<'a> Scope<'a> {
     }
 
     pub(crate) fn reserve_tracked<O>(
-        &self, id: OperationInstanceId, lane: &'static str, submitted: tokio::time::Instant, privileged: bool,
+        &self, id: OperationInstanceId, lane: Admission, submitted: tokio::time::Instant, privileged: bool,
         retired: impl Fn() + Send + Sync + 'static,
     ) -> crate::Result<Reservation<O>>
     where

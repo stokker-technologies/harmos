@@ -11,6 +11,7 @@ pub use crate::wire::shared::Grant;
 pub use crate::wire::shared::Grpc;
 pub use crate::wire::shared::History;
 pub use crate::wire::shared::InstanceState;
+pub use crate::wire::shared::LaneDeclaration;
 pub use crate::wire::shared::MessageSettings;
 pub use crate::wire::shared::OperationContract;
 pub use crate::wire::shared::OperationPolicy;
@@ -33,6 +34,7 @@ pub use crate::wire::shared::TransferFraming;
 pub use crate::wire::shared::Upload;
 pub use crate::wire::shared::UploadState;
 pub use crate::wire::shared::Visibility;
+pub use crate::wire::shared::lane_declaration;
 pub use crate::wire::shared::setting_value;
 pub mod model {
     pub use crate::wire::shared::Failure;

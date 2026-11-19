@@ -152,6 +152,9 @@ pub struct OperationContract {
     /// Only explicitly replay-safe operations may retry transient failures.
     #[prost(bool, tag = "8")]
     pub replay_safe: bool,
+    /// Name in Declarations.lanes; empty uses the plugin instance's unbounded default. Lifecycle operations cannot name a lane.
+    #[prost(string, tag = "9")]
+    pub lane: ::prost::alloc::string::String,
 }
 /// Binds a declared dependency to the contract fingerprint against which the caller was built.
 #[allow(clippy::all)]
@@ -409,12 +412,42 @@ pub struct Declarations {
     /// Product contributions, opaque to Harmos.
     #[prost(message, repeated, tag = "4")]
     pub sections: ::prost::alloc::vec::Vec<Section>,
-    /// SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+    /// SHA-256 over the serialized fields 1 to 4, 6 and 7, in field order.
     #[prost(bytes = "vec", tag = "5")]
     pub digest: ::prost::alloc::vec::Vec<u8>,
     /// Definitions of every message named in this declarations.
     #[prost(message, optional, tag = "6")]
     pub types: ::core::option::Option<::prost_types::FileDescriptorSet>,
+    /// Admission lanes owned by this plugin instance; an empty list preserves the original encoding.
+    #[prost(message, repeated, tag = "7")]
+    pub lanes: ::prost::alloc::vec::Vec<LaneDeclaration>,
+}
+/// Declares one plugin-owned admission lane; names must be unique and must not be empty or reserved.
+#[allow(clippy::all)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LaneDeclaration {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Exactly one capacity is required. Boolean alternatives must be true and concurrent must be positive.
+    #[prost(oneof = "lane_declaration::Capacity", tags = "2, 3, 4")]
+    pub capacity: ::core::option::Option<lane_declaration::Capacity>,
+}
+/// Nested message and enum types in `LaneDeclaration`.
+pub mod lane_declaration {
+    /// Exactly one capacity is required. Boolean alternatives must be true and concurrent must be positive.
+    #[allow(clippy::all)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Capacity {
+        /// Admit one invocation at a time.
+        #[prost(bool, tag = "2")]
+        Serial(bool),
+        /// Admit at most this many invocations at a time.
+        #[prost(uint32, tag = "3")]
+        Concurrent(u32),
+        /// Admit invocations without a concurrency bound.
+        #[prost(bool, tag = "4")]
+        Unbounded(bool),
+    }
 }
 /// Carries a typed product contribution whose payload is opaque to the library.
 #[allow(clippy::all)]

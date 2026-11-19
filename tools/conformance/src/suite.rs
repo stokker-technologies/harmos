@@ -11,6 +11,8 @@
 
 /* === Modules === */
 
+mod lanes;
+
 /* === Re-Exports === */
 
 /* === Imports === */
@@ -94,6 +96,8 @@ pub const CASES: &[&str] = &[
     "Typed Operations Discovery",
     "Half-Close During an Unanswered Window",
     "Oversized Sample Refusal",
+    "Plugin Lane Description Facts",
+    "Plugin Lane Admission and Cancellation",
 ];
 
 static INVOCATION: AtomicU64 = AtomicU64::new(1);
@@ -526,6 +530,20 @@ async fn samples_case(rule: usize, client: &mut Client) -> Result<()> {
 async fn case(rule: usize, address: &str, managed: bool) -> Result<()> {
     let (mut client, description) = connect(address).await?;
     match rule {
+        42 => {
+            let declared = description.declarations.ok_or_else(|| Error::Invalid("Declare Lanes: Return Declarations".into()))?;
+            let expected = fixture::declarations();
+            require(declared.lanes == expected.lanes, "Declare Lanes: Match the Encoded Lane Facts")?;
+            for operation in expected.operations.iter().filter(|operation| operation.id.starts_with("conformance.lane.")) {
+                let actual = declared
+                    .operations
+                    .iter()
+                    .find(|candidate| candidate.id == operation.id)
+                    .ok_or_else(|| Error::Invalid(format!("Declare Lane Operation {}", operation.id)))?;
+                require(actual.lane == operation.lane, "Declare Operation Lane: Match the Declared Assignment")?;
+            }
+        }
+        43 => lanes::run(address).await?,
         33 | 34 => crate::callers::run(rule, address).await?,
         30..=32 => Box::pin(samples_case(rule, &mut client)).await?,
         38 => {

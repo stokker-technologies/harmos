@@ -172,10 +172,51 @@ private:
   std::unique_ptr<State> state_;
 };
 
+class Lane {
+public:
+  static Lane serial(std::string name) {
+    return Lane(std::move(name), 1, true);
+  }
+  static Lane concurrent(std::string name, std::uint32_t width) {
+    return Lane(std::move(name), width, false);
+  }
+  static Lane unbounded(std::string name) {
+    return Lane(std::move(name), std::nullopt, false);
+  }
+  const ::harmos::LaneDeclaration &declaration() const {
+    return declaration_;
+  }
+
+private:
+  Lane(std::string name, std::optional<std::uint32_t> width, bool serial) {
+    if (name.empty() || name == "Open" || name == "harmos.resident") {
+      throw std::invalid_argument("Declare Lane `" + name + "`: Choose a Nonempty, Nonreserved Name");
+    }
+    for (unsigned char character : name) {
+      if (character < 32 || character == 127) {
+        throw std::invalid_argument("Declare Lane `" + name + "`: Remove Control Characters");
+      }
+    }
+    if (width && *width == 0) {
+      throw std::invalid_argument("Declare Lane `" + name + "`: Choose a Positive Concurrent Width");
+    }
+    declaration_.set_name(std::move(name));
+    if (serial) {
+      declaration_.set_serial(true);
+    } else if (width) {
+      declaration_.set_concurrent(*width);
+    } else {
+      declaration_.set_unbounded(true);
+    }
+  }
+  ::harmos::LaneDeclaration declaration_;
+};
+
 class Plugin {
 public:
   Plugin(std::string id, std::string version);
   Plugin &add(std::function<void(Registrar &)> catalog);
+  Plugin &lane(const Lane &lane);
   Plugin &transfer(const ::harmos::StorageTransferSettings &settings) {
     transfer_ = settings;
     return *this;
@@ -196,6 +237,7 @@ private:
   std::string id_;
   std::string version_;
   std::vector<detail::OperationDefinition> operations_;
+  std::vector<::harmos::LaneDeclaration> lanes_;
   std::vector<detail::StreamDefinition> streams_;
   std::vector<std::pair<Requirement, google::protobuf::FileDescriptorSet>> requirements_;
   std::vector<std::pair<Section, google::protobuf::FileDescriptorSet>> sections_;
@@ -303,6 +345,10 @@ public:
       definition.handler = [handler](Context &ctx, const std::string &bytes) {
         return detail::encode(handler(ctx, decode<Q>(bytes)));
       };
+  }
+  Operation &lane(const Lane &lane) {
+    definition.contract.set_lane(lane.declaration().name());
+    return *this;
   }
   Operation &visibility(Visibility value) {
     definition.contract.set_visibility(value);

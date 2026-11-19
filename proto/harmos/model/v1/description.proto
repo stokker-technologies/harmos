@@ -32,10 +32,26 @@ message Declarations {
   repeated StreamDeclaration streams = 3;
   // Product contributions, opaque to Harmos.
   repeated Section sections = 4;
-  // SHA-256 over the serialized fields 1 to 4 and 6, in field order.
+  // SHA-256 over the serialized fields 1 to 4, 6 and 7, in field order.
   bytes digest = 5;
   // Definitions of every message named in this declarations.
   google.protobuf.FileDescriptorSet types = 6;
+  // Admission lanes owned by this plugin instance; an empty list preserves the original encoding.
+  repeated LaneDeclaration lanes = 7;
+}
+
+// Declares one plugin-owned admission lane; names must be unique and must not be empty or reserved.
+message LaneDeclaration {
+  string name = 1;
+  // Exactly one capacity is required. Boolean alternatives must be true and concurrent must be positive.
+  oneof capacity {
+    // Admit one invocation at a time.
+    bool serial = 2;
+    // Admit at most this many invocations at a time.
+    uint32 concurrent = 3;
+    // Admit invocations without a concurrency bound.
+    bool unbounded = 4;
+  }
 }
 
 // Carries a typed product contribution whose payload is opaque to the library.

@@ -27,20 +27,25 @@ namespace Harmos;
             "CiFoYXJtb3MvbW9kZWwvdjEvZGVzY3JpcHRpb24ucHJvdG8SD2hhcm1vcy5t",
             "b2RlbC52MRogZ29vZ2xlL3Byb3RvYnVmL2Rlc2NyaXB0b3IucHJvdG8aH2hh",
             "cm1vcy9tb2RlbC92MS9vcGVyYXRpb24ucHJvdG8aHGhhcm1vcy9tb2RlbC92",
-            "MS9zdHJlYW0ucHJvdG8i0gIKDERlY2xhcmF0aW9ucxJCCgpvcGVyYXRpb25z",
+            "MS9zdHJlYW0ucHJvdG8iigMKDERlY2xhcmF0aW9ucxJCCgpvcGVyYXRpb25z",
             "GAEgAygLMiIuaGFybW9zLm1vZGVsLnYxLk9wZXJhdGlvbkNvbnRyYWN0Ugpv",
             "cGVyYXRpb25zEjgKCHJlcXVpcmVzGAIgAygLMhwuaGFybW9zLm1vZGVsLnYx",
             "LlJlcXVpcmVtZW50UghyZXF1aXJlcxI8CgdzdHJlYW1zGAMgAygLMiIuaGFy",
             "bW9zLm1vZGVsLnYxLlN0cmVhbURlY2xhcmF0aW9uUgdzdHJlYW1zEjQKCHNl",
             "Y3Rpb25zGAQgAygLMhguaGFybW9zLm1vZGVsLnYxLlNlY3Rpb25SCHNlY3Rp",
             "b25zEhYKBmRpZ2VzdBgFIAEoDFIGZGlnZXN0EjgKBXR5cGVzGAYgASgLMiIu",
-            "Z29vZ2xlLnByb3RvYnVmLkZpbGVEZXNjcmlwdG9yU2V0UgV0eXBlcyI3CgdT",
-            "ZWN0aW9uEhIKBHR5cGUYASABKAlSBHR5cGUSGAoHcGF5bG9hZBgCIAEoDFIH",
-            "cGF5bG9hZGIGcHJvdG8z"));
+            "Z29vZ2xlLnByb3RvYnVmLkZpbGVEZXNjcmlwdG9yU2V0UgV0eXBlcxI2CgVs",
+            "YW5lcxgHIAMoCzIgLmhhcm1vcy5tb2RlbC52MS5MYW5lRGVjbGFyYXRpb25S",
+            "BWxhbmVzIo0BCg9MYW5lRGVjbGFyYXRpb24SEgoEbmFtZRgBIAEoCVIEbmFt",
+            "ZRIYCgZzZXJpYWwYAiABKAhIAFIGc2VyaWFsEiAKCmNvbmN1cnJlbnQYAyAB",
+            "KA1IAFIKY29uY3VycmVudBIeCgl1bmJvdW5kZWQYBCABKAhIAFIJdW5ib3Vu",
+            "ZGVkQgoKCGNhcGFjaXR5IjcKB1NlY3Rpb24SEgoEdHlwZRgBIAEoCVIEdHlw",
+            "ZRIYCgdwYXlsb2FkGAIgASgMUgdwYXlsb2FkYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.Reflection.DescriptorReflection.Descriptor, global::Harmos.OperationReflection.Descriptor, global::Harmos.StreamReflection.Descriptor, },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Declarations), global::Harmos.Declarations.Parser, new[]{ "Operations", "Requires", "Streams", "Sections", "Digest", "Types_" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Declarations), global::Harmos.Declarations.Parser, new[]{ "Operations", "Requires", "Streams", "Sections", "Digest", "Types_", "Lanes" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.LaneDeclaration), global::Harmos.LaneDeclaration.Parser, new[]{ "Name", "Serial", "Concurrent", "Unbounded" }, new[]{ "Capacity" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::Harmos.Section), global::Harmos.Section.Parser, new[]{ "Type", "Payload" }, null, null, null, null)
           }));
     }
@@ -89,6 +94,7 @@ namespace Harmos;
       sections_ = other.sections_.Clone();
       digest_ = other.digest_;
       types_ = other.types_ != null ? other.types_.Clone() : null;
+      lanes_ = other.lanes_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -166,6 +172,17 @@ namespace Harmos;
       }
     }
 
+    /// <summary>Field number for the "lanes" field.</summary>
+    public const int LanesFieldNumber = 7;
+    private static readonly pb::FieldCodec<global::Harmos.LaneDeclaration> _repeated_lanes_codec
+        = pb::FieldCodec.ForMessage(58, global::Harmos.LaneDeclaration.Parser);
+    private readonly pbc::RepeatedField<global::Harmos.LaneDeclaration> lanes_ = new pbc::RepeatedField<global::Harmos.LaneDeclaration>();
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::Harmos.LaneDeclaration> Lanes {
+      get { return lanes_; }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -187,6 +204,7 @@ namespace Harmos;
       if(!sections_.Equals(other.sections_)) return false;
       if (Digest != other.Digest) return false;
       if (!object.Equals(Types_, other.Types_)) return false;
+      if(!lanes_.Equals(other.lanes_)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -200,6 +218,7 @@ namespace Harmos;
       hash ^= sections_.GetHashCode();
       if (Digest.Length != 0) hash ^= Digest.GetHashCode();
       if (types_ != null) hash ^= Types_.GetHashCode();
+      hash ^= lanes_.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -230,6 +249,7 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteMessage(Types_);
       }
+      lanes_.WriteTo(output, _repeated_lanes_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -252,6 +272,7 @@ namespace Harmos;
         output.WriteRawTag(50);
         output.WriteMessage(Types_);
       }
+      lanes_.WriteTo(ref output, _repeated_lanes_codec);
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -272,6 +293,7 @@ namespace Harmos;
       if (types_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Types_);
       }
+      size += lanes_.CalculateSize(_repeated_lanes_codec);
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -297,6 +319,7 @@ namespace Harmos;
         }
         Types_.MergeFrom(other.Types_);
       }
+      lanes_.Add(other.lanes_);
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -341,6 +364,10 @@ namespace Harmos;
               Types_ = new global::Google.Protobuf.Reflection.FileDescriptorSet();
             }
             input.ReadMessage(Types_);
+            break;
+          }
+          case 58: {
+            lanes_.AddEntriesFrom(input, _repeated_lanes_codec);
             break;
           }
         }
@@ -389,6 +416,397 @@ namespace Harmos;
             input.ReadMessage(Types_);
             break;
           }
+          case 58: {
+            lanes_.AddEntriesFrom(ref input, _repeated_lanes_codec);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class LaneDeclaration : pb::IMessage<LaneDeclaration>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<LaneDeclaration> _parser = new pb::MessageParser<LaneDeclaration>(() => new LaneDeclaration());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<LaneDeclaration> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::Harmos.DescriptionReflection.Descriptor.MessageTypes[1]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public LaneDeclaration() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public LaneDeclaration(LaneDeclaration other) : this() {
+      name_ = other.name_;
+      switch (other.CapacityCase) {
+        case CapacityOneofCase.Serial:
+          Serial = other.Serial;
+          break;
+        case CapacityOneofCase.Concurrent:
+          Concurrent = other.Concurrent;
+          break;
+        case CapacityOneofCase.Unbounded:
+          Unbounded = other.Unbounded;
+          break;
+      }
+
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public LaneDeclaration Clone() {
+      return new LaneDeclaration(this);
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 1;
+    private string name_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "serial" field.</summary>
+    public const int SerialFieldNumber = 2;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Serial {
+      get { return HasSerial ? (bool) capacity_ : false; }
+      set {
+        capacity_ = value;
+        capacityCase_ = CapacityOneofCase.Serial;
+      }
+    }
+    /// <summary>Gets whether the "serial" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSerial {
+      get { return capacityCase_ == CapacityOneofCase.Serial; }
+    }
+    /// <summary> Clears the value of the oneof if it's currently set to "serial" </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSerial() {
+      if (HasSerial) {
+        ClearCapacity();
+      }
+    }
+
+    /// <summary>Field number for the "concurrent" field.</summary>
+    public const int ConcurrentFieldNumber = 3;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Concurrent {
+      get { return HasConcurrent ? (uint) capacity_ : 0; }
+      set {
+        capacity_ = value;
+        capacityCase_ = CapacityOneofCase.Concurrent;
+      }
+    }
+    /// <summary>Gets whether the "concurrent" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasConcurrent {
+      get { return capacityCase_ == CapacityOneofCase.Concurrent; }
+    }
+    /// <summary> Clears the value of the oneof if it's currently set to "concurrent" </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearConcurrent() {
+      if (HasConcurrent) {
+        ClearCapacity();
+      }
+    }
+
+    /// <summary>Field number for the "unbounded" field.</summary>
+    public const int UnboundedFieldNumber = 4;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Unbounded {
+      get { return HasUnbounded ? (bool) capacity_ : false; }
+      set {
+        capacity_ = value;
+        capacityCase_ = CapacityOneofCase.Unbounded;
+      }
+    }
+    /// <summary>Gets whether the "unbounded" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasUnbounded {
+      get { return capacityCase_ == CapacityOneofCase.Unbounded; }
+    }
+    /// <summary> Clears the value of the oneof if it's currently set to "unbounded" </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearUnbounded() {
+      if (HasUnbounded) {
+        ClearCapacity();
+      }
+    }
+
+    private object capacity_;
+    /// <summary>Enum of possible cases for the "capacity" oneof.</summary>
+    public enum CapacityOneofCase {
+      None = 0,
+      Serial = 2,
+      Concurrent = 3,
+      Unbounded = 4,
+    }
+    private CapacityOneofCase capacityCase_ = CapacityOneofCase.None;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public CapacityOneofCase CapacityCase {
+      get { return capacityCase_; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCapacity() {
+      capacityCase_ = CapacityOneofCase.None;
+      capacity_ = null;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as LaneDeclaration);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(LaneDeclaration other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Name != other.Name) return false;
+      if (Serial != other.Serial) return false;
+      if (Concurrent != other.Concurrent) return false;
+      if (Unbounded != other.Unbounded) return false;
+      if (CapacityCase != other.CapacityCase) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (HasSerial) hash ^= Serial.GetHashCode();
+      if (HasConcurrent) hash ^= Concurrent.GetHashCode();
+      if (HasUnbounded) hash ^= Unbounded.GetHashCode();
+      hash ^= (int) capacityCase_;
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (HasSerial) {
+        output.WriteRawTag(16);
+        output.WriteBool(Serial);
+      }
+      if (HasConcurrent) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(Concurrent);
+      }
+      if (HasUnbounded) {
+        output.WriteRawTag(32);
+        output.WriteBool(Unbounded);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Name.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(Name);
+      }
+      if (HasSerial) {
+        output.WriteRawTag(16);
+        output.WriteBool(Serial);
+      }
+      if (HasConcurrent) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(Concurrent);
+      }
+      if (HasUnbounded) {
+        output.WriteRawTag(32);
+        output.WriteBool(Unbounded);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      if (HasSerial) {
+        size += 1 + 1;
+      }
+      if (HasConcurrent) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Concurrent);
+      }
+      if (HasUnbounded) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(LaneDeclaration other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      switch (other.CapacityCase) {
+        case CapacityOneofCase.Serial:
+          Serial = other.Serial;
+          break;
+        case CapacityOneofCase.Concurrent:
+          Concurrent = other.Concurrent;
+          break;
+        case CapacityOneofCase.Unbounded:
+          Unbounded = other.Unbounded;
+          break;
+      }
+
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 16: {
+            Serial = input.ReadBool();
+            break;
+          }
+          case 24: {
+            Concurrent = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            Unbounded = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            Name = input.ReadString();
+            break;
+          }
+          case 16: {
+            Serial = input.ReadBool();
+            break;
+          }
+          case 24: {
+            Concurrent = input.ReadUInt32();
+            break;
+          }
+          case 32: {
+            Unbounded = input.ReadBool();
+            break;
+          }
         }
       }
     }
@@ -411,7 +829,7 @@ namespace Harmos;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Harmos.DescriptionReflection.Descriptor.MessageTypes[1]; }
+      get { return global::Harmos.DescriptionReflection.Descriptor.MessageTypes[2]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
