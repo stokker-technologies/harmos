@@ -153,6 +153,25 @@ template <class T> struct Contribution {
 };
 template <class T> struct Descriptor {};
 
+// Owns the Serving Transport and Its Event Engine; Destruction Drains Accepted Calls.
+class Listener {
+public:
+  Listener(const Listener &) = delete;
+  Listener &operator=(const Listener &) = delete;
+  Listener(Listener &&) noexcept;
+  Listener &operator=(Listener &&) noexcept;
+  ~Listener();
+  const std::string &address() const;
+  void close();
+
+private:
+  friend class Plugin;
+  struct State;
+  explicit Listener(std::unique_ptr<State> state);
+  void wait();
+  std::unique_ptr<State> state_;
+};
+
 class Plugin {
 public:
   Plugin(std::string id, std::string version);
@@ -163,10 +182,14 @@ public:
   }
   Plugin &on_stop(std::function<void()> cleanup);
   Declarations declarations() const;
+  // Binds the Supplied Address; Port Zero Selects a Free Port. Stop Keeps Serving.
+  Listener start(std::string address) const;
+  // An Explicit Address Selects Remote Lifecycle; Empty Uses HARMOS_ADDRESS or Loopback.
   void run(std::string address = {}) const;
 
 private:
   friend class Registrar;
+  Listener start(std::string address, bool remote) const;
   google::protobuf::FileDescriptorSet messages_;
   ::harmos::StorageTransferSettings transfer_;
   SettingsDeclarations settings_;

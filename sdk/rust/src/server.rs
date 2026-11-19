@@ -11,52 +11,50 @@
 
 /* === Modules === */
 
+#[cfg(test)]
+mod tests;
+
 /* === Re-Exports === */
 
 /* === Imports === */
 
 // Standard Library Imports
 use std::{
-    collections::HashMap,
-    io::Write,
-    pin::Pin,
+    collections::{HashMap, VecDeque},
+    future::Future,
+    pin::{Pin, pin},
+    result,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
+    task::{self, Poll},
     time::SystemTime,
 };
 
 // Third Party Imports
 use futures_core::Stream;
-use futures_util::stream;
+use futures_util::{future::poll_fn, stream};
+use prost::Message;
+use prost_types::Timestamp;
 use tokio::{
     net::TcpListener,
-    sync::{Mutex, mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
 };
-use tonic::transport;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::{Request, Response, Status, Streaming, transport};
 
 // Local Imports
 use crate::{Context, Error, Operation, Plugin, Result, columns::Columns, context::ChildOutput, operation::Handler};
-use harmos_protocol::model::Declarations;
-use harmos_protocol::model::Visibility;
-use harmos_protocol::plugin;
-
-use harmos_protocol::plugin::Sample;
-use harmos_protocol::plugin::response;
-use {
-    harmos_protocol::plugin::InstanceGetRequest, harmos_protocol::plugin::InstanceGetResponse,
-    harmos_protocol::plugin::InstanceInvokeRequest, harmos_protocol::plugin::InstanceInvokeResponse,
-    harmos_protocol::plugin::InstanceSamplesRequest, harmos_protocol::plugin::InstanceSamplesResponse,
-    harmos_protocol::plugin::InstanceStopRequest, harmos_protocol::plugin::InstanceStopResponse,
-    harmos_protocol::plugin::instance_invoke_request, harmos_protocol::plugin::instance_invoke_response,
-    harmos_protocol::plugin::instance_samples_request, harmos_protocol::plugin::instance_server,
-    harmos_protocol::plugin::instance_server::InstanceServer,
+use harmos_protocol::{
+    model::{Declarations, Visibility},
+    plugin::{
+        self, InstanceGetRequest, InstanceGetResponse, InstanceInvokeRequest, InstanceInvokeResponse, InstanceSamplesRequest,
+        InstanceSamplesResponse, InstanceStopRequest, InstanceStopResponse, Sample, instance_invoke_request, instance_invoke_response,
+        instance_samples_request,
+        instance_server::{self, InstanceServer},
+        response,
+    },
 };
-
-use prost_types::Timestamp;
-use {std::env, std::future, std::future::Future, std::io, std::result, std::task, std::task::Poll};
 
 /* === Constants === */
 
@@ -82,10 +80,16 @@ struct Server {
     streams: HashMap<String, Publication>,
     requires: Arc<HashMap<String, Vec<u8>>>,
     jobs: mpsc::Sender<Job>,
-    cleanup: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
-    shutdown: Mutex<Option<oneshot::Sender<()>>>,
+    cleanup: Arc<Cleanup>,
+    shutdown: Option<watch::Sender<bool>>,
+
     /// The Transport's Maximum Message Size; Window Parts Are Split to Fit It.
     message_bytes: usize,
+}
+
+pub(crate) struct Cleanup {
+    pub(crate) hooks: Vec<Box<dyn Fn() -> Result<()> + Send + Sync>>,
+    pub(crate) result: OnceLock<result::Result<(), String>>,
 }
 
 struct Publication {
@@ -107,6 +111,21 @@ struct Job {
 /* === Traits === */
 
 /* === Implementations === */
+
+impl Cleanup {
+    pub(crate) fn run(&self) -> Result<()> {
+        let result = self.result.get_or_init(|| {
+            let mut failure = None;
+            for hook in &self.hooks {
+                if let Err(error) = hook() {
+                    failure.get_or_insert_with(|| error.to_string());
+                }
+            }
+            failure.map_or(Ok(()), Err)
+        });
+        result.clone().map_err(Error::Invalid)
+    }
+}
 
 impl Future for Completion {
     type Output = result::Result<Result<Vec<u8>>, oneshot::error::RecvError>;
@@ -199,12 +218,10 @@ impl instance_server::Instance for Server {
     }
 
     async fn stop(&self, _: Request<InstanceStopRequest>) -> result::Result<Response<InstanceStopResponse>, Status> {
-        for cleanup in &self.cleanup {
-            cleanup().map_err(|error| Status::internal(error.to_string()))?;
-        }
+        self.cleanup.run().map_err(|error| Status::internal(error.to_string()))?;
         tracing::info!(plugin = %self.description.id, "Plugin Cleanup Completed");
-        if let Some(shutdown) = self.shutdown.lock().await.take() {
-            let _ = shutdown.send(());
+        if let Some(shutdown) = &self.shutdown {
+            shutdown.send_replace(true);
         }
         Ok(Response::new(InstanceStopResponse {}))
     }
@@ -212,15 +229,16 @@ impl instance_server::Instance for Server {
 
 /* === Public Functions === */
 
-pub(crate) async fn run(plugin: Plugin, declarations: Declarations) -> Result<()> {
+pub(crate) async fn run(
+    plugin: Plugin, declarations: Declarations, listener: std::net::TcpListener, shutdown: watch::Sender<bool>,
+    mut stopped: watch::Receiver<bool>, ready: oneshot::Sender<()>, cleanup: Arc<Cleanup>,
+) -> Result<()> {
     let started_at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|error| Error::Invalid(error.to_string()))?;
     harmos_protocol::transfer::message_bytes(&plugin.transfer).filter(|bytes| bytes.get() <= u32::MAX as usize).ok_or_else(|| {
         Error::Invalid("Start Plugin: MessageSettings.message_bytes cannot carry StorageTransferSettings.chunk_bytes plus framing".into())
     })?;
     let message_bytes = harmos_protocol::transfer::default_message_bytes().get();
-    let address = env::var("HARMOS_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".into());
-    let listener = TcpListener::bind(address).await?;
-    let (shutdown, stopped) = oneshot::channel();
+    let listener = TcpListener::from_std(listener)?;
     let (jobs, receiver) = mpsc::channel(1);
     let executor = tokio::task::spawn_local(execute(receiver));
     let requires = Plugin::requirements(&declarations);
@@ -237,6 +255,7 @@ pub(crate) async fn run(plugin: Plugin, declarations: Declarations) -> Result<()
             (stream.declaration.id, Publication { observer, producer: stream.producer })
         })
         .collect();
+    let stopping = cleanup.clone();
     let server = Server {
         description: InstanceGetResponse {
             id: plugin.id,
@@ -269,24 +288,20 @@ pub(crate) async fn run(plugin: Plugin, declarations: Declarations) -> Result<()
         requires,
         message_bytes,
         jobs,
-        cleanup: plugin.cleanup,
-        shutdown: Mutex::new((!plugin.remote).then_some(shutdown)),
+        cleanup,
+        shutdown: (!plugin.remote).then_some(shutdown),
     };
-    let address = listener.local_addr()?;
     let incoming = stream::unfold(listener, |listener| async {
         let accepted = listener.accept().await.map(|(socket, _)| socket);
         Some((accepted, listener))
     });
-    println!("harmos listening {address}");
-    io::stdout().flush()?;
-    tracing::info!(%address, "Plugin Listening");
+    let _ = ready.send(());
     let result = transport::Server::builder()
         .add_service(InstanceServer::new(server).max_decoding_message_size(message_bytes).max_encoding_message_size(message_bytes))
         .serve_with_incoming_shutdown(incoming, async move {
-            if plugin.remote {
-                future::pending::<()>().await;
-            }
-            let _ = stopped.await;
+            let _ = stopped.wait_for(|stopped| *stopped).await;
+            // Stop Hooks Precede Graceful Drain on Both Local and Protocol Shutdown.
+            let _ = stopping.run();
         })
         .await;
     executor.abort();
@@ -319,8 +334,8 @@ async fn execute(mut jobs: mpsc::Receiver<Job>) {
             }
             let result = {
                 let future = handler.execute(&context, payload);
-                let mut future = std::pin::pin!(future);
-                let first = futures_util::future::poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx))).await;
+                let mut future = pin!(future);
+                let first = poll_fn(|cx| Poll::Ready(future.as_mut().poll(cx))).await;
                 let _ = started.send(());
                 match first {
                     Poll::Ready(result) => result,
@@ -403,7 +418,7 @@ async fn samples(
     let mut observing = None;
     let mut sample = None;
     // Parts of the Answered Window Still to Send, in Order.
-    let mut parts = std::collections::VecDeque::new();
+    let mut parts = VecDeque::new();
     let mut sequence = 0;
     let result = async {
     loop {
@@ -445,7 +460,7 @@ async fn samples(
                             sender: output.clone(), active: Arc::new(AtomicBool::new(true)),
                         });
                         context = window_context;
-                        let payload = prost::Message::encode_to_vec(&window);
+                        let payload = Message::encode_to_vec(&window);
                         observing = Some((window.count, dispatch(&jobs, handler.clone(), context.clone(), payload).await?));
                     }
                     Some(instance_samples_request::Frame::Child(child)) if observing.is_some() => context.reply(child).await?,

@@ -51,8 +51,11 @@
 //! evidence-time read then travels on the invoking call. Independently spawned
 //! background work is invisible to virtual time and must be driven in real time.
 //!
-//! `serve` defaults to managed lifecycle. `Plugin::remote` keeps the endpoint alive
+//! `run` defaults to managed lifecycle. `Plugin::remote` keeps the endpoint alive
 //! after Stop. Both honor `HARMOS_ADDRESS`; cleanup hooks run before Stop replies.
+//! `Plugin::start(address).await` returns an owned `plugin::Listener` with its bound
+//! `address()` and an idempotent `close().await` that runs stop hooks before draining accepted calls.
+//! The listener owns its runtime, so callers do not need a `LocalSet`.
 
 //!
 //! Enable `wasm` for WebAssembly components. Authors return `wasm::Registration`
