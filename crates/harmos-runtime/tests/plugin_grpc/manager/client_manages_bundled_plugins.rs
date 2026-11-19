@@ -37,7 +37,7 @@ use harmos_protocol::model::Failure;
 #[tokio::test]
 async fn managed_bundle_version_survives_activation_replacement_and_manager_restart() {
     // Read the Executable Once for Both Launch Modes
-    let bytes = fs::read(plugin_grpc::support::binary("harmos-conformance-plugin")).unwrap();
+    let bytes = fs::read(plugin_grpc::support::binary("harmos-bundle-version-fixture")).unwrap();
     for command in [false, true] {
         // Build Two Bundles Shared by the Enabled and Disabled Entries
         let root = tempfile::tempdir().unwrap();
