@@ -67,6 +67,7 @@ struct State {
     routes: tonic::service::Routes,
     services: BTreeSet<String>,
     middleware: Vec<Arc<dyn Middleware>>,
+    connection_end: Option<Arc<dyn super::ConnectionEnd>>,
     closed: bool,
 }
 
@@ -85,11 +86,26 @@ impl GrpcManager {
                 routes: tonic::service::Routes::default(),
                 services: BTreeSet::new(),
                 middleware: Vec::new(),
+                connection_end: None,
                 closed: false,
             })),
             host: Arc::new(listener::Owner::<A>::new(operations.clone())),
             operations: operations.clone(),
         }
+    }
+
+    /// Register the Sole Connection-End Observer Before Attaching Any Listener.
+    pub fn register_connection_end(&self, observer: Arc<dyn super::ConnectionEnd>) -> Result<()> {
+        let mut state = self.state.lock().expect("gRPC configuration lock is healthy");
+        state.configurable(self.host.attached())?;
+        if state.connection_end.is_some() {
+            return Err(Error::AlreadyRegistered {
+                domain: "gRPC connection observer",
+                name: "ConnectionEnd".into(),
+            });
+        }
+        state.connection_end = Some(observer);
+        Ok(())
     }
 
     pub fn register_service<S>(&self, service: S) -> Result<()>
@@ -191,7 +207,14 @@ impl GrpcManager {
             let routes = routes.into_axum_router().fallback_service(router);
             let mut middleware = extra_middleware;
             middleware.extend(state.middleware.iter().cloned());
-            Arc::new(listener::Resources::new(settings, routes.into(), self.operations.clone(), middleware, certificate))
+            Arc::new(listener::Resources::new(
+                settings,
+                routes.into(),
+                self.operations.clone(),
+                middleware,
+                certificate,
+                state.connection_end.clone(),
+            ))
         };
         let (generation, address) = self.host.attach(resources).await?;
         Ok(Attached {

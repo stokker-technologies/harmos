@@ -16,14 +16,19 @@
 // Standard Library Imports
 use std::{
     collections::BTreeMap,
+    error,
     future::Future,
+    io,
+    marker::PhantomData,
     net::SocketAddr,
     pin::Pin,
+    result,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     task::{Context, Poll},
+    time::Duration,
 };
 
 // Third Party Imports
@@ -34,15 +39,23 @@ use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
     task::JoinHandle,
 };
-use tonic::transport::server::{Connected, TcpConnectInfo};
+use tonic::{
+    service::Routes,
+    transport::{self, server::Connected},
+};
 
 // Local Imports
-use super::{inbound::Inbound, manager::Settings, middleware::Middleware};
+use super::{
+    connection::{Connections, Info, Scope},
+    inbound::Inbound,
+    manager::Settings,
+    middleware::Middleware,
+};
 use crate::operations::resident::Activation;
 use crate::operations::{Manager, RestartPolicy, Running};
 use crate::services::{Resident, ServiceContext, ServiceDefinition};
 use crate::supervision::executor::InContext;
-use crate::{Application, Error, Result};
+use crate::{Application, Error, Result, ServicePolicy};
 
 /* === Constants === */
 
@@ -58,17 +71,19 @@ type Pending<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
 pub(super) struct Resources {
     settings: Settings,
-    certificate: Option<(super::ServerCertificate, std::time::Duration)>,
-    routes: tonic::service::Routes,
+    certificate: Option<(super::ServerCertificate, Duration)>,
+    routes: Routes,
     operations: Manager,
     middleware: Arc<[Arc<dyn Middleware>]>,
     stopping: watch::Sender<bool>,
     address: Mutex<Option<SocketAddr>>,
+    connections: Arc<Connections>,
+    connection_end: Option<Arc<dyn super::ConnectionEnd>>,
 }
 
 pub(super) struct Owner<A: Application> {
     operations: Manager,
-    application: std::marker::PhantomData<fn() -> A>,
+    application: PhantomData<fn() -> A>,
     closing: AtomicBool,
     generation: AtomicU64,
     current: Mutex<BTreeMap<u64, Current>>,
@@ -94,7 +109,8 @@ struct Listener {
 }
 
 struct Connection {
-    stream: TcpStream,
+    stream: Option<TcpStream>,
+    scope: Arc<Scope>,
     stopping: Pin<Box<dyn Future<Output = ()> + Send>>,
     stopped: bool,
     _permit: OwnedSemaphorePermit,
@@ -102,7 +118,7 @@ struct Connection {
 
 struct Accepted {
     stream: Pin<Box<dyn Io>>,
-    info: TcpConnectInfo,
+    info: Info,
 }
 
 /* === Enums === */
@@ -126,12 +142,14 @@ impl<T: AsyncRead + AsyncWrite + Send> Io for T {}
 
 impl Resources {
     pub(super) fn new(
-        settings: Settings, routes: tonic::service::Routes, operations: Manager, middleware: Vec<Arc<dyn Middleware>>,
-        certificate: Option<(super::ServerCertificate, std::time::Duration)>,
+        settings: Settings, routes: Routes, operations: Manager, middleware: Vec<Arc<dyn Middleware>>,
+        certificate: Option<(super::ServerCertificate, Duration)>, connection_end: Option<Arc<dyn super::ConnectionEnd>>,
     ) -> Self {
         Self {
             settings,
             certificate,
+            connections: Arc::new(Connections::default()),
+            connection_end,
             routes,
             operations,
             middleware: middleware.into(),
@@ -145,7 +163,7 @@ impl<A: Application> Owner<A> {
     pub(super) fn new(operations: Manager) -> Self {
         Self {
             operations,
-            application: std::marker::PhantomData,
+            application: PhantomData,
             closing: AtomicBool::new(false),
             generation: AtomicU64::new(0),
             current: Mutex::new(BTreeMap::new()),
@@ -171,7 +189,7 @@ impl<A: Application> Owner<A> {
         }
     }
 
-    fn current(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, Current>> {
+    fn current(&self) -> MutexGuard<'_, BTreeMap<u64, Current>> {
         self.current.lock().expect("gRPC listener lock is healthy")
     }
 }
@@ -208,7 +226,7 @@ impl<A: Application> Host for Owner<A> {
             self.operations.register_service_with_context::<A, _, _, _>(
                 ServiceDefinition {
                     id: service.clone(),
-                    policy: crate::ServicePolicy {
+                    policy: ServicePolicy {
                         stop_timeout: resources.settings.shutdown_timeout,
                         restart: RestartPolicy::Never,
                     },
@@ -314,7 +332,7 @@ impl<A: Application> Host for Owner<A> {
 impl<A: Application> Resident<A> for Listener {
     type Error = Error;
 
-    async fn run(&mut self, mut context: ServiceContext<A>) -> std::result::Result<(), Error> {
+    async fn run(&mut self, mut context: ServiceContext<A>) -> result::Result<(), Error> {
         if *self.resources.stopping.borrow() {
             return Ok(());
         }
@@ -325,25 +343,31 @@ impl<A: Application> Resident<A> for Listener {
         // Healthy Connections Drain Gracefully; Stalled Ones Are Aborted Before The Stop Deadline.
         let grace = self.resources.settings.shutdown_timeout / 2;
         let clock = self.resources.operations.clock().clone();
-        let incoming =
-            futures_util::stream::unfold((listener, slots, stopping, clock), move |(listener, slots, stopping, clock)| async move {
+        let resources = self.resources.clone();
+        let incoming = futures_util::stream::unfold(
+            (listener, slots, stopping, clock, resources),
+            move |(listener, slots, stopping, clock, resources)| async move {
                 let permit = slots.clone().acquire_owned().await.ok()?;
                 let connection = listener.accept().await.and_then(|(stream, _)| {
-                    stream.set_nodelay(true)?;
                     let mut cancellation = stopping.clone();
                     let clock = clock.clone();
-                    Ok(Connection {
-                        stream,
+                    let scope = resources.connections.open(resources.connection_end.clone()).map_err(io::Error::other)?;
+                    let connection = Connection {
+                        stream: Some(stream),
+                        scope,
                         stopping: Box::pin(async move {
                             let _ = cancellation.wait_for(|stopping| *stopping).await;
                             clock.sleep(grace).await;
                         }),
                         stopped: false,
                         _permit: permit,
-                    })
+                    };
+                    connection.stream.as_ref().expect("connection owns its socket").set_nodelay(true)?;
+                    Ok(connection)
                 });
-                Some((connection, (listener, slots, stopping, clock)))
-            });
+                Some((connection, (listener, slots, stopping, clock, resources)))
+            },
+        );
         let certificate = self.resources.certificate.clone();
         let clock = self.resources.operations.clock().clone();
         let incoming = incoming
@@ -358,13 +382,13 @@ impl<A: Application> Resident<A> for Listener {
                             let stream = clock
                                 .timeout(timeout, certificate.acceptor().accept(connection))
                                 .await
-                                .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?
-                                .map_err(|error| std::io::Error::new(std::io::ErrorKind::ConnectionAborted, error))?;
+                                .map_err(|error| io::Error::new(io::ErrorKind::ConnectionAborted, error))?
+                                .map_err(|error| io::Error::new(io::ErrorKind::ConnectionAborted, error))?;
                             Box::pin(stream)
                         }
                         None => Box::pin(connection),
                     };
-                    Ok::<_, std::io::Error>(Accepted { stream, info })
+                    Ok::<_, io::Error>(Accepted { stream, info })
                 }
             })
             .buffer_unordered(self.resources.settings.connections.get());
@@ -376,7 +400,7 @@ impl<A: Application> Resident<A> for Listener {
             stopping: self.resources.stopping.subscribe(),
         };
         let mut stopping = self.resources.stopping.subscribe();
-        let mut server = tonic::transport::Server::builder();
+        let mut server = transport::Server::builder();
         server = server
             .concurrency_limit_per_connection(self.resources.settings.calls_per_connection.get())
             .max_concurrent_streams(Some(self.resources.settings.calls_per_connection.get() as u32));
@@ -419,6 +443,7 @@ impl<A: Application> Resident<A> for Listener {
             self.task.take();
             joined.map_err(failure)??;
         }
+        self.resources.connections.drain().await;
         *self.resources.address.lock().expect("gRPC address lock is healthy") = None;
         tracing::info!("gRPC listener stopped");
         Ok(())
@@ -430,70 +455,81 @@ impl<A: Application> Resident<A> for Listener {
 }
 
 impl Connected for Accepted {
-    type ConnectInfo = TcpConnectInfo;
-    fn connect_info(&self) -> TcpConnectInfo {
+    type ConnectInfo = Info;
+    fn connect_info(&self) -> Info {
         self.info.clone()
     }
 }
 
 impl AsyncRead for Accepted {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         self.stream.as_mut().poll_read(cx, buffer)
     }
 }
 
 impl AsyncWrite for Accepted {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<io::Result<usize>> {
         self.stream.as_mut().poll_write(cx, bytes)
     }
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.stream.as_mut().poll_flush(cx)
     }
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.stream.as_mut().poll_shutdown(cx)
     }
 }
 
 impl Connected for Connection {
-    type ConnectInfo = TcpConnectInfo;
-    fn connect_info(&self) -> TcpConnectInfo {
-        self.stream.connect_info()
+    type ConnectInfo = Info;
+    fn connect_info(&self) -> Info {
+        Info {
+            tcp: self.stream.as_ref().expect("connection owns its socket").connect_info(),
+            scope: self.scope.clone(),
+            _call: Arc::new(self.scope.call()),
+        }
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        drop(self.stream.take());
+        self.scope.close();
     }
 }
 
 impl Connection {
     // Abort Socket I/O After The Grace So Tonic Can Settle Stalled Connection Tasks.
-    fn poll_stopping(&mut self, context: &mut Context<'_>) -> std::io::Result<()> {
+    fn poll_stopping(&mut self, context: &mut Context<'_>) -> io::Result<()> {
         if !self.stopped {
             self.stopped = self.stopping.as_mut().poll(context).is_ready();
         }
         if self.stopped {
-            return Err(std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "gRPC listener is stopping"));
+            return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "gRPC listener is stopping"));
         }
         Ok(())
     }
 }
 
 impl AsyncRead for Connection {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buffer: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         self.poll_stopping(cx)?;
-        Pin::new(&mut self.stream).poll_read(cx, buffer)
+        Pin::new(self.stream.as_mut().expect("connection owns its socket")).poll_read(cx, buffer)
     }
 }
 impl AsyncWrite for Connection {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, bytes: &[u8]) -> Poll<io::Result<usize>> {
         self.poll_stopping(cx)?;
-        Pin::new(&mut self.stream).poll_write(cx, bytes)
+        Pin::new(self.stream.as_mut().expect("connection owns its socket")).poll_write(cx, bytes)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.poll_stopping(cx)?;
-        Pin::new(&mut self.stream).poll_flush(cx)
+        Pin::new(self.stream.as_mut().expect("connection owns its socket")).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.poll_stopping(cx)?;
-        Pin::new(&mut self.stream).poll_shutdown(cx)
+        Pin::new(self.stream.as_mut().expect("connection owns its socket")).poll_shutdown(cx)
     }
 }
 
@@ -501,7 +537,7 @@ impl AsyncWrite for Connection {
 
 /* === Private Functions === */
 
-fn failure(source: impl std::error::Error + Send + Sync + 'static) -> Error {
+fn failure(source: impl error::Error + Send + Sync + 'static) -> Error {
     Error::TaskFailed {
         domain: "gRPC listener",
         source: Arc::new(source),

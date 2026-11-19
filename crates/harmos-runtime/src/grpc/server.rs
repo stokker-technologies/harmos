@@ -124,12 +124,22 @@ impl Authority {
     pub(super) fn submit_charged<O: RequestShape, P: Send + 'static>(
         &self, request: StreamItem<O::Request>, endpoints: P,
     ) -> crate::Result<Running<O>> {
-        match self {
+        let instance = match self {
             Self::Binding(binding) => binding.submit(request, endpoints),
             Self::TrustedHost(operations) => operations.submit_external_charged::<O, P>(request, endpoints),
             #[cfg(feature = "plugin-guest")]
             Self::Plugin(caller) => caller.submit_external_charged::<O, P>(request, endpoints),
+        }?;
+        let context = match self {
+            Self::Binding(binding) => binding.operations.call_context(),
+            Self::TrustedHost(operations) => operations.call_context(),
+            #[cfg(feature = "plugin-guest")]
+            Self::Plugin(caller) => caller.operations.call_context(),
+        };
+        if let Some(scope) = context.get::<Arc<super::connection::Scope>>() {
+            scope.track(instance.control.clone());
         }
+        Ok(instance)
     }
 }
 

@@ -24,6 +24,7 @@ use std::{
 };
 
 // Third Party Imports
+use futures_util::FutureExt;
 use tokio::sync::watch;
 use tonic::{
     Code, Status,
@@ -34,9 +35,11 @@ use tonic::{
 use tracing::Instrument;
 
 // Local Imports
+use super::connection::Info;
 use super::middleware::{Middleware, Session};
 use crate::operations::CallContext;
 use crate::supervision::executor::InContext;
+use tonic::transport::server::TlsConnectInfo;
 
 /* === Constants === */
 
@@ -98,6 +101,29 @@ impl Service<http::Request<Body>> for Inbound {
 
     #[tracing::instrument(target = "harmos::grpc", name = "grpc.call", level = "debug", skip_all, fields(status = tracing::field::Empty))]
     fn call(&mut self, mut request: http::Request<Body>) -> Self::Future {
+        let connection = request
+            .extensions()
+            .get::<Info>()
+            .cloned()
+            .or_else(|| request.extensions().get::<TlsConnectInfo<Info>>().map(|info| info.get_ref().clone()));
+        if let Some(info) = &connection {
+            request.extensions_mut().insert(info.tcp.clone());
+        }
+        let scope = connection.as_ref().map(|info| info.scope.clone());
+        let mut stopping = self.stopping.clone();
+        let closed = async move {
+            match scope {
+                Some(scope) => tokio::select! {
+                    _ = scope.ended() => {}
+                    _ = stopping.wait_for(|stopping| *stopping) => {}
+                },
+                None => {
+                    let _ = stopping.wait_for(|stopping| *stopping).await;
+                }
+            }
+        }
+        .boxed()
+        .shared();
         let clock = self.operations.clock().clone();
         let trace = tracing::Span::current();
         let mut routes = self.routes.clone();
@@ -130,7 +156,7 @@ impl Service<http::Request<Body>> for Inbound {
                 let mut session = Session::new(request.uri().path().to_owned(), metadata, request.extensions().clone(), peer, entries);
                 let entered = tokio::select! {
                     biased;
-                    _ = shutdown(stopping.clone()) => Err(Status::unavailable("gRPC listener is stopping")),
+                    _ = closed.clone() => Err(Status::unavailable("gRPC listener is stopping")),
                     _ = clock.sleep_until(deadline) => Err(Status::deadline_exceeded("RPC deadline elapsed")),
                     result = session.enter() => result.map_err(super::server::status),
                 };
@@ -139,6 +165,10 @@ impl Service<http::Request<Body>> for Inbound {
                     return Ok(status.into_http());
                 }
                 let mut context = session.context();
+                if let Some(info) = connection {
+                    context.insert(info.scope.id).expect("transport owns connection identity");
+                    context.insert(info.scope).expect("transport owns connection settlement");
+                }
                 if streaming.is_none() {
                     context.insert(crate::operations::context::Deadline(deadline)).expect("transport owns the deadline type");
                 } else {
@@ -161,7 +191,7 @@ impl Service<http::Request<Body>> for Inbound {
                 };
                 let response = tokio::select! {
                     biased;
-                    _ = shutdown(stopping.clone()) => {
+                    _ = closed.clone() => {
                         session.observe(Code::Unavailable);
                         return Ok(Status::unavailable("gRPC listener is stopping").into_http());
                     }
@@ -173,8 +203,7 @@ impl Service<http::Request<Body>> for Inbound {
                 };
                 let terminal = status(response.headers());
                 Ok(response.map(|body| {
-                    use http_body::Body as _;
-                    if body.is_end_stream() {
+                    if http_body::Body::is_end_stream(&body) {
                         session.observe(terminal.unwrap_or(Code::Unknown));
                         return body;
                     }
@@ -188,7 +217,7 @@ impl Service<http::Request<Body>> for Inbound {
                         deadline: response_deadline,
                         progress,
                         operation,
-                        stopping: Box::pin(shutdown(stopping)),
+                        stopping: Box::pin(closed),
                         ended: false,
                     })
                 }))
@@ -326,14 +355,6 @@ fn trailers(status: Status) -> http_body::Frame<bytes::Bytes> {
     let mut headers = http::HeaderMap::new();
     status.add_header(&mut headers).expect("static transport status is valid metadata");
     http_body::Frame::trailers(headers)
-}
-
-async fn shutdown(mut stopping: watch::Receiver<bool>) {
-    while !*stopping.borrow_and_update() {
-        if stopping.changed().await.is_err() {
-            return;
-        }
-    }
 }
 
 fn status(headers: &http::HeaderMap) -> Option<Code> {
