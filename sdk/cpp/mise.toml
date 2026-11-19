@@ -22,39 +22,39 @@ ninja = "1.13.2"
 [tasks.prepare]
 description = "Prepare Pinned vcpkg"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --prepare"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --prepare"
 
 [tasks.build]
 description = "Build the C++ SDK with Presets"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root ."
 
 [tasks.test]
 description = "Test the C++ SDK with Presets"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --test"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --test"
 
 [tasks.check]
 description = "Check the C++ SDK Preset"
 dir = "../.."
-run = ["mise -C sdk/cpp run format -- --check", "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --check"]
+run = ["mise -C sdk/cpp run format -- --check", "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --check"]
 
 [tasks.consumer]
 hide = true
 description = "Build the Installed C++ SDK Consumer"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --consumer"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --consumer"
 
 [tasks.generate]
 description = "Generate the C++ Protocols"
 dir = "../.."
-run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --generate"
+run = "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --generate"
 
 [tasks.format]
 description = "Format the C++ SDK and Python Stories"
 dir = "../.."
 usage = 'flag "--check"'
 run = [
-  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --format{% if usage.check %} --check{% endif %}",
+  "uv run --locked --no-sync --project tools/python python -m harmos_tools.build.cpp --source-root . --format{% if usage.check %} --check{% endif %}",
   "uv run --locked --no-sync --project tools/python ruff format --config tools/python/ruff.toml sdk/cpp/tests{% if usage.check %} --check{% endif %}",
 ]
