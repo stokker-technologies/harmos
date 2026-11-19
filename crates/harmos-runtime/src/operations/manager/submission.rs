@@ -215,7 +215,8 @@ impl Manager {
         let control = reservation.control();
         control.trace().record("operation", tracing::field::display(&entry.definition.id));
         control.trace().record("generation", tracing::field::debug(entry.generation));
-        self.instances.assign(id, origin.identity.clone());
+        let caller = source.originating().check()?;
+        self.instances.assign(id, caller.identity.clone());
         pending.insert(id, Arc::clone(&control));
         drop(pending);
 
@@ -267,7 +268,7 @@ impl Manager {
                 entry.generation,
                 self.call_context().clone(),
                 context,
-                origin,
+                Origin { grants: origin.grants, ..caller },
             ));
         }
         let refusal = if self.clock().now().saturating_duration_since(submitted) >= job.policy.timeout {

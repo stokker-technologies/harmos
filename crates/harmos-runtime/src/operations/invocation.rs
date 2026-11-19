@@ -143,7 +143,8 @@ impl super::Manager {
         &self, request: O::Request, endpoints: O::Endpoints, policy: Option<(super::OperationPolicy, &'static str)>,
         parent: Option<&super::Context<'_>>,
     ) -> crate::Result<NativeInvocation<O>> {
-        self.submit_native_scoped::<O>(request, endpoints, super::caller::Source::Host, policy, parent)
+        let source = parent.map_or(super::caller::Source::Host, |parent| parent.source.native());
+        self.submit_native_scoped::<O>(request, endpoints, source, policy, parent)
     }
 
     fn submit_native_scoped<O: NativeOperation>(
@@ -210,9 +211,9 @@ impl Caller for HostContext {
             let result = async {
                 let mut context = self.borrow();
                 context.operations = context.operations.with_context(call);
-                // The Admitted Product Handler Calls Its Private In-Process Callee As Host.
+                // Native Admission Retains the Wrapper's Authority and Its Originating Caller.
                 if target.in_process {
-                    context.source = super::caller::Source::Host;
+                    context.source = context.source.native();
                 }
                 let origin = context.source.check()?;
                 let entry = context.operations.entry_as(target.id, &origin)?;
@@ -481,6 +482,246 @@ fn admit_native_as<P: Send + 'static>(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "grpc")]
+    mod caller_relative {
+        use std::error;
+        use std::num::NonZeroUsize;
+        use std::sync::Arc;
+
+        use prost::Message;
+        use prost_reflect::ServiceDescriptor;
+        use tokio::sync::Notify;
+
+        use super::{Model, POLICY};
+        use crate::operations::caller::Source;
+        use crate::operations::{
+            CallContext, ExecutionContext, HostContext, Manager, NativeOperation, OperationFactory, ProtobufOperation, RegistrationExt,
+            Resource, ServingError, StreamSettings, Visibility, native_stream,
+        };
+        use crate::{Error, Runtime};
+        use harmos_conformance::product;
+        use harmos_operations::host::declarations::{host, lifecycle};
+        use harmos_protocol::host::{
+            InvocationsCancelRequest, InvocationsCancelResponse, InvocationsGetRequest, InvocationsGetResponse, InvocationsWatchRequest,
+            InvocationsWatchResponse, OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse,
+        };
+        use harmos_protocol::model::Callers;
+
+        #[derive(Default)]
+        struct Gate {
+            started: Notify,
+            release: Notify,
+        }
+
+        struct Waiting;
+
+        impl NativeOperation for Waiting {
+            type Request = ();
+            type Response = ();
+            type Endpoints = ();
+            const ID: &'static str = "fixture.waiting";
+            const POLICY: crate::OperationPolicy = POLICY;
+            const RESOURCES: &'static [Resource] = &[Resource::of::<Gate>()];
+
+            async fn run(context: ExecutionContext, _: (), _: &()) -> Result<(), ServingError> {
+                let gate = context.resource::<Gate>().unwrap();
+                gate.started.notify_one();
+                gate.release.notified().await;
+                Ok(())
+            }
+        }
+
+        macro_rules! wrapper {
+            ($name:ident, $reference:ty, $request:ty, $response:ty, $context:ident, $value:ident, $body:block) => {
+                struct $name;
+                impl ProtobufOperation for $name {
+                    type Request = $request;
+                    type Response = $response;
+                    type Endpoints = ();
+                    const ID: &'static str = <$reference as ProtobufOperation>::ID;
+                    const POLICY: crate::OperationPolicy = POLICY;
+                    const VISIBILITY: Visibility = Visibility::Public;
+                    const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
+
+                    fn service() -> Option<ServiceDescriptor> {
+                        <$reference as ProtobufOperation>::service()
+                    }
+
+                    async fn run($context: ExecutionContext, $value: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+                        let result: Result<Self::Response, Error> = async $body.await;
+                        result.map_err(|error| ServingError::Native(Arc::new(error)))
+                    }
+                }
+            };
+        }
+
+        wrapper!(List, product::OperationsList, OperationsListRequest, OperationsListResponse, context, request, {
+            let parent = context.resource::<HostContext>().unwrap();
+            parent.for_call().call::<host::List>(request).await
+        });
+
+        wrapper!(Get, product::OperationsGet, OperationsGetRequest, OperationsGetResponse, context, request, {
+            let parent = context.resource::<HostContext>().unwrap();
+            parent.for_call().call::<host::Get>(request).await
+        });
+
+        wrapper!(GetInvocation, product::InvocationsGet, InvocationsGetRequest, InvocationsGetResponse, context, request, {
+            let parent = context.resource::<HostContext>().unwrap();
+            parent.for_call().invocations().get(request).await
+        });
+
+        wrapper!(CancelInvocation, product::InvocationsCancel, InvocationsCancelRequest, InvocationsCancelResponse, context, request, {
+            let parent = context.resource::<HostContext>().unwrap();
+            parent.for_call().invocations().cancel(request).await
+        });
+
+        wrapper!(WatchInvocation, product::InvocationsWatch, InvocationsWatchRequest, InvocationsWatchResponse, context, request, {
+            let parent = context.resource::<HostContext>().unwrap();
+            let (output, _input) = native_stream(StreamSettings {
+                items: NonZeroUsize::new(4).unwrap(),
+                bytes: NonZeroUsize::new(65536).unwrap(),
+            })
+            .unwrap();
+            let response = parent.for_call().invocations().watch(request, output)?.await?;
+            response.try_unwrap().map_err(|_| Error::InvalidInput {
+                field: "Watch Invocation",
+                reason: "response is shared",
+            })
+        });
+
+        struct NestedList;
+
+        impl NativeOperation for NestedList {
+            type Request = OperationsListRequest;
+            type Response = OperationsListResponse;
+            type Endpoints = ();
+            const ID: &'static str = "fixture.nested_list";
+            const POLICY: crate::OperationPolicy = POLICY;
+
+            async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+                let response = context.call_native::<host::List>(request).await?;
+                response.try_unwrap().map_err(|_| ServingError::Catalog)
+            }
+        }
+
+        async fn runtime() -> (Runtime<Model>, Arc<Gate>) {
+            let gate = Arc::new(Gate::default());
+            let runtime = Runtime::<Model>::start_with((), (), |setup| {
+                setup.resource::<Gate>(gate.clone());
+                setup.settings().operation_settings(crate::operations::Settings {
+                    preparation_bytes: NonZeroUsize::new(65536),
+                    ..Default::default()
+                });
+            })
+            .await
+            .unwrap();
+            runtime.operations.register_catalog(harmos_operations::host_catalog(), Default::default()).await.unwrap();
+            runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+            let batch = harmos_operations::execution::__private::Catalog::new()
+                .entry(OperationFactory::protobuf::<List>().unwrap())
+                .entry(OperationFactory::protobuf::<Get>().unwrap())
+                .entry(OperationFactory::protobuf::<GetInvocation>().unwrap())
+                .entry(OperationFactory::protobuf::<CancelInvocation>().unwrap())
+                .entry(OperationFactory::protobuf::<WatchInvocation>().unwrap())
+                .entry(OperationFactory::native::<Waiting>().unwrap())
+                .entry(OperationFactory::native::<NestedList>().unwrap());
+            runtime.register_batch(batch.lane(Default::default())).await.unwrap();
+            (runtime, gate)
+        }
+
+        async fn invoke<O: ProtobufOperation>(manager: &Manager, source: &Source, request: O::Request) -> crate::Result<O::Response> {
+            let bytes = manager.submit_encoded_as(O::ID, request.encode_to_vec(), source.clone(), None)?.await?;
+            Ok(O::Response::decode(bytes.as_slice()).unwrap())
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn facade_discovery_retains_client_audience_and_host_authority() {
+            let (runtime, _) = runtime().await;
+            let manager = runtime.operations.execution();
+            let source = Source::Host.external().unwrap();
+
+            // Admit the Declared Client Wrapper and Filter Its Native Result
+            let entry = manager.entry(List::ID).unwrap();
+            assert_eq!(entry.contract.as_ref().unwrap().callers(), Callers::Clients);
+            let listed = invoke::<List>(&manager, &source, OperationsListRequest {}).await.unwrap();
+            assert!(listed.operations.iter().any(|entry| entry.contract.as_ref().unwrap().id == List::ID));
+            assert!(listed.operations.iter().all(|entry| entry.contract.as_ref().unwrap().id != "harmos.plugin.v1.Time/Get"));
+            let hidden =
+                invoke::<Get>(&manager, &source, OperationsGetRequest { id: "harmos.plugin.v1.Time/Get".into() }).await.unwrap_err();
+            let mut cause = &hidden as &(dyn error::Error + Send + Sync);
+            while let Some(Error::OperationFailed { source, .. }) = cause.downcast_ref::<Error>() {
+                cause = source.as_ref();
+            }
+            assert!(
+                matches!(
+                    cause.downcast_ref::<harmos_operations::Error>(),
+                    Some(harmos_operations::Error::NotFound { entity: "operation" })
+                ),
+                "{hidden:?}"
+            );
+
+            // Host Calls Still See the Registered Plugin Operation
+            let call = runtime.for_call(&CallContext::default());
+            let listed = call.call::<host::List>(OperationsListRequest {}).await.unwrap();
+            assert!(listed.operations.iter().any(|entry| entry.contract.as_ref().unwrap().id == "harmos.plugin.v1.Time/Get"));
+            call.call::<host::Get>(OperationsGetRequest { id: "harmos.plugin.v1.Time/Get".into() }).await.unwrap();
+
+            // Nested Native Calls Retain the Same Incoming Caller
+            let listed =
+                manager.submit_native_as::<NestedList>(OperationsListRequest {}, (), source.native(), None).unwrap().await.unwrap();
+            assert!(listed.operations.iter().any(|entry| entry.contract.as_ref().unwrap().id == List::ID));
+            assert!(listed.operations.iter().all(|entry| entry.contract.as_ref().unwrap().id != "harmos.plugin.v1.Time/Get"));
+            runtime.stop().await.unwrap();
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn facade_controls_hide_other_callers_and_preserve_delegated_ownership() {
+            let (runtime, gate) = runtime().await;
+            let manager = runtime.operations.execution();
+            let owner = Source::Host.external().unwrap();
+            let other = Source::Host.external().unwrap();
+
+            // Native Work Belongs to the Incoming Caller
+            let waiting = manager.submit_native_as::<Waiting>((), (), owner.native(), None).unwrap();
+            gate.started.notified().await;
+            let instance = waiting.id().value();
+            invoke::<GetInvocation>(&manager, &owner, InvocationsGetRequest { instance }).await.unwrap();
+            let (output, input) = native_stream::<InvocationsWatchResponse>(StreamSettings {
+                items: NonZeroUsize::new(4).unwrap(),
+                bytes: NonZeroUsize::new(65536).unwrap(),
+            })
+            .unwrap();
+            let watch =
+                manager.submit_native_as::<lifecycle::Watch>(InvocationsWatchRequest { instance }, output, owner.native(), None).unwrap();
+            assert_eq!(input.recv().await.unwrap().invocation.as_ref().unwrap().phase, "running");
+
+            // Another Caller Cannot Inspect, Cancel or Watch It
+            assert!(invoke::<GetInvocation>(&manager, &other, InvocationsGetRequest { instance }).await.is_err());
+            assert!(
+                invoke::<CancelInvocation>(&manager, &other, InvocationsCancelRequest { instance, reason: String::new() }).await.is_err()
+            );
+            assert!(invoke::<WatchInvocation>(&manager, &other, InvocationsWatchRequest { instance }).await.is_err());
+            assert!(runtime.for_call(&CallContext::default()).invocations().get(InvocationsGetRequest { instance }).await.is_err());
+            invoke::<CancelInvocation>(&manager, &owner, InvocationsCancelRequest { instance, reason: String::new() }).await.unwrap();
+            assert!(waiting.await.is_err());
+            assert_eq!(watch.await.unwrap().invocation.as_ref().unwrap().phase, "settled");
+
+            // Host Work Remains Host-Owned Across a Client Wrapper
+            let waiting = runtime.for_call(&CallContext::default()).submit::<Waiting>((), ()).unwrap();
+            gate.started.notified().await;
+            let instance = waiting.id().value();
+            assert!(invoke::<GetInvocation>(&manager, &owner, InvocationsGetRequest { instance }).await.is_err());
+            assert!(
+                invoke::<CancelInvocation>(&manager, &owner, InvocationsCancelRequest { instance, reason: String::new() }).await.is_err()
+            );
+            assert!(invoke::<WatchInvocation>(&manager, &owner, InvocationsWatchRequest { instance }).await.is_err());
+            runtime.for_call(&CallContext::default()).call::<lifecycle::Get>(InvocationsGetRequest { instance }).await.unwrap();
+            gate.release.notify_one();
+            waiting.await.unwrap();
+            runtime.stop().await.unwrap();
+        }
+    }
+
     use super::*;
     use crate::operations::RegistrationExt;
     use harmos_operations::execution::Response;

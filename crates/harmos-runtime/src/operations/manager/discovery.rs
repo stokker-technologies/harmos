@@ -13,18 +13,14 @@
 
 /* === Imports === */
 
-use harmos_protocol::model::OperationPolicy;
-use harmos_protocol::model::RetryPolicy as WireRetryPolicy;
-
 // Standard Library Imports
-
 use std::ops::Bound;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+
 // Third Party Imports
-use harmos_protocol::model::{
-    Callers, DiscoveredContract, DiscoveredOperation, Grant as WireGrant, Grpc, Protobuf, Visibility as WireVisibility,
-};
+use harmos_protocol::model::{self, Callers, DiscoveredContract, DiscoveredOperation, Grpc, Protobuf};
+
 // Local Imports
 use super::{Entry, Manager};
 use crate::operations::Contract;
@@ -50,6 +46,7 @@ type ProviderEntry = (String, String, Arc<Entry>);
 
 impl Manager {
     pub(in crate::operations) fn discover(&self, source: &Source) -> Result<Vec<DiscoveredOperation>> {
+        let source = source.originating();
         let origin = source.check()?;
         let mut output = Vec::new();
         let mut position = None;
@@ -127,7 +124,7 @@ impl Manager {
                 contract: Some(describe(contract, entry.callers())?),
                 grants: grants
                     .iter()
-                    .map(|grant| WireGrant {
+                    .map(|grant| model::Grant {
                         operation: grant.operation.to_string(),
                         scope: grant.scope.as_ref().map(ToString::to_string),
                     })
@@ -171,7 +168,7 @@ fn describe(contract: &Contract, callers: Callers) -> Result<DiscoveredContract>
                 Backoff::Fixed { delay, jitter } => (delay, None, jitter),
                 Backoff::Exponential { initial, maximum, jitter } => (initial, Some(maximum), jitter),
             };
-            Some(WireRetryPolicy {
+            Some(model::RetryPolicy {
                 total_attempts: total_attempts as u64,
                 initial: Some(duration(initial)?),
                 maximum: maximum.map(duration).transpose()?,
@@ -184,11 +181,11 @@ fn describe(contract: &Contract, callers: Callers) -> Result<DiscoveredContract>
         id: definition.id.to_string(),
         description: definition.description.clone(),
         visibility: match definition.visibility {
-            Visibility::Private => WireVisibility::Private,
-            Visibility::Protected => WireVisibility::Protected,
-            Visibility::Public => WireVisibility::Public,
+            Visibility::Private => model::Visibility::Private,
+            Visibility::Protected => model::Visibility::Protected,
+            Visibility::Public => model::Visibility::Public,
         } as i32,
-        policy: Some(OperationPolicy {
+        policy: Some(model::OperationPolicy {
             timeout: Some(duration(policy.timeout)?),
             attempt_timeout: Some(duration(policy.attempt_timeout)?),
             cancellation_timeout: Some(duration(policy.cancellation_timeout)?),
