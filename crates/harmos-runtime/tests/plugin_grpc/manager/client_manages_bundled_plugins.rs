@@ -21,7 +21,6 @@ use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::{PluginPlacement, PluginsReplaceRequest, plugin_placement};
 use harmos_protocol::host::{PluginValue, PluginsSetRequest};
 use harmos_protocol::model::Failure;
-use harmos_runtime::plugin::manager::Management;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
@@ -71,6 +70,7 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         let ready = support::state(&mut watch, "frozen", PluginState::Ready, 1).await;
         let live = host.manager.activation("frozen").await.unwrap();
         assert_ne!(live.description.version, identity.version.to_string());
+        assert_ne!(live.description.version, replacement_identity.version.to_string());
         assert_eq!(ready.description.as_ref().unwrap().version, identity.version.to_string());
         assert_eq!(ready.description.as_ref().unwrap().id, live.description.id);
 
@@ -126,8 +126,6 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         };
         let ready = support::state(&mut watch, "frozen", PluginState::Ready, activating.activation).await;
         assert_eq!(ready.description.as_ref().unwrap().version, replacement_identity.version.to_string());
-        let live = host.manager.activation("frozen").await.unwrap();
-        assert_ne!(live.description.version, replacement_identity.version.to_string());
         drop(watch);
         host.close().await;
 
