@@ -15,23 +15,32 @@
 
 /* === Imports === */
 
-use super::{invoke_support, support};
-use harmos::Visibility;
-use harmos::plugin::{Context, Lane, Operation, Plugin};
-use harmos_runtime::{
-    Runtime,
-    plugin::grpc::{Attached, Placement},
-};
+// Standard Library Imports
 use std::{
     collections::BTreeMap,
     path::Path,
     process::Stdio,
     sync::{Arc, Mutex},
 };
+
+// Third Party Imports
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
     process::{Child, ChildStdout, Command},
     sync::{mpsc, oneshot},
+};
+
+// Local Imports
+use super::{invoke_support, support};
+use harmos::Visibility;
+use harmos::plugin::{Context, Lane, Operation, Plugin};
+use harmos_protocol::{
+    model::{LaneDeclaration, lane_declaration},
+    schema,
+};
+use harmos_runtime::{
+    Runtime,
+    plugin::grpc::{Attached, Placement},
 };
 
 /* === Constants === */
@@ -124,7 +133,7 @@ impl Fixture {
             if let Some(lane) = lane {
                 operation = operation.lane(lane);
             }
-            plugin = plugin.operation(operation);
+            plugin = plugin.register(|ctx| ctx.register(operation)).unwrap();
         }
         let listener = plugin.start("127.0.0.1:0").await.unwrap();
         let address = format!("http://{}", listener.address());
@@ -295,10 +304,6 @@ async fn rust_plugin_lane_stories() {
 
 #[tokio::test]
 async fn invalid_plugin_lane_facts_are_refused_at_admission() {
-    use harmos_protocol::{
-        model::{LaneDeclaration, lane_declaration},
-        schema,
-    };
     let runtime = support::runtime(None).await;
     let remote = support::Remote::start().await;
     for (name, capacity, duplicate, assignment) in [

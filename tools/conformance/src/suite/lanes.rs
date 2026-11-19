@@ -15,7 +15,15 @@
 
 /* === Imports === */
 
-use crate::{Error, Result, callers::Forward, conformance::Value, fixture};
+// Standard Library Imports
+use std::{
+    collections::BTreeMap,
+    io, result,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+// Third Party Imports
 use harmos_operations::execution::operations::{
     Catalog, ExecutionContext, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility,
 };
@@ -27,17 +35,14 @@ use harmos_runtime::{
     state::Never,
 };
 use prost_reflect::{DescriptorPool, MessageDescriptor, ReflectMessage};
-use std::{
-    collections::BTreeMap,
-    io, result,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
 use tokio::{
     net::TcpListener,
     sync::{mpsc, oneshot},
 };
 use tonic::transport::Server;
+
+// Local Imports
+use crate::{Error, Result, callers::Forward, conformance::Value, fixture};
 
 /* === Constants === */
 

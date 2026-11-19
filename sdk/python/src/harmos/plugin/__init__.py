@@ -1,6 +1,6 @@
 # @generated from protocol descriptors; do not edit.
 from .._authoring import Catalog, Endpoint, Plugin, Registrar, Registration
-from .._contracts import Operation, Stream, Window, observer, operation, publisher, window_observer
+from .._contracts import Lane, Operation, Stream, Window, observer, operation, publisher, window_observer
 from .._generated.host import HostOperation
 from .._generated.plugin_types import (
     InvocationsCancelResponse,
@@ -22,6 +22,7 @@ __all__ = [
     "InvocationsCancelResponse",
     "InvocationsGetResponse",
     "InvocationsWatchResponse",
+    "Lane",
     "Operation",
     "OperationsGetResponse",
     "OperationsListResponse",

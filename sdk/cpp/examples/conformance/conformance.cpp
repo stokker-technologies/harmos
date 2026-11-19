@@ -103,7 +103,9 @@ std::function<void(harmos::plugin::Registrar &)> harmos::conformance::catalog() 
     const auto other = harmos::plugin::Lane::serial("other");
     for (const auto &name : {"first", "second", "parallel", "other", "open"}) {
       harmos::plugin::Operation<Value, Value> operation(string("conformance.lane.") + name, harmos::VISIBILITY_PUBLIC,
-          [pending](Context &ctx, Value request) { return ctx.call(pending, request).get(); });
+                                                        [pending](Context &ctx, Value request) {
+                                                          return ctx.call(pending, request).get();
+                                                        });
       if (string(name) == "first" || string(name) == "second") {
         operation.lane(instrument);
       } else if (string(name) == "parallel") {

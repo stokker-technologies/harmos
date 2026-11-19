@@ -46,9 +46,18 @@ class Lanes(unittest.TestCase):
             async def measure(self, _: Context, request: Empty) -> Empty:
                 return request
 
-        self.assertRaises(ValueError, Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author()))).declarations)
-        self.assertRaises(ValueError, Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author())), lanes=[instrument, instrument]).declarations)
-        declarations = Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author())), lanes=[instrument]).declarations()
+        self.assertRaises(
+            ValueError, Plugin(id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author()))).declarations
+        )
+        self.assertRaises(
+            ValueError,
+            Plugin(
+                id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author())), lanes=[instrument, instrument]
+            ).declarations,
+        )
+        declarations = Plugin(
+            id="example", version="1.0.0", register=lambda ctx: ctx.register(Catalog(Author())), lanes=[instrument]
+        ).declarations()
         self.assertEqual(declarations.operations[0].lane, "instrument")
 
 

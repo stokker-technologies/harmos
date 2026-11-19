@@ -73,7 +73,9 @@ async def _main() -> None:
             return await self.run(request)
 
     author = LaneAuthor()
-    endpoint = await Plugin(id=plugin_id, version="1.0.0", register=lambda ctx: ctx.register(Catalog(author)), lanes=lanes).start("127.0.0.1:0")
+    endpoint = await Plugin(id=plugin_id, version="1.0.0", register=lambda ctx: ctx.register(Catalog(author)), lanes=lanes).start(
+        "127.0.0.1:0"
+    )
     print(f"listening:{endpoint.address}", flush=True)
     try:
         while True:
@@ -85,7 +87,7 @@ async def _main() -> None:
                 continue
             author.release[command.encode()].set()
     finally:
-        await endpoint.close()
+        await endpoint.stop()
 
 
 # === Entry Point === #

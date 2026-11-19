@@ -1,6 +1,6 @@
 # @generated from protocol descriptors; do not edit.
 from harmos._wire.model.v1.callers_pb2 import ALL, CALLERS_UNSPECIFIED, CLIENTS, PLUGINS, Callers
-from harmos._wire.model.v1.description_pb2 import Declarations, Section
+from harmos._wire.model.v1.description_pb2 import Declarations, LaneDeclaration, Section
 from harmos._wire.model.v1.failure_pb2 import (
     CLASSIFICATION_CANCELLED,
     CLASSIFICATION_PERMANENT,
@@ -54,6 +54,8 @@ from ._exports.shared import model
 
 Declarations.__module__ = "harmos"
 Declarations.__qualname__ = "Declarations"
+LaneDeclaration.__module__ = "harmos"
+LaneDeclaration.__qualname__ = "LaneDeclaration"
 Section.__module__ = "harmos"
 Section.__qualname__ = "Section"
 File.__module__ = "harmos"
@@ -133,6 +135,7 @@ __all__ = [
     "Grpc",
     "History",
     "InstanceState",
+    "LaneDeclaration",
     "MessageSettings",
     "OperationContract",
     "OperationPolicy",

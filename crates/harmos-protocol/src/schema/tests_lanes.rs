@@ -15,14 +15,13 @@
 
 /* === Imports === */
 
-use super::*;
-use crate::model::{LaneDeclaration, OperationContract, lane_declaration};
-
 // Standard Library Imports
 
 // Third Party Imports
 
 // Local Imports
+use super::*;
+use crate::model::{LaneDeclaration, OperationContract, lane_declaration};
 
 /* === Constants === */
 

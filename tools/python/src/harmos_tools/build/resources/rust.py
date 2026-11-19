@@ -68,8 +68,6 @@ def exports(root: Path, descriptors: FileDescriptorSet, *, configuration: Config
         for length in range(1, len(method["path"]))
     }
     public_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace)
-    if configuration.namespace == "harmos":
-        public_paths["harmos.model.v1.Failure"] = "Failure"
     client_paths = descriptor.public_paths(descriptors, namespace=configuration.namespace, reserved_names=resource_names)
     requests = descriptor.request_names(descriptors)
 

@@ -12,9 +12,10 @@
 /* === Modules === */
 
 mod wire;
-pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 
 /* === Re-Exports === */
+
+pub use wire::{Graph, PayloadOnly, Value, Values, graph};
 
 /* === Imports === */
 
