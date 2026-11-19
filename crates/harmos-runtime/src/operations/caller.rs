@@ -67,7 +67,7 @@ pub(super) struct Origin {
     pub(super) resident: bool,
 
     // The grant authority admission recorded for the request this origin made.
-    pub(super) grants: Option<std::sync::Arc<super::manager::GrantAuthority>>,
+    pub(super) grants: Option<Arc<super::manager::GrantAuthority>>,
 }
 
 #[cfg(feature = "plugin-guest")]
@@ -82,6 +82,9 @@ pub(super) struct LifecycleLoan {
 #[derive(Clone)]
 pub(super) enum Source {
     Host,
+
+    // Native Admission Uses Host Authority While Results Retain the Incoming Caller.
+    Native(Box<Source>),
 
     GrpcPlugin(Arc<crate::plugin::grpc::CallingPlugin>),
 
@@ -239,6 +242,17 @@ impl harmos_operations::execution::operations::OperationHost for Caller {
 }
 
 impl Source {
+    pub(super) fn native(&self) -> Self {
+        Self::Native(Box::new(self.originating().clone()))
+    }
+
+    pub(super) fn originating(&self) -> &Self {
+        match self {
+            Self::Native(source) => source.originating(),
+            source => source,
+        }
+    }
+
     #[cfg(feature = "grpc")]
     pub(super) fn external(self) -> Result<Self> {
         Ok(Self::External {
@@ -248,6 +262,11 @@ impl Source {
     }
 
     pub(super) fn check(&self) -> Result<Origin> {
+        if let Self::Native(source) = self {
+            source.check()?;
+            return Self::Host.check();
+        }
+
         #[cfg(feature = "grpc")]
         if let Self::External { source, id } = self {
             let mut origin = source.check()?;
@@ -275,6 +294,7 @@ impl Source {
         #[cfg(feature = "plugin-guest")]
         let scope = match self {
             Self::Host => None,
+            Self::Native(_) => unreachable!("native authority was checked"),
             Self::GrpcPlugin(_) => unreachable!("gRPC plugin origin was checked"),
             #[cfg(feature = "grpc")]
             Self::External { .. } => unreachable!("external origin was checked"),
@@ -325,9 +345,11 @@ impl Source {
         })
     }
 
-    pub(super) fn for_attempt(
-        &self, entry: &std::sync::Arc<super::manager::Entry>, _scope: crate::operations::Scope<'_>, _origin: &Origin,
-    ) -> Self {
+    pub(super) fn for_attempt(&self, entry: &Arc<super::manager::Entry>, _scope: crate::operations::Scope<'_>, _origin: &Origin) -> Self {
+        if let Self::Native(_) = self {
+            return self.clone();
+        }
+
         #[cfg(feature = "grpc")]
         if let Self::External { source, id } = self {
             return Self::External {
@@ -358,7 +380,7 @@ impl Source {
         Self::for_binding(entry)
     }
 
-    pub(super) fn for_binding(_entry: &std::sync::Arc<super::manager::Entry>) -> Self {
+    pub(super) fn for_binding(_entry: &Arc<super::manager::Entry>) -> Self {
         if let Some(binding) = _entry.binding.downcast_ref::<crate::plugin::grpc::invoke::Binding>() {
             return Self::GrpcPlugin(Arc::new(binding.caller.clone()));
         }

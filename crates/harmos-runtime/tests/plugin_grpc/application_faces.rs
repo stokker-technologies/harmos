@@ -13,6 +13,7 @@
 
 // Standard Library Imports
 use std::{
+    num::NonZeroUsize,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -31,17 +32,19 @@ use super::{
     support::{self, Remote},
 };
 use harmos_operations::execution::operations::{
-    ExecutionContext, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::DiscoveryAccess,
+    ExecutionContext, NativeOperation, OperationFactory, ProtobufOperation, Resource, ServingError, Visibility, access::CallingPlugin,
 };
+use harmos_operations::host::declarations::host;
 use harmos_protocol::host::{OperationsGetRequest, OperationsGetResponse, OperationsListRequest, OperationsListResponse, TimeGetResponse};
 use harmos_protocol::model::{Callers, Classification, Declarations, Requirement, StreamDeclaration};
 use harmos_protocol::plugin::{ChildRequest, InstanceSamplesResponse, child_response, instance_samples_request, instance_samples_response};
-use harmos_runtime::{clock::Clock, plugin::grpc::Placement};
+use harmos_runtime::{OperationPolicy, clock::Clock, operations::HostContext, plugin::grpc::Placement};
 
 /* === Structs === */
 
 struct DiscoveryList;
 struct DiscoveryGet;
+struct NativeCaller;
 
 /* === Implementations === */
 
@@ -50,11 +53,16 @@ impl ProtobufOperation for DiscoveryList {
     type Response = OperationsListResponse;
     type Endpoints = ();
     const ID: &'static str = "fixture.discovery.list";
-    const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<DiscoveryAccess>()];
-    async fn run(context: ExecutionContext, request: Self::Request, endpoints: &()) -> Result<Self::Response, ServingError> {
-        harmos_operations::host::List::run(context, request, endpoints).await
+    const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let caller = context.resource::<CallingPlugin>().unwrap();
+        let parent = context.resource::<HostContext>().unwrap();
+        let call = parent.for_call();
+        let native = call.call::<NativeCaller>(()).await.map_err(|error| ServingError::Native(Arc::new(error)))?;
+        assert_eq!(native, caller.name);
+        call.call::<host::List>(request).await.map_err(|error| ServingError::Native(Arc::new(error)))
     }
 }
 
@@ -63,11 +71,25 @@ impl ProtobufOperation for DiscoveryGet {
     type Response = OperationsGetResponse;
     type Endpoints = ();
     const ID: &'static str = "fixture.discovery.get";
-    const POLICY: harmos_runtime::OperationPolicy = harmos_operations::host::POLICY;
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
     const VISIBILITY: Visibility = Visibility::Public;
-    const RESOURCES: &'static [Resource] = &[Resource::of::<DiscoveryAccess>()];
-    async fn run(context: ExecutionContext, request: Self::Request, endpoints: &()) -> Result<Self::Response, ServingError> {
-        harmos_operations::host::Get::run(context, request, endpoints).await
+    const RESOURCES: &'static [Resource] = &[Resource::of::<HostContext>()];
+    async fn run(context: ExecutionContext, request: Self::Request, _: &()) -> Result<Self::Response, ServingError> {
+        let parent = context.resource::<HostContext>().unwrap();
+        parent.for_call().call::<host::Get>(request).await.map_err(|error| ServingError::Native(Arc::new(error)))
+    }
+}
+
+impl NativeOperation for NativeCaller {
+    type Request = ();
+    type Response = Option<String>;
+    type Endpoints = ();
+    const ID: &'static str = "fixture.native_caller";
+    const POLICY: OperationPolicy = harmos_operations::host::POLICY;
+
+    async fn run(context: ExecutionContext, _: (), _: &()) -> Result<Self::Response, ServingError> {
+        let caller = context.resource::<CallingPlugin>().map_err(|_| ServingError::Catalog)?;
+        Ok(caller.name.clone())
     }
 }
 
@@ -76,14 +98,15 @@ impl ProtobufOperation for DiscoveryGet {
 #[tokio::test]
 async fn harmos_host_operations_are_unreachable_on_the_wire() {
     let (clock, controller) = Clock::virtual_at(SystemTime::UNIX_EPOCH);
-    let host = HostFixture::configured(Some(clock), std::num::NonZeroUsize::new(1024 * 1024).unwrap(), None).await;
+    let host = HostFixture::configured(Some(clock), NonZeroUsize::new(1024 * 1024).unwrap(), None).await;
     host.runtime.operations.register_catalog(harmos_operations::host_catalog(), Default::default()).await.unwrap();
     host.runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
     host.runtime
         .register_batch(
             harmos_runtime::operations::Registration::new(Default::default())
                 .entry(OperationFactory::protobuf::<DiscoveryList>().unwrap())
-                .entry(OperationFactory::protobuf::<DiscoveryGet>().unwrap()),
+                .entry(OperationFactory::protobuf::<DiscoveryGet>().unwrap())
+                .entry(OperationFactory::native::<NativeCaller>().unwrap()),
         )
         .await
         .unwrap();

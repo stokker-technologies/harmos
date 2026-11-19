@@ -90,8 +90,9 @@ impl Physical {
 }
 impl<D: RequestShape> Bound<D> {
     fn context<'s>(&self, scope: Scope<'s>, attempt: usize) -> Result<Context<'s>> {
-        let mut origin = self.source.check()?;
-        self.entry.available_to(&origin)?;
+        let authority = self.source.check()?;
+        self.entry.available_to(&authority)?;
+        let mut origin = self.source.originating().check()?;
         origin.grants = self.grants.clone();
         Ok(Context {
             id: self.id,
@@ -101,7 +102,7 @@ impl<D: RequestShape> Bound<D> {
             operations: self.operations.clone(),
             admission: self.admission.clone(),
             request_claims: self.physical._request.clone(),
-            source: self.source.for_attempt(&self.entry, scope, &origin),
+            source: self.source.for_attempt(&self.entry, scope, &authority),
 
             origin,
         })
@@ -308,6 +309,10 @@ fn execution_context(context: Context<'_>) -> Result<harmos_operations::executio
         operation: "host context".to_owned(),
         source: Arc::new(source),
     })?;
+    if let Some(caller) = &context.origin.grpc {
+        dependencies.replace(Arc::clone(caller));
+        dependencies.replace(Arc::new(harmos_operations::execution::operations::access::CallingPlugin { name: caller.name.clone() }));
+    }
     #[cfg(feature = "plugin-guest")]
     if let Some(scope) = context.caller_scope() {
         dependencies
