@@ -161,11 +161,18 @@ existing guest commands are unchanged by this native host/Python delivery.
 
 Rust's `sdk/rust/src/plugin.rs` operation/declaration construction must encode
 Protected Empty lifecycle entries and reserve their identifiers, replacing
-`Plugin::on_stop`; `sdk/rust/src/server.rs` must stop running cleanup from Stop.
+`Plugin::on_stop`; its callback vector, `server::Cleanup::run` and the invocations
+from `Server::stop`, `server::run` shutdown and the owned listener thread in
+`sdk/rust/src/native.rs` become redundant. Listener stop signals and owned RPC/task
+draining remain transport responsibilities. The separately assigned Wasm migration
+replaces `Registration::on_initialize`, `on_shutdown` and `on_cleanup` with the
+plugin's initialize/finalize operations; native serving does not alter those hooks.
 C# needs the same operation entries in `sdk/csharp/src/Harmos/Plugin.cs`, replacing
-`OnStop`, and removes their execution from `PluginService.Stop`. C++ needs them in
+`OnStop`, its cleanup callback array and their execution from `PluginService.Stop`. C++ needs them in
 `sdk/cpp/include/harmos/harmos.hpp` and `sdk/cpp/src/catalog.cpp`, replacing
-`on_stop`; `sdk/cpp/src/server.cpp` removes cleanup from Stop. Each SDK must share
+`on_stop`, its `cleanup_` callback vector and `Service::finish_cleanup`
+from both Stop and the listener worker in `sdk/cpp/src/server.cpp`. The internal
+transport stop signal, shutdown reactor and listener ownership remain. Each SDK must share
 its author state with subsequent invocation contexts and retain ordinary operation
 policy enforcement. The old callbacks and new lifecycle operations would otherwise
 be two independent release paths; delete the context-free callbacks in those owners.
@@ -202,6 +209,19 @@ existing transport Stop and reaps managed processes. Startup and failed activati
 retain their existing cancellation, finalization and process-settlement policies.
 No deadline or operation bound is lengthened, and no second dispatcher is added.
 
+
+#### Overlapping Implementations Requiring Owner Resolution
+
+- `plugin/manager/settings.rs::select` fills defaults and validates effective
+  values for native startup/replacement and guest admission. `materialize` repeats
+  that computation when actor commits persist settings. Delete the repeated
+  default-selection computation in `materialize`, retaining its persistence work
+  and calling the existing selection owner.
+- `plugin/manager/actor.rs::describe` projects activation description/process
+  metadata for admission and health. `plugin/manager/replacement.rs::replace`
+  projects those same fields for staged replacement. Delete the replacement's
+  repeated projection after one shared projection accepts the candidate version;
+  do not read the previous bundle version during candidate projection.
 
 ### D3. Registrar and Typed Registration (Proposed)
 

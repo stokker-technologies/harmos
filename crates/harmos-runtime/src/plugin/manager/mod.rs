@@ -60,11 +60,9 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::watch;
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
-#[cfg(feature = "plugin-guest")]
-use crate::guest;
 use crate::operations::Lane;
-use crate::runtime::Builder;
 use crate::plugin::grpc;
+use crate::runtime::Builder;
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
@@ -210,12 +208,12 @@ impl Manager {
                         let (state, activation, failure) = match status {
                             Some(status) => {
                                 let state = match status.state {
-                                    guest::PluginState::Ready => PluginState::Ready,
-                                    guest::PluginState::Registered | guest::PluginState::Initializing => {
+                                    crate::guest::PluginState::Ready => PluginState::Ready,
+                                    crate::guest::PluginState::Registered | crate::guest::PluginState::Initializing => {
                                         PluginState::Connecting
                                     }
-                                    guest::PluginState::Stopping => PluginState::Stopping,
-                                    guest::PluginState::Failed => PluginState::Unavailable,
+                                    crate::guest::PluginState::Stopping => PluginState::Stopping,
+                                    crate::guest::PluginState::Failed => PluginState::Unavailable,
                                 };
                                 (state, status.generation.map_or(0, |generation| generation.get()), status.last_failure)
                             }
