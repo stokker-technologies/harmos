@@ -54,7 +54,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class ListenerGetRequest : pb::IMessage<ListenerGetRequest>
+  public sealed partial class ListenerGetRequest : pb::IMessage<ListenerGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -496,7 +496,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class ListenerSetRequest : pb::IMessage<ListenerSetRequest>
+  public sealed partial class ListenerSetRequest : pb::IMessage<ListenerSetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

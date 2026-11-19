@@ -161,7 +161,7 @@ namespace Harmos.Clients;
 
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsGetRequest : pb::IMessage<PluginsGetRequest>
+  public sealed partial class PluginsGetRequest : pb::IMessage<PluginsGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -658,7 +658,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsListRequest : pb::IMessage<PluginsListRequest>
+  public sealed partial class PluginsListRequest : pb::IMessage<PluginsListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -1098,7 +1098,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsWatchRequest : pb::IMessage<PluginsWatchRequest>
+  public sealed partial class PluginsWatchRequest : pb::IMessage<PluginsWatchRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -1750,7 +1750,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsCreateRequest : pb::IMessage<PluginsCreateRequest>
+  public sealed partial class PluginsCreateRequest : pb::IMessage<PluginsCreateRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -2381,7 +2381,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsSetRequest : pb::IMessage<PluginsSetRequest>
+  public sealed partial class PluginsSetRequest : pb::IMessage<PluginsSetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -2915,7 +2915,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsDeleteRequest : pb::IMessage<PluginsDeleteRequest>
+  public sealed partial class PluginsDeleteRequest : pb::IMessage<PluginsDeleteRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -3357,7 +3357,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsRestartRequest : pb::IMessage<PluginsRestartRequest>
+  public sealed partial class PluginsRestartRequest : pb::IMessage<PluginsRestartRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -3799,7 +3799,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PluginsReplaceRequest : pb::IMessage<PluginsReplaceRequest>
+  public sealed partial class PluginsReplaceRequest : pb::IMessage<PluginsReplaceRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

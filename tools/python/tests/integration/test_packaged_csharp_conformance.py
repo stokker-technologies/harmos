@@ -22,13 +22,11 @@ import xml.etree.ElementTree
 import zipfile
 from pathlib import Path
 
+# Third Party Imports
+# Local Imports
 import harmos_tools.csharp
 from harmos_tools.build.paths import output
 from harmos_tools.process import spawn_flags
-
-# Third Party Imports
-
-# Local Imports
 
 # Type Checking Imports
 
@@ -60,7 +58,7 @@ class PackagedCSharpConformance(unittest.TestCase):
         try:
             scratch = Path(name)
             feed = scratch / "feed"
-            # Pack Only the SDK Assembly and Product Messages.
+            # Pack the SDK Assembly.
             self.assertEqual(harmos_tools.csharp.run(root, "build"), 0)
             self.assertEqual(harmos_tools.csharp.run(root, "package"), 0)
             feed.mkdir()
@@ -90,8 +88,11 @@ class PackagedCSharpConformance(unittest.TestCase):
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/Fixture.cs", consumer / "Fixture.cs")
             shutil.copyfile(root / "sdk/csharp/tests/Harmos.Conformance/CallerRequest.g.cs", consumer / "CallerRequest.g.cs")
             shutil.copytree(root / "sdk/csharp/tests/Harmos.Conformance/Generated", consumer / "Generated")
+            # Compile Declared Wrappers With Reused Host Payloads Without Friend Access.
+            shutil.copyfile(root / "sdk/csharp/tests/Harmos.Tests/Generated/Client.g.cs", consumer / "Client.g.cs")
+            shutil.copytree(root / "sdk/csharp/tests/Harmos.Tests/Generated/Wire", consumer / "Wire")
             shutil.copytree(root / "sdk/tests/fixtures/conformance/proto", consumer / "proto")
-            (consumer / "Program.cs").write_text("using Harmos.Conformance;\nawait new Fixture().Build().RunAsync();\n", encoding="utf-8")
+            (consumer / "Program.cs").write_text("await new Harmos.Conformance.Fixture().Build().RunAsync();\n", encoding="utf-8")
             config = consumer / "NuGet.Config"
             config.write_text(
                 f'<configuration><packageSources><clear /><add key="fixture" value="{feed.as_posix()}" /><add key="nuget" value="https://api.nuget.org/v3/index.json" /></packageSources></configuration>',

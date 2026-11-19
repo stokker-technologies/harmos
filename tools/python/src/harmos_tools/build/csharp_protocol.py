@@ -53,7 +53,7 @@ def protocols(
     namespace_override: str | None = None,
     namespace_mappings: dict[str, str] | None = None,
 ) -> None:
-    """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
+    """Expose Reusable Host Payloads; Keep Client Requests and Carriers Internal."""
     schema = FileDescriptorSet.FromString(descriptors.read_bytes())
     requests = {name.rsplit(".", 1)[-1] for name in request_names(schema)}
     requests.update(
@@ -122,8 +122,9 @@ def _wire_source(
     if namespace_override is not None:
         source = source.replace("namespace Harmos.Clients {", f"namespace {namespace_override} {{")
         source = source.replace("global::Harmos.Clients.", f"global::{namespace_override}.")
-    for name in requests:
-        source = source.replace(f"public sealed partial class {name} :", f"internal sealed partial class {name} :")
+    if not file.package.startswith("harmos.host."):
+        for name in requests:
+            source = source.replace(f"public sealed partial class {name} :", f"internal sealed partial class {name} :")
     if filename.endswith("Grpc.cs"):
         source = source.replace("namespace Harmos.Plugins {", "namespace Harmos.Internal.Host {")
         source = source.replace("namespace Harmos.Clients {", "namespace Harmos.Internal.Client {")

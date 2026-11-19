@@ -77,7 +77,7 @@ namespace Harmos.Clients;
 
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class StatusGetRequest : pb::IMessage<StatusGetRequest>
+  public sealed partial class StatusGetRequest : pb::IMessage<StatusGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -491,7 +491,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class StatusWatchRequest : pb::IMessage<StatusWatchRequest>
+  public sealed partial class StatusWatchRequest : pb::IMessage<StatusWatchRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

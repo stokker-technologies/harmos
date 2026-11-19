@@ -44,7 +44,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class DiagnosticsGetRequest : pb::IMessage<DiagnosticsGetRequest>
+  public sealed partial class DiagnosticsGetRequest : pb::IMessage<DiagnosticsGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

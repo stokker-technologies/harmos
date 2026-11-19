@@ -51,7 +51,7 @@ def protocols(
     files: set[str] | None = None,
     namespace_override: str | None = None,
 ) -> None:
-    """Keep Wire Requests and Carriers Internal; Give Payloads Their Public Namespace."""
+    """Expose Reusable Host Payloads; Keep Client Requests and Carriers Internal."""
 
     descriptors = descriptors or root / "crates/harmos-protocol/src/descriptors.bin"
     # Select the SDK's Pinned Protocol Compiler
