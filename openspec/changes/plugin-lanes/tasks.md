@@ -19,3 +19,4 @@
 - [x] 4.1 Deterministic stories for every scenario, using barriers instead of timing.
 - [ ] 4.2 Hosted validation after delivery.
 - [x] 4.3 Reject invalid lane capacity overrides before mutation and freeze validated lane sets without repeated validation.
+- [x] 4.4 Isolate lane conformance from unrelated plugin identity faults while preserving the malformed-identity pass count.

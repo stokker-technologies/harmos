@@ -212,11 +212,16 @@ impl ProtobufOperation for NativeRefusal {
 impl Instance for Forward {
     async fn get(&self, request: Request<InstanceGetRequest>) -> result::Result<Response<InstanceGetResponse>, Status> {
         let mut response = self.client.clone().get(request).await?;
-        let declarations = response
-            .get_mut()
-            .declarations
-            .as_mut()
-            .ok_or_else(|| Status::invalid_argument("Admit Caller Fixture: Missing Declarations"))?;
+        let description = response.get_mut();
+        if self.lanes {
+            // The Lane Adapter Owns Its Identity; Only Lane Facts Come From the Target.
+            description.id = "conformance-lanes".into();
+            description.version = "1.0.0".into();
+            description.sdk = "conformance-lanes".into();
+            description.sdk_version = env!("CARGO_PKG_VERSION").into();
+        }
+        let declarations =
+            description.declarations.as_mut().ok_or_else(|| Status::invalid_argument("Admit Caller Fixture: Missing Declarations"))?;
         if self.lanes {
             declarations.operations.retain(|operation| operation.id.starts_with("conformance.lane."));
             declarations.streams.clear();
