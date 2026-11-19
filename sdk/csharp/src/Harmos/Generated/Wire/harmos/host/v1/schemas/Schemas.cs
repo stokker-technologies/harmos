@@ -47,7 +47,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class SchemasListRequest : pb::IMessage<SchemasListRequest>
+  public sealed partial class SchemasListRequest : pb::IMessage<SchemasListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

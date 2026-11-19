@@ -63,7 +63,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class LogsListRequest : pb::IMessage<LogsListRequest>
+  public sealed partial class LogsListRequest : pb::IMessage<LogsListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -586,7 +586,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class LogsWatchRequest : pb::IMessage<LogsWatchRequest>
+  public sealed partial class LogsWatchRequest : pb::IMessage<LogsWatchRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

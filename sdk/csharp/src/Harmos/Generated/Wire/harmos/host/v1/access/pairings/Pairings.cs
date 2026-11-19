@@ -58,7 +58,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PairingsCreateRequest : pb::IMessage<PairingsCreateRequest>
+  public sealed partial class PairingsCreateRequest : pb::IMessage<PairingsCreateRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -574,7 +574,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PairingsListRequest : pb::IMessage<PairingsListRequest>
+  public sealed partial class PairingsListRequest : pb::IMessage<PairingsListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -1014,7 +1014,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class PairingsDeleteRequest : pb::IMessage<PairingsDeleteRequest>
+  public sealed partial class PairingsDeleteRequest : pb::IMessage<PairingsDeleteRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

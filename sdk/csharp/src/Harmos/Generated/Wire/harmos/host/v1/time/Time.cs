@@ -45,7 +45,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class TimeGetRequest : pb::IMessage<TimeGetRequest>
+  public sealed partial class TimeGetRequest : pb::IMessage<TimeGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -413,7 +413,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class TimeSleepRequest : pb::IMessage<TimeSleepRequest>
+  public sealed partial class TimeSleepRequest : pb::IMessage<TimeSleepRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

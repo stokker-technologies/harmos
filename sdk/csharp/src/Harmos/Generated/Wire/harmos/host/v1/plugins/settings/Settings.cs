@@ -58,7 +58,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class SettingsListRequest : pb::IMessage<SettingsListRequest>
+  public sealed partial class SettingsListRequest : pb::IMessage<SettingsListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -632,7 +632,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class SettingsSetRequest : pb::IMessage<SettingsSetRequest>
+  public sealed partial class SettingsSetRequest : pb::IMessage<SettingsSetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

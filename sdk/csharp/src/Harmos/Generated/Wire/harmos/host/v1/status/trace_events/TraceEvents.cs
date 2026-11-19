@@ -57,7 +57,7 @@ namespace Harmos.Clients;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class TraceEventsListRequest : pb::IMessage<TraceEventsListRequest>
+  public sealed partial class TraceEventsListRequest : pb::IMessage<TraceEventsListRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -580,7 +580,7 @@ namespace Harmos.Clients;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class TraceEventsWatchRequest : pb::IMessage<TraceEventsWatchRequest>
+  public sealed partial class TraceEventsWatchRequest : pb::IMessage<TraceEventsWatchRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif

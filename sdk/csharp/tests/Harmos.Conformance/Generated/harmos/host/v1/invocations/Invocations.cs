@@ -59,7 +59,7 @@ namespace Harmos.Conformance.Wire;
   }
   #region Messages
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class InvocationsCreateRequest : pb::IMessage<InvocationsCreateRequest>
+  public sealed partial class InvocationsCreateRequest : pb::IMessage<InvocationsCreateRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -529,7 +529,7 @@ namespace Harmos.Conformance.Wire;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class InvocationsGetRequest : pb::IMessage<InvocationsGetRequest>
+  public sealed partial class InvocationsGetRequest : pb::IMessage<InvocationsGetRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -934,7 +934,7 @@ namespace Harmos.Conformance.Wire;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class InvocationsCancelRequest : pb::IMessage<InvocationsCancelRequest>
+  public sealed partial class InvocationsCancelRequest : pb::IMessage<InvocationsCancelRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
@@ -1376,7 +1376,7 @@ namespace Harmos.Conformance.Wire;
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  internal sealed partial class InvocationsWatchRequest : pb::IMessage<InvocationsWatchRequest>
+  public sealed partial class InvocationsWatchRequest : pb::IMessage<InvocationsWatchRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
