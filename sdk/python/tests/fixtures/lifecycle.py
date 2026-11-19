@@ -102,7 +102,9 @@ async def _main() -> None:
     plugin = Plugin(
         id="lifecycle",
         version="1.0.0",
-        register=lambda ctx: ctx.register(Catalog(author, requires=requires, settings=[SettingDeclaration(name="count", title="Count", default=SettingValue(integer=3))])),
+        register=lambda ctx: ctx.register(
+            Catalog(author, requires=requires, settings=[SettingDeclaration(name="count", title="Count", default=SettingValue(integer=3))])
+        ),
     )
     endpoint = await plugin.start("127.0.0.1:0")
     print(f"listening:{endpoint.address}", flush=True)

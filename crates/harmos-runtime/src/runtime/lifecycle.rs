@@ -122,17 +122,6 @@ impl<A: Application> Runtime<A> {
         self.grpc.close_admission();
         #[cfg(all(feature = "plugin-guest", not(target_arch = "wasm32")))]
         self.plugin.close_admission();
-        #[cfg(not(all(feature = "plugin-guest", not(target_arch = "wasm32"))))]
-        {
-            // Notify Residents Before Cancelling Their In-Flight Calls
-            self.operations.close_resident_admission();
-            self.operations.close_admission();
-            #[cfg(feature = "plugin-guest")]
-            {
-                self.records.stop_listeners();
-                self.streams.stop_listeners();
-            }
-        }
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {

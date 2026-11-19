@@ -27,7 +27,7 @@ use tokio::{
 // Local Imports
 use super::{manager, support};
 use harmos_protocol::host::InvocationsCreateRequest;
-use harmos_protocol::host::invocations_client::InvocationsClient;
+use harmos_conformance::host::invocations_client::InvocationsClient;
 use harmos_protocol::host::{
     PluginState, PluginValue, PluginsDeleteRequest, PluginsGetRequest, PluginsRestartRequest, PluginsSetRequest, PluginsWatchRequest,
 };
@@ -128,7 +128,7 @@ async fn initialize_precedes_ready_and_state_and_hooks_are_hidden_from_clients()
     plugin.event("settled").await;
 
     // Lifecycle Entries Never Enter Ordinary Host or Client Routing.
-    runtime.operations.register_catalog(harmos_operations::lifecycle_catalog(), Default::default()).await.unwrap();
+    runtime.operations.register_catalog(harmos_conformance::product::catalog(), Default::default()).await.unwrap();
     let listener = runtime
         .grpc()
         .attach(harmos_runtime::grpc::Settings {

@@ -86,7 +86,7 @@ class Registrar:
     def __init__(self) -> None:
         self.operations: list[tuple[Operation[Message, Message], Handler]] = []
         self.streams: list[tuple[Stream, Observer | WindowObserver | Producer, bool]] = []
-        self.hooks: dict[str, Hook] = {}
+        self.hooks: dict[str, list[Hook]] = {}
         self.requires: list[Operation] = []
         self.sections: list[Message] = []
         self.settings: list[SettingDeclaration] = []
@@ -99,7 +99,7 @@ class Registrar:
 class Catalog:
     def __init__(
         self,
-        instance: object | None,
+        instance: object,
         *,
         requires: Sequence[Operation | HostOperation] = (),
         sections: Sequence[Message] = (),
@@ -145,9 +145,7 @@ class Catalog:
                 continue
             if not inspect.iscoroutinefunction(hook):
                 raise ValueError(f"Register {name}: Define an Async Lifecycle Hook")
-            if name in ctx.hooks:
-                raise ValueError(f"Register {name}: Register One Lifecycle Hook per Plugin")
-            ctx.hooks[name] = cast(Hook, hook)
+            ctx.hooks.setdefault(name, []).append(cast(Hook, hook))
         ctx.requires.extend(self.requires)
         ctx.sections.extend(self.sections)
         ctx.settings.extend(self.settings)
@@ -172,9 +170,9 @@ class Plugin:
         for definition, _ in self._operations:
             if definition.id in (f"{id}.initialize", f"{id}.finalize"):
                 raise ValueError(f"Register {definition.id}: Lifecycle Operation Names Are Reserved; Define an Async Hook Instead")
-        for name, hook in registrar.hooks.items():
+        for name, hooks in registrar.hooks.items():
             definition = Operation(f"{id}.{name}", Empty, Empty, VISIBILITY_PROTECTED)
-            self._operations.append((cast(Operation[Message, Message], definition), _lifecycle(hook)))
+            self._operations.append((cast(Operation[Message, Message], definition), _lifecycle(hooks)))
         self.requires = tuple(registrar.requires)
         self.sections = tuple(registrar.sections)
         self.settings = tuple(registrar.settings)
@@ -457,7 +455,9 @@ class _Service:
         await context.send_initial_metadata(())
         output: Queue[Sample | InstanceSamplesResponse | _FaultError | None] = Queue(maxsize=1)
         windows: Queue[tuple[Window, Context]] = Queue(maxsize=1)
-        scope = _SamplesScope(first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None))
+        scope = _SamplesScope(
+            first.open.stream, first.open.scope, self.description.id, self.requires, self.local, getattr(handler, "__self__", None)
+        )
         reading = asyncio.create_task(_read_publish(request_iterator, observing, scope, windows, output))
         running = asyncio.create_task(_produce(handler, scope, definition, observing, windows, output, self.description.message_bytes))
         sequence = 0
@@ -487,10 +487,11 @@ class _Service:
 # === Private Functions === #
 
 
-def _lifecycle(hook: Hook) -> Handler:
+def _lifecycle(hooks: Sequence[Hook]) -> Handler:
     async def invoke(context: Context, request: Message) -> Message:
-        context._instance = getattr(hook, "__self__", None)
-        await hook(context)
+        for hook in hooks:
+            context._instance = getattr(hook, "__self__", None)
+            await hook(context)
         return Empty()
 
     return invoke
