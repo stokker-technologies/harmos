@@ -335,12 +335,6 @@ class Fixture:
         """Each Sample Holds as Many Bytes as Its Sequence, So a Grant Can Exceed the Message Size."""
         return Value(value=bytes(context.sequence))
 
-
-class ClockFixture:
-    """Reuse the Clock Journey Without External Device Demand."""
-
-    clock = Fixture.clock
-
     @operation("conformance.lane.first", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
     async def lane_first(self, ctx: Context, request: Value) -> Value:
         return await ctx.call(HOST_PENDING, request)
@@ -360,6 +354,12 @@ class ClockFixture:
     @operation("conformance.lane.open", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def lane_open(self, ctx: Context, request: Value) -> Value:
         return await ctx.call(HOST_PENDING, request)
+
+
+class ClockFixture:
+    """Reuse the Clock Journey Without External Device Demand."""
+
+    clock = Fixture.clock
 
 
 # === Public Functions === #
