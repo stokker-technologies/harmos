@@ -131,26 +131,6 @@ class Fixture:
     async def cancel(self, ctx: Context, request: Value) -> Value:
         return await ctx.call(HOST_PENDING, request)
 
-    @operation("conformance.lane.first", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
-    async def lane_first(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
-
-    @operation("conformance.lane.second", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
-    async def lane_second(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
-
-    @operation("conformance.lane.parallel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=PARALLEL)
-    async def lane_parallel(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
-
-    @operation("conformance.lane.other", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=OTHER)
-    async def lane_other(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
-
-    @operation("conformance.lane.open", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
-    async def lane_open(self, ctx: Context, request: Value) -> Value:
-        return await ctx.call(HOST_PENDING, request)
-
     @operation("conformance.failure", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
     async def failure(self, ctx: Context, request: Value) -> Value:
         raise FailureError(
@@ -360,6 +340,26 @@ class ClockFixture:
     """Reuse the Clock Journey Without External Device Demand."""
 
     clock = Fixture.clock
+
+    @operation("conformance.lane.first", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
+    async def lane_first(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.second", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=INSTRUMENT)
+    async def lane_second(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.parallel", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=PARALLEL)
+    async def lane_parallel(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.other", request=Value, response=Value, visibility=VISIBILITY_PUBLIC, lane=OTHER)
+    async def lane_other(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
+
+    @operation("conformance.lane.open", request=Value, response=Value, visibility=VISIBILITY_PUBLIC)
+    async def lane_open(self, ctx: Context, request: Value) -> Value:
+        return await ctx.call(HOST_PENDING, request)
 
 
 # === Public Functions === #

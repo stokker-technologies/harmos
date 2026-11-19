@@ -44,6 +44,8 @@ from ._columns import check_columns, columns_type
 
 @dataclass(frozen=True, init=False)
 class Lane:
+    """A Plugin Lane Declaration; the Host Owns Admission."""
+
     name: str
     serial: bool
     concurrent: int | None

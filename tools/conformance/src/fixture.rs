@@ -221,18 +221,6 @@ pub fn declarations() -> Declarations {
             }
         })
         .collect();
-    for (name, lane) in [("first", "instrument"), ("second", "instrument"), ("parallel", "parallel"), ("other", "other"), ("open", "")] {
-        let id = format!("conformance.lane.{name}");
-        operations.push(OperationContract {
-            fingerprint: fingerprint(&id),
-            id,
-            request: ROW.into(),
-            response: ROW.into(),
-            visibility: Visibility::Public as i32,
-            lane: lane.into(),
-            ..Default::default()
-        });
-    }
     let mut requires: Vec<_> = [
         "conformance.host.echo",
         "conformance.host.pending",
@@ -354,6 +342,18 @@ pub fn declarations() -> Declarations {
         requires.push(Requirement {
             id: (*id).into(),
             fingerprint: fingerprint(id),
+        });
+    }
+    for (name, lane) in [("first", "instrument"), ("second", "instrument"), ("parallel", "parallel"), ("other", "other"), ("open", "")] {
+        let id = format!("conformance.lane.{name}");
+        operations.push(OperationContract {
+            fingerprint: fingerprint(&id),
+            id,
+            request: ROW.into(),
+            response: ROW.into(),
+            visibility: Visibility::Public as i32,
+            lane: lane.into(),
+            ..Default::default()
         });
     }
     let mut types = crate::conformance::types();

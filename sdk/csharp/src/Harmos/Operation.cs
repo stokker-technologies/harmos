@@ -10,7 +10,7 @@ using Harmos;
 
 namespace Harmos.Plugins;
 
-/// <summary>A typed operation contract shared by providers and callers.</summary>
+/// <summary>A plugin lane declaration whose capacity is enforced by the host.</summary>
 public sealed class Lane
 {
   internal LaneDeclaration Declaration
@@ -36,6 +36,7 @@ public sealed class Lane
   public static Lane Unbounded(string name) => new(name, null, false);
 }
 
+/// <summary>A typed operation contract shared by providers and callers.</summary>
 public sealed class Operation<TRequest, TResponse>
     where TRequest : IMessage<TRequest>, new()
     where TResponse : IMessage<TResponse>, new()

@@ -59,6 +59,7 @@ use prost_types::FileDescriptorSet;
 
 /* === Structs === */
 
+/// A Plugin Lane Declaration; the Host Owns Admission.
 #[derive(Clone, Debug)]
 pub struct Lane {
     pub(crate) declaration: LaneDeclaration,

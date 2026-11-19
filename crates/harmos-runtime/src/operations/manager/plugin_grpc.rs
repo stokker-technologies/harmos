@@ -22,6 +22,7 @@ use std::sync::{Arc, Weak};
 
 // Local Imports
 use super::*;
+use crate::operations::lane;
 use crate::operations::{OperationPolicy, ReplaySafety, Visibility};
 use crate::plugin::grpc::{self, Activation, invoke::Binding};
 use harmos_protocol::host::InvocationsCreateRequest;
@@ -90,9 +91,7 @@ impl GrpcAdmission {
 
     pub(crate) fn close(&self) {
         for entry in &self.entries {
-            if let Some(lane) = &entry.plugin_lane {
-                lane.close();
-            }
+            entry.lane.close();
         }
         for entry in self.entries.iter().chain(&self.lifecycle) {
             let pending = entry.pending.lock().expect("operation settlement lock is healthy");
@@ -126,9 +125,7 @@ impl GrpcAdmission {
     pub(crate) fn seal(&mut self) {
         self.sealed = true;
         for entry in &self.previous {
-            if let Some(lane) = &entry.plugin_lane {
-                lane.close();
-            }
+            entry.lane.close();
             entry.active.store(false, Ordering::Release);
             for control in entry.pending.lock().expect("operation settlement lock is healthy").values() {
                 control.request_cancel();
@@ -230,7 +227,7 @@ impl Manager {
             let definition = factory.definition.clone();
             let mut entry = self.binding_erased(
                 "host",
-                crate::operations::lane::RESIDENT,
+                self.instances.lane(crate::operations::lane::RESIDENT).expect("resident lane exists"),
                 Arc::new(factory),
                 definition,
                 Some(crate::operations::wire::dispatch_native),
@@ -257,14 +254,14 @@ impl Manager {
         harmos_protocol::schema::plugin_lanes(&activation.description.id, catalog)
             .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
         let mut lanes = BTreeMap::new();
-        lanes.insert(String::new(), super::super::lane::Admission::new("Open", usize::MAX));
+        lanes.insert(String::new(), lane::Admission::new("Open", usize::MAX));
         for lane in &catalog.lanes {
             let width = match lane.capacity.as_ref().expect("validated capacity") {
                 model::lane_declaration::Capacity::Serial(_) => 1,
                 model::lane_declaration::Capacity::Concurrent(width) => *width as usize,
                 model::lane_declaration::Capacity::Unbounded(_) => usize::MAX,
             };
-            lanes.insert(lane.name.clone(), super::super::lane::Admission::new(lane.name.as_str(), width));
+            lanes.insert(lane.name.clone(), lane::Admission::new(lane.name.as_str(), width));
         }
         let mut entries = Vec::new();
         let mut lifecycle = Vec::new();
@@ -297,7 +294,11 @@ impl Manager {
             let mut entry = self
                 .binding_erased(
                     activation.owner(),
-                    if hook { crate::operations::lane::RESIDENT } else { Lane::default().name() },
+                    if hook {
+                        self.instances.lane(crate::operations::lane::RESIDENT).expect("resident lane exists")
+                    } else {
+                        lanes.get(&contract.lane).expect("validated lane").clone()
+                    },
                     binding,
                     definition,
                     Some(crate::operations::wire::dispatch_native),
@@ -305,10 +306,6 @@ impl Manager {
                     None,
                 )
                 .map_err(|error| grpc::Error::Invalid(error.to_string()))?;
-            if !hook {
-                Arc::get_mut(&mut entry).expect("unpublished plugin entry").plugin_lane =
-                    Some(lanes.get(&contract.lane).expect("validated lane").clone());
-            }
             use prost::Message;
             let types = catalog.types.as_ref().expect("admitted catalog types");
             let protobuf = harmos_operations::operations::Protobuf {

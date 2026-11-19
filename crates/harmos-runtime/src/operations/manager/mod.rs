@@ -48,6 +48,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use super::admission::{Admission, Lanes};
 use super::binding::Typed;
 use super::caller::{Origin, Source};
+use super::lane;
 use super::{OperationGeneration, OperationInstanceId, Running};
 
 use super::instances::Instances;
@@ -136,8 +137,7 @@ pub(super) struct Entry {
     pub(super) grpc: Option<crate::grpc::routing::Handler>,
 
     pub(super) generation: OperationGeneration,
-    lane: &'static str,
-    plugin_lane: Option<super::lane::Admission>,
+    lane: lane::Admission,
 
     // A resident control runs until cancelled, even while its plugin retires.
     active: AtomicBool,

@@ -190,8 +190,7 @@ impl Admission {
     }
 
     pub(crate) fn enqueue(&self) -> Ticket {
-        let mut waiting: Pin<Box<dyn Future<Output = Result<OwnedSemaphorePermit, AcquireError>> + Send>> =
-            Box::pin(self.semaphore().acquire_owned());
+        let mut waiting: Ticket = Box::pin(Arc::clone(&self.semaphore).acquire_owned());
         // Poll at Submission So FIFO Is Arrival Order, Independent of Driver Scheduling.
         let ready = waiting.as_mut().poll(&mut Context::from_waker(Waker::noop()));
         match ready {
@@ -202,10 +201,6 @@ impl Admission {
 
     pub(crate) fn bounded(&self) -> bool {
         self.width != usize::MAX
-    }
-
-    pub(crate) fn semaphore(&self) -> Arc<Semaphore> {
-        Arc::clone(&self.semaphore)
     }
 }
 

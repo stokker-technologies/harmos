@@ -145,10 +145,6 @@ impl Instances {
         self.lanes.get(name)
     }
 
-    pub(crate) fn lane_bounded(&self, name: &str) -> Option<bool> {
-        self.lanes.get(name).map(|lane| lane.bounded())
-    }
-
     pub(crate) fn status(&self, id: OperationInstanceId) -> Option<OperationStatus> {
         let state = self.state.lock().expect("operation instance index is healthy");
         state.active.get(&id).or_else(|| state.residents.get(&id).map(|(instance, _)| instance)).map(|instance| instance.status())

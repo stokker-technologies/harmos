@@ -95,7 +95,7 @@ impl Fixture {
                 events: receiving,
             };
         }
-        let instrument = Lane::serial("instrument");
+        let instrument = Lane::serial("Serial");
         let parallel = Lane::concurrent("parallel", 2);
         let other = Lane::serial("other");
         let mut plugin = Plugin::new(plugin_id, "1.0.0").lane(instrument.clone()).lane(parallel.clone()).lane(other.clone());
@@ -322,8 +322,10 @@ async fn invalid_plugin_lane_facts_are_refused_at_admission() {
         catalog.digest = schema::declarations_digest(&catalog);
         remote.declarations(catalog);
         let error = runtime.attach_grpc(Placement::Remote(remote.address.clone()), support::settings()).await.err().unwrap().to_string();
-        assert!(error.contains(name));
-        assert!(error.contains(&operation));
+        if !assignment.is_empty() {
+            assert!(error.contains(assignment), "{error}");
+        }
+        assert!(error.contains(&operation), "{error}");
     }
     drop(remote);
     runtime.shutdown().await.unwrap();

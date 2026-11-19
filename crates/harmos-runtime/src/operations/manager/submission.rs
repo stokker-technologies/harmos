@@ -110,7 +110,7 @@ impl Manager {
         )
     }
 
-    #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane, outcome = "refused"))]
+    #[tracing::instrument(target = "harmos::operations", name = "operations.admit_entry", level = "debug", skip_all, fields(operation = %submission.entry.definition.id, provider = %submission.entry.owner, generation = ?submission.entry.generation, lane = submission.entry.lane.name(), outcome = "refused"))]
     pub(in crate::operations) fn admit_entry<O: RequestShape, P: Send + 'static>(
         &self, (mut request, endpoints): (crate::operations::binding::Request<O::Request>, P), scope: Option<&Scope<'_>>,
         ancestors: &[crate::operations::lane::Admission], source: &Source, submission: Submission,
@@ -164,12 +164,14 @@ impl Manager {
             field: "operation",
             reason: "identity belongs to a different operation or endpoint type",
         })?;
-        let lane = match &entry.plugin_lane {
-            Some(lane) => lane.clone(),
-            None => self.instances.lane(request.lane.unwrap_or(entry.lane)).ok_or_else(|| Error::NotRegistered {
-                domain: "operation lane",
-                name: request.lane.unwrap_or(entry.lane).to_owned(),
-            })?,
+        let lane = match request.lane {
+            Some(name) if !entry.binding.is::<crate::plugin::grpc::invoke::Binding>() => {
+                self.instances.lane(name).ok_or_else(|| Error::NotRegistered {
+                    domain: "operation lane",
+                    name: name.to_owned(),
+                })?
+            }
+            _ => entry.lane.clone(),
         };
         let policy_source = request.policy.map(|_| request.policy_source.unwrap_or("per-call policy override"));
         let mut policy = request.policy.unwrap_or(entry.definition.policy);

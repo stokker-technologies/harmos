@@ -1192,7 +1192,7 @@ mod tests {
             .expect("representable carrier");
         let factory = batch.operations.pop().unwrap();
         let binding = Arc::new(factory);
-        let lane = crate::operations::Lane::default().name();
+        let lane = runtime.operations.instances.lane(crate::operations::Lane::default().name()).unwrap();
         let definition = LEAF_OPERATION.definition().expect("valid operation");
         let mut entry = runtime
             .operations
