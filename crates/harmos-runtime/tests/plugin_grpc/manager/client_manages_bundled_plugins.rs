@@ -28,16 +28,16 @@ use tokio::{
 };
 
 use super::support::{self, Backends, Host};
-use crate::plugin_grpc::support::binary;
+use crate::plugin_grpc;
 
 /* === Tests === */
 
 #[tokio::test]
 async fn managed_bundle_version_survives_activation_replacement_and_manager_restart() {
-    for command in [false, true] {
+    for (command, enabled) in [(false, true), (false, false), (true, true), (true, false)] {
         // Build Two Bundles With Versions Independent of the Same Executable.
         let root = tempfile::tempdir().unwrap();
-        let bytes = fs::read(binary("harmos-conformance-plugin")).unwrap();
+        let bytes = fs::read(plugin_grpc::support::binary("harmos-conformance-plugin")).unwrap();
         let path = format!("bin/plugin{}", env::consts::EXE_SUFFIX);
         let launch = command.then(|| vec![format!("./{path}")]);
         let sources = [Source {
@@ -74,6 +74,23 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
         assert_eq!(ready.description.as_ref().unwrap().version, identity.version.to_string());
         assert_eq!(ready.description.as_ref().unwrap().id, live.description.id);
 
+        // A Disabled Entry Retains Its Description While Its Bundle Is Replaced.
+        let ready = if enabled {
+            ready
+        } else {
+            host.client
+                .set(PluginsSetRequest {
+                    name: ready.name,
+                    value: Some(PluginValue { enabled: false }),
+                    expected_revision: ready.revision,
+                })
+                .await
+                .unwrap()
+                .into_inner()
+                .entry
+                .unwrap()
+        };
+
         // Replacement Publishes the New Bundle Version in Both Response and Watch.
         let content = host.upload("replacement", replacement.bytes().to_vec()).await;
         let replaced = host
@@ -92,7 +109,22 @@ async fn managed_bundle_version_survives_activation_replacement_and_manager_rest
             .entry
             .unwrap();
         assert_eq!(replaced.description.as_ref().unwrap().version, replacement_identity.version.to_string());
-        let ready = support::state(&mut watch, "frozen", PluginState::Ready, replaced.activation).await;
+        let activating = if enabled {
+            replaced
+        } else {
+            host.client
+                .set(PluginsSetRequest {
+                    name: replaced.name,
+                    value: Some(PluginValue { enabled: true }),
+                    expected_revision: replaced.revision,
+                })
+                .await
+                .unwrap()
+                .into_inner()
+                .entry
+                .unwrap()
+        };
+        let ready = support::state(&mut watch, "frozen", PluginState::Ready, activating.activation).await;
         assert_eq!(ready.description.as_ref().unwrap().version, replacement_identity.version.to_string());
         let live = host.manager.activation("frozen").await.unwrap();
         assert_ne!(live.description.version, replacement_identity.version.to_string());
