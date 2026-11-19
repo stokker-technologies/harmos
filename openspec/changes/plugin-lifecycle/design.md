@@ -402,15 +402,15 @@ host-client removal. These are unresolved items, not accepted exceptions.
 
 ## Native Phase Integration Boundary
 
-`operations/manager/entry.rs::retirement_control` currently recognizes only staged
-SDK `Action::Shutdown`; `submission.rs::admit_entry` refuses other submissions
-after operation admission closes. Native gRPC activations use `GrpcAdmission`
-instead of that staged lifecycle. The remaining initialize/finalize integration
-must use one manager-owned policy/retirement authority, including admission gates
-and failure rollback. The lifecycle worker has not added an alternate scheduler,
-carrier protocol or teardown bypass while ownership of that integration is
-unresolved. The existing native and Wasm plugin hooks remain until that complete
-replacement is integrated; this checkpoint does not complete plugin-lifecycle.
+`operations/manager/entry.rs::retirement_control` recognizes reserved native
+lifecycle bindings alongside the separately assigned SDK `Action::Shutdown`.
+`GrpcAdmission` retains initialize/finalize entries outside ordinary routing and
+uses the existing dispatcher, operation policy and settlement authority. Native
+admission gates, failure rollback and participant settlement are implemented;
+the Rust, C# and C++ authoring and serving layers still require their assigned
+operation encoding and callback removal. Wasm hook replacement and combined
+platform validation remain open, so this native host/Python delivery does not
+complete the entire plugin-lifecycle change.
 
 The required C++ language check exposed registration callback parameter shadowing
 and generic resource-constructor shadowing. Catalog callbacks now name the registrar
