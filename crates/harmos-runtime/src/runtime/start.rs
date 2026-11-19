@@ -16,6 +16,7 @@
 /* === Imports === */
 
 // Standard Library Imports
+use std::error;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
@@ -35,7 +36,7 @@ use crate::{Application, Error, Setup, Startup};
 
 /* === Type Aliases === */
 
-type Cause = Box<dyn std::error::Error + Send + Sync>;
+type Cause = Box<dyn error::Error + Send + Sync>;
 
 /* === Structs === */
 
@@ -169,8 +170,10 @@ impl<A: Application> harmos_operations::execution::lifecycle::ApplicationConfigu
     type LaneSettings = LaneSettings;
 
     fn lane(&mut self, lane: crate::operations::Lane, settings: LaneSettings) {
-        if !self.lanes.configure(lane.name(), settings.capacity) {
-            self.configuration_errors.push(StartupError::UnknownLane { lane: lane.name() });
+        match self.lanes.configure(lane.name(), settings.capacity) {
+            Ok(true) => {}
+            Ok(false) => self.configuration_errors.push(StartupError::UnknownLane { lane: lane.name() }),
+            Err(source) => self.configuration_errors.push(StartupError::Runtime { source: Box::new(source) }),
         }
     }
 
