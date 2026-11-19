@@ -62,13 +62,18 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/HarmosConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/Harmos")
 
-add_subdirectory(examples/client)
+# Subprojects Opt In to Examples, Unit Tests and Conformance with This Single Option.
+option(HARMOS_BUILD_TESTS "Build SDK Examples, Unit Tests and the Conformance Executable" OFF)
+if(PROJECT_IS_TOP_LEVEL OR HARMOS_BUILD_TESTS)
+    include(cmake/ClientFixture.cmake)
+    get_filename_component(harmos_source_root "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+    harmos_client_fixture("${harmos_source_root}")
+    add_subdirectory(examples/client)
+    add_subdirectory(examples/plugin)
+endif()
 
-option(HARMOS_BUILD_TESTS "Build SDK Unit Tests and the Conformance Plugin" OFF)
 if(HARMOS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
     add_subdirectory(examples/conformance)
 endif()
-
-add_subdirectory(examples/plugin)
