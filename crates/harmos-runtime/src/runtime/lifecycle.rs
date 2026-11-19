@@ -119,12 +119,13 @@ impl<A: Application> Runtime<A> {
 
     pub async fn stop(&self) -> Result<Position> {
         self.closing.store(true, Ordering::Release);
-        #[cfg(feature = "grpc")]
-        self.grpc.close_admission();
         let (cleanup, completed) = {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
                 let _clock = clock::enter(self.operations.clock().clone());
+                self.operations.cancel_queued();
+                #[cfg(feature = "grpc")]
+                self.grpc.close_admission();
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Stop {

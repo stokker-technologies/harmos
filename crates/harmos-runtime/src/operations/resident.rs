@@ -743,6 +743,10 @@ impl Registry {
             .any(|entry| selected(entry.snapshot.kind, entry.internal) && !entry.running.settlement.lifecycle().is_settled())
     }
 
+    pub(crate) fn close_activation_admission(&self) {
+        self.state().closed = true;
+    }
+
     // Refuse new activations and stop observers and application services.
     // Infrastructure services keep running until `shutdown`.
     pub(crate) fn close_admission(&self) {

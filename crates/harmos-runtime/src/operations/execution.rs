@@ -291,7 +291,9 @@ async fn initialize<O: Send + 'static>(
     instances: &Arc<Instances>, admission: &Admission, body: &mut dyn Body<O>, cancelled: &mut watch::Receiver<bool>, budget: &Budget,
     instance: &Arc<Instance>, cause: Option<Position>,
 ) -> Result<()> {
-    instance.transition(Phase::Initializing);
+    if !instance.initialize_attempt(0) {
+        return Err(budget.cancelled(1).into());
+    }
     let core = ScopeCore::new(instances.clone(), admission.clone(), cause, Arc::downgrade(instance));
     let answer = bounded(budget.remaining(), body.initialize(Scope::over(&core)), cancelled).await;
     crate::clock::waiting(core.close().drain()).await;
