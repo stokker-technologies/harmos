@@ -15,6 +15,7 @@
 
 /* === Imports === */
 
+use crate::plugin::grpc;
 use harmos_protocol::model::SettingValues;
 
 use harmos_protocol::host::PluginDescription;
@@ -127,7 +128,7 @@ impl Actor {
                 )
                 .await
                 .map_err(|error| {
-                    unreaped = matches!(error, crate::plugin::grpc::Error::Reap(_));
+                    unreaped = matches!(error, grpc::Error::Reap(_));
                     problem("Stage Plugin Replacement", error)
                 })?;
                 prepared = Some(staged);
@@ -180,7 +181,7 @@ impl Actor {
             let attached = match activation {
                 Ok(attached) => attached,
                 Err(error) => {
-                    unreaped = matches!(error, crate::plugin::grpc::Error::Reap(_));
+                    unreaped = matches!(error, grpc::Error::Reap(_));
                     if let Err(restore) = self.store.save(&self.registry).await {
                         installed = true;
                         return Err(Error::new(

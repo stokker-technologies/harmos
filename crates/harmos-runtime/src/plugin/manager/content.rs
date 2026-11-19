@@ -16,17 +16,18 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::fs;
+use std::fs::{self, File};
 use std::io::Read;
 // Third Party Imports
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 // Local Imports
 use super::{
     Error, PluginManagerSettings,
     persistence::{SavedEntry, problem},
 };
 use crate::{
-    bundle::{Bundle, Facility, Manifest},
+    bundle::{self, Bundle, Facility, Manifest},
     plugin::grpc::Managed,
 };
 use harmos_protocol::host;
@@ -41,7 +42,7 @@ use harmos_storage::{FileReference, StorageManager};
 /* === Structs === */
 
 pub(super) struct Installation {
-    directory: tempfile::TempDir,
+    directory: TempDir,
     executable: String,
     digest: [u8; 32],
 }
@@ -149,10 +150,10 @@ pub(super) fn version(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         .executable
         .as_ref()
         .ok_or_else(|| Error::new("executable_missing", "Read Managed Plugin Version", "recreate the entry from a verified bundle"))?;
-    crate::bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
+    bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
     let parent = executable.split('/').next().expect("installation path has a parent");
     let path = settings.directory.join(parent).join("manifest.json");
-    let file = fs::File::open(path).map_err(|error| problem("Read Installed Manifest", error))?;
+    let file = File::open(path).map_err(|error| problem("Read Installed Manifest", error))?;
     let mut bytes = Vec::new();
     file.take((settings.bundle.manifest_bytes as u64).saturating_add(1))
         .read_to_end(&mut bytes)
@@ -169,7 +170,7 @@ pub(super) fn version(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
 }
 
 pub(super) fn remove(executable: &str, settings: &PluginManagerSettings) -> Result<(), Error> {
-    crate::bundle::validate_path(executable).map_err(|error| problem("Delete Plugin Installation", error))?;
+    bundle::validate_path(executable).map_err(|error| problem("Delete Plugin Installation", error))?;
     let parent = executable.split('/').next().expect("installation path has a parent");
     let root = settings.directory.canonicalize().map_err(|error| problem("Resolve Plugin Directory", error))?;
     let directory = root.join(parent).canonicalize().map_err(|error| problem("Resolve Plugin Installation", error))?;

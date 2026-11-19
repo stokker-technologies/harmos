@@ -44,6 +44,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
     future::Future,
+    mem,
     pin::Pin,
     sync::Arc,
 };
@@ -54,16 +55,20 @@ use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task::JoinHandle,
 };
+use tonic::transport::Endpoint;
 // Local Imports
 use super::{
     Error, PluginManagerSettings,
     content::Installation,
     persistence::{Registry, SavedEntry, SavedMutation, Store, problem},
 };
-use crate::bundle::Manifest;
-use crate::plugin::grpc::{Activation, Attached, Managed, Placement, Status};
+use crate::bundle::{self, Manifest};
+use crate::clock::Activity;
+use crate::plugin::grpc::{self, Activation, Attached, Managed, Placement, PreparedPlugin, Status};
+use crate::runtime::StopParticipant;
 use harmos_protocol::host;
 use harmos_protocol::model;
+use harmos_storage::StorageManager;
 
 /* === Constants === */
 
@@ -77,18 +82,14 @@ pub(super) const GAP_ACTION: &str = "Watch Plugins: event history expired; open 
 pub(super) type GuestControl = Arc<dyn Fn(String, GuestAction) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send>> + Send + Sync>;
 
 type Reply<T> = oneshot::Sender<Result<T, Error>>;
-type Attachment = Pin<Box<dyn Future<Output = Result<Attached, crate::plugin::grpc::Error>> + Send>>;
+type Attachment = Pin<Box<dyn Future<Output = Result<Attached, grpc::Error>> + Send>>;
 pub(super) type Attach = Arc<dyn Fn(String, Placement, Option<model::SettingValues>, oneshot::Receiver<()>) -> Attachment + Send + Sync>;
 pub(super) type Stage = Arc<
-    dyn Fn(
-            String,
-            Placement,
-            Option<model::SettingValues>,
-        ) -> Pin<Box<dyn Future<Output = Result<crate::plugin::grpc::PreparedPlugin, crate::plugin::grpc::Error>> + Send>>
+    dyn Fn(String, Placement, Option<model::SettingValues>) -> Pin<Box<dyn Future<Output = Result<PreparedPlugin, grpc::Error>> + Send>>
         + Send
         + Sync,
 >;
-pub(super) type Activate = Arc<dyn Fn(crate::plugin::grpc::PreparedPlugin) -> Attachment + Send + Sync>;
+pub(super) type Activate = Arc<dyn Fn(PreparedPlugin) -> Attachment + Send + Sync>;
 
 /* === Structs === */
 
@@ -101,7 +102,7 @@ pub(super) struct Actor {
     pub(super) stage: Stage,
     pub(super) activate: Activate,
     commands: mpsc::Sender<Command>,
-    participant: crate::runtime::StopParticipant,
+    participant: StopParticipant,
     history: model::History,
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
@@ -167,8 +168,8 @@ pub(super) enum Command {
 
 impl Actor {
     pub async fn open(
-        storage: harmos_storage::StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>,
-        stage: Stage, activate: Activate, participant: crate::runtime::StopParticipant,
+        storage: StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>, stage: Stage,
+        activate: Activate, participant: StopParticipant,
     ) -> Result<Self, Error> {
         let (store, mut registry) = Store::open(storage, &settings).await?;
         if registry.entries.len() > settings.entries.get()
@@ -200,7 +201,7 @@ impl Actor {
         getrandom::fill(&mut epoch).map_err(|error| problem("Create Plugin Read History", error))?;
         let history = model::History {
             store: settings.namespace.clone(),
-            epoch: crate::bundle::digest(&epoch),
+            epoch: bundle::digest(&epoch),
         };
         let changes = broadcast::channel(settings.watch_capacity.get()).0;
         let mut actor = Self {
@@ -225,7 +226,7 @@ impl Actor {
         Ok(actor)
     }
 
-    pub async fn run(mut self, mut receiver: mpsc::Receiver<Command>, startup: crate::clock::Activity) {
+    pub async fn run(mut self, mut receiver: mpsc::Receiver<Command>, startup: Activity) {
         let names = self.registry.entries.keys().cloned().collect::<Vec<_>>();
         for name in names {
             self.start(&name);
@@ -298,7 +299,7 @@ impl Actor {
             }
         }
         receiver.close();
-        let workers = std::mem::take(&mut self.workers);
+        let workers = mem::take(&mut self.workers);
         for (_, mut worker) in workers {
             if let Some(stop) = worker.stop.take() {
                 let _ = stop.send(());
@@ -511,8 +512,7 @@ impl Actor {
         let value = request.value.ok_or_else(|| Error::new("value_required", "Create Plugin", "supply the complete writable value"))?;
         let installation = match placement {
             host::plugin_placement::Kind::Remote(remote) => {
-                let endpoint =
-                    tonic::transport::Endpoint::from_shared(remote.url.clone()).map_err(|error| problem("Create Remote Plugin", error))?;
+                let endpoint = Endpoint::from_shared(remote.url.clone()).map_err(|error| problem("Create Remote Plugin", error))?;
                 let uri = endpoint.uri();
                 if uri.scheme_str() != Some("http")
                     || uri.host().is_none()
@@ -750,7 +750,7 @@ impl Actor {
                         if let Some(cancel) = cancel { let _ = cancel.send(()); }
                         match attachment.await {
                             Ok(attached) => attached.stop("Plugin Entry Stopped During Startup").await.map_err(|error| problem("Stop Starting Plugin", error))?,
-                            Err(error @ crate::plugin::grpc::Error::Reap(_)) => return Err(problem("Stop Starting Plugin", error)),
+                            Err(error @ grpc::Error::Reap(_)) => return Err(problem("Stop Starting Plugin", error)),
                             Err(_) => {},
                         }
                         return Ok(());
@@ -758,7 +758,7 @@ impl Actor {
                     result = &mut attachment => result,
 
                 },
-                Err(error) => Err(crate::plugin::grpc::Error::Invalid(error.to_string())),
+                Err(error) => Err(grpc::Error::Invalid(error.to_string())),
             };
             let attached = match attached {
                 Ok(attached) => attached,
@@ -770,7 +770,7 @@ impl Actor {
                     };
                     tokio::select! { _ = &mut stopping => {}, _ = commands.send(command) => {} }
                     return match error {
-                        crate::plugin::grpc::Error::Reap(_) => Err(problem("Reap Starting Plugin", error)),
+                        grpc::Error::Reap(_) => Err(problem("Reap Starting Plugin", error)),
                         _ => Ok(()),
                     };
                 }
@@ -798,7 +798,7 @@ impl Actor {
             }
             match attached.stop("Plugin Entry Activation Replaced").await {
                 Ok(()) => Ok(()),
-                Err(error) if terminal_failure && !matches!(error.as_ref(), crate::plugin::grpc::Error::Reap(_)) => Ok(()),
+                Err(error) if terminal_failure && !matches!(error.as_ref(), grpc::Error::Reap(_)) => Ok(()),
                 Err(error) => Err(problem("Stop Plugin Activation", error)),
             }
         });
@@ -979,7 +979,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         .executable
         .as_ref()
         .ok_or_else(|| Error::new("executable_missing", "Start Managed Plugin", "recreate the entry from a verified bundle"))?;
-    crate::bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
+    bundle::validate_path(executable).map_err(|error| problem("Verify Installed Executable Path", error))?;
     let executable = settings.directory.join(executable);
     let bytes = fs::read(&executable).map_err(|error| problem("Read Installed Executable", error))?;
     let digest: [u8; 32] = Sha256::digest(&bytes).into();
@@ -1002,7 +1002,7 @@ pub(super) fn managed(saved: &SavedEntry, settings: &PluginManagerSettings) -> R
         })?;
         let canonical_root = root.canonicalize().map_err(|error| problem("Resolve Installed Bundle", error))?;
         for file in &manifest.files {
-            crate::bundle::validate_path(&file.path).map_err(|error| problem("Verify Installed File Path", error))?;
+            bundle::validate_path(&file.path).map_err(|error| problem("Verify Installed File Path", error))?;
             let path = root.join(&file.path).canonicalize().map_err(|error| problem("Read Installed File", error))?;
             if !path.starts_with(&canonical_root) {
                 return Err(Error::new(
