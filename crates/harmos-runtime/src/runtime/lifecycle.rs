@@ -125,6 +125,7 @@ impl<A: Application> Runtime<A> {
             let mut stopping = self.stopping.lock().expect("runtime transition is healthy");
             if let Stopping::Running(supervisor) = &mut *stopping {
                 let _clock = clock::enter(self.operations.clock().clone());
+                self.operations.cancel_queued();
                 let outcome = Arc::new(OnceLock::new());
                 let progress = watch::channel("producers and listeners").0;
                 let original = Stop {

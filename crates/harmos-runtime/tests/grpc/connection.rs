@@ -22,7 +22,10 @@ use std::{
     io,
     net::{self, Shutdown},
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -51,7 +54,8 @@ use harmos_runtime::operations::{
     self, ConnectionId, FailureKind, FunctionContext, Lane, OperationFactory, OperationPolicy, OperationSpec, Response, RetryPolicy,
     WireDeclaration,
 };
-use harmos_runtime::{Call, Error, Identifier, Message, Resource, Result, Runtime};
+use harmos_runtime::services::{Resident, ServiceContext, ServiceDefinition};
+use harmos_runtime::{Call, Error, Identifier, Message, Refusal, Resource, Result, Runtime};
 
 /* === Constants === */
 
@@ -132,6 +136,8 @@ struct StorageObserver {
     completed: mpsc::UnboundedSender<Result<MutateResponse>>,
 }
 
+struct QueuedResident(Arc<AtomicUsize>);
+
 /* === Enums === */
 
 /* === Traits === */
@@ -141,6 +147,19 @@ struct StorageObserver {
 impl Drop for Stopped {
     fn drop(&mut self) {
         self.events.stopped.lock().unwrap().insert(self.id);
+    }
+}
+
+impl Resident<Bank> for QueuedResident {
+    type Error = io::Error;
+
+    async fn run(&mut self, _context: ServiceContext<Bank>) -> io::Result<()> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn finalize(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -305,6 +324,55 @@ async fn probe(request: Probe, context: FunctionContext<Probe>) -> Result<Respon
 }
 
 /* === Tests === */
+
+#[tokio::test]
+async fn shutdown_cancels_queued_work_before_connection_observers_settle() {
+    // Hold Connection Settlement
+    let mut fixture = Fixture::new(false).await;
+    let channel = fixture.connect().await;
+    let connection = fixture.unary(channel.clone()).await;
+    *fixture.observer.blocked.lock().unwrap() = Some(connection);
+
+    // Queue a Resident and an Operation Without Yielding
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let created = attempts.clone();
+    let definition = ServiceDefinition {
+        id: "queued".into(),
+        policy: harmos_runtime::services::POLICY,
+    };
+    fixture.runtime.operations.register_service(definition, move |_| QueuedResident(created.clone())).unwrap();
+    let resident = fixture.runtime.operations.submit_resident("queued").await.unwrap();
+    let mut status = resident.subscribe();
+    let operation = fixture.runtime.operations.submit::<UnaryProbe>(UnaryProbe {}).unwrap();
+    assert_eq!(resident.status().phase(), operations::OperationPhase::Queued);
+    assert_eq!(operation.status().phase(), operations::OperationPhase::Queued);
+
+    // Begin Shutdown Before Either Queued Body Can Start
+    let shutdown = fixture.runtime.stop();
+    tokio::pin!(shutdown);
+    assert!(futures_util::poll!(&mut shutdown).is_pending());
+    assert_eq!(fixture.notifications.recv().await.unwrap(), connection);
+    let stopped = status.wait_for(|status| status.phase() == operations::OperationPhase::Stopped).await.unwrap().clone();
+    let answer = operation.await;
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
+    assert!(stopped.started_at().is_none());
+    assert_eq!(stopped.outcome(), Some(operations::OperationOutcome::Cancelled));
+    assert!(matches!(answer, Err(Error::OperationRefused(Refusal::Cancelled { .. }))));
+    assert!(fixture.calls.try_recv().is_err());
+    assert!(fixture.runtime.operations.submit_resident("queued").await.is_err());
+
+    // Repeated Stop Preserves Fresh Settlement Calls
+    let operation = fixture.runtime.operations.submit::<UnaryProbe>(UnaryProbe {}).unwrap();
+    let repeated = fixture.runtime.stop();
+    tokio::pin!(repeated);
+    assert!(futures_util::poll!(&mut repeated).is_pending());
+    assert_eq!(*operation.await.unwrap(), 1);
+    assert_eq!(fixture.calls.recv().await.unwrap(), None);
+    fixture.observer.release.add_permits(1);
+    shutdown.await.unwrap();
+    repeated.await.unwrap();
+    drop(channel);
+}
 
 #[tokio::test]
 async fn shutdown_observer_writes_storage_through_runtime_before_services_close() {

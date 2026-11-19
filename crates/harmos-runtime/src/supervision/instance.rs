@@ -401,11 +401,19 @@ impl Instance {
     }
 
     pub(crate) fn request_cancel(&self) {
-        tracing::dispatcher::with_default(&self.dispatcher, || {
-            tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
-        });
+        self.cancel(false);
+    }
+
+    pub(crate) fn cancel_queued(&self) {
+        self.cancel(true);
+    }
+
+    fn cancel(&self, queued_only: bool) {
         let mut interrupt = false;
-        self.status.send_modify(|status| {
+        let requested = self.status.send_if_modified(|status| {
+            if queued_only && status.phase != Phase::Queued {
+                return false;
+            }
             interrupt = status.dependents == 0;
             status.cancellation_requested = true;
             if !status.phase.is_terminal() {
@@ -414,6 +422,13 @@ impl Instance {
             if !matches!(status.phase, Phase::Finalizing) && !status.phase.is_terminal() {
                 status.phase = Phase::Stopping;
             }
+            true
+        });
+        if !requested {
+            return;
+        }
+        tracing::dispatcher::with_default(&self.dispatcher, || {
+            tracing::debug!(target: "harmos::operations", parent: &self.trace(), "instance cancellation requested");
         });
         if interrupt {
             self.cancellation.send_replace(true);
@@ -456,3 +471,35 @@ impl Drop for Dependency {
 /* === Private Functions === */
 
 /* === Tests === */
+
+#[cfg(test)]
+mod tests {
+    use super::{Instance, Phase};
+    use crate::clock;
+    use tokio::sync::watch;
+
+    #[tokio::test]
+    async fn queued_cancellation_prevents_initialization_and_attempts() {
+        let (cancellation, cancelled) = watch::channel(false);
+        let instance = Instance::queued(cancellation, clock::current());
+        instance.cancel_queued();
+        assert!(!instance.initialize_attempt(0));
+        assert!(!instance.attempt(0));
+        assert!(*cancelled.borrow());
+        assert!(instance.status().started_at().is_none());
+    }
+
+    #[tokio::test]
+    async fn queued_cancellation_preserves_started_work() {
+        for phase in [Phase::Initializing, Phase::Running, Phase::RetryWaiting, Phase::Restarting] {
+            let (cancellation, cancelled) = watch::channel(false);
+            let instance = Instance::queued(cancellation, clock::current());
+            assert!(instance.initialize_attempt(0));
+            instance.transition(phase);
+            instance.cancel_queued();
+            assert!(!*cancelled.borrow());
+            assert!(!instance.status().cancellation_requested());
+            assert_eq!(instance.status().phase(), phase);
+        }
+    }
+}
