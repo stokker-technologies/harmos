@@ -14,8 +14,10 @@
 /* === Imports === */
 
 // Standard Library Imports
-use std::future::Future;
+use std::error;
+use std::future::{self, Future};
 use std::pin::Pin;
+use std::result;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, OnceLock, Weak};
 use std::task::Poll;
@@ -25,6 +27,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 // Local Imports
 use super::{Handle, Participants, Runtime, STOP_GRACE, Stopping};
+use crate::clock::Clock;
 use crate::storage::StorageManager;
 use crate::supervision::cleanup::{Cleanup, Finalize, Resource};
 use crate::{Application, Error, Result, state::Position};
@@ -35,7 +38,7 @@ use crate::{Application, Error, Result, state::Position};
 
 /* === Type Aliases === */
 
-pub(super) type Outcome = std::result::Result<Position, Failure>;
+pub(super) type Outcome = result::Result<Position, Failure>;
 
 /* === Structs === */
 
@@ -53,7 +56,7 @@ pub(super) struct Stop<A: Application> {
 #[derive(Clone)]
 pub(super) struct Failure {
     domain: &'static str,
-    source: Arc<dyn std::error::Error + Send + Sync>,
+    source: Arc<dyn error::Error + Send + Sync>,
 }
 
 /* === Enums === */
@@ -179,8 +182,8 @@ impl<A: Application> Stop<A> {
                 self.progress.send_replace("plugins");
                 self.handles.plugin.shutdown().await?;
             }
-            self.progress.send_replace("participants");
-            self.participants.stop().await?;
+            self.progress.send_replace("plugin settlement");
+            self.participants.settle().await?;
             self.handles.operations.close_resident_admission();
             self.handles.operations.close_admission();
             #[cfg(feature = "plugin-guest")]
@@ -202,6 +205,8 @@ impl<A: Application> Stop<A> {
             }
             self.progress.send_replace("operations");
             self.handles.operations.shutdown().await?;
+            self.progress.send_replace("participants");
+            self.participants.stop().await?;
             self.progress.send_replace("application lifecycle");
             if let Some(application) = &self.application {
                 application.settle().await.map_err(|source| {
@@ -264,10 +269,10 @@ impl<A: Application> Handle<A> {
 /* === Private Functions === */
 
 async fn joined(
-    clock: &crate::clock::Clock, supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>,
+    clock: &Clock, supervisor: &mut JoinHandle<Position>, journal_handles: &Weak<()>, notices: &watch::Sender<Option<String>>,
 ) -> Outcome {
     let mut grace = Box::pin(clock.sleep(STOP_GRACE));
-    let joined = std::future::poll_fn(|context| {
+    let joined = future::poll_fn(|context| {
         if let Poll::Ready(settled) = Pin::new(&mut *supervisor).poll(context) {
             return Poll::Ready(Some(settled));
         }

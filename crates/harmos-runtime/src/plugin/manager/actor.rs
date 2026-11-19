@@ -103,6 +103,7 @@ pub(super) struct Actor {
     pub(super) activate: Activate,
     commands: mpsc::Sender<Command>,
     participant: StopParticipant,
+    queries: mpsc::Receiver<Command>,
     history: model::History,
     sequence: u64,
     snapshots: VecDeque<Snapshot>,
@@ -136,6 +137,7 @@ pub(super) enum GuestAction {
 
 pub(super) enum Command {
     Activation(String, Reply<Activation>),
+    Admitted(Box<Activation>, Reply<()>),
     #[cfg(feature = "plugin-guest")]
     Guest(Box<PluginDescription>, Reply<PluginEntry>),
     #[cfg(feature = "plugin-guest")]
@@ -166,11 +168,18 @@ pub(super) enum Command {
 
 /* === Implementations === */
 
+impl Command {
+    pub(super) fn is_query(&self) -> bool {
+        matches!(self, Self::Activation(..) | Self::SettingsList(..) | Self::Get(..) | Self::List(..) | Self::Watch(..))
+    }
+}
+
 impl Actor {
     pub async fn open(
-        storage: StorageManager, settings: PluginManagerSettings, attach: Attach, commands: mpsc::Sender<Command>, stage: Stage,
-        activate: Activate, participant: StopParticipant,
+        storage: StorageManager, settings: PluginManagerSettings, attach: Attach,
+        mailboxes: (mpsc::Sender<Command>, mpsc::Receiver<Command>), stage: Stage, activate: Activate, participant: StopParticipant,
     ) -> Result<Self, Error> {
+        let (commands, queries) = mailboxes;
         let (store, mut registry) = Store::open(storage, &settings).await?;
         if registry.entries.len() > settings.entries.get()
             || (registry.creates.len()
@@ -214,6 +223,7 @@ impl Actor {
             activate,
             commands,
             participant,
+            queries,
             history,
             sequence: 0,
             snapshots: VecDeque::new(),
@@ -236,16 +246,13 @@ impl Actor {
             let command = tokio::select! {
                 biased;
                 () = self.participant.stopping() => break,
+                command = self.queries.recv() => match command { Some(command) => command, None => break },
                 command = receiver.recv() => match command { Some(command) => command, None => break },
             };
+            let Some(command) = self.query(command) else {
+                continue;
+            };
             match command {
-                Command::Activation(name, reply) => {
-                    let activation = self.workers.get(&name).and_then(|worker| worker.activation.clone());
-                    let result = activation
-                        .filter(Activation::is_connected)
-                        .ok_or_else(|| Error::new("activation_unavailable", "Get Plugin Activation", "select a ready gRPC plugin entry"));
-                    let _ = reply.send(result);
-                }
                 #[cfg(feature = "plugin-guest")]
                 Command::Guest(description, reply) => {
                     let _ = reply.send(self.guest(*description).await);
@@ -256,23 +263,16 @@ impl Actor {
                         tracing::error!(%error, "guest entry state persistence failed");
                     }
                 }
+                Command::Admitted(activation, reply) => {
+                    if !reply.is_closed() {
+                        let _ = reply.send(self.admitted(*activation).await);
+                    }
+                }
                 Command::Replace(request, reply) => {
                     let _ = reply.send(self.replace(request).await);
                 }
-                Command::SettingsList(request, reply) => {
-                    let _ = reply.send(self.settings_list(request));
-                }
                 Command::SettingsSet(request, reply) => {
                     let _ = reply.send(self.settings_set(request).await);
-                }
-                Command::Get(request, reply) => {
-                    let _ = reply.send(self.get(request));
-                }
-                Command::List(request, reply) => {
-                    let _ = reply.send(self.list(request));
-                }
-                Command::Watch(request, reply) => {
-                    let _ = reply.send(self.watch(request));
                 }
                 Command::Create(request, reply) => {
                     let _ = reply.send(self.create(*request).await);
@@ -285,6 +285,9 @@ impl Actor {
                 }
                 Command::Restart(request, reply) => {
                     let _ = reply.send(self.restart(request).await);
+                }
+                Command::Activation(..) | Command::SettingsList(..) | Command::Get(..) | Command::List(..) | Command::Watch(..) => {
+                    unreachable!("queries are handled before mutations");
                 }
                 Command::Health { name, activation, status } => {
                     if let Err(error) = self.health(name, activation, *status).await {
@@ -307,10 +310,47 @@ impl Actor {
             let Some(task) = worker.task else {
                 continue;
             };
-            match task.await {
+            match self.wait(task).await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => tracing::warn!(%error, "plugin manager shutdown reported a failure"),
-                Err(error) => tracing::error!(%error, "plugin manager activation task failed"),
+                Err(error) => tracing::error!(%error, "plugin manager settlement task failed"),
+            }
+        }
+    }
+
+    fn query(&mut self, command: Command) -> Option<Command> {
+        match command {
+            Command::Activation(name, reply) => {
+                let activation = self.workers.get(&name).and_then(|worker| worker.activation.clone());
+                let result = activation
+                    .filter(Activation::is_connected)
+                    .ok_or_else(|| Error::new("activation_unavailable", "Get Plugin Activation", "select a ready gRPC plugin entry"));
+                let _ = reply.send(result);
+            }
+            Command::SettingsList(request, reply) => {
+                let _ = reply.send(self.settings_list(request));
+            }
+            Command::Get(request, reply) => {
+                let _ = reply.send(self.get(request));
+            }
+            Command::List(request, reply) => {
+                let _ = reply.send(self.list(request));
+            }
+            Command::Watch(request, reply) => {
+                let _ = reply.send(self.watch(request));
+            }
+            command => return Some(command),
+        }
+        None
+    }
+
+    pub(super) async fn wait<T>(&mut self, mut task: JoinHandle<T>) -> Result<T, Error> {
+        loop {
+            tokio::select! {
+                result = &mut task => return result.map_err(|error| problem("Join Plugin Transition", error)),
+                Some(command) = self.queries.recv() => {
+                    assert!(self.query(command).is_none(), "the read mailbox only carries queries");
+                }
             }
         }
     }
@@ -629,7 +669,10 @@ impl Actor {
         self.commit(registry, changed(entry.clone())).await?;
         let stopped = if is_guest(&entry) && !value.enabled {
             match &self.guest_control {
-                Some(control) => control(entry.name.clone(), GuestAction::Stop).await,
+                Some(control) => {
+                    let task = tokio::spawn(control(entry.name.clone(), GuestAction::Stop));
+                    self.wait(task).await?
+                }
                 None => Ok(()),
             }
         } else {
@@ -686,7 +729,8 @@ impl Actor {
         };
         if is_guest(&entry) {
             if let Some(control) = &self.guest_control {
-                control(entry.name.clone(), GuestAction::Remove).await?;
+                let task = tokio::spawn(control(entry.name.clone(), GuestAction::Remove));
+                self.wait(task).await??;
             }
         } else {
             self.stop(&entry.name).await?;
@@ -815,22 +859,26 @@ impl Actor {
     }
 
     pub(super) async fn stop(&mut self, name: &str) -> Result<(), Error> {
-        if let Some(worker) = self.workers.get_mut(name) {
-            if let Some(stop) = worker.stop.take() {
-                let _ = stop.send(());
-            }
-            if let Some(failure) = &worker.failure {
-                return Err(problem("Stop Plugin Activation", failure));
-            }
-            if let Some(task) = worker.task.take() {
-                let result = task.await.map_err(|error| problem("Join Plugin Activation", error)).and_then(|result| result);
-                if let Err(error) = result {
-                    worker.failure = Some(error.to_string());
-                    return Err(error);
-                }
-            }
+        let Some(mut worker) = self.workers.remove(name) else {
+            return Ok(());
+        };
+        if let Some(stop) = worker.stop.take() {
+            let _ = stop.send(());
         }
-        self.workers.remove(name);
+        if let Some(failure) = &worker.failure {
+            let error = problem("Stop Plugin Activation", failure);
+            self.workers.insert(name.to_owned(), worker);
+            return Err(error);
+        }
+        let Some(task) = worker.task.take() else {
+            return Ok(());
+        };
+        let result = self.wait(task).await.and_then(|result| result);
+        if let Err(error) = result {
+            worker.failure = Some(error.to_string());
+            self.workers.insert(name.to_owned(), worker);
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -841,6 +889,41 @@ impl Actor {
         registry.entries.get_mut(name).expect("entry exists").entry = entry.encode_to_vec();
         self.commit(registry, changed(entry.clone())).await?;
         Ok(entry)
+    }
+
+    fn describe(&self, entry: &mut PluginEntry, current: Activation) -> Result<(), Error> {
+        entry.declarations_digest = current.description.declarations.as_ref().expect("admitted catalog exists").digest.clone();
+        entry.process = current.process_id.map(|id| PluginProcess {
+            id,
+            executable_digest: current.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
+            started_at: current.description.started_at,
+        });
+        let version = match entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()) {
+            Some(host::plugin_placement::Kind::Managed(_)) => {
+                let saved = self.registry.entries.get(&entry.name).expect("selected entry exists");
+                super::content::version(saved, &self.settings)?
+            }
+            _ => current.description.version,
+        };
+        entry.description = Some(PluginDescription {
+            id: current.description.id,
+            version,
+            started_at: current.description.started_at,
+            declarations: current.description.declarations,
+            revision: current.description.revision,
+            sdk: current.description.sdk,
+            sdk_version: current.description.sdk_version,
+        });
+        Ok(())
+    }
+
+    async fn admitted(&mut self, current: Activation) -> Result<(), Error> {
+        let name = current.entry_name.as_ref().expect("entry activation names its owner");
+        let mut entry = self.snapshots.back().and_then(|snapshot| snapshot.entries.get(name)).cloned().ok_or_else(missing)?;
+        self.describe(&mut entry, current)?;
+        let mut registry = self.registry.clone();
+        registry.entries.get_mut(&entry.name).expect("admitted entry exists").entry = entry.encode_to_vec();
+        self.commit(registry, changed(entry)).await
     }
 
     async fn health(&mut self, name: String, activation: u64, status: Result<Status, Arc<grpc::Error>>) -> Result<(), Error> {
@@ -873,28 +956,7 @@ impl Actor {
                             ..Default::default()
                         })
                     });
-                    entry.declarations_digest = current.description.declarations.as_ref().expect("admitted catalog exists").digest.clone();
-                    entry.process = current.process_id.map(|id| PluginProcess {
-                        id,
-                        executable_digest: current.executable_digest.map(|digest| digest.to_vec()).unwrap_or_default(),
-                        started_at: current.description.started_at,
-                    });
-                    let version = match entry.placement.as_ref().and_then(|placement| placement.kind.as_ref()) {
-                        Some(host::plugin_placement::Kind::Managed(_)) => {
-                            let saved = self.registry.entries.get(&name).expect("selected entry exists");
-                            super::content::version(saved, &self.settings)?
-                        }
-                        _ => current.description.version,
-                    };
-                    entry.description = Some(PluginDescription {
-                        id: current.description.id,
-                        version,
-                        started_at: current.description.started_at,
-                        declarations: current.description.declarations,
-                        revision: current.description.revision,
-                        sdk: current.description.sdk,
-                        sdk_version: current.description.sdk_version,
-                    });
+                    self.describe(&mut entry, current)?;
                 } else {
                     entry.state = PluginState::Unavailable as i32;
                     entry.process = None;

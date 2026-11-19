@@ -52,14 +52,23 @@ use harmos_protocol::host::PluginsWatchRequest;
 use harmos_protocol::host::PluginsWatchResponse;
 
 // Standard Library Imports
+#[cfg(feature = "plugin-guest")]
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 // Third Party Imports
+#[cfg(feature = "plugin-guest")]
+use tokio::sync::watch;
 use tokio::sync::{mpsc, oneshot};
 // Local Imports
+#[cfg(feature = "plugin-guest")]
+use crate::guest;
+use crate::operations::Lane;
+use crate::runtime::Builder;
+use crate::plugin::grpc;
 use crate::storage::StorageManager;
 use crate::{Application, Runtime};
 use harmos_operations::plugins::{Access, Pending};
-use harmos_protocol::host as wire;
+use harmos_protocol::host;
 
 /* === Constants === */
 
@@ -77,7 +86,12 @@ pub struct Manager {
 struct Inner {
     storage: StorageManager,
     settings: PluginManagerSettings,
-    commands: OnceLock<mpsc::Sender<actor::Command>>,
+    commands: OnceLock<Commands>,
+}
+
+struct Commands {
+    mutations: mpsc::Sender<actor::Command>,
+    queries: mpsc::Sender<actor::Command>,
 }
 
 /* === Enums === */
@@ -88,7 +102,7 @@ struct Inner {
 
 impl Manager {
     /// Returns the currently admitted gRPC activation of a ready managed entry.
-    pub async fn activation(&self, name: impl Into<String>) -> Result<crate::plugin::grpc::Activation, Error> {
+    pub async fn activation(&self, name: impl Into<String>) -> Result<grpc::Activation, Error> {
         self.call(move |reply| actor::Command::Activation(name.into(), reply)).await
     }
 
@@ -106,20 +120,23 @@ impl Manager {
         let clock = runtime.operations.clock().clone();
         let startup = clock.activity("plugin manager restoration");
         let (sender, receiver) = mpsc::channel(self.inner.settings.command_capacity.get());
+        let (queries, reading) = mpsc::channel(self.inner.settings.command_capacity.get());
         self.inner
             .commands
-            .set(sender.clone())
+            .set(Commands { mutations: sender.clone(), queries })
             .map_err(|_| Error::new("already_started", "Start Plugin Manager", "start this manager only once"))?;
         let host = Arc::downgrade(runtime);
         let settings = self.inner.settings.placement.clone();
+        let manager = self.clone();
         let attach: actor::Attach = Arc::new(move |name, placement, values, cancelled| {
             let activity = clock.activity("plugin manager activation");
             let host = host.clone();
             let settings = settings.clone();
+            let manager = manager.clone();
             Box::pin(async move {
                 let _activity = activity;
-                let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
-                runtime.attach_grpc_entry(name, placement, settings, values, cancelled).await
+                let runtime = host.upgrade().ok_or(grpc::Error::Disconnected)?;
+                runtime.attach_grpc_entry(name, placement, settings, values, cancelled, manager).await
             })
         });
         let host = Arc::downgrade(runtime);
@@ -128,7 +145,7 @@ impl Manager {
             let host = host.clone();
             let settings = placement_settings.clone();
             Box::pin(async move {
-                let runtime = host.upgrade().ok_or(crate::plugin::grpc::Error::Disconnected)?;
+                let runtime = host.upgrade().ok_or(grpc::Error::Disconnected)?;
                 runtime.prepare_grpc_entry(name, placement, settings, values).await
             })
         });
@@ -142,7 +159,7 @@ impl Manager {
             Box::pin(async move {
                 let Some(runtime) = host.upgrade() else {
                     prepared.stop(&clock, &settings).await?;
-                    return Err(crate::plugin::grpc::Error::Disconnected);
+                    return Err(grpc::Error::Disconnected);
                 };
                 runtime.activate_grpc_entry(prepared, settings).await
             })
@@ -151,7 +168,7 @@ impl Manager {
             self.inner.storage.engine(),
             self.inner.settings.clone(),
             attach,
-            sender.clone(),
+            (sender.clone(), reading),
             stage,
             activate,
             runtime.stop_participant(),
@@ -177,27 +194,28 @@ impl Manager {
                     })
                 })
             }));
-            let (updates, mut observations) = tokio::sync::watch::channel(std::collections::BTreeMap::new());
+            let (updates, mut observations) = watch::channel(BTreeMap::new());
             runtime.plugin.observe_entries(Arc::new(move |entries| {
                 updates.send_replace(entries);
             }));
             tokio::spawn(async move {
-                let mut previous = std::collections::BTreeSet::new();
+                let mut previous = BTreeSet::new();
                 while observations.changed().await.is_ok() {
                     let entries = observations.borrow_and_update().clone();
-                    let names = entries.keys().cloned().collect::<std::collections::BTreeSet<_>>();
+                    let names = entries.keys().cloned().collect::<BTreeSet<_>>();
                     let changed = previous.union(&names).cloned().collect::<Vec<_>>();
                     previous = names;
                     for name in changed {
                         let status = entries.get(&name).cloned();
                         let (state, activation, failure) = match status {
                             Some(status) => {
-                                use crate::guest::PluginState as GuestState;
                                 let state = match status.state {
-                                    GuestState::Ready => PluginState::Ready,
-                                    GuestState::Registered | GuestState::Initializing => PluginState::Connecting,
-                                    GuestState::Stopping => PluginState::Stopping,
-                                    GuestState::Failed => PluginState::Unavailable,
+                                    guest::PluginState::Ready => PluginState::Ready,
+                                    guest::PluginState::Registered | guest::PluginState::Initializing => {
+                                        PluginState::Connecting
+                                    }
+                                    guest::PluginState::Stopping => PluginState::Stopping,
+                                    guest::PluginState::Failed => PluginState::Unavailable,
                                 };
                                 (state, status.generation.map_or(0, |generation| generation.get()), status.last_failure)
                             }
@@ -218,6 +236,10 @@ impl Manager {
     pub(crate) async fn register_guest(&self, description: PluginDescription) -> Result<PluginEntry, Error> {
         self.call(move |reply| actor::Command::Guest(Box::new(description), reply)).await
     }
+    pub(crate) async fn admitted(&self, activation: grpc::Activation) -> Result<(), Error> {
+        self.call(move |reply| actor::Command::Admitted(Box::new(activation), reply)).await
+    }
+
     async fn call<T>(&self, command: impl FnOnce(oneshot::Sender<Result<T, Error>>) -> actor::Command) -> Result<T, Error> {
         let sender = self
             .inner
@@ -225,16 +247,18 @@ impl Manager {
             .get()
             .ok_or_else(|| Error::new("not_started", "Manage Plugins", "start the plugin manager with the host"))?;
         let (reply, receiver) = oneshot::channel();
-        sender.send(command(reply)).await.map_err(|_| closed())?;
+        let command = command(reply);
+        let sender = if command.is_query() { &sender.queries } else { &sender.mutations };
+        sender.send(command).await.map_err(|_| closed())?;
         receiver.await.map_err(|_| closed())?
     }
 }
 
-impl<A: Application> crate::runtime::Builder<A> {
+impl<A: Application> Builder<A> {
     pub fn plugins(&mut self, manager: Manager) -> &mut Self {
         self.resource(manager.clone());
         self.resource(Access(Arc::new(manager)));
-        self.catalog(harmos_operations::plugins::catalog(), crate::operations::Lane::default());
+        self.catalog(harmos_operations::plugins::catalog(), Lane::default());
         self
     }
 }
@@ -243,10 +267,10 @@ impl Management for Manager {
     fn replace(&self, request: PluginsReplaceRequest) -> Pending<'_, PluginsReplaceResponse> {
         Box::pin(self.call(move |reply| actor::Command::Replace(request, reply)))
     }
-    fn settings_list(&self, request: wire::plugins::SettingsListRequest) -> Pending<'_, wire::plugins::SettingsListResponse> {
+    fn settings_list(&self, request: host::plugins::SettingsListRequest) -> Pending<'_, host::plugins::SettingsListResponse> {
         Box::pin(self.call(move |reply| actor::Command::SettingsList(request, reply)))
     }
-    fn settings_set(&self, request: wire::plugins::SettingsSetRequest) -> Pending<'_, wire::plugins::SettingsSetResponse> {
+    fn settings_set(&self, request: host::plugins::SettingsSetRequest) -> Pending<'_, host::plugins::SettingsSetResponse> {
         Box::pin(self.call(move |reply| actor::Command::SettingsSet(request, reply)))
     }
 

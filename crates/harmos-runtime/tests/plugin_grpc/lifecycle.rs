@@ -21,14 +21,16 @@ use std::{num::NonZeroUsize, path::Path, process::Stdio, time::Duration};
 // Third Party Imports
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
-    process::{Child, ChildStdout},
+    process::{Child, ChildStdout, Command},
 };
 
 // Local Imports
 use super::{manager, support};
 use harmos_protocol::host::InvocationsCreateRequest;
 use harmos_protocol::host::invocations_client::InvocationsClient;
-use harmos_protocol::host::{PluginState, PluginsGetRequest, PluginsWatchRequest};
+use harmos_protocol::host::{
+    PluginState, PluginValue, PluginsDeleteRequest, PluginsGetRequest, PluginsRestartRequest, PluginsSetRequest, PluginsWatchRequest,
+};
 use harmos_runtime::{
     Runtime,
     plugin::grpc::{Attached, Placement},
@@ -59,7 +61,7 @@ impl Python {
     async fn start(mode: &str) -> Self {
         let sdk = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sdk/python");
         let executable = if cfg!(target_os = "windows") { ".venv/Scripts/python.exe" } else { ".venv/bin/python" };
-        let mut process = tokio::process::Command::new(sdk.join(executable))
+        let mut process = Command::new(sdk.join(executable))
             .args(["-m", "tests.fixtures.lifecycle", mode])
             .current_dir(sdk)
             .stdin(Stdio::piped())
@@ -161,7 +163,7 @@ async fn initialize_precedes_ready_and_state_and_hooks_are_hidden_from_clients()
     attached.stop("Again").await.unwrap();
     plugin.command("state").await;
     plugin.event("state:0:1").await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.close().await;
 }
 
@@ -188,7 +190,7 @@ async fn failed_initialize_reports_its_failure_and_finalizes_once() {
     plugin.command("state").await;
     plugin.event("state:0:1").await;
     assert!(runtime.operations.submit_encoded("lifecycle.state", Vec::new()).is_err());
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.close().await;
 }
 
@@ -204,7 +206,7 @@ async fn cancelled_initialize_settles_before_finalize_once() {
     drop(attaching);
     plugin.event("initialized").await;
     plugin.event("finalize:0:1").await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.command("state").await;
     plugin.event("state:0:1").await;
     plugin.close().await;
@@ -221,7 +223,7 @@ async fn stop_settles_inflight_operations_before_finalize() {
     assert!(call.await.is_err());
     plugin.event("settled").await;
     plugin.event("finalize:0:1").await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.close().await;
 }
 
@@ -238,13 +240,13 @@ async fn shutdown_finalizes_and_finalize_failure_does_not_prevent_stop() {
     assert_eq!(failure.code, "release_failed");
     assert!(attached.status().borrow().failure.is_some());
     plugin.event("finalize:0:1").await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.close().await;
 
     let runtime = support::runtime(None).await;
     let mut plugin = Python::start("success").await;
     let _attached = initialize(&runtime, &mut plugin).await;
-    runtime.shutdown().await.unwrap();
+    runtime.stop().await.unwrap();
     plugin.event("finalize:0:1").await;
     plugin.close().await;
 }
@@ -255,7 +257,7 @@ async fn manager_publishes_ready_only_after_initialize() {
     let root = tempfile::tempdir().unwrap();
     let backends = manager::support::Backends::new();
     let mut host = manager::support::Host::start(root.path(), &backends).await;
-    let mut plugin = Python::start("success").await;
+    let mut plugin = Python::start("settings").await;
     let mut watch = host.client.watch(PluginsWatchRequest::default()).await.unwrap().into_inner();
     host.client.create(manager::support::remote("lifecycle", &plugin.address)).await.unwrap();
     plugin.event("initialize").await;
@@ -269,9 +271,63 @@ async fn manager_publishes_ready_only_after_initialize() {
     let ready = manager::support::state(&mut watch, "lifecycle", PluginState::Ready, 1).await;
     assert!(ready.failure.is_none());
     assert!(host.manager.activation("lifecycle").await.is_ok());
+    host.client
+        .restart(PluginsRestartRequest {
+            name: ready.name.clone(),
+            expected_revision: ready.revision,
+        })
+        .await
+        .unwrap();
+    plugin.event("finalize:0:1").await;
+    plugin.event("initialize").await;
+    plugin.event("initialized").await;
+    let ready = manager::support::state(&mut watch, "lifecycle", PluginState::Ready, 2).await;
+    assert!(ready.failure.is_none());
+
+    let stopped = host
+        .client
+        .set(PluginsSetRequest {
+            name: ready.name,
+            expected_revision: ready.revision,
+            value: Some(PluginValue { enabled: false }),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .entry
+        .unwrap();
+    assert_eq!(stopped.state, PluginState::Stopped as i32);
+    plugin.event("finalize:0:2").await;
+    host.client
+        .set(PluginsSetRequest {
+            name: stopped.name,
+            expected_revision: stopped.revision,
+            value: Some(PluginValue { enabled: true }),
+        })
+        .await
+        .unwrap();
+    plugin.event("initialize").await;
+    plugin.event("initialized").await;
+    let ready = manager::support::state(&mut watch, "lifecycle", PluginState::Ready, 4).await;
+    assert!(ready.failure.is_none());
+    host.client
+        .delete(PluginsDeleteRequest {
+            name: ready.name,
+            expected_revision: ready.revision,
+        })
+        .await
+        .unwrap();
+    plugin.event("finalize:0:3").await;
+    let mut request = manager::support::remote("lifecycle", &plugin.address);
+    request.request_id = "lifecycle-restored".into();
+    host.client.create(request).await.unwrap();
+    plugin.event("initialize").await;
+    plugin.event("initialized").await;
+    let ready = manager::support::state(&mut watch, "lifecycle", PluginState::Ready, 1).await;
+    assert!(ready.failure.is_none());
     drop(watch);
     host.close().await;
-    plugin.event("finalize:0:1").await;
+    plugin.event("finalize:0:4").await;
     plugin.close().await;
 }
 

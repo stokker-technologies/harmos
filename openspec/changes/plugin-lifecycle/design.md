@@ -157,29 +157,51 @@ substitute.
 Wasm hook/verb migrations remain assigned to the separate SDK/guest tasks. Their
 existing guest commands are unchanged by this native host/Python delivery.
 
+#### Other SDK and Documentation Owners
+
+Rust's `sdk/rust/src/plugin.rs` operation/declaration construction must encode
+Protected Empty lifecycle entries and reserve their identifiers, replacing
+`Plugin::on_stop`; `sdk/rust/src/server.rs` must stop running cleanup from Stop.
+C# needs the same operation entries in `sdk/csharp/src/Harmos/Plugin.cs`, replacing
+`OnStop`, and removes their execution from `PluginService.Stop`. C++ needs them in
+`sdk/cpp/include/harmos/harmos.hpp` and `sdk/cpp/src/catalog.cpp`, replacing
+`on_stop`; `sdk/cpp/src/server.cpp` removes cleanup from Stop. Each SDK must share
+its author state with subsequent invocation contexts and retain ordinary operation
+policy enforcement. The old callbacks and new lifecycle operations would otherwise
+be two independent release paths; delete the context-free callbacks in those owners.
+
+The documentation owner updates `docs/tooling.md` to replace `@on_stop` with async
+instance hooks, explain transport-only Stop and use `FailureError(model.Failure(...))`.
+`docs/python-sdk.md` documents `ctx.plugin` and invocation-owned resources separately.
+`docs/plugin-manager.md` records initialization before Ready. `docs/architecture.md`
+records hidden lifecycle operations, their ordinary policies and the required native
+shutdown ordering; the native runtime now separates plugin settlement from transport Stop.
+The Stop comments in `proto/harmos/plugin/v1/instance.proto` still describe SDK cleanup;
+the protocol owner must reconcile those comments without changing wire messages.
+
 #### Manager Actor Reentrancy
 
-The current manager actor awaits replacement activation and worker stops inside
-its command loop (`plugin/manager/actor.rs`, `plugin/manager/replacement.rs`).
-Settings reads also require that command loop. A lifecycle hook that calls
-`Plugins.Settings.List` during those waits cannot receive its reply. Initial
-activation already runs outside the loop through the monitored attachment task.
-The clean shape moves lifecycle waits out of the actor and applies their outcomes
-as actor commands, keeping one registry/settings owner and preserving replacement
-rollback and receipts. Do not add a second settings store, a special child-call
-implementation or reentrant mutation loop. This structural rework requires the
-owner's decision before implementation.
+The manager retains one registry and settings owner. Its bounded read mailbox serves
+settings, entry, activation and watch requests while an owned lifecycle task runs;
+mutations remain ordered in their bounded mailbox. Replacement initialization runs
+in an owned task, and activation workers own finalization. Their outcomes resume the
+same ordered mutation, preserving rollback and replay receipts. Admission publishes
+the description and materializes effective settings while the entry remains
+Connecting; only successful initialize permits Ready. There is no second settings
+store or reentrant mutation loop.
 
 #### Native Shutdown Phase
 
-`runtime/lifecycle.rs` currently settles the operation dispatcher before stopping
-runtime participants. Native gRPC attachments are participants; guest plugins have
-an earlier explicit shutdown phase. An admitted native finalize therefore reaches
-a dispatcher that has already closed. The clean shape gives native plugin
-settlement an earlier phase under the runtime's existing lifecycle authority,
-keeping the dispatcher and required host facilities alive until hooks settle.
-Do not create a second dispatcher or call Invoke outside normal admission. This
-runtime ownership change requires the owner's decision before implementation.
+The runtime's existing participant authority first requests plugin settlement.
+Native attachment and staged-replacement participants retain that settlement until
+their admitted operations and publications settle and finalize completes. Running
+attachments then acknowledge settlement and wait for the later participant stop.
+The runtime keeps the dispatcher and host settings owner available through this
+barrier, closes the dispatcher, then requests participant stop, which sends the
+existing transport Stop and reaps managed processes. Startup and failed activation
+retain their existing cancellation, finalization and process-settlement policies.
+No deadline or operation bound is lengthened, and no second dispatcher is added.
+
 
 ### D3. Registrar and Typed Registration (Proposed)
 

@@ -41,6 +41,7 @@ use std::{
         Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
 // Third Party Imports
@@ -108,6 +109,7 @@ pub struct Attached {
 }
 
 pub(crate) struct PreparedPlugin {
+    participant: StopParticipant,
     process: Option<Process>,
     address: String,
     pub(crate) activation: Activation,
@@ -124,6 +126,7 @@ struct Startup {
 }
 
 struct EntrySettings {
+    manager: super::manager::Manager,
     name: String,
     values: Option<SettingValues>,
 }
@@ -158,6 +161,7 @@ pub enum Placement {
 }
 
 enum Ending {
+    HostShutdown,
     Stop(String),
     Exit(Result<ExitStatus, Error>),
     Disconnect,
@@ -195,7 +199,7 @@ pub enum Error {
     #[error(
         "Grant Sample Window: stream `{stream}` fell {lag:?} behind its window end, past PlacementSettings::interval_lag ({limit:?}); lower the stream's declared rate, the number of streams or the window length"
     )]
-    Lagging { stream: String, lag: std::time::Duration, limit: std::time::Duration },
+    Lagging { stream: String, lag: Duration, limit: Duration },
 
     #[error(
         "Publish Samples: stream `{stream}` found the shared plugin publication pool ({bytes} bytes, {rows} rows) full of rows storage has not taken in; lower the declared rates, the number of streams or the window length"
@@ -218,7 +222,7 @@ pub enum Error {
     #[error(
         "Load Plugin {plugin}: the plugin did not load within {timeout:?} (configured by {configured_by}); check the plugin's startup, or raise the plugins.load deadline in the plugin settings (GrpcPluginSettings.policy.load)"
     )]
-    LoadDeadline { plugin: String, timeout: std::time::Duration, configured_by: &'static str },
+    LoadDeadline { plugin: String, timeout: Duration, configured_by: &'static str },
 
     #[error("managed plugin exited with {0}")]
     Exit(ExitStatus),
@@ -320,11 +324,11 @@ impl<A: Application> Runtime<A> {
     ) -> Result<PreparedPlugin, Error> {
         let operations = self.operations.execution();
         let clock = operations.clock();
-        let mut participant = self.stop_participant();
+        let mut participant = self.plugin_participant();
         let Placement::Managed(managed) = placement else {
             return Err(Error::Invalid("Replace Plugin: managed placement required".into()));
         };
-        if participant.is_stopping() {
+        if participant.is_settling() || participant.is_stopping() {
             return Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into()));
         }
         // Spawning Is Part of the Load. The Load Keeps the Process Here, So One Its Deadline Ends Returns It to This
@@ -358,13 +362,14 @@ impl<A: Application> Runtime<A> {
         };
         let result = tokio::select! {
             biased;
-            () = participant.stopping() => Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into())),
+            () = participant.settling() => Err(Error::Invalid("Replace Plugin Startup: host is shutting down".into())),
             result = load::load(&operations, &name, LoadOptions::default(), stage) => result,
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
         let mut process = spawned.lock().await.take();
         match result {
             Ok((address, activation, admission, publications)) => Ok(PreparedPlugin {
+                participant,
                 process,
                 address,
                 activation,
@@ -381,6 +386,7 @@ impl<A: Application> Runtime<A> {
     }
     pub(crate) async fn activate_grpc_entry(&self, prepared: PreparedPlugin, settings: PlacementSettings) -> Result<Attached, Error> {
         let PreparedPlugin {
+            mut participant,
             mut process,
             address,
             mut activation,
@@ -390,10 +396,19 @@ impl<A: Application> Runtime<A> {
         let operations = self.operations.execution();
         let clock = operations.clock().clone();
         // Initialize Before Publishing the Replacement's Operations or Sample Demands.
-        let initialized = admission.lifecycle(".initialize").await.map_err(|source| Error::Lifecycle {
-            operation: format!("{}.initialize", activation.description.id),
-            source,
-        });
+        let mut attempted = false;
+        let initializing = async {
+            attempted = true;
+            admission.lifecycle(".initialize").await
+        };
+        let initialized = tokio::select! {
+            biased;
+            () = participant.settling() => Err(Error::Invalid("Initialize Replacement Plugin: host is shutting down".into())),
+            result = initializing => result.map_err(|source| Error::Lifecycle {
+                operation: format!("{}.initialize", activation.description.id),
+                source,
+            }),
+        };
         let activated = initialized.and_then(|()| {
             admission.commit().map_err(|error| Error::Invalid(format!("Replace Plugin Operations: {error}")))?;
             Publications::activate(publications, &self.streams, &activation, &clock, &operations, &settings, true)
@@ -402,7 +417,7 @@ impl<A: Application> Runtime<A> {
             Ok(publications) => publications,
             Err(error) => {
                 activation.admission = Some(Arc::new(admission));
-                if let Err(failure) = activation.finalize().await {
+                if attempted && let Err(failure) = activation.finalize().await {
                     tracing::warn!(plugin = %activation.description.id, %failure, "plugin finalization failed");
                 }
                 if activation.has_hooks() {
@@ -426,7 +441,7 @@ impl<A: Application> Runtime<A> {
             self.streams.clone(),
             Lane::default().name(),
             settings,
-            self.stop_participant(),
+            participant,
             ConnectedPlugin {
                 process,
                 address,
@@ -438,7 +453,7 @@ impl<A: Application> Runtime<A> {
 
     pub(crate) async fn attach_grpc_entry(
         &self, name: String, placement: Placement, settings: PlacementSettings, values: Option<SettingValues>,
-        cancelled: oneshot::Receiver<()>,
+        cancelled: oneshot::Receiver<()>, manager: super::manager::Manager,
     ) -> Result<Attached, Error> {
         Attached::start(
             self.operations.execution(),
@@ -447,9 +462,9 @@ impl<A: Application> Runtime<A> {
             placement,
             settings,
             Startup {
-                participant: self.stop_participant(),
+                participant: self.plugin_participant(),
                 process_participant: Some(self.stop_participant()),
-                entry: Some(EntrySettings { name, values }),
+                entry: Some(EntrySettings { name, values, manager }),
                 cancelled: Some(cancelled),
                 options: Some(LoadOptions::default()),
             },
@@ -466,7 +481,7 @@ impl<A: Application> Runtime<A> {
         &self, placement: Placement, settings: PlacementSettings, options: LoadOptions,
     ) -> Result<Attached, Error> {
         // Startup Itself Refuses a Stopping Host Before It Spawns Anything.
-        let participant = self.stop_participant();
+        let participant = self.plugin_participant();
         Attached::start(
             self.operations.execution(),
             self.streams.clone(),
@@ -534,7 +549,7 @@ impl Attached {
             return Err(Error::Invalid("Placement Durations Must Be Positive".into()));
         }
         // A Stopping Host Spawns Nothing It Would Immediately Have to Reap.
-        if participant.is_stopping() {
+        if participant.is_settling() || participant.is_stopping() {
             return Err(Error::Invalid("Start Plugin: the host is shutting down; attach the plugin after it restarts".into()));
         }
         let _activity = clock.activity("plugin startup");
@@ -573,9 +588,9 @@ impl Attached {
                     operations.transfer_message_bytes().get(),
                 )
                 .await?;
-                let values = entry.and_then(|entry| {
-                    activation.entry_name = Some(entry.name);
-                    entry.values
+                let values = entry.as_ref().and_then(|entry| {
+                    activation.entry_name = Some(entry.name.clone());
+                    entry.values.clone()
                 });
                 activation.settings = crate::plugin::manager::settings::select(
                     activation.description.declarations.as_ref().expect("admitted description"),
@@ -587,6 +602,9 @@ impl Attached {
                     activation.connection.closed.send_replace(true);
                 })?;
                 activation.admission = Some(Arc::new(admission));
+                if let Some(entry) = entry {
+                    entry.manager.admitted(activation.clone()).await.map_err(|error| Error::Invalid(error.to_string()))?;
+                }
                 *admitted.lock().expect("startup activation lock is healthy") = Some(activation.clone());
                 activation.initialize().await?;
                 let publications = Publications::open(&streams, &activation, &clock, &settings, &operations).await?;
@@ -612,7 +630,7 @@ impl Attached {
             biased;
             _ = dropped => Err(Error::Invalid("Cancel Plugin Startup: attachment dropped".into())),
             () = cancelled => Err(Error::Invalid("Cancel Plugin Startup: entry stopped".into())),
-            () = participant.stopping() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
+            () = participant.settling() => Err(Error::Invalid("Stop Plugin Startup: host is shutting down".into())),
             result = setup => result,
         };
         // An Ended Load Has Released the Process, Whether It Finished, Missed Its Deadline or Was Cancelled.
@@ -799,14 +817,14 @@ async fn disconnected(mut closed: watch::Receiver<bool>) {
     }
 }
 
-async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut StopParticipant) -> String {
+async fn stopping(stop: &mut watch::Receiver<Option<String>>, participant: &mut StopParticipant) -> Ending {
     loop {
         if let Some(reason) = stop.borrow_and_update().clone() {
-            return reason;
+            return Ending::Stop(reason);
         }
         tokio::select! {
-            result = stop.changed() => if result.is_err() { return "Attachment Dropped".into(); },
-            () = participant.stopping() => return "Host Shutting Down".into(),
+            result = stop.changed() => if result.is_err() { return Ending::Stop("Attachment Dropped".into()); },
+            () = participant.settling() => return Ending::HostShutdown,
         }
     }
 }
@@ -835,7 +853,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             };
             tokio::select! {
                 biased;
-                reason = stopping(&mut stop, &mut participant) => break Ending::Stop(reason),
+                ending = stopping(&mut stop, &mut participant) => break ending,
                 result = exited => break Ending::Exit(result),
                 () = disconnected(activation.connection.closed.subscribe()) => break Ending::Disconnect,
                 // A Failed Unscoped Demand Ends Its Stream Only; the Attachment's Owner Reads Why.
@@ -847,7 +865,7 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
         let teardown = clock.activity("plugin teardown");
         activation.connection.ready.store(false, Ordering::Release);
         activation.admission.as_ref().expect("connected plugin admission").close();
-        if !matches!(ending, Ending::Stop(_)) {
+        if matches!(ending, Ending::Exit(_) | Ending::Disconnect) {
             activation.connection.closed.send_replace(true);
         }
         let settling = publications.settle(&clock, clock.now() + settings.stop_grace, None, "Settle Plugin Publications");
@@ -860,9 +878,18 @@ async fn supervise<A: Application>(session: Session<A>, status: &watch::Sender<S
             tracing::warn!(plugin = %activation.description.id, %error, "plugin finalization failed; continuing Stop");
             status.send_modify(|status| status.failure = Some(Arc::new(Error::Invalid(error.to_string()))));
         }
+        let ending = match ending {
+            Ending::HostShutdown => {
+                participant.settled();
+                teardown.wait(participant.stopping()).await;
+                Ending::Stop("Host Shutting Down".into())
+            }
+            ending => ending,
+        };
         // The Plugin Is Told to Stop Before It Is Killed: Stop and Its Exit Get a Fresh `stop_grace`.
         let deadline = clock.now() + settings.stop_grace;
         match ending {
+            Ending::HostShutdown => unreachable!("host settlement precedes transport Stop"),
             Ending::Stop(reason) => {
                 let mut client = activation.connection.client();
                 tracing::debug!(plugin = %activation.description.id, "waiting for plugin Instance.Stop reply");

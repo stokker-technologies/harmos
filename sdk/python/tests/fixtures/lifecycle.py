@@ -16,7 +16,7 @@ import asyncio
 import sys
 
 # Third Party Imports
-from harmos import CLASSIFICATION_PERMANENT, VISIBILITY_PUBLIC, model
+from harmos import CLASSIFICATION_PERMANENT, VISIBILITY_PUBLIC, SettingDeclaration, SettingValue, model
 from harmos._invocation import FailureError
 from harmos.plugin import Catalog, Context, HostOperation, Plugin, operation
 
@@ -51,6 +51,10 @@ class Author:
             if self.mode == "failure":
                 raise FailureError(model.Failure(classification=CLASSIFICATION_PERMANENT, code="acquire_failed", message="Acquire Failed"))
             await ctx.host.time.get()
+            if self.mode == "settings":
+                settings = await ctx.host.plugins.settings.list()
+                if settings.value.values["count"].integer != 3:
+                    raise ValueError("Initialize Plugin: Restore the Resolved Settings")
             self.value = b"initialized"
         finally:
             self.active -= 1
@@ -59,6 +63,10 @@ class Author:
     async def finalize(self, ctx: Context) -> None:
         if ctx.plugin is not self:
             raise ValueError("Finalize Plugin: Use the Shared Instance")
+        if self.mode == "settings":
+            settings = await ctx.host.plugins.settings.list()
+            if settings.value.values["count"].integer != 3:
+                raise ValueError("Finalize Plugin: Retain the Resolved Settings")
         self.finalized += 1
         print(f"finalize:{self.active}:{self.finalized}", flush=True)
         if self.active:
@@ -88,7 +96,15 @@ class Author:
 
 async def _main() -> None:
     author = Author(sys.argv[1])
-    endpoint = await Plugin(id="lifecycle", version="1.0.0", register=lambda ctx: ctx.register(Catalog(author, requires=[HostOperation.TIME_GET]))).start("127.0.0.1:0")
+    requires = [HostOperation.TIME_GET]
+    if author.mode == "settings":
+        requires.append(HostOperation.PLUGINS_SETTINGS_LIST)
+    plugin = Plugin(
+        id="lifecycle",
+        version="1.0.0",
+        register=lambda ctx: ctx.register(Catalog(author, requires=requires, settings=[SettingDeclaration(name="count", title="Count", default=SettingValue(integer=3))])),
+    )
+    endpoint = await plugin.start("127.0.0.1:0")
     print(f"listening:{endpoint.address}", flush=True)
     try:
         while True:

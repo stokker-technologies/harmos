@@ -175,7 +175,10 @@ impl Actor {
             );
             self.store.save(&registry).await?;
             let activation = match prepared.take() {
-                Some(prepared) => (self.activate)(prepared).await.map(Some),
+                Some(prepared) => {
+                    let activating = tokio::spawn((self.activate)(prepared));
+                    self.wait(activating).await.map_err(|error| grpc::Error::Invalid(error.to_string())).and_then(|result| result).map(Some)
+                }
                 None => Ok(None),
             };
             let attached = match activation {
@@ -190,7 +193,9 @@ impl Actor {
                             "keep the previous serving bundle and repair the registry backend",
                         ));
                     }
-                    return Err(problem("Activate Plugin Replacement", error));
+                    return Err(error
+                        .lifecycle_failure(&entry.name)
+                        .map_or_else(|| problem("Activate Plugin Replacement", error), |failure| Error(Box::new(failure))));
                 }
             };
             installed = true;
