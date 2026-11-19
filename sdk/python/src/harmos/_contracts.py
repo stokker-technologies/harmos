@@ -180,11 +180,6 @@ def publisher[F: Callable](id: str, *, row: type[Message], description: str = ""
     return decorate
 
 
-def on_stop[F: Callable](handler: F) -> F:
-    handler.__dict__["__harmos_stop__"] = True
-    return handler
-
-
 def message_types(message: type[Message]) -> FileDescriptorSet:
     """Project Reachable Definitions Without Compiler Presentation Metadata."""
     files: dict[str, FileDescriptorProto] = {}

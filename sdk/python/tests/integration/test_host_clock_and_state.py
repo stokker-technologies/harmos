@@ -17,6 +17,7 @@ from unittest import IsolatedAsyncioTestCase
 
 import grpc
 from google.protobuf.duration_pb2 import Duration
+from google.protobuf.empty_pb2 import Empty
 from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import StatusCode
 from grpc.aio import EOF, AioRpcError
@@ -56,7 +57,7 @@ class HostClockAndState(IsolatedAsyncioTestCase):
 
         plugin = Plugin(id="author", version="1.0.0", register=register)
         declarations = plugin.declarations()
-        self.assertEqual({operation.id for operation in declarations.operations}, {"author.wait", "author.state"})
+        self.assertEqual({operation.id for operation in declarations.operations}, {"author.wait", "author.state", "author.finalize"})
         self.assertEqual(len(declarations.sections), 1)
         self.assertEqual(author.calls, 0)
         self.assertEqual(author.cleaned, 0)
@@ -169,7 +170,10 @@ class HostClockAndState(IsolatedAsyncioTestCase):
             await invalid.read()
         self.assertEqual(error.exception.code(), StatusCode.INVALID_ARGUMENT)
 
-        # Stop Finishes Cleanup and Preserves the Remote Endpoint's Identity.
+        # Finalize Releases State Through Invoke Before Stop Preserves the Endpoint.
+        finalized = await calls.invoke(client, "author.finalize", Empty())
+        self.assertEqual((await finalized.read()).response.payload, b"")
+        self.assertIs(await finalized.read(), EOF)
         await client.Stop(InstanceStopRequest(reason="Story Complete"))
         self.assertEqual(author.cleaned, 1)
         self.assertEqual(await client.Get(InstanceGetRequest(revision=1)), description)

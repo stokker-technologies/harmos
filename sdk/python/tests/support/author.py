@@ -21,7 +21,7 @@ from harmos import VISIBILITY_PROTECTED
 from harmos._wire.host.v1.time_pb2 import TimeGetResponse
 
 # Local Imports
-from harmos.plugin import Context, observer, on_stop, operation
+from harmos.plugin import Context, observer, operation
 from tests.fixtures.conformance import Value
 
 # Type Checking Imports
@@ -69,8 +69,7 @@ class Author:
             self.released.set()
         return Value()
 
-    @on_stop
-    async def cleanup(self) -> None:
+    async def finalize(self, ctx: Context) -> None:
         self.cleaned += 1
 
 
